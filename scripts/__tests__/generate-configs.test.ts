@@ -173,6 +173,18 @@ describe('renderCodexProfilesToml', () => {
     expect(out).toContain('model = "gpt-5.3-codex-spark"');
     expect(out).toContain('model = "gpt-5.5"');
   });
+
+  it('every profile sets approval_policy = "never" (orchestrator-driven)', () => {
+    // Spec §3.12 example shows scaffolder with "on-request"; we override per
+    // single-checkpoint principle — Claude orchestrator owns human-in-the-loop.
+    const out = renderCodexProfilesToml();
+    const profileSections = out.split(/\n\[profiles\./).slice(1);
+    expect(profileSections).toHaveLength(4);
+    for (const section of profileSections) {
+      expect(section).toContain('approval_policy = "never"');
+      expect(section).not.toContain('approval_policy = "on-request"');
+    }
+  });
 });
 
 describe('renderReviewChecklist', () => {
