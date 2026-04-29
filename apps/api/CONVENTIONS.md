@@ -174,7 +174,7 @@ async def skb_error_handler(request: Request, exc: SkbError) -> JSONResponse:
 
 - 单一端点 `WS /v1/ws/`
 - 协议：JSON 消息，每条含 `type` 字段
-- 详细 wire format 见 [`apps/api/app/ws/CONTRACT.md`](app/ws/CONTRACT.md)
+- 详细 wire format 见 `apps/api/app/ws/CONTRACT.md`（Track D Step 15 创建后查阅）
 - Phase 2b 加 agent_bridge 后协议扩展；`type` 字段约定不变
 
 ## 9. 类型同步
@@ -200,5 +200,5 @@ Phase 3 开源后才考虑严格 SemVer（详见 ADR-0003 D7）。
 - [ADR-0001](../../docs/decisions/ADR-0001-stack-selection.md) — Phase 0 + Phase 1 架构基础
 - [ADR-0003](../../docs/decisions/ADR-0003-headless-presentational-split.md) — 开源就绪
 - [设计规格 §1.2 / §2.5 / §2.6](../../docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md)
-- [apps/api/CONTRACT.md](CONTRACT.md) — 当前 endpoint 列表
-- [apps/api/app/ws/CONTRACT.md](app/ws/CONTRACT.md) — WS 协议
+- `apps/api/CONTRACT.md` — 当前 endpoint 列表（**Track D Step 14 创建**，本文件 commit 时尚不存在）
+- `apps/api/app/ws/CONTRACT.md` — WS 协议（**Track D Step 15 创建**，同上）
