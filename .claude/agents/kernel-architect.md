@@ -1,5 +1,6 @@
 ---
 name: kernel-architect
+description: "设计 KernelAdapter 接口与 KernelRegistry"
 tier: 1 (Worker)
 llm: claude
 role: 设计 KernelAdapter 接口与 KernelRegistry

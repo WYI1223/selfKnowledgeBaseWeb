@@ -1,5 +1,6 @@
 ---
 name: performance-auditor
+description: "性能基线 + 回归侦测"
 tier: 3 (Audit)
 llm: claude
 role: 性能基线 + 回归侦测

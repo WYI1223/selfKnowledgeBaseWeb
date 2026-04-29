@@ -1,5 +1,6 @@
 ---
 name: orchestrator
+description: "整体规划 + dispatch 工种 + 维护 docs/plans/"
 tier: 0 (Orchestrator)
 llm: claude
 role: 整体规划 + dispatch 工种 + 维护 docs/plans/

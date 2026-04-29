@@ -1,5 +1,6 @@
 ---
 name: pr-gate
+description: "高风险 PR 深度审查 (5.5)"
 tier: 2 (Process)
 llm: codex
 profile: pr-gate

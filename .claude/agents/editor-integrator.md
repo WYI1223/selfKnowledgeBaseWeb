@@ -1,5 +1,6 @@
 ---
 name: editor-integrator
+description: "把 editor 子模块集成到 site"
 tier: 1 (Worker)
 llm: claude
 role: 把 editor 子模块集成到 site

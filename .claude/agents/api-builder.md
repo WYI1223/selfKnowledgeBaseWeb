@@ -1,5 +1,6 @@
 ---
 name: api-builder
+description: "写 apps/api FastAPI 后端"
 tier: 1 (Worker)
 llm: claude
 role: 写 apps/api FastAPI 后端

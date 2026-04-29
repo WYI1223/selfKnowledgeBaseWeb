@@ -1,5 +1,6 @@
 ---
 name: codex-block-generator
+description: "在 block-callout 模板出来后，仿造其他 simple block"
 tier: 1 (Worker)
 llm: codex
 profile: scaffolder

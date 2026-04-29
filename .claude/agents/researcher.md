@@ -1,5 +1,6 @@
 ---
 name: researcher
+description: "唯一外网访问权"
 tier: 2 (Process)
 llm: claude
 role: 唯一外网访问权

@@ -1,5 +1,6 @@
 ---
 name: mdx-bridge-eng
+description: "维护 mdx-bridge 双向转换"
 tier: 1 (Worker)
 llm: claude
 role: 维护 mdx-bridge 双向转换

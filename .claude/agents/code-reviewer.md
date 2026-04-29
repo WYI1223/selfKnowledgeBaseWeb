@@ -1,5 +1,6 @@
 ---
 name: code-reviewer
+description: "行级严谨 review (默认廉价)"
 tier: 2 (Process)
 llm: codex
 profile: code-reviewer

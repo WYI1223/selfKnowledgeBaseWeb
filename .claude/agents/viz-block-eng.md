@@ -1,5 +1,6 @@
 ---
 name: viz-block-eng
+description: "写可视化 block 实现 (jupyter / nn-viz / agent-flow)"
 tier: 1 (Worker)
 llm: claude
 role: 写可视化 block 实现 (jupyter / nn-viz / agent-flow)

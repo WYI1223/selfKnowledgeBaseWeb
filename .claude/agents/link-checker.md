@@ -1,5 +1,6 @@
 ---
 name: link-checker
+description: "markdown 链接检查"
 tier: 3 (Audit)
 llm: claude
 role: markdown 链接检查

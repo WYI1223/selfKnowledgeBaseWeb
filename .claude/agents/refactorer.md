@@ -1,5 +1,6 @@
 ---
 name: refactorer
+description: "唯一跨包重组权"
 tier: 2 (Process)
 llm: claude
 role: 唯一跨包重组权

@@ -1,5 +1,6 @@
 ---
 name: codex-script-builder
+description: "写 scripts/ 下的工具脚本"
 tier: 1 (Worker)
 llm: codex
 profile: scaffolder

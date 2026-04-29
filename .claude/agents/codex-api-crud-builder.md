@@ -1,5 +1,6 @@
 ---
 name: codex-api-crud-builder
+description: "写 apps/api 的 CRUD 端点骨架"
 tier: 1 (Worker)
 llm: codex
 profile: scaffolder

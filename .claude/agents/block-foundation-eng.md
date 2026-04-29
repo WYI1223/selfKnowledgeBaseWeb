@@ -1,5 +1,6 @@
 ---
 name: block-foundation-eng
+description: "维护 block-foundation 与 content-types 包"
 tier: 1 (Worker)
 llm: claude
 role: 维护 block-foundation 与 content-types 包

@@ -87,6 +87,30 @@ describe('renderClaudeAgent', () => {
     const out = renderClaudeAgent(codex);
     expect(out).toContain('profile: scaffolder');
   });
+
+  it('emits description field in frontmatter (Claude Code dispatcher requirement)', () => {
+    const agent: Agent = {
+      name: 'foo-eng',
+      tier: 1,
+      llm: 'claude',
+      role: 'test role',
+      permissions: ['read_repo'],
+    };
+    const out = renderClaudeAgent(agent);
+    expect(out).toMatch(/^---\nname: foo-eng\ndescription: "test role"\n/);
+  });
+
+  it('escapes embedded double-quotes and backslashes in description', () => {
+    const agent: Agent = {
+      name: 'bar-eng',
+      tier: 1,
+      llm: 'claude',
+      role: 'has "quote" and \\ backslash',
+      permissions: ['read_repo'],
+    };
+    const out = renderClaudeAgent(agent);
+    expect(out).toContain('description: "has \\"quote\\" and \\\\ backslash"');
+  });
 });
 
 describe('renderClaudeMd', () => {

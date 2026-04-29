@@ -1,5 +1,6 @@
 ---
 name: git-operator
+description: "唯一 git 操作权"
 tier: 2 (Process)
 llm: claude
 role: 唯一 git 操作权

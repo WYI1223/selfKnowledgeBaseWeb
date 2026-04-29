@@ -1,5 +1,6 @@
 ---
 name: structure-auditor
+description: "月度结构审计"
 tier: 3 (Audit)
 llm: claude
 role: 月度结构审计

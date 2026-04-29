@@ -1,5 +1,6 @@
 ---
 name: codex-css-stylist
+description: "写 Tailwind 重复样式 / 设计 token"
 tier: 1 (Worker)
 llm: codex
 profile: scaffolder

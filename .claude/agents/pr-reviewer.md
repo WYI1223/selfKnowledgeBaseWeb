@@ -1,5 +1,6 @@
 ---
 name: pr-reviewer
+description: "实现质量 + 降级风险 + 规格匹配 review"
 tier: 2 (Process)
 llm: claude
 role: 实现质量 + 降级风险 + 规格匹配 review

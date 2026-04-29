@@ -1,5 +1,6 @@
 ---
 name: editor-eng
+description: "写 editor-commands 命令模式与 editor-shell"
 tier: 1 (Worker)
 llm: claude
 role: 写 editor-commands 命令模式与 editor-shell

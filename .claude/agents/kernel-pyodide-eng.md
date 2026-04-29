@@ -1,5 +1,6 @@
 ---
 name: kernel-pyodide-eng
+description: "实现 PyodideAdapter"
 tier: 1 (Worker)
 llm: claude
 role: 实现 PyodideAdapter

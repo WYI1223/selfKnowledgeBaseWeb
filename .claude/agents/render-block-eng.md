@@ -1,5 +1,6 @@
 ---
 name: render-block-eng
+description: "写 math / pdf 的 block 实现"
 tier: 1 (Worker)
 llm: claude
 role: 写 math / pdf 的 block 实现

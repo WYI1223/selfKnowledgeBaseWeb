@@ -1,5 +1,6 @@
 ---
 name: simple-block-eng
+description: "写 simple block 模板（block-callout 等）"
 tier: 1 (Worker)
 llm: claude
 role: 写 simple block 模板（block-callout 等）

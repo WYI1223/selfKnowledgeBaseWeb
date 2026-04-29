@@ -1,5 +1,6 @@
 ---
 name: codex-test-scaffolder
+description: "为每个 package 生成 vitest 套件骨架"
 tier: 1 (Worker)
 llm: codex
 profile: scaffolder

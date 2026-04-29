@@ -1,5 +1,6 @@
 ---
 name: plan-challenger
+description: "在 plan lock 前挑战"
 tier: 2 (Process)
 llm: codex
 profile: plan-challenger

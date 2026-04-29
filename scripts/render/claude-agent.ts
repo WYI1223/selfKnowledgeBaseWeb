@@ -4,10 +4,21 @@
 import type { Agent } from './types.ts';
 import { tierName } from './types.ts';
 
+/**
+ * Quote a YAML scalar with double-quotes, escaping internal `"` and `\`.
+ * Newlines should never appear in agent.role; we don't try to handle them.
+ * Robust against accidental special chars in the corpus (Chinese plain text).
+ */
+function escapeYamlString(s: string): string {
+  const escaped = s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  return `"${escaped}"`;
+}
+
 export function renderClaudeAgent(agent: Agent): string {
   const lines: string[] = [
     '---',
     `name: ${agent.name}`,
+    `description: ${escapeYamlString(agent.role)}`,
     `tier: ${agent.tier} (${tierName(agent.tier)})`,
     `llm: ${agent.llm}`,
   ];

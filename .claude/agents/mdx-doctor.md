@@ -1,5 +1,6 @@
 ---
 name: mdx-doctor
+description: "MDX round-trip 健康守护"
 tier: 3 (Audit)
 llm: claude
 role: MDX round-trip 健康守护
