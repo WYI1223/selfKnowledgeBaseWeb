@@ -6,13 +6,13 @@
 
 ## Phase 索引
 
-| Phase | 状态       | 链接                                                                   |
-| ----- | ---------- | ---------------------------------------------------------------------- |
-| 0     | acceptance | [phase-0 plan](../superpowers/plans/2026-04-29-phase-0-scaffolding.md) |
-| 1     | pending    | [phase-1/plan.md](phase-1/plan.md)                                     |
-| 2a    | pending    | (待 writing-plans skill 产出)                                          |
-| 2b    | pending    | (待 writing-plans skill 产出)                                          |
-| 3+    | open       | (按需创建，每条独立 ADR)                                               |
+| Phase | 状态    | 链接                                                                   |
+| ----- | ------- | ---------------------------------------------------------------------- |
+| 0     | done    | [phase-0 plan](../superpowers/plans/2026-04-29-phase-0-scaffolding.md) |
+| 1     | next    | [phase-1/plan.md](phase-1/plan.md)                                     |
+| 2a    | pending | (待 writing-plans skill 产出)                                          |
+| 2b    | pending | (待 writing-plans skill 产出)                                          |
+| 3+    | open    | (按需创建，每条独立 ADR)                                               |
 
 ## Related
 

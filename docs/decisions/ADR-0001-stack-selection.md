@@ -100,7 +100,7 @@ Tiptap 容器（packages/editor-shell）+ 命令模式（packages/editor-command
 
 ## Spec errata (Phase 0 execution discoveries)
 
-执行 Phase 0 期间发现 5 处 spec 描述与实现需要校正。每条都已在对应 commit 落实，本 ADR 集中记录原因与替代实现：
+执行 Phase 0 期间发现 7 处 spec 描述与实现需要校正（5 处在 T0.1-T0.13 主体执行中发现；2 处在 V1 acceptance gate 重测中暴露）。每条都已在对应 commit 落实，本 ADR 集中记录原因与替代实现：
 
 ### Erratum 1: §3.7 hooks JSON shape
 
@@ -132,6 +132,18 @@ Plan T0.3 字面量 `{"files": [], "references": []}` 让 `tsc -b` 失败 `TS180
 
 **修正实现**：T0.3 实施时改为 `extends ./tsconfig.base.json` + `composite: false` + `noEmit: true` + `references: []`（commit `b8ebbb6`）。后续 T0.5 fix round 在添加 scripts 类型化覆盖时把 references 数组填为 `[{ path: "./scripts" }]`（commit `dc255cb`）。Phase 1 packages 加进来时该数组会进一步扩展。
 
+### Erratum 6: §3.13 `renderClaudeAgent` 缺 `description:` frontmatter
+
+Spec §3.13 / plan T0.5 给的 renderClaudeAgent 字面量只 emit `name` / `tier` / `llm` / `profile` / `role` / `triggers`，没有 `description:`。Claude Code 的 agent loader **要求** `description:` 字段，缺失时 silently skip 整个 agent 文件——27 个 agent 全部不可 dispatch（V3 验收门最初全 fail）。
+
+**修正实现**：`scripts/render/claude-agent.ts` emit `description: <quoted role>` 紧跟在 `name:` 之后；commit `0f96a75`。同时加 `escapeYamlString` helper 防御 YAML 敏感字符。
+
+### Erratum 7: lychee-action 给 explicit `args` 时不读 `.lychee.toml`
+
+Spec §3.5 / plan T0.12 假设 `lycheeverse/lychee-action@v2` 会自动读取 `.lychee.toml`。实测：当 workflow `with: args: '...'` 显式提供参数时，action 不再 auto-load config 文件。Erratum 4 设的 `include_verbatim = false` 在 CI 实际无效（虽然 plan-doc 重定向链接已绕过具体破坏）。
+
+**修正实现**：本次未改 workflow（用户已 push 通过的修复绕过了破坏）。Phase 1 引入更多含 fenced code 内 markdown 样例时，需在 link-check.yml 加 `with: configFile: .lychee.toml` 或移除 explicit `args`，已记入 deferred follow-ups。
+
 ## Deferred follow-ups (track for Phase 1 / 2)
 
 - **YAML 转义安全**（T0.5 CONCERN 2）：`scripts/render/claude-agent.ts` 直接拼 frontmatter 字符串，没有 YAML 转义。当前 27 agent 名 / 角色 / triggers 都没特殊字符，安全。但若未来某 agent role 字符串里出现 `:` / `#` / 反斜杠 / 前导空格等 YAML 敏感字符，需要切换到 `yaml.stringify`。
@@ -139,10 +151,11 @@ Plan T0.3 字面量 `{"files": [], "references": []}` 让 `tsc -b` 失败 `TS180
 - **CI workflow 加 concurrency block**（T0.12 Note N1）：`.github/workflows/link-check.yml` 没有 concurrency cancel-in-progress。lychee 跑得快，影响小；统一三个 workflow 风格时一起加。
 - **CI workflow 显式 `fail: true`**（T0.12 Note N2）：lychee-action@v2 默认就 fail，但显式声明对未来读者更清晰。
 - **Workspace runtime 预留**（T0.5 NOTE）：当 Phase 1 packages 加入时，`tsconfig.json references` 数组需要相应扩展；当前只指向 `./scripts`。
+- **link-check.yml 加载 .lychee.toml**（Erratum 7 后续）：给 lychee-action 加 `with: configFile: .lychee.toml`，或者把 args 移到 toml 里去。当前修复（重定向 broken 链接）治标，未治本。
 
 ## Related
 
 - [设计规格 §1 全篇](../superpowers/specs/2026-04-29-self-knowledge-base-design.md)
 - [Phase 0 plan](../superpowers/plans/2026-04-29-phase-0-scaffolding.md)
 - [agent-contract.md](../../agent-contract.md)
-- 全部 Phase 0 commits（含本 ADR 在内共 12 个；查看：`git log --oneline 2ba57fe..HEAD`）
+- 全部 Phase 0 commits（含本 ADR 多次 amendment 在内）：`git log --oneline 2ba57fe..HEAD`
