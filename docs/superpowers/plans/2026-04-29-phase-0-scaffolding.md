@@ -218,8 +218,8 @@ git --version
 - Claude Code 与 Codex 都在 WSL2 内运行（不要在 PowerShell 里跑）
 
 ## Related
-- [设计规格 §4.1](../superpowers/specs/2026-04-29-self-knowledge-base-design.md)
-- [README](README.md)
+- [设计规格 §4.1](../specs/2026-04-29-self-knowledge-base-design.md)
+- [README](../../runbooks/README.md)
 ```
 
 - [ ] **Step 3：本地验证 setup 文档（自查）**
@@ -239,7 +239,7 @@ git commit -m "docs(runbooks): add WSL2 setup guide for Phase 0"
 
 **Files:** None (manual on GitHub UI)
 
-**Context:** Repo 已创建（https://github.com/WYI1223/selfKnowledgeBaseWeb）。初始 commit 已 push（commit `2ba57fe`）。剩下两件事：分支保护规则、协作规则。
+**Context:** Repo 已创建（<https://github.com/WYI1223/selfKnowledgeBaseWeb>）。初始 commit 已 push（commit `2ba57fe`）。剩下两件事：分支保护规则、协作规则。
 
 - [ ] **Step 1：用户手动启用 main 分支保护**
 
@@ -908,8 +908,8 @@ agents:
 ```
 
 ## Related
-- [设计规格 §3.1 + §3.13](docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md)
-- [生成器 scripts/generate-configs.ts](scripts/generate-configs.ts)
+- [设计规格 §3.1 + §3.13](../specs/2026-04-29-self-knowledge-base-design.md)
+- [生成器 scripts/generate-configs.ts](../../../scripts/generate-configs.ts)
 ```
 
 - [ ] **Step 2：commit**
