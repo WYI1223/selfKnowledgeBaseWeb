@@ -115,27 +115,51 @@ describe('renderAgentsMd', () => {
 });
 
 describe('renderSettingsJson', () => {
-  it('produces valid JSON with PostToolUse + SessionStart hooks', () => {
-    const out = renderSettingsJson();
-    const parsed = JSON.parse(out) as {
-      hooks: {
-        PostToolUse: Array<{ matcher: string; command: string }>;
-        SessionStart: Array<{ command: string }>;
-      };
+  type ParsedSettings = {
+    hooks: {
+      PostToolUse: Array<{
+        matcher: string;
+        hooks: Array<{ type: string; command: string }>;
+      }>;
+      SessionStart: Array<{
+        matcher: string;
+        hooks: Array<{ type: string; command: string }>;
+      }>;
     };
-    expect(parsed.hooks.PostToolUse[0]?.matcher).toBe('Edit|Write');
-    expect(parsed.hooks.SessionStart[0]?.command).toContain('active.md');
+  };
+
+  it('produces valid JSON with nested-shape PostToolUse hook (matcher + hooks[])', () => {
+    const out = renderSettingsJson();
+    const parsed = JSON.parse(out) as ParsedSettings;
+    const entry = parsed.hooks.PostToolUse[0];
+    expect(entry?.matcher).toBe('Edit|Write');
+    expect(Array.isArray(entry?.hooks)).toBe(true);
+    expect(entry?.hooks[0]?.type).toBe('command');
+    expect(entry?.hooks[0]?.command).toBe('node scripts/hooks/post-edit.mjs');
+  });
+
+  it('produces nested-shape SessionStart hook with empty-string matcher', () => {
+    const out = renderSettingsJson();
+    const parsed = JSON.parse(out) as ParsedSettings;
+    const entry = parsed.hooks.SessionStart[0];
+    expect(entry?.matcher).toBe('');
+    expect(Array.isArray(entry?.hooks)).toBe(true);
+    expect(entry?.hooks[0]?.type).toBe('command');
   });
 
   it('SessionStart command tolerates missing docs/plans/active.md (existence guard)', () => {
     const out = renderSettingsJson();
-    const parsed = JSON.parse(out) as {
-      hooks: { SessionStart: Array<{ command: string }> };
-    };
-    const cmd = parsed.hooks.SessionStart[0]?.command ?? '';
+    const parsed = JSON.parse(out) as ParsedSettings;
+    const cmd = parsed.hooks.SessionStart[0]?.hooks[0]?.command ?? '';
     expect(cmd).toContain('[ -f docs/plans/active.md ]');
     // Semicolon ensures tsc -b --dry runs unconditionally even if active.md absent.
     expect(cmd).toMatch(/;\s*pnpm tsc -b --dry/);
+  });
+
+  it('round-trips through JSON.stringify(_, null, 2) + trailing newline (idempotent)', () => {
+    const out = renderSettingsJson();
+    const parsed = JSON.parse(out) as ParsedSettings;
+    expect(JSON.stringify(parsed, null, 2) + '\n').toBe(out);
   });
 });
 

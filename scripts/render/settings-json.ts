@@ -1,19 +1,25 @@
 /**
  * Renders .claude/settings.json (PostToolUse + SessionStart hooks per spec §3.7).
  *
- * The contract isn't currently consulted but the call signature accepts it for
- * forward compatibility (e.g. per-agent hook variants).
+ * NOTE: spec §3.7's flat shape is an erratum — Claude Code's actual schema
+ * requires each matcher entry to nest its commands inside a `hooks: [{type, command}]`
+ * array. This renderer emits the correct nested shape; tracked for ADR in T0.13.
  */
 
-interface Hook {
-  matcher?: string;
+interface HookCommand {
+  type: 'command';
   command: string;
+}
+
+interface MatcherEntry {
+  matcher: string;
+  hooks: HookCommand[];
 }
 
 interface Settings {
   hooks: {
-    PostToolUse: Hook[];
-    SessionStart: Hook[];
+    PostToolUse: MatcherEntry[];
+    SessionStart: MatcherEntry[];
   };
 }
 
@@ -23,12 +29,20 @@ export function renderSettingsJson(): string {
       PostToolUse: [
         {
           matcher: 'Edit|Write',
-          command: 'node scripts/hooks/post-edit.mjs',
+          hooks: [
+            { type: 'command', command: 'node scripts/hooks/post-edit.mjs' },
+          ],
         },
       ],
       SessionStart: [
         {
-          command: '[ -f docs/plans/active.md ] && cat docs/plans/active.md; pnpm tsc -b --dry',
+          matcher: '',
+          hooks: [
+            {
+              type: 'command',
+              command: '[ -f docs/plans/active.md ] && cat docs/plans/active.md; pnpm tsc -b --dry',
+            },
+          ],
         },
       ],
     },
