@@ -515,7 +515,7 @@ WAVE 0：脚手架（串行）
   T0.4  环境决策文档（WSL2 / Docker / 原生，详 §4）
 
 WAVE 1：基础设施 + 接口（6 路并行）
-  Track A  apps/site Astro 骨架                  agent: site-builder
+  Track A  apps/site Astro 骨架                  agent: editor-integrator
   Track B  block-foundation (registry + prose)   agent: block-foundation-eng
   Track C  mdx-bridge + RTT 测试基线              agent: mdx-bridge-eng
   Track D  apps/api FastAPI + auth + git ops     agent: api-builder
@@ -537,7 +537,7 @@ WAVE 3：集成
   T3.2  apps/site 接入 editor + 登录流
   T3.3  search-index + Pagefind 全站索引
   T3.4  WebSocket scaffold (apps/api/ws) + LLMProvider 接口
-  agent: editor-integrator + site-builder + api-builder
+  agent: editor-integrator + editor-integrator + api-builder
 
 WAVE 4：验收 + 部署
   T4.1  Playwright E2E
@@ -746,7 +746,7 @@ docs/plans/
 ```
 docs/execution/
 ├── phase-1/
-│   ├── wave-1-track-A-site-builder.md      # site-builder agent 落地日志
+│   ├── wave-1-track-A-editor-integrator.md      # editor-integrator agent 落地日志
 │   ├── wave-1-track-B-block-foundation.md
 │   ├── wave-2-block-callout-template.md    # Claude template
 │   ├── wave-2-block-code-variant.md        # Codex 5.3 variant
@@ -1060,7 +1060,7 @@ agents:
 
 | Track | Agent | LLM | 退出标准 |
 |---|---|---|---|
-| A. Astro site 骨架 | site-builder | Claude | 公开页可渲染静态 MDX，路由生效 |
+| A. Astro site 骨架 | editor-integrator | Claude | 公开页可渲染静态 MDX，路由生效 |
 | B. block-foundation | block-foundation-eng | Claude | BlockRegistry 接口 + Prose blocks（StarterKit 包装）+ 单测 ≥ 80% |
 | C. mdx-bridge + RTT 基线 | mdx-bridge-eng | Claude | RTT 测试 fixture 至少 5 个 prose 用例通过 |
 | D. apps/api FastAPI 骨架 | api-builder | Claude | auth + 文件 CRUD + git ops + WS endpoint stub + LLMProvider interface 全有 |
@@ -1098,15 +1098,15 @@ agents:
 | Task | Agent | 退出标准 |
 |---|---|---|
 | editor-shell 集成全部 block | editor-integrator | 编辑器能创建包含全部 8 种 component block 的页面 |
-| apps/site 接入 editor + 登录流 | site-builder + api-builder | 登录 → 编辑 → 保存 → 公开页面更新闭环 |
-| search-index + Pagefind | site-builder | 全站搜索（含 PDF 文本）可用 |
+| apps/site 接入 editor + 登录流 | editor-integrator + api-builder | 登录 → 编辑 → 保存 → 公开页面更新闭环 |
+| search-index + Pagefind | editor-integrator | 全站搜索（含 PDF 文本）可用 |
 | WS 通道 + LLMProvider 接口冻结 | api-builder | 接口定义 + 占位 echo 实现 |
 
 **4.2.4 Wave 4 — 验收 + 部署**
 
 | Task | Agent | 退出标准 |
 |---|---|---|
-| Playwright E2E | site-builder | "创建笔记 → 加 jupyter block → 跑代码 → 保存 → 公开访问" 闭环通过 |
+| Playwright E2E | editor-integrator | "创建笔记 → 加 jupyter block → 跑代码 → 保存 → 公开访问" 闭环通过 |
 | Cloudflare Pages 部署 | git-operator + api-builder | 公开 URL 可访问 |
 | Cloudflare Tunnel + Edit API 上线 | api-builder | Edit API 通过 Tunnel 可被 site 调用 |
 | performance-auditor 首次基线 | performance-auditor | Lighthouse → `docs/audits/perf-phase-1-baseline.md` |

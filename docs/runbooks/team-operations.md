@@ -136,6 +136,16 @@ Wave / Phase 完工时 orchestrator 会发：
 
 approve 后你的进程会被终止；不要主动发 `shutdown_request`（除非你被指定为 team-lead 且确认 wave 完工）。
 
+## Codex CLI 调用规范（如果你的角色用 codex）
+
+如果你是 `code-reviewer` / `pr-gate` / `plan-challenger` / `codex-*-eng` 之一，你通过 Bash 调 codex。**必须遵守**：
+
+- **stdin 必须重定向**：`codex exec --profile <name> "<prompt>" < /dev/null` —— 否则 codex 在 team 环境下可能等待非交互输入卡住（Phase 0 实测发现）
+- **profile 已配 `approval_policy = "never"`**：非交互运行，不要试图绕过
+- **stdout / stderr 分流**：codex 把进度走 stderr，最终输出走 stdout；review 类 agent 只用 stdout 作为最终结论
+- **超时控制**：long-running 任务用 `timeout` 包，例如 `timeout 600 codex exec --profile code-reviewer ... < /dev/null`
+- **失败回退**：如果 codex 三次重试仍失败，向 orchestrator 报告，让其决定降级到 Claude（按 ADR-0001 降级策略）
+
 ## 失败模式与上报
 
 如果你遇到以下任一，**不要硬撑**，立即 SendMessage 给 orchestrator 描述：

@@ -262,12 +262,12 @@ TaskCreate({
 
 - [ ] **Step 4：spawn teammate（按 wave 1 实际需要，不全 27 个）**
 
-Wave 1 用到的 active teammate（10 个）：
+Wave 1 用到的 active teammate（**11 个**）：
 
 | name | subagent_type | tier | 何时用 |
 |---|---|---|---|
 | `api-builder` | api-builder | T1 | Task 0 + Track D |
-| `site-builder` | site-builder | T1 | Track A + Track G |
+| `editor-integrator` | editor-integrator | T1 | Track A + Track G |
 | `block-foundation-eng` | block-foundation-eng | T1 | Track B |
 | `mdx-bridge-eng` | mdx-bridge-eng | T1 | Track C |
 | `kernel-architect` | kernel-architect | T1 | Track E |
@@ -277,6 +277,15 @@ Wave 1 用到的 active teammate（10 个）：
 | `pr-reviewer` | pr-reviewer | T2 | 每个 task ready-for-review |
 | `git-operator` | git-operator | T2 | 每个 task pass 后 commit |
 | `structure-auditor` | structure-auditor | T3 | Task Z baseline |
+
+> **注 1：editor-integrator 在 Wave 1 兼任 Track A + Track G**
+> spec §3.1 把 editor-integrator 的职责定义为"editor-slash-menu / drag / toolbar + apps/site 集成"。Wave 1 不做 editor 子模块（那是 Wave 2），所以它的 Wave 1 容量正好接 Track A（apps/site Astro 骨架 + ThemeToggle，spec 已明指其 "apps/site 集成" 责任）+ Track G（design-tokens 是 apps/site 直接消费的 dependency）。Wave 2 启动时这位 teammate 会接到它"主营业务"——届时 editor-integrator 在 team 里**已存在 + 上下文热**，无需重 spawn。
+>
+> **注 2：8 个 codex agent 中 Wave 1 只 spawn 2 个**
+> `code-reviewer` + `pr-gate` 这 2 个 codex 角色在 Wave 1 review 链常驻使用。其他 5 个 `codex-*-eng` 工种是 Wave 2 才用（block 仿造 / 测试脚手架等）；`plan-challenger` 是 plan-lock 阶段一次性调用，**不进 team**（直接用 `Agent({...})` 一次性派遣即可）。
+>
+> **注 3：codex exec 调用必须重定向 stdin**
+> Phase 0 实测发现：team 内 Claude teammate 调 `codex exec --profile <name>` 时必须显式 `< /dev/null` 重定向，否则 codex 可能等待非交互输入卡住。code-reviewer / pr-gate / 其余 codex 包装都遵守此约束。详见 [team-operations.md "失败模式与上报"](../../runbooks/team-operations.md) 与 ADR-0001 erratum 2。
 
 每个用以下模板 spawn（以 `block-foundation-eng` 为例）：
 
@@ -406,7 +415,7 @@ watch GitHub Actions; link-check 应在新仓库状态下 PASS 且不再误读 p
 
 ## Track A: apps/site Astro 骨架（消费 design-tokens）
 
-**Agent dispatch:** `site-builder` (Claude)
+**Agent dispatch:** `editor-integrator` (Claude)
 **Risk level:** 高（消费 design-tokens 的第一个 consumer + 含 ThemeToggle 切换 hook → escalate pr-gate 5.5）
 **前置依赖：Track G 完成**（apps/site 的 tailwind.config.ts 与 global.css 引用 `@skb/design-tokens` 的 preset 与 CSS 文件）。
 **Files:**
@@ -745,7 +754,7 @@ kill %1 2>/dev/null
 - 设计规格 §1.1 / §2.6（`../../docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md`）
 - ADR-0003 headless / presentational 分层（`../../docs/decisions/ADR-0003-headless-presentational-split.md`）
 - design-tokens 契约（`../../packages/design-tokens/CONTRACT.md`）
-- agent-contract.md site-builder agent（`../../agent-contract.md`）
+- agent-contract.md editor-integrator agent（`../../agent-contract.md`）
 ````
 
 - [ ] **Step 13：commit**
@@ -3023,7 +3032,7 @@ git push
 
 ## Track G: design-tokens（ADR-0003 新增，Track A 的前置依赖）
 
-**Agent dispatch:** `site-builder` (Claude) —— 暂用 site-builder 因 design-tokens 与站点视觉强相关；将来 Phase 3 设计流水线启动时由设计 agent 接管。
+**Agent dispatch:** `editor-integrator` (Claude) —— 暂用 editor-integrator 因 design-tokens 与站点视觉强相关；将来 Phase 3 设计流水线启动时由设计 agent 接管。
 **Risk level:** 高（开源边界 + 跨包 contract → escalate pr-gate 5.5）
 **Files:**
 - Create: `packages/design-tokens/{package.json,tsconfig.json,CONTRACT.md}`
@@ -3747,7 +3756,7 @@ Wave 1 全部代码与文档 commit 完成、ADR-0002 入库后，**有序解散
 ```
 # 给每个 active teammate 发 shutdown_request
 SendMessage({to: "api-builder", message: {type: "shutdown_request", reason: "Wave 1 complete"}})
-SendMessage({to: "site-builder", message: {type: "shutdown_request", reason: "Wave 1 complete"}})
+SendMessage({to: "editor-integrator", message: {type: "shutdown_request", reason: "Wave 1 complete"}})
 SendMessage({to: "block-foundation-eng", message: {type: "shutdown_request", reason: "Wave 1 complete"}})
 SendMessage({to: "mdx-bridge-eng", message: {type: "shutdown_request", reason: "Wave 1 complete"}})
 SendMessage({to: "kernel-architect", message: {type: "shutdown_request", reason: "Wave 1 complete"}})

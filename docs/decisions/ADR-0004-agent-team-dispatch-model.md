@@ -51,7 +51,7 @@ Agent({
 
 - `TaskCreate({content: "Track G: design-tokens", ...})` 创建任务条目
 - 用 `blocked_by` 字段表达依赖（Track A 的任务 `blocked_by` Track G 的任务 id）
-- `TaskUpdate({owner: "site-builder"})` 由 orchestrator 分配
+- `TaskUpdate({owner: "editor-integrator"})` 由 orchestrator 分配
 - teammate 完成后 `TaskUpdate({status: "completed"})`
 
 这样 **plan 文件 = 蓝图**；**TaskList = 运行时执行图**。两者通过 task 标题对齐。
