@@ -1795,7 +1795,7 @@ pytest -v
 
 - [ ] **Step 15：写 `app/ws/CONTRACT.md`**
 
-```markdown
+````markdown
 # apps/api/ws Contract
 
 ## Public surface
@@ -1820,9 +1820,9 @@ Phase 2b 把 ws 升级为 agent_bridge：双向 JSON-RPC，Custom Tools 通过�
 
 ## Related
 
-- [设计规格 §2.6](../../../docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md)
-- [../CONTRACT.md](../CONTRACT.md)
-```
+- 设计规格 §2.6（路径 `../../../docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md`）
+- 父契约 `apps/api/app/CONTRACT.md`
+````
 
 - [ ] **Step 16：写 `app/llm/CONTRACT.md`**
 
