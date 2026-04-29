@@ -112,6 +112,21 @@ team 模式不排斥一次性 `Task` 调用。**适合一次性的场景**：
 
 判定准则：**任务有持续协作 / 多轮 review → 用 team；任务是一次问答 / 工具式调用 → 用 Task**。
 
+### D8: 项目锁定 orchestrator-managed 模式
+
+Claude Code agent team 支持两种工作流：
+
+- **self-managed**：workers 自主 `TaskList` 取 unblocked task + `TaskUpdate(owner=self)` 自我分配
+- **orchestrator-managed**：workers 等 `SendMessage` 显式分配；TaskList 仅作状态板
+
+**本项目固定 orchestrator-managed**，理由：
+
+1. **Track 间 review-gate 依赖超出 `blocked_by` 表达力**：Track A 等的是 Track G review pass + commit merged，不只是 task completed
+2. **高风险 PR 是否 escalate pr-gate 由 orchestrator 决策**，worker 不能自决
+3. **Codex 配额集中调度**：避免多个 codex worker 同时拉爆 API
+
+`docs/runbooks/team-operations.md` 已加"项目工作模式"段固化此约定，并修订"Idle 状态"段为"不主动 claim"。
+
 ## Consequences
 
 ### 正面

@@ -34,12 +34,37 @@
 - **永远用名字寻址队友**（不要用 agentId UUID）
 - 队友列表在 `~/.claude/teams/{team-name}/config.json` 的 `members` 数组
 
-### 3. Idle 状态
+### 3. Idle 状态（本项目：orchestrator-managed）
 
 - 你在每个 turn 结束后**自动 idle**
 - Idle 不等于"完工"或"不可用" —— 只是等输入
 - 别人给你发 SendMessage 会自动唤醒你
-- orchestrator 看到你 idle 后**不会自动给你新任务** —— 你要主动 TaskList 找下一个，或等他 SendMessage 分配
+- **本项目锁定 orchestrator-managed 模式**（详见下方"项目工作模式"段）：
+  - 你**不主动 claim 任务**；等 orchestrator SendMessage 分配
+  - 即使 TaskList 里有 unblocked & unassigned 任务也**不要 claim** —— 跨 track review-gate 依赖在 TaskList 之外，由 orchestrator 集中调度
+
+## 项目工作模式：orchestrator-managed
+
+Claude Code agent team 支持两种协作模式，**本项目（SelfKnowledgeBaseWeb）锁定 orchestrator-managed**：
+
+| 模式 | 工作流 | 适合场景 |
+|---|---|---|
+| **self-managed** | workers 自动从 TaskList 找 unblocked task 并 `TaskUpdate(owner=self)` 自我分配；orchestrator 只做战略指引 | 任务相互独立 / 无 review-gate 依赖 / 资源充裕可并发 |
+| **orchestrator-managed** ★ | workers 等 orchestrator `SendMessage` 显式分配；TaskList 是状态板而非工单池 | 跨 track review-gate 依赖 / 高风险 PR 需 escalate / 配额紧 |
+
+锁定 orchestrator-managed 的理由：
+
+1. **Track 间 review-gate 依赖超出 `blocked_by` 表达力**：例如 Track A 等的不是 Track G **task completed**，而是 Track G **review pass + commit merged**。这个状态机由 orchestrator 维护，不由 TaskList 直接呈现
+2. **高风险 PR escalate 到 pr-gate 是 orchestrator 决策**：worker 不能擅自决定要不要走 5.5 review
+3. **Codex 调用配额管理**：避免多个 codex worker 并发拉爆 API；orchestrator 集中调度
+
+实操含义：
+
+- 你收到 spawn prompt 后**只 idle 等 SendMessage**
+- orchestrator 用 `TaskUpdate(owner=...)` + `SendMessage(to=...)` 显式派任务
+- 你完工后 `SendMessage` 回 orchestrator + `TaskUpdate(status=...)`，**不主动 claim 下一个**
+- reviewer / git-operator 同样等消息触发，从不主动扫 TaskList
+- 如果你接到的 spawn prompt 包含"主动 claim"指示，说明该 spawn 是错的 —— 报告 orchestrator 修复
 
 ## 角色与触发器
 

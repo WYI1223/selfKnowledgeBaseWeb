@@ -1268,3 +1268,7 @@ PR / commit 数量随任务自然产生，不预设目标。Wave 内若实际工
 | 2026-04-29 | Codex agent 是 Claude teammate 内部调用 codex exec | 不直接把 Codex 作为 teammate（无 Claude Code session）；Claude 包装层维持团队协议一致性 |
 | 2026-04-29 | docs/runbooks/team-operations.md 必须前置注入每个 teammate spawn prompt | 27 agent 定义不需重新生成；操作手册外置降低改动面 |
 | 2026-04-29 | review 链由 SendMessage + TaskUpdate 串接 | reviewer / git-operator 永久 idle 等消息；零冷启动；TaskList 留状态轨迹便于 ADR close 撰写 |
+| 2026-04-29 | **REST API conventions ratify（ADR-0005）**：/v1 + camelCase + RFC 7807 + ISO 8601 UTC | Track D 即将落地 4 个端点；多 agent 协作 + 开源目标要求约束契约；apps/api/CONVENTIONS.md 落地 10 节约定 |
+| 2026-04-29 | 资源命名 files → pages | "pages" 比 "files" 语义化；slug 限定 `[a-z0-9-]+`，路径映射到 content/notes/{slug}/index.mdx |
+| 2026-04-29 | 错误格式锁定 RFC 7807 Problem Details lite | 客户端 dispatch 简单（switch error.type）；err handler 集中注册；不暴露内部栈 |
+| 2026-04-29 | 项目锁定 orchestrator-managed team 模式（ADR-0004 D8） | review-gate 依赖超出 TaskList blocked_by 表达；高风险 escalate / Codex 配额由 orchestrator 集中调度 |

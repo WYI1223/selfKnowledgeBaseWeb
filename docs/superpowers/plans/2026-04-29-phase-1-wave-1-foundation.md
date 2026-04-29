@@ -1765,24 +1765,39 @@ git push
 ## Track D: apps/api FastAPI 骨架
 
 **Agent dispatch:** `api-builder` (Claude)
-**Risk level:** 中（含 ws + llm 抽象骨架，触碰 4 个 Phase 1 必建项之 2，触发 pr-gate 5.5）
+**Risk level:** 高（含 ws + llm 抽象骨架，触碰 4 个 Phase 1 必建项之 2 + 应用 ADR-0005 API 约定，触发 pr-gate 5.5）
 **Files:**
 - Create: `apps/api/` 全套（pyproject.toml + app/* + tests/* + 3 个 CONTRACT.md）
+- 已存在：`apps/api/CONVENTIONS.md`（由 ADR-0005 配套创建，本 track 必读）
 
-**Wave 1 退出标准（Track D）**：auth + 文件 CRUD + git ops + WS endpoint stub + LLMProvider interface 全有；`pytest` 全绿。
+**Wave 1 退出标准（Track D）**：auth + pages CRUD + git ops + WS endpoint stub + LLMProvider interface 全有；`pytest` 全绿；**端点严格遵守 [`apps/api/CONVENTIONS.md`](../../../apps/api/CONVENTIONS.md)**（`/v1` 前缀 / camelCase JSON / RFC 7807 errors / 标准状态码）。
 
 > **注**：apps/api 是 Python，不进 root `tsconfig.json`。它有自己的虚拟环境与 lint。
+
+- [ ] **Step 0：读 [`apps/api/CONVENTIONS.md`](../../../apps/api/CONVENTIONS.md) 与 [ADR-0005](../../decisions/ADR-0005-api-conventions.md)**
+
+这是 Track D 的**强制前置**。重点理解：
+
+- 所有端点 `/v1/*` 前缀（含 WebSocket `/v1/ws/`）
+- 资源是 **pages**（不是 files）—— `/v1/pages/{slug}` 替代原 plan 的 `/files/{path}`
+- JSON 字段 **camelCase**（Pydantic `alias_generator=to_camel + populate_by_name=True`）
+- 错误统一 **RFC 7807 Problem Details lite** shape
+- PUT 兼任 create + replace；用状态码区分（200 update / 201 + Location create）
+
+后续所有 step 的 code 样例已按 CONVENTIONS.md 校正，**如发现冲突以 CONVENTIONS.md 为准**（本 plan 是协助文档，CONVENTIONS.md 是约束契约）。
 
 - [ ] **Step 1：创建结构**
 
 ```bash
 mkdir -p apps/api/app/{ws,llm}
 mkdir -p apps/api/tests
-touch apps/api/app/{__init__,main,auth,files,git_ops,schemas}.py
+touch apps/api/app/{__init__,main,auth,pages,git_ops,schemas,errors}.py
 touch apps/api/app/ws/{__init__,protocol}.py
 touch apps/api/app/llm/{__init__,provider}.py
-touch apps/api/tests/{__init__,conftest,test_auth,test_files,test_ws_protocol}.py
+touch apps/api/tests/{__init__,conftest,test_auth,test_pages,test_ws_protocol}.py
 ```
+
+> **变更对照原 plan**：`files.py` → `pages.py`（资源命名修正）；新增 `errors.py`（RFC 7807 全局 handler）；测试文件同步重命名。
 
 - [ ] **Step 2：写 `apps/api/pyproject.toml`**
 
@@ -1838,58 +1853,108 @@ cd ../..
 - [ ] **Step 4：写 schemas（Pydantic 模型）`apps/api/app/schemas.py`**
 
 ```python
-"""Pydantic schemas; openapi-typescript will derive TS types from these in Wave 3."""
+"""Pydantic schemas; openapi-typescript derives TS types from these.
+
+Per CONVENTIONS.md §4: JSON body camelCase via alias_generator=to_camel.
+populate_by_name=True 让客户端发 snake / camel 都能解析。
+"""
 from __future__ import annotations
 
 from datetime import datetime
-from pydantic import BaseModel, Field
+
+from pydantic import BaseModel, ConfigDict, Field
+from pydantic.alias_generators import to_camel
 
 
-class LoginRequest(BaseModel):
+class _CamelModel(BaseModel):
+    """Base model with camelCase JSON aliasing per CONVENTIONS.md §4."""
+
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True,
+    )
+
+
+# ===== Auth =====
+
+
+class LoginRequest(_CamelModel):
     username: str
     password: str
 
 
-class LoginResponse(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
+class LoginResponse(_CamelModel):
+    access_token: str  # JSON: accessToken
+    token_type: str = "bearer"  # JSON: tokenType
 
 
-class FileWriteRequest(BaseModel):
-    path: str = Field(..., description="path relative to content/")
+# ===== Pages =====
+
+
+class PageWriteRequest(_CamelModel):
+    """Full-replacement write per CONVENTIONS.md §2 (PUT semantics)."""
+
+    content: str = Field(..., description="full MDX body, frontmatter included")
+    commit_message: str | None = None  # JSON: commitMessage
+
+
+class PageReadResponse(_CamelModel):
+    slug: str
     content: str
-    commit_message: str | None = None
+    last_modified: datetime  # JSON: lastModified
 
 
-class FileReadResponse(BaseModel):
-    path: str
-    content: str
-    last_modified: datetime
+class PageWriteResponse(_CamelModel):
+    """Returned by PUT /v1/pages/{slug}; status 200 (replace) or 201 (create)."""
+
+    slug: str
+    last_modified: datetime  # JSON: lastModified
+    commit_sha: str | None = None  # JSON: commitSha; null if write didn't auto-commit
+
+
+# ===== RFC 7807 Problem Details lite (CONVENTIONS.md §5) =====
+
+
+class ProblemDetails(_CamelModel):
+    type: str  # URI identifier, e.g., "https://skb.local/errors/page-not-found"
+    title: str
+    detail: str
+    status: int
+    instance: str | None = None
+    errors: list[dict] | None = None  # for 422 validation errors
 ```
 
-- [ ] **Step 5：写 auth 失败测试 `tests/test_auth.py`**
+- [ ] **Step 5：写 auth 失败测试 `tests/test_auth.py`（端点 `/v1/auth/...`，CONVENTIONS.md §1）**
 
 ```python
-"""Spec §1.2 单用户密码 + JWT cookie。"""
+"""Spec §1.2 单用户密码 + JWT；CONVENTIONS.md §1（/v1）+ §4（camelCase）+ §5（RFC 7807）"""
 from fastapi.testclient import TestClient
 
 
 def test_login_with_correct_password_returns_jwt(client: TestClient, auth_password_hash):
-    resp = client.post("/auth/login", json={"username": "admin", "password": "secret"})
+    resp = client.post("/v1/auth/login", json={"username": "admin", "password": "secret"})
     assert resp.status_code == 200
     body = resp.json()
-    assert "access_token" in body and len(body["access_token"]) > 20
-    assert body["token_type"] == "bearer"
+    # camelCase per CONVENTIONS.md §4
+    assert "accessToken" in body and len(body["accessToken"]) > 20
+    assert body["tokenType"] == "bearer"
 
 
-def test_login_with_wrong_password_returns_401(client: TestClient, auth_password_hash):
-    resp = client.post("/auth/login", json={"username": "admin", "password": "wrong"})
+def test_login_with_wrong_password_returns_401_problem_details(client: TestClient, auth_password_hash):
+    resp = client.post("/v1/auth/login", json={"username": "admin", "password": "wrong"})
     assert resp.status_code == 401
+    body = resp.json()
+    # RFC 7807 shape per CONVENTIONS.md §5
+    assert body["type"].startswith("https://skb.local/errors/")
+    assert body["title"]
+    assert body["status"] == 401
 
 
 def test_protected_endpoint_requires_token(client: TestClient):
-    resp = client.get("/files/notes/sample/index.mdx")
+    resp = client.get("/v1/pages/sample-mdx-note")
     assert resp.status_code == 401
+    body = resp.json()
+    assert body["type"].startswith("https://skb.local/errors/")
 ```
 
 - [ ] **Step 6：写 `tests/conftest.py`**
@@ -1931,7 +1996,7 @@ pytest tests/test_auth.py -v
 `app/auth.py`：
 
 ```python
-"""Single-user JWT auth per spec §1.2."""
+"""Single-user JWT auth per spec §1.2; CONVENTIONS.md §6 (auth) + §1 (/v1) + §5 (errors)."""
 from __future__ import annotations
 
 import os
@@ -1939,14 +2004,15 @@ from datetime import datetime, timedelta, timezone
 
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 
+from .errors import AuthFailedError, AuthTokenExpiredError, AuthTokenInvalidError
 from .schemas import LoginRequest, LoginResponse
 
-router = APIRouter(prefix="/auth", tags=["auth"])
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+router = APIRouter(prefix="/v1/auth", tags=["auth"])
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/v1/auth/login")
 _ph = PasswordHasher()
 
 JWT_ALGO = "HS256"
@@ -1964,11 +2030,11 @@ def _settings() -> tuple[str, str, str]:
 def login(req: LoginRequest) -> LoginResponse:
     expected_user, expected_hash, secret = _settings()
     if req.username != expected_user:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid credentials")
+        raise AuthFailedError("invalid credentials")
     try:
         _ph.verify(expected_hash, req.password)
     except VerifyMismatchError as exc:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid credentials") from exc
+        raise AuthFailedError("invalid credentials") from exc
     exp = datetime.now(timezone.utc) + timedelta(hours=JWT_TTL_HOURS)
     payload = {"sub": req.username, "exp": exp}
     token = jwt.encode(payload, secret, algorithm=JWT_ALGO)
@@ -1979,28 +2045,111 @@ def require_user(token: str = Depends(oauth2_scheme)) -> str:
     _, _, secret = _settings()
     try:
         data = jwt.decode(token, secret, algorithms=[JWT_ALGO])
+    except jwt.ExpiredSignatureError as exc:
+        raise AuthTokenExpiredError("token has expired; please log in again") from exc
     except JWTError as exc:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid token") from exc
+        raise AuthTokenInvalidError("token is malformed or signature mismatch") from exc
     return str(data["sub"])
 ```
 
-`app/main.py`：
+> **errors.py**（CONVENTIONS.md §5 全局 RFC 7807 handler）：
+>
+> ```python
+> from fastapi import Request
+> from fastapi.responses import JSONResponse
+>
+>
+> class SkbError(Exception):
+>     status_code: int = 500
+>     error_type: str = "https://skb.local/errors/internal-error"
+>     title: str = "Internal error"
+>
+>     def __init__(self, detail: str = "") -> None:
+>         self.detail = detail
+>
+>
+> class AuthFailedError(SkbError):
+>     status_code = 401
+>     error_type = "https://skb.local/errors/auth-failed"
+>     title = "Authentication failed"
+>
+>
+> class AuthTokenExpiredError(SkbError):
+>     status_code = 401
+>     error_type = "https://skb.local/errors/auth-token-expired"
+>     title = "Token expired"
+>
+>
+> class AuthTokenInvalidError(SkbError):
+>     status_code = 401
+>     error_type = "https://skb.local/errors/auth-token-invalid"
+>     title = "Token invalid"
+>
+>
+> class PageNotFoundError(SkbError):
+>     status_code = 404
+>     error_type = "https://skb.local/errors/page-not-found"
+>     title = "Page not found"
+>
+>
+> class PathTraversalBlockedError(SkbError):
+>     status_code = 400
+>     error_type = "https://skb.local/errors/path-traversal-blocked"
+>     title = "Path traversal blocked"
+>
+>
+> async def skb_error_handler(request: Request, exc: SkbError) -> JSONResponse:
+>     return JSONResponse(
+>         status_code=exc.status_code,
+>         content={
+>             "type": exc.error_type,
+>             "title": exc.title,
+>             "detail": exc.detail,
+>             "status": exc.status_code,
+>             "instance": str(request.url),
+>         },
+>     )
+> ```
+>
+> 在 `app/main.py` 注册：`app.add_exception_handler(SkbError, skb_error_handler)`。同时为 `RequestValidationError`（Pydantic 422）注册一个相似 handler 输出 RFC 7807 shape 含 `errors[]` 字段。
+
+`app/main.py`（含 RFC 7807 全局 handler 注册，CONVENTIONS.md §5）：
 
 ```python
 """FastAPI app factory. Single instance lives in apps/api at runtime."""
 from __future__ import annotations
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, status
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 
 from .auth import router as auth_router
-from .files import router as files_router
+from .errors import SkbError, skb_error_handler
+from .pages import router as pages_router
 from .ws import router as ws_router
+
+
+async def validation_error_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+    """Map Pydantic validation 422 to RFC 7807 lite (CONVENTIONS.md §5)."""
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={
+            "type": "https://skb.local/errors/validation-error",
+            "title": "Validation error",
+            "detail": "request body did not match expected schema",
+            "status": status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "instance": str(request.url),
+            "errors": exc.errors(),
+        },
+    )
 
 
 def create_app() -> FastAPI:
     app = FastAPI(title="skb-api", version="0.0.0")
+    app.add_exception_handler(SkbError, skb_error_handler)
+    app.add_exception_handler(RequestValidationError, validation_error_handler)
     app.include_router(auth_router)
-    app.include_router(files_router)
+    app.include_router(pages_router)
     app.include_router(ws_router)
     return app
 
@@ -2008,52 +2157,88 @@ def create_app() -> FastAPI:
 app = create_app()
 ```
 
-- [ ] **Step 9：写最小 `app/files.py`（先让 import 通；test_files.py 后续 step）**
+- [ ] **Step 9：写最小 `app/pages.py`（CONVENTIONS.md §1-§5 + §6 严格遵守）**
 
 ```python
-"""File CRUD endpoints under content/ directory. Wave 1 minimal: read + write only."""
+"""Page CRUD per CONVENTIONS.md.
+
+Resource: page = MDX file at content/notes/{slug}/index.mdx.
+Endpoint: GET/PUT/DELETE /v1/pages/{slug}.
+Wave 1 minimal: GET + PUT only (DELETE in Phase 2 / 2b).
+"""
 from __future__ import annotations
 
+import re
+from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Response, status
 
 from .auth import require_user
-from .schemas import FileReadResponse, FileWriteRequest
+from .errors import PageNotFoundError, PathTraversalBlockedError
+from .schemas import PageReadResponse, PageWriteRequest, PageWriteResponse
 
-router = APIRouter(prefix="/files", tags=["files"])
+router = APIRouter(prefix="/v1/pages", tags=["pages"])
 
-CONTENT_ROOT = Path(__file__).resolve().parents[2] / "content"
+CONTENT_ROOT = Path(__file__).resolve().parents[2] / "content" / "notes"
+SLUG_PATTERN = re.compile(r"^[a-z0-9-]+$")
 
 
-def _safe_path(p: str) -> Path:
-    target = (CONTENT_ROOT / p).resolve()
-    if not str(target).startswith(str(CONTENT_ROOT)):
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "path escapes content/")
+def _safe_slug_path(slug: str) -> Path:
+    """Validate slug + return absolute path to its index.mdx (CONVENTIONS.md §1)."""
+    if not SLUG_PATTERN.match(slug):
+        raise PathTraversalBlockedError(
+            f"slug must match [a-z0-9-]+ ; got {slug!r}"
+        )
+    target = (CONTENT_ROOT / slug / "index.mdx").resolve()
+    if not str(target).startswith(str(CONTENT_ROOT.resolve())):
+        raise PathTraversalBlockedError("slug escapes content/notes/ root")
     return target
 
 
-@router.get("/{path:path}", response_model=FileReadResponse)
-def read_file(path: str, _user: str = Depends(require_user)) -> FileReadResponse:
-    target = _safe_path(path)
+@router.get("/{slug}", response_model=PageReadResponse)
+def read_page(slug: str, _user: str = Depends(require_user)) -> PageReadResponse:
+    target = _safe_slug_path(slug)
     if not target.is_file():
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "not found")
-    from datetime import datetime, timezone
-    return FileReadResponse(
-        path=path,
+        raise PageNotFoundError(f"page {slug!r} does not exist")
+    return PageReadResponse(
+        slug=slug,
         content=target.read_text(encoding="utf-8"),
         last_modified=datetime.fromtimestamp(target.stat().st_mtime, tz=timezone.utc),
     )
 
 
-@router.put("/{path:path}")
-def write_file(path: str, body: FileWriteRequest, user: str = Depends(require_user)) -> dict[str, str]:
-    target = _safe_path(path)
+@router.put("/{slug}", response_model=PageWriteResponse)
+def replace_page(
+    slug: str,
+    body: PageWriteRequest,
+    response: Response,
+    _user: str = Depends(require_user),
+) -> PageWriteResponse:
+    """PUT 兼任 create + replace（CONVENTIONS.md §2）。
+    创建返回 201 + Location header；替换返回 200。
+    """
+    target = _safe_slug_path(slug)
+    is_new = not target.exists()
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(body.content, encoding="utf-8")
-    # Wave 1 stub: git_ops integration in Step 12
-    return {"path": path, "user": user}
+    if is_new:
+        response.status_code = status.HTTP_201_CREATED
+        response.headers["Location"] = f"/v1/pages/{slug}"
+    return PageWriteResponse(
+        slug=slug,
+        last_modified=datetime.fromtimestamp(target.stat().st_mtime, tz=timezone.utc),
+        commit_sha=None,  # Wave 4 部署阶段才接 git_ops.commit_path()
+    )
 ```
+
+> **变更对照原 plan**：
+> - 资源 `files` → `pages`（CONVENTIONS.md §1 资源化命名）
+> - URL `/files/{path:path}` → `/v1/pages/{slug}`（slug 严格 `[a-z0-9-]+`，无 `/`）
+> - 操作 `read_file` / `write_file` → `read_page` / `replace_page`（语义更准）
+> - 返回 `dict[str, str]` → `PageWriteResponse` model（强类型 + OpenAPI 文档化）
+> - 错误从 `HTTPException` 改 `SkbError` 子类（统一走 RFC 7807 handler）
+> - 201 + `Location` header 区分 create vs update（CONVENTIONS.md §3）
 
 - [ ] **Step 10：写 ws/protocol stub `app/ws/__init__.py`**
 
@@ -2075,7 +2260,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-router = APIRouter(prefix="/ws", tags=["ws"])
+router = APIRouter(prefix="/v1/ws", tags=["ws"])
 
 
 @router.websocket("/")
@@ -2176,27 +2361,35 @@ pytest -v
 
 ## Public surface
 
-- `POST /auth/login` — 单用户密码登录，返回 JWT
-- `GET /files/{path}` — 读取 content/<path>，需要 Bearer token
-- `PUT /files/{path}` — 写入 content/<path>，需要 Bearer token
-- `WS /ws/` — Wave 1 stub（ping/pong + echo）；Wave 2b 实现 agent_bridge
+- `POST /v1/auth/login` — 单用户密码登录，返回 JWT
+- `GET /v1/pages/{slug}` — 读取 page MDX 内容（slug `[a-z0-9-]+`）
+- `PUT /v1/pages/{slug}` — 创建或替换 page；新建返回 201 + Location，更新返回 200
+- `WS /v1/ws/` — Wave 1 stub（ping/pong + echo）；Wave 2b 实现 agent_bridge
+
+详细约束（HTTP 方法 / 状态码 / JSON shape / 错误格式）见 [CONVENTIONS.md](../CONVENTIONS.md)。
 
 ## Invariants
 
 - 单用户：`SKB_USERNAME` 写在 env，无注册流程
-- 路径安全：所有 file 路径必须在 `content/` 内（`_safe_path` 校验）
+- slug 字符限定 `[a-z0-9-]+` —— 通过 `_safe_slug_path` 校验，禁止 `..` `/`
+- 资源映射：page slug `transformer-attention` → 文件 `content/notes/transformer-attention/index.mdx`
 - JWT TTL 12h；secret 在 env，绝不入 git
+- **JSON 体一律 camelCase**（CONVENTIONS.md §4），Pydantic alias_generator 处理
+- **错误统一 RFC 7807 Problem Details lite shape**（CONVENTIONS.md §5）
 
 ## Modifying this file
 
-- 加 endpoint：扩 schemas.py + 加测试，本文件 + openapi 自动同步
+- 加 endpoint：扩 schemas.py + 加测试 + 严格遵守 [CONVENTIONS.md](../CONVENTIONS.md)；本文件 + openapi 自动同步
 - 改 auth flow：契约破坏，必须 ADR + 同步 site auth-client
+- 违反 CONVENTIONS.md（如 hardcode snake_case 字段、漏 /v1 前缀、错误返回 raw HTTPException）会被 pr-gate reject
 
 ## Related
 
-- [设计规格 §1.1 / §2.6](../../docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md)
-- [ws/CONTRACT.md](ws/CONTRACT.md)
-- [llm/CONTRACT.md](llm/CONTRACT.md)
+- 设计规格 §1.1 / §2.6（`../../docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md`）
+- API 约束契约（`../CONVENTIONS.md`）
+- ADR-0005 ratify（`../../docs/decisions/ADR-0005-api-conventions.md`）
+- ws/CONTRACT.md（`ws/CONTRACT.md`）
+- llm/CONTRACT.md（`llm/CONTRACT.md`）
 ```
 
 - [ ] **Step 15：写 `app/ws/CONTRACT.md`**
