@@ -3,6 +3,7 @@
 操作手册。每篇文档对应一个具体场景：
 
 - [setup-wsl2.md](setup-wsl2.md) — 在 Windows 上从零搭建 WSL2 开发环境
+- [team-operations.md](team-operations.md) — Claude Code agent team 协作手册（注入每个 teammate spawn prompt）
 - 后续追加：deploy.md / incident-response.md / etc.
 
 ## Related

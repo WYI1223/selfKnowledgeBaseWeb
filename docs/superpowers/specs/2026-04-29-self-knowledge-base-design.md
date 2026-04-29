@@ -1263,3 +1263,8 @@ PR / commit 数量随任务自然产生，不预设目标。Wave 内若实际工
 | 2026-04-29 | Phase 1 同时 ship light + dark 双主题 | 验证 token 切换链路全程；不只画饼 |
 | 2026-04-29 | 显式主题切换按钮 + prefers-color-scheme 兜底 | 用户可干预；首访按系统偏好；FOUC 用 inline script 阻断 |
 | 2026-04-29 | npm 发布推到 Phase 3 | Phase 1 / 2 仍 private:true；架构开源就绪即可，发布工作量独立 |
+| 2026-04-29 | **采用 Claude Code Agent Team 作为 dispatch 模型（ADR-0004）** | 项目本质是 orchestrator + 多 worker + review 链 + 跨 wave 状态；Team + TaskList + SendMessage 是天然契合的原生原语，比一次性 Task 调用更高效 |
+| 2026-04-29 | Wave 启动用 TeamCreate；wave 完工用 TeamDelete | 每个 wave 一个 team；27 agent 类型不变，按需实例化为 teammate |
+| 2026-04-29 | Codex agent 是 Claude teammate 内部调用 codex exec | 不直接把 Codex 作为 teammate（无 Claude Code session）；Claude 包装层维持团队协议一致性 |
+| 2026-04-29 | docs/runbooks/team-operations.md 必须前置注入每个 teammate spawn prompt | 27 agent 定义不需重新生成；操作手册外置降低改动面 |
+| 2026-04-29 | review 链由 SendMessage + TaskUpdate 串接 | reviewer / git-operator 永久 idle 等消息；零冷启动；TaskList 留状态轨迹便于 ADR close 撰写 |

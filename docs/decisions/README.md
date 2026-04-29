@@ -4,11 +4,12 @@
 
 ## 索引
 
-| ADR                                                       | 标题                                                  | 日期       | 状态     |
-| --------------------------------------------------------- | ----------------------------------------------------- | ---------- | -------- |
-| [0001](ADR-0001-stack-selection.md)                       | 技术栈选型与架构基础                                  | 2026-04-29 | accepted |
-| [0003](ADR-0003-headless-presentational-split.md)         | Headless / Presentational 分层 + 设计 token + 开源就绪 | 2026-04-29 | accepted |
-| 0002                                                      | (预留：Wave 1 close ADR；Wave 1 完工时由 Task Z 写)   | TBD        | reserved |
+| ADR                                                       | 标题                                                       | 日期       | 状态     |
+| --------------------------------------------------------- | ---------------------------------------------------------- | ---------- | -------- |
+| [0001](ADR-0001-stack-selection.md)                       | 技术栈选型与架构基础                                       | 2026-04-29 | accepted |
+| [0003](ADR-0003-headless-presentational-split.md)         | Headless / Presentational 分层 + 设计 token + 开源就绪      | 2026-04-29 | accepted |
+| [0004](ADR-0004-agent-team-dispatch-model.md)             | 采用 Claude Code Agent Team 作为多 agent dispatch 模型     | 2026-04-29 | accepted |
+| 0002                                                      | (预留：Wave 1 close ADR；Wave 1 完工时由 Task Z 写)        | TBD        | reserved |
 
 ## 模板
 

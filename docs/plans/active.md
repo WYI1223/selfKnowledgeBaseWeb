@@ -3,20 +3,24 @@
 > SessionStart hook 读取此文件，把当前 wave 印在 session 起手位置。
 
 **当前 phase**: 1
-**当前 wave**: Wave 1（**9 任务**：基础设施 + 接口 + 设计 token + housekeeping + close）—— 待执行
-**架构变更**: ADR-0003（headless / UI 分层 + design-tokens + 开源就绪）已落地到本 wave
+**当前 wave**: Wave 1（**9 任务 + Pre-Task 0 团队启动**） —— 待执行
+**架构变更**:
+- [ADR-0003](../decisions/ADR-0003-headless-presentational-split.md) headless / UI 分层 + design-tokens + 开源就绪
+- [ADR-0004](../decisions/ADR-0004-agent-team-dispatch-model.md) **Claude Code Agent Team dispatch 模型**（取代之前默认假设的一次性 Task 调用）
 **Wave 1 plan**: [docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md](../superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md)
 **Wave 索引**: [docs/plans/phase-1/plan.md](phase-1/plan.md)
+**团队操作手册**: [docs/runbooks/team-operations.md](../runbooks/team-operations.md)（必须前置注入每个 spawn 的 prompt）
 
 ## 起手指引（新 session 拉到此文件后）
 
-1. 读 spec §4.2.1（Wave 1 退出标准）+ [ADR-0003](../decisions/ADR-0003-headless-presentational-split.md)（架构变更摘要）
-2. 读 Wave 1 plan，注意"总览：9 个任务"段
-3. 先做 **Task 0**（串行）—— 解决 ADR-0001 deferred follow-up #3/#4/#6
-4. Task 0 review pass 后并行 dispatch **Track G + Track B/C/D/E/F** 6 路（Track A 等 G 完成才能起）
-5. Track G review pass 后启动 Track A
-6. 7 track 全部 ready-for-review 且双审 pass（高风险触发 pr-gate 5.5）后做 **Task Z**（Wave 1 close + ADR-0002）
-7. ADR-0002 之后修改本文件指向 Wave 2
+1. 读 [ADR-0004](../decisions/ADR-0004-agent-team-dispatch-model.md) + [team-operations.md](../runbooks/team-operations.md)（dispatch 模型）+ [ADR-0003](../decisions/ADR-0003-headless-presentational-split.md)（headless/UI）+ [ADR-0001](../decisions/ADR-0001-stack-selection.md)（含 7 erratum + 6 deferred follow-up）+ spec 全文
+2. 读 Wave 1 plan，注意"执行模型"段 + "总览：9 个任务 + Pre-Task 0 团队启动"段
+3. 先做 **Pre-Task 0**（仅 orchestrator）：`TeamCreate` + `TaskCreate × 9`（含 blocked_by 表达 G→A 依赖）+ spawn 11 个 active teammate（每个的 prompt 前置注入 team-operations.md 全文）
+4. 派 **Task 0** 给 api-builder（TaskUpdate(owner) + SendMessage 提示开始）
+5. Task 0 review pass 后**同时**启动 Track G + Track B/C/D/E/F（5 路并行；Track A 因 blocked_by Track G 而不会被 claim）
+6. Track G review pass 后启动 Track A
+7. 7 track 全部 ready-for-review 且双审 pass（高风险触发 pr-gate 5.5）后做 **Task Z**（Wave 1 close + ADR-0002 + 团队 shutdown + TeamDelete）
+8. ADR-0002 之后修改本文件指向 Wave 2
 
 ## 待解决的 Phase 0 deferred follow-ups（按归属预排）
 

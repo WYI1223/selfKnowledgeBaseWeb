@@ -114,7 +114,44 @@ docs/decisions/ADR-0002-wave-1-close.md   # Track Z
 
 ---
 
-## 总览：9 个任务，1 串行 + 1 串行依赖 G + 6 并行 + 1 串行
+## 执行模型：Claude Code Agent Team（ADR-0004）
+
+**自 Wave 1 起本项目所有 wave 用 Claude Code Agent Team 执行**，**不**用一次性 `Task` 工具调用模型。
+
+简要：
+- 每个 wave 一个 team（`TeamCreate({team_name: "phase-1-wave-1"})`）
+- 27 个 agent 类型不变，但通过 `Agent({subagent_type, team_name, name, prompt})` 实例化为长期 idle 的 teammate
+- Plan 里的每个 task 对应共享 `TaskList` 一条 entry（`TaskCreate`），依赖用 `blocked_by` 表达
+- review 链由 `SendMessage` 触发；reviewer / git-operator 永久 idle 等消息
+- 所有 spawn 的 teammate 起手 prompt **必须前置注入** [`docs/runbooks/team-operations.md`](../../runbooks/team-operations.md) 内容
+
+详见 [ADR-0004](../../decisions/ADR-0004-agent-team-dispatch-model.md) 与 [team-operations.md](../../runbooks/team-operations.md)。
+
+每个 task 顶端的 "Agent dispatch:" 字段在 team 模型下读作 **"该 task 的 owner（teammate name）"**。
+
+---
+
+## 总览：9 个任务 + Pre-Task 0 团队启动**
+
+```
+Pre-Task 0: TEAM BOOTSTRAP (orchestrator only, 串行)
+   │  TeamCreate + TaskCreate × 9 + spawn teammates + 注入 team-operations.md
+   ▼
+Task 0  (串行，housekeeping，必须先做)
+   │
+   ├──► Track G (设计 tokens, 必须先于 Track A)  ──┐
+   │           │                                   │
+   │           ▼ G review pass 才解锁 A             │
+   ├──► Track A (apps/site, 含 ThemeToggle)     ──┤
+   ├──► Track B (block-foundation core+UI 双层) ──┤  全部 ready-for-review
+   ├──► Track C (mdx-bridge)                    ──┤  且双 review pass 后
+   ├──► Track D (apps/api)                      ──┤  (高风险全部 escalate 5.5)
+   ├──► Track E (kernel-adapter + registry)     ──┤
+   └──► Track F (editor-commands + agent-tools) ──┘
+                                                   │
+                                                   ▼
+                                              Task Z (close + 团队 shutdown)
+```
 
 ```
 Task 0  (串行，housekeeping，必须先做)
@@ -135,6 +172,162 @@ Task 0  (串行，housekeeping，必须先做)
 
 **并行度**：Task 0 后，Track G + B/C/D/E/F **同时启动**（6 路并行）；Track G 完成后 Track A 启动（1 路）；总等待 = max(G+A, B-F)。
 G 是 ~15 step 的中等包，不会拖累整体节奏。
+
+---
+
+## Pre-Task 0: Team Bootstrap
+
+**Agent**：仅 orchestrator（在主 session 里自己执行；这一步**没有** team 可言）
+**Risk level**：中（一旦 team 起好，后续都依赖它；team 配置错会让 wave 整体卡住）
+**Files**：无新建；只在 `~/.claude/teams/phase-1-wave-1/config.json` 与 `~/.claude/tasks/phase-1-wave-1/` 留运行时痕迹
+
+**Why first**：本 wave 全部其他 task 都假定 team 已就绪 + TaskList 已登记。Bootstrap 是一切的前提。
+
+- [ ] **Step 1：读核心文档校准认知**
+
+```bash
+# 串行通读，确认 mental model
+cat docs/decisions/ADR-0004-agent-team-dispatch-model.md
+cat docs/runbooks/team-operations.md
+cat docs/decisions/ADR-0003-headless-presentational-split.md
+cat docs/decisions/ADR-0001-stack-selection.md   # 含 7 erratum + 6 deferred follow-up
+cat docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md   # 全文（已 LOCKED）
+cat docs/plans/active.md
+```
+
+读完确认理解：
+- Team = TaskList（1:1）；teammate name 唯一
+- 依赖用 `blocked_by` 表达；review 用 `SendMessage` 触发
+- Codex agent 是 Claude teammate 内部调用 `codex exec`
+- `team-operations.md` 必须前置注入每个 spawn 的 prompt
+
+- [ ] **Step 2：创建 team**
+
+```
+TeamCreate({
+  team_name: "phase-1-wave-1",
+  description: "Phase 1 Wave 1: foundation + interfaces. ADR-0001 + ADR-0003 + ADR-0004 in scope. Plan: docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md",
+  agent_type: "orchestrator"
+})
+```
+
+预期输出：team file 在 `~/.claude/teams/phase-1-wave-1/config.json`；task list 目录在 `~/.claude/tasks/phase-1-wave-1/`。
+
+- [ ] **Step 3：登记 9 个任务到共享 TaskList**
+
+按以下顺序与依赖关系一次性创建：
+
+```
+TaskCreate({
+  content: "Task 0: Phase 0 deferred follow-ups (lychee configFile + concurrency + fail)",
+  activeForm: "Resolving Phase 0 deferred follow-ups"
+})
+TaskCreate({
+  content: "Track G: design-tokens (CSS vars + Tailwind preset + useTheme + ThemeToggle)",
+  activeForm: "Building design-tokens"
+})
+TaskCreate({
+  content: "Track A: apps/site Astro skeleton (consumes design-tokens preset + ThemeToggle)",
+  activeForm: "Building apps/site",
+  blocked_by: [<Track G 的 task id>]   # 关键依赖
+})
+TaskCreate({
+  content: "Track B: block-foundation + content-types (BlockRegistry Core+UI dual-layer per ADR-0003)",
+  activeForm: "Building block-foundation"
+})
+TaskCreate({
+  content: "Track C: mdx-bridge + 5 prose RTT fixtures",
+  activeForm: "Building mdx-bridge"
+})
+TaskCreate({
+  content: "Track D: apps/api FastAPI skeleton (auth + files + ws stub + llm interface)",
+  activeForm: "Building apps/api"
+})
+TaskCreate({
+  content: "Track E: kernel-adapter (interface) + kernel-registry (routing)",
+  activeForm: "Building kernel-adapter + kernel-registry"
+})
+TaskCreate({
+  content: "Track F: editor-commands + agent-tools schema",
+  activeForm: "Building editor-commands + agent-tools"
+})
+TaskCreate({
+  content: "Task Z: Wave 1 close (vitest strict + structure-auditor baseline + ADR-0002 + team shutdown)",
+  activeForm: "Closing Wave 1",
+  blocked_by: [<上述 8 个 task id>]   # 等所有前置完成
+})
+```
+
+记下每个返回的 task id，写入临时记录（也可后续用 `TaskList` 查）。
+
+- [ ] **Step 4：spawn teammate（按 wave 1 实际需要，不全 27 个）**
+
+Wave 1 用到的 active teammate（10 个）：
+
+| name | subagent_type | tier | 何时用 |
+|---|---|---|---|
+| `api-builder` | api-builder | T1 | Task 0 + Track D |
+| `site-builder` | site-builder | T1 | Track A + Track G |
+| `block-foundation-eng` | block-foundation-eng | T1 | Track B |
+| `mdx-bridge-eng` | mdx-bridge-eng | T1 | Track C |
+| `kernel-architect` | kernel-architect | T1 | Track E |
+| `editor-eng` | editor-eng | T1 | Track F |
+| `code-reviewer` | code-reviewer | T2 | 每个 task ready-for-review |
+| `pr-gate` | pr-gate | T2 | 高风险 PR escalate |
+| `pr-reviewer` | pr-reviewer | T2 | 每个 task ready-for-review |
+| `git-operator` | git-operator | T2 | 每个 task pass 后 commit |
+| `structure-auditor` | structure-auditor | T3 | Task Z baseline |
+
+每个用以下模板 spawn（以 `block-foundation-eng` 为例）：
+
+```
+Agent({
+  subagent_type: "block-foundation-eng",
+  team_name: "phase-1-wave-1",
+  name: "block-foundation-eng",
+  prompt: `
+<把 docs/runbooks/team-operations.md 的全文粘在这里>
+
+---
+
+你是 block-foundation-eng。
+
+你的角色定义：见 .claude/agents/block-foundation-eng.md
+
+你的初始任务：等待 orchestrator 分配 Track B（block-foundation + content-types）。
+当被 TaskUpdate(owner="block-foundation-eng") 分配后，按 Wave 1 plan
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md 中 "Track B"
+段执行。
+
+继续保持 idle 直到收到任务消息。
+  `
+})
+```
+
+> **关键**：`prompt` 字段把 team-operations.md 全文注入；这是 ADR-0004 D6 的强制要求。如果省略，teammate 不知道用 SendMessage / TaskUpdate / 不知道 review 链消息格式。
+
+- [ ] **Step 5：派 Task 0 给 api-builder**
+
+```
+TaskUpdate({task_id: <Task 0 id>, owner: "api-builder", status: "in_progress"})
+SendMessage({
+  to: "api-builder",
+  summary: "start task 0",
+  message: "Please start Task 0 from Wave 1 plan: resolve ADR-0001 deferred follow-ups #3/#4/#6 (lychee configFile + concurrency + fail). See plan section 'Task 0: Phase 0 Deferred Follow-ups' for steps. When done, mark task ready-for-review and message me."
+})
+```
+
+- [ ] **Step 6：bootstrap 自检**
+
+```
+TaskList()   # 应见 9 条任务，1 条 in_progress (Task 0)，其余 pending
+# 然后等 api-builder 的 ready-for-review 消息
+```
+
+预期 api-builder 完工后会发回类似：
+> "Task 0 ready for review. Modified: .github/workflows/link-check.yml. Tested: local lychee run clean. Ready for review."
+
+收到后进 Task 0 review 流（详见 [team-operations.md "review 链消息格式约定"](../../runbooks/team-operations.md)）。
 
 ---
 
@@ -3535,6 +3728,8 @@ git commit -m "docs(adr): ADR-0002 Wave 1 close — interface layer ready
 - 7 tracks (A-G) all double-review pass; high-risk tracks also pr-gate 5.5
 - BlockRegistry split into Core + UI dual layer per ADR-0003
 - Light + dark themes shipped; ThemeToggle wired in apps/site BaseLayout
+- Wave 1 executed via Claude Code Agent Team (ADR-0004); team
+  phase-1-wave-1 spawned 10 teammates, completed 9 tasks, shut down clean
 - structure-auditor baseline confirms zero god-files
 - Phase 0 deferred follow-ups #2/#3/#4/#6 resolved
 - #1/#5 deferred to natural Wave 2 triggers
@@ -3542,6 +3737,47 @@ git commit -m "docs(adr): ADR-0002 Wave 1 close — interface layer ready
 Wave 2 unlocked: 8 component blocks (each: core/ + ui-default/) +
 3 editor sub-modules + kernel-pyodide + Playwright MCP integration.
 "
+git push
+```
+
+- [ ] **Step 6：Team shutdown 序列（ADR-0004 D7）**
+
+Wave 1 全部代码与文档 commit 完成、ADR-0002 入库后，**有序解散 team**：
+
+```
+# 给每个 active teammate 发 shutdown_request
+SendMessage({to: "api-builder", message: {type: "shutdown_request", reason: "Wave 1 complete"}})
+SendMessage({to: "site-builder", message: {type: "shutdown_request", reason: "Wave 1 complete"}})
+SendMessage({to: "block-foundation-eng", message: {type: "shutdown_request", reason: "Wave 1 complete"}})
+SendMessage({to: "mdx-bridge-eng", message: {type: "shutdown_request", reason: "Wave 1 complete"}})
+SendMessage({to: "kernel-architect", message: {type: "shutdown_request", reason: "Wave 1 complete"}})
+SendMessage({to: "editor-eng", message: {type: "shutdown_request", reason: "Wave 1 complete"}})
+SendMessage({to: "code-reviewer", message: {type: "shutdown_request", reason: "Wave 1 complete"}})
+SendMessage({to: "pr-gate", message: {type: "shutdown_request", reason: "Wave 1 complete"}})
+SendMessage({to: "pr-reviewer", message: {type: "shutdown_request", reason: "Wave 1 complete"}})
+SendMessage({to: "git-operator", message: {type: "shutdown_request", reason: "Wave 1 complete"}})
+SendMessage({to: "structure-auditor", message: {type: "shutdown_request", reason: "Wave 1 complete"}})
+```
+
+每个 teammate 应回 `shutdown_response({approve: true})`；如有人回 `approve: false`（说明它有未完工任务），暂停解散，处理完该任务再重发。
+
+全部 approve 后：
+
+```
+TeamDelete()  # 自动用当前 session 的 team context
+```
+
+预期输出：team file + task list 目录被移除；当前 session 不再有 team 上下文。
+
+- [ ] **Step 7：更新 active.md 指向 Wave 2**
+
+按 Step 4 给的模板更新；`Wave 2 plan` 字段标 "待用 superpowers:writing-plans 写"。
+
+- [ ] **Step 8：commit shutdown + active.md 更新**
+
+```bash
+git add docs/plans/active.md
+git commit -m "chore: Wave 1 team shutdown + active pointer → Wave 2"
 git push
 ```
 
