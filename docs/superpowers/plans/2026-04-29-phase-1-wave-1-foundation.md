@@ -2,11 +2,13 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 在 Phase 0 脚手架基础上，落地 Phase 1 Wave 1 的 6 个并行 track + 1 个前置 task + 1 个收尾 task：消化 Phase 0 deferred follow-up，搭出 Astro 站点骨架、8 个接口/桥接包的契约层、FastAPI 后端骨架（含 ws/llm 抽象），使 Phase 1 Wave 2 可以并行展开 8 个 component block + 3 个 editor 子模块的实现工作。
+**Goal:** 在 Phase 0 脚手架基础上，落地 Phase 1 Wave 1 的 1 前置 + 6 接口/桥接 track + 1 设计 token track + 1 收尾 task（共 **9 任务**）：消化 Phase 0 deferred follow-up，搭出设计 token 单一源（含 light/dark + 主题切换 hook + ThemeToggle），Astro 站点骨架（消费 token preset + 含切换按钮），9 个接口/桥接包的契约层（`BlockRegistry` 升级为 core+UI 双层注册，ADR-0003），FastAPI 后端骨架（含 ws/llm 抽象），使 Phase 1 Wave 2 可以并行展开 8 个 component block × (core + ui-default) + 3 个 editor 子模块的实现工作。
+
+> **架构变更（ADR-0003）**：headless / presentational 分层 + 设计 token 独立 + 开源就绪。本 plan 在 v1（2829 行原始版本）基础上加入 Track G（design-tokens）、升级 Track B 的 BlockRegistry 为 Core+UI 双层注册、Track A 改为消费 design-tokens preset 并加切换按钮。详见 [ADR-0003](../../decisions/ADR-0003-headless-presentational-split.md)。
 
 **Architecture:**
-- 6 个 track 互不依赖，可由 6 个 Claude worker 并行 dispatch（不卷入 Codex —— Wave 1 全 Claude，Codex 从 Wave 2 起）
-- 每条 track 完工后**先**走双层 review（5.3-spark code-reviewer → Claude pr-reviewer；高风险 track B/C/E/F 自动 escalate 5.5 pr-gate），过了再合 main
+- 7 个 track 互不依赖（Track A 等 G 完成）；可由 Claude worker 并行 dispatch（Wave 1 仍全 Claude，Codex 从 Wave 2 起）
+- 每条 track 完工后**先**走双层 review（5.3-spark code-reviewer → Claude pr-reviewer；高风险 track A/B/C/D/E/F/G 全部触发 escalate 5.5 pr-gate，因 design-tokens 是 Phase 3 开源边界一部分）
 - Track 间冲突点仅在 root `tsconfig.json` 的 `references` 数组——每 track 闭合时把自己加进去（git rebase 自动合并即可）
 
 **Tech Stack:**
@@ -19,6 +21,7 @@
 - [设计规格 §1 / §2 / §3](../specs/2026-04-29-self-knowledge-base-design.md) 全篇
 - [设计规格 §4.2.1](../specs/2026-04-29-self-knowledge-base-design.md) Wave 1 退出标准
 - [ADR-0001](../../decisions/ADR-0001-stack-selection.md) 含 Phase 0 errata 1-7 + 6 条 deferred follow-up
+- [ADR-0003](../../decisions/ADR-0003-headless-presentational-split.md) headless/UI 分层 + design-tokens + 开源就绪
 - [agent-contract.md](../../../agent-contract.md) 27 agent 单一源（确认 dispatch 时的 LLM/profile）
 
 ---
@@ -30,13 +33,15 @@ Wave 1 完工后新增（不含修改）：
 ```
 apps/
 ├── site/                                  # Track A
-│   ├── package.json
-│   ├── astro.config.mjs
-│   ├── tailwind.config.ts
+│   ├── package.json                       # +deps: @astrojs/react, @skb/design-tokens
+│   ├── astro.config.mjs                   # +integrations: react()
+│   ├── tailwind.config.ts                 # +presets: [@skb/design-tokens preset]
 │   ├── tsconfig.json
 │   ├── src/pages/index.astro
 │   ├── src/pages/notes/[...slug].astro
-│   ├── src/layouts/BaseLayout.astro
+│   ├── src/layouts/BaseLayout.astro       # +data-theme + FOUC inline script + ThemeToggle 岛
+│   ├── src/components/ThemeToggle.astro   # ★ Astro wrapper around @skb/design-tokens/ThemeToggle
+│   ├── src/styles/global.css              # ★ @import tokens.css + tokens-dark.css + Tailwind layers
 │   └── src/content.config.ts
 └── api/                                   # Track D（Python 单独 venv，不进 ts references）
     ├── pyproject.toml
@@ -59,6 +64,19 @@ apps/
     └── llm/CONTRACT.md
 
 packages/
+├── design-tokens/                         # ★ Track G (新增, ADR-0003)
+│   ├── package.json (peerDeps: react, tailwindcss)
+│   ├── tsconfig.json (jsx: react-jsx)
+│   ├── CONTRACT.md
+│   └── src/
+│       ├── tokens.css                     # :root vars (light 默认)
+│       ├── tokens-dark.css                # :root[data-theme="dark"] 覆盖
+│       ├── tailwind-preset.cjs            # Tailwind preset
+│       ├── tokens.ts                      # TS token 名称导出
+│       ├── use-theme.ts                   # React hook
+│       ├── ThemeToggle.tsx                # 切换按钮组件
+│       ├── index.ts                       # barrel
+│       └── __tests__/{tokens,use-theme}.test.{ts,tsx}
 ├── content-types/                         # Track B (1/2)
 │   ├── package.json · tsconfig.json · CONTRACT.md
 │   └── src/{index,frontmatter,block-props}.ts + __tests__/
@@ -96,21 +114,27 @@ docs/decisions/ADR-0002-wave-1-close.md   # Track Z
 
 ---
 
-## 总览：8 个任务，1 串行 + 6 并行 + 1 串行
+## 总览：9 个任务，1 串行 + 1 串行依赖 G + 6 并行 + 1 串行
 
 ```
-Task 0  (串行，必须先做)
+Task 0  (串行，housekeeping，必须先做)
    │
-   ├──► Track A (并行)    ──┐
-   ├──► Track B (并行)    ──┤
-   ├──► Track C (并行)    ──┤
-   ├──► Track D (并行)    ──┤    全部 ready-for-review
-   ├──► Track E (并行)    ──┤    且 review pass 后
-   └──► Track F (并行)    ──┘
-                              │
-                              ▼
-                         Task Z（串行）
+   ├──► Track G (设计 tokens, 必须先于 Track A) ──┐
+   │           │                                  │
+   │           ▼ G 完成才解锁 A                     │
+   ├──► Track A (apps/site, 含 ThemeToggle)    ──┤
+   ├──► Track B (block-foundation core+UI 双层) ──┤  全部 ready-for-review
+   ├──► Track C (mdx-bridge)                   ──┤  且双 review pass 后
+   ├──► Track D (apps/api)                     ──┤  (高风险全部 escalate 5.5)
+   ├──► Track E (kernel-adapter + registry)    ──┤
+   └──► Track F (editor-commands + agent-tools)──┘
+                                                   │
+                                                   ▼
+                                              Task Z (close)
 ```
+
+**并行度**：Task 0 后，Track G + B/C/D/E/F **同时启动**（6 路并行）；Track G 完成后 Track A 启动（1 路）；总等待 = max(G+A, B-F)。
+G 是 ~15 step 的中等包，不会拖累整体节奏。
 
 ---
 
@@ -187,16 +211,19 @@ watch GitHub Actions; link-check 应在新仓库状态下 PASS 且不再误读 p
 
 ---
 
-## Track A: apps/site Astro 骨架
+## Track A: apps/site Astro 骨架（消费 design-tokens）
 
 **Agent dispatch:** `site-builder` (Claude)
-**Risk level:** 中（核心架构包之一，会触发 pr-gate 5.5 escalation）
+**Risk level:** 高（消费 design-tokens 的第一个 consumer + 含 ThemeToggle 切换 hook → escalate pr-gate 5.5）
+**前置依赖：Track G 完成**（apps/site 的 tailwind.config.ts 与 global.css 引用 `@skb/design-tokens` 的 preset 与 CSS 文件）。
 **Files:**
-- Create: `apps/site/package.json`
-- Create: `apps/site/astro.config.mjs`
-- Create: `apps/site/tailwind.config.ts`
+- Create: `apps/site/package.json`（含 `@astrojs/react` + `@skb/design-tokens`）
+- Create: `apps/site/astro.config.mjs`（含 `react()` 集成）
+- Create: `apps/site/tailwind.config.ts`（`presets: [designTokensPreset]`）
 - Create: `apps/site/tsconfig.json`
-- Create: `apps/site/src/layouts/BaseLayout.astro`
+- Create: `apps/site/src/layouts/BaseLayout.astro`（含 `data-theme` 切换 + FOUC inline script + ThemeToggle 岛）
+- Create: `apps/site/src/components/ThemeToggle.astro`（Astro wrapper 包 React 组件，client:load 水合）
+- Create: `apps/site/src/styles/global.css`（@import design-tokens 的两个 css + Tailwind layers）
 - Create: `apps/site/src/pages/index.astro`
 - Create: `apps/site/src/pages/notes/[...slug].astro`
 - Create: `apps/site/src/content.config.ts`
@@ -204,12 +231,16 @@ watch GitHub Actions; link-check 应在新仓库状态下 PASS 且不再误读 p
 - Modify: `tsconfig.json`（root，加 references entry）
 - Modify: `pnpm-workspace.yaml`（已含 `apps/*`，无需改）
 
-**Wave 1 退出标准（Track A）**：`pnpm --filter site build` 成功；公开页可渲染 sample MDX；路由 `/notes/sample-mdx-note` 可访问。
+**Wave 1 退出标准（Track A）**：
+- `pnpm --filter @skb/site build` 成功
+- 公开页可渲染 sample MDX；路由 `/notes/sample-mdx-note` 可访问
+- 主题切换按钮可见；点击后 `<html data-theme="dark">` 切换；刷新后保留（localStorage）；首访按 `prefers-color-scheme`
+- 视觉烟测：light 与 dark 各截图一张（手动验证或 Playwright）
 
 - [ ] **Step 1：在 `apps/site/` 创建 `package.json`**
 
 ```bash
-mkdir -p apps/site/src/{pages/notes,layouts}
+mkdir -p apps/site/src/{pages/notes,layouts,components,styles}
 mkdir -p content/notes/sample-mdx-note
 ```
 
@@ -231,30 +262,40 @@ mkdir -p content/notes/sample-mdx-note
   },
   "dependencies": {
     "@astrojs/mdx": "^4.0.0",
+    "@astrojs/react": "^4.0.0",
     "@astrojs/tailwind": "^6.0.0",
+    "@skb/design-tokens": "workspace:*",
     "astro": "^5.0.0",
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0",
     "tailwindcss": "^3.4.0"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.0",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
     "typescript": "~5.6.0"
   }
 }
 ```
 
-> **注**：Tailwind 4 仍是预览，stable 路径走 3.4 + Astro 官方 integration。Wave 2 视情况评估是否升级。
+> **注**：
+> - Tailwind 4 仍是预览，stable 路径走 3.4 + Astro 官方 integration。Wave 2 视情况评估是否升级。
+> - `@astrojs/react` + React 18 是为了让 ThemeToggle 这种 client-island 组件能被水合（`client:load`）。Wave 2 各 component block 的 ui-default 也会需要这个集成。
 
 - [ ] **Step 2：写 `apps/site/astro.config.mjs`**
 
 ```javascript
 import { defineConfig } from 'astro/config';
 import mdx from '@astrojs/mdx';
+import react from '@astrojs/react';
 import tailwind from '@astrojs/tailwind';
 
 export default defineConfig({
   site: 'https://selfknowledgebaseweb.example.com',
   integrations: [
     mdx(),
+    react(),
     tailwind({ applyBaseStyles: false }),
   ],
   build: {
@@ -263,17 +304,20 @@ export default defineConfig({
 });
 ```
 
-- [ ] **Step 3：写 `apps/site/tailwind.config.ts`**
+- [ ] **Step 3：写 `apps/site/tailwind.config.ts`（消费 design-tokens preset）**
 
 ```typescript
 import type { Config } from 'tailwindcss';
+import designTokensPreset from '@skb/design-tokens/tailwind-preset';
 
 export default {
   content: ['./src/**/*.{astro,html,ts,tsx,md,mdx}', '../../content/**/*.mdx'],
-  theme: { extend: {} },
+  presets: [designTokensPreset],
   plugins: [],
 } satisfies Config;
 ```
+
+> **关键不变量（ADR-0003）**：apps/site 与所有 `block-*/ui-default/` 都不允许直接定义 `theme.colors` 等视觉值；颜色 / 间距 / 排版 / 圆角 / 阴影 / 动效一律来自 design-tokens preset。pr-gate 强制此约束。
 
 - [ ] **Step 4：写 `apps/site/tsconfig.json`**
 
@@ -314,10 +358,35 @@ export const collections = { notes };
 
 > **TODO 在 Track B 完成后**：把 schema 改为 `import { frontmatterSchema } from '@skb/content-types'`；当前 inline 是为了 Track A 不阻塞 Track B。
 
-- [ ] **Step 6：写 `apps/site/src/layouts/BaseLayout.astro`**
+- [ ] **Step 6a：写 `apps/site/src/styles/global.css`**
+
+```css
+@import "@skb/design-tokens/tokens.css";
+@import "@skb/design-tokens/tokens-dark.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+```
+
+- [ ] **Step 6b：写 `apps/site/src/components/ThemeToggle.astro`**
 
 ```astro
 ---
+import { ThemeToggle } from '@skb/design-tokens';
+---
+<ThemeToggle client:load />
+```
+
+> **解释**：Astro 的 `client:load` 让 React 组件在 hydration 后才能响应点击；首屏 SSR 时只渲染按钮形状，但点击逻辑要等 JS 加载。`is:inline` script（在 BaseLayout 里）已确保**首屏样式正确**（FOUC 阻断）。
+
+- [ ] **Step 6c：写 `apps/site/src/layouts/BaseLayout.astro`（含 data-theme + FOUC + ThemeToggle）**
+
+```astro
+---
+import '../styles/global.css';
+import ThemeToggle from '../components/ThemeToggle.astro';
+
 interface Props {
   title: string;
 }
@@ -329,13 +398,35 @@ const { title } = Astro.props;
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width" />
     <title>{title}</title>
-    <link rel="stylesheet" href="/styles.css" />
+    <script is:inline>
+      // FOUC 阻断：先于 React 加载、与 use-theme hook 状态一致
+      // 与 packages/design-tokens/src/use-theme.ts 中 STORAGE_KEY 同步
+      (function () {
+        try {
+          var saved = localStorage.getItem('skb-theme');
+          var dark = saved
+            ? saved === 'dark'
+            : window.matchMedia('(prefers-color-scheme: dark)').matches;
+          if (dark) document.documentElement.setAttribute('data-theme', 'dark');
+        } catch (e) {}
+      })();
+    </script>
   </head>
-  <body class="prose mx-auto max-w-3xl py-12 px-4">
-    <slot />
+  <body class="bg-bg text-fg font-sans">
+    <header class="border-b border-border">
+      <nav class="mx-auto max-w-3xl flex items-center justify-between py-4 px-4">
+        <a href="/" class="font-bold">SelfKnowledgeBaseWeb</a>
+        <ThemeToggle />
+      </nav>
+    </header>
+    <main class="prose mx-auto max-w-3xl py-12 px-4">
+      <slot />
+    </main>
   </body>
 </html>
 ```
+
+> **不变量**：`STORAGE_KEY = 'skb-theme'` 在 design-tokens 与本 inline script 中**字面相同**。如果将来改 key，需要同时改两处（design-tokens 是单一源；inline script 必须独立维护因为加载顺序约束）。这一约束写入 `apps/site/CONTRACT.md`。
 
 - [ ] **Step 7：写 `apps/site/src/pages/index.astro`**
 
@@ -434,7 +525,7 @@ kill %1 2>/dev/null
 
 - [ ] **Step 12：写 `apps/site/CONTRACT.md`**
 
-```markdown
+````markdown
 # apps/site Contract
 
 ## Public surface
@@ -443,21 +534,26 @@ kill %1 2>/dev/null
   - `/` — 笔记列表
   - `/notes/<slug>` — 笔记内容
 - Content collection schema：见 `src/content.config.ts`（Wave 1 内联 zod，Track B/C 完成后改为 `@skb/content-types`）
+- 主题：light / dark 双套；`<html data-theme="dark">` 控制；右上角切换按钮
 
 ## Invariants
 
 - 必须为静态构建（spec §1.8 约束 #3）；不得引入 SSR
 - 默认零 JavaScript（Astro islands）；只有标注 `client:*` 的 React 组件才 hydrate
+- **不得直接定义视觉值（颜色 / 间距 / 排版）**：`tailwind.config.ts` 必须经 `presets: [designTokensPreset]` 引入；任何硬编码 hex / rgb / px 值会被 pr-gate reject（ADR-0003）
+- **FOUC inline script 与 design-tokens 的 `STORAGE_KEY` 必须字面一致**：当前为 `'skb-theme'`；改 key 必须同时改两处
 
 ## Modifying this file
 
-修改路由结构、frontmatter schema、构建输出形态时同步更新本文件。本文件改动会触发 pr-gate 5.5 review。
+修改路由结构、frontmatter schema、构建输出形态、主题机制时同步更新本文件。本文件改动会触发 pr-gate 5.5 review。
 
 ## Related
 
-- [设计规格 §1.1 / §2.6](../../docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md)
-- [agent-contract.md site-builder agent](../../agent-contract.md)
-```
+- 设计规格 §1.1 / §2.6（`../../docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md`）
+- ADR-0003 headless / presentational 分层（`../../docs/decisions/ADR-0003-headless-presentational-split.md`）
+- design-tokens 契约（`../../packages/design-tokens/CONTRACT.md`）
+- agent-contract.md site-builder agent（`../../agent-contract.md`）
+````
 
 - [ ] **Step 13：commit**
 
@@ -746,39 +842,78 @@ mkdir -p packages/block-foundation/src/__tests__
 }
 ```
 
-- [ ] **Step 15：写 BlockRegistry 接口失败测试 `src/__tests__/registry.test.ts`**
+- [ ] **Step 15：写 BlockRegistry 接口失败测试 `src/__tests__/registry.test.ts`（ADR-0003 双层注册）**
 
 ```typescript
 import { describe, it, expect } from 'vitest';
-import { BlockRegistry, defineBlock } from '../registry';
+import { BlockRegistry, defineCore, defineUI } from '../registry';
 import { z } from 'zod';
 
-describe('BlockRegistry', () => {
-  it('registers and retrieves a block by name', () => {
+const calloutCore = defineCore({
+  name: 'callout',
+  kind: 'component',
+  propsSchema: z.object({ type: z.string() }),
+  mdxComponent: 'Callout',
+});
+
+const noopComponent = () => null;
+const calloutUIDefault = defineUI({
+  coreName: 'callout',
+  uiId: 'default',
+  EditorView: noopComponent,
+  RenderView: noopComponent,
+});
+
+describe('BlockRegistry — core', () => {
+  it('registers and retrieves a core by name', () => {
     const reg = new BlockRegistry();
-    const calloutBlock = defineBlock({
-      name: 'callout',
-      kind: 'component',
-      propsSchema: z.object({ type: z.string() }),
-      mdxComponent: 'Callout',
-    });
-    reg.register(calloutBlock);
-    expect(reg.get('callout')).toBe(calloutBlock);
+    reg.registerCore(calloutCore);
+    expect(reg.getCore('callout')).toBe(calloutCore);
   });
 
-  it('throws on duplicate name', () => {
+  it('throws on duplicate core name', () => {
     const reg = new BlockRegistry();
-    const a = defineBlock({ name: 'x', kind: 'component', propsSchema: z.object({}), mdxComponent: 'X' });
-    const b = defineBlock({ name: 'x', kind: 'component', propsSchema: z.object({}), mdxComponent: 'X' });
-    reg.register(a);
-    expect(() => reg.register(b)).toThrow(/duplicate/i);
+    reg.registerCore(calloutCore);
+    expect(() => reg.registerCore(calloutCore)).toThrow(/duplicate.*core/i);
   });
 
-  it('lists all registered blocks', () => {
+  it('lists all registered cores', () => {
     const reg = new BlockRegistry();
-    reg.register(defineBlock({ name: 'a', kind: 'prose', propsSchema: z.object({}), mdxComponent: '_' }));
-    reg.register(defineBlock({ name: 'b', kind: 'component', propsSchema: z.object({}), mdxComponent: 'B' }));
-    expect(reg.list().map((b) => b.name).sort()).toEqual(['a', 'b']);
+    reg.registerCore(calloutCore);
+    reg.registerCore({ ...calloutCore, name: 'other', mdxComponent: 'Other' });
+    expect(reg.listCores().map((c) => c.name).sort()).toEqual(['callout', 'other']);
+  });
+});
+
+describe('BlockRegistry — UI', () => {
+  it('registers a UI bound to an existing core', () => {
+    const reg = new BlockRegistry();
+    reg.registerCore(calloutCore);
+    reg.registerUI(calloutUIDefault);
+    expect(reg.getUI('callout')).toBe(calloutUIDefault);
+  });
+
+  it('throws if registering UI for an unknown core', () => {
+    const reg = new BlockRegistry();
+    expect(() => reg.registerUI(calloutUIDefault)).toThrow(/unknown core/i);
+  });
+
+  it('supports multiple UIs per core; getUI without uiId returns first registered', () => {
+    const reg = new BlockRegistry();
+    reg.registerCore(calloutCore);
+    reg.registerUI(calloutUIDefault);
+    const minimal = defineUI({ ...calloutUIDefault, uiId: 'minimal' });
+    reg.registerUI(minimal);
+    expect(reg.getUI('callout')).toBe(calloutUIDefault);
+    expect(reg.getUI('callout', 'minimal')).toBe(minimal);
+    expect(reg.listUIs('callout')).toHaveLength(2);
+  });
+
+  it('throws on duplicate (coreName, uiId) pair', () => {
+    const reg = new BlockRegistry();
+    reg.registerCore(calloutCore);
+    reg.registerUI(calloutUIDefault);
+    expect(() => reg.registerUI(calloutUIDefault)).toThrow(/duplicate.*UI/i);
   });
 });
 ```
@@ -789,15 +924,20 @@ describe('BlockRegistry', () => {
 pnpm --filter @skb/block-foundation test
 ```
 
-- [ ] **Step 17：写 `src/registry.ts`**
+- [ ] **Step 17：写 `src/registry.ts`（ADR-0003 双层注册）**
 
 ```typescript
-import type { ZodTypeAny } from 'zod';
+import type { ZodTypeAny, infer as ZodInfer } from 'zod';
+import type { ComponentType } from 'react';
 
 export type BlockKind = 'prose' | 'component';
 
-export interface BlockDefinition<TSchema extends ZodTypeAny = ZodTypeAny> {
-  /** kebab-case identifier，对应 MDX 组件名小写 */
+/**
+ * BlockCore：headless 层 —— 无 React 依赖，纯逻辑（props schema + MDX 序列化在
+ * mdx-bridge 处理）。Core 可被 Adopter 复用并配自定义 UI。
+ */
+export interface BlockCoreDefinition<TSchema extends ZodTypeAny = ZodTypeAny> {
+  /** kebab-case identifier，全局唯一 */
   readonly name: string;
   readonly kind: BlockKind;
   readonly propsSchema: TSchema;
@@ -805,29 +945,84 @@ export interface BlockDefinition<TSchema extends ZodTypeAny = ZodTypeAny> {
   readonly mdxComponent: string;
 }
 
-export function defineBlock<T extends ZodTypeAny>(def: BlockDefinition<T>): BlockDefinition<T> {
+export interface BlockViewProps<TSchema extends ZodTypeAny> {
+  readonly props: ZodInfer<TSchema>;
+  readonly content?: string;
+  /** Wave 2 起追加 runtime context（kernel session / theme / etc.） */
+}
+
+/**
+ * BlockUI：presentational 层 —— React 组件，绑定到已注册的 core。
+ * 同一 core 可挂多个 UI（uiId 区分），Adopter 可写自己的 UI 替代 ui-default。
+ */
+export interface BlockUIDefinition<TSchema extends ZodTypeAny = ZodTypeAny> {
+  /** 必须指向已 registerCore 的 core */
+  readonly coreName: string;
+  /** UI 实现 id：'default' / 'minimal' / 用户自定义 */
+  readonly uiId: string;
+  readonly EditorView: ComponentType<BlockViewProps<TSchema>>;
+  readonly RenderView: ComponentType<BlockViewProps<TSchema>>;
+}
+
+export function defineCore<T extends ZodTypeAny>(def: BlockCoreDefinition<T>): BlockCoreDefinition<T> {
   return def;
 }
 
+export function defineUI<T extends ZodTypeAny>(def: BlockUIDefinition<T>): BlockUIDefinition<T> {
+  return def;
+}
+
+/**
+ * BlockRegistry：双层注册表（ADR-0003）。
+ * registerCore：挂业务定义；registerUI：挂视觉实现。
+ * 同 core 多 UI 场景：getUI(name) 不带 uiId 时取**首个注册的**（约定为 'default'）。
+ */
 export class BlockRegistry {
-  readonly #blocks = new Map<string, BlockDefinition>();
+  readonly #cores = new Map<string, BlockCoreDefinition>();
+  readonly #uis = new Map<string, BlockUIDefinition[]>();
 
-  register(block: BlockDefinition): void {
-    if (this.#blocks.has(block.name)) {
-      throw new Error(`Duplicate block name: ${block.name}`);
+  registerCore(core: BlockCoreDefinition): void {
+    if (this.#cores.has(core.name)) {
+      throw new Error(`Duplicate core name: ${core.name}`);
     }
-    this.#blocks.set(block.name, block);
+    this.#cores.set(core.name, core);
   }
 
-  get(name: string): BlockDefinition | undefined {
-    return this.#blocks.get(name);
+  registerUI(ui: BlockUIDefinition): void {
+    if (!this.#cores.has(ui.coreName)) {
+      throw new Error(`Unknown core for UI registration: ${ui.coreName}`);
+    }
+    const existing = this.#uis.get(ui.coreName) ?? [];
+    if (existing.some((u) => u.uiId === ui.uiId)) {
+      throw new Error(`Duplicate UI registration: core=${ui.coreName} uiId=${ui.uiId}`);
+    }
+    existing.push(ui);
+    this.#uis.set(ui.coreName, existing);
   }
 
-  list(): readonly BlockDefinition[] {
-    return [...this.#blocks.values()];
+  getCore(name: string): BlockCoreDefinition | undefined {
+    return this.#cores.get(name);
+  }
+
+  listCores(): readonly BlockCoreDefinition[] {
+    return [...this.#cores.values()];
+  }
+
+  /** 不传 uiId 时返回首个（约定为 'default'）；传了精确匹配 */
+  getUI(coreName: string, uiId?: string): BlockUIDefinition | undefined {
+    const list = this.#uis.get(coreName);
+    if (!list || list.length === 0) return undefined;
+    if (uiId === undefined) return list[0];
+    return list.find((u) => u.uiId === uiId);
+  }
+
+  listUIs(coreName: string): readonly BlockUIDefinition[] {
+    return this.#uis.get(coreName) ?? [];
   }
 }
 ```
+
+> **package.json 同步更新**：`packages/block-foundation/package.json` 加 `"react": "^18.3.0 || ^19.0.0"` 到 `peerDependencies`。这是 type-only import（`import type { ComponentType } from 'react'`），运行时 bundle 不增重；但 tsc 需要 React 类型可解析。
 
 - [ ] **Step 18：跑测试，应 pass**
 
@@ -867,14 +1062,19 @@ export * from './registry';
 export { proseExtensions } from './prose';
 ```
 
-- [ ] **Step 21：写 `packages/block-foundation/CONTRACT.md`**
+- [ ] **Step 21：写 `packages/block-foundation/CONTRACT.md`（ADR-0003 后含 Core+UI 双层）**
 
 ```markdown
 # @skb/block-foundation Contract
 
 ## Public surface
 
-- `BlockRegistry` class · `defineBlock(def)` factory · `BlockDefinition<T>` interface
+- `BlockRegistry` class — 双层注册表（ADR-0003）
+  - `registerCore(core)` / `registerUI(ui)`
+  - `getCore(name)` / `listCores()`
+  - `getUI(coreName, uiId?)` / `listUIs(coreName)`
+- `defineCore(def)` / `defineUI(def)` factory helpers
+- `BlockCoreDefinition<T>` / `BlockUIDefinition<T>` / `BlockViewProps<T>` interfaces
 - `BlockKind = 'prose' | 'component'` （二分类，spec §1.5 关键不变量）
 - `proseExtensions` — Tiptap 扩展数组，提供全部 markdown 行为
 
@@ -882,18 +1082,22 @@ export { proseExtensions } from './prose';
 
 - `BlockKind` 二分不可破坏：新 block 必须明确归属 `prose` 或 `component`
 - Prose blocks **零自写代码**——任何看似需要新 prose block 的场景应通过组合 `proseExtensions` 内现有扩展或追加单条 Tiptap 扩展实现，不再加 prose-kind block
-- `BlockDefinition.mdxComponent` 必须 PascalCase，且与 MDX 文件 import 中使用的名字一致
+- `BlockCoreDefinition.mdxComponent` 必须 PascalCase，且与 MDX 文件 import 中使用的名字一致
+- **Core 与 UI 物理分离（ADR-0003）**：core 不允许 import 任何 React/Tiptap 视觉 API；UI 必须 import core（不允许 inline 重复 schema）
+- **同 core 多 UI 时 `getUI(name)` 取首个注册**：约定首个 uiId 为 `'default'`；adopter 在 register 顺序上需谨慎
 
 ## Modifying this file
 
-- 加新 BlockDefinition 字段：可加 optional，必加字段需 ADR
-- 改 BlockKind 枚举：契约破坏，必须 ADR + 同步 mdx-bridge / 全部 component block
+- 加新 BlockCoreDefinition / BlockUIDefinition 字段：可加 optional，必加字段需 ADR
+- 改 BlockKind 枚举或拆分 register 接口：契约破坏，必须 ADR + 同步 mdx-bridge / 全部 component block + 全部 ui-default
 
 ## Related
 
-- [设计规格 §1.5 / §2.5](../../docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md)
-- [content-types/CONTRACT.md](../content-types/CONTRACT.md)
-- [mdx-bridge/CONTRACT.md](../mdx-bridge/CONTRACT.md)
+- 设计规格 §1.5 / §2.5（`../../docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md`）
+- ADR-0003 headless / presentational 分层（`../../docs/decisions/ADR-0003-headless-presentational-split.md`）
+- content-types 契约（`../content-types/CONTRACT.md`）
+- mdx-bridge 契约（`../mdx-bridge/CONTRACT.md`）
+- design-tokens 契约（`../design-tokens/CONTRACT.md`）
 ```
 
 - [ ] **Step 22：commit block-foundation**
@@ -2624,6 +2828,573 @@ git push
 
 ---
 
+## Track G: design-tokens（ADR-0003 新增，Track A 的前置依赖）
+
+**Agent dispatch:** `site-builder` (Claude) —— 暂用 site-builder 因 design-tokens 与站点视觉强相关；将来 Phase 3 设计流水线启动时由设计 agent 接管。
+**Risk level:** 高（开源边界 + 跨包 contract → escalate pr-gate 5.5）
+**Files:**
+- Create: `packages/design-tokens/{package.json,tsconfig.json,CONTRACT.md}`
+- Create: `packages/design-tokens/src/{index.ts,tokens.css,tokens-dark.css,tokens.ts,tailwind-preset.cjs,use-theme.ts,ThemeToggle.tsx}`
+- Create: `packages/design-tokens/src/__tests__/{tokens.test.ts,use-theme.test.tsx}`
+- Modify: `tsconfig.json`（root，加 `{ "path": "./packages/design-tokens" }` references entry）
+
+**Wave 1 退出标准（Track G）**：
+- `pnpm --filter @skb/design-tokens build` 通过；类型导出齐全
+- 单测：tokens 名空间一致、useTheme hook localStorage + matchMedia 路径全覆盖
+- light + dark 两套 CSS var 完整：color / space / type / radius / shadow / motion 六类齐全
+- `data-theme="dark"` 切换在最小 React 测试 harness 下能改 `documentElement` 属性
+
+### G1: 包结构 + package.json
+
+- [ ] **Step 1：创建结构**
+
+```bash
+mkdir -p packages/design-tokens/src/__tests__
+```
+
+- [ ] **Step 2：写 `packages/design-tokens/package.json`**
+
+```json
+{
+  "name": "@skb/design-tokens",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./tokens.css": "./src/tokens.css",
+    "./tokens-dark.css": "./src/tokens-dark.css",
+    "./tailwind-preset": "./src/tailwind-preset.cjs"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "peerDependencies": {
+    "react": "^18.3.0 || ^19.0.0",
+    "tailwindcss": "^3.4.0"
+  },
+  "devDependencies": {
+    "@testing-library/react": "^16.0.0",
+    "@types/react": "^18.3.0",
+    "happy-dom": "^15.0.0",
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0",
+    "tailwindcss": "^3.4.0",
+    "typescript": "~5.6.0",
+    "vitest": "^2.0.0"
+  }
+}
+```
+
+- [ ] **Step 3：写 `packages/design-tokens/tsconfig.json`**
+
+```json
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "jsx": "react-jsx"
+  },
+  "include": ["src/**/*"]
+}
+```
+
+### G2: CSS 变量 + Tailwind preset
+
+- [ ] **Step 4：写 `src/tokens.css`（light 主题，默认）**
+
+```css
+:root {
+  /* === color/surface === */
+  --color-bg: 255 255 255;
+  --color-fg: 17 24 39;
+  --color-surface-1: 249 250 251;
+  --color-surface-2: 243 244 246;
+  --color-border: 229 231 235;
+  --color-muted: 107 114 128;
+
+  /* === color/accent === */
+  --color-accent: 59 130 246;
+  --color-accent-fg: 255 255 255;
+
+  /* === color/semantic === */
+  --color-info: 59 130 246;
+  --color-warn: 234 179 8;
+  --color-note: 107 114 128;
+  --color-success: 34 197 94;
+  --color-error: 239 68 68;
+
+  /* === spacing === */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-12: 3rem;
+
+  /* === typography === */
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --text-base: 1rem;
+  --leading-base: 1.6;
+
+  /* === radius === */
+  --radius-sm: 0.25rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+
+  /* === shadow === */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1);
+
+  /* === motion === */
+  --duration-fast: 150ms;
+  --duration-base: 250ms;
+  --ease-base: cubic-bezier(0.4, 0, 0.2, 1);
+}
+```
+
+> **使用 `r g b` 而非 `#hex`**：Tailwind preset 配 `rgb(var(--color-xxx) / <alpha-value>)` 模板需要这种空格分隔的整数三元组，可支持透明度修饰符（`bg-bg/50`）。
+
+- [ ] **Step 5：写 `src/tokens-dark.css`（dark 主题覆盖）**
+
+```css
+:root[data-theme="dark"] {
+  /* === color/surface === */
+  --color-bg: 17 24 39;
+  --color-fg: 243 244 246;
+  --color-surface-1: 31 41 55;
+  --color-surface-2: 55 65 81;
+  --color-border: 75 85 99;
+  --color-muted: 156 163 175;
+
+  /* === color/accent === */
+  --color-accent: 96 165 250;
+  --color-accent-fg: 17 24 39;
+
+  /* === color/semantic === */
+  --color-info: 96 165 250;
+  --color-warn: 250 204 21;
+  --color-note: 156 163 175;
+  --color-success: 74 222 128;
+  --color-error: 248 113 113;
+
+  /* === shadow（暗色更弱、更冷调）=== */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.4);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.5);
+}
+```
+
+> spacing / typography / radius / motion 在两套主题间一致；只 color + shadow 不同。
+
+- [ ] **Step 6：写 `src/tailwind-preset.cjs`**
+
+```js
+/**
+ * Tailwind preset：颜色 / 间距 / 排版 / 圆角 / 阴影 / 动效全部走 CSS var。
+ * 使用方：apps/site/tailwind.config.ts + 每个 block-X/ui-default。
+ *
+ * 实现说明：
+ *  - color 用 `rgb(var(--color-xxx) / <alpha-value>)` 支持 Tailwind 透明度修饰
+ *  - spacing 直接引用 var；保留 Tailwind 的 0/auto/full 等关键字
+ *  - typography 提供 sans/mono；行高用 base
+ */
+/** @type {import('tailwindcss').Config} */
+module.exports = {
+  theme: {
+    colors: {
+      transparent: 'transparent',
+      current: 'currentColor',
+      bg: 'rgb(var(--color-bg) / <alpha-value>)',
+      fg: 'rgb(var(--color-fg) / <alpha-value>)',
+      'surface-1': 'rgb(var(--color-surface-1) / <alpha-value>)',
+      'surface-2': 'rgb(var(--color-surface-2) / <alpha-value>)',
+      border: 'rgb(var(--color-border) / <alpha-value>)',
+      muted: 'rgb(var(--color-muted) / <alpha-value>)',
+      accent: 'rgb(var(--color-accent) / <alpha-value>)',
+      'accent-fg': 'rgb(var(--color-accent-fg) / <alpha-value>)',
+      info: 'rgb(var(--color-info) / <alpha-value>)',
+      warn: 'rgb(var(--color-warn) / <alpha-value>)',
+      note: 'rgb(var(--color-note) / <alpha-value>)',
+      success: 'rgb(var(--color-success) / <alpha-value>)',
+      error: 'rgb(var(--color-error) / <alpha-value>)',
+    },
+    spacing: {
+      0: '0',
+      1: 'var(--space-1)',
+      2: 'var(--space-2)',
+      3: 'var(--space-3)',
+      4: 'var(--space-4)',
+      6: 'var(--space-6)',
+      8: 'var(--space-8)',
+      12: 'var(--space-12)',
+      px: '1px',
+      auto: 'auto',
+      full: '100%',
+    },
+    fontFamily: {
+      sans: 'var(--font-sans)',
+      mono: 'var(--font-mono)',
+    },
+    fontSize: {
+      base: ['var(--text-base)', { lineHeight: 'var(--leading-base)' }],
+    },
+    borderRadius: {
+      none: '0',
+      sm: 'var(--radius-sm)',
+      md: 'var(--radius-md)',
+      lg: 'var(--radius-lg)',
+      full: '9999px',
+    },
+    boxShadow: {
+      none: 'none',
+      sm: 'var(--shadow-sm)',
+      md: 'var(--shadow-md)',
+      lg: 'var(--shadow-lg)',
+    },
+    transitionDuration: {
+      fast: 'var(--duration-fast)',
+      base: 'var(--duration-base)',
+    },
+    transitionTimingFunction: {
+      base: 'var(--ease-base)',
+    },
+    extend: {},
+  },
+};
+```
+
+### G3: TS token 导出
+
+- [ ] **Step 7：写 `src/tokens.ts`**
+
+```typescript
+/**
+ * TS-side 镜像 CSS variables，供 CSS-in-JS / 程序化访问场景使用。
+ * 与 tokens.css / tokens-dark.css 字面同步——改 var 名时两处都要改。
+ */
+
+export const colorVars = {
+  bg: 'var(--color-bg)',
+  fg: 'var(--color-fg)',
+  surface1: 'var(--color-surface-1)',
+  surface2: 'var(--color-surface-2)',
+  border: 'var(--color-border)',
+  muted: 'var(--color-muted)',
+  accent: 'var(--color-accent)',
+  accentFg: 'var(--color-accent-fg)',
+  info: 'var(--color-info)',
+  warn: 'var(--color-warn)',
+  note: 'var(--color-note)',
+  success: 'var(--color-success)',
+  error: 'var(--color-error)',
+} as const;
+
+export const spaceVars = {
+  '1': 'var(--space-1)',
+  '2': 'var(--space-2)',
+  '3': 'var(--space-3)',
+  '4': 'var(--space-4)',
+  '6': 'var(--space-6)',
+  '8': 'var(--space-8)',
+  '12': 'var(--space-12)',
+} as const;
+
+export const tokens = {
+  color: colorVars,
+  space: spaceVars,
+} as const;
+
+export type ColorTokenName = keyof typeof colorVars;
+export type SpaceTokenName = keyof typeof spaceVars;
+```
+
+### G4: 主题切换 hook + ThemeToggle 组件
+
+- [ ] **Step 8：写失败测试 `src/__tests__/use-theme.test.tsx`**
+
+```typescript
+/// <reference types="happy-dom" />
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { renderHook, act } from '@testing-library/react';
+import { useTheme, getInitialTheme, applyTheme } from '../use-theme';
+
+beforeEach(() => {
+  document.documentElement.removeAttribute('data-theme');
+  localStorage.clear();
+});
+
+describe('useTheme', () => {
+  it('defaults to light when no localStorage and prefers-color-scheme: light', () => {
+    vi.spyOn(window, 'matchMedia').mockReturnValue({ matches: false } as MediaQueryList);
+    expect(getInitialTheme()).toBe('light');
+  });
+
+  it('honors prefers-color-scheme: dark', () => {
+    vi.spyOn(window, 'matchMedia').mockReturnValue({ matches: true } as MediaQueryList);
+    expect(getInitialTheme()).toBe('dark');
+  });
+
+  it('localStorage value wins over prefers-color-scheme', () => {
+    localStorage.setItem('skb-theme', 'light');
+    vi.spyOn(window, 'matchMedia').mockReturnValue({ matches: true } as MediaQueryList);
+    expect(getInitialTheme()).toBe('light');
+  });
+
+  it('toggle flips theme and writes localStorage + data-theme', () => {
+    const { result } = renderHook(() => useTheme());
+    const initial = result.current.theme;
+    act(() => result.current.toggle());
+    expect(result.current.theme).not.toBe(initial);
+    expect(localStorage.getItem('skb-theme')).toBe(result.current.theme);
+    if (result.current.theme === 'dark') {
+      expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
+    } else {
+      expect(document.documentElement.getAttribute('data-theme')).toBeNull();
+    }
+  });
+
+  it('applyTheme directly is idempotent', () => {
+    applyTheme('dark');
+    applyTheme('dark');
+    expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
+    applyTheme('light');
+    expect(document.documentElement.getAttribute('data-theme')).toBeNull();
+  });
+});
+```
+
+> **vitest config**：项目根 `vitest.config.ts` 已在 Phase 0 配置；本包需要 `environment: 'happy-dom'`。在 `packages/design-tokens/vitest.config.ts` 写：
+> ```typescript
+> import { defineConfig } from 'vitest/config';
+> export default defineConfig({ test: { environment: 'happy-dom' } });
+> ```
+
+- [ ] **Step 9：写 `src/use-theme.ts` 让测试通过**
+
+```typescript
+import { useCallback, useEffect, useState } from 'react';
+
+export const themeNames = ['light', 'dark'] as const;
+export type ThemeName = (typeof themeNames)[number];
+
+/**
+ * localStorage key —— 与 apps/site/src/layouts/BaseLayout.astro 的 inline FOUC
+ * script 字面同步。改名是契约破坏。
+ */
+export const STORAGE_KEY = 'skb-theme';
+
+export function getInitialTheme(): ThemeName {
+  if (typeof window === 'undefined') return 'light';
+  try {
+    const saved = window.localStorage.getItem(STORAGE_KEY);
+    if (saved === 'light' || saved === 'dark') return saved;
+  } catch {
+    /* localStorage 不可用，fallback 到系统偏好 */
+  }
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
+export function applyTheme(theme: ThemeName): void {
+  if (typeof document === 'undefined') return;
+  if (theme === 'dark') {
+    document.documentElement.setAttribute('data-theme', 'dark');
+  } else {
+    document.documentElement.removeAttribute('data-theme');
+  }
+  try {
+    window.localStorage.setItem(STORAGE_KEY, theme);
+  } catch {
+    /* 静默失败 */
+  }
+}
+
+export function useTheme(): {
+  theme: ThemeName;
+  setTheme: (t: ThemeName) => void;
+  toggle: () => void;
+} {
+  const [theme, setThemeState] = useState<ThemeName>(getInitialTheme);
+
+  useEffect(() => {
+    applyTheme(theme);
+  }, [theme]);
+
+  const setTheme = useCallback((t: ThemeName) => setThemeState(t), []);
+  const toggle = useCallback(() => setThemeState((t) => (t === 'light' ? 'dark' : 'light')), []);
+
+  return { theme, setTheme, toggle };
+}
+```
+
+- [ ] **Step 10：写 `src/ThemeToggle.tsx`**
+
+```tsx
+import { useTheme } from './use-theme';
+
+/**
+ * 默认切换按钮。开源用户可自己写一个用同 hook 的按钮，或直接用本组件。
+ * 默认仅含 emoji + aria-label，不绑定具体视觉样式（消费者通过 wrapping 控制）。
+ */
+export function ThemeToggle(): JSX.Element {
+  const { theme, toggle } = useTheme();
+  const next = theme === 'light' ? 'dark' : 'light';
+  return (
+    <button
+      type="button"
+      onClick={toggle}
+      aria-label={`Switch to ${next} mode`}
+      title={`Switch to ${next} mode`}
+      className="rounded-md border border-border px-3 py-1 text-fg hover:bg-surface-1 transition-colors duration-fast"
+    >
+      {theme === 'light' ? '🌙' : '☀️'}
+    </button>
+  );
+}
+```
+
+### G5: barrel + tokens 单测 + CONTRACT.md
+
+- [ ] **Step 11：写 `src/index.ts`**
+
+```typescript
+export { themeNames, STORAGE_KEY, useTheme, getInitialTheme, applyTheme } from './use-theme';
+export type { ThemeName } from './use-theme';
+export { ThemeToggle } from './ThemeToggle';
+export { tokens, colorVars, spaceVars } from './tokens';
+export type { ColorTokenName, SpaceTokenName } from './tokens';
+```
+
+- [ ] **Step 12：写 `src/__tests__/tokens.test.ts`**
+
+```typescript
+import { describe, it, expect } from 'vitest';
+import { tokens, themeNames, STORAGE_KEY } from '../index';
+
+describe('design-tokens public API', () => {
+  it('exposes both light and dark theme names', () => {
+    expect(themeNames).toEqual(['light', 'dark']);
+  });
+
+  it('STORAGE_KEY is the shared storage key', () => {
+    expect(STORAGE_KEY).toBe('skb-theme');
+  });
+
+  it('color tokens use CSS var notation', () => {
+    expect(tokens.color.bg).toMatch(/^var\(--color-bg\)$/);
+    expect(tokens.color.accent).toMatch(/^var\(--color-accent\)$/);
+  });
+
+  it('space tokens use CSS var notation', () => {
+    expect(tokens.space['4']).toMatch(/^var\(--space-4\)$/);
+  });
+
+  it('exposes 13 color tokens (6 surface + 2 accent + 5 semantic)', () => {
+    expect(Object.keys(tokens.color)).toHaveLength(13);
+  });
+});
+```
+
+跑：
+```bash
+pnpm --filter @skb/design-tokens test
+```
+预期：全部 PASS（tokens.test.ts × 5 + use-theme.test.tsx × 5）。
+
+- [ ] **Step 13：写 `packages/design-tokens/CONTRACT.md`**
+
+```markdown
+# @skb/design-tokens Contract
+
+## Public surface
+
+- `tokens.css` — `:root` 下 light 主题 CSS variables（默认）
+- `tokens-dark.css` — `:root[data-theme="dark"]` 下覆盖
+- `tailwind-preset` — Tailwind 3.x preset（颜色 / 间距 / 排版 / 圆角 / 阴影 / 动效）
+- `tokens` / `colorVars` / `spaceVars` — TS 镜像
+- `useTheme` / `getInitialTheme` / `applyTheme` / `STORAGE_KEY` — React 切换 hook
+- `ThemeToggle` — 默认切换按钮组件
+- `themeNames` / `ThemeName` — 主题名联合类型
+
+## Invariants（ADR-0003）
+
+- **CSS var 名一旦定义不可改名**：消费者（apps/site / 各 ui-default）依赖字面名；改名是契约破坏，必须 ADR
+- **light 与 dark 必须键集合一致**：仅 value 不同；新加 var 必须两个文件同时加
+- **STORAGE_KEY 必须与 apps/site 的 BaseLayout inline FOUC script 字面一致**（当前 `'skb-theme'`）；改名需要同步两处
+- **Tailwind preset 是单一权威**：apps/site 与所有 block UI 都不允许直接定义 `theme.colors`；硬编码颜色 / 间距值会被 pr-gate reject
+
+## Modifying this file
+
+- 加 var 名：可加，不破坏；同步加两个 css 文件 + tokens.ts + tailwind-preset.cjs
+- 改 var 含义（语义重定义）：契约破坏，必须 ADR + 通知所有消费者
+- 主题数量从 light/dark 扩展（如加 sepia / high-contrast）：需要 ADR；STORAGE_KEY value 类型扩展
+
+## Related
+
+- ADR-0003 headless / presentational 分层（`../../docs/decisions/ADR-0003-headless-presentational-split.md`）
+- 设计规格 §1.5 / §2.5（`../../docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md`）
+- block-foundation 契约（`../block-foundation/CONTRACT.md`）—— UI 注册时引用
+- apps/site 契约（`../../apps/site/CONTRACT.md`）—— FOUC inline script 同步约束
+```
+
+### G6: 验证 + commit + references 更新
+
+- [ ] **Step 14：跑全套验证**
+
+```bash
+pnpm --filter @skb/design-tokens build
+pnpm --filter @skb/design-tokens lint
+pnpm --filter @skb/design-tokens typecheck
+pnpm --filter @skb/design-tokens test
+```
+
+预期：全部 PASS；dist/ 含编译后产物。
+
+- [ ] **Step 15：commit Track G + 更新 root tsconfig references**
+
+修改 root `tsconfig.json` references：
+
+```diff
+   "references": [
+     { "path": "./scripts" },
++    { "path": "./packages/design-tokens" }
+   ]
+```
+
+跑 `pnpm tsc -b` 确认 clean，commit：
+
+```bash
+git add packages/design-tokens tsconfig.json pnpm-lock.yaml
+git commit -m "feat(design-tokens): CSS vars + Tailwind preset + theme switching
+
+ADR-0003 Phase 1 / Wave 1 / Track G:
+- tokens.css (light, default :root) + tokens-dark.css ([data-theme=dark])
+- 13 colors (surface/accent/semantic) + 7 spacing + typography + radius +
+  shadow + motion (light vs dark differ only in colors + shadow alpha)
+- tailwind-preset.cjs uses rgb(var() / <alpha-value>) pattern for full
+  Tailwind opacity modifier support
+- useTheme hook with localStorage + prefers-color-scheme fallback
+- ThemeToggle component (emoji-based, theme-agnostic styling)
+- 10 unit tests (5 tokens, 5 use-theme via @testing-library/react +
+  happy-dom)
+
+apps/site (Track A) consumes via tailwind-preset, tokens.css imports,
+and ThemeToggle component.
+"
+git push
+```
+
+通知 orchestrator: Track G ready-for-review (escalate pr-gate 5.5)。Track A 在 G review pass 后才能启动。
+
+---
+
 ## Task Z: Wave 1 Close
 
 **Agent dispatch:** `orchestrator` 主导，调 `structure-auditor` + `git-operator`
@@ -2760,13 +3531,16 @@ git add docs/decisions/ADR-0002-wave-1-close.md \
         package.json
 git commit -m "docs(adr): ADR-0002 Wave 1 close — interface layer ready
 
-- 8 ts packages + apps/api FastAPI skeleton landed
-- 6 tracks all double-review pass; 4 high-risk tracks also pr-gate 5.5
+- 9 ts packages + apps/api FastAPI skeleton landed (incl design-tokens, ADR-0003)
+- 7 tracks (A-G) all double-review pass; high-risk tracks also pr-gate 5.5
+- BlockRegistry split into Core + UI dual layer per ADR-0003
+- Light + dark themes shipped; ThemeToggle wired in apps/site BaseLayout
 - structure-auditor baseline confirms zero god-files
 - Phase 0 deferred follow-ups #2/#3/#4/#6 resolved
 - #1/#5 deferred to natural Wave 2 triggers
 
-Wave 2 unlocked: 8 component blocks + 3 editor sub-modules + kernel-pyodide.
+Wave 2 unlocked: 8 component blocks (each: core/ + ui-default/) +
+3 editor sub-modules + kernel-pyodide + Playwright MCP integration.
 "
 git push
 ```
@@ -2775,39 +3549,45 @@ git push
 
 ## Self-Review
 
-**Spec coverage**：
+**Spec coverage（含 ADR-0003 后）**：
 
 - §1.1 部署拓扑：Track A (apps/site) + Track D (apps/api) 落地骨架
-- §1.2 技术栈：Astro 5 / Tiptap / FastAPI 全部装齐
+- §1.2 技术栈：Astro 5 + React 18 + Tiptap / FastAPI 全部装齐
 - §1.4 MDX 文件结构：Track C mdx-bridge 解析 frontmatter + body block；fixture 烟测
-- §1.5 编辑器架构：Track B BlockRegistry + Track F editor-commands 落地命令模式
+- §1.5 编辑器架构（ADR-0003 双层注册）：Track B BlockRegistry registerCore+registerUI + Track F editor-commands 落地命令模式
 - §1.6 KernelAdapter：Track E 接口冻结 + KernelRegistry 路由
 - §1.8 关键约束：站点纯静态（apps/site SSG，无 SSR）✓；不引入数据库✓；单用户密码✓；无第三方 OAuth✓；PyodideAdapter 独立工作（Wave 2 实现，本 Wave 接口已留位）
-- §2.5 跨包契约：8 个 CONTRACT.md（content-types / block-foundation / mdx-bridge / kernel-adapter / kernel-registry / editor-commands / agent-tools / api+ws+llm）
+- §2.5 跨包契约：**10 个 CONTRACT.md**（content-types / block-foundation / mdx-bridge / kernel-adapter / kernel-registry / editor-commands / agent-tools / api+ws+llm / **design-tokens / apps/site**）
 - §2.6 Agent 集成 Phase 1 必建项：4 个全建（editor-commands / agent-tools / ws / llm）
 - §3.4 plans/execution：Task Z 更新 active.md
-- §3.6 文件大小：每个新文件均在 300 行内（registry.ts 等都是 ~50 行）
-- §3.10 CI：Track A/D 加入后 ci.yml / link-check.yml / agent-contract-check.yml 三 workflow 应继续 pass
+- §3.6 文件大小：每个新文件均在 300 行内（registry.ts ~120 行 / use-theme.ts ~50 行 / tokens.css ~50 行）
+- §3.10 CI：Track A/D/G 加入后 ci.yml / link-check.yml / agent-contract-check.yml 三 workflow 应继续 pass
 - §3.11 ADR：Task Z 产出 ADR-0002
-- §4.2.1 Wave 1 退出标准：6 track 退出标准均映射为 task 内验收命令
+- §4.2.1 Wave 1 退出标准：7 track 退出标准均映射为 task 内验收命令
+- **ADR-0003**：design-tokens 包 + BlockRegistry 双层 + apps/site 切换按钮 + light/dark 主题 全部落地
 
-**Placeholder scan**：本 plan 无 TBD / TODO（除"Wave 2 will..."的明确推迟说明）。
+**Placeholder scan**：本 plan 无 TBD / TODO（除"Wave 2 will..."的明确推迟说明 + apps/site frontmatter inline schema 在 Track B 完成后改 import 的过渡说明）。
 
 **类型一致性**：
 - `BlockKind` 在 block-foundation 与 mdx-bridge 一致使用
+- `BlockCoreDefinition` / `BlockUIDefinition` 在 block-foundation 定义；Wave 2 各 block-X/core/ + block-X/ui-default/ 消费
 - `KernelAdapter` 接口在 kernel-adapter 定义、kernel-registry 消费、Wave 2 kernel-pyodide 实现
 - `Command` 类型在 editor-commands 定义、agent-tools 通过 `commandSchemas.X.omit({type: true})` 复用
+- `STORAGE_KEY` 在 design-tokens/use-theme.ts 与 apps/site/BaseLayout.astro inline script 字面同步（`'skb-theme'`）
+- `ThemeName = 'light' | 'dark'` 单一来源在 design-tokens
 - frontmatter schema 在 content-types 单一定义，apps/site 当前内联，待 Track B 完成后改 import（已注 TODO）
 
 **Risk-level mapping vs spec §3.2**：
-- Track B / C / E / F 触碰核心架构包 → 自动 escalate pr-gate 5.5 ✓
-- Track A / D 中风险（架构意义 + Phase 1 必建项）→ 仍 escalate 5.5（保守）✓
+- Track B / C / E / F / G 触碰核心架构 / 开源边界包 → 自动 escalate pr-gate 5.5 ✓
+- Track A / D 因消费 design-tokens / 含 Phase 1 必建项 → 仍 escalate 5.5 ✓
 - Task 0 / Task Z 中风险，单审 5.3-spark + Claude pr-reviewer 即可
 
 **Wave 1 → Wave 2 衔接**：
-- 所有接口冻结，Wave 2 可 12 路并行
+- 所有接口冻结（含 BlockRegistry Core+UI 双层），Wave 2 可 12 路并行
+- 每个 block-X 在 Wave 2 同时构建 core/ 与 ui-default/（部分 ui-default 由 codex-block-generator 仿造）
 - 5 个 codex-* worker 的首次实战在 Wave 2 启动
 - Playwright MCP 加入由 Wave 2 plan 处理（active.md 已记备忘）
+- 设计 skill 流水线（frontend-design → ui-ux-pro-max → Vercel）作用对象明确：仅 ui-default/，绝不碰 core/
 
 ---
 
@@ -2826,4 +3606,5 @@ git push
 - [设计规格](../specs/2026-04-29-self-knowledge-base-design.md)
 - [Phase 0 plan](2026-04-29-phase-0-scaffolding.md)
 - [ADR-0001](../../decisions/ADR-0001-stack-selection.md) Phase 0 errata + deferred follow-ups
+- [ADR-0003](../../decisions/ADR-0003-headless-presentational-split.md) headless / presentational 分层 + design-tokens + 开源就绪
 - [agent-contract.md](../../../agent-contract.md) 27 agent 单一源

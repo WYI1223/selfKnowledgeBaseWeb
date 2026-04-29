@@ -179,7 +179,7 @@ import { JupyterBlock, NeuralNetViz, AgentFlow, Math, Callout, PDF } from '@bloc
 
 **关键不变量**：prose 部分序列化为**纯 markdown**（不是 `<Paragraph>` JSX），只有 component blocks 才以 JSX 形式出现。这保证 git diff 干净，且文件仍然可以用 vim 直接修改。
 
-### 1.5 编辑器架构
+### 1.5 编辑器架构（ADR-0003 后：core / UI 双层注册）
 
 ```
 ┌──────────────────────────────────────────────────────────┐
@@ -190,25 +190,42 @@ import { JupyterBlock, NeuralNetViz, AgentFlow, Math, Callout, PDF } from '@bloc
            │
            ▼
 ┌──────────────────────────────────────────────────────────┐
-│  BlockRegistry                                           │
-│  每种 block 提供：                                         │
-│   ├─ EditorView   (在编辑器里如何显示/编辑)               │
-│   ├─ RenderView   (公开站点上如何渲染)                    │
-│   ├─ MdxSerialize (block 实例 → MDX JSX 文本)             │
-│   ├─ MdxParse     (MDX AST 节点 → block 实例)             │
-│   └─ Schema (Zod) (props 类型 / 默认值 / 验证)            │
+│  BlockRegistry (双层注册，ADR-0003)                       │
+│                                                          │
+│  registerCore(core: BlockCoreDefinition)：               │
+│   ├─ name / kind ('prose'|'component')                  │
+│   ├─ propsSchema (Zod)                                   │
+│   ├─ mdxComponent (PascalCase MDX 组件名)                 │
+│   └─ MDX serialize / parse 业务逻辑（无 React 依赖）       │
+│                                                          │
+│  registerUI(ui: BlockUIDefinition)：                      │
+│   ├─ coreName (绑定到已注册的 core)                       │
+│   ├─ uiId ('default' | 'minimal' | 用户自定义)            │
+│   ├─ EditorView (Tiptap NodeView 组件)                   │
+│   └─ RenderView (Astro / React 渲染组件)                  │
+│                                                          │
+│  同一 core 可挂多个 UI；getUI(name) 默认取第一个注册的     │
 └──────────┬───────────────────────────────────────────────┘
            │
            ▼
 ┌──────────────────────────────────────────────────────────┐
-│  内置 block 实现                                          │
+│  内置 block 实现 (每个 block-* 包内 core/ + ui-default/)  │
 │   Prose blocks (StarterKit + tiptap-markdown 提供):     │
 │     paragraph · heading(h1-h3) · bullet/ordered/task    │
 │     list · quote · inline-code · link · 强调样式          │
 │                                                          │
-│   Component blocks (我们实现):                            │
-│     code-block (展示) · math · callout · jupyter ·       │
+│   Component blocks (我们实现，含 ui-default):             │
+│     code-block · math · callout · jupyter ·              │
 │     nn-viz · agent-flow · image · pdf                    │
+└──────────┬───────────────────────────────────────────────┘
+           │
+           ▼
+┌──────────────────────────────────────────────────────────┐
+│  设计系统层 (packages/design-tokens, ADR-0003)            │
+│   CSS vars (color/space/type/radius/shadow/motion) ·     │
+│   Tailwind preset · 主题切换 hook · ThemeToggle 组件      │
+│   light + dark 双主题；data-theme 切换；prefers-color-    │
+│   scheme 兜底；FOUC inline-script 阻断                     │
 └──────────────────────────────────────────────────────────┘
 ```
 
@@ -298,30 +315,33 @@ RemoteKernelAdapter
 - **契约文档强制**：每个接口包含 `CONTRACT.md`，被 `code-reviewer` 强制审查
 - **单向依赖**：上游包永不依赖下游；具体见 §2.4 依赖图
 
-### 2.2 monorepo 结构（Phase 1 包数量：24 个）
+### 2.2 monorepo 结构（Phase 1 包数量：25 个；ADR-0003 后）
 
 ```
 SelfKnowledgeBaseWeb/
 ├── apps/
-│   ├── site/                                # Astro 前端 (公开 + 编辑器入口)
+│   ├── site/                                # Astro 前端 (公开 + 编辑器入口；Phase 3 重命名 demo)
 │   └── api/                                 # FastAPI 后端 (Edit API + WS + LLM bridge)
 │
 ├── packages/
+│   │  === 设计系统层（ADR-0003 新增）===
+│   ├── design-tokens/                       # ★ CSS vars + Tailwind preset + 主题切换 + ThemeToggle
+│   │
 │   │  === 基础设施层 ===
 │   ├── content-types/                       # Zod schemas 跨前后端共享
-│   ├── ui/                                  # shadcn 设计 tokens + primitives
+│   ├── ui/                                  # shadcn primitives（消费 design-tokens）
 │   ├── api-client/                          # [auto-generated] OpenAPI → TS
 │   │
-│   │  === Block 系统层 ===
-│   ├── block-foundation/                    # BlockRegistry 接口 + Prose blocks
-│   ├── block-callout/
-│   ├── block-code/
-│   ├── block-image/
-│   ├── block-math/
-│   ├── block-pdf/
-│   ├── block-jupyter/
-│   ├── block-nn-viz/
-│   ├── block-agent-flow/
+│   │  === Block 系统层（每个 block-* 包内 core/ + ui-default/ subfolder，ADR-0003）===
+│   ├── block-foundation/                    # BlockRegistry: registerCore + registerUI + Prose blocks
+│   ├── block-callout/                       # core/ + ui-default/
+│   ├── block-code/                          # core/ + ui-default/
+│   ├── block-image/                         # core/ + ui-default/
+│   ├── block-math/                          # core/ + ui-default/
+│   ├── block-pdf/                           # core/ + ui-default/
+│   ├── block-jupyter/                       # core/ + ui-default/
+│   ├── block-nn-viz/                        # core/ + ui-default/
+│   ├── block-agent-flow/                    # core/ + ui-default/
 │   │
 │   │  === MDX 桥接层 ===
 │   ├── mdx-bridge/                          # MDX ↔ Tiptap 双向
@@ -418,7 +438,8 @@ SelfKnowledgeBaseWeb/
 
 | 契约 | 位置 | 受影响双方 | 维护文档 |
 |---|---|---|---|
-| Block EditorView/RenderView 接口 | `packages/block-foundation/src/registry.ts` | 所有 block + editor + site | `block-foundation/CONTRACT.md` |
+| **Block Core / UI 双层接口（ADR-0003）** | `packages/block-foundation/src/registry.ts` | 所有 block 的 core + 所有 block 的 ui-default + editor + site | `block-foundation/CONTRACT.md` |
+| **设计 token 接口（ADR-0003）** | `packages/design-tokens/src/{tokens.css,tokens-dark.css,tailwind-preset.cjs,use-theme.ts}` | apps/site + 每个 block-X/ui-default + packages/ui | `design-tokens/CONTRACT.md` |
 | MDX ↔ block 序列化协议 | `packages/mdx-bridge/src/round-trip.test.ts` | mdx-bridge + 每个 block | `mdx-bridge/CONTRACT.md` |
 | KernelAdapter 接口 | `packages/kernel-adapter/src/adapter.ts` | jupyter / runnable-code blocks | `kernel-adapter/CONTRACT.md` |
 | API endpoints | `apps/api/app/schemas.py` (Pydantic) | api-client (auto-gen) | `apps/api/CONTRACT.md` |
@@ -1235,3 +1256,10 @@ PR / commit 数量随任务自然产生，不预设目标。Wave 内若实际工
 | 2026-04-29 | 节奏事件驱动而非日期驱动 | 实际工作量不可预估；强制按退出标准推进 |
 | 2026-04-29 | Phase 1 退出后强制 pause | 给 user 时间真实使用 + auditors 跑全套，反馈影响 Phase 2a 计划 |
 | 2026-04-29 | PR / commit 数量随任务自然产生 | 不预设目标避免凑数或规避拆分 |
+| 2026-04-29 | **Headless / Presentational 分层（ADR-0003）** | 开源给别人复用；视觉与功能必须物理可分；ADR-0003 完整记录 |
+| 2026-04-29 | 新增 packages/design-tokens（Phase 1 包 24 → 25） | CSS vars + Tailwind preset + 主题切换 hook 单一权威源 |
+| 2026-04-29 | BlockRegistry 拆 Core + UI 双层注册 | core 无 React 依赖；同一 core 可挂多个 UI（ui-default + 用户自定义） |
+| 2026-04-29 | block-X 包内部 core/ + ui-default/ subfolder | 不全拆 2 包（24→48 太多）；用 package.json#exports 提供路径级隔离；将来要拆是 mv 操作 |
+| 2026-04-29 | Phase 1 同时 ship light + dark 双主题 | 验证 token 切换链路全程；不只画饼 |
+| 2026-04-29 | 显式主题切换按钮 + prefers-color-scheme 兜底 | 用户可干预；首访按系统偏好；FOUC 用 inline script 阻断 |
+| 2026-04-29 | npm 发布推到 Phase 3 | Phase 1 / 2 仍 private:true；架构开源就绪即可，发布工作量独立 |

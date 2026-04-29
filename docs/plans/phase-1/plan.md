@@ -21,10 +21,11 @@
 ## Wave 2 plan 写作时需要前置考虑（迁移自 active.md 备忘）
 
 - Playwright MCP server 加入 Claude Code（让 viz / editor agent 能开浏览器自检）
-- 8 个 component block 模板/变体分工（block-callout 由 simple-block-eng template，block-code/image 由 codex-block-generator 仿造）
-- 3 个 editor 子模块（editor-slash-menu / editor-drag-handle / editor-toolbar）由 editor-integrator
+- **每个 component block 拆 core/ + ui-default/（ADR-0003）**：core 由 Claude template，ui-default 部分由 codex-block-generator 仿造，部分由 codex-css-stylist 装填样式
+- 3 个 editor 子模块（editor-slash-menu / editor-drag-handle / editor-toolbar）由 editor-integrator；这三个本质是 UI，需消费 design-tokens preset
 - kernel-pyodide 实现（kernel-pyodide-eng）
 - codex-test-scaffolder / codex-script-builder / codex-css-stylist 首次实战（评估 5.3-spark 在脚手架场景的产出质量）
+- 设计 skill 流水线（frontend-design → ui-ux-pro-max → Vercel）作用对象明确：仅各 block 的 ui-default/，绝不碰 core/
 
 ## Wave 间衔接原则
 
