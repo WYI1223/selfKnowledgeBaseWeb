@@ -6,9 +6,9 @@ export default tseslint.config(
   // Universal recommended (no type-aware)
   js.configs.recommended,
 
-  // Type-aware lint ONLY for TS files in apps/* and packages/*
+  // Type-aware lint for TS files in apps/*, packages/*, and scripts/
   {
-    files: ['apps/**/*.{ts,tsx}', 'packages/**/*.{ts,tsx}'],
+    files: ['apps/**/*.{ts,tsx}', 'packages/**/*.{ts,tsx}', 'scripts/**/*.ts'],
     extends: [...tseslint.configs.recommendedTypeChecked],
     languageOptions: {
       parserOptions: {
@@ -22,7 +22,7 @@ export default tseslint.config(
     },
   },
 
-  // Same max-lines rule for non-typed files (config, scripts) without type-aware
+  // Same max-lines rule for non-typed JS files (config, mjs/cjs tooling)
   {
     files: ['**/*.{js,mjs,cjs}'],
     languageOptions: {
