@@ -7,8 +7,8 @@
 
 | Wave | 主题 | 文件 | 状态 |
 |---|---|---|---|
-| 1 | 基础设施 + 接口（6 路并行） | [2026-04-29-phase-1-wave-1-foundation.md](../../superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md) | 待执行 |
-| 2 | 实现层（12 路并行 + 首次 codex worker 实战） | 待 Wave 1 完工后用 superpowers:writing-plans 起草 | pending |
+| 1 | 基础设施 + 接口（6 路并行） | [2026-04-29-phase-1-wave-1-foundation.md](../../superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md) | ✅ closed by [ADR-0002](../../decisions/ADR-0002-wave-1-close.md) (2026-04-30) |
+| 2 | 实现层（12 路并行 + 首次 codex worker 实战） | 待 Wave 1 完工后用 superpowers:writing-plans 起草 | pending plan draft |
 | 3 | 集成（editor-shell + site 接入 + search） | 待 Wave 2 完工后起草 | pending |
 | 4 | 验收 + 部署（Cloudflare Pages + Tunnel + perf baseline） | 待 Wave 3 完工后起草 | pending |
 

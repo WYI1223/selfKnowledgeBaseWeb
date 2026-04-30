@@ -21,10 +21,28 @@
 - **Tailwind preset is the single source of truth**: `apps/site` and every `block-*/ui-default/` MUST consume this preset. Hand-rolling `theme.colors` or hard-coding color / spacing / typography values is rejected by `pr-gate`.
 - **Persistence is coupled to manual user action only** (ADR-0003 D6): `useTheme`'s mount effect calls `applyThemeDOM` only — it never writes localStorage. Persistence happens in `setTheme` / `toggle`. This preserves the property "system OS theme change is reflected on next visit unless the user has explicitly chosen a theme."
 
+## Inverse-direction obligation: replicas of pre-hydration algorithms
+
+Some algorithms in this package must be replicated in inline code that runs **before any module loads** (e.g. an Astro `<script is:inline>` in `<head>` that prevents FOUC), and therefore cannot import from `@skb/design-tokens`. Those replicas carry an inverse-direction obligation: the authority lives here, but the correctness contract binds every consumer that ships its own copy.
+
+**Currently in scope**: `getInitialTheme()` in `src/use-theme.ts` (the boot-theme derivation: localStorage → `prefers-color-scheme` → `'light'` default).
+
+Any consumer that replicates this algorithm in inline code MUST be byte-equivalent to the authority in BOTH happy-path AND exception handling:
+
+1. **Strict-whitelist saved value**: only `saved === 'light' || saved === 'dark'` honors the stored value; anything else falls through to `matchMedia('(prefers-color-scheme: dark)')`. A truthy-coerce check (e.g. `saved ? saved === 'dark' : ...`) diverges for invalid / case-mismatched / legacy localStorage values and produces a hydration flash on first paint.
+2. **Narrow `try/catch` scope**: the `try/catch` MUST wrap ONLY the `localStorage.getItem` call. `matchMedia` + DOM apply MUST run AFTER the catch handler. A wide-scope `try/catch` swallows the `matchMedia` path on Safari Private Mode / iOS WebView with storage restrictions / browsers with localStorage disabled — producing light when system pref is dark, i.e. hydration flash.
+3. **Hardcoded storage key literal**: replicas hardcode `'skb-theme'` (the value of `STORAGE_KEY` in `src/use-theme.ts`) because they cannot import the constant at FOUC-script time. Renaming `STORAGE_KEY` is a contract break that requires updating every replica in the same PR.
+
+**Required regression test**: every consumer with an inline replica MUST register a test that asserts byte-equivalence against the authority. Template: `apps/site/src/__tests__/fouc-script.test.ts` — extracts the IIFE from the consumer file, evaluates it via `new Function('localStorage', 'window', 'document', iife)` against parametrized fakes, compares output against `getInitialTheme()` for a 16-row saved-value × system-preference corpus + 2 storage-throws × system-preference rows + 1 truthy-coerce regression assertion (20 tests total). The two storage-throws rows are critical: the saved-value corpus alone passes under a wide-scope `try/catch`.
+
+**Failure mode reference**: Track A v1 review caught happy-path divergence (truthy-coerce); v2 fixed (1) but kept wide-scope `try/catch`; v3 fixed (2). Both v1 and v2 would have shipped visible hydration flash without pr-gate's catch.
+
+**Current consumers**: `apps/site` (Wave 1, `src/layouts/BaseLayout.astro`). Wave 2+ consumers (e.g. additional Astro apps, future open-source `apps/demo`) MUST follow this template.
+
 ## Consumer rules
 
 - **Hydration**: `useTheme` and `ThemeToggle` MUST be used inside a client-only Astro island (`client:load` minimum). The hook reads `window.matchMedia` and `window.localStorage` at first render — passive SSR markup is fine, but island hydration directive must be `client:load` or stricter.
-- **FOUC bridge** (apps/site responsibility): the BaseLayout `<script is:inline>` in `<head>` must (a) read `localStorage.getItem('skb-theme')` literally, (b) fall back to `matchMedia('(prefers-color-scheme: dark)').matches`, and (c) set `data-theme="dark"` on `<html>` accordingly — **before** any React island hydrates. The inline script must NOT write localStorage.
+- **FOUC bridge** (apps/site responsibility): the BaseLayout `<script is:inline>` in `<head>` must read `localStorage.getItem('skb-theme')` literally, fall back to `matchMedia('(prefers-color-scheme: dark)').matches`, and set `data-theme="dark"` on `<html>` accordingly — **before** any React island hydrates. The inline script must NOT write localStorage. The detailed correctness obligation (algorithm + try/catch scope + literal sync + required regression test) is enumerated in the **Inverse-direction obligation** section above.
 
 ## Modifying this file
 

@@ -88,8 +88,8 @@ Claude Code agent team 支持两种协作模式，**本项目（SelfKnowledgeBas
 
 | 角色 | 触发 | 行为 |
 |---|---|---|
-| `code-reviewer` | orchestrator SendMessage 通知 PR ready | 读 git diff，调 `codex exec --profile code-reviewer`；输出 PASS / FAIL + 具体问题 |
-| `pr-gate` | code-reviewer pass 后，orchestrator 判断高风险触发 | 调 `codex exec --profile pr-gate`（5.5）；输出 PASS / FAIL |
+| `code-reviewer` | orchestrator SendMessage 通知 PR ready | 读 git diff，调 `codex exec --profile code-reviewer`；输出 PASS / FAIL + 具体问题。**强制 [ADR-0006](../decisions/ADR-0006-asymmetry-audit-checklist.md) 8-point asymmetry-audit checklist**（每条可适用项目都要在 verdict 里给结论） |
+| `pr-gate` | code-reviewer pass 后，orchestrator 判断高风险触发 | 调 `codex exec --profile pr-gate`（5.5）；输出 PASS / FAIL。**强制 [ADR-0006](../decisions/ADR-0006-asymmetry-audit-checklist.md) 8-point asymmetry-audit checklist + 8th-class hunt**（独立验证 R1 结论 + 主动 hunt cited-fix 之外的对称性缺口） |
 | `pr-reviewer` | code-reviewer (+pr-gate if applicable) pass 后 | 读 spec / plan / diff；输出 APPROVE / REJECT + 跨文件影响分析 |
 | `git-operator` | pr-reviewer APPROVE 后 | 执行 `git add` / `git commit` / `git push`；不修改代码内容 |
 | `refactorer` | structure-auditor 标记或 manual 触发 | 唯一被授权跨包代码移动；每次产 ADR |

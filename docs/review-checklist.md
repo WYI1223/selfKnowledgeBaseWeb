@@ -17,6 +17,21 @@ This is the shared rubric for the review chain. Each section maps to one reviewe
 
 Spec: §3.1 + §3.2 + §3.6 + §3.5.
 
+## ADR-0006 asymmetry-audit checklist (mandatory for code-reviewer + pr-gate)
+
+Apply each item that is in scope for the PR; explicitly skip items that are not (e.g. item #2 "status code" doesn't apply to TS-only packages). Reviewer verdict structure MUST include `asymmetry-audit applied: items {1..8} verdicts: ...`. See [ADR-0006](decisions/ADR-0006-asymmetry-audit-checklist.md) for empirical evidence + full rationale per item.
+
+- [ ] **#1 Field/attribute audit**: After adding a field to a data shape, audit every comparator/equality/serialization function for that field.
+- [ ] **#2 Status code audit**: After adding a status code to one handler, audit every other handler emitting the same code; RFC-mandated headers (RFC 7235 `WWW-Authenticate`, RFC 7231 `Allow`) attach to the status code itself.
+- [ ] **#3 Strictness audit**: After adding `.strict()` / `extra='forbid'` at one level, audit every nested object/sub-schema (strictness does not propagate).
+- [ ] **#4 Consumer schema audit**: After defining a schema in a single-authority package, audit every consumer for inline duplicates; "deferred swap" is a contract break.
+- [ ] **#5 Algorithm + runtime constant replication audit**: When an algorithm or constant is replicated outside its authority (inline FOUC scripts, login challenge derivation, etc.), audit consumer-side replicas for byte-equivalent reproduction; replica MUST register a regression test against the authority's input corpus.
+- [ ] **#6 Sister-file documentation audit**: After updating one CONTRACT.md (or analogous document), audit ALL related CONTRACT.md files for sister-file drift; shared identifiers must use identical terminology across both halves of the contract.
+- [ ] **#7 Exception-scope equivalence audit**: When replicating an algorithm + its exception handling, audit BOTH happy-path semantics AND `try/catch` scope between authority and replica; narrow vs wide try/catch can produce divergent fall-through behavior.
+- [ ] **#8 Authority-document → generated/consumed surface audit**: When updating an authority document (ADR, spec, `agent-contract.md`, runbook, CONVENTIONS) that mandates downstream behavior, audit every consumer-side replica/generated artifact in the same commit; regenerate codegen outputs (`pnpm generate:configs`); cross-link runbooks; embed in subagent prompts.
+
+`pr-gate` MUST additionally hunt for an 8th-class instance beyond the cited fix (Wave 1 evidence: pr-gate caught one extra asymmetry per round on every Wave 1 high-risk PR).
+
 ## For code-reviewer (Codex 5.3-spark)
 
 Default cheap line-level review. Output PASS / FAIL with concrete issues.

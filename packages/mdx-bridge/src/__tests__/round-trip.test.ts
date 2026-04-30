@@ -123,6 +123,15 @@ describe('fail-loud contract', () => {
     expect(() => tiptapToMdx(doc)).toThrowError(/unsupported block type "unknownBlockType"/);
   });
 
+  it('throws on unknown block type during parsing', () => {
+    // mdast `definition` is a block-level reference target (e.g. `[foo]: /url`).
+    // Wave 1 declines to support it. Parse must throw so callers can't
+    // accidentally introduce silently-dropped content. (Wave 2 will add
+    // definition / linkReference support as a fixture pair if ever needed.)
+    const source = '---\nt: x\n---\n\n[foo]: /url\n';
+    expect(() => mdxToTiptap(source)).toThrowError(/unsupported block type "definition"/);
+  });
+
   it('throws on unknown inline type during parsing', () => {
     // mdast `image` is a phrasing node; Wave 1 declines to support it. Parse
     // must throw so callers can't accidentally introduce silently-dropped

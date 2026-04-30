@@ -49,7 +49,7 @@ Wave 1 baseline (9 prose fixtures × 2 invariants = 18 RTT assertions):
 | `06-nested-inline.mdx` | nested inline marks (multi-child strong/emphasis/link) |
 | `07-link-with-title.mdx` | link with title attribute (e.g. `[x](url "title")`) |
 | `08-bold-with-break.mdx` | hard break (`\\\n`) inside a strong span |
-| `09-link-title-comparator.mdx` | adjacent same-href links with distinct titles |
+| `09-link-title-comparator.mdx` | same-href links with distinct titles separated by text in a paragraph (adjacent-shape coverage lives in dedicated `marksEqual` regression tests in `round-trip.test.ts`) |
 
 Wave 2+ rule: every new component block (callout, math, pdf, jupyter, etc.)
 must add at least one fixture exercising its MDX form, and that fixture must
