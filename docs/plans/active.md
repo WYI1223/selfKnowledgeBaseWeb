@@ -3,7 +3,9 @@
 > SessionStart hook 读取此文件，把当前 wave 印在 session 起手位置。
 
 **当前 phase**: 1
-**当前 wave**: Wave 1 ✅ **closed** (2026-04-30, HEAD `b5e7217`) → Wave 2 plan 待起草（**前置 ADR-0007 实施**）
+**当前 wave**: Wave 2 plan 🔒 **locked** (2026-04-30, plan: [`docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md`](../superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md)) → Pre-Task 0 启动（TeamCreate `phase-1-wave-2` + spawn 20 teammates + TaskCreate × ~28 sub-tasks）。
+
+Wave 1 ✅ closed (2026-04-30, HEAD `b5e7217`); Wave 2 Pre-Task 0 (ADR-0007 实施) ✅ committed (`691bc30`); follow-up² ✅ committed (`932a919`).
 **新增架构 ADR**:
 - [ADR-0002](../decisions/ADR-0002-wave-1-close.md) Wave 1 close — 22 errata + 3 cross-package single-authority invariants
 - [ADR-0006](../decisions/ADR-0006-asymmetry-audit-checklist.md) 8-point cross-location asymmetry-audit checklist (process rule, mandatory for code-reviewer + pr-gate; embedded in `agent-contract.md` + regenerated subagent prompts + cross-linked from team-operations.md)
