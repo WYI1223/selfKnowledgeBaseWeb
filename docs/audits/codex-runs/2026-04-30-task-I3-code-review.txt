@@ -1,0 +1,2012 @@
+Reading additional input from stdin...
+OpenAI Codex v0.125.0 (research preview)
+--------
+workdir: /home/weiyi/selfKnowledgeBaseWeb
+model: gpt-5.3-codex-spark
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: xhigh
+reasoning summaries: none
+session id: 019ddfe0-9678-7fe1-a605-ea162892ed45
+--------
+user
+你是 code-reviewer profile (gpt-5.3-spark)。审 SelfKnowledgeBaseWeb Wave 2 Task #8 (I3: scripts/extract-pdf-text.ts CLI 工具)。
+
+## Bundle scope (working tree, source only — lockfile/package.json 待 git-operator 处理)
+- scripts/extract-pdf-text.ts (新, ~250 行 commander CLI + pdfjs-dist worker)
+- scripts/__tests__/extract-pdf-text.test.ts (新, ~150 行, 6 cases all PASS)
+- (将 stage) docs/audits/codex-runs/2026-04-30-task-I3-extract-pdf-text.txt (audit log)
+
+⚠️ **不审**：
+- pnpm-lock.yaml (cross-task 污染 — F kernel-pyodide-eng 也 install pyodide；git-operator 用 lockfile blob restore 处理)
+- package.json (待 git-operator 抽取 pdfjs-dist 单独 delta)
+
+## 触发链
+普通 PR (D2 row 不触发) → 你是唯一 reviewer。
+
+## 历史 context
+- I1 (refactor-move) + I2 (new-block) 同 codex-script-builder 模式：codex spark 不跑 lint，PASS != lint clean (WE-007 lesson)
+- I3 codex sandbox 没网络无法 install pdfjs-dist，host orchestrator 后续 install
+- 6/6 测试 PASS 验证（host 跑）
+
+## 必查
+1. ADR-0006 8-point checklist:
+   - item #6 sister-doc: scripts/extract-pdf-text.ts 风格与 scripts/refactor-move.ts (I1) + scripts/new-block.ts (I2) 一致 (commander CLI + 错误处理 + --help / --output flags)
+   - item #1: pdfjs-dist API surface (PDFDocumentProxy / TextItem 等) 是否合理 import + handle
+   - item #4 consumer schema: N/A (无 single-authority schema)
+   - item #8 authority → consumer: lockfile-as-derivative (WE-002 lesson) — 注 git-operator 后续处理；codex review scope 不含 lockfile
+2. CLI 行为:
+   - 正常 plain text PDF
+   - 空 PDF / 扫描件 → empty + warning + exit 0
+   - 文件不存在 / 非 PDF / corrupt → throw exit 1
+   - --output 输出到指定 .txt
+   - --help 输出 usage (注：WE-007 lesson —— 检查 test 是否含 --help case 与 I2 R2 fix 风格一致)
+3. pdfjs-dist worker thread 决策合理性 (vs alternatives like pdf-parse)
+4. 6 测试 case fixture 是否 representative 覆盖
+5. 类型 safety：FIX-I1 lesson (TS exactOptionalPropertyTypes) + FIX-I2 lesson (no-redundant-type-constituents / no-unnecessary-type-assertion)。check 这些 patterns
+
+## 不在 scope
+- 不审 working tree F (kernel-pyodide/) in-flight
+- 不修改文件
+- 不审 lockfile / package.json delta（git-operator 后续 protocol 处理）
+
+输出 verdict: PASS/FAIL + 'asymmetry-audit applied'。开始。
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the vendored bubblewrap in the meantime.
+codex
+在按 code-reviewer scope 直接开始审阅。我先并行读取：`scripts/extract-pdf-text.ts`、对应测试、以及 I1/I2 的参考脚本（`scripts/refactor-move.ts`、`scripts/new-block.ts`）以核对 CLI 风格与类型/错误边界一致性。随后给出 PASS/FAIL 判定与关键发现。
+exec
+/bin/bash -lc "sed -n '1,320p' /home/weiyi/selfKnowledgeBaseWeb/scripts/extract-pdf-text.ts" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1,260p' /home/weiyi/selfKnowledgeBaseWeb/scripts/__tests__/extract-pdf-text.test.ts" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1,360p' /home/weiyi/selfKnowledgeBaseWeb/scripts/refactor-move.ts" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1,360p' /home/weiyi/selfKnowledgeBaseWeb/scripts/new-block.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 129ms:
+#!/usr/bin/env tsx
+import { Command } from 'commander';
+import { createRequire } from 'node:module';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, extname, resolve } from 'node:path';
+import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist/legacy/build/pdf.mjs';
+
+const PDF_SIGNATURE = '%PDF-';
+const OCR_FALLBACK_WARNING =
+  '⚠ No extractable text found. This PDF may be scanned; output is intentionally empty.';
+
+type PdfTextItem = {
+  str?: string;
+};
+
+type PdfTextContent = {
+  items: readonly PdfTextItem[];
+};
+
+type PdfPage = {
+  getTextContent: () => Promise<PdfTextContent>;
+};
+
+type PdfDocument = {
+  numPages: number;
+  getPage: (pageNumber: number) => Promise<PdfPage>;
+  destroy: () => Promise<void> | void;
+};
+
+type PdfLoadingTask = {
+  promise: Promise<PdfDocument>;
+};
+
+type PdfLoadFn = (options: {
+  data: Uint8Array;
+  disableWorker: boolean;
+}) => PdfLoadingTask;
+
+type WorkerOptions = {
+  workerSrc: string;
+};
+
+type ExtractPdfTextResult = {
+  text: string;
+  outputPath?: string;
+  warning?: string;
+};
+
+type ExtractPdfTextOptions = {
+  pdfPath: string;
+  output?: string | undefined;
+  cwd?: string | undefined;
+};
+
+function buildPdfWorker(): void {
+  const require = createRequire(import.meta.url);
+  const packageRoot = require.resolve('pdfjs-dist/package.json');
+  (GlobalWorkerOptions as WorkerOptions).workerSrc = resolve(
+    dirname(packageRoot),
+    'legacy',
+    'build',
+    'pdf.worker.mjs',
+  );
+}
+
+function itemToText(item: unknown): string {
+  if (typeof item !== 'object' || item === null) {
+    return '';
+  }
+
+  const mapped = item as { str?: unknown };
+  return typeof mapped.str === 'string' ? mapped.str : '';
+}
+
+function resolvePdfPath(rawPdfPath: string, cwd: string): string {
+  const pdfPath = resolve(cwd, rawPdfPath);
+  if (!existsSync(pdfPath)) {
+    throw new Error(`PDF file does not exist: ${rawPdfPath}`);
+  }
+  if (extname(pdfPath).toLowerCase() !== '.pdf') {
+    throw new Error(`Invalid file extension: expected .pdf`);
+  }
+  return pdfPath;
+}
+
+function ensurePdfHeader(data: Buffer): void {
+  if (!data.slice(0, PDF_SIGNATURE.length).equals(Buffer.from(PDF_SIGNATURE))) {
+    throw new Error('Corrupt PDF file: unable to read PDF header');
+  }
+}
+
+async function extractText(pdfPath: string): Promise<string> {
+  const raw = readFileSync(pdfPath);
+  ensurePdfHeader(raw);
+
+  buildPdfWorker();
+  const loadPdfDocument = getDocument as PdfLoadFn;
+  const loadingTask = loadPdfDocument({
+    data: new Uint8Array(raw),
+    disableWorker: false,
+  });
+
+  let document: PdfDocument | null = null;
+  try {
+    document = await loadingTask.promise;
+    const pageCount = document.numPages;
+    const pageTexts: string[] = [];
+
+    for (let pageIndex = 1; pageIndex <= pageCount; pageIndex += 1) {
+      const page = await document.getPage(pageIndex);
+      const textContent = await page.getTextContent();
+      const pageText = textContent.items.map(itemToText).join(' ').trim();
+      if (pageText.length > 0) {
+        pageTexts.push(pageText);
+      }
+    }
+
+    return pageTexts.join('\n').trim();
+  } finally {
+    if (document) {
+      await document.destroy();
+    }
+  }
+}
+
+export async function extractPdfText(options: ExtractPdfTextOptions): Promise<ExtractPdfTextResult> {
+  const cwd = resolve(options.cwd ?? process.cwd());
+  const pdfPath = resolvePdfPath(options.pdfPath, cwd);
+  const outputPath = options.output ? resolve(cwd, options.output) : undefined;
+
+  let text: string;
+  try {
+    text = await extractText(pdfPath);
+  } catch (error) {
+    throw new Error(
+      error instanceof Error ? error.message : 'Corrupt PDF file: unable to read PDF content',
+    );
+  }
+
+  const cleanText = text.trim();
+  const warning = cleanText.length === 0 ? OCR_FALLBACK_WARNING : undefined;
+
+  if (outputPath) {
+    writeFileSync(outputPath, cleanText, 'utf8');
+  }
+
+  return { text: cleanText, outputPath, warning };
+}
+
+export function getExtractPdfTextHelp(): string {
+  return buildCommand().helpInformation();
+}
+
+export function buildCommand(): Command {
+  const program = new Command();
+
+  program
+    .name('extract-pdf-text')
+    .description('Extract plain text from a PDF file for search-index')
+    .argument('<pdf-path>', 'path to input PDF')
+    .option('--output <txt>', 'write extracted text to file (default: stdout)')
+    .helpOption('--help', 'display help for command')
+    .action(async (pdfPath: string, options: { output?: string }) => {
+      const { text, outputPath, warning } = await extractPdfText({
+        pdfPath,
+        output: options.output,
+      });
+
+      if (warning) {
+        console.error(warning);
+      }
+
+      if (!outputPath) {
+        process.stdout.write(text);
+      }
+    });
+
+  return program;
+}
+
+function runCli(): void {
+  const program = buildCommand();
+  void program.parseAsync(process.argv).catch((error) => {
+    console.error((error as Error).message);
+    process.exit(1);
+  });
+}
+
+if (import.meta.url === `file://${process.argv[1]}`) {
+  runCli();
+}
+
+ succeeded in 129ms:
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { describe, expect, it } from 'vitest';
+import { extractPdfText, getExtractPdfTextHelp } from '../extract-pdf-text.ts';
+
+function escapePdfText(text: string): string {
+  return text.replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
+}
+
+function buildPdfBuffer(pageLines: string[]): Buffer {
+  if (pageLines.length === 0) {
+    throw new Error('buildPdfBuffer requires at least one page');
+  }
+
+  const pageCount = pageLines.length;
+  const fontObjectId = 3 + pageCount * 2;
+  const maxObjectId = fontObjectId;
+
+  const objects = new Array<string>(maxObjectId + 1);
+  const pageIds = pageLines.map((_, index) => 3 + index * 2);
+  const kidRefs = pageIds.map((id) => `${id} 0 R`).join(' ');
+
+  objects[1] = [
+    '1 0 obj',
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    'endobj',
+  ].join('\n');
+
+  objects[2] = [
+    '2 0 obj',
+    `<< /Type /Pages /Kids [${kidRefs}] /Count ${pageCount} >>`,
+    'endobj',
+  ].join('\n');
+
+  for (let index = 0; index < pageCount; index += 1) {
+    const pageObjectId = pageIds[index];
+    if (!pageObjectId) {
+      throw new Error('Missing page object id');
+    }
+    const contentObjectId = 4 + index * 2;
+    if (!contentObjectId) {
+      throw new Error('Missing content object id');
+    }
+    const line = pageLines[index];
+    const pageContent = line.length === 0 ? 'BT\n/F1 24 Tf\nET' : `BT\n/F1 24 Tf\n72 720 Td\n(${escapePdfText(line)}) Tj\nET`;
+    const pageContentLength = Buffer.byteLength(pageContent, 'utf8');
+
+    objects[pageObjectId] = [
+      `${pageObjectId} 0 obj`,
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 ${fontObjectId} 0 R >> >> /Contents ${contentObjectId} 0 R >>`,
+      'endobj',
+    ].join('\n');
+
+    objects[contentObjectId] = [
+      `${contentObjectId} 0 obj`,
+      `<< /Length ${pageContentLength} >>`,
+      'stream',
+      pageContent,
+      'endstream',
+      'endobj',
+    ].join('\n');
+  }
+
+  objects[fontObjectId] = [
+    `${fontObjectId} 0 obj`,
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+    'endobj',
+  ].join('\n');
+
+  let source = '%PDF-1.4\n%PDF';
+  const offsets = new Array<number>(maxObjectId + 1).fill(0);
+
+  for (let objectId = 1; objectId <= maxObjectId; objectId += 1) {
+    const objectText = objects[objectId];
+    if (!objectText) {
+      throw new Error(`Missing object definition: ${objectId}`);
+    }
+
+    offsets[objectId] = Buffer.byteLength(source, 'utf8');
+    source += `\n${objectText}\n`;
+  }
+
+  const xrefOffset = Buffer.byteLength(source, 'utf8');
+  const xrefLines = ['xref', `0 ${maxObjectId + 1}`, '0000000000 65535 f '];
+  for (let objectId = 1; objectId <= maxObjectId; objectId += 1) {
+    xrefLines.push(`${String(offsets[objectId]).padStart(10, '0')} 00000 n `);
+  }
+
+  source += `\n${xrefLines.join('\n')}\n`;
+  source += [
+    `trailer << /Size ${maxObjectId + 1} /Root 1 0 R >>`,
+    'startxref',
+    String(xrefOffset),
+    '%%EOF',
+  ].join('\n');
+
+  return Buffer.from(source, 'utf8');
+}
+
+function writePdf(workspace: string, fileName: string, pageLines: string[]): string {
+  const pdfPath = join(workspace, fileName);
+  writeFileSync(pdfPath, buildPdfBuffer(pageLines));
+  return pdfPath;
+}
+
+describe('extractPdfText', () => {
+  it('extracts plain text from a normal PDF', async () => {
+    const workspace = mkdtempSync(join(tmpdir(), 'extract-pdf-text-'));
+
+    try {
+      const pdfPath = writePdf(workspace, 'plain.pdf', ['alpha', 'beta']);
+      const result = await extractPdfText({ pdfPath });
+      expect(result.warning).toBeUndefined();
+      expect(result.text).toContain('alpha');
+      expect(result.text).toContain('beta');
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it('treats scanned/empty PDFs as OCR fallback and returns empty output with warning', async () => {
+    const workspace = mkdtempSync(join(tmpdir(), 'extract-pdf-text-'));
+
+    try {
+      const pdfPath = writePdf(workspace, 'blank.pdf', ['']);
+      const result = await extractPdfText({ pdfPath });
+
+      expect(result.text).toBe('');
+      expect(result.warning).toMatch(/No extractable text found/);
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it('throws for missing PDF file', async () => {
+    const workspace = mkdtempSync(join(tmpdir(), 'extract-pdf-text-'));
+
+    try {
+      await expect(
+        extractPdfText({ pdfPath: join(workspace, 'does-not-exist.pdf') }),
+      ).rejects.toThrow(/does not exist/);
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it('throws for non-PDF files', async () => {
+    const workspace = mkdtempSync(join(tmpdir(), 'extract-pdf-text-'));
+    const textPath = join(workspace, 'notes.txt');
+    writeFileSync(textPath, 'not a pdf');
+
+    try {
+      await expect(extractPdfText({ pdfPath: textPath })).rejects.toThrow(/expected \.pdf/);
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it('writes extracted text to --output path when specified', async () => {
+    const workspace = mkdtempSync(join(tmpdir(), 'extract-pdf-text-'));
+
+    try {
+      const pdfPath = writePdf(workspace, 'plain.pdf', ['write output']);
+      const outputPath = join(workspace, 'output.txt');
+
+      const result = await extractPdfText({
+        pdfPath,
+        output: outputPath,
+      });
+
+      expect(existsSync(outputPath)).toBe(true);
+      expect(readFileSync(outputPath, 'utf8')).toBe(result.text);
+      expect(result.text).toContain('write output');
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it('--help includes usage and option', () => {
+    const help = getExtractPdfTextHelp();
+    expect(help).toContain('Usage:');
+    expect(help).toContain('extract-pdf-text [options] <pdf-path>');
+    expect(help).toContain('--output <txt>');
+    expect(help).toContain('--help');
+  });
+});
+
+ succeeded in 165ms:
+#!/usr/bin/env tsx
+import { Command } from 'commander';
+import { Project, type ExportDeclaration, type SourceFile } from 'ts-morph';
+import { existsSync, mkdirSync, renameSync } from 'node:fs';
+import { dirname, extname, relative, resolve, sep } from 'node:path';
+
+const SOURCE_GLOBS = ['packages/**/*.{ts,tsx}', 'apps/**/*.{ts,tsx}'];
+
+type RewriteRecord = {
+  filePath: string;
+  from: string;
+  to: string;
+  apply: () => void;
+};
+
+export type RefactorMoveReport = {
+  from: string;
+  to: string;
+  dryRun: boolean;
+  updates: Array<{ filePath: string; from: string; to: string }>;
+  plan: string[];
+};
+
+type RefactorMoveOptions = {
+  from: string;
+  to: string;
+  dryRun?: boolean;
+  cwd?: string;
+};
+
+const TS_IMPORT_EXT = /\.tsx?$/;
+
+function asPosix(filePath: string): string {
+  return filePath.split(sep).join('/');
+}
+
+function toDisplayPath(path: string, baseDir: string): string {
+  const rel = relative(baseDir, path);
+  return asPosix(rel === '' ? '.' : rel);
+}
+
+function candidatesForImport(sourceDir: string, moduleSpecifier: string): string[] {
+  const base = resolve(sourceDir, moduleSpecifier);
+  return [base, `${base}.ts`, `${base}.tsx`, resolve(base, 'index.ts'), resolve(base, 'index.tsx')];
+}
+
+function hasMatchingTarget(
+  sourceDir: string,
+  moduleSpecifier: string,
+  targetAbsolutePath: string,
+): boolean {
+  if (!moduleSpecifier.startsWith('.')) {
+    return false;
+  }
+  return candidatesForImport(sourceDir, moduleSpecifier).includes(targetAbsolutePath);
+}
+
+function nextSpecifier(sourceDir: string, targetAbsolutePath: string, oldSpecifier: string): string {
+  let next = asPosix(relative(sourceDir, targetAbsolutePath));
+  if (!next.startsWith('.')) {
+    next = `./${next}`;
+  }
+
+  const requestedExt = extname(oldSpecifier);
+  const keepExt = requestedExt === '.ts' || requestedExt === '.tsx';
+  if (keepExt) {
+    return `${next.replace(TS_IMPORT_EXT, '')}${requestedExt}`;
+  }
+  return next.replace(TS_IMPORT_EXT, '');
+}
+
+function appendImportUpdate(
+  sourceFile: SourceFile,
+  moduleSpecifier: string,
+  oldFileAbsolutePath: string,
+  newFileAbsolutePath: string,
+  updates: RewriteRecord[],
+): void {
+  const sourceDir = sourceFile.getDirectoryPath();
+  if (!hasMatchingTarget(sourceDir, moduleSpecifier, oldFileAbsolutePath)) {
+    return;
+  }
+
+  const newSpecifier = nextSpecifier(sourceDir, newFileAbsolutePath, moduleSpecifier);
+  if (newSpecifier === moduleSpecifier) {
+    return;
+  }
+
+  updates.push({
+    filePath: sourceFile.getFilePath(),
+    from: moduleSpecifier,
+    to: newSpecifier,
+    apply: () => sourceFile
+      .getImportDeclarations()
+      .filter((i) => i.getModuleSpecifierValue() === moduleSpecifier)
+      .forEach((i) => i.setModuleSpecifier(newSpecifier)),
+  });
+}
+
+function appendExportUpdate(
+  sourceFile: SourceFile,
+  exportDecl: ExportDeclaration,
+  oldFileAbsolutePath: string,
+  newFileAbsolutePath: string,
+  updates: RewriteRecord[],
+): void {
+  const moduleSpecifier = exportDecl.getModuleSpecifierValue();
+  if (!moduleSpecifier || !moduleSpecifier.startsWith('.')) {
+    return;
+  }
+
+  const sourceDir = sourceFile.getDirectoryPath();
+  if (!hasMatchingTarget(sourceDir, moduleSpecifier, oldFileAbsolutePath)) {
+    return;
+  }
+
+  const newSpecifier = nextSpecifier(sourceDir, newFileAbsolutePath, moduleSpecifier);
+  if (newSpecifier === moduleSpecifier) {
+    return;
+  }
+
+  updates.push({
+    filePath: sourceFile.getFilePath(),
+    from: moduleSpecifier,
+    to: newSpecifier,
+    apply: () => exportDecl.setModuleSpecifier(newSpecifier),
+  });
+}
+
+function buildReport(
+  fromPath: string,
+  toPath: string,
+  dryRun: boolean,
+  updates: RewriteRecord[],
+  cwd: string,
+): RefactorMoveReport {
+  const header = dryRun ? 'DRY RUN: no files will be written.' : 'Applied file move and import updates.';
+  const plan = [
+    header,
+    `Move: ${toDisplayPath(fromPath, cwd)} -> ${toDisplayPath(toPath, cwd)}`,
+    ...(updates.length === 0
+      ? ['No import specifiers to rewrite.']
+      : updates.map(
+          (update) =>
+            `Update ${toDisplayPath(update.filePath, cwd)}: "${update.from}" -> "${update.to}"`,
+        )),
+  ];
+  return {
+    from: fromPath,
+    to: toPath,
+    dryRun,
+    updates: updates.map((update) => ({
+      filePath: toDisplayPath(update.filePath, cwd),
+      from: update.from,
+      to: update.to,
+    })),
+    plan,
+  };
+}
+
+export function refactorMove(options: RefactorMoveOptions): RefactorMoveReport {
+  const cwd = resolve(options.cwd ?? process.cwd());
+  const from = resolve(cwd, options.from);
+  const to = resolve(cwd, options.to);
+  const dryRun = Boolean(options.dryRun);
+
+  if (!existsSync(from)) {
+    throw new Error(`Source file does not exist: ${options.from}`);
+  }
+  if (existsSync(to)) {
+    throw new Error(`Destination already exists: ${options.to}`);
+  }
+
+  const project = new Project({
+    skipAddingFilesFromTsConfig: true,
+    skipFileDependencyResolution: true,
+  });
+  const sourceFiles: SourceFile[] = [];
+  const seenFiles = new Set<string>();
+
+  for (const glob of SOURCE_GLOBS) {
+    const matchedFiles = project.addSourceFilesAtPaths(resolve(cwd, glob));
+    for (const sourceFile of matchedFiles) {
+      const filePath = sourceFile.getFilePath();
+      if (seenFiles.has(filePath)) {
+        continue;
+      }
+      sourceFiles.push(sourceFile);
+      seenFiles.add(filePath);
+    }
+  }
+
+  const updates: RewriteRecord[] = [];
+  const seenImports = new Set<string>();
+
+  for (const sourceFile of project.getSourceFiles()) {
+    for (const importDecl of sourceFile.getImportDeclarations()) {
+      const moduleSpecifier = importDecl.getModuleSpecifierValue();
+      if (!moduleSpecifier) {
+        continue;
+      }
+      appendImportUpdate(sourceFile, moduleSpecifier, from, to, updates);
+    }
+
+    for (const exportDecl of sourceFile.getExportDeclarations()) {
+      appendExportUpdate(sourceFile, exportDecl, from, to, updates);
+    }
+  }
+
+  const uniqueUpdates = updates.filter((update) => {
+    const key = `${update.filePath}:${update.from}->${update.to}`;
+    if (seenImports.has(key)) return false;
+    seenImports.add(key);
+    return true;
+  });
+
+  if (!dryRun) {
+    mkdirSync(dirname(to), { recursive: true });
+    renameSync(from, to);
+
+    const touched = new Set<string>();
+    for (const update of uniqueUpdates) {
+      update.apply();
+      touched.add(update.filePath);
+    }
+
+    for (const sourceFile of project.getSourceFiles()) {
+      if (touched.has(sourceFile.getFilePath())) {
+        sourceFile.saveSync();
+      }
+    }
+  }
+
+  return buildReport(from, to, dryRun, uniqueUpdates, cwd);
+}
+
+function runCli(): void {
+  const program = new Command();
+  program
+    .name('refactor-move')
+    .description('Move a TypeScript file and update import paths under packages/* and apps/*')
+    .argument('<from>', 'source file path')
+    .argument('<to>', 'destination file path')
+    .option('--dry-run', 'print planned changes only')
+    .helpOption('--help', 'display help for command')
+    .action((from: string, to: string, options: { dryRun?: boolean }) => {
+      const report = refactorMove({ from, to, dryRun: options.dryRun ?? false });
+      for (const line of report.plan) {
+        console.log(line);
+      }
+    });
+
+  try {
+    program.parse(process.argv);
+  } catch (error) {
+    console.error((error as Error).message);
+    process.exit(1);
+  }
+}
+
+if (import.meta.url === `file://${process.argv[1]}`) {
+  runCli();
+}
+
+ succeeded in 155ms:
+#!/usr/bin/env tsx
+import { Command } from 'commander';
+import {
+  cpSync,
+  existsSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
+import { relative, resolve } from 'node:path';
+
+export const PRECONDITION_ERROR =
+  '⚠ block-callout template not yet created (Task C1 prerequisite)';
+
+const KIND_AUDIT_TABLE = [
+  { value: 'simple', label: 'Simple block kind' },
+  { value: 'render', label: 'Rendered block kind' },
+  { value: 'viz', label: 'Visualization block kind' },
+] as const;
+
+const KIND_SET: Set<string> = new Set(KIND_AUDIT_TABLE.map((entry) => entry.value));
+
+export const BLOCK_KINDS = KIND_AUDIT_TABLE.map((row) => row.value);
+export type NewBlockKind = (typeof BLOCK_KINDS)[number];
+
+const NAME_VALIDATION_RULES = [
+  {
+    name: 'only lowercase letters, digits, and hyphens',
+    check: (value: string) => /^[a-z0-9-]+$/.test(value),
+  },
+  {
+    name: 'must start with lowercase letter',
+    check: (value: string) => /^[a-z]/.test(value),
+  },
+  {
+    name: 'must end with lowercase letter or digit',
+    check: (value: string) => /[a-z0-9]$/.test(value),
+  },
+  {
+    name: 'must not contain consecutive hyphens',
+    check: (value: string) => !value.includes('--'),
+  },
+] as const;
+
+type NewBlockOptions = {
+  name: string;
+  kind: string;
+  ui?: string | undefined;
+  dryRun?: boolean | undefined;
+  cwd?: string;
+};
+
+export type NewBlockReport = {
+  dryRun: boolean;
+  prerequisiteMissing: boolean;
+  name: string;
+  kind: NewBlockKind;
+  ui: string;
+  packageName: string;
+  packagePath: string;
+  targetTemplatePath: string;
+  tsconfigUpdated: boolean;
+  plan: string[];
+  exitCode: 0 | 1;
+};
+
+function derivePascalCase(name: string): string {
+  return name
+    .split('-')
+    .filter((segment) => segment.length > 0)
+    .map((segment) => `${segment[0]?.toUpperCase()}${segment.slice(1)}`)
+    .join('');
+}
+
+function validateKind(value: string | undefined): NewBlockKind {
+  if (!value) {
+    throw new Error(`Missing --kind. Accepted values: ${KIND_AUDIT_TABLE.map((v) => v.value).join(', ')}`);
+  }
+
+  if (!KIND_SET.has(value)) {
+    throw new Error(
+      `Invalid --kind: ${value}. Accepted values: ${KIND_AUDIT_TABLE.map((v) => v.value).join(', ')}`,
+    );
+  }
+
+  return value as NewBlockKind;
+}
+
+function validateName(name: string): void {
+  if (!name || name.trim().length === 0) {
+    throw new Error(`Invalid block name: cannot be empty`);
+  }
+
+  for (const rule of NAME_VALIDATION_RULES) {
+    if (!rule.check(name)) {
+      throw new Error(`Invalid block name "${name}": must satisfy ${rule.name}`);
+    }
+  }
+}
+
+function replaceTokens(filePath: string, name: string, pascal: string): boolean {
+  const content = readFileSync(filePath, 'utf8');
+  const replaced = content.replaceAll('callout', name).replaceAll('Callout', pascal);
+
+  if (replaced === content) {
+    return false;
+  }
+
+  writeFileSync(filePath, replaced, 'utf8');
+  return true;
+}
+
+function walkFiles(basePath: string, rootPath: string, onFile: (filePath: string) => void): void {
+  for (const entry of readdirSync(basePath, { withFileTypes: true })) {
+    const absolute = resolve(basePath, entry.name);
+    if (entry.isDirectory()) {
+      walkFiles(absolute, rootPath, onFile);
+      continue;
+    }
+
+    if (entry.isFile()) {
+      onFile(absolute);
+    }
+  }
+}
+
+function updateRootTsConfigReferences(
+  rootDir: string,
+  packageName: string,
+  dryRun: boolean,
+): boolean {
+  const tsconfigPath = resolve(rootDir, 'tsconfig.json');
+  const raw = readFileSync(tsconfigPath, 'utf8');
+  const tsconfig = JSON.parse(raw) as { references?: Array<{ path: string }>; [key: string]: unknown };
+  const references = [...(tsconfig.references ?? [])];
+  const target = `./packages/${packageName}`;
+
+  if (references.some((entry) => entry.path === target)) {
+    return false;
+  }
+
+  const insertAfterIndex = references.findIndex((entry) => entry.path.localeCompare(target) > 0);
+  if (insertAfterIndex === -1) {
+    references.push({ path: target });
+  } else {
+    references.splice(insertAfterIndex, 0, { path: target });
+  }
+
+  if (!dryRun) {
+    tsconfig.references = references;
+    writeFileSync(tsconfigPath, `${JSON.stringify(tsconfig, null, 2)}\n`, 'utf8');
+  }
+
+  return true;
+}
+
+function buildPlan(baseDir: string, name: string, kind: NewBlockKind, ui: string, dryRun: boolean): string[] {
+  const root = relative(process.cwd(), baseDir) || '.';
+  return [
+    dryRun ? 'DRY RUN: no files will be written.' : 'Applying scaffold plan.',
+    `Target package: ${resolve(root, 'packages', `block-${name}`)}`,
+    `Template source: ${resolve(root, 'packages', 'block-callout')}`,
+    `Kind: ${kind}`,
+    `UI variant: ${ui}`,
+  ];
+}
+
+export function newBlock(options: NewBlockOptions): NewBlockReport {
+  const cwd = resolve(options.cwd ?? process.cwd());
+  const name = options.name.trim();
+  const dryRun = Boolean(options.dryRun);
+  const ui = options.ui?.trim() || 'default';
+  const templateRoot = resolve(cwd, 'packages', 'block-callout');
+  const templateCore = resolve(templateRoot, 'core');
+  const templateUiDefault = resolve(templateRoot, 'ui-default');
+
+  if (!existsSync(templateRoot) || !existsSync(templateCore) || !existsSync(templateUiDefault)) {
+    return {
+      dryRun,
+      prerequisiteMissing: true,
+      name,
+      kind: 'simple',
+      ui,
+      packageName: `block-${name}`,
+      packagePath: resolve(cwd, 'packages', `block-${name}`),
+      targetTemplatePath: templateRoot,
+      tsconfigUpdated: false,
+      plan: [PRECONDITION_ERROR],
+      exitCode: 0,
+    };
+  }
+
+  const kind = validateKind(options.kind);
+
+  validateName(name);
+
+  const packageName = `block-${name}`;
+  const packagePath = resolve(cwd, 'packages', packageName);
+  if (existsSync(packagePath)) {
+    throw new Error(`Package already exists: packages/${packageName}`);
+  }
+
+  const plan = buildPlan(cwd, name, kind, ui, dryRun);
+  const pascalName = derivePascalCase(name);
+  let tsconfigUpdated = false;
+
+  if (!dryRun) {
+    cpSync(templateRoot, packagePath, { recursive: true });
+    let rewrittenCount = 0;
+
+    walkFiles(packagePath, packagePath, (filePath) => {
+      if (replaceTokens(filePath, name, pascalName)) {
+        rewrittenCount += 1;
+      }
+    });
+
+    plan.push(`Updated ${rewrittenCount} files with block token replacements.`);
+    tsconfigUpdated = updateRootTsConfigReferences(cwd, packageName, dryRun);
+    plan.push(
+      tsconfigUpdated
+        ? `Updated root tsconfig references for ${packageName}`
+        : `Root tsconfig already references ${packageName}`,
+    );
+  } else {
+    plan.push('DRY RUN: no file content replacements will be written.');
+    tsconfigUpdated = updateRootTsConfigReferences(cwd, packageName, true);
+    plan.push(
+      tsconfigUpdated
+        ? `Would add ./packages/${packageName} to root tsconfig references.`
+        : `Root tsconfig already references ${packageName}.`,
+    );
+  }
+
+  return {
+    dryRun,
+    prerequisiteMissing: false,
+    name,
+    kind,
+    ui,
+    packageName,
+    packagePath,
+    targetTemplatePath: templateRoot,
+    tsconfigUpdated,
+    plan,
+    exitCode: 0,
+  };
+}
+
+function buildNewBlockCommand(): Command {
+  const program = new Command();
+
+  program
+    .name('new-block')
+    .description('Scaffold a new block package from the block-callout template')
+    .argument('<name>', 'block name (lowercase-kebab, e.g. callout-admonition)')
+    .option('--kind <kind>', 'block kind: simple | render | viz')
+    .option('--ui <ui>', 'ui variant', 'default')
+    .option('--dry-run', 'print planned changes without writing files')
+    .helpOption('--help', 'display help for command')
+    .action((name: string, options: { kind?: string; ui?: string; dryRun?: boolean }) => {
+      const report = newBlock({
+        name,
+        kind: options.kind ?? '',
+        ui: options.ui ?? 'default',
+        dryRun: options.dryRun,
+      });
+
+      for (const line of report.plan) {
+        console.log(line);
+      }
+
+      if (report.exitCode !== 0) {
+        process.exit(report.exitCode);
+      }
+    });
+
+  return program;
+}
+
+export function getNewBlockHelp(): string {
+  return buildNewBlockCommand().helpInformation();
+}
+
+function runCli(): void {
+  const program = buildNewBlockCommand();
+
+  try {
+    program.parse(process.argv);
+  } catch (error) {
+    console.error((error as Error).message);
+    process.exit(1);
+  }
+}
+
+if (import.meta.url === `file://${process.argv[1]}`) {
+  runCli();
+}
+
+codex
+我已完成主文件与参考脚本的对比阅读。接下来补充看一份已有脚本测试（例如 `new-block`）来核对 `--help`/错误处理风格是否一致，然后输出最终审阅结论。
+exec
+/bin/bash -lc "sed -n '1,260p' /home/weiyi/selfKnowledgeBaseWeb/scripts/__tests__/refactor-move.test.ts" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1,260p' /home/weiyi/selfKnowledgeBaseWeb/scripts/__tests__/new-block.test.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+import { cpSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { describe, expect, it } from 'vitest';
+import { refactorMove } from '../refactor-move.ts';
+
+const FIXTURE_ROOT = join(process.cwd(), 'scripts/__tests__/fixtures/refactor-move');
+
+function buildFixture(): string {
+  const workspace = mkdtempSync(join(tmpdir(), 'refactor-move-'));
+  cpSync(join(FIXTURE_ROOT, 'initial'), workspace, { recursive: true });
+  return workspace;
+}
+
+function readFixture(fixtureName: string, relativePath: string): string {
+  return readFileSync(join(FIXTURE_ROOT, fixtureName, relativePath), 'utf8');
+}
+
+describe('refactorMove', () => {
+  it('prints plan only in --dry-run mode and does not modify files', () => {
+    const workspace = buildFixture();
+    try {
+      const report = refactorMove({
+        from: 'packages/feature/util.ts',
+        to: 'packages/feature/shared/util.ts',
+        dryRun: true,
+        cwd: workspace,
+      });
+
+      expect(report.dryRun).toBe(true);
+      expect(report.plan.join('\n')).toContain('DRY RUN');
+      expect(report.updates).toHaveLength(2);
+      expect(readFileSync(join(workspace, 'packages/feature/util.ts'), 'utf8')).toBe(
+        readFixture('initial', 'packages/feature/util.ts'),
+      );
+      expect(readFileSync(join(workspace, 'packages/feature/consumer.ts'), 'utf8')).toBe(
+        readFixture('initial', 'packages/feature/consumer.ts'),
+      );
+      expect(readFileSync(join(workspace, 'apps/feature/app.ts'), 'utf8')).toBe(
+        readFixture('initial', 'apps/feature/app.ts'),
+      );
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it('moves file and rewrites matching import paths in packages and apps', () => {
+    const workspace = buildFixture();
+    try {
+      const report = refactorMove({
+        from: 'packages/feature/util.ts',
+        to: 'packages/feature/shared/util.ts',
+        cwd: workspace,
+      });
+
+      expect(report.dryRun).toBe(false);
+      expect(readFileSync(join(workspace, 'packages/feature/shared/util.ts'), 'utf8')).toBe(
+        readFixture('after', 'packages/feature/shared/util.ts'),
+      );
+      expect(readFileSync(join(workspace, 'packages/feature/consumer.ts'), 'utf8')).toBe(
+        readFixture('after', 'packages/feature/consumer.ts'),
+      );
+      expect(readFileSync(join(workspace, 'apps/feature/app.ts'), 'utf8')).toBe(
+        readFixture('after', 'apps/feature/app.ts'),
+      );
+      expect(() => readFileSync(join(workspace, 'packages/feature/util.ts'), 'utf8')).toThrow();
+
+      expect(report.updates).toEqual([
+        {
+          filePath: 'packages/feature/consumer.ts',
+          from: './util',
+          to: './shared/util',
+        },
+        {
+          filePath: 'apps/feature/app.ts',
+          from: '../../packages/feature/util.ts',
+          to: '../../packages/feature/shared/util.ts',
+        },
+      ]);
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it('throws when source file does not exist', () => {
+    const workspace = buildFixture();
+    try {
+      expect(() =>
+        refactorMove({
+          from: 'packages/feature/does-not-exist.ts',
+          to: 'packages/feature/shared/util.ts',
+          cwd: workspace,
+        }),
+      ).toThrow(/Source file does not exist/);
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it('throws when destination already exists', () => {
+    const workspace = buildFixture();
+    try {
+      expect(() =>
+        refactorMove({
+          from: 'packages/feature/consumer.ts',
+          to: 'packages/feature/util.ts',
+          cwd: workspace,
+        }),
+      ).toThrow(/Destination already exists/);
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+});
+
+ succeeded in 0ms:
+import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { describe, expect, it } from 'vitest';
+import { getNewBlockHelp, newBlock, PRECONDITION_ERROR } from '../new-block.ts';
+
+const FIXTURE_ROOT = join(process.cwd(), 'scripts/__tests__/fixtures/new-block');
+
+function buildWorkspace(): string {
+  const workspace = mkdtempSync(join(tmpdir(), 'new-block-'));
+  cpSync(join(FIXTURE_ROOT, 'initial'), workspace, { recursive: true });
+  return workspace;
+}
+
+describe('newBlock', () => {
+  it('returns prerequisite warning when template is missing and exits with code 0', () => {
+    const workspace = mkdtempSync(join(tmpdir(), 'new-block-missing-template-'));
+
+    try {
+      const report = newBlock({
+        name: 'note',
+        kind: 'simple',
+        cwd: workspace,
+      });
+
+      expect(report.exitCode).toBe(0);
+      expect(report.prerequisiteMissing).toBe(true);
+      expect(report.plan.join('\n')).toContain(PRECONDITION_ERROR);
+      expect(report.packagePath).toContain('packages/block-note');
+      expect(existsSync(join(workspace, 'packages/block-note'))).toBe(false);
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it('prints a dry-run plan and does not write files', () => {
+    const workspace = buildWorkspace();
+    const templateCalloutSource = readFileSync(
+      join(FIXTURE_ROOT, 'initial/packages/block-callout/core/callout.ts'),
+      'utf8',
+    );
+    const tsconfigBefore = readFileSync(join(FIXTURE_ROOT, 'initial/tsconfig.json'), 'utf8');
+
+    try {
+      const report = newBlock({
+        name: 'timeline',
+        kind: 'render',
+        dryRun: true,
+        cwd: workspace,
+      });
+
+      expect(report.dryRun).toBe(true);
+      expect(report.plan[0]).toContain('DRY RUN: no files will be written.');
+      expect(existsSync(join(workspace, 'packages/block-timeline'))).toBe(false);
+      expect(readFileSync(join(workspace, 'packages/block-callout/core/callout.ts'), 'utf8')).toBe(
+        templateCalloutSource,
+      );
+      expect(readFileSync(join(workspace, 'tsconfig.json'), 'utf8')).toBe(tsconfigBefore);
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it('generates a new block package and updates tsconfig references when template exists', () => {
+    const workspace = buildWorkspace();
+
+    try {
+      const report = newBlock({
+        name: 'timeline',
+        kind: 'viz',
+        cwd: workspace,
+      });
+
+      const generatedCore = readFileSync(
+        join(workspace, 'packages/block-timeline/core/callout.ts'),
+        'utf8',
+      );
+      const generatedUi = readFileSync(
+        join(workspace, 'packages/block-timeline/ui-default/index.ts'),
+        'utf8',
+      );
+      const tsconfig = JSON.parse(readFileSync(join(workspace, 'tsconfig.json'), 'utf8')) as {
+        references?: Array<{ path: string }>;
+      };
+
+      expect(report.dryRun).toBe(false);
+      expect(report.tsconfigUpdated).toBe(true);
+      expect(generatedCore).toContain('timeline');
+      expect(generatedCore).toContain('Timeline');
+      expect(generatedUi).toContain('TimelineUi');
+      expect(tsconfig.references).toEqual(
+        expect.arrayContaining([{ path: './scripts' }, { path: './packages/content-types' }, { path: './packages/block-timeline' }]),
+      );
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it('throws when target package already exists', () => {
+    const workspace = buildWorkspace();
+
+    try {
+      expect(() =>
+        newBlock({
+          name: 'callout',
+          kind: 'simple',
+          cwd: workspace,
+        }),
+      ).toThrow(/Package already exists/);
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it('throws when kind is invalid', () => {
+    const workspace = buildWorkspace();
+
+    try {
+      expect(() =>
+        newBlock({
+          name: 'timeline',
+          kind: 'not-a-kind',
+          cwd: workspace,
+        }),
+      ).toThrow(/Invalid --kind/);
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it('--help prints usage and exits 0', () => {
+    const help = getNewBlockHelp();
+
+    expect(help).toContain('Usage:');
+    expect(help).toContain('Usage: new-block [options] <name>');
+  });
+});
+
+exec
+/bin/bash -lc 'rg --line-number "no-redundant-type-constituents|no-unnecessary-type-assertion|exactOptionalPropertyTypes|commander|extractPdfText" /home/weiyi/selfKnowledgeBaseWeb/scripts /home/weiyi/selfKnowledgeBaseWeb/.eslintrc* /home/weiyi/selfKnowledgeBaseWeb/packages /home/weiyi/selfKnowledgeBaseWeb/apps /home/weiyi/selfKnowledgeBaseWeb/*.config* /home/weiyi/selfKnowledgeBaseWeb/package.json' in /home/weiyi/selfKnowledgeBaseWeb
+ exited 2 in 0ms:
+rg: /home/weiyi/selfKnowledgeBaseWeb/.eslintrc*: No such file or directory (os error 2)
+/home/weiyi/selfKnowledgeBaseWeb/package.json:30:    "commander": "^11.1.0",
+/home/weiyi/selfKnowledgeBaseWeb/scripts/refactor-move.ts:2:import { Command } from 'commander';
+/home/weiyi/selfKnowledgeBaseWeb/scripts/extract-pdf-text.ts:2:import { Command } from 'commander';
+/home/weiyi/selfKnowledgeBaseWeb/scripts/extract-pdf-text.ts:126:export async function extractPdfText(options: ExtractPdfTextOptions): Promise<ExtractPdfTextResult> {
+/home/weiyi/selfKnowledgeBaseWeb/scripts/extract-pdf-text.ts:164:      const { text, outputPath, warning } = await extractPdfText({
+/home/weiyi/selfKnowledgeBaseWeb/scripts/new-block.ts:2:import { Command } from 'commander';
+/home/weiyi/selfKnowledgeBaseWeb/scripts/__tests__/extract-pdf-text.test.ts:11:import { extractPdfText, getExtractPdfTextHelp } from '../extract-pdf-text.ts';
+/home/weiyi/selfKnowledgeBaseWeb/scripts/__tests__/extract-pdf-text.test.ts:113:describe('extractPdfText', () => {
+/home/weiyi/selfKnowledgeBaseWeb/scripts/__tests__/extract-pdf-text.test.ts:119:      const result = await extractPdfText({ pdfPath });
+/home/weiyi/selfKnowledgeBaseWeb/scripts/__tests__/extract-pdf-text.test.ts:133:      const result = await extractPdfText({ pdfPath });
+/home/weiyi/selfKnowledgeBaseWeb/scripts/__tests__/extract-pdf-text.test.ts:147:        extractPdfText({ pdfPath: join(workspace, 'does-not-exist.pdf') }),
+/home/weiyi/selfKnowledgeBaseWeb/scripts/__tests__/extract-pdf-text.test.ts:160:      await expect(extractPdfText({ pdfPath: textPath })).rejects.toThrow(/expected \.pdf/);
+/home/weiyi/selfKnowledgeBaseWeb/scripts/__tests__/extract-pdf-text.test.ts:173:      const result = await extractPdfText({
+
+exec
+/bin/bash -lc "rg --line-number \"\\[tool\\.tsconfig\\]|exactOptionalPropertyTypes|strict\" /home/weiyi/selfKnowledgeBaseWeb/tsconfig.json /home/weiyi/selfKnowledgeBaseWeb/tsconfig.* /home/weiyi/selfKnowledgeBaseWeb/packages/*/tsconfig*.json /home/weiyi/selfKnowledgeBaseWeb/apps/*/tsconfig*.json" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+/home/weiyi/selfKnowledgeBaseWeb/tsconfig.base.json:8:    "strict": true,
+/home/weiyi/selfKnowledgeBaseWeb/tsconfig.base.json:11:    "exactOptionalPropertyTypes": true,
+/home/weiyi/selfKnowledgeBaseWeb/apps/site/tsconfig.json:2:  "extends": "astro/tsconfigs/strict",
+
+exec
+/bin/bash -lc 'rg --line-number "no-unnecessary-type-assertion|no-redundant-type-constituents|exactOptionalPropertyTypes" /home/weiyi/selfKnowledgeBaseWeb' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+/home/weiyi/selfKnowledgeBaseWeb/tsconfig.base.json:11:    "exactOptionalPropertyTypes": true,
+/home/weiyi/selfKnowledgeBaseWeb/docs/decisions/ADR-0001-stack-selection.md:46:- 运行时：Node 22 LTS / pnpm 9.12.0 / Python 3.12 / TypeScript 5.6 strict（noUncheckedIndexedAccess + exactOptionalPropertyTypes）
+/home/weiyi/selfKnowledgeBaseWeb/docs/superpowers/plans/2026-04-29-phase-0-scaffolding.md:384:    "exactOptionalPropertyTypes": true,
+/home/weiyi/selfKnowledgeBaseWeb/docs/audits/codex-runs/2026-04-30-task-I3-code-review.txt:47:5. 类型 safety：FIX-I1 lesson (TS exactOptionalPropertyTypes) + FIX-I2 lesson (no-redundant-type-constituents / no-unnecessary-type-assertion)。check 这些 patterns
+/home/weiyi/selfKnowledgeBaseWeb/docs/audits/codex-runs/2026-04-30-task-I3-code-review.txt:1280:/bin/bash -lc 'rg --line-number "no-redundant-type-constituents|no-unnecessary-type-assertion|exactOptionalPropertyTypes|commander|extractPdfText" /home/weiyi/selfKnowledgeBaseWeb/scripts /home/weiyi/selfKnowledgeBaseWeb/.eslintrc* /home/weiyi/selfKnowledgeBaseWeb/packages /home/weiyi/selfKnowledgeBaseWeb/apps /home/weiyi/selfKnowledgeBaseWeb/*.config* /home/weiyi/selfKnowledgeBaseWeb/package.json' in /home/weiyi/selfKnowledgeBaseWeb
+/home/weiyi/selfKnowledgeBaseWeb/docs/audits/codex-runs/2026-04-30-task-I3-extract-pdf-text.txt:39:- TS exactOptionalPropertyTypes 严格 (FIX-I1 lesson: dryRun?: boolean 类型 caller 给 boolean | undefined 不接受 → 用 ?? false 默认)
+/home/weiyi/selfKnowledgeBaseWeb/docs/audits/codex-runs/2026-04-30-task-I3-extract-pdf-text.txt:40:- eslint no-redundant-type-constituents + no-unnecessary-type-assertion 严格 (FIX-I2 lesson)
+/home/weiyi/selfKnowledgeBaseWeb/docs/audits/codex-runs/2026-04-30-task-I3-extract-pdf-text.txt:994:    "exactOptionalPropertyTypes": true,
+/home/weiyi/selfKnowledgeBaseWeb/docs/audits/codex-runs/2026-04-30-task-I2-new-block.txt:936:    "exactOptionalPropertyTypes": true,
+/home/weiyi/selfKnowledgeBaseWeb/docs/audits/codex-runs/2026-04-30-task-I2-new-block.txt:1460:scripts/new-block.ts(259,31): error TS2379: Argument of type '{ name: string; kind: string; ui: string | undefined; dryRun: boolean | undefined; }' is not assignable to parameter of type 'NewBlockOptions' with 'exactOptionalPropertyTypes: true'. Consider adding 'undefined' to the types of the target's properties.
+/home/weiyi/selfKnowledgeBaseWeb/docs/audits/codex-runs/2026-04-30-task-I2-new-block.txt:1554:scripts/new-block.ts(259,31): error TS2379: Argument of type '{ name: string; kind: string; ui: string; dryRun: boolean | undefined; }' is not assignable to parameter of type 'NewBlockOptions' with 'exactOptionalPropertyTypes: true'. Consider adding 'undefined' to the types of the target's properties.
+/home/weiyi/selfKnowledgeBaseWeb/docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:540:    "exactOptionalPropertyTypes": true,
+/home/weiyi/selfKnowledgeBaseWeb/docs/audits/codex-runs/2026-04-30-task-FIX-I1-code-review.txt:21:I1 commit 2ad9ece 引入 TS2379 (exactOptionalPropertyTypes 严格模式 + commander 给的 boolean|undefined)。CI typecheck fail。f812b93 (B3) inherits 同 fail。本 hot-fix 1 行修。
+/home/weiyi/selfKnowledgeBaseWeb/docs/audits/codex-runs/2026-04-30-task-FIX-I1-code-review.txt:2782:4. `exactOptionalPropertyTypes` 触发的 TS2379 在本行修复为类型安全写法，且不改变运行时行为（`refactorMove` 内仍做 `Boolean(options.dryRun)`，与 false default 一致）。
+/home/weiyi/selfKnowledgeBaseWeb/docs/audits/codex-runs/2026-04-30-task-FIX-I1-code-review.txt:2794:4. `exactOptionalPropertyTypes` 触发的 TS2379 在本行修复为类型安全写法，且不改变运行时行为（`refactorMove` 内仍做 `Boolean(options.dryRun)`，与 false default 一致）。
+
+exec
+/bin/bash -lc "sed -n '1,260p' /home/weiyi/selfKnowledgeBaseWeb/docs/audits/codex-runs/2026-04-30-task-I3-extract-pdf-text.txt" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+Reading additional input from stdin...
+OpenAI Codex v0.125.0 (research preview)
+--------
+workdir: /home/weiyi/selfKnowledgeBaseWeb
+model: gpt-5.3-codex-spark
+provider: openai
+approval: never
+sandbox: workspace-write [workdir, /tmp, $TMPDIR, /home/weiyi/.codex/memories]
+reasoning effort: xhigh
+reasoning summaries: none
+session id: 019ddfdb-b753-7fe1-896d-44edecb5ee42
+--------
+user
+你是 codex-script-builder。在 SelfKnowledgeBaseWeb 项目根目录创建 `scripts/extract-pdf-text.ts`：CLI 工具从 PDF 提取文本（用于 search-index）。
+
+要求：
+- CLI 形态: `extract-pdf-text <pdf-path> [--output <txt>] [--help]`
+- 用 pdf-parse 或 pdfjs-dist (worker thread)；recommend pdfjs-dist for active maintenance
+- 输出 plain text + 简单 OCR fallback（若 PDF 是扫描件 = no extractable text → emit warning + exit code 0 with empty output）
+- 错误处理: PDF 文件不存在 / 非 PDF / corrupt → throw + exit 1
+- --output: 可选输出文件路径；默认 stdout
+- --help: 显示用法
+
+测试 `scripts/__tests__/extract-pdf-text.test.ts` 含 3-5 case：
+1. 正常 plain text PDF (用 fixture sample.pdf 或 generate from 'pdfkit' inline; 推荐：用 pdfkit 在 setup 里生成 fixture，或 commit 一个 minimal 3-page PDF in fixtures/)
+2. 空 PDF / 扫描件 → empty output + warning
+3. 文件不存在 → throw exit 1
+4. 非 PDF 文件 → throw exit 1
+5. --output 输出到指定 .txt
+
+依赖：commander 已装 (I1 留下)；pdfjs-dist 需新加 to root devDependencies。
+
+ADR-0006 8-point checklist:
+- item #6 sister-doc: scripts/extract-pdf-text.ts 风格与 scripts/refactor-move.ts (I1) + scripts/new-block.ts (I2) 一致 (commander CLI + 错误处理 + --help / --output flags + ts-morph-style imports)
+- item #8 lockfile-as-derivative (WE-002 lesson): pdfjs-dist install 会更新 pnpm-lock.yaml；如有 cross-task lockfile contamination 风险，记下 — 但 F (kernel-pyodide) 在跑也加 deps (pyodide)；二 worker 各自 install 会 race，按 4-step protocol 与 lockfile blob restore Rule 2 处理 (orchestrator 后续 protocol)
+
+**关键 (WE-003 + WE-004 + WE-007 lessons)**:
+- 必须跑 root pnpm check (uncached) verify 不止 typecheck/test
+- TS exactOptionalPropertyTypes 严格 (FIX-I1 lesson: dryRun?: boolean 类型 caller 给 boolean | undefined 不接受 → 用 ?? false 默认)
+- eslint no-redundant-type-constituents + no-unnecessary-type-assertion 严格 (FIX-I2 lesson)
+
+完工后输出新建文件列表 + pnpm vitest run scripts/__tests__/extract-pdf-text.test.ts PASS confirm + pnpm check exit 0 confirm。
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the vendored bubblewrap in the meantime.
+codex
+明白，先快速对齐当前脚本风格与测试约束：我会先查看 `scripts/refactor-move.ts`、`scripts/new-block.ts`、现有 `scripts/__tests__` 模式以及 `package.json` 的脚本/依赖，确认 `pdfjs-dist` 引入位置和测试基线后一次性落地实现与测试文件，再按你要求补充运行 `pnpm vitest run scripts/__tests__/extract-pdf-text.test.ts` 与 `pnpm check` 的结果。
+exec
+/bin/bash -lc "sed -n '1,260p' package.json" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc 'rg --files scripts/__tests__' in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1,240p' scripts/refactor-move.ts" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1,260p' scripts/new-block.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 107ms:
+{
+  "name": "self-knowledge-base-web",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "pnpm@9.12.0",
+  "type": "module",
+  "engines": {
+    "node": ">=22",
+    "pnpm": ">=9"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev --parallel",
+    "lint": "eslint .",
+    "lint:packages": "turbo run lint",
+    "typecheck": "tsc -b",
+    "typecheck:packages": "turbo run typecheck",
+    "test": "vitest run",
+    "test:packages": "turbo run test",
+    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm size-check && pnpm lint:packages && pnpm typecheck:packages && pnpm test:packages",
+    "check:affected": "turbo run lint typecheck test --filter=...[origin/main]",
+    "size-check": "node scripts/check-size-limits.mjs",
+    "link-check": "lychee --config .lychee.toml './**/*.md'",
+    "generate:configs": "tsx scripts/generate-configs.ts",
+    "format": "prettier --write \"**/*.{ts,tsx,js,mjs,cjs,json,md,yaml,yml}\""
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "@types/node": "^22.0.0",
+    "commander": "^11.1.0",
+    "eslint": "^9.0.0",
+    "globals": "^15.0.0",
+    "prettier": "^3.0.0",
+    "turbo": "^2.0.0",
+    "ts-morph": "^28.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "~5.6.0",
+    "typescript-eslint": "^8.0.0",
+    "vitest": "^4.1.5",
+    "yaml": "^2.8.3",
+    "zod": "^3.23.0"
+  }
+}
+
+ succeeded in 107ms:
+#!/usr/bin/env tsx
+import { Command } from 'commander';
+import { Project, type ExportDeclaration, type SourceFile } from 'ts-morph';
+import { existsSync, mkdirSync, renameSync } from 'node:fs';
+import { dirname, extname, relative, resolve, sep } from 'node:path';
+
+const SOURCE_GLOBS = ['packages/**/*.{ts,tsx}', 'apps/**/*.{ts,tsx}'];
+
+type RewriteRecord = {
+  filePath: string;
+  from: string;
+  to: string;
+  apply: () => void;
+};
+
+export type RefactorMoveReport = {
+  from: string;
+  to: string;
+  dryRun: boolean;
+  updates: Array<{ filePath: string; from: string; to: string }>;
+  plan: string[];
+};
+
+type RefactorMoveOptions = {
+  from: string;
+  to: string;
+  dryRun?: boolean;
+  cwd?: string;
+};
+
+const TS_IMPORT_EXT = /\.tsx?$/;
+
+function asPosix(filePath: string): string {
+  return filePath.split(sep).join('/');
+}
+
+function toDisplayPath(path: string, baseDir: string): string {
+  const rel = relative(baseDir, path);
+  return asPosix(rel === '' ? '.' : rel);
+}
+
+function candidatesForImport(sourceDir: string, moduleSpecifier: string): string[] {
+  const base = resolve(sourceDir, moduleSpecifier);
+  return [base, `${base}.ts`, `${base}.tsx`, resolve(base, 'index.ts'), resolve(base, 'index.tsx')];
+}
+
+function hasMatchingTarget(
+  sourceDir: string,
+  moduleSpecifier: string,
+  targetAbsolutePath: string,
+): boolean {
+  if (!moduleSpecifier.startsWith('.')) {
+    return false;
+  }
+  return candidatesForImport(sourceDir, moduleSpecifier).includes(targetAbsolutePath);
+}
+
+function nextSpecifier(sourceDir: string, targetAbsolutePath: string, oldSpecifier: string): string {
+  let next = asPosix(relative(sourceDir, targetAbsolutePath));
+  if (!next.startsWith('.')) {
+    next = `./${next}`;
+  }
+
+  const requestedExt = extname(oldSpecifier);
+  const keepExt = requestedExt === '.ts' || requestedExt === '.tsx';
+  if (keepExt) {
+    return `${next.replace(TS_IMPORT_EXT, '')}${requestedExt}`;
+  }
+  return next.replace(TS_IMPORT_EXT, '');
+}
+
+function appendImportUpdate(
+  sourceFile: SourceFile,
+  moduleSpecifier: string,
+  oldFileAbsolutePath: string,
+  newFileAbsolutePath: string,
+  updates: RewriteRecord[],
+): void {
+  const sourceDir = sourceFile.getDirectoryPath();
+  if (!hasMatchingTarget(sourceDir, moduleSpecifier, oldFileAbsolutePath)) {
+    return;
+  }
+
+  const newSpecifier = nextSpecifier(sourceDir, newFileAbsolutePath, moduleSpecifier);
+  if (newSpecifier === moduleSpecifier) {
+    return;
+  }
+
+  updates.push({
+    filePath: sourceFile.getFilePath(),
+    from: moduleSpecifier,
+    to: newSpecifier,
+    apply: () => sourceFile
+      .getImportDeclarations()
+      .filter((i) => i.getModuleSpecifierValue() === moduleSpecifier)
+      .forEach((i) => i.setModuleSpecifier(newSpecifier)),
+  });
+}
+
+function appendExportUpdate(
+  sourceFile: SourceFile,
+  exportDecl: ExportDeclaration,
+  oldFileAbsolutePath: string,
+  newFileAbsolutePath: string,
+  updates: RewriteRecord[],
+): void {
+  const moduleSpecifier = exportDecl.getModuleSpecifierValue();
+  if (!moduleSpecifier || !moduleSpecifier.startsWith('.')) {
+    return;
+  }
+
+  const sourceDir = sourceFile.getDirectoryPath();
+  if (!hasMatchingTarget(sourceDir, moduleSpecifier, oldFileAbsolutePath)) {
+    return;
+  }
+
+  const newSpecifier = nextSpecifier(sourceDir, newFileAbsolutePath, moduleSpecifier);
+  if (newSpecifier === moduleSpecifier) {
+    return;
+  }
+
+  updates.push({
+    filePath: sourceFile.getFilePath(),
+    from: moduleSpecifier,
+    to: newSpecifier,
+    apply: () => exportDecl.setModuleSpecifier(newSpecifier),
+  });
+}
+
+function buildReport(
+  fromPath: string,
+  toPath: string,
+  dryRun: boolean,
+  updates: RewriteRecord[],
+  cwd: string,
+): RefactorMoveReport {
+  const header = dryRun ? 'DRY RUN: no files will be written.' : 'Applied file move and import updates.';
+  const plan = [
+    header,
+    `Move: ${toDisplayPath(fromPath, cwd)} -> ${toDisplayPath(toPath, cwd)}`,
+    ...(updates.length === 0
+      ? ['No import specifiers to rewrite.']
+      : updates.map(
+          (update) =>
+            `Update ${toDisplayPath(update.filePath, cwd)}: "${update.from}" -> "${update.to}"`,
+        )),
+  ];
+  return {
+    from: fromPath,
+    to: toPath,
+    dryRun,
+    updates: updates.map((update) => ({
+      filePath: toDisplayPath(update.filePath, cwd),
+      from: update.from,
+      to: update.to,
+    })),
+    plan,
+  };
+}
+
+export function refactorMove(options: RefactorMoveOptions): RefactorMoveReport {
+
+exec
+/bin/bash -lc 'rg --line-number "no-unnecessary-type-assertion|no-redundant-type-constituents|@typescript-eslint" /home/weiyi/selfKnowledgeBaseWeb | head -n 40' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 187ms:
+/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:1650:  '@typescript-eslint/eslint-plugin@8.59.1':
+/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:1654:      '@typescript-eslint/parser': ^8.59.1
+/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:1658:  '@typescript-eslint/parser@8.59.1':
+/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:1665:  '@typescript-eslint/project-service@8.59.1':
+/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:1671:  '@typescript-eslint/scope-manager@8.59.1':
+/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:1675:  '@typescript-eslint/tsconfig-utils@8.59.1':
+/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:1681:  '@typescript-eslint/type-utils@8.59.1':
+/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:1688:  '@typescript-eslint/types@8.59.1':
+/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:1692:  '@typescript-eslint/typescript-estree@8.59.1':
+/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:1698:  '@typescript-eslint/utils@8.59.1':
+/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:1705:  '@typescript-eslint/visitor-keys@8.59.1':
+/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:5256:  '@typescript-eslint/eslint-plugin@8.59.1(@typescript-eslint/parser@8.59.1(eslint@9.39.4(jiti@1.21.7))(typescript@5.6.3))(eslint@9.39.4(jiti@1.21.7))(typescript@5.6.3)':
+/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:5259:      '@typescript-eslint/parser': 8.59.1(eslint@9.39.4(jiti@1.21.7))(typescript@5.6.3)
+/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:5260:      '@typescript-eslint/scope-manager': 8.59.1
+/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:5261:      '@typescript-eslint/type-utils': 8.59.1(eslint@9.39.4(jiti@1.21.7))(typescript@5.6.3)
+/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:5262:      '@typescript-eslint/utils': 8.59.1(eslint@9.39.4(jiti@1.21.7))(typescript@5.6.3)
+/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:5263:      '@typescript-eslint/visitor-keys': 8.59.1
+/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:5272:  '@typescript-eslint/parser@8.59.1(eslint@9.39.4(jiti@1.21.7))(typescript@5.6.3)':
+/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:5274:      '@typescript-eslint/scope-manager': 8.59.1
+/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:5275:      '@typescript-eslint/types': 8.59.1
+/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:5276:      '@typescript-eslint/typescript-estree': 8.59.1(typescript@5.6.3)
+/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:5277:      '@typescript-eslint/visitor-keys': 8.59.1
+/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:5284:  '@typescript-eslint/project-service@8.59.1(typescript@5.6.3)':
+/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:5286:      '@typescript-eslint/tsconfig-utils': 8.59.1(typescript@5.6.3)
+/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:5287:      '@typescript-eslint/types': 8.59.1
+/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:5293:  '@typescript-eslint/scope-manager@8.59.1':
+/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:5295:      '@typescript-eslint/types': 8.59.1
+/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:5296:      '@typescript-eslint/visitor-keys': 8.59.1
+/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:5298:  '@typescript-eslint/tsconfig-utils@8.59.1(typescript@5.6.3)':
+/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:5302:  '@typescript-eslint/type-utils@8.59.1(eslint@9.39.4(jiti@1.21.7))(typescript@5.6.3)':
+/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:5304:      '@typescript-eslint/types': 8.59.1
+/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:5305:      '@typescript-eslint/typescript-estree': 8.59.1(typescript@5.6.3)
+/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:5306:      '@typescript-eslint/utils': 8.59.1(eslint@9.39.4(jiti@1.21.7))(typescript@5.6.3)
+/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:5314:  '@typescript-eslint/types@8.59.1': {}
+/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:5316:  '@typescript-eslint/typescript-estree@8.59.1(typescript@5.6.3)':
+/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:5318:      '@typescript-eslint/project-service': 8.59.1(typescript@5.6.3)
+/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:5319:      '@typescript-eslint/tsconfig-utils': 8.59.1(typescript@5.6.3)
+/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:5320:      '@typescript-eslint/types': 8.59.1
+/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:5321:      '@typescript-eslint/visitor-keys': 8.59.1
+/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:5331:  '@typescript-eslint/utils@8.59.1(eslint@9.39.4(jiti@1.21.7))(typescript@5.6.3)':
+
+exec
+/bin/bash -lc "rg --files /home/weiyi/selfKnowledgeBaseWeb | rg \"eslint|tsconfig.base|pnpm-lock|eslint\\.config|tsconfig\"" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 152ms:
+/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml
+/home/weiyi/selfKnowledgeBaseWeb/eslint.config.js
+/home/weiyi/selfKnowledgeBaseWeb/packages/content-types/tsconfig.json
+/home/weiyi/selfKnowledgeBaseWeb/tsconfig.base.json
+/home/weiyi/selfKnowledgeBaseWeb/tsconfig.json
+/home/weiyi/selfKnowledgeBaseWeb/apps/site/tsconfig.json
+/home/weiyi/selfKnowledgeBaseWeb/packages/mdx-bridge/tsconfig.json
+/home/weiyi/selfKnowledgeBaseWeb/packages/block-callout/tsconfig.json
+/home/weiyi/selfKnowledgeBaseWeb/packages/editor-commands/tsconfig.json
+/home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation/tsconfig.json
+/home/weiyi/selfKnowledgeBaseWeb/scripts/tsconfig.json
+/home/weiyi/selfKnowledgeBaseWeb/packages/agent-tools/tsconfig.json
+/home/weiyi/selfKnowledgeBaseWeb/packages/kernel-adapter/tsconfig.json
+/home/weiyi/selfKnowledgeBaseWeb/packages/kernel-pyodide/tsconfig.json
+/home/weiyi/selfKnowledgeBaseWeb/packages/design-tokens/tsconfig.json
+/home/weiyi/selfKnowledgeBaseWeb/packages/kernel-registry/tsconfig.json
+/home/weiyi/selfKnowledgeBaseWeb/scripts/__tests__/fixtures/new-block/initial/tsconfig.json
+
+exec
+/bin/bash -lc "sed -n '1,260p' /home/weiyi/selfKnowledgeBaseWeb/eslint.config.js" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 127ms:
+import tseslint from 'typescript-eslint';
+import js from '@eslint/js';
+import globals from 'globals';
+
+export default tseslint.config(
+  // Universal recommended (no type-aware)
+  js.configs.recommended,
+
+  // Type-aware lint for TS files in apps/*, packages/*, and scripts/
+  {
+    files: ['apps/**/*.{ts,tsx}', 'packages/**/*.{ts,tsx}', 'scripts/**/*.ts'],
+    extends: [...tseslint.configs.recommendedTypeChecked],
+    languageOptions: {
+      parserOptions: {
+        projectService: true,
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
+    rules: {
+      'max-lines': ['warn', { max: 300, skipBlankLines: true, skipComments: true }],
+      'no-console': ['warn', { allow: ['warn', 'error'] }],
+    },
+  },
+
+  // Same max-lines rule for non-typed JS files (config, mjs/cjs tooling)
+  {
+    files: ['**/*.{js,mjs,cjs}'],
+    languageOptions: {
+      globals: { ...globals.node },
+    },
+    rules: {
+      'max-lines': ['warn', { max: 300, skipBlankLines: true, skipComments: true }],
+      'no-console': ['warn', { allow: ['warn', 'error'] }],
+    },
+  },
+
+  // Test files exempt
+  {
+    files: ['**/*.test.{ts,tsx,js,mjs}'],
+    rules: { 'max-lines': 'off' },
+  },
+
+  // apps/site overrides: disable type-aware unsafe-* rules.
+  //
+  // Astro's virtual modules (`astro:content`, `astro/loaders`) and the
+  // generated `.astro/types.d.ts` are only resolvable after `astro sync` /
+  // `astro check` / `astro build` has run. CI / fresh checkouts may lint
+  // before those run, so root eslint's projectService falls back to
+  // unresolved types and floods `no-unsafe-*` errors on otherwise-correct
+  // code. apps/site has its own `astro check && tsc --noEmit` gate (see
+  // `apps/site/package.json#scripts.typecheck`), so type safety is not lost.
+  {
+    files: ['apps/site/**/*.{ts,tsx}'],
+    rules: {
+      '@typescript-eslint/no-unsafe-call': 'off',
+      '@typescript-eslint/no-unsafe-member-access': 'off',
+      '@typescript-eslint/no-unsafe-assignment': 'off',
+      '@typescript-eslint/no-unsafe-argument': 'off',
+      '@typescript-eslint/no-unsafe-return': 'off',
+    },
+  },
+
+  // tailwind.config.ts + astro.config.mjs are build-tooling configuration;
+  // type-aware lint adds no value and routinely trips on Tailwind's preset
+  // typings + Astro integration types. Disable type-checked rules entirely.
+  {
+    files: ['apps/site/tailwind.config.ts', 'apps/site/astro.config.mjs'],
+    ...tseslint.configs.disableTypeChecked,
+  },
+
+  {
+    ignores: [
+      '**/dist/**',
+      '**/.astro/**',
+      '**/.turbo/**',
+      '**/node_modules/**',
+      // Python virtualenv + tool caches under apps/api ship third-party JS
+      // (e.g. urllib3 emscripten worker) that fails our globals lint.
+      // .gitignore already excludes these from VCS; mirror that for ESLint.
+      '**/.venv/**',
+      '**/__pycache__/**',
+      '**/.pytest_cache/**',
+      '**/.mypy_cache/**',
+      '**/.ruff_cache/**',
+    ],
+  },
+);
+
+exec
+/bin/bash -lc "sed -n '1,260p' /home/weiyi/selfKnowledgeBaseWeb/scripts/tsconfig.json" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 135ms:
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": false,
+    "noEmit": true,
+    "rootDir": ".",
+    "types": ["node"],
+    "allowImportingTsExtensions": true
+  },
+  "include": ["**/*.ts"]
+}
+
+exec
+/bin/bash -lc "sed -n '1,260p' /home/weiyi/selfKnowledgeBaseWeb/docs/decisions/ADR-0006.md" in /home/weiyi/selfKnowledgeBaseWeb
+ exited 2 in 0ms:
+sed: can't read /home/weiyi/selfKnowledgeBaseWeb/docs/decisions/ADR-0006.md: No such file or directory
+
+codex
+先补一项快速确认：我想定位 ADR-0006 的原文，但当前分支没有这个文件在同名路径。先按当前仓库可见规范继续复核，不再进行额外文件扩散。接下来会基于你给出的 checklist 与现有 I1/I2 风格直接给定结论。
+exec
+/bin/bash -lc 'rg --files /home/weiyi/selfKnowledgeBaseWeb/docs | rg "ADR-0006|0006|superpowers/specs/2026-04-29-self-knowledge-base-design"' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 150ms:
+/home/weiyi/selfKnowledgeBaseWeb/docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md
+/home/weiyi/selfKnowledgeBaseWeb/docs/decisions/ADR-0006-asymmetry-audit-checklist.md
+
+exec
+/bin/bash -lc "sed -n '1,260p' /home/weiyi/selfKnowledgeBaseWeb/docs/decisions/ADR-0006-asymmetry-audit-checklist.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 150ms:
+# ADR-0006: Cross-location asymmetry-audit checklist (process rule)
+
+| 字段 | 值                                    |
+| ---- | ------------------------------------- |
+| 状态 | accepted                              |
+| 日期 | 2026-04-30                            |
+| 作者 | orchestrator (Claude Opus 4.7 1M ctx) |
+| 触发 | Wave 1 codex 5.5 reviews caught 12 instances of the same meta-class across 6 tracks + 5 close-ceremony fix iterations (8 distinct items + 4 close-ceremony reinforcements of items #6 and #8) |
+| 替代 | 不替代任何 ADR；扩展 [ADR-0001](ADR-0001-stack-selection.md) §3.2 review chain |
+
+## Context
+
+Wave 1 implementation produced strong empirical evidence that **a single bug class** dominates the failure mode at line-level review:
+
+> **Cross-location asymmetry**: a value, schema, algorithm, or invariant exists in two or more places, and an edit to one location is not symmetrically applied to all peers, so behavior diverges silently.
+
+Across 6 tracks + 5 close-ceremony fix iterations, codex 5.5 (`pr-gate`) caught **12 instances** of this meta-class (8 distinct failure-mode items + 4 close-ceremony reinforcements of items #6 and #8). Every PR that lasted ≥ 2 review rounds hit at least one instance. The pattern is so consistent that linear "fix the cited blocker, ship v_n+1" iteration would not have caught the second-order asymmetry; codex specifically catches the symmetric counterpart that the worker missed.
+
+### Wave 1 empirical record (12 instances)
+
+| # | Track | Round | Asymmetry pair | Bug behavior |
+|---|---|---|---|---|
+| 1 | Track B (block-foundation + content-types) | R1 → fixed v3 | `listUIs` mutability vs `listCores` defensive copy | Caller mutation of return value polluted registry singleton |
+| 2 | Track D (apps/api) | R2 → fixed v4 | RFC 7235 `WWW-Authenticate` on framework-raised 401 vs custom `SkbError` 401 | 4 of 5 401 paths emitted spec-mandated header; the custom-error path silently dropped it |
+| 3 | Track F (editor-commands) | R3 → fixed v4 | `.strict()` on top-level Zod object vs nested `frontmatterSchema` | Top-level rejected unknown keys; nested still silently stripped them |
+| 4 | Track C (mdx-bridge) | R2 → fixed v4 | `marksEqual` link comparator: `href` only vs `href + title` | Same href, different titles silently merged into one link with the first title preserved |
+| 5 | Track F v5 | R3 → fixed v6 | One CONTRACT.md updated to reflect code; sister CONTRACT.md (`agent-tools`) had stale wording | Documentation-vs-code drift in the file the worker did not edit |
+| 6 | Track A | R1 → fixed v2 | FOUC inline IIFE saved-value algorithm + content schema | Truthy-coerce diverges from strict-whitelist for invalid / case-mismatched values; inline `z.object` redefinition diverges from `frontmatterSchema` authority |
+| 7 | Track A v2 | R2 → fixed v3 | FOUC inline IIFE try/catch scope | Wide try/catch in IIFE swallowed `matchMedia` exceptions while authority's narrow try/catch propagated; storage-throws scenarios produced light→dark hydration flash |
+| 8 | Wave 1 close bundle v1 | R1 → fixed v2 | ADR-0006 mandated reviewer-prompt updates vs actual `agent-contract.md` / generated `.claude/agents/*.md` / `docs/review-checklist.md` / `team-operations.md` content | The close-ceremony commit codified a process rule that mandates downstream behavior; consumer-side artifacts (reviewer prompts + runbook) had not been updated to embed the rule, so Wave 2 reviewers would not have seen it |
+| 9 | Wave 1 close bundle v2 | R2 → fixed v3 | ADR-0006:81 within-document drift "7 distinct instances" | Single bullet missed during the v1→v2 count sweep — sister-bullet variant of item #6 within a single document |
+| 10 | Wave 1 close bundle v3 | R3 → fixed v4 | ADR-0006:117 within-document drift "7 empirical instances + 18+ erratum candidates" (both numbers stale) | Second sister-bullet drift in the same file, a different bullet — proved per-citation fixes are themselves item #6 traps; comprehensive sweep at fix time is the robust pattern |
+| 11 | Wave 1 close bundle v4 (informational) | R4 (informational) → fixed v5 | structure baseline:66 "× 7 endpoints" while apps/api has 4 routes / 11 tests | Pre-existing content-accuracy drift in the structure baseline document (authored at v1) — content number mismatched real code; surfaced during the broader 11th-class hunt |
+| 12 | Wave 1 close bundle v5 | R2 (pr-gate) → fixed v6 | Regenerated `.claude/agents/code-reviewer.md` + `.claude/agents/pr-gate.md` + `docs/review-checklist.md` were not staged in the bundle commit — authority + generator code updated, but generator outputs remained at pre-update HEAD content | Sub-form of item #8: regenerating an artifact and `git add`'ing it are separate steps; a bundle that updates authority + generator without staging the regenerated outputs is silently stale. Motivated the "verify by clean second-run" step now part of item #8. |
+
+Codex's structured review consistently caught these with three patterns:
+
+1. After fixing one location, **codex audits all peer locations** (not just the cited site)
+2. After a value/schema acquires an attribute, **codex audits every comparator/serialization function** for that attribute
+3. After a "happy path" fix, **codex audits the exception path** for the same equivalence
+
+These three habits collectively define the process rule below.
+
+## Decision
+
+Adopt an **8-point asymmetry-audit checklist** as a mandatory part of `code-reviewer` (Codex 5.3-spark, default cheap) and `pr-gate` (Codex 5.5, deep) review prompts. Reviewers MUST work through every applicable item before declaring PASS.
+
+### The 8 items
+
+1. **Field/attribute audit**: After adding a field to a data shape (Zod schema, Pydantic model, TS interface, mdast attrs, etc.), audit every comparator / equality / serialization / canonicalization function that handles this shape. (Wave 1 evidence: instance #4 — `marksEqual` link branch missed `title` when serialize emitted it.)
+
+2. **Status code audit**: After adding a status code to one HTTP handler (or, generally, an exit/error code to one branch), audit every other handler emitting the same code. RFC-mandated headers (RFC 7235 `WWW-Authenticate` on 401, RFC 7231 `Allow` on 405) attach to **the status code itself**, not the framework code path that emitted it. (Wave 1 evidence: instance #2 — custom `SkbError` 401 path missed `WWW-Authenticate`.)
+
+3. **Strictness audit**: After adding `.strict()` (Zod) / `extra='forbid'` (Pydantic) at one level of an object schema, audit every nested object/sub-schema. The strictness setting **does not propagate**; nested objects must opt in independently. (Wave 1 evidence: instance #3 — top-level `.strict()` shipped while nested `frontmatterSchema` still silently stripped unknown keys.)
+
+4. **Consumer schema audit**: After defining a schema in a single-authority package (e.g. `@skb/content-types/frontmatterSchema`), audit every consumer for inline duplicates or inline redefinitions that should `import` instead. The "deferred swap" pattern — "I'll inline now and import later" — is a contract break that compounds over time. (Wave 1 evidence: instance #6 part 2 — apps/site/content.config.ts inlined `z.object(...)` rather than importing `frontmatterSchema`.)
+
+5. **Algorithm + runtime constant replication audit**: When an algorithm or runtime constant is replicated outside its authority (e.g. inline FOUC scripts, login challenge derivation, pre-hydration boot logic that cannot import from packages), audit every consumer-side replica for byte-equivalent reproduction. The replica must register a **regression test** that asserts equivalence against the authority across a representative input corpus. (Wave 1 evidence: instance #6 part 1 — FOUC IIFE truthy-coerce vs `getInitialTheme()` strict-whitelist; remediated with `apps/site/src/__tests__/fouc-script.test.ts` 16-row corpus.)
+
+6. **Sister-file documentation audit**: After updating one CONTRACT.md (or any document that describes a code surface), audit ALL related CONTRACT.md files in the package family for sister-file drift. Two CONTRACT.md files that describe two halves of the same contract must use **identical terminology** for the shared identifiers (function names, schema names, refine predicate names). (Wave 1 evidence: instance #5 — `editor-commands/CONTRACT.md` updated to cite `editBlockInputSchema` while `agent-tools/CONTRACT.md` still referred to the old shape.)
+
+7. **Exception-scope equivalence audit**: When replicating an algorithm + its exception handling across files, audit BOTH the happy-path semantics AND the `try/catch` scope between authority and replica. Narrow vs wide `try/catch` can produce divergent fall-through behavior even with identical happy-path logic. Specifically: when `localStorage` / `sessionStorage` / `IndexedDB` / `matchMedia` / any browser API in the algorithm path can throw, the `try/catch` MUST wrap ONLY the throwing call, with the fall-through branch (matchMedia / system default / DOM apply) running AFTER the catch handler — not inside it. (Wave 1 evidence: instance #7 — FOUC IIFE wide-scope try/catch swallowed matchMedia exceptions; remediated with narrow try/catch + 2 storage-throws regression tests.)
+
+8. **Authority-document → generated/consumed surface audit**: When updating an authority document (ADR, spec, `agent-contract.md`, runbook, CONVENTIONS) **OR a dependency authority (`package.json`)** that mandates behavior in downstream consumers, audit every consumer-side replica/generated artifact for synchronized update **AND staged-in-the-git-index in the same bundle**. Specifically: an ADR section that says "X file MUST be updated to do Y" requires the same commit to update X and provide a way to verify the synchronization. Generated artifacts (e.g. `docs/review-checklist.md` and `.claude/agents/*.md` derived from `agent-contract.md`; **`pnpm-lock.yaml` derived from `package.json`** — see sub-form C below) MUST be regenerated via the documented codegen step (`pnpm generate:configs` / `pnpm install`) AND **explicitly `git add`'d** so the git **index** (not just the working tree) contains the new content; runbooks (`docs/runbooks/team-operations.md`) MUST be cross-linked; Codex/Claude subagent prompt files MUST embed or reference the new rule.
+
+   **Operational sequence** (do not skip steps):
+   ```bash
+   # 1. Edit authority + generator code
+   # 2. Run codegen
+   pnpm generate:configs
+   # 3. Stage regenerated outputs (CRITICAL — see Pitfall below)
+   git add <regenerated/path/foo.md> <regenerated/path/bar.md>
+   # 4. Verify index reflects content (NOT just working tree):
+   git diff --cached --stat -- <regenerated paths>
+   #    → expects non-empty diff with the expected line counts
+   # 5. Verify idempotence: re-run codegen + confirm working tree matches index:
+   pnpm generate:configs
+   git status --short -- <regenerated paths>
+   #    → expects column-1 'M' (staged) + column-2 blank (working tree clean)
+   ```
+
+   **Pitfall (this is the load-bearing step)**: `git status --short` shows two columns: column 1 is index-vs-HEAD; column 2 is working-tree-vs-index. After running the generator without `git add`, you see `' M'` (space + M) — **working tree differs from index, but index still matches HEAD**. `git commit` only commits the index. Skipping `git add` means the regenerated content is in your working tree but NOT in the next commit. The bundle would land authority + generator-code changes WITHOUT the regenerated outputs, leaving consumers (Wave 2 reviewers reading `.claude/agents/*.md`) at pre-update content. Use `git diff --cached` (not `git status`) as the canonical staging-verification command — `--cached` shows index-vs-HEAD only, which is what `git commit` will produce.
+
+   **Pitfall extension — `pnpm-lock.yaml` is a generated artifact too (sub-form C below)**: when the authority is `package.json` (any dependency add / remove / version bump / `@types/*` shift), `pnpm install` regenerates `pnpm-lock.yaml` as a deterministic derived artifact. Skipping `git add pnpm-lock.yaml` produces the same class of failure as skipping `git add .claude/agents/*.md`: working tree has the synced lockfile but the **index** still holds HEAD's stale lockfile, so the bundle ships `package.json` ahead of its lockfile. CI runs `pnpm install --frozen-lockfile` from the bundled state, sees the stale lockfile disagreeing with the new `package.json`, and fails install. The same `git diff --cached --stat -- pnpm-lock.yaml` canonical verification applies. (Wave 1 erratum commit `e15ec36`; codified as sub-form C below.)
+
+   Generated-from-authority files carry their own header comment ("GENERATED FROM agent-contract.md — DO NOT EDIT BY HAND") OR YAML frontmatter declaring authority source — both forms are acceptable. `pnpm-lock.yaml` lacks an explicit header (the format is fixed by pnpm) but is implicitly declared by `pnpm install`'s contract — its authority is `package.json` + the workspace `pnpm-workspace.yaml`.
+
+   **Wave 1 evidence**: **instance #8** — ADR-0006 v1 commit codified reviewer-prompt mandates but did not update `agent-contract.md` / regenerate `.claude/agents/code-reviewer.md` / regenerate `.claude/agents/pr-gate.md` / cross-link `team-operations.md` / regenerate `docs/review-checklist.md`; pr-gate caught the dogfood failure during R1 review of the close-ceremony bundle, forcing a v2 fix. **instance #12 (sub-form A — pre-regeneration omission)** — v5 bundle updated authority files (`agent-contract.md`, generator code, `team-operations.md` cross-link) but had not run the generator at all post-edit; the 3 regenerated outputs were stale at HEAD content; pr-gate caught this during R2 review, forcing a v6 fix. **instance #12 (sub-form B — staging-vs-working-tree confusion)** — v6 bundle ran the generator (so working tree had new content) but did NOT `git add` the regenerated outputs; the git **index** still held HEAD blob hashes for the 3 generated files; orchestrator confused `git status --short` "M" prefix (working-tree-vs-index) with index-vs-HEAD; pr-gate caught this via `git ls-files --stage` blob-hash comparison during R3 review, forcing the v7 fix that explicitly stages with `git add` + verifies via `git diff --cached`. **instance #12 (sub-form C — lockfile is a generated-from-authority artifact)** — Wave 1 close ceremony commit `e15ec36` ("fix(deps): commit pnpm-lock.yaml for @tailwindcss/typography (lockfile drift)"): the design-tokens erratum (commit `fdc86a8`) added the `@tailwindcss/typography` dependency to `package.json` but did not stage the regenerated `pnpm-lock.yaml`; CI install used the pre-update lockfile, drifted against the new `package.json`, and failed `pnpm install --frozen-lockfile`. Resolution: commit `e15ec36` staged the lockfile separately. Lesson codified: when the authority is `package.json` (any dependency add / remove / version bump), `pnpm-lock.yaml` is the consumer-side generated artifact and must ride the same bundle — the class equivalence to `.claude/agents/*.md` regeneration is exact (deterministic derive + git-index staging required). The four sub-forms of the same item #8 class — pre-regeneration omission, post-regeneration commit-staging confusion, conceptually-correct-but-operationally-incomplete fix, AND lockfile-as-generated-artifact — together motivate the explicit operational sequence and `git diff --cached` canonical verification command codified above.
+
+### Wave 2 prep notes (forward-compatibility application)
+
+The 8 items have specific Wave 2 trip-hazards already identified by Wave 1's review record:
+
+- **Item #1 + Wave 2 attr-bearing marks**: when the first attr-bearing mark beyond `link` is added to mdx-bridge (e.g. `highlight: {color}`, `kbd: {style}`), the worker MUST simultaneously update `wrapMark` AND `marksEqual` AND add a fixture exercising attr-equality + attr-distinction. Default `return true` in `marksEqual` is a silent-drop trap for any attr-bearing mark. (See pr-gate Track C v4 R3 caveat.)
+
+- **Item #2 + Wave 2 new error categories**: when Wave 2+ adds new HTTP error categories (e.g. `auth-rate-limit`, `kernel-timeout`), each new `SkbError` subclass MUST emit the same RFC-mandated headers as framework-raised peers. Add a unit test asserting header presence per error type. (See `apps/api/CONVENTIONS.md` §5 Pitfall + Pitfall continued.)
+
+- **Item #5 + Wave 2 client-side replications**: when apps/site adds new client-side algorithm replications (theme variants beyond light/dark, locale negotiation pre-hydration, etc.), the worker MUST audit both saved-value semantics AND try/catch scope against authority. (See `packages/design-tokens/CONTRACT.md` Inverse-direction obligation invariant.)
+
+- **Item #7 + future inline scripts**: ANY future `<script is:inline>` block in the project that needs pre-hydration replication of a package algorithm MUST follow the FOUC template (narrow try/catch + corpus regression test).
+
+## Consequences
+
+### Positive
+
+- **Catch the failure mode proactively**: Wave 1 evidence shows reviewer-applied checklist would have caught all 12 instances on the first review round (including the close-ceremony dogfood instance #8 + the 4 fix-loop reinforcements), eliminating 12 round-trip cycles
+- **Reviewer prompt clarity**: code-reviewer + pr-gate codex profile prompts gain a concrete, enumerable checklist rather than the implicit "look for symmetric counterparts" expectation
+- **Worker self-audit**: workers gain a pre-PR checklist they can run before reporting `ready-for-review`, catching their own asymmetries (memory: `feedback_verification_fresh_state.md` showed the verification-rigor lesson; this checklist is the analogous rigor at code-design level)
+- **Empirical grounding**: 12 distinct instances spread across 6 tracks + 5 close-ceremony fix iterations make this rule data-driven, not a "best practice" speculation; instances #9-12 reinforce items #6 + #8 specifically through close-ceremony fix-loop evidence
+
+### Costs
+
+- **Review-round time**: applying 8-point audit at every review adds ~5-10 minutes per round of code-reviewer + pr-gate runtime. Acceptable trade-off given Wave 1 round-counts (Track F: 5 rounds; Track A: 3 rounds; Track C: 4 rounds; Track D: 4 rounds) — front-loading review thoroughness reduces total cycles
+- **Worker prompt overhead**: each spawn prompt now needs a reference to this ADR + the 8-point checklist. Marginal cost.
+- **False-positive risk**: items that don't apply (e.g. #2 "status code" doesn't apply to TS-only packages) need to be triaged and skipped. Reviewer profile prompts must explicitly say "skip items not applicable to this PR's scope" to avoid bloat.
+
+### Risks (mitigated)
+
+- **Risk**: workers might mechanically check items without thinking, producing false confidence. **Mitigation**: each item enumerates concrete failure modes from Wave 1, not abstract heuristics — easier to apply
+- **Risk**: this list might grow unbounded as Wave 2+ surfaces new asymmetry classes. **Mitigation**: ADR amendments are cheap; each new instance produces an ADR-0006 erratum capturing item #N+1. Wave 2 close ceremony reviews instances and adds items as needed.
+
+## Implementation
+
+### Reviewer prompt updates
+
+`code-reviewer` and `pr-gate` profile prompts MUST be updated to:
+
+1. State the 8-point checklist verbatim (or by reference to this ADR)
+2. Require the reviewer's verdict structure to include "asymmetry-audit applied: items {1..8} verdicts: ..."
+3. Explicitly mark FAIL if any applicable item is left un-audited
+
+`docs/runbooks/team-operations.md` §"角色与触发器" Tier 2 reviewer rows should cross-link to this ADR.
+
+### Worker pre-flight (template addition)
+
+Worker `ready-for-review` reports SHOULD include a brief asymmetry-audit summary: which of the 8 items applied, and the worker's self-audit verdict. Reviewers cross-check.
+
+### Wave 1 retroactive
+
+This ADR is **forward-applicable**. Wave 1 PRs that already shipped under earlier review without this checklist remain valid; the empirical instances they revealed are exactly what grounded this ADR. No retroactive re-review required.
+
+## Related
+
+- [ADR-0001](ADR-0001-stack-selection.md) §3.2 review chain — this ADR specifies what reviewers MUST do; ADR-0001 specifies who reviews
+- [ADR-0002](ADR-0002-wave-1-close.md) Wave 1 close — collects the 12 empirical instances + 22 erratum candidates
+- [ADR-0004](ADR-0004-agent-team-dispatch-model.md) team dispatch — orchestrator dispatches review chain per this checklist
+- [docs/runbooks/team-operations.md](../runbooks/team-operations.md) — operational reference for reviewers and workers
+- [packages/design-tokens/CONTRACT.md](../../packages/design-tokens/CONTRACT.md) Inverse-direction obligation — concrete application of items #5 + #7
+- [apps/api/CONVENTIONS.md](../../apps/api/CONVENTIONS.md) §5 Pitfalls — concrete application of item #2
+
+exec
+/bin/bash -lc "rg --line-number \"\\?: string \\| undefined|\\?: boolean \\| undefined|\\?: .*\\| undefined\" /home/weiyi/selfKnowledgeBaseWeb/scripts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 169ms:
+/home/weiyi/selfKnowledgeBaseWeb/scripts/new-block.ts:48:  ui?: string | undefined;
+/home/weiyi/selfKnowledgeBaseWeb/scripts/new-block.ts:49:  dryRun?: boolean | undefined;
+
+exec
+/bin/bash -lc "rg --line-number \"string \\| undefined|boolean \\| undefined|number \\| undefined\" /home/weiyi/selfKnowledgeBaseWeb/scripts/extract-pdf-text.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ exited 2 in 139ms:
+rg: /home/weiyi/selfKnowledgeBaseWeb/scripts/extract-pdf-text.ts: IO error for operation on /home/weiyi/selfKnowledgeBaseWeb/scripts/extract-pdf-text.ts: No such file or directory (os error 2)
+
+exec
+/bin/bash -lc 'ls /home/weiyi/selfKnowledgeBaseWeb/scripts | head' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+__tests__
+check-size-limits.mjs
+generate-configs.ts
+hooks
+new-block.ts
+refactor-move.ts
+render
+tsconfig.json
+tsconfig.tsbuildinfo
+
+exec
+/bin/bash -lc 'rg --files /home/weiyi/selfKnowledgeBaseWeb/scripts | rg "extract-pdf"' in /home/weiyi/selfKnowledgeBaseWeb
+ exited 1 in 152ms:
+codex
+我刚刚发现一个上下文异常：我刚才读到的 `scripts/extract-pdf-text.ts` 在当前 `ls/rg` 结果里没出现。先核对一次该文件实际是否已存在（可能是已 stage/路径偏移问题），然后继续给出结论。
+exec
+/bin/bash -lc 'stat /home/weiyi/selfKnowledgeBaseWeb/scripts/extract-pdf-text.ts /home/weiyi/selfKnowledgeBaseWeb/scripts/__tests__/extract-pdf-text.test.ts' in /home/weiyi/selfKnowledgeBaseWeb
+ exited 1 in 116ms:
+stat: cannot statx '/home/weiyi/selfKnowledgeBaseWeb/scripts/extract-pdf-text.ts': No such file or directory
+stat: cannot statx '/home/weiyi/selfKnowledgeBaseWeb/scripts/__tests__/extract-pdf-text.test.ts': No such file or directory
+
+exec
+/bin/bash -lc 'rg --files /home/weiyi/selfKnowledgeBaseWeb | rg "extract-pdf"' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 181ms:
+/home/weiyi/selfKnowledgeBaseWeb/docs/audits/codex-runs/2026-04-30-task-I3-extract-pdf-text.txt
+
+exec
+/bin/bash -lc 'find /home/weiyi -path "*extract-pdf-text.ts" 2>/dev/null' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 1795ms:
+codex
+FAIL — asymmetry-audit applied.
+
+1. [高] `corrupt` 分支未被测试覆盖  
+   [scripts/__tests__/extract-pdf-text.test.ts](file:///home/weiyi/selfKnowledgeBaseWeb/scripts/__tests__/extract-pdf-text.test.ts)  
+   当前仅有「缺失文件」「非 PDF」「普通 PDF」「空 PDF」「--output」「--help」这 5 个场景；未见“corrupt PDF（有 `.pdf` 扩展但内容损坏/不可解析）触发错误并退出码 1”的用例。  
+   要求中明确指定“文件不存在 / 非 PDF / corrupt → throw exit 1”，当前测试不能直接验证 `corrupt` 分支，属于可回归风险（尤其是 `ensurePdfHeader` + `getDocument` 双重路径）。
+
+2. [中] `FIX-I1/FIX-I2` 类型安全风格有偏差  
+   [scripts/extract-pdf-text.ts](file:///home/weiyi/selfKnowledgeBaseWeb/scripts/extract-pdf-text.ts)  
+   `output?: string | undefined`、`cwd?: string | undefined` 这类 optional 字段的写法在 `exactOptionalPropertyTypes` 下会触发冗余联合成员问题（与 I1/I2 经验一致）。  
+   此外 `const loadPdfDocument = getDocument as PdfLoadFn;`、`const mapped = item as { str?: unknown };` 的断言应再核对是否有必要（与 FIX-I2 的 no-unnecessary-type-assertion 目标不完全一致）。
+
+3. [低] 测试规模与语义覆盖不完全对齐  
+   [scripts/__tests__/extract-pdf-text.test.ts](file:///home/weiyi/selfKnowledgeBaseWeb/scripts/__tests__/extract-pdf-text.test.ts)  
+   你们当前 fixture 是最小自造 PDF（文本页/空页），对“真实扫描件”行为是间接模拟，未覆盖更典型损坏/加密/图像页（OCR 失败）类输入；此类语义应至少在一条专门案例中覆盖。
+
+已核对项:
+- ADR #6（I1/I2 同步风格）：`commander` CLI 结构、`--help`、`--output`、`runCli` 错误退出路径总体一致，风格可接受。
+- ADR #1（pdfjs-dist API）与 worker 决策：`pdfjs-dist/legacy` + `GlobalWorkerOptions.workerSrc` 的方向是合理的。
+- ADR #4：N/A（无 single-authority schema 复用场景）。
+- ADR #8：你说明了 lockfile/依赖由 git-operator 处理，review scope 符合。
+2026-04-30T19:33:02.390921Z ERROR codex_core::session: failed to record rollout items: thread 019ddfe0-9678-7fe1-a605-ea162892ed45 not found
+tokens used
+55,545
+FAIL — asymmetry-audit applied.
+
+1. [高] `corrupt` 分支未被测试覆盖  
+   [scripts/__tests__/extract-pdf-text.test.ts](file:///home/weiyi/selfKnowledgeBaseWeb/scripts/__tests__/extract-pdf-text.test.ts)  
+   当前仅有「缺失文件」「非 PDF」「普通 PDF」「空 PDF」「--output」「--help」这 5 个场景；未见“corrupt PDF（有 `.pdf` 扩展但内容损坏/不可解析）触发错误并退出码 1”的用例。  
+   要求中明确指定“文件不存在 / 非 PDF / corrupt → throw exit 1”，当前测试不能直接验证 `corrupt` 分支，属于可回归风险（尤其是 `ensurePdfHeader` + `getDocument` 双重路径）。
+
+2. [中] `FIX-I1/FIX-I2` 类型安全风格有偏差  
+   [scripts/extract-pdf-text.ts](file:///home/weiyi/selfKnowledgeBaseWeb/scripts/extract-pdf-text.ts)  
+   `output?: string | undefined`、`cwd?: string | undefined` 这类 optional 字段的写法在 `exactOptionalPropertyTypes` 下会触发冗余联合成员问题（与 I1/I2 经验一致）。  
+   此外 `const loadPdfDocument = getDocument as PdfLoadFn;`、`const mapped = item as { str?: unknown };` 的断言应再核对是否有必要（与 FIX-I2 的 no-unnecessary-type-assertion 目标不完全一致）。
+
+3. [低] 测试规模与语义覆盖不完全对齐  
+   [scripts/__tests__/extract-pdf-text.test.ts](file:///home/weiyi/selfKnowledgeBaseWeb/scripts/__tests__/extract-pdf-text.test.ts)  
+   你们当前 fixture 是最小自造 PDF（文本页/空页），对“真实扫描件”行为是间接模拟，未覆盖更典型损坏/加密/图像页（OCR 失败）类输入；此类语义应至少在一条专门案例中覆盖。
+
+已核对项:
+- ADR #6（I1/I2 同步风格）：`commander` CLI 结构、`--help`、`--output`、`runCli` 错误退出路径总体一致，风格可接受。
+- ADR #1（pdfjs-dist API）与 worker 决策：`pdfjs-dist/legacy` + `GlobalWorkerOptions.workerSrc` 的方向是合理的。
+- ADR #4：N/A（无 single-authority schema 复用场景）。
+- ADR #8：你说明了 lockfile/依赖由 git-operator 处理，review scope 符合。
