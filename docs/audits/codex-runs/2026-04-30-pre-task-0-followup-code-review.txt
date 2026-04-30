@@ -1,0 +1,927 @@
+Reading additional input from stdin...
+OpenAI Codex v0.125.0 (research preview)
+--------
+workdir: /home/weiyi/selfKnowledgeBaseWeb
+model: gpt-5.3-codex-spark
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: xhigh
+reasoning summaries: none
+session id: 019dde7b-fc3c-7ee0-ba52-7aca2f8f2609
+--------
+user
+你是 code-reviewer profile (gpt-5.3-codex-spark)。审 SelfKnowledgeBaseWeb Wave 2 Pre-Task 0 **follow-up bundle**（不是主 PR；主 PR 691bc30 已 commit）。
+
+## Bundle scope (3 files, +148/-87)
+git diff --cached 显示：
+- docs/decisions/ADR-0006-asymmetry-audit-checklist.md (+7/-1) — item #8 description 扩展 + Pitfall extension + instance #12 sub-form C 新增 (lockfile is generated-from-authority artifact，源 commit e15ec36)
+- docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md (+136/-80) — §3.1 (27 agent → 20 teammate + 8 tool pattern；diagram 重画；ux-ui-lead 加；codex 8 个移到新 Tool patterns 子段) + §3.2 (review chain 改为 ADR-0007 D2 selectivity，8 行触发表 + Step 4 orchestrator 自检)
+- scripts/__tests__/generate-configs.test.ts (+11/-0) — 1 条新 it 断言每个 tool_pattern.invocation 含 `< /dev/null`
+
+## 触发链
+ADR-0007 D2 row 3 (修改 spec / 任何 ADR) → 你是 Step 1 baseline review。后续 Claude pr-reviewer (sonnet) 必跑；**pr-gate 不跑** (D2 row 3 注：spec/ADR-only 类是文档)。
+
+## 必跑 ADR-0006 8-point asymmetry-audit checklist
+按 docs/decisions/ADR-0006-asymmetry-audit-checklist.md 全文 8 项；本 PR 最 relevant：
+- item #6 sister-doc audit：spec §3.1 数字 (20 + 8) 必须与 agent-contract.md metadata.total_teammates / total_tool_patterns / ADR-0007 §138 / docs/plans/active.md:43 一致
+- item #8 authority → consumer：worker 未改 agent-contract.md（authority），所以 .claude/agents/* / CLAUDE.md / AGENTS.md / codex-tool-invocations.md 都不应在 staged set —— 验证 `git diff --cached -- .claude/ CLAUDE.md AGENTS.md docs/runbooks/codex-tool-invocations.md` 应为空
+- item #1/#2/#3/#5/#7：通常 N/A 但要明确说出 N/A 的理由
+- item #4：不改 schema authority (types.ts 未在 staged set)，N/A
+
+## Worker self-report 要点
+- pnpm typecheck/test/size-check 全 PASS（test 26→27）
+- worker 跑了一次 `pnpm generate:configs` 做 defensive idempotence 验证（task instruction 字面禁了，但结果无 drift）
+- ADR-0006 sub-form C 放在现有 instance #12 之下作为第 4 个 sub-form，不是新 instance #13 —— 论证是 'class 等价'
+
+## 你的任务
+1. 跑 `git diff --cached` 读全部 staged 改动
+2. 8-point checklist 逐项 verdict（applicable 的项每项给 PASS/FAIL + 推理；N/A 的项说明为何）
+3. 关键 sister-doc 一致性 grep 验证（agent-contract.md / ADR-0007 / active.md 数字是否对齐）
+4. 8th-class hunt：worker 没看到、但你能 hunt 到的隐性 asymmetry
+5. 输出 verdict structure: PASS/FAIL + 'asymmetry-audit applied: items {1..8} verdicts: ...'
+
+## 不要做
+- 不修改文件
+- 不评论本 PR 范围之外的 §3.x 段落（worker scope 限定 §3.1 + §3.2 + dated 2026-04-30 changelog 行；§1267/§1269/§1057/§1315/§1317 是 dated 2026-04-29 历史，不审）
+
+开始。
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the vendored bubblewrap in the meantime.
+codex
+明白。先把 staged 3 个文件的完整 diff 拉出来，并按你给的 8 点 checklist 做逐项逐项核验；随后再做姐姐/兄弟文档数字一致性和隐性不对称项扫描。
+exec
+/bin/bash -lc 'cd /home/weiyi/selfKnowledgeBaseWeb && git diff --cached -- docs/decisions/ADR-0006-asymmetry-audit-checklist.md docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md scripts/__tests__/generate-configs.test.ts' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 153ms:
+diff --git a/docs/decisions/ADR-0006-asymmetry-audit-checklist.md b/docs/decisions/ADR-0006-asymmetry-audit-checklist.md
+index bdf34eb..9628b0f 100644
+--- a/docs/decisions/ADR-0006-asymmetry-audit-checklist.md
++++ b/docs/decisions/ADR-0006-asymmetry-audit-checklist.md
+@@ -61,7 +61,7 @@ Adopt an **8-point asymmetry-audit checklist** as a mandatory part of `code-revi
+ 
+ 7. **Exception-scope equivalence audit**: When replicating an algorithm + its exception handling across files, audit BOTH the happy-path semantics AND the `try/catch` scope between authority and replica. Narrow vs wide `try/catch` can produce divergent fall-through behavior even with identical happy-path logic. Specifically: when `localStorage` / `sessionStorage` / `IndexedDB` / `matchMedia` / any browser API in the algorithm path can throw, the `try/catch` MUST wrap ONLY the throwing call, with the fall-through branch (matchMedia / system default / DOM apply) running AFTER the catch handler — not inside it. (Wave 1 evidence: instance #7 — FOUC IIFE wide-scope try/catch swallowed matchMedia exceptions; remediated with narrow try/catch + 2 storage-throws regression tests.)
+ 
+-8. **Authority-document → generated/consumed surface audit**: When updating an authority document (ADR, spec, `agent-contract.md`, runbook, CONVENTIONS) that mandates behavior in downstream consumers, audit every consumer-side replica/generated artifact for synchronized update **AND staged-in-the-git-index in the same bundle**. Specifically: an ADR section that says "X file MUST be updated to do Y" requires the same commit to update X and provide a way to verify the synchronization. Generated artifacts (e.g. `docs/review-checklist.md` and `.claude/agents/*.md` derived from `agent-contract.md`) MUST be regenerated via the documented codegen step (`pnpm generate:configs`) AND **explicitly `git add`'d** so the git **index** (not just the working tree) contains the new content; runbooks (`docs/runbooks/team-operations.md`) MUST be cross-linked; Codex/Claude subagent prompt files MUST embed or reference the new rule.
++8. **Authority-document → generated/consumed surface audit**: When updating an authority document (ADR, spec, `agent-contract.md`, runbook, CONVENTIONS) **OR a dependency authority (`package.json`)** that mandates behavior in downstream consumers, audit every consumer-side replica/generated artifact for synchronized update **AND staged-in-the-git-index in the same bundle**. Specifically: an ADR section that says "X file MUST be updated to do Y" requires the same commit to update X and provide a way to verify the synchronization. Generated artifacts (e.g. `docs/review-checklist.md` and `.claude/agents/*.md` derived from `agent-contract.md`; **`pnpm-lock.yaml` derived from `package.json`** — see sub-form C below) MUST be regenerated via the documented codegen step (`pnpm generate:configs` / `pnpm install`) AND **explicitly `git add`'d** so the git **index** (not just the working tree) contains the new content; runbooks (`docs/runbooks/team-operations.md`) MUST be cross-linked; Codex/Claude subagent prompt files MUST embed or reference the new rule.
+ 
+    **Operational sequence** (do not skip steps):
+    ```bash
+@@ -81,9 +81,11 @@ Adopt an **8-point asymmetry-audit checklist** as a mandatory part of `code-revi
+ 
+    **Pitfall (this is the load-bearing step)**: `git status --short` shows two columns: column 1 is index-vs-HEAD; column 2 is working-tree-vs-index. After running the generator without `git add`, you see `' M'` (space + M) — **working tree differs from index, but index still matches HEAD**. `git commit` only commits the index. Skipping `git add` means the regenerated content is in your working tree but NOT in the next commit. The bundle would land authority + generator-code changes WITHOUT the regenerated outputs, leaving consumers (Wave 2 reviewers reading `.claude/agents/*.md`) at pre-update content. Use `git diff --cached` (not `git status`) as the canonical staging-verification command — `--cached` shows index-vs-HEAD only, which is what `git commit` will produce.
+ 
+-   Generated-from-authority files carry their own header comment ("GENERATED FROM agent-contract.md — DO NOT EDIT BY HAND") OR YAML frontmatter declaring authority source — both forms are acceptable.
++   **Pitfall extension — `pnpm-lock.yaml` is a generated artifact too (sub-form C below)**: when the authority is `package.json` (any dependency add / remove / version bump / `@types/*` shift), `pnpm install` regenerates `pnpm-lock.yaml` as a deterministic derived artifact. Skipping `git add pnpm-lock.yaml` produces the same class of failure as skipping `git add .claude/agents/*.md`: working tree has the synced lockfile but the **index** still holds HEAD's stale lockfile, so the bundle ships `package.json` ahead of its lockfile. CI runs `pnpm install --frozen-lockfile` from the bundled state, sees the stale lockfile disagreeing with the new `package.json`, and fails install. The same `git diff --cached --stat -- pnpm-lock.yaml` canonical verification applies. (Wave 1 erratum commit `e15ec36`; codified as sub-form C below.)
+ 
+-   **Wave 1 evidence**: **instance #8** — ADR-0006 v1 commit codified reviewer-prompt mandates but did not update `agent-contract.md` / regenerate `.claude/agents/code-reviewer.md` / regenerate `.claude/agents/pr-gate.md` / cross-link `team-operations.md` / regenerate `docs/review-checklist.md`; pr-gate caught the dogfood failure during R1 review of the close-ceremony bundle, forcing a v2 fix. **instance #12 (sub-form A — pre-regeneration omission)** — v5 bundle updated authority files (`agent-contract.md`, generator code, `team-operations.md` cross-link) but had not run the generator at all post-edit; the 3 regenerated outputs were stale at HEAD content; pr-gate caught this during R2 review, forcing a v6 fix. **instance #12 (sub-form B — staging-vs-working-tree confusion)** — v6 bundle ran the generator (so working tree had new content) but did NOT `git add` the regenerated outputs; the git **index** still held HEAD blob hashes for the 3 generated files; orchestrator confused `git status --short` "M" prefix (working-tree-vs-index) with index-vs-HEAD; pr-gate caught this via `git ls-files --stage` blob-hash comparison during R3 review, forcing the v7 fix that explicitly stages with `git add` + verifies via `git diff --cached`. The three sub-forms of the same item #8 class — pre-regeneration omission, post-regeneration commit-staging confusion, AND the conceptually-correct-but-operationally-incomplete fix — together motivate the explicit operational sequence and `git diff --cached` canonical verification command codified above.
++   Generated-from-authority files carry their own header comment ("GENERATED FROM agent-contract.md — DO NOT EDIT BY HAND") OR YAML frontmatter declaring authority source — both forms are acceptable. `pnpm-lock.yaml` lacks an explicit header (the format is fixed by pnpm) but is implicitly declared by `pnpm install`'s contract — its authority is `package.json` + the workspace `pnpm-workspace.yaml`.
++
++   **Wave 1 evidence**: **instance #8** — ADR-0006 v1 commit codified reviewer-prompt mandates but did not update `agent-contract.md` / regenerate `.claude/agents/code-reviewer.md` / regenerate `.claude/agents/pr-gate.md` / cross-link `team-operations.md` / regenerate `docs/review-checklist.md`; pr-gate caught the dogfood failure during R1 review of the close-ceremony bundle, forcing a v2 fix. **instance #12 (sub-form A — pre-regeneration omission)** — v5 bundle updated authority files (`agent-contract.md`, generator code, `team-operations.md` cross-link) but had not run the generator at all post-edit; the 3 regenerated outputs were stale at HEAD content; pr-gate caught this during R2 review, forcing a v6 fix. **instance #12 (sub-form B — staging-vs-working-tree confusion)** — v6 bundle ran the generator (so working tree had new content) but did NOT `git add` the regenerated outputs; the git **index** still held HEAD blob hashes for the 3 generated files; orchestrator confused `git status --short` "M" prefix (working-tree-vs-index) with index-vs-HEAD; pr-gate caught this via `git ls-files --stage` blob-hash comparison during R3 review, forcing the v7 fix that explicitly stages with `git add` + verifies via `git diff --cached`. **instance #12 (sub-form C — lockfile is a generated-from-authority artifact)** — Wave 1 close ceremony commit `e15ec36` ("fix(deps): commit pnpm-lock.yaml for @tailwindcss/typography (lockfile drift)"): the design-tokens erratum (commit `fdc86a8`) added the `@tailwindcss/typography` dependency to `package.json` but did not stage the regenerated `pnpm-lock.yaml`; CI install used the pre-update lockfile, drifted against the new `package.json`, and failed `pnpm install --frozen-lockfile`. Resolution: commit `e15ec36` staged the lockfile separately. Lesson codified: when the authority is `package.json` (any dependency add / remove / version bump), `pnpm-lock.yaml` is the consumer-side generated artifact and must ride the same bundle — the class equivalence to `.claude/agents/*.md` regeneration is exact (deterministic derive + git-index staging required). The four sub-forms of the same item #8 class — pre-regeneration omission, post-regeneration commit-staging confusion, conceptually-correct-but-operationally-incomplete fix, AND lockfile-as-generated-artifact — together motivate the explicit operational sequence and `git diff --cached` canonical verification command codified above.
+ 
+ ### Wave 2 prep notes (forward-compatibility application)
+ 
+diff --git a/docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md b/docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md
+index 3950c78..7706439 100644
+--- a/docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md
++++ b/docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md
+@@ -551,83 +551,84 @@ WAVE 4：验收 + 部署
+ 
+ ## §3 Harness 工程层（LOCKED）
+ 
+-### 3.1 Agent 阵容（27 个，多 LLM 协同）
++### 3.1 Agent 阵容（20 teammate + 8 tool pattern；ADR-0007 D1+D5）
++
++ADR-0007 D5 把原 8 个 codex-wrapper agent（5 个 Tier 1 codex worker + Tier 2 `plan-challenger` /
++`code-reviewer` / `pr-gate`）从 Claude teammate 模型移除，改为 orchestrator 直接 Bash 调用的
++**stateless invocation pattern**（详见 [`docs/runbooks/codex-tool-invocations.md`](../../runbooks/codex-tool-invocations.md)）。
++ADR-0007 D1 同时新增 `ux-ui-lead` Claude teammate 作 ui-default 跨包视觉单一权威。最终阵容为
++**20 个 Claude teammate（持续 context）+ 8 个 codex tool pattern（每次 stateless 调用）**。
+ 
+ ```
+ TIER 0: Orchestrator (Claude, 1) ── 整体规划 + dispatch + 维护 docs/plans/
+               │
+-              ▼ dispatch (静态分配)
+-TIER 1: Workers (15)
+-  ├─ Claude-based (10)        ── 复杂推理 / 架构 / 桥接 / 集成
+-  └─ Codex 5.3-spark-based (5) ── 模板化 / 重复变体 / 脚手架
++              ▼ dispatch (Claude teammate via SendMessage / codex tool via Bash)
++TIER 1: Worker Teammates (Claude, 11)
++  ├─ block-foundation-eng / simple-block-eng / render-block-eng / viz-block-eng
++  ├─ mdx-bridge-eng / kernel-architect / kernel-pyodide-eng
++  ├─ editor-eng / editor-integrator
++  ├─ ux-ui-lead (新, ADR-0007 D1) ── ui-default 跨包视觉单一权威
++  └─ api-builder
+               │
+               ▼ output
+-TIER 2: Process (7) ── 跨切，角色严格分离
+-  ├─ plan-challenger (Codex 5.3-spark) ── plan lock 前挑战 (PR-sized / 可测 / 边界)
+-  ├─ code-reviewer (Codex 5.3-spark, ★ 默认廉价)
+-  │      ↓ 高风险 PR 自动 escalate
+-  ├─ pr-gate (Codex 5.5, 选择性)  ── 仅对契约 / 架构 / 安全相关 PR
+-  ├─ pr-reviewer (Claude)         ── 实现质量 + 降级风险 + 规格匹配
+-  ├─ git-operator (Claude)        ── 唯一被授权 git 操作
+-  ├─ refactorer (Claude)          ── 唯一被授权跨包重组
+-  └─ researcher (Claude)          ── 唯一被授权外网访问
++TIER 2: Process Teammates (Claude, 4)
++  ├─ pr-reviewer    ── 选择性触发 (ADR-0007 D2 高风险条件 8 行表)
++  ├─ git-operator   ── 唯一 git 操作权
++  ├─ refactorer     ── 唯一跨包重组权
++  └─ researcher     ── 唯一外网访问权
+               │
+               ▼ 周期 / 触发
+-TIER 3: Audit (4)
+-  ├─ structure-auditor           ── 月度
+-  ├─ performance-auditor         ── 每 N PR / 周
+-  ├─ mdx-doctor                  ── PR 触碰 mdx-bridge 或 block 时
+-  └─ link-checker                ── CI 每次 push (lychee)
+-
+-合计：1 + 15 + 7 + 4 = 27 个 agent
++TIER 3: Audit Teammates (Claude, 4)
++  ├─ structure-auditor    ── 月度
++  ├─ performance-auditor  ── 每 N PR / 周
++  ├─ mdx-doctor           ── PR 触碰 mdx-bridge 或 block 时
++  └─ link-checker         ── CI 每次 push (lychee)
++
++──────────────────────────────────────────────────────────────────
++TOOL PATTERNS: Codex Invocation (8) ── orchestrator-direct Bash
++  Tier 1 scaffolding (5):
++    codex-block-generator / codex-test-scaffolder / codex-script-builder
++    codex-api-crud-builder / codex-css-stylist     (profile: scaffolder)
++  Tier 2 review/process (3):
++    code-reviewer (profile: code-reviewer, gpt-5.3-codex-spark, 默认廉价)
++    pr-gate       (profile: pr-gate, gpt-5.5, 选择性触发)
++    plan-challenger (profile: plan-challenger, plan lock 前)
++
++合计：teammate 1 + 11 + 4 + 4 = 20；tool pattern 5 + 3 = 8。
+ ```
+ 
+ **Tier 0：Orchestrator (Claude)**
+ 
+ | Agent | 职责 |
+ |---|---|
+-| `orchestrator` | 维护 `docs/plans/`；把高层目标拆成 wave / track / task；dispatch 给 worker；接收 review 结果推进；**永不修改代码** |
++| `orchestrator` | 维护 `docs/plans/`；把高层目标拆成 wave / track / task；dispatch Claude teammate（SendMessage）+ 直接 Bash 调用 codex tool（ADR-0007 D5）；接收 review 结果推进；**永不修改代码** |
+ 
+-**Tier 1：Claude Workers（10 个）—— 长上下文 / 架构敏感**
++**Tier 1：Claude Worker Teammates（11 个）—— 长上下文 / 架构敏感**
+ 
+ | Agent | 负责包 |
+ |---|---|
+ | `block-foundation-eng` | block-foundation, content-types |
+-| `simple-block-eng` | block-callout（template 优先），其余 simple block 由 codex-block-generator 仿造 |
+-| `render-block-eng` | block-math, block-pdf（math template 优先） |
+-| `viz-block-eng` | block-jupyter, block-nn-viz, block-agent-flow（每个独立 hand-craft） |
++| `simple-block-eng` | block-callout（core 试点 template），其余 simple block core 由 `codex-block-generator` 仿造 |
++| `render-block-eng` | block-math, block-pdf（hand-craft，不试点 clone） |
++| `viz-block-eng` | block-jupyter, block-nn-viz, block-agent-flow（hand-craft，不试点 clone） |
+ | `mdx-bridge-eng` | mdx-bridge（含 RTT 测试守护） |
+ | `kernel-architect` | kernel-adapter, kernel-registry（接口包） |
+ | `kernel-pyodide-eng` | kernel-pyodide |
+-| `editor-eng` | editor-commands（核心架构）, editor-shell |
+-| `editor-integrator` | editor-slash-menu, editor-drag-handle, editor-toolbar, apps/site 集成 |
+-| `api-builder` | apps/api（含 ws / llm 抽象骨架），CRUD 部分可调 codex-api-crud-builder 协助 |
++| `editor-eng` | editor-commands, editor-shell；写一个 editor 子模块 template，余两个交 `codex-block-generator` clone |
++| `editor-integrator` | editor 子模块集成到 apps/site |
++| `ux-ui-lead`（ADR-0007 D1） | 视觉单一权威：ui-default 跨包统一意图（写 1 个 template + 审 7 个 codex clone）；apps/site 视觉；editor 子模块视觉。**不**改 core / propsSchema / MDX serialize；**不**直接调 codex（dispatch 由 orchestrator） |
++| `api-builder` | apps/api（含 ws / llm 抽象骨架），CRUD 骨架由 `codex-api-crud-builder` 协助生成 |
+ 
+-**Tier 1：Codex 5.3 Workers（5 个）—— 静态分配，专攻模板化**
++**Tier 2：Process Teammates（4 个，Claude）—— 严格角色分离**
+ 
+-| Agent | 适合的工作 |
++| Agent | 职责 |
+ |---|---|
+-| `codex-block-generator` | 在 simple-block-eng 写出 block-callout 模板后，仿造 block-code, block-image |
+-| `codex-test-scaffolder` | 为每个 package 生成 vitest 套件骨架 |
+-| `codex-script-builder` | scripts/ 下的 codemod / 脚手架 / refactor-move 工具 |
+-| `codex-api-crud-builder` | apps/api 的 CRUD 端点骨架（Pydantic + 路由） |
+-| `codex-css-stylist` | Tailwind 重复样式 / 设计 token 应用 |
+-
+-**调用方式**：通过 Bash 工具调用本地安装的 `codex` CLI，传入 prompt 模板（每个 codex-worker 在 `.claude/agents/` 中定义包装器）。
++| `pr-reviewer` | 实现质量 / 是否符合规格 / 是否引入降级或回归 / 架构一致性。**ADR-0007 D2 选择性触发**：常规 PR 由 orchestrator 自检 codex code-reviewer 输出 + diff；高风险 PR（§3.2 8 行触发表）才 spawn |
++| `git-operator` | 唯一 git 操作权（commit / branch / rebase / push）；要求所有应跑的 review pass 才执行 |
++| `refactorer` | 唯一跨包重组权；每次重组必产 ADR |
++| `researcher` | 唯一外网权（WebSearch / WebFetch）；接收其他 agent 的调研请求 |
+ 
+-**Tier 2：Process Agents（7 个）—— 严格角色分离 + 成本敏感**
+-
+-| Agent | LLM | 职责 |
+-|---|---|---|
+-| `plan-challenger` | Codex 5.3-spark | orchestrator 写完每个 wave / track plan，**lock 之前**挑战：PR-sized / 可测试 / 边界条件覆盖；输出建议清单（不阻塞，orchestrator 决定吸收） |
+-| `code-reviewer` | Codex **5.3-spark**（默认） | 行级严谨：类型错误 / lint / 契约同步 / 文件大小 / CONTRACT.md 同步检查 |
+-| `pr-gate` | Codex **5.5**（选择性） | 仅对**高风险 PR** escalate。触发条件见 §3.2 |
+-| `pr-reviewer` | Claude | 实现质量 / 是否符合规格 / 是否引入降级或回归 / 架构一致性 |
+-| `git-operator` | Claude | 唯一 git 操作权（commit / branch / rebase / push）；要求所有应跑的 review pass 才执行 |
+-| `refactorer` | Claude | 唯一跨包重组权；每次重组必产 ADR |
+-| `researcher` | Claude | 唯一外网权（WebSearch / WebFetch）；接收其他 agent 的调研请求 |
+-
+-**Tier 3：Audit Agents（4 个）—— 周期 / 触发**
++**Tier 3：Audit Teammates（4 个，Claude）—— 周期 / 触发**
+ 
+ | Agent | 触发 | 职责 |
+ |---|---|---|
+@@ -636,75 +637,122 @@ TIER 3: Audit (4)
+ | `mdx-doctor` | PR 触碰 mdx-bridge 或 block 时 | 跑全部 block 的 round-trip 测试 |
+ | `link-checker` | CI 每次 push | `lychee` 扫 markdown 短链，broken 阻断 merge |
+ 
+-### 3.2 Review 工作流（成本敏感分层）
++#### Tool patterns（8 个 codex invocation；ADR-0007 D5）
++
++由 orchestrator 直接通过 Bash 调用 `codex exec --profile <name> < /dev/null > <audit-log> 2>&1`；
++不在 team config，不消耗 Claude teammate 槽位，每次调用 stateless（无跨 turn 累积上下文）。
++canonical bash + 触发条件 + audit-log 路径见 [`docs/runbooks/codex-tool-invocations.md`](../../runbooks/codex-tool-invocations.md)。
+ 
+-**核心原则**：默认便宜（Codex 5.3-spark），高风险时升级（Codex 5.5）。每 PR 必经 Codex code-review + Claude pr-review；高风险 PR 多加一道 5.5 pr-gate。
++**Tier 1 scaffolding（5 个，profile: `scaffolder`）**
++
++| Pattern | 适合的工作 |
++|---|---|
++| `codex-block-generator` | template-then-clone：simple-block-eng / ux-ui-lead / editor-eng 提交 template 后仿造其余 |
++| `codex-test-scaffolder` | 为每个 package 生成 vitest 套件骨架 |
++| `codex-script-builder` | scripts/ 下的 codemod / 脚手架 / refactor-move 工具 |
++| `codex-api-crud-builder` | apps/api 的 CRUD 端点骨架（Pydantic + 路由） |
++| `codex-css-stylist` | Tailwind 类组合 / 设计 token 应用（Phase 2b 起归 ux-ui-lead 调度） |
++
++**Tier 2 review / process（3 个）**
++
++| Pattern | Profile | 职责 |
++|---|---|---|
++| `code-reviewer` | gpt-5.3-codex-spark（默认廉价） | 行级 review：类型 / lint / 契约同步 / 文件大小 / 风格 / 边界条件；强制 ADR-0006 8-point asymmetry-audit |
++| `pr-gate` | gpt-5.5（选择性触发） | 仅高风险 PR；深度审查漏洞 / 隐性破坏 / 跨包影响 + 8th-class hunt |
++| `plan-challenger` | gpt-5.3-codex-spark | orchestrator wave / track plan lock 前挑战：PR-sized / 可测试 / 边界条件覆盖；输出建议（不阻塞） |
++
++### 3.2 Review 工作流（成本敏感分层 + ADR-0007 D2 选择性 Claude review）
++
++**核心原则**：默认便宜（codex 5.3-spark code-reviewer + orchestrator 自检 final 判断）；
++高风险时**双重升级**——既加 codex 5.5 pr-gate 深审，也加 Claude pr-reviewer 长上下文判断。
++Wave 1 数据（codex 5.5 抓 9/12 cross-location asymmetry，[ADR-0006](../../decisions/ADR-0006-asymmetry-audit-checklist.md)）
++表明：常规 PR 让 codex 5.3-spark 抓行级问题 + orchestrator 自检 diff 已足够，Claude pr-reviewer 价值集中于
++跨包 / 长上下文 / 架构一致性判断 —— 因此 ADR-0007 D2 把 Claude pr-review 改为**仅高风险 PR 触发**。
+ 
+ ```
+ Worker 完工
+    │ marks ready-for-review
+    ▼
+ ┌──────────────────────────────────────────────────────────┐
+-│  Step 1: code-reviewer (Codex 5.3-spark)                │
++│  Step 1: code-reviewer (codex 5.3-spark, 默认廉价)        │
++│  Bash: codex exec --profile code-reviewer < /dev/null    │
+ │  ── 类型 / lint / 契约 / 文件大小 / 风格 / 边界条件         │
+-│  ── 输出: PASS / FAIL + 具体问题清单                      │
++│  ── 强制 ADR-0006 8-point asymmetry-audit checklist       │
++│  ── 输出: PASS / FAIL + 具体问题清单 → audit log 落盘      │
+ └──────────────────────────────────────────────────────────┘
+    │
+-   ├── FAIL → 退 worker
++   ├── FAIL → orchestrator 退 worker
+    │
+    ▼ PASS
+ ┌──────────────────────────────────────────────────────────┐
+-│  Step 2: 高风险检测 (自动)                                │
++│  Step 2: orchestrator 自动判断高风险（ADR-0007 D2 八条）  │
+ │  PR 是否符合任一条件？                                     │
+-│   • 修改 */CONTRACT.md                                   │
+-│   • 新增 / 删除 package                                   │
+-│   • 触碰核心架构包：kernel-adapter / mdx-bridge /         │
+-│     agent-tools / editor-commands / block-foundation     │
+-│   • 触发 ADR 创建                                         │
+-│   • 触碰 CI / deploy / auth / security 路径               │
++│   1. 修改任何 */CONTRACT.md（接口形状变化，非补充）        │
++│   2. 新增 / 删除 package                                  │
++│   3. 修改 spec / agent-contract.md / 任何 ADR             │
++│   4. 触发新 ADR 创建                                       │
++│   5. 触碰 CI workflow / deploy / auth / security          │
++│   6. 跨 ≥ 3 个 package 的 PR                              │
++│   7. performance-auditor 标记的 PR                        │
++│   8. 触碰核心架构包：kernel-adapter / mdx-bridge /        │
++│      editor-commands / block-foundation                   │
+ └──────────────────────────────────────────────────────────┘
+    │                              │
+    │ 否（普通 PR）                 │ 是（高风险 PR）
+    │                              ▼
+    │              ┌──────────────────────────────────────┐
+-   │              │  Step 2.5: pr-gate (Codex 5.5)       │
+-   │              │  ── 深度审查：漏洞 / 隐性破坏          │
+-   │              │  ── 输出: PASS / FAIL + reasoning     │
++   │              │  Step 2.5: pr-gate (codex 5.5)       │
++   │              │  Bash: codex exec --profile pr-gate  │
++   │              │  ── 深度审查：漏洞 / 隐性破坏 / 8th- │
++   │              │     class hunt / 跨包影响             │
++   │              │  ── 输出: PASS / FAIL + 推理 → log    │
++   │              │  注：spec / ADR-only 类高风险（仅触  │
++   │              │     发条件 #3 #4）可仅 Claude pr-    │
++   │              │     reviewer，不必跑 pr-gate          │
+    │              └──────────────────────────────────────┘
+    │                              │
+-   │                              ├─── FAIL → 退 worker
++   │                              ├─── FAIL → 退 worker 修复
+    │                              │
+    │                              ▼ PASS
+-   ▼                              ▼
++   │              ┌──────────────────────────────────────┐
++   │              │  Step 3: pr-reviewer (Claude)        │
++   │              │  ── 实现是否符合 spec                  │
++   │              │  ── 是否引入回归 / 降级                │
++   │              │  ── 架构一致性 + 跨文件影响            │
++   │              │  ── 输出: APPROVE / REJECT + 推理     │
++   │              └──────────────────────────────────────┘
++   │                              │
++   │                              ├─── REJECT → 退 worker
++   │                              │
++   ▼                              ▼ APPROVE
+ ┌──────────────────────────────────────────────────────────┐
+-│  Step 3: pr-reviewer (Claude)                            │
+-│  ── 实现是否符合 spec                                      │
+-│  ── 是否引入回归 / 降级                                    │
+-│  ── 架构一致性 + 跨文件影响                                │
+-│  ── 输出: APPROVE / REJECT + reasoning                    │
++│  Step 4: orchestrator final 判断 (常规 PR 路径)           │
++│  ── 读 codex code-reviewer 输出 + git diff               │
++│  ── 自检（"orchestrator 自己是 Claude，看输出做轻量      │
++│     判断不增 Claude turn 数"，ADR-0007 D2）               │
++│  ── PASS → Step 5; FAIL → 退 worker                      │
+ └──────────────────────────────────────────────────────────┘
+    │
+-   ├── REJECT → 退 worker 修复
+-   │
+-   ▼ APPROVE
++   ▼
+ ┌──────────────────────────────────────────────────────────┐
+-│  Step 4: git-operator                                    │
+-│  ── commit + push                                         │
++│  Step 5: git-operator (Claude)                           │
++│  ── commit + push（pnpm check 再跑一次本地验证）          │
+ └──────────────────────────────────────────────────────────┘
+ ```
+ 
+ **分歧协议**：所有应跑的 reviewer 必须**都 approve**。任一 fail 退回 worker。
+ 
+-**Fast lane（豁免）—— 微小 PR 跳过 Claude pr-review**：
++**Fast lane（豁免）—— 微小 PR 跳过任何 review 升级**：
+ - 触发条件：diff < 20 行 + 无 .ts/.tsx/.py/.toml 文件 + 无 CONTRACT.md / schema 改动
+-- 流程：仅 Codex 5.3-spark code-review + git-operator 直接 merge
++- 流程：仅 codex 5.3-spark code-reviewer + orchestrator 自检 + git-operator 直接 commit
+ - 适用：docs-only / 配置 / typo / 单字符串改动
+ 
+-**成本预估**（Phase 1 假设 ~50 PR）：
+-- 普通 PR ≈ 35 个：5.3-spark code-review + Claude pr-review
+-- 高风险 PR ≈ 10 个：5.3-spark + 5.5 + Claude
++**成本预估**（Phase 1 假设 ~50 PR；已应用 ADR-0007 D2 选择性 + D5 codex tool 化）：
++- 普通 PR ≈ 35 个：5.3-spark code-review + orchestrator 自检（**无 Claude pr-reviewer turn**）
++- 高风险 PR ≈ 10 个：5.3-spark + 5.5 + Claude pr-reviewer
+ - Fast lane ≈ 5 个：仅 5.3-spark
+-- **5.5 调用 ≈ 10 次/Phase 1**（vs 原方案 50 次），节省 ~80% 5.5 token 消耗
++- **每 PR 节省 ~2-3 个 Claude wrapper turn**（codex 不再走 teammate spawn；详见 [ADR-0007 D5](../../decisions/ADR-0007-job-function-codex-heavy-execution.md)）
++- 估算 Wave 2 全程 Claude tokens 降 ~40-50%（codex 反向上升，但 5.3-spark + 5.5 总成本远低于 Claude）
+ 
+ ### 3.3 设计 Skill 流水线（Phase 2 启动时触发）
+ 
+diff --git a/scripts/__tests__/generate-configs.test.ts b/scripts/__tests__/generate-configs.test.ts
+index c83773d..53aa298 100644
+--- a/scripts/__tests__/generate-configs.test.ts
++++ b/scripts/__tests__/generate-configs.test.ts
+@@ -94,6 +94,17 @@ describe('parseAgentContract', () => {
+     const md = `## Agents\n\n\`\`\`yaml\nmetadata:\n  version: 1\n  total_teammates: 1\n  total_tool_patterns: 2\nagents:\n  - name: foo\n    tier: 0\n    llm: claude\n    role: x\n    permissions: []\ntool_patterns:\n  - name: bar\n    profile: scaffolder\n    invocation: 'x'\n    triggered_by: []\n  - name: bar\n    profile: scaffolder\n    invocation: 'y'\n    triggered_by: []\n\`\`\`\n`;
+     expect(() => parseAgentContract(md)).toThrow(/duplicate tool_pattern name: bar/);
+   });
++
++  it('every tool_pattern.invocation contains "< /dev/null" (memory feedback_codex_stdin; ADR-0007 §pre-task-0-followup obs #3)', () => {
++    const real = readFileSync('agent-contract.md', 'utf8');
++    const result = parseAgentContract(real);
++    expect(result.tool_patterns.length).toBeGreaterThan(0);
++    for (const tp of result.tool_patterns) {
++      expect(tp.invocation, `tool_pattern ${tp.name}.invocation must include '< /dev/null'`).toMatch(
++        /<\s*\/dev\/null\b/,
++      );
++    }
++  });
+ });
+ 
+ const sampleAgent: Agent = {
+
+codex
+继续核验：我会按你要求先做「不改文件」的 index 核对命令（diff 约束、数字一致性、sister-doc grep），把结果直接映射到 8 点 checklist 的 PASS/FAIL。
+exec
+/bin/bash -lc 'cd /home/weiyi/selfKnowledgeBaseWeb && git diff --cached -- .claude/ CLAUDE.md AGENTS.md docs/runbooks/codex-tool-invocations.md' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+exec
+/bin/bash -lc 'cd /home/weiyi/selfKnowledgeBaseWeb && rg -n "total_(teammates|tool_patterns)" agent-contract.md' in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc 'cd /home/weiyi/selfKnowledgeBaseWeb && rg -n "D1|D2|D5|Tool pattern|tool pattern|8|20|27|total|orchestrator" docs/decisions/ADR-0007-job-function-codex-heavy-execution.md' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+23:  total_teammates: 20
+24:  total_tool_patterns: 8
+53:  total_teammates: 20
+54:  total_tool_patterns: 8
+
+ succeeded in 0ms:
+6:| 日期 | 2026-04-30                                                                                    |
+7:| 作者 | orchestrator (Claude Opus 4.7 1M ctx)                                                         |
+9:| 替代 | 不替代任何 ADR；扩展 [ADR-0001](ADR-0001-stack-selection.md) §3.1-§3.2 + [ADR-0003](ADR-0003-headless-presentational-split.md) D2-D6 + [ADR-0004](ADR-0004-agent-team-dispatch-model.md) D2/D5/D7 |
+17:ADR-0003 D2 把每个 component block 拆 `core/` + `ui-default/`。Wave 2 即将启动 8 个 ui-default 实施。如果按 Wave 1 的 package-domain 模型派 agent（block-callout/ui-default 给 simple-block-eng，block-math/ui-default 给 render-block-eng，block-jupyter/ui-default 给 viz-block-eng…），8 个 ui-default 会被 ≥ 3 个不同 Claude agent 写，**8 种"自我品味"覆盖统一设计意图**。视觉 token 从 design-tokens 来不假，但具体 React 组件的 padding 哲学 / hover 微交互 / loading 状态等 design-tokens 不规定的部分会发散。
+22:- Claude tokens 主要消耗：orchestrator (~30%) / 工种 worker 实施 (~40%) / pr-reviewer 每 PR (~20%) / 其他 (~10%)
+26:继续按 Wave 1 模型在 Wave 2 跑 8 个 ui-default + 3 个 editor 子模块 + kernel-pyodide 实施会**把 Claude budget 消耗到下一阶段无力继续**。
+30:Wave 1 codex agent（`code-reviewer` / `pr-gate` / `plan-challenger` / 5 个 `codex-*-eng`，共 8 个）的典型 turn：
+38:6. 写 SendMessage 回 orchestrator（转述 codex 结论）
+56:### D1：新增 `ux-ui-lead` Claude teammate 作视觉单一权威
+58:**职责**：横跨 8 个 block 的 ui-default + apps/site 视觉 + editor 子模块视觉，由设计 skill 流水线驱动产出第一版 + 把令牌使用范式固化到 [`apps/api/CONVENTIONS.md`](../../apps/api/CONVENTIONS.md) 的视觉对应文档（建议新建 `packages/design-tokens/CONVENTIONS.md` 或在 design-tokens/CONTRACT.md 内补"消费方使用规范"段）。
+62:- `codex-block-generator`（tool，见 D5）批量仿造其他 7 个 block 的 ui-default
+75:- **不**调 codex（dispatch 给 codex-block-generator tool，由 orchestrator 执行）
+77:### D2：Claude pr-reviewer 改为选择性触发
+82:worker → orchestrator
+84:       → orchestrator scan result.txt + diff（轻量 final 判断，相当于 lite Claude review）
+101:普通 PR（不触发任一条件）**全程无 Claude review**，由 orchestrator scan codex 5.3-spark 输出 + diff 自己做最终判断（"orchestrator 自己是 Claude，看输出做轻量判断不增 Claude turn 数"）。
+105:**ui-default**（D1 已述）：ux-ui-lead 写 template 1 个 + codex-block-generator clone 7 个
+107:**core**（试点）：8 个 block-* core 模板化程度很高（propsSchema + mdxComponent name + 序列化结构），先在 simple block 集群试点：
+128:- Wave 2 多个 block 共用一份视觉契约；分阶段注入意味着每个 block 串 3 段，整体串行 24 段（8 block × 3 段），太长
+134:### D5：codex agents 降级为 orchestrator-direct tools
+136:**变更**：8 个 codex 角色（`code-reviewer` / `pr-gate` / `plan-challenger` / `codex-block-generator` / `codex-test-scaffolder` / `codex-script-builder` / `codex-api-crud-builder` / `codex-css-stylist`）从 team teammate 模型移除，改为 orchestrator + 工种 lead 通过 Bash 直接调 `codex exec --profile X < /dev/null` 的 **invocation pattern**（不是 agent，不在 team config，不消耗 Claude teammate 槽位）。
+138:**新的 agent 阵容（共 20 teammate + 8 tool pattern = 28 项配置实体；T0:1 + T1:11 + T2:4 + T3:4，T3 audit 按需复用）**：
+146:  editor-eng / editor-integrator / ux-ui-lead (新, ADR-0007 D1) / api-builder
+149:  pr-reviewer (选择性触发, ADR-0007 D2) / git-operator / refactorer / researcher
+156:TOOL: Codex Invocation Patterns (8)
+169:- 8 teammate spawn 成本省了
+173:### 组合效果（D1-D5 联动）
+178:1. orchestrator: SendMessage codex-block-generator (← tool, 不是 teammate)
+179:   实际：orchestrator 直接 Bash: codex exec --profile scaffolder < prompt.txt > out.txt
+180:2. orchestrator 读 out.txt + git diff 自检
+182:4. orchestrator: Bash: codex exec --profile code-reviewer < diff > review.txt
+183:5. orchestrator scan review.txt: PASS
+185:7. orchestrator: SendMessage git-operator commit (Claude turn)
+186:8. git-operator commit + push (Claude turn)
+190:Wave 1 同等 PR 需要 ~7 Claude teammate turn（worker spawn / code-reviewer turn / pr-gate turn / pr-reviewer turn / git-operator turn / + orchestrator coordinating）。Wave 2 降到 **~3 Claude turn**（ux-ui-lead 视觉 review / orchestrator coordinating + final scan / git-operator）。**节省 ~50-60% Claude tokens / PR**。
+196:- **视觉单一权威**：ui-default 跨 8 block + apps/site + editor 子模块由 ux-ui-lead 一手把关
+199:- **codex tool 调用更直接**：8 个 wrapper turn / PR 消除
+204:- **agent-contract.md restructure 是 high-risk PR**（触碰 authority + 全部 generated outputs），必须严格走 ADR-0006 D8 staging protocol
+207:- **orchestrator 内联 codex 调用增加 orchestrator turn 复杂度**：原 turn 内只做调度，现在还要 scan codex 输出做轻判；评估方式：Wave 2 几个 PR 后看 orchestrator turn 平均长度
+215:| spec §3.1（27 agent → 20 teammate + 8 tool） | 改 §3.1 节标题与 diagram；agent 列表加 ux-ui-lead；codex 8 个移到新"Tool patterns"段 |
+216:| spec §3.2（review 工作流） | 改为：默认 codex 5.3-spark + orchestrator 自检；高风险条件触发 pr-gate / Claude pr-reviewer |
+218:| ADR-0003 D2-D6 | ux-ui-lead 是 D2 / D3 落地的执行者；不破坏 ADR-0003 决策 |
+219:| ADR-0004 D2 / D5 / D7 | D2 spawn 模型 + D5 全 codex 是 teammate 的旧约定 + D7 一次性 Task —— ADR-0007 D5 是其延伸（tool 是 Task 一次性的进一步抽象）；不破坏 |
+220:| ADR-0006 8-point checklist | 不破坏；本 ADR 实施时**就是** ADR-0006 D8 的考验场（authority + generator + outputs 必须同 bundle staged） |
+224:本 ADR 是决策记录；实际实施作为 **Wave 2 Pre-Task 0** 在 team 流程中执行。**实施步骤序列**（必须严格按此顺序，并满足 ADR-0006 D8 staging protocol）：
+239:      你是 SelfKnowledgeBaseWeb 的 UX/UI 单一权威。横跨 8 个 block 的
+250:      你**不**调 codex（dispatch 由 orchestrator 集中调度）。
+262:    triggered_by: <list of orchestrator-side trigger conditions>
+263:    output_handling: <how orchestrator parses / stores stdout>
+268:在文档底加 `## Tool patterns` 段，把现有 8 个 codex 配置从 `agents:` 移到 `tool_patterns:`。
+286:      total_teammates: z.number(),
+287:      total_tool_patterns: z.number(),
+295:`metadata.total_agents` 改为 `total_teammates`；新增 `total_tool_patterns`。Zod refinement 同步检查两个数字。
+299:- `claude-agent.ts`：filter `llm === 'claude'`；codex agents 不再产 `.claude/agents/*.md`（因为它们不是 teammate）。**删除**：`.claude/agents/{code-reviewer,pr-gate,plan-challenger,codex-block-generator,codex-test-scaffolder,codex-script-builder,codex-api-crud-builder,codex-css-stylist}.md` 共 8 个文件
+301:- `claude-md.ts` / `agents-md.ts`：拆"## Teammates"和"## Tool patterns"两段；teammate 列表从 17（原 22 - 5 codex worker - moves）改为 17；tool_patterns 列表从无到 8
+302:- **新增** `scripts/render/codex-tool-runbook.ts`：渲染 `docs/runbooks/codex-tool-invocations.md`，每个 tool pattern 一个段落含 canonical bash + 触发条件 + 错误处理
+306:permissions 中提到的 codex agent 名（如 `Bash(codex:*)` 或类似）确认仍允许；不需要为 8 个 wrapped agent 各自配 permission（它们不再存在）。
+308:### Step 6: 跑生成器 + 严格按 ADR-0006 D8 staging protocol
+318:# 3. 显式 git add 所有改动 + 生成产物（关键步骤，参 ADR-0006 D8 + 实例 #12 教训）：
+362:ADR-0007 D2 触发条件命中：修改 spec / agent-contract.md / 触发新 ADR / 跨 ≥ 3 package。所以本 PR：
+367:**这 PR 是 ADR-0006 8-point checklist 的标准考场** —— 实施者预期会撞 instance #8 子类（authority + generator + outputs not staged）。提前 grep `git status --short`/`git diff --cached --stat` 双检查。
+374:- Wave 2 plan 章节标题反映新 20 + 8 模型（不再写"27 agent"）
+379:- [ADR-0003](ADR-0003-headless-presentational-split.md) D2-D6 ui-default 物理分离
+380:- [ADR-0004](ADR-0004-agent-team-dispatch-model.md) D5 / D7 / D8 team 模型 + 一次性 Task + orchestrator-managed
+381:- [ADR-0006](ADR-0006-asymmetry-audit-checklist.md) 本 ADR 实施时必经的 review checklist；尤其 D8 + instance #12 staging 教训
+382:- [设计规格 §3.1 / §3.2](../superpowers/specs/2026-04-29-self-knowledge-base-design.md) 待 Wave 2 Pre-Task 0 同步
+
+exec
+/bin/bash -lc 'cd /home/weiyi/selfKnowledgeBaseWeb && rg -n "Step 4|ADR-0007|step 4|codex tool|tool-pattern|total tool patterns|total teammates|27|20" docs/decisions/ADR-0006-asymmetry-audit-checklist.md' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+6:| 日期 | 2026-04-30                            |
+
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && rg -n \"§3\\.1|20 teammate|8 tool pattern|tool pattern|total|teammate|teammates|27\" docs/plans/active.md docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:554:### 3.1 Agent 阵容（20 teammate + 8 tool pattern；ADR-0007 D1+D5）
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:557:`code-reviewer` / `pr-gate`）从 Claude teammate 模型移除，改为 orchestrator 直接 Bash 调用的
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:559:ADR-0007 D1 同时新增 `ux-ui-lead` Claude teammate 作 ui-default 跨包视觉单一权威。最终阵容为
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:560:**20 个 Claude teammate（持续 context）+ 8 个 codex tool pattern（每次 stateless 调用）**。
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:565:              ▼ dispatch (Claude teammate via SendMessage / codex tool via Bash)
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:597:合计：teammate 1 + 11 + 4 + 4 = 20；tool pattern 5 + 3 = 8。
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:604:| `orchestrator` | 维护 `docs/plans/`；把高层目标拆成 wave / track / task；dispatch Claude teammate（SendMessage）+ 直接 Bash 调用 codex tool（ADR-0007 D5）；接收 review 结果推进；**永不修改代码** |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:643:不在 team config，不消耗 Claude teammate 槽位，每次调用 stateless（无跨 turn 累积上下文）。
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:754:- **每 PR 节省 ~2-3 个 Claude wrapper turn**（codex 不再走 teammate spawn；详见 [ADR-0007 D5](../../decisions/ADR-0007-job-function-codex-heavy-execution.md)）
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:1057:- 写 `agent-contract.md` 初版（含 27 个 agent）
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:1300:| 2026-04-29 | Total agent 数 25 → 27（+plan-challenger + pr-gate） | plan-challenger 负责 plan 阶段挑战；pr-gate 负责高风险 PR 深审 |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:1315:| 2026-04-29 | Wave 启动用 TeamCreate；wave 完工用 TeamDelete | 每个 wave 一个 team；27 agent 类型不变，按需实例化为 teammate |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:1316:| 2026-04-29 | Codex agent 是 Claude teammate 内部调用 codex exec | 不直接把 Codex 作为 teammate（无 Claude Code session）；Claude 包装层维持团队协议一致性 |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:1317:| 2026-04-29 | docs/runbooks/team-operations.md 必须前置注入每个 teammate spawn prompt | 27 agent 定义不需重新生成；操作手册外置降低改动面 |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:1323:| 2026-04-30 | **新增 ux-ui-lead Claude teammate（ADR-0007 D1）** | Wave 2 8 个 ui-default 跨 block 统一视觉权威；防视觉八头蛇 |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:1328:| 2026-04-30 | spec §3.1 agent 阵容 27 → 20 teammate + 8 tool pattern | Wave 2 Pre-Task 0 按 ADR-0007 实施时同步 |
+docs/plans/active.md:10:- [ADR-0007](../decisions/ADR-0007-job-function-codex-heavy-execution.md) **职能化分工 + Codex-heavy 执行 + teammate/tool 切分** (Wave 2 起重大架构调整：新增 ux-ui-lead；Claude pr-reviewer 改选择性；codex agents 降级为 orchestrator-direct tools)
+docs/plans/active.md:43:7. Pre-Task 0（**真正的** Wave 2 Task 0，agent-contract.md 已重构后）：TeamCreate `phase-1-wave-2` + spawn 20 teammates（T0:1 + T1:11（含 ux-ui-lead）+ T2:4 + T3:4；按需复用 T3 audit）
+docs/plans/active.md:65:- 8 个 ui-default 由 **ux-ui-lead** (新 Claude teammate) 写第一个 template，其余 codex-block-generator (tool) clone（D1 + D3）
+docs/plans/active.md:84:- [ADR-0007](../decisions/ADR-0007-job-function-codex-heavy-execution.md) 职能化分工 + Codex-heavy 执行 + teammate/tool 切分
+
+exec
+/bin/bash -lc 'cd /home/weiyi/selfKnowledgeBaseWeb && git diff --cached --stat -- docs/decisions/ADR-0006-asymmetry-audit-checklist.md docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md scripts/__tests__/generate-configs.test.ts' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+ .../ADR-0006-asymmetry-audit-checklist.md          |   8 +-
+ .../specs/2026-04-29-self-knowledge-base-design.md | 216 +++++++++++++--------
+ scripts/__tests__/generate-configs.test.ts         |  11 ++
+ 3 files changed, 148 insertions(+), 87 deletions(-)
+
+codex
+我已完成初步对齐核验。下一步直接读取 `ADR-0006` 的完整 8 项条目并逐项对照这次 commit 的差异，给出你要的 PASS/FAIL 表。
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && sed -n '1,220p' docs/decisions/ADR-0006-asymmetry-audit-checklist.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+# ADR-0006: Cross-location asymmetry-audit checklist (process rule)
+
+| 字段 | 值                                    |
+| ---- | ------------------------------------- |
+| 状态 | accepted                              |
+| 日期 | 2026-04-30                            |
+| 作者 | orchestrator (Claude Opus 4.7 1M ctx) |
+| 触发 | Wave 1 codex 5.5 reviews caught 12 instances of the same meta-class across 6 tracks + 5 close-ceremony fix iterations (8 distinct items + 4 close-ceremony reinforcements of items #6 and #8) |
+| 替代 | 不替代任何 ADR；扩展 [ADR-0001](ADR-0001-stack-selection.md) §3.2 review chain |
+
+## Context
+
+Wave 1 implementation produced strong empirical evidence that **a single bug class** dominates the failure mode at line-level review:
+
+> **Cross-location asymmetry**: a value, schema, algorithm, or invariant exists in two or more places, and an edit to one location is not symmetrically applied to all peers, so behavior diverges silently.
+
+Across 6 tracks + 5 close-ceremony fix iterations, codex 5.5 (`pr-gate`) caught **12 instances** of this meta-class (8 distinct failure-mode items + 4 close-ceremony reinforcements of items #6 and #8). Every PR that lasted ≥ 2 review rounds hit at least one instance. The pattern is so consistent that linear "fix the cited blocker, ship v_n+1" iteration would not have caught the second-order asymmetry; codex specifically catches the symmetric counterpart that the worker missed.
+
+### Wave 1 empirical record (12 instances)
+
+| # | Track | Round | Asymmetry pair | Bug behavior |
+|---|---|---|---|---|
+| 1 | Track B (block-foundation + content-types) | R1 → fixed v3 | `listUIs` mutability vs `listCores` defensive copy | Caller mutation of return value polluted registry singleton |
+| 2 | Track D (apps/api) | R2 → fixed v4 | RFC 7235 `WWW-Authenticate` on framework-raised 401 vs custom `SkbError` 401 | 4 of 5 401 paths emitted spec-mandated header; the custom-error path silently dropped it |
+| 3 | Track F (editor-commands) | R3 → fixed v4 | `.strict()` on top-level Zod object vs nested `frontmatterSchema` | Top-level rejected unknown keys; nested still silently stripped them |
+| 4 | Track C (mdx-bridge) | R2 → fixed v4 | `marksEqual` link comparator: `href` only vs `href + title` | Same href, different titles silently merged into one link with the first title preserved |
+| 5 | Track F v5 | R3 → fixed v6 | One CONTRACT.md updated to reflect code; sister CONTRACT.md (`agent-tools`) had stale wording | Documentation-vs-code drift in the file the worker did not edit |
+| 6 | Track A | R1 → fixed v2 | FOUC inline IIFE saved-value algorithm + content schema | Truthy-coerce diverges from strict-whitelist for invalid / case-mismatched values; inline `z.object` redefinition diverges from `frontmatterSchema` authority |
+| 7 | Track A v2 | R2 → fixed v3 | FOUC inline IIFE try/catch scope | Wide try/catch in IIFE swallowed `matchMedia` exceptions while authority's narrow try/catch propagated; storage-throws scenarios produced light→dark hydration flash |
+| 8 | Wave 1 close bundle v1 | R1 → fixed v2 | ADR-0006 mandated reviewer-prompt updates vs actual `agent-contract.md` / generated `.claude/agents/*.md` / `docs/review-checklist.md` / `team-operations.md` content | The close-ceremony commit codified a process rule that mandates downstream behavior; consumer-side artifacts (reviewer prompts + runbook) had not been updated to embed the rule, so Wave 2 reviewers would not have seen it |
+| 9 | Wave 1 close bundle v2 | R2 → fixed v3 | ADR-0006:81 within-document drift "7 distinct instances" | Single bullet missed during the v1→v2 count sweep — sister-bullet variant of item #6 within a single document |
+| 10 | Wave 1 close bundle v3 | R3 → fixed v4 | ADR-0006:117 within-document drift "7 empirical instances + 18+ erratum candidates" (both numbers stale) | Second sister-bullet drift in the same file, a different bullet — proved per-citation fixes are themselves item #6 traps; comprehensive sweep at fix time is the robust pattern |
+| 11 | Wave 1 close bundle v4 (informational) | R4 (informational) → fixed v5 | structure baseline:66 "× 7 endpoints" while apps/api has 4 routes / 11 tests | Pre-existing content-accuracy drift in the structure baseline document (authored at v1) — content number mismatched real code; surfaced during the broader 11th-class hunt |
+| 12 | Wave 1 close bundle v5 | R2 (pr-gate) → fixed v6 | Regenerated `.claude/agents/code-reviewer.md` + `.claude/agents/pr-gate.md` + `docs/review-checklist.md` were not staged in the bundle commit — authority + generator code updated, but generator outputs remained at pre-update HEAD content | Sub-form of item #8: regenerating an artifact and `git add`'ing it are separate steps; a bundle that updates authority + generator without staging the regenerated outputs is silently stale. Motivated the "verify by clean second-run" step now part of item #8. |
+
+Codex's structured review consistently caught these with three patterns:
+
+1. After fixing one location, **codex audits all peer locations** (not just the cited site)
+2. After a value/schema acquires an attribute, **codex audits every comparator/serialization function** for that attribute
+3. After a "happy path" fix, **codex audits the exception path** for the same equivalence
+
+These three habits collectively define the process rule below.
+
+## Decision
+
+Adopt an **8-point asymmetry-audit checklist** as a mandatory part of `code-reviewer` (Codex 5.3-spark, default cheap) and `pr-gate` (Codex 5.5, deep) review prompts. Reviewers MUST work through every applicable item before declaring PASS.
+
+### The 8 items
+
+1. **Field/attribute audit**: After adding a field to a data shape (Zod schema, Pydantic model, TS interface, mdast attrs, etc.), audit every comparator / equality / serialization / canonicalization function that handles this shape. (Wave 1 evidence: instance #4 — `marksEqual` link branch missed `title` when serialize emitted it.)
+
+2. **Status code audit**: After adding a status code to one HTTP handler (or, generally, an exit/error code to one branch), audit every other handler emitting the same code. RFC-mandated headers (RFC 7235 `WWW-Authenticate` on 401, RFC 7231 `Allow` on 405) attach to **the status code itself**, not the framework code path that emitted it. (Wave 1 evidence: instance #2 — custom `SkbError` 401 path missed `WWW-Authenticate`.)
+
+3. **Strictness audit**: After adding `.strict()` (Zod) / `extra='forbid'` (Pydantic) at one level of an object schema, audit every nested object/sub-schema. The strictness setting **does not propagate**; nested objects must opt in independently. (Wave 1 evidence: instance #3 — top-level `.strict()` shipped while nested `frontmatterSchema` still silently stripped unknown keys.)
+
+4. **Consumer schema audit**: After defining a schema in a single-authority package (e.g. `@skb/content-types/frontmatterSchema`), audit every consumer for inline duplicates or inline redefinitions that should `import` instead. The "deferred swap" pattern — "I'll inline now and import later" — is a contract break that compounds over time. (Wave 1 evidence: instance #6 part 2 — apps/site/content.config.ts inlined `z.object(...)` rather than importing `frontmatterSchema`.)
+
+5. **Algorithm + runtime constant replication audit**: When an algorithm or runtime constant is replicated outside its authority (e.g. inline FOUC scripts, login challenge derivation, pre-hydration boot logic that cannot import from packages), audit every consumer-side replica for byte-equivalent reproduction. The replica must register a **regression test** that asserts equivalence against the authority across a representative input corpus. (Wave 1 evidence: instance #6 part 1 — FOUC IIFE truthy-coerce vs `getInitialTheme()` strict-whitelist; remediated with `apps/site/src/__tests__/fouc-script.test.ts` 16-row corpus.)
+
+6. **Sister-file documentation audit**: After updating one CONTRACT.md (or any document that describes a code surface), audit ALL related CONTRACT.md files in the package family for sister-file drift. Two CONTRACT.md files that describe two halves of the same contract must use **identical terminology** for the shared identifiers (function names, schema names, refine predicate names). (Wave 1 evidence: instance #5 — `editor-commands/CONTRACT.md` updated to cite `editBlockInputSchema` while `agent-tools/CONTRACT.md` still referred to the old shape.)
+
+7. **Exception-scope equivalence audit**: When replicating an algorithm + its exception handling across files, audit BOTH the happy-path semantics AND the `try/catch` scope between authority and replica. Narrow vs wide `try/catch` can produce divergent fall-through behavior even with identical happy-path logic. Specifically: when `localStorage` / `sessionStorage` / `IndexedDB` / `matchMedia` / any browser API in the algorithm path can throw, the `try/catch` MUST wrap ONLY the throwing call, with the fall-through branch (matchMedia / system default / DOM apply) running AFTER the catch handler — not inside it. (Wave 1 evidence: instance #7 — FOUC IIFE wide-scope try/catch swallowed matchMedia exceptions; remediated with narrow try/catch + 2 storage-throws regression tests.)
+
+8. **Authority-document → generated/consumed surface audit**: When updating an authority document (ADR, spec, `agent-contract.md`, runbook, CONVENTIONS) **OR a dependency authority (`package.json`)** that mandates behavior in downstream consumers, audit every consumer-side replica/generated artifact for synchronized update **AND staged-in-the-git-index in the same bundle**. Specifically: an ADR section that says "X file MUST be updated to do Y" requires the same commit to update X and provide a way to verify the synchronization. Generated artifacts (e.g. `docs/review-checklist.md` and `.claude/agents/*.md` derived from `agent-contract.md`; **`pnpm-lock.yaml` derived from `package.json`** — see sub-form C below) MUST be regenerated via the documented codegen step (`pnpm generate:configs` / `pnpm install`) AND **explicitly `git add`'d** so the git **index** (not just the working tree) contains the new content; runbooks (`docs/runbooks/team-operations.md`) MUST be cross-linked; Codex/Claude subagent prompt files MUST embed or reference the new rule.
+
+   **Operational sequence** (do not skip steps):
+   ```bash
+   # 1. Edit authority + generator code
+   # 2. Run codegen
+   pnpm generate:configs
+   # 3. Stage regenerated outputs (CRITICAL — see Pitfall below)
+   git add <regenerated/path/foo.md> <regenerated/path/bar.md>
+   # 4. Verify index reflects content (NOT just working tree):
+   git diff --cached --stat -- <regenerated paths>
+   #    → expects non-empty diff with the expected line counts
+   # 5. Verify idempotence: re-run codegen + confirm working tree matches index:
+   pnpm generate:configs
+   git status --short -- <regenerated paths>
+   #    → expects column-1 'M' (staged) + column-2 blank (working tree clean)
+   ```
+
+   **Pitfall (this is the load-bearing step)**: `git status --short` shows two columns: column 1 is index-vs-HEAD; column 2 is working-tree-vs-index. After running the generator without `git add`, you see `' M'` (space + M) — **working tree differs from index, but index still matches HEAD**. `git commit` only commits the index. Skipping `git add` means the regenerated content is in your working tree but NOT in the next commit. The bundle would land authority + generator-code changes WITHOUT the regenerated outputs, leaving consumers (Wave 2 reviewers reading `.claude/agents/*.md`) at pre-update content. Use `git diff --cached` (not `git status`) as the canonical staging-verification command — `--cached` shows index-vs-HEAD only, which is what `git commit` will produce.
+
+   **Pitfall extension — `pnpm-lock.yaml` is a generated artifact too (sub-form C below)**: when the authority is `package.json` (any dependency add / remove / version bump / `@types/*` shift), `pnpm install` regenerates `pnpm-lock.yaml` as a deterministic derived artifact. Skipping `git add pnpm-lock.yaml` produces the same class of failure as skipping `git add .claude/agents/*.md`: working tree has the synced lockfile but the **index** still holds HEAD's stale lockfile, so the bundle ships `package.json` ahead of its lockfile. CI runs `pnpm install --frozen-lockfile` from the bundled state, sees the stale lockfile disagreeing with the new `package.json`, and fails install. The same `git diff --cached --stat -- pnpm-lock.yaml` canonical verification applies. (Wave 1 erratum commit `e15ec36`; codified as sub-form C below.)
+
+   Generated-from-authority files carry their own header comment ("GENERATED FROM agent-contract.md — DO NOT EDIT BY HAND") OR YAML frontmatter declaring authority source — both forms are acceptable. `pnpm-lock.yaml` lacks an explicit header (the format is fixed by pnpm) but is implicitly declared by `pnpm install`'s contract — its authority is `package.json` + the workspace `pnpm-workspace.yaml`.
+
+   **Wave 1 evidence**: **instance #8** — ADR-0006 v1 commit codified reviewer-prompt mandates but did not update `agent-contract.md` / regenerate `.claude/agents/code-reviewer.md` / regenerate `.claude/agents/pr-gate.md` / cross-link `team-operations.md` / regenerate `docs/review-checklist.md`; pr-gate caught the dogfood failure during R1 review of the close-ceremony bundle, forcing a v2 fix. **instance #12 (sub-form A — pre-regeneration omission)** — v5 bundle updated authority files (`agent-contract.md`, generator code, `team-operations.md` cross-link) but had not run the generator at all post-edit; the 3 regenerated outputs were stale at HEAD content; pr-gate caught this during R2 review, forcing a v6 fix. **instance #12 (sub-form B — staging-vs-working-tree confusion)** — v6 bundle ran the generator (so working tree had new content) but did NOT `git add` the regenerated outputs; the git **index** still held HEAD blob hashes for the 3 generated files; orchestrator confused `git status --short` "M" prefix (working-tree-vs-index) with index-vs-HEAD; pr-gate caught this via `git ls-files --stage` blob-hash comparison during R3 review, forcing the v7 fix that explicitly stages with `git add` + verifies via `git diff --cached`. **instance #12 (sub-form C — lockfile is a generated-from-authority artifact)** — Wave 1 close ceremony commit `e15ec36` ("fix(deps): commit pnpm-lock.yaml for @tailwindcss/typography (lockfile drift)"): the design-tokens erratum (commit `fdc86a8`) added the `@tailwindcss/typography` dependency to `package.json` but did not stage the regenerated `pnpm-lock.yaml`; CI install used the pre-update lockfile, drifted against the new `package.json`, and failed `pnpm install --frozen-lockfile`. Resolution: commit `e15ec36` staged the lockfile separately. Lesson codified: when the authority is `package.json` (any dependency add / remove / version bump), `pnpm-lock.yaml` is the consumer-side generated artifact and must ride the same bundle — the class equivalence to `.claude/agents/*.md` regeneration is exact (deterministic derive + git-index staging required). The four sub-forms of the same item #8 class — pre-regeneration omission, post-regeneration commit-staging confusion, conceptually-correct-but-operationally-incomplete fix, AND lockfile-as-generated-artifact — together motivate the explicit operational sequence and `git diff --cached` canonical verification command codified above.
+
+### Wave 2 prep notes (forward-compatibility application)
+
+The 8 items have specific Wave 2 trip-hazards already identified by Wave 1's review record:
+
+- **Item #1 + Wave 2 attr-bearing marks**: when the first attr-bearing mark beyond `link` is added to mdx-bridge (e.g. `highlight: {color}`, `kbd: {style}`), the worker MUST simultaneously update `wrapMark` AND `marksEqual` AND add a fixture exercising attr-equality + attr-distinction. Default `return true` in `marksEqual` is a silent-drop trap for any attr-bearing mark. (See pr-gate Track C v4 R3 caveat.)
+
+- **Item #2 + Wave 2 new error categories**: when Wave 2+ adds new HTTP error categories (e.g. `auth-rate-limit`, `kernel-timeout`), each new `SkbError` subclass MUST emit the same RFC-mandated headers as framework-raised peers. Add a unit test asserting header presence per error type. (See `apps/api/CONVENTIONS.md` §5 Pitfall + Pitfall continued.)
+
+- **Item #5 + Wave 2 client-side replications**: when apps/site adds new client-side algorithm replications (theme variants beyond light/dark, locale negotiation pre-hydration, etc.), the worker MUST audit both saved-value semantics AND try/catch scope against authority. (See `packages/design-tokens/CONTRACT.md` Inverse-direction obligation invariant.)
+
+- **Item #7 + future inline scripts**: ANY future `<script is:inline>` block in the project that needs pre-hydration replication of a package algorithm MUST follow the FOUC template (narrow try/catch + corpus regression test).
+
+## Consequences
+
+### Positive
+
+- **Catch the failure mode proactively**: Wave 1 evidence shows reviewer-applied checklist would have caught all 12 instances on the first review round (including the close-ceremony dogfood instance #8 + the 4 fix-loop reinforcements), eliminating 12 round-trip cycles
+- **Reviewer prompt clarity**: code-reviewer + pr-gate codex profile prompts gain a concrete, enumerable checklist rather than the implicit "look for symmetric counterparts" expectation
+- **Worker self-audit**: workers gain a pre-PR checklist they can run before reporting `ready-for-review`, catching their own asymmetries (memory: `feedback_verification_fresh_state.md` showed the verification-rigor lesson; this checklist is the analogous rigor at code-design level)
+- **Empirical grounding**: 12 distinct instances spread across 6 tracks + 5 close-ceremony fix iterations make this rule data-driven, not a "best practice" speculation; instances #9-12 reinforce items #6 + #8 specifically through close-ceremony fix-loop evidence
+
+### Costs
+
+- **Review-round time**: applying 8-point audit at every review adds ~5-10 minutes per round of code-reviewer + pr-gate runtime. Acceptable trade-off given Wave 1 round-counts (Track F: 5 rounds; Track A: 3 rounds; Track C: 4 rounds; Track D: 4 rounds) — front-loading review thoroughness reduces total cycles
+- **Worker prompt overhead**: each spawn prompt now needs a reference to this ADR + the 8-point checklist. Marginal cost.
+- **False-positive risk**: items that don't apply (e.g. #2 "status code" doesn't apply to TS-only packages) need to be triaged and skipped. Reviewer profile prompts must explicitly say "skip items not applicable to this PR's scope" to avoid bloat.
+
+### Risks (mitigated)
+
+- **Risk**: workers might mechanically check items without thinking, producing false confidence. **Mitigation**: each item enumerates concrete failure modes from Wave 1, not abstract heuristics — easier to apply
+- **Risk**: this list might grow unbounded as Wave 2+ surfaces new asymmetry classes. **Mitigation**: ADR amendments are cheap; each new instance produces an ADR-0006 erratum capturing item #N+1. Wave 2 close ceremony reviews instances and adds items as needed.
+
+## Implementation
+
+### Reviewer prompt updates
+
+`code-reviewer` and `pr-gate` profile prompts MUST be updated to:
+
+1. State the 8-point checklist verbatim (or by reference to this ADR)
+2. Require the reviewer's verdict structure to include "asymmetry-audit applied: items {1..8} verdicts: ..."
+3. Explicitly mark FAIL if any applicable item is left un-audited
+
+`docs/runbooks/team-operations.md` §"角色与触发器" Tier 2 reviewer rows should cross-link to this ADR.
+
+### Worker pre-flight (template addition)
+
+Worker `ready-for-review` reports SHOULD include a brief asymmetry-audit summary: which of the 8 items applied, and the worker's self-audit verdict. Reviewers cross-check.
+
+### Wave 1 retroactive
+
+This ADR is **forward-applicable**. Wave 1 PRs that already shipped under earlier review without this checklist remain valid; the empirical instances they revealed are exactly what grounded this ADR. No retroactive re-review required.
+
+## Related
+
+- [ADR-0001](ADR-0001-stack-selection.md) §3.2 review chain — this ADR specifies what reviewers MUST do; ADR-0001 specifies who reviews
+- [ADR-0002](ADR-0002-wave-1-close.md) Wave 1 close — collects the 12 empirical instances + 22 erratum candidates
+- [ADR-0004](ADR-0004-agent-team-dispatch-model.md) team dispatch — orchestrator dispatches review chain per this checklist
+- [docs/runbooks/team-operations.md](../runbooks/team-operations.md) — operational reference for reviewers and workers
+- [packages/design-tokens/CONTRACT.md](../../packages/design-tokens/CONTRACT.md) Inverse-direction obligation — concrete application of items #5 + #7
+- [apps/api/CONVENTIONS.md](../../apps/api/CONVENTIONS.md) §5 Pitfalls — concrete application of item #2
+
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && sed -n '130,170p' docs/decisions/ADR-0007-job-function-codex-heavy-execution.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+- 串接顺序仍保留：lead 写 template 时心中先 frontend-design → 再 ui-ux-pro-max → 再 vercel-review，这是它**内部**思考顺序，不是 spawn 阶段
+
+**约束**：三个 skill 加起来 spawn prompt 体积膨胀。监控点：ux-ui-lead 第一次 spawn 时 token 消耗对比 Wave 1 worker 平均值；如超过 2× 重新评估是否分阶段。
+
+### D5：codex agents 降级为 orchestrator-direct tools
+
+**变更**：8 个 codex 角色（`code-reviewer` / `pr-gate` / `plan-challenger` / `codex-block-generator` / `codex-test-scaffolder` / `codex-script-builder` / `codex-api-crud-builder` / `codex-css-stylist`）从 team teammate 模型移除，改为 orchestrator + 工种 lead 通过 Bash 直接调 `codex exec --profile X < /dev/null` 的 **invocation pattern**（不是 agent，不在 team config，不消耗 Claude teammate 槽位）。
+
+**新的 agent 阵容（共 20 teammate + 8 tool pattern = 28 项配置实体；T0:1 + T1:11 + T2:4 + T3:4，T3 audit 按需复用）**：
+
+```
+TIER 0: Orchestrator (Claude, 1)
+
+TIER 1: Worker Teammates (Claude, 11)
+  block-foundation-eng / simple-block-eng / render-block-eng /
+  viz-block-eng / mdx-bridge-eng / kernel-architect / kernel-pyodide-eng /
+  editor-eng / editor-integrator / ux-ui-lead (新, ADR-0007 D1) / api-builder
+
+TIER 2: Process Teammates (Claude, 4)
+  pr-reviewer (选择性触发, ADR-0007 D2) / git-operator / refactorer / researcher
+
+TIER 3: Audit Teammates (Claude, ?)  ── Wave 1 是 4，Wave 2 起根据需要复用
+  structure-auditor / performance-auditor / mdx-doctor / link-checker
+
+────────────────────────────────────────
+
+TOOL: Codex Invocation Patterns (8)
+  code-reviewer       → codex exec --profile code-reviewer < /dev/null
+  pr-gate             → codex exec --profile pr-gate < /dev/null
+  plan-challenger     → codex exec --profile plan-challenger < /dev/null
+  codex-block-generator → codex exec --profile scaffolder ...
+  codex-test-scaffolder → same
+  codex-script-builder  → same
+  codex-api-crud-builder → same
+  codex-css-stylist     → same
+```
+
+**操作变化**：
+- review 链每 PR 节省 ~2-3 个 Claude wrapper turn
+- 8 teammate spawn 成本省了
+- agent-contract.md 拆 `agents:`（teammate）+ `tool_patterns:`（codex）两段
+
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && sed -n '35,50p' docs/plans/active.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+A 完工 + 新 agent 阵容生效后，再起草 Wave 2 plan：
+
+1. 读 [ADR-0002](../decisions/ADR-0002-wave-1-close.md) + [ADR-0006](../decisions/ADR-0006-asymmetry-audit-checklist.md) + **[ADR-0007](../decisions/ADR-0007-job-function-codex-heavy-execution.md)**（必读）
+2. 读 [docs/audits/structure-2026-04-29-wave-1.md](../audits/structure-2026-04-29-wave-1.md)
+3. 读 [phase-1/plan.md](phase-1/plan.md) 的"Wave 2 plan 写作时需要前置考虑"段
+4. 读 Wave 1 plan retrospective（review-round count, fixture growth, codex catch rate）
+5. 用 `superpowers:writing-plans` 起草 Wave 2 plan
+6. plan-challenger（**现在是 tool**，按 ADR-0007 D5）通过 `codex exec --profile plan-challenger < plan.md > challenge.txt` 挑战 → orchestrator 修订 → lock
+7. Pre-Task 0（**真正的** Wave 2 Task 0，agent-contract.md 已重构后）：TeamCreate `phase-1-wave-2` + spawn 20 teammates（T0:1 + T1:11（含 ux-ui-lead）+ T2:4 + T3:4；按需复用 T3 audit）
+
+## Wave 1 完工归档（参考）
+
+- 7 高风险 PR 已 commit：G/E/B/D/F/C/A，全部 codex 5.5 双审 PASS
+- 12 cross-location asymmetry meta-class 实例（worker layer 1-7：B R1 / D R2 / F R3 / C R2 / F R5 / A R1 / A R2；close-ceremony 8-12：v1 dogfood failure / v2 ADR-0006:81 drift / v3 ADR-0006:117 drift / v4 structure baseline:66 / v5 generator outputs not staged）已编入 ADR-0006 empirical 8-point checklist（8 distinct items + 4 close-ceremony reinforcements of items #6 + #8）
+- 3 cross-package single-authority invariants 已对称落地到 CONTRACT.md（`frontmatterSchema` / `editBlockInputSchema` / `getInitialTheme()`）
+- vitest strict + CI test gate 已修（Task 11 systemic bug 闭环）+ lychee config 已修（Task 10）
+
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && sed -n '1,80p' agent-contract.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+# Agent Contract
+
+> **此文件是 SelfKnowledgeBaseWeb 全部 agent 配置的单一权威源。**
+>
+> 修改本文件后必须运行 `pnpm generate:configs` 同步派生：
+>
+> - `CLAUDE.md` / `AGENTS.md`
+> - `.claude/agents/*.md` × 20（仅 Claude teammate；ADR-0007 D5 起 codex 为 tool patterns）
+> - `.claude/settings.json`
+> - `~/.codex/config.toml` profile 段
+> - `docs/review-checklist.md`
+> - `docs/runbooks/codex-tool-invocations.md`（ADR-0007 D5 新增；8 个 tool_patterns 的 canonical bash + 触发条件）
+>
+> CI 检查：跑生成器后若仓库有 diff，CI fail。
+>
+> **ADR-0007 D5 拆分**：`agents:` 段只列 Claude **teammate**（持续 context）；`tool_patterns:` 段列 codex **invocation pattern**（每次 stateless Bash 调用，由 orchestrator 直接执行）。
+
+## Schema
+
+```yaml
+metadata:
+  version: 1
+  total_teammates: 20
+  total_tool_patterns: 8
+  generated_at: <填生成时间>
+
+agents:
+  - name: <kebab-case>
+    tier: 0 | 1 | 2 | 3
+    llm: claude
+    role: <one-liner>
+    permissions: <list of capability strings>
+    forbidden: <list, optional>
+    triggers: <list, optional, for audit/process agents>
+    description: |
+      <multi-line description used in .claude/agents/<name>.md>
+
+tool_patterns:
+  - name: <pattern-id>
+    profile: scaffolder | code-reviewer | pr-gate | plan-challenger
+    invocation: <bash template, e.g. "codex exec --profile X < /dev/null">
+    triggered_by: <list of orchestrator-side trigger conditions>
+    output_handling: <how orchestrator parses / stores stdout, optional>
+    description: |
+      <multi-line>
+```
+
+## Agents
+
+```yaml
+metadata:
+  version: 1
+  total_teammates: 20
+  total_tool_patterns: 8
+
+agents:
+  # ====== TIER 0：Orchestrator ======
+  - name: orchestrator
+    tier: 0
+    llm: claude
+    role: 整体规划 + dispatch 工种 + 维护 docs/plans/
+    permissions: [read_repo, write_plans, dispatch_agents, dispatch_codex_tools]
+    forbidden: [edit_code, git_commit]
+    description: |
+      你是 SelfKnowledgeBaseWeb 项目的主脑。你的工作是：
+      1. 接收用户高层目标，拆成 wave / track / task
+      2. 把每个 task 静态分配给具体 agent（标注 LLM 与 profile）
+      3. dispatch agent 后，接收完工通知，触发 review
+      4. 维护 docs/plans/（活跃 wave 标在 active.md）
+      5. **ADR-0007 D5 起**：8 个 codex tool_patterns（code-reviewer / pr-gate / plan-challenger /
+         codex-block-generator / codex-test-scaffolder / codex-script-builder /
+         codex-api-crud-builder / codex-css-stylist）由你直接通过 Bash 调用
+         （`codex exec --profile X < /dev/null`），不再以 teammate 形式存在。
+         详见 docs/runbooks/codex-tool-invocations.md。
+      你**永不修改代码**。如需调研，dispatch researcher。如需挑战自己的 plan，调 plan-challenger tool。
+
+  # ====== TIER 1：Claude Workers (11) ======
+  - name: block-foundation-eng
+    tier: 1
+    llm: claude
+
+codex
+我在做 8th-class hunt 前再补一条轻量核验：确认 `agent-contract.md` 中现有 `tool_patterns.invocation` 实际都含 `< /dev/null`，与新增测试的断言语义一致。
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && rg -n \"invocation:\\s*\\\"?["'^'"\\\"]+\" agent-contract.md | cat" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+41:    invocation: <bash template, e.g. "codex exec --profile X < /dev/null">
+299:    invocation: 'codex exec --profile scaffolder < /dev/null'
+317:    invocation: 'codex exec --profile scaffolder < /dev/null'
+330:    invocation: 'codex exec --profile scaffolder < /dev/null'
+342:    invocation: 'codex exec --profile scaffolder < /dev/null'
+354:    invocation: 'codex exec --profile scaffolder < /dev/null'
+369:    invocation: 'codex exec --profile code-reviewer < /dev/null'
+393:    invocation: 'codex exec --profile pr-gate < /dev/null'
+413:    invocation: 'codex exec --profile plan-challenger < /dev/null'
+
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && sed -n '1318,1332p' docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+| 2026-04-29 | review 链由 SendMessage + TaskUpdate 串接 | reviewer / git-operator 永久 idle 等消息；零冷启动；TaskList 留状态轨迹便于 ADR close 撰写 |
+| 2026-04-29 | **REST API conventions ratify（ADR-0005）**：/v1 + camelCase + RFC 7807 + ISO 8601 UTC | Track D 即将落地 4 个端点；多 agent 协作 + 开源目标要求约束契约；apps/api/CONVENTIONS.md 落地 10 节约定 |
+| 2026-04-29 | 资源命名 files → pages | "pages" 比 "files" 语义化；slug 限定 `[a-z0-9-]+`，路径映射到 content/notes/{slug}/index.mdx |
+| 2026-04-29 | 错误格式锁定 RFC 7807 Problem Details lite | 客户端 dispatch 简单（switch error.type）；err handler 集中注册；不暴露内部栈 |
+| 2026-04-29 | 项目锁定 orchestrator-managed team 模式（ADR-0004 D8） | review-gate 依赖超出 TaskList blocked_by 表达；高风险 escalate / Codex 配额由 orchestrator 集中调度 |
+| 2026-04-30 | **新增 ux-ui-lead Claude teammate（ADR-0007 D1）** | Wave 2 8 个 ui-default 跨 block 统一视觉权威；防视觉八头蛇 |
+| 2026-04-30 | Claude pr-reviewer 改选择性触发（ADR-0007 D2） | Wave 1 数据：codex 5.5 抓 9/12 asymmetry；Claude pr-reviewer 价值集中在跨包 / 长上下文，常规 PR 不浪费 |
+| 2026-04-30 | template + codex-clone 模式扩展到 core 与 editor 子模块（ADR-0007 D3） | Wave 1 ui-default 已经是这个模式；core 在 simple block 集群试点；editor 三子模块同模式 |
+| 2026-04-30 | ux-ui-lead spawn prompt 注入三个设计 skill（ADR-0007 D4） | frontend-design + ui-ux-pro-max + web-design-guidelines；视觉契约一次性灌入避免分阶段串行 |
+| 2026-04-30 | **codex agents 降级为 orchestrator-direct tools（ADR-0007 D5）** | Wave 1 codex wrapper 是纯 context 搬运；省 ~2-3 turn / PR；agent-contract.md 拆 agents:/tool_patterns: 两段 |
+| 2026-04-30 | spec §3.1 agent 阵容 27 → 20 teammate + 8 tool pattern | Wave 2 Pre-Task 0 按 ADR-0007 实施时同步 |
+| 2026-04-30 | spec §3.2 review 工作流改为"orchestrator 自检常规 PR + 选择性 escalate" | ADR-0007 D2 + D5 联动；Wave 2 Pre-Task 0 实施时同步文字 |
+
+exec
+/bin/bash -lc 'cd /home/weiyi/selfKnowledgeBaseWeb && rg -n "codex exec --profile|/dev/null|code-reviewer|pr-gate|plan-challenger|tool patterns|Tool patterns" docs/runbooks/codex-tool-invocations.md' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+23:codex exec --profile <PROFILE> "<PROMPT>" < /dev/null > <AUDIT_LOG_PATH> 2>&1
+26:- **`< /dev/null` is mandatory** in non-interactive contexts. Codex CLI under Claude Code Bash blocks reading a never-closed Unix socket on fd 0 if stdin is left open. (Phase 0 regression; see memory `feedback_codex_stdin`.)
+29:- **`timeout`-wrap long runs** (e.g. `timeout 600 codex exec --profile pr-gate ...`) to prevent hung invocations.
+39:## `code-reviewer`
+41:**Profile**: `code-reviewer`
+46:codex exec --profile code-reviewer < /dev/null
+62:高风险 PR 会自动 escalate 给 pr-gate（ADR-0007 D2 表）。
+75:## `plan-challenger`
+77:**Profile**: `plan-challenger`
+82:codex exec --profile plan-challenger < /dev/null
+105:## `pr-gate`
+107:**Profile**: `pr-gate`
+112:codex exec --profile pr-gate < /dev/null
+126:stdout 落盘到 docs/audits/codex-runs/<date>-<task>-pr-gate.txt。
+134:**强制：ADR-0006 8-point asymmetry-audit checklist**（见 `docs/decisions/ADR-0006-asymmetry-audit-checklist.md`）— 你是这项规则的主要执行者，必须独立验证所有可适用项目（不仅依赖 code-reviewer 的 R1 结论），并主动 hunt 8th-class beyond the cited fix。verdict 结构应包含
+135:`asymmetry-audit applied: items {1..8} verdicts: ...` 与（如适用）`8th-class hunt: <findings>`。8 项即 code-reviewer profile 中的 8 项；本 profile 在所有项上都比 code-reviewer 更严苛。
+144:codex exec --profile scaffolder < /dev/null
+168:codex exec --profile scaffolder < /dev/null
+198:codex exec --profile scaffolder < /dev/null
+224:codex exec --profile scaffolder < /dev/null
+248:codex exec --profile scaffolder < /dev/null
+270:- [ADR-0006](../decisions/ADR-0006-asymmetry-audit-checklist.md) — 8-point asymmetry audit (mandatory for code-reviewer + pr-gate profiles)
+
+codex
+PASS 总结：此 follow-up bundle 在本次 staged scope 内未发现需要退回修复的 N/A 外硬性差异。  
+`git diff --cached` 与你列出的 3 文件范围一致（`+148/-87`，无额外 staged 文件）。
+
+asymmetry-audit applied: items {1..8} verdicts:
+1. FAIL — `N/A`。该改动为治理文档调整，无字段/属性新增；未触及 schema/shape 变更，因此 `Field/attribute audit` 不适用。  
+2. FAIL — `N/A`。未修改 HTTP 路径/状态码语义。  
+3. FAIL — `N/A`。未新增 `.strict()` / `extra='forbid'` 或 schema 分层改动。  
+4. FAIL — `N/A`。未触及 schema 权威定义的 consumer 再定义问题（无 consumer-side 代码改动）。  
+5. FAIL — `N/A`。未改 runtime 算法或复制逻辑（无实现代码变更）。  
+6. PASS。sister-doc 对齐已验证：  
+- [agent-contract.md](/home/weiyi/selfKnowledgeBaseWeb/agent-contract.md:23) 与 [agent-contract.md](/home/weiyi/selfKnowledgeBaseWeb/agent-contract.md:24) 分别为 `total_teammates: 20`、`total_tool_patterns: 8`。  
+- [ADR-0007](/home/weiyi/selfKnowledgeBaseWeb/docs/decisions/ADR-0007-job-function-codex-heavy-execution.md)（D5 区段）写明“20 teammate + 8 tool pattern”。  
+- [spec §3.1](/home/weiyi/selfKnowledgeBaseWeb/docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:554) 与 [spec](/home/weiyi/selfKnowledgeBaseWeb/docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:597) 对齐为 “20 teammate + 8 tool pattern”。  
+- [docs/plans/active.md](/home/weiyi/selfKnowledgeBaseWeb/docs/plans/active.md:43) 为 “spawn 20 teammates（T0:1 + T1:11 + T2:4 + T3:4）”。  
+7. FAIL — `N/A`。未涉及跨文件 replicate 算法/异常范围一致性。  
+8. PASS。`agent-contract.md` 未改且本次未新增 `package.json` authority，所以不需同步 staged 消费者产物；对应检验命令空白：`git diff --cached -- .claude/ CLAUDE.md AGENTS.md docs/runbooks/codex-tool-invocations.md` 无输出。新增测试也要求每个 `tool_pattern.invocation` 含 `< /dev/null`，并实测 [agent-contract.md](/home/weiyi/selfKnowledgeBaseWeb/agent-contract.md) 当前 8 条 invocation 全部包含该约束（`git` 解析文件显示 7-8 条 invocation 均为 `codex exec --profile ... < /dev/null`）。
+
+关键 `sister-doc` 数字 grep 验证已完成，结论一致。
+
+8th-class hunt（worker 未显式提及）：
+- 发现一个隐性漂移点：spec 在 3.2 明确加入“spec/ADR-only 高风险可仅 Claude pr-reviewer，不必跑 pr-gate”的语义说明，但 [docs/runbooks/codex-tool-invocations.md](/home/weiyi/selfKnowledgeBaseWeb/docs/runbooks/codex-tool-invocations.md:62) 当前仍为“高风险 PR 自动 escalate 给 pr-gate”泛化描述。该不对齐不影响本次已 staged 变更通过，但建议在 follow-up 中同步修订，避免流程层面的解释歧义。
+2026-04-30T13:03:27.274534Z ERROR codex_core::session: failed to record rollout items: thread 019dde7b-fc3c-7ee0-ba52-7aca2f8f2609 not found
+tokens used
+54,056
+PASS 总结：此 follow-up bundle 在本次 staged scope 内未发现需要退回修复的 N/A 外硬性差异。  
+`git diff --cached` 与你列出的 3 文件范围一致（`+148/-87`，无额外 staged 文件）。
+
+asymmetry-audit applied: items {1..8} verdicts:
+1. FAIL — `N/A`。该改动为治理文档调整，无字段/属性新增；未触及 schema/shape 变更，因此 `Field/attribute audit` 不适用。  
+2. FAIL — `N/A`。未修改 HTTP 路径/状态码语义。  
+3. FAIL — `N/A`。未新增 `.strict()` / `extra='forbid'` 或 schema 分层改动。  
+4. FAIL — `N/A`。未触及 schema 权威定义的 consumer 再定义问题（无 consumer-side 代码改动）。  
+5. FAIL — `N/A`。未改 runtime 算法或复制逻辑（无实现代码变更）。  
+6. PASS。sister-doc 对齐已验证：  
+- [agent-contract.md](/home/weiyi/selfKnowledgeBaseWeb/agent-contract.md:23) 与 [agent-contract.md](/home/weiyi/selfKnowledgeBaseWeb/agent-contract.md:24) 分别为 `total_teammates: 20`、`total_tool_patterns: 8`。  
+- [ADR-0007](/home/weiyi/selfKnowledgeBaseWeb/docs/decisions/ADR-0007-job-function-codex-heavy-execution.md)（D5 区段）写明“20 teammate + 8 tool pattern”。  
+- [spec §3.1](/home/weiyi/selfKnowledgeBaseWeb/docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:554) 与 [spec](/home/weiyi/selfKnowledgeBaseWeb/docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:597) 对齐为 “20 teammate + 8 tool pattern”。  
+- [docs/plans/active.md](/home/weiyi/selfKnowledgeBaseWeb/docs/plans/active.md:43) 为 “spawn 20 teammates（T0:1 + T1:11 + T2:4 + T3:4）”。  
+7. FAIL — `N/A`。未涉及跨文件 replicate 算法/异常范围一致性。  
+8. PASS。`agent-contract.md` 未改且本次未新增 `package.json` authority，所以不需同步 staged 消费者产物；对应检验命令空白：`git diff --cached -- .claude/ CLAUDE.md AGENTS.md docs/runbooks/codex-tool-invocations.md` 无输出。新增测试也要求每个 `tool_pattern.invocation` 含 `< /dev/null`，并实测 [agent-contract.md](/home/weiyi/selfKnowledgeBaseWeb/agent-contract.md) 当前 8 条 invocation 全部包含该约束（`git` 解析文件显示 7-8 条 invocation 均为 `codex exec --profile ... < /dev/null`）。
+
+关键 `sister-doc` 数字 grep 验证已完成，结论一致。
+
+8th-class hunt（worker 未显式提及）：
+- 发现一个隐性漂移点：spec 在 3.2 明确加入“spec/ADR-only 高风险可仅 Claude pr-reviewer，不必跑 pr-gate”的语义说明，但 [docs/runbooks/codex-tool-invocations.md](/home/weiyi/selfKnowledgeBaseWeb/docs/runbooks/codex-tool-invocations.md:62) 当前仍为“高风险 PR 自动 escalate 给 pr-gate”泛化描述。该不对齐不影响本次已 staged 变更通过，但建议在 follow-up 中同步修订，避免流程层面的解释歧义。

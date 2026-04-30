@@ -551,83 +551,84 @@ WAVE 4：验收 + 部署
 
 ## §3 Harness 工程层（LOCKED）
 
-### 3.1 Agent 阵容（27 个，多 LLM 协同）
+### 3.1 Agent 阵容（20 teammate + 8 tool pattern；ADR-0007 D1+D5）
+
+ADR-0007 D5 把原 8 个 codex-wrapper agent（5 个 Tier 1 codex worker + Tier 2 `plan-challenger` /
+`code-reviewer` / `pr-gate`）从 Claude teammate 模型移除，改为 orchestrator 直接 Bash 调用的
+**stateless invocation pattern**（详见 [`docs/runbooks/codex-tool-invocations.md`](../../runbooks/codex-tool-invocations.md)）。
+ADR-0007 D1 同时新增 `ux-ui-lead` Claude teammate 作 ui-default 跨包视觉单一权威。最终阵容为
+**20 个 Claude teammate（持续 context）+ 8 个 codex tool pattern（每次 stateless 调用）**。
 
 ```
 TIER 0: Orchestrator (Claude, 1) ── 整体规划 + dispatch + 维护 docs/plans/
               │
-              ▼ dispatch (静态分配)
-TIER 1: Workers (15)
-  ├─ Claude-based (10)        ── 复杂推理 / 架构 / 桥接 / 集成
-  └─ Codex 5.3-spark-based (5) ── 模板化 / 重复变体 / 脚手架
+              ▼ dispatch (Claude teammate via SendMessage / codex tool via Bash)
+TIER 1: Worker Teammates (Claude, 11)
+  ├─ block-foundation-eng / simple-block-eng / render-block-eng / viz-block-eng
+  ├─ mdx-bridge-eng / kernel-architect / kernel-pyodide-eng
+  ├─ editor-eng / editor-integrator
+  ├─ ux-ui-lead (新, ADR-0007 D1) ── ui-default 跨包视觉单一权威
+  └─ api-builder
               │
               ▼ output
-TIER 2: Process (7) ── 跨切，角色严格分离
-  ├─ plan-challenger (Codex 5.3-spark) ── plan lock 前挑战 (PR-sized / 可测 / 边界)
-  ├─ code-reviewer (Codex 5.3-spark, ★ 默认廉价)
-  │      ↓ 高风险 PR 自动 escalate
-  ├─ pr-gate (Codex 5.5, 选择性)  ── 仅对契约 / 架构 / 安全相关 PR
-  ├─ pr-reviewer (Claude)         ── 实现质量 + 降级风险 + 规格匹配
-  ├─ git-operator (Claude)        ── 唯一被授权 git 操作
-  ├─ refactorer (Claude)          ── 唯一被授权跨包重组
-  └─ researcher (Claude)          ── 唯一被授权外网访问
+TIER 2: Process Teammates (Claude, 4)
+  ├─ pr-reviewer    ── 选择性触发 (ADR-0007 D2 高风险条件 8 行表)
+  ├─ git-operator   ── 唯一 git 操作权
+  ├─ refactorer     ── 唯一跨包重组权
+  └─ researcher     ── 唯一外网访问权
               │
               ▼ 周期 / 触发
-TIER 3: Audit (4)
-  ├─ structure-auditor           ── 月度
-  ├─ performance-auditor         ── 每 N PR / 周
-  ├─ mdx-doctor                  ── PR 触碰 mdx-bridge 或 block 时
-  └─ link-checker                ── CI 每次 push (lychee)
+TIER 3: Audit Teammates (Claude, 4)
+  ├─ structure-auditor    ── 月度
+  ├─ performance-auditor  ── 每 N PR / 周
+  ├─ mdx-doctor           ── PR 触碰 mdx-bridge 或 block 时
+  └─ link-checker         ── CI 每次 push (lychee)
 
-合计：1 + 15 + 7 + 4 = 27 个 agent
+──────────────────────────────────────────────────────────────────
+TOOL PATTERNS: Codex Invocation (8) ── orchestrator-direct Bash
+  Tier 1 scaffolding (5):
+    codex-block-generator / codex-test-scaffolder / codex-script-builder
+    codex-api-crud-builder / codex-css-stylist     (profile: scaffolder)
+  Tier 2 review/process (3):
+    code-reviewer (profile: code-reviewer, gpt-5.3-codex-spark, 默认廉价)
+    pr-gate       (profile: pr-gate, gpt-5.5, 选择性触发)
+    plan-challenger (profile: plan-challenger, plan lock 前)
+
+合计：teammate 1 + 11 + 4 + 4 = 20；tool pattern 5 + 3 = 8。
 ```
 
 **Tier 0：Orchestrator (Claude)**
 
 | Agent | 职责 |
 |---|---|
-| `orchestrator` | 维护 `docs/plans/`；把高层目标拆成 wave / track / task；dispatch 给 worker；接收 review 结果推进；**永不修改代码** |
+| `orchestrator` | 维护 `docs/plans/`；把高层目标拆成 wave / track / task；dispatch Claude teammate（SendMessage）+ 直接 Bash 调用 codex tool（ADR-0007 D5）；接收 review 结果推进；**永不修改代码** |
 
-**Tier 1：Claude Workers（10 个）—— 长上下文 / 架构敏感**
+**Tier 1：Claude Worker Teammates（11 个）—— 长上下文 / 架构敏感**
 
 | Agent | 负责包 |
 |---|---|
 | `block-foundation-eng` | block-foundation, content-types |
-| `simple-block-eng` | block-callout（template 优先），其余 simple block 由 codex-block-generator 仿造 |
-| `render-block-eng` | block-math, block-pdf（math template 优先） |
-| `viz-block-eng` | block-jupyter, block-nn-viz, block-agent-flow（每个独立 hand-craft） |
+| `simple-block-eng` | block-callout（core 试点 template），其余 simple block core 由 `codex-block-generator` 仿造 |
+| `render-block-eng` | block-math, block-pdf（hand-craft，不试点 clone） |
+| `viz-block-eng` | block-jupyter, block-nn-viz, block-agent-flow（hand-craft，不试点 clone） |
 | `mdx-bridge-eng` | mdx-bridge（含 RTT 测试守护） |
 | `kernel-architect` | kernel-adapter, kernel-registry（接口包） |
 | `kernel-pyodide-eng` | kernel-pyodide |
-| `editor-eng` | editor-commands（核心架构）, editor-shell |
-| `editor-integrator` | editor-slash-menu, editor-drag-handle, editor-toolbar, apps/site 集成 |
-| `api-builder` | apps/api（含 ws / llm 抽象骨架），CRUD 部分可调 codex-api-crud-builder 协助 |
+| `editor-eng` | editor-commands, editor-shell；写一个 editor 子模块 template，余两个交 `codex-block-generator` clone |
+| `editor-integrator` | editor 子模块集成到 apps/site |
+| `ux-ui-lead`（ADR-0007 D1） | 视觉单一权威：ui-default 跨包统一意图（写 1 个 template + 审 7 个 codex clone）；apps/site 视觉；editor 子模块视觉。**不**改 core / propsSchema / MDX serialize；**不**直接调 codex（dispatch 由 orchestrator） |
+| `api-builder` | apps/api（含 ws / llm 抽象骨架），CRUD 骨架由 `codex-api-crud-builder` 协助生成 |
 
-**Tier 1：Codex 5.3 Workers（5 个）—— 静态分配，专攻模板化**
+**Tier 2：Process Teammates（4 个，Claude）—— 严格角色分离**
 
-| Agent | 适合的工作 |
+| Agent | 职责 |
 |---|---|
-| `codex-block-generator` | 在 simple-block-eng 写出 block-callout 模板后，仿造 block-code, block-image |
-| `codex-test-scaffolder` | 为每个 package 生成 vitest 套件骨架 |
-| `codex-script-builder` | scripts/ 下的 codemod / 脚手架 / refactor-move 工具 |
-| `codex-api-crud-builder` | apps/api 的 CRUD 端点骨架（Pydantic + 路由） |
-| `codex-css-stylist` | Tailwind 重复样式 / 设计 token 应用 |
+| `pr-reviewer` | 实现质量 / 是否符合规格 / 是否引入降级或回归 / 架构一致性。**ADR-0007 D2 选择性触发**：常规 PR 由 orchestrator 自检 codex code-reviewer 输出 + diff；高风险 PR（§3.2 8 行触发表）才 spawn |
+| `git-operator` | 唯一 git 操作权（commit / branch / rebase / push）；要求所有应跑的 review pass 才执行 |
+| `refactorer` | 唯一跨包重组权；每次重组必产 ADR |
+| `researcher` | 唯一外网权（WebSearch / WebFetch）；接收其他 agent 的调研请求 |
 
-**调用方式**：通过 Bash 工具调用本地安装的 `codex` CLI，传入 prompt 模板（每个 codex-worker 在 `.claude/agents/` 中定义包装器）。
-
-**Tier 2：Process Agents（7 个）—— 严格角色分离 + 成本敏感**
-
-| Agent | LLM | 职责 |
-|---|---|---|
-| `plan-challenger` | Codex 5.3-spark | orchestrator 写完每个 wave / track plan，**lock 之前**挑战：PR-sized / 可测试 / 边界条件覆盖；输出建议清单（不阻塞，orchestrator 决定吸收） |
-| `code-reviewer` | Codex **5.3-spark**（默认） | 行级严谨：类型错误 / lint / 契约同步 / 文件大小 / CONTRACT.md 同步检查 |
-| `pr-gate` | Codex **5.5**（选择性） | 仅对**高风险 PR** escalate。触发条件见 §3.2 |
-| `pr-reviewer` | Claude | 实现质量 / 是否符合规格 / 是否引入降级或回归 / 架构一致性 |
-| `git-operator` | Claude | 唯一 git 操作权（commit / branch / rebase / push）；要求所有应跑的 review pass 才执行 |
-| `refactorer` | Claude | 唯一跨包重组权；每次重组必产 ADR |
-| `researcher` | Claude | 唯一外网权（WebSearch / WebFetch）；接收其他 agent 的调研请求 |
-
-**Tier 3：Audit Agents（4 个）—— 周期 / 触发**
+**Tier 3：Audit Teammates（4 个，Claude）—— 周期 / 触发**
 
 | Agent | 触发 | 职责 |
 |---|---|---|
@@ -636,75 +637,122 @@ TIER 3: Audit (4)
 | `mdx-doctor` | PR 触碰 mdx-bridge 或 block 时 | 跑全部 block 的 round-trip 测试 |
 | `link-checker` | CI 每次 push | `lychee` 扫 markdown 短链，broken 阻断 merge |
 
-### 3.2 Review 工作流（成本敏感分层）
+#### Tool patterns（8 个 codex invocation；ADR-0007 D5）
 
-**核心原则**：默认便宜（Codex 5.3-spark），高风险时升级（Codex 5.5）。每 PR 必经 Codex code-review + Claude pr-review；高风险 PR 多加一道 5.5 pr-gate。
+由 orchestrator 直接通过 Bash 调用 `codex exec --profile <name> < /dev/null > <audit-log> 2>&1`；
+不在 team config，不消耗 Claude teammate 槽位，每次调用 stateless（无跨 turn 累积上下文）。
+canonical bash + 触发条件 + audit-log 路径见 [`docs/runbooks/codex-tool-invocations.md`](../../runbooks/codex-tool-invocations.md)。
+
+**Tier 1 scaffolding（5 个，profile: `scaffolder`）**
+
+| Pattern | 适合的工作 |
+|---|---|
+| `codex-block-generator` | template-then-clone：simple-block-eng / ux-ui-lead / editor-eng 提交 template 后仿造其余 |
+| `codex-test-scaffolder` | 为每个 package 生成 vitest 套件骨架 |
+| `codex-script-builder` | scripts/ 下的 codemod / 脚手架 / refactor-move 工具 |
+| `codex-api-crud-builder` | apps/api 的 CRUD 端点骨架（Pydantic + 路由） |
+| `codex-css-stylist` | Tailwind 类组合 / 设计 token 应用（Phase 2b 起归 ux-ui-lead 调度） |
+
+**Tier 2 review / process（3 个）**
+
+| Pattern | Profile | 职责 |
+|---|---|---|
+| `code-reviewer` | gpt-5.3-codex-spark（默认廉价） | 行级 review：类型 / lint / 契约同步 / 文件大小 / 风格 / 边界条件；强制 ADR-0006 8-point asymmetry-audit |
+| `pr-gate` | gpt-5.5（选择性触发） | 仅高风险 PR；深度审查漏洞 / 隐性破坏 / 跨包影响 + 8th-class hunt |
+| `plan-challenger` | gpt-5.3-codex-spark | orchestrator wave / track plan lock 前挑战：PR-sized / 可测试 / 边界条件覆盖；输出建议（不阻塞） |
+
+### 3.2 Review 工作流（成本敏感分层 + ADR-0007 D2 选择性 Claude review）
+
+**核心原则**：默认便宜（codex 5.3-spark code-reviewer + orchestrator 自检 final 判断）；
+高风险时**双重升级**——既加 codex 5.5 pr-gate 深审，也加 Claude pr-reviewer 长上下文判断。
+Wave 1 数据（codex 5.5 抓 9/12 cross-location asymmetry，[ADR-0006](../../decisions/ADR-0006-asymmetry-audit-checklist.md)）
+表明：常规 PR 让 codex 5.3-spark 抓行级问题 + orchestrator 自检 diff 已足够，Claude pr-reviewer 价值集中于
+跨包 / 长上下文 / 架构一致性判断 —— 因此 ADR-0007 D2 把 Claude pr-review 改为**仅高风险 PR 触发**。
 
 ```
 Worker 完工
    │ marks ready-for-review
    ▼
 ┌──────────────────────────────────────────────────────────┐
-│  Step 1: code-reviewer (Codex 5.3-spark)                │
+│  Step 1: code-reviewer (codex 5.3-spark, 默认廉价)        │
+│  Bash: codex exec --profile code-reviewer < /dev/null    │
 │  ── 类型 / lint / 契约 / 文件大小 / 风格 / 边界条件         │
-│  ── 输出: PASS / FAIL + 具体问题清单                      │
+│  ── 强制 ADR-0006 8-point asymmetry-audit checklist       │
+│  ── 输出: PASS / FAIL + 具体问题清单 → audit log 落盘      │
 └──────────────────────────────────────────────────────────┘
    │
-   ├── FAIL → 退 worker
+   ├── FAIL → orchestrator 退 worker
    │
    ▼ PASS
 ┌──────────────────────────────────────────────────────────┐
-│  Step 2: 高风险检测 (自动)                                │
+│  Step 2: orchestrator 自动判断高风险（ADR-0007 D2 八条）  │
 │  PR 是否符合任一条件？                                     │
-│   • 修改 */CONTRACT.md                                   │
-│   • 新增 / 删除 package                                   │
-│   • 触碰核心架构包：kernel-adapter / mdx-bridge /         │
-│     agent-tools / editor-commands / block-foundation     │
-│   • 触发 ADR 创建                                         │
-│   • 触碰 CI / deploy / auth / security 路径               │
+│   1. 修改任何 */CONTRACT.md（接口形状变化，非补充）        │
+│   2. 新增 / 删除 package                                  │
+│   3. 修改 spec / agent-contract.md / 任何 ADR             │
+│   4. 触发新 ADR 创建                                       │
+│   5. 触碰 CI workflow / deploy / auth / security          │
+│   6. 跨 ≥ 3 个 package 的 PR                              │
+│   7. performance-auditor 标记的 PR                        │
+│   8. 触碰核心架构包：kernel-adapter / mdx-bridge /        │
+│      editor-commands / block-foundation                   │
 └──────────────────────────────────────────────────────────┘
    │                              │
    │ 否（普通 PR）                 │ 是（高风险 PR）
    │                              ▼
    │              ┌──────────────────────────────────────┐
-   │              │  Step 2.5: pr-gate (Codex 5.5)       │
-   │              │  ── 深度审查：漏洞 / 隐性破坏          │
-   │              │  ── 输出: PASS / FAIL + reasoning     │
+   │              │  Step 2.5: pr-gate (codex 5.5)       │
+   │              │  Bash: codex exec --profile pr-gate  │
+   │              │  ── 深度审查：漏洞 / 隐性破坏 / 8th- │
+   │              │     class hunt / 跨包影响             │
+   │              │  ── 输出: PASS / FAIL + 推理 → log    │
+   │              │  注：spec / ADR-only 类高风险（仅触  │
+   │              │     发条件 #3 #4）可仅 Claude pr-    │
+   │              │     reviewer，不必跑 pr-gate          │
    │              └──────────────────────────────────────┘
    │                              │
-   │                              ├─── FAIL → 退 worker
+   │                              ├─── FAIL → 退 worker 修复
    │                              │
    │                              ▼ PASS
-   ▼                              ▼
+   │              ┌──────────────────────────────────────┐
+   │              │  Step 3: pr-reviewer (Claude)        │
+   │              │  ── 实现是否符合 spec                  │
+   │              │  ── 是否引入回归 / 降级                │
+   │              │  ── 架构一致性 + 跨文件影响            │
+   │              │  ── 输出: APPROVE / REJECT + 推理     │
+   │              └──────────────────────────────────────┘
+   │                              │
+   │                              ├─── REJECT → 退 worker
+   │                              │
+   ▼                              ▼ APPROVE
 ┌──────────────────────────────────────────────────────────┐
-│  Step 3: pr-reviewer (Claude)                            │
-│  ── 实现是否符合 spec                                      │
-│  ── 是否引入回归 / 降级                                    │
-│  ── 架构一致性 + 跨文件影响                                │
-│  ── 输出: APPROVE / REJECT + reasoning                    │
+│  Step 4: orchestrator final 判断 (常规 PR 路径)           │
+│  ── 读 codex code-reviewer 输出 + git diff               │
+│  ── 自检（"orchestrator 自己是 Claude，看输出做轻量      │
+│     判断不增 Claude turn 数"，ADR-0007 D2）               │
+│  ── PASS → Step 5; FAIL → 退 worker                      │
 └──────────────────────────────────────────────────────────┘
    │
-   ├── REJECT → 退 worker 修复
-   │
-   ▼ APPROVE
+   ▼
 ┌──────────────────────────────────────────────────────────┐
-│  Step 4: git-operator                                    │
-│  ── commit + push                                         │
+│  Step 5: git-operator (Claude)                           │
+│  ── commit + push（pnpm check 再跑一次本地验证）          │
 └──────────────────────────────────────────────────────────┘
 ```
 
 **分歧协议**：所有应跑的 reviewer 必须**都 approve**。任一 fail 退回 worker。
 
-**Fast lane（豁免）—— 微小 PR 跳过 Claude pr-review**：
+**Fast lane（豁免）—— 微小 PR 跳过任何 review 升级**：
 - 触发条件：diff < 20 行 + 无 .ts/.tsx/.py/.toml 文件 + 无 CONTRACT.md / schema 改动
-- 流程：仅 Codex 5.3-spark code-review + git-operator 直接 merge
+- 流程：仅 codex 5.3-spark code-reviewer + orchestrator 自检 + git-operator 直接 commit
 - 适用：docs-only / 配置 / typo / 单字符串改动
 
-**成本预估**（Phase 1 假设 ~50 PR）：
-- 普通 PR ≈ 35 个：5.3-spark code-review + Claude pr-review
-- 高风险 PR ≈ 10 个：5.3-spark + 5.5 + Claude
+**成本预估**（Phase 1 假设 ~50 PR；已应用 ADR-0007 D2 选择性 + D5 codex tool 化）：
+- 普通 PR ≈ 35 个：5.3-spark code-review + orchestrator 自检（**无 Claude pr-reviewer turn**）
+- 高风险 PR ≈ 10 个：5.3-spark + 5.5 + Claude pr-reviewer
 - Fast lane ≈ 5 个：仅 5.3-spark
-- **5.5 调用 ≈ 10 次/Phase 1**（vs 原方案 50 次），节省 ~80% 5.5 token 消耗
+- **每 PR 节省 ~2-3 个 Claude wrapper turn**（codex 不再走 teammate spawn；详见 [ADR-0007 D5](../../decisions/ADR-0007-job-function-codex-heavy-execution.md)）
+- 估算 Wave 2 全程 Claude tokens 降 ~40-50%（codex 反向上升，但 5.3-spark + 5.5 总成本远低于 Claude）
 
 ### 3.3 设计 Skill 流水线（Phase 2 启动时触发）
 

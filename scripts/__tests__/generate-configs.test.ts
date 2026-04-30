@@ -94,6 +94,17 @@ describe('parseAgentContract', () => {
     const md = `## Agents\n\n\`\`\`yaml\nmetadata:\n  version: 1\n  total_teammates: 1\n  total_tool_patterns: 2\nagents:\n  - name: foo\n    tier: 0\n    llm: claude\n    role: x\n    permissions: []\ntool_patterns:\n  - name: bar\n    profile: scaffolder\n    invocation: 'x'\n    triggered_by: []\n  - name: bar\n    profile: scaffolder\n    invocation: 'y'\n    triggered_by: []\n\`\`\`\n`;
     expect(() => parseAgentContract(md)).toThrow(/duplicate tool_pattern name: bar/);
   });
+
+  it('every tool_pattern.invocation contains "< /dev/null" (memory feedback_codex_stdin; ADR-0007 §pre-task-0-followup obs #3)', () => {
+    const real = readFileSync('agent-contract.md', 'utf8');
+    const result = parseAgentContract(real);
+    expect(result.tool_patterns.length).toBeGreaterThan(0);
+    for (const tp of result.tool_patterns) {
+      expect(tp.invocation, `tool_pattern ${tp.name}.invocation must include '< /dev/null'`).toMatch(
+        /<\s*\/dev\/null\b/,
+      );
+    }
+  });
 });
 
 const sampleAgent: Agent = {
