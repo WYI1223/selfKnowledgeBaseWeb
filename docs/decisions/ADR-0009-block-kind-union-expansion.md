@@ -10,7 +10,7 @@
 
 ## Context
 
-Wave 1 [`packages/block-foundation/src/registry.ts`](../../packages/block-foundation/src/registry.ts:4) 定义：
+Wave 1 [`packages/block-foundation/src/registry.ts`](../../packages/block-foundation/src/registry.ts) 定义：
 
 ```typescript
 export type BlockKind = 'prose' | 'component';
