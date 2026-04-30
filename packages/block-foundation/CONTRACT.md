@@ -8,7 +8,7 @@
   - `getUI(coreName, uiId?)` / `listUIs(coreName)`
 - `defineCore(def)` / `defineUI(def)` factory helpers
 - `BlockCoreDefinition<T>` / `BlockUIDefinition<T>` / `BlockViewProps<T>` interfaces
-- `BlockKind = 'prose' | 'component' | 'render' | 'viz'` （四分类，Wave 2 由 2→4 additive 扩展）
+- `BlockKind = 'prose' | 'component' | 'render' | 'viz'` （四分类，Wave 2 由 2→4 additive 扩展，ratified by [ADR-0009](../../docs/decisions/ADR-0009-block-kind-union-expansion.md)）
   - `'prose'` — Wave 1 default for headless prose blocks (无 MDX 组件，由 `proseExtensions` 提供 markdown 行为)
   - `'component'` — Wave 1 for MDX-component blocks（block-callout / block-code / block-image — Track C simple-block-eng）
   - `'render'` — **Wave 2 NEW** for hand-crafted render blocks consuming external runtime authority（block-math KaTeX / block-pdf react-pdf — Track D render-block-eng）
@@ -17,7 +17,7 @@
 
 ## Invariants
 
-- `BlockKind` 四分不可破坏：新 block 必须明确归属 `prose` / `component` / `render` / `viz` 之一。Wave 1 仅 `prose` + `component` 二分；Wave 2 additive 扩展加 `render` + `viz`（由 `render-block-eng` 与 `viz-block-eng` 工种 own，与 agent-contract.md Tier 1 worker 分工一致）。kind 定义不可被进一步窄化（不允许把 `render` 重新归并入 `component`），扩展再加 kind 需 ADR
+- `BlockKind` 四分不可破坏：新 block 必须明确归属 `prose` / `component` / `render` / `viz` 之一。Wave 1 仅 `prose` + `component` 二分；Wave 2 additive 扩展加 `render` + `viz`（由 `render-block-eng` 与 `viz-block-eng` 工种 own，与 agent-contract.md Tier 1 worker 分工一致；扩展授权见 [ADR-0009](../../docs/decisions/ADR-0009-block-kind-union-expansion.md)）。kind 定义不可被进一步窄化（不允许把 `render` 重新归并入 `component`），扩展再加 kind 需 ADR
 - Prose blocks 零自写代码——任何看似需要新 prose block 的场景应通过组合 `proseExtensions` 内现有扩展或追加单条 Tiptap 扩展实现，不再加 prose-kind block
 - `BlockCoreDefinition.mdxComponent` 必须 PascalCase，且与 MDX 文件 import 中使用的名字一致
 - Core 与 UI 物理分离（ADR-0003）：core 不允许 import 任何 React/Tiptap 视觉 API；UI 必须 import core（不允许 inline 重复 schema）
@@ -57,6 +57,7 @@ RFC 是 consumer-facing 教程，CONTRACT.md 是 public API 形状 + 关键不�
 
 - 设计规格 §1.5 / §2.5（`../../docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md`）
 - ADR-0003 headless / presentational 分层（`../../docs/decisions/ADR-0003-headless-presentational-split.md`）
+- ADR-0009 BlockKind union 2→4 expansion（`../../docs/decisions/ADR-0009-block-kind-union-expansion.md`）
 - content-types 契约（`../content-types/CONTRACT.md`）
 - mdx-bridge 契约（`../mdx-bridge/CONTRACT.md`）
 - design-tokens 契约（`../design-tokens/CONTRACT.md`）

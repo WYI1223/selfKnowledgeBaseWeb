@@ -48,7 +48,8 @@ Notes that map directly to `BlockCoreDefinition` fields in
 - `name`: kebab-case, globally unique. Used as the registry key — duplicate
   registration throws `Duplicate core name: <name>` at runtime.
 - `kind`: `'prose' | 'component' | 'render' | 'viz'` (4-way Wave 2 union; Wave 1
-  was binary `'prose' | 'component'` — additive expansion in Wave 2). Track C
+  was binary `'prose' | 'component'` — additive expansion in Wave 2 authorized by
+  [ADR-0009](../../docs/decisions/ADR-0009-block-kind-union-expansion.md)). Track C
   simple-block-eng owns `'component'` (block-callout / block-code / block-image —
   composable JSX with rich children); Track D render-block-eng owns `'render'`
   (block-math / block-pdf — visual rendering of a pure declarative input via
@@ -321,4 +322,5 @@ routing table lands.
 - [ADR-0003](../../docs/decisions/ADR-0003-headless-presentational-split.md) — core / UI 双层
 - [ADR-0006](../../docs/decisions/ADR-0006-asymmetry-audit-checklist.md) items #3 / #4 — `.strict()` propagation + single-authority schema
 - [ADR-0008](../../docs/decisions/ADR-0008-wave-2-entry-policies.md) D2 — interface freeze authority
+- [ADR-0009](../../docs/decisions/ADR-0009-block-kind-union-expansion.md) — `BlockKind` 2→4 expansion (Wave 2 D1 bundle)
 - [Wave 2 plan Task C1/C2](../../docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md) — first consumer

@@ -5,7 +5,7 @@ hand-craft（不走 codex-block-generator），block-pdf (D2) 同 owner 独立 h
 
 ## Public surface
 
-四个 entry：
+五个 entry：
 
 - `.` (root barrel) — re-export `./core`
 - `./core` — headless 层
@@ -18,15 +18,15 @@ hand-craft（不走 codex-block-generator），block-pdf (D2) 同 owner 独立 h
   - `MathEditorView` / `MathRenderView` — `ComponentType<BlockViewProps<...>>`
   - `renderMath(expression, display) → string` — KaTeX HTML 字符串生成器（**single authority** for editor + SSR + NodeView，定义在 `src/ui-default/render-math.ts`）
   - `MATH_TOKENS: MathTokens` — design-token name witnesses（`@skb/design-tokens` 类型绑定）
-  - sibling: `Math.astro`（apps/site SSR 直接 import，亦走 `renderMath`）
+- `./ui-default/Math.astro` — apps/site SSR consumer 直接 import 的 Astro 组件（亦走 `renderMath` authority）
 - `./ui-default/math.css` — 视觉规则单一来源（design-token-bound，error/fg color 走 `var(--color-*)`）
 
 ### Consumer 使用方式
 
 `apps/site` / `editor-shell` 必须 `import '@skb/block-math/ui-default/math.css';`
-方能渲染 `.katex-error` 错误态样式以及 display/inline 间距 token。同时
+方能渲染 KaTeX 错误态样式以及 display/inline 间距 token。同时
 consumers 必须 `import 'katex/dist/katex.css';`（KaTeX 自身字体 + 内部布局；
-本包不重发包，避免重复加载）。
+本包不重发包，避免重复加载）。Astro page 直接 `import Math from '@skb/block-math/ui-default/Math.astro';`。
 
 `propsSchema` 形状（见 `src/core/core-definition.ts`）：
 
