@@ -1,0 +1,2390 @@
+Reading prompt from stdin...
+OpenAI Codex v0.125.0 (research preview)
+--------
+workdir: /home/weiyi/selfKnowledgeBaseWeb
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: xhigh
+reasoning summaries: none
+session id: 019de052-d570-75b1-88c0-5cf906a414a8
+--------
+user
+You are codex 5.5 pr-gate. R2 audit packages/block-pdf/ for Wave 2 Task #17 (D2).
+
+R1 verdict: FAIL with 4 issues. R2 fixes:
+- R2-1 render-pdf.ts:62-67 buildIframeSrc strips pre-existing fragment
+- R2-2 cross-doc: block-foundation/CONTRACT.md:14 + RFC.md:55-57 + agent-contract.md:109-110 react-pdf → iframe wording (regenerated CLAUDE.md + .claude/agents/render-block-eng.md via pnpm generate:configs)
+- R2-3 byte-equivalence.test.tsx (4 cases: react-dom SSR + AST sentinels for both Pdf.tsx and Pdf.astro forbid `${...}#page=` template-literal patterns)
+- R2-4 iframe sandbox documented as Wave 3 deferred
+
+Local: 33/33 PASS (5 files, +6 tests vs R1).
+
+Verify:
+1. buildIframeSrc handles src with existing fragment (`doc.pdf#section` → `doc.pdf#page=N`).
+2. Cross-doc react-pdf wording purged across all 3 doc files + 2 generated outputs.
+3. byte-equivalence.test.tsx covers both Pdf.tsx (react-dom SSR) and Pdf.astro (AST regex).
+4. AST drift sentinels forbid `${...}#page=` outside renderPdf authority.
+5. CONTRACT.md "URL fragment authority" + "renderPdf single authority" invariants updated.
+6. ADR-0006 8-point.
+
+Run pnpm --filter @skb/block-pdf test (33/33) + typecheck/lint/build.
+
+Verdict: PASS or FAIL.
+
+Note: full-repo typecheck shows packages/block-jupyter errors — that's concurrent E1 WIP (untracked), not D2's regression. Verify only block-pdf scope.
+
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the vendored bubblewrap in the meantime.
+exec
+/bin/bash -lc "sed -n '1,220p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/3c463363/skills/using-superpowers/SKILL.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+---
+name: using-superpowers
+description: Use when starting any conversation - establishes how to find and use skills, requiring Skill tool invocation before ANY response including clarifying questions
+---
+
+<SUBAGENT-STOP>
+If you were dispatched as a subagent to execute a specific task, skip this skill.
+</SUBAGENT-STOP>
+
+<EXTREMELY-IMPORTANT>
+If you think there is even a 1% chance a skill might apply to what you are doing, you ABSOLUTELY MUST invoke the skill.
+
+IF A SKILL APPLIES TO YOUR TASK, YOU DO NOT HAVE A CHOICE. YOU MUST USE IT.
+
+This is not negotiable. This is not optional. You cannot rationalize your way out of this.
+</EXTREMELY-IMPORTANT>
+
+## Instruction Priority
+
+Superpowers skills override default system prompt behavior, but **user instructions always take precedence**:
+
+1. **User's explicit instructions** (CLAUDE.md, GEMINI.md, AGENTS.md, direct requests) — highest priority
+2. **Superpowers skills** — override default system behavior where they conflict
+3. **Default system prompt** — lowest priority
+
+If CLAUDE.md, GEMINI.md, or AGENTS.md says "don't use TDD" and a skill says "always use TDD," follow the user's instructions. The user is in control.
+
+## How to Access Skills
+
+**In Claude Code:** Use the `Skill` tool. When you invoke a skill, its content is loaded and presented to you—follow it directly. Never use the Read tool on skill files.
+
+**In Copilot CLI:** Use the `skill` tool. Skills are auto-discovered from installed plugins. The `skill` tool works the same as Claude Code's `Skill` tool.
+
+**In Gemini CLI:** Skills activate via the `activate_skill` tool. Gemini loads skill metadata at session start and activates the full content on demand.
+
+**In other environments:** Check your platform's documentation for how skills are loaded.
+
+## Platform Adaptation
+
+Skills use Claude Code tool names. Non-CC platforms: see `references/copilot-tools.md` (Copilot CLI), `references/codex-tools.md` (Codex) for tool equivalents. Gemini CLI users get the tool mapping loaded automatically via GEMINI.md.
+
+# Using Skills
+
+## The Rule
+
+**Invoke relevant or requested skills BEFORE any response or action.** Even a 1% chance a skill might apply means that you should invoke the skill to check. If an invoked skill turns out to be wrong for the situation, you don't need to use it.
+
+```dot
+digraph skill_flow {
+    "User message received" [shape=doublecircle];
+    "About to EnterPlanMode?" [shape=doublecircle];
+    "Already brainstormed?" [shape=diamond];
+    "Invoke brainstorming skill" [shape=box];
+    "Might any skill apply?" [shape=diamond];
+    "Invoke Skill tool" [shape=box];
+    "Announce: 'Using [skill] to [purpose]'" [shape=box];
+    "Has checklist?" [shape=diamond];
+    "Create TodoWrite todo per item" [shape=box];
+    "Follow skill exactly" [shape=box];
+    "Respond (including clarifications)" [shape=doublecircle];
+
+    "About to EnterPlanMode?" -> "Already brainstormed?";
+    "Already brainstormed?" -> "Invoke brainstorming skill" [label="no"];
+    "Already brainstormed?" -> "Might any skill apply?" [label="yes"];
+    "Invoke brainstorming skill" -> "Might any skill apply?";
+
+    "User message received" -> "Might any skill apply?";
+    "Might any skill apply?" -> "Invoke Skill tool" [label="yes, even 1%"];
+    "Might any skill apply?" -> "Respond (including clarifications)" [label="definitely not"];
+    "Invoke Skill tool" -> "Announce: 'Using [skill] to [purpose]'";
+    "Announce: 'Using [skill] to [purpose]'" -> "Has checklist?";
+    "Has checklist?" -> "Create TodoWrite todo per item" [label="yes"];
+    "Has checklist?" -> "Follow skill exactly" [label="no"];
+    "Create TodoWrite todo per item" -> "Follow skill exactly";
+}
+```
+
+## Red Flags
+
+These thoughts mean STOP—you're rationalizing:
+
+| Thought | Reality |
+|---------|---------|
+| "This is just a simple question" | Questions are tasks. Check for skills. |
+| "I need more context first" | Skill check comes BEFORE clarifying questions. |
+| "Let me explore the codebase first" | Skills tell you HOW to explore. Check first. |
+| "I can check git/files quickly" | Files lack conversation context. Check for skills. |
+| "Let me gather information first" | Skills tell you HOW to gather information. |
+| "This doesn't need a formal skill" | If a skill exists, use it. |
+| "I remember this skill" | Skills evolve. Read current version. |
+| "This doesn't count as a task" | Action = task. Check for skills. |
+| "The skill is overkill" | Simple things become complex. Use it. |
+| "I'll just do this one thing first" | Check BEFORE doing anything. |
+| "This feels productive" | Undisciplined action wastes time. Skills prevent this. |
+| "I know what that means" | Knowing the concept ≠ using the skill. Invoke it. |
+
+## Skill Priority
+
+When multiple skills could apply, use this order:
+
+1. **Process skills first** (brainstorming, debugging) - these determine HOW to approach the task
+2. **Implementation skills second** (frontend-design, mcp-builder) - these guide execution
+
+"Let's build X" → brainstorming first, then implementation skills.
+"Fix this bug" → debugging first, then domain-specific skills.
+
+## Skill Types
+
+**Rigid** (TDD, debugging): Follow exactly. Don't adapt away discipline.
+
+**Flexible** (patterns): Adapt principles to context.
+
+The skill itself tells you which.
+
+## User Instructions
+
+Instructions say WHAT, not HOW. "Add X" or "Fix Y" doesn't mean skip workflows.
+
+exec
+/bin/bash -lc "sed -n '1,220p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/3c463363/skills/verification-before-completion/SKILL.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 103ms:
+---
+name: verification-before-completion
+description: Use when about to claim work is complete, fixed, or passing, before committing or creating PRs - requires running verification commands and confirming output before making any success claims; evidence before assertions always
+---
+
+# Verification Before Completion
+
+## Overview
+
+Claiming work is complete without verification is dishonesty, not efficiency.
+
+**Core principle:** Evidence before claims, always.
+
+**Violating the letter of this rule is violating the spirit of this rule.**
+
+## The Iron Law
+
+```
+NO COMPLETION CLAIMS WITHOUT FRESH VERIFICATION EVIDENCE
+```
+
+If you haven't run the verification command in this message, you cannot claim it passes.
+
+## The Gate Function
+
+```
+BEFORE claiming any status or expressing satisfaction:
+
+1. IDENTIFY: What command proves this claim?
+2. RUN: Execute the FULL command (fresh, complete)
+3. READ: Full output, check exit code, count failures
+4. VERIFY: Does output confirm the claim?
+   - If NO: State actual status with evidence
+   - If YES: State claim WITH evidence
+5. ONLY THEN: Make the claim
+
+Skip any step = lying, not verifying
+```
+
+## Common Failures
+
+| Claim | Requires | Not Sufficient |
+|-------|----------|----------------|
+| Tests pass | Test command output: 0 failures | Previous run, "should pass" |
+| Linter clean | Linter output: 0 errors | Partial check, extrapolation |
+| Build succeeds | Build command: exit 0 | Linter passing, logs look good |
+| Bug fixed | Test original symptom: passes | Code changed, assumed fixed |
+| Regression test works | Red-green cycle verified | Test passes once |
+| Agent completed | VCS diff shows changes | Agent reports "success" |
+| Requirements met | Line-by-line checklist | Tests passing |
+
+## Red Flags - STOP
+
+- Using "should", "probably", "seems to"
+- Expressing satisfaction before verification ("Great!", "Perfect!", "Done!", etc.)
+- About to commit/push/PR without verification
+- Trusting agent success reports
+- Relying on partial verification
+- Thinking "just this once"
+- Tired and wanting work over
+- **ANY wording implying success without having run verification**
+
+## Rationalization Prevention
+
+| Excuse | Reality |
+|--------|---------|
+| "Should work now" | RUN the verification |
+| "I'm confident" | Confidence ≠ evidence |
+| "Just this once" | No exceptions |
+| "Linter passed" | Linter ≠ compiler |
+| "Agent said success" | Verify independently |
+| "I'm tired" | Exhaustion ≠ excuse |
+| "Partial check is enough" | Partial proves nothing |
+| "Different words so rule doesn't apply" | Spirit over letter |
+
+## Key Patterns
+
+**Tests:**
+```
+✅ [Run test command] [See: 34/34 pass] "All tests pass"
+❌ "Should pass now" / "Looks correct"
+```
+
+**Regression tests (TDD Red-Green):**
+```
+✅ Write → Run (pass) → Revert fix → Run (MUST FAIL) → Restore → Run (pass)
+❌ "I've written a regression test" (without red-green verification)
+```
+
+**Build:**
+```
+✅ [Run build] [See: exit 0] "Build passes"
+❌ "Linter passed" (linter doesn't check compilation)
+```
+
+**Requirements:**
+```
+✅ Re-read plan → Create checklist → Verify each → Report gaps or completion
+❌ "Tests pass, phase complete"
+```
+
+**Agent delegation:**
+```
+✅ Agent reports success → Check VCS diff → Verify changes → Report actual state
+❌ Trust agent report
+```
+
+## Why This Matters
+
+From 24 failure memories:
+- your human partner said "I don't believe you" - trust broken
+- Undefined functions shipped - would crash
+- Missing requirements shipped - incomplete features
+- Time wasted on false completion → redirect → rework
+- Violates: "Honesty is a core value. If you lie, you'll be replaced."
+
+## When To Apply
+
+**ALWAYS before:**
+- ANY variation of success/completion claims
+- ANY expression of satisfaction
+- ANY positive statement about work state
+- Committing, PR creation, task completion
+- Moving to next task
+- Delegating to agents
+
+**Rule applies to:**
+- Exact phrases
+- Paraphrases and synonyms
+- Implications of success
+- ANY communication suggesting completion/correctness
+
+## The Bottom Line
+
+**No shortcuts for verification.**
+
+Run the command. Read the output. THEN claim the result.
+
+This is non-negotiable.
+
+codex
+Using `superpowers:using-superpowers` for the required workflow check and `verification-before-completion` for the PASS/FAIL gate. I’ll inspect the changed block-pdf and contract surfaces first, then run the scoped verification commands the sandbox permits.
+  → Inspect block-pdf implementation, tests, and docs touched by R2
+  • Verify the six requested D2 audit points in source and tests
+  • Run block-pdf scoped test, typecheck, lint, and build commands
+  • Deliver PASS/FAIL with concrete findings and verification evidence
+exec
+/bin/bash -lc 'rg --files packages/block-pdf' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+packages/block-pdf/tsconfig.json
+packages/block-pdf/src/index.ts
+packages/block-pdf/src/ui-default/Pdf.tsx
+packages/block-pdf/src/ui-default/pdf.ui.ts
+packages/block-pdf/src/ui-default/index.ts
+packages/block-pdf/src/ui-default/Pdf.astro
+packages/block-pdf/src/ui-default/pdf.css
+packages/block-pdf/src/ui-default/pdf-tokens.ts
+packages/block-pdf/src/ui-default/render-pdf.ts
+packages/block-pdf/package.json
+packages/block-pdf/vitest.config.ts
+packages/block-pdf/CONTRACT.md
+packages/block-pdf/src/core/parse.ts
+packages/block-pdf/src/core/index.ts
+packages/block-pdf/src/core/core-definition.ts
+packages/block-pdf/src/core/serialize.ts
+packages/block-pdf/src/__tests__/ssr-render.test.ts
+packages/block-pdf/src/__tests__/core.test.ts
+packages/block-pdf/src/__tests__/registry-integration.test.ts
+packages/block-pdf/src/__tests__/byte-equivalence.test.tsx
+packages/block-pdf/src/__tests__/ui-default.test.ts
+
+exec
+/bin/bash -lc "sed -n '1,220p' packages/block-pdf/src/render-pdf.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ exited 2 in 0ms:
+sed: can't read packages/block-pdf/src/render-pdf.ts: No such file or directory
+
+exec
+/bin/bash -lc "sed -n '1,260p' packages/block-pdf/src/__tests__/byte-equivalence.test.tsx" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { describe, expect, it } from 'vitest';
+import { PdfRenderView } from '../ui-default/Pdf';
+import { renderPdf } from '../ui-default/render-pdf';
+
+/**
+ * Byte-equivalence regression for ADR-0006 #5 (algorithm replication single
+ * source). Pdf.tsx (React/NodeView path) and Pdf.astro (SSR path) MUST both
+ * call `renderPdf(...)` and emit identical container + iframe markup.
+ *
+ * Two-tier verification strategy (Astro `.astro` files cannot be invoked
+ * inside vitest without running the Astro compiler, so we mix runtime + AST
+ * checks):
+ *
+ * 1. **Runtime SSR** of `PdfRenderView` via `react-dom/server.renderToStaticMarkup`.
+ *    Asserts the React path renders exactly the descriptor produced by
+ *    `renderPdf` — `data-block` / `data-page` / `data-searchable` attributes
+ *    on the wrapper div + `<iframe src=… loading="lazy" title>`.
+ * 2. **Static analysis** of `Pdf.astro` source: must `import { renderPdf } from
+ *    './render-pdf'`, must invoke `renderPdf(`, must emit a `<div>` wrapper
+ *    with the same three `desc.dataAttrs[…]` bindings, must emit an iframe
+ *    using `desc.iframeSrc` + `loading="lazy"`. This is the structural
+ *    equivalence guarantee the codex 5.5 R2-3 review asked for: even though we
+ *    cannot literally byte-compare two HTML strings, drift in either file is
+ *    detectable — runtime regression catches Pdf.tsx changes, AST regex
+ *    catches Pdf.astro changes, and the shared `renderPdf` authority + its
+ *    own ssr-render.test.ts corpus guarantees the underlying values match.
+ *
+ * What this does NOT verify (Wave 2 documented gap):
+ *   - The compiled Astro output is byte-equal to the React SSR output. Astro
+ *     adds its own scoped-style attributes, hydration directives, etc.; that
+ *     comparison would require a full Astro toolchain in vitest. Wave 3
+ *     mdx-doctor PR will run a `mdx-bridge` round-trip fixture for `<Pdf>` that
+ *     exercises this end-to-end via the apps/site build, closing the gap from
+ *     the consumer side.
+ */
+
+// __dirname-style path resolution. Vitest runs with cwd=packages/block-pdf/,
+// so we anchor source paths relative to that. Avoids `import.meta.url` quirks
+// under happy-dom (fileURLToPath rejects non-file: URLs in some test runners).
+const PDF_ASTRO_PATH = resolve('src/ui-default/Pdf.astro');
+const PDF_TSX_PATH = resolve('src/ui-default/Pdf.tsx');
+
+describe('Pdf.tsx + Pdf.astro byte-equivalence (ADR-0006 #5)', () => {
+  it('PdfRenderView SSR markup matches renderPdf descriptor verbatim', () => {
+    const props = { src: '/files/paper.pdf', page: 7, searchable: true };
+    const desc = renderPdf(props.src, props.page, props.searchable);
+    const html = renderToStaticMarkup(<PdfRenderView props={props} />);
+
+    expect(html).toContain(`data-block="${desc.dataAttrs['data-block']}"`);
+    expect(html).toContain(`data-page="${desc.dataAttrs['data-page']}"`);
+    expect(html).toContain(
+      `data-searchable="${desc.dataAttrs['data-searchable']}"`,
+    );
+    expect(html).toContain(`src="${desc.iframeSrc}"`);
+    expect(html).toContain('loading="lazy"');
+    expect(html).toContain(`title="PDF: ${desc.src}"`);
+  });
+
+  it('PdfRenderView strips fragment from src in iframeSrc (R2-1 regression)', () => {
+    const props = { src: 'doc.pdf#section=intro', page: 4, searchable: false };
+    const html = renderToStaticMarkup(<PdfRenderView props={props} />);
+    expect(html).toContain('src="doc.pdf#page=4"');
+    expect(html).not.toContain('section=intro#page=');
+  });
+
+  it('Pdf.astro source imports renderPdf authority + uses descriptor bindings', () => {
+    const astroSource = readFileSync(PDF_ASTRO_PATH, 'utf8');
+
+    // Authority import is mandatory — no inline iframe URL construction.
+    expect(astroSource).toMatch(/import\s+\{\s*renderPdf\s*\}\s+from\s+['"]\.\/render-pdf['"]/);
+    expect(astroSource).toMatch(/renderPdf\s*\(/);
+
+    // Wrapper container + three data-attr bindings (sister-doc to Pdf.tsx).
+    expect(astroSource).toMatch(/data-block=\{?desc\.dataAttrs\['data-block'\]/);
+    expect(astroSource).toMatch(/data-page=\{?desc\.dataAttrs\['data-page'\]/);
+    expect(astroSource).toMatch(
+      /data-searchable=\{?desc\.dataAttrs\['data-searchable'\]/,
+    );
+
+    // iframe uses the descriptor's iframeSrc (not raw src) + lazy loading.
+    expect(astroSource).toMatch(/src=\{?desc\.iframeSrc\}?/);
+    expect(astroSource).toMatch(/loading=['"]lazy['"]/);
+
+    // Drift sentinel — the file must NOT have an inline `${src}#page=` template
+    // literal that would bypass renderPdf authority.
+    expect(astroSource).not.toMatch(/\$\{src\}#page=/);
+    expect(astroSource).not.toMatch(/`\$\{[^}]+\}#page=/);
+  });
+
+  it('Pdf.tsx source imports renderPdf authority + uses descriptor bindings (sister sentinel)', () => {
+    // Symmetric drift sentinel for the React side. ssr-render.test.ts already
+    // exercises renderPdf directly; this one specifically locks down the
+    // Pdf.tsx call site.
+    const tsxSource = readFileSync(PDF_TSX_PATH, 'utf8');
+
+    expect(tsxSource).toMatch(/import\s+\{\s*renderPdf\s*\}\s+from\s+['"]\.\/render-pdf['"]/);
+    expect(tsxSource).toMatch(/renderPdf\s*\(/);
+    expect(tsxSource).not.toMatch(/\$\{[^}]+\}#page=/);
+  });
+});
+
+exec
+/bin/bash -lc 'cat packages/block-pdf/package.json' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+{
+  "name": "@skb/block-pdf",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./core": "./src/core/index.ts",
+    "./ui-default": "./src/ui-default/index.ts",
+    "./ui-default/Pdf.astro": "./src/ui-default/Pdf.astro",
+    "./ui-default/pdf.css": "./src/ui-default/pdf.css"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@skb/block-foundation": "workspace:*",
+    "@skb/design-tokens": "workspace:*",
+    "zod": "^3.23.0"
+  },
+  "peerDependencies": {
+    "react": "^18.3.0 || ^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "happy-dom": "^15.0.0",
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0",
+    "typescript": "~5.6.0",
+    "vitest": "^4.1.5"
+  }
+}
+
+codex
+The render helper lives under `src/ui-default`, not directly under `src`; the test file already shows the intended R2 coverage shape. I’m checking the actual helper and contract/docs now, including generated outputs for stale `react-pdf` wording.
+exec
+/bin/bash -lc "nl -ba packages/block-pdf/src/ui-default/render-pdf.ts | sed -n '1,180p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	/**
+     2	 * Single authority for PDF rendering across this package (ADR-0006 item #5).
+     3	 * Pdf.tsx (React/NodeView path) and Pdf.astro (SSR path) MUST both import
+     4	 * `renderPdf` from here — never inline iframe `src` construction or container
+     5	 * markup with their own logic. ssr-render.test.ts exercises a corpus to detect
+     6	 * drift if a future edit accidentally re-inlines the URL builder.
+     7	 *
+     8	 * Why iframe (not react-pdf) for both paths:
+     9	 * - Browser-native PDF viewer is the runtime authority (no in-package canvas
+    10	 *   rasterizer). All major browsers handle `application/pdf` via embedded
+    11	 *   viewer; the `#page=N` fragment is part of the
+    12	 *   [PDF Open Parameters](https://opensource.adobe.com/dc-acrobat-sdk-docs/library/pdfsdk/pdfopenparams.html)
+    13	 *   convention recognized by Chrome/Edge/Firefox/Safari.
+    14	 * - Astro SSR cannot run react-pdf (it requires a browser worker thread +
+    15	 *   canvas APIs). Iframe yields byte-equivalent SSR + client output, satisfying
+    16	 *   the D1 single-source invariant pattern.
+    17	 * - Failure mode is graceful: missing/inaccessible `src` shows the browser's
+    18	 *   own empty-doc UI; the wrapper container retains a stable shell + bordered
+    19	 *   viewport via design-token CSS for the empty-state error path.
+    20	 *
+    21	 * Output shape contract:
+    22	 * - `src`: original `propsSchema.src` (URL or path) verbatim
+    23	 * - `page`: validated 1-based int (propsSchema floor = 1)
+    24	 * - `searchable`: build-time hint (Wave 3 search-index integration); runtime
+    25	 *   no-op in Wave 2
+    26	 * - `iframeSrc`: `${baseSrc}#page=${page}` — PDF Open Parameters fragment.
+    27	 *   Any pre-existing `#fragment` on `src` is dropped before appending, so
+    28	 *   `<Pdf src="doc.pdf#section=intro" page={3} />` yields `doc.pdf#page=3`
+    29	 *   (PDF Open Parameters fragments are not mergeable — only one `#…` per URL,
+    30	 *   and `page=` must be authoritative for the chosen page).
+    31	 * - `dataAttrs`: stable `data-*` attribute map for Tag wrapper, used by
+    32	 *   pdf.css selectors. Keys are kebab-case strings ready for set:html /
+    33	 *   spread.
+    34	 */
+    35	export interface PdfRenderDescriptor {
+    36	  readonly src: string;
+    37	  readonly page: number;
+    38	  readonly searchable: boolean;
+    39	  readonly iframeSrc: string;
+    40	  readonly dataAttrs: {
+    41	    readonly 'data-block': 'pdf';
+    42	    readonly 'data-page': string;
+    43	    readonly 'data-searchable': string;
+    44	  };
+    45	}
+    46	
+    47	function buildIframeSrc(src: string, page: number): string {
+    48	  // String.split('#')[0] returns src verbatim when no '#' is present; strips
+    49	  // any pre-existing fragment otherwise. Authoritative per the Output shape
+    50	  // contract above.
+    51	  const [base = ''] = src.split('#');
+    52	  return `${base}#page=${page}`;
+    53	}
+    54	
+    55	export const renderPdf = (
+    56	  src: string,
+    57	  page: number,
+    58	  searchable: boolean,
+    59	): PdfRenderDescriptor => ({
+    60	  src,
+    61	  page,
+    62	  searchable,
+    63	  iframeSrc: buildIframeSrc(src, page),
+    64	  dataAttrs: {
+    65	    'data-block': 'pdf',
+    66	    'data-page': String(page),
+    67	    'data-searchable': String(searchable),
+    68	  },
+    69	});
+
+exec
+/bin/bash -lc "nl -ba packages/block-pdf/src/ui-default/Pdf.tsx | sed -n '1,220p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	import type { BlockViewProps } from '@skb/block-foundation';
+     2	import { pdfCore } from '../core/core-definition';
+     3	import { renderPdf } from './render-pdf';
+     4	
+     5	/**
+     6	 * PdfView 接受 inferred props ({ src, page, searchable }) — 与
+     7	 * `pdfCore.propsSchema` 的 ZodInfer 等价。函数式组件而非
+     8	 * `ComponentType<BlockViewProps<typeof ...>>` 显式标注，避免 generic 变 invariant
+     9	 * 在 BlockRegistry.registerUI 处与 ZodTypeAny widening 冲突（exactOptionalPropertyTypes 触发）。
+    10	 *
+    11	 * iframe 渲染走 `./render-pdf.ts` 单一权威，与 Pdf.astro SSR path 同源
+    12	 * （ADR-0006 item #5 algorithm replication）。浏览器原生 PDF viewer 是 runtime
+    13	 * authority；空 src 由 Pdf.astro 的 fallback box 处理（在 Astro layer，因
+    14	 * propsSchema.src.min(1) 已先 throw 在 build 前）。
+    15	 *
+    16	 * `searchable: true` 是 Wave 3 build-time search-index 提示
+    17	 * （consumer = scripts/extract-pdf-text.ts），runtime no-op。
+    18	 */
+    19	export function PdfView({
+    20	  props,
+    21	}: BlockViewProps<typeof pdfCore.propsSchema>): JSX.Element {
+    22	  const desc = renderPdf(props.src, props.page, props.searchable);
+    23	  return (
+    24	    <div
+    25	      data-block={desc.dataAttrs['data-block']}
+    26	      data-page={desc.dataAttrs['data-page']}
+    27	      data-searchable={desc.dataAttrs['data-searchable']}
+    28	    >
+    29	      <iframe
+    30	        src={desc.iframeSrc}
+    31	        title={`PDF: ${desc.src}`}
+    32	        loading="lazy"
+    33	      />
+    34	    </div>
+    35	  );
+    36	}
+    37	
+    38	export const PdfEditorView = PdfView;
+    39	export const PdfRenderView = PdfView;
+
+exec
+/bin/bash -lc "nl -ba packages/block-pdf/src/ui-default/Pdf.astro | sed -n '1,220p'" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "nl -ba packages/block-pdf/CONTRACT.md | sed -n '1,220p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	---
+     2	import { renderPdf } from './render-pdf';
+     3	
+     4	interface Props {
+     5	  src: string;
+     6	  page?: number;
+     7	  searchable?: boolean;
+     8	}
+     9	
+    10	const { src, page = 1, searchable = false } = Astro.props;
+    11	
+    12	// PDF 渲染走 `./render-pdf.ts` 单一权威，与 Pdf.tsx 同源
+    13	// （ADR-0006 item #5 algorithm replication：authority = renderPdf；不允许在
+    14	// 此文件内 inline iframe src 构造 + URL 拼接）。
+    15	const desc = renderPdf(src, page, searchable);
+    16	---
+    17	
+    18	<div
+    19	  data-block={desc.dataAttrs['data-block']}
+    20	  data-page={desc.dataAttrs['data-page']}
+    21	  data-searchable={desc.dataAttrs['data-searchable']}
+    22	>
+    23	  <iframe src={desc.iframeSrc} title={`PDF: ${desc.src}`} loading="lazy"></iframe>
+    24	</div>
+
+ succeeded in 0ms:
+     1	# @skb/block-pdf Contract
+     2	
+     3	PDF render block (Wave 2 Track D2). 第二个 `render-block-eng` 包；hand-craft
+     4	（与 D1 block-math 同 owner，独立实现，不走 codex-block-generator）。
+     5	浏览器原生 PDF viewer 是 runtime authority — 由 iframe + PDF Open Parameters
+     6	fragment 驱动；本包不在 npm 拉 react-pdf / pdfjs-dist 渲染依赖（ADR-0008 D1
+     7	dead-dep policy + Astro SSR 不可执行 react-pdf 的 worker 双重约束）。
+     8	
+     9	## Public surface
+    10	
+    11	五个 entry：
+    12	
+    13	- `.` (root barrel) — re-export `./core`
+    14	- `./core` — headless 层
+    15	  - `pdfCore: BlockCoreDefinition<typeof propsSchema>` — name=`'pdf'` / kind=`'render'` / mdxComponent=`'Pdf'`
+    16	  - `serializePdf(node) → mdxJsxFlowElement` — Tiptap → mdast (Wave 3 mdx-bridge routing 时启用)
+    17	  - `parsePdf(mdast) → TiptapNode` — mdast → Tiptap (同上；处理 `searchable` boolean shorthand + `page` 数字 coerce)
+    18	  - 类型: `PdfTiptapNode` / `PdfMdastJsxElement`
+    19	- `./ui-default` — presentational 层
+    20	  - `pdfUiDefault: BlockUIDefinition<typeof pdfCore.propsSchema>` — uiId=`'default'`
+    21	  - `PdfEditorView` / `PdfRenderView` — `ComponentType<BlockViewProps<...>>`
+    22	  - `renderPdf(src, page, searchable) → PdfRenderDescriptor` — single-source 渲染描述器（**single authority** for Pdf.tsx + Pdf.astro，定义在 `src/ui-default/render-pdf.ts`）
+    23	  - `PDF_TOKENS: PdfTokens` — design-token name witnesses（`@skb/design-tokens` 类型绑定）
+    24	- `./ui-default/Pdf.astro` — apps/site SSR consumer 直接 import 的 Astro 组件（亦走 `renderPdf` authority）
+    25	- `./ui-default/pdf.css` — 视觉规则单一来源（design-token-bound，border / bg / error 走 `var(--color-*)`）
+    26	
+    27	### Consumer 使用方式
+    28	
+    29	`apps/site` / `editor-shell` 必须 `import '@skb/block-pdf/ui-default/pdf.css';`
+    30	方能渲染 iframe 容器边框 / 背景 / 间距 token。Astro page 直接
+    31	`import Pdf from '@skb/block-pdf/ui-default/Pdf.astro';`。consumer 不需要
+    32	import 任何 PDF 渲染库 —— 浏览器原生 viewer 处理 iframe 内容。
+    33	
+    34	`propsSchema` 形状（见 `src/core/core-definition.ts`）：
+    35	
+    36	```typescript
+    37	z.object({
+    38	  src: z.string().min(1),
+    39	  page: z.number().int().min(1).default(1),
+    40	  searchable: z.boolean().default(false),
+    41	}).strict()
+    42	```
+    43	
+    44	## Invariants
+    45	
+    46	继承自 [block-foundation/CONTRACT.md](../block-foundation/CONTRACT.md#invariants)：
+    47	`Defensive copy` / `Schema strictness` / `Default UI lookup` / `Serialize / parse hook ownership`
+    48	（即 `BlockRegistry.listCores()` / `listUIs(coreName)` defensive-copy 行为、
+    49	`propsSchema` 必须 `.strict()`、同 `coreName` 多 UI 时 `getUI(coreName)` 取首注册 `uiId`、
+    50	serialize/parse 由本包 `core/` own 不在 foundation 注册）。
+    51	
+    52	block-pdf 特定不变量：
+    53	
+    54	- **`coreName='pdf'` (kebab-case)** + **`mdxComponent='Pdf'` (PascalCase)**:
+    55	  `pdfCore.name`/`.mdxComponent` 字面值固定，与 BlockRegistry / mdx-bridge 路由
+    56	  ([RFC §1](../block-foundation/RFC.md#1-core-side)) 一致
+    57	- **Hook 命名 verb-as-prefix**: `serializePdf` / `parsePdf` / `renderPdf`
+    58	  ([RFC §5](../block-foundation/RFC.md#5-serialize--parse-hook-ownership-scope-clarification))
+    59	- **`uiId='default'` reserved**: inherit foundation 的 `Default UI lookup` 不变量（首注册即 default）
+    60	- **浏览器原生 PDF viewer 是 runtime authority** + **renderPdf single authority**:
+    61	  `src/ui-default/render-pdf.ts` 唯一构造 `${src}#page=${page}` PDF Open Parameters
+    62	  fragment + data-attr map（ADR-0006 item #5 algorithm replication —
+    63	  authority = browser embedded PDF viewer）。Pdf.tsx + Pdf.astro 都 import
+    64	  `./render-pdf`；`ssr-render.test.ts` 7-row corpus（含 fragment-strip
+    65	  hazard + empty-fragment edge）检测 inline 漂移，`byte-equivalence.test.tsx`
+    66	  双层验证：runtime SSR via `react-dom/server.renderToStaticMarkup` 锁
+    67	  Pdf.tsx markup，static-source regex 锁 Pdf.astro 调用点 + drift sentinel
+    68	  （禁止 `${...}#page=` inline 模板）。Wave 2 documented gap：未端到端
+    69	  byte-compare compiled Astro output（需要 Astro toolchain in vitest）；
+    70	  Wave 3 mdx-doctor PR 通过 apps/site build round-trip fixture 关闭该 gap
+    71	- **URL fragment authority**: `${src}#page=N` 由 `buildIframeSrc` 构造，
+    72	  src 携带 pre-existing `#fragment` 时（CMS anchor 等场景）先 strip，
+    73	  确保 `page=N` 是浏览器 viewer 的唯一 fragment directive
+    74	  （PDF Open Parameters 不可合并 fragment）；R2-1 hazard regression in
+    75	  ssr-render.test.ts
+    76	- **No DIY PDF parser / canvas rasterizer**: 本包不实现 PDF 渲染逻辑，不
+    77	  bundle pdfjs-dist 用于 viewer。`searchable=true` 走 build-time
+    78	  `scripts/extract-pdf-text.ts`（pdfjs-dist legacy build 用于文本抽取，runtime 不
+    79	  shared），与渲染路径完全解耦
+    80	- **Headless 自给**: `core/` 不 import React / Tiptap / PDF 库；仅依赖
+    81	  `@skb/block-foundation` + `zod`（ADR-0003 D1）。`ui-default/` 才 import React +
+    82	  design-tokens
+    83	- **propsSchema single authority**: 仅在 `src/core/core-definition.ts` 定义；
+    84	  ui-default / serialize / parse / 测试均 import `pdfCore.propsSchema`（ADR-0006 item #4）
+    85	- **Self-validating serialize/parse**: `serializePdf` / `parsePdf` 各自调
+    86	  `propsSchema.parse`（parse 侧 `searchable` 先 null/string coerce → boolean，
+    87	  `page` 先 string coerce → number）；契约偏离在 mdx-bridge 路由前 throw
+    88	- **错误显式（不静默）**: 缺失 / 不可读 PDF 由浏览器原生 viewer 显示空白文档
+    89	  UI；本包不 silent-fallback 到 alt 文本 —— 容器 + iframe shell 始终渲染，
+    90	  让用户看见加载失败状态（spec D2 等价 D1 "red error box with the source visible"
+    91	  原则的 PDF 等价物）
+    92	
+    93	## Wave 3 mdx-bridge 路由集成（pending）
+    94	
+    95	当前 `serializePdf` / `parsePdf` 是 stub —— 暴露稳定签名，未被 mdx-bridge 消费。
+    96	Wave 3 mdx-bridge routing table PR 会：
+    97	
+    98	1. 在 `mdx-bridge/parse.ts` 的 `mdastBlockToTiptap` 拦截 `mdxJsxFlowElement{name:'Pdf'}` →
+    99	   `parsePdf(node)` → 把返回 `PdfTiptapNode` 嵌入 doc.content
+   100	2. 在 `mdx-bridge/serialize.ts` 的 `tiptapToMdastBlock` 拦截 `type='pdf'` →
+   101	   `serializePdf(node)` → 返回 `mdxJsxFlowElement` 进 mdast
+   102	3. pdf block 无 children，递归不展开
+   103	
+   104	## Wave 3 search-index 集成（pending, `searchable=true`）
+   105	
+   106	`searchable: true` 是 build-time hint，runtime no-op（Wave 2）。Wave 3
+   107	search-index PR 将：
+   108	
+   109	1. apps/site build pipeline 扫描所有 `<Pdf searchable .../>` 实例
+   110	2. 调 [`scripts/extract-pdf-text.ts`](../../scripts/extract-pdf-text.ts) 的
+   111	   `extractPdfText({ pdfPath: src })` API 抽取 PDF 文本
+   112	3. 把抽出文本写入 search index（文档 id ↔ src ↔ 全文 mapping）
+   113	4. 提供 search UI 查询入口
+   114	
+   115	Wave 2 仅暴露 `searchable` schema 字段 + parse/serialize round-trip
+   116	+ runtime 无副作用；mdx-doctor 不会因为 `searchable` 在 props 而 fail
+   117	（schema 已声明 default=false）。
+   118	
+   119	## Wave 3 defense-in-depth: iframe sandbox（pending）
+   120	
+   121	Wave 2 iframe 不带 `sandbox` 属性。考虑因素：浏览器原生 PDF viewer 是
+   122	trusted runtime authority（与 D1 KaTeX trust 模式一致），且 PDF 通常来自
+   123	本仓库静态托管的 `/files/*.pdf`（同源），引入 `sandbox` 会破坏 PDF viewer
+   124	的合法功能（pop-up download dialog / form submission / fullscreen API）。
+   125	Wave 3 PR 会：
+   126	
+   127	1. 评估是否引入 `sandbox="allow-same-origin allow-popups allow-forms"`
+   128	   作为 baseline（保留 PDF viewer 必需能力，关闭 top-navigation +
+   129	   script execution 入口）
+   130	2. 与 apps/site CSP（`script-src 'self'` + `frame-src 'self'`）联动，
+   131	   防御跨域恶意 PDF
+   132	3. 决定是否为非同源 PDF（URL src）走更严格的 sandbox 子集
+   133	
+   134	Wave 2 跳过 sandbox 不阻塞 review（codex 5.5 R2-4 informational，Claude
+   135	pr-reviewer-d2 评估为 non-blocking，与 D1 KaTeX trust 一致）。
+   136	
+   137	## Forward-compat consumers
+   138	
+   139	- **Z0 sample-blocks**: `<Pdf src="/files/example.pdf" page={1} />` 实例
+   140	- **apps/site SSR**: import `@skb/block-pdf/ui-default/Pdf.astro`；consumer 同 PR 加 pdf.css import
+   141	- **Wave 3 mdx-bridge integration**: 见上节
+   142	- **Wave 3 search-index integration**: 见上节
+   143	- **Tiptap NodeView (editor-shell)**: 用 `PdfEditorView`；NodeView wrapper 调 `renderPdf` 直拿 iframe descriptor
+   144	
+   145	## Modifying this file
+   146	
+   147	`pdfCore` 公共字段 (`name` / `kind` / `propsSchema` / `mdxComponent`) 与 `pdfUiDefault`
+   148	公共字段 (`coreName` / `uiId` / `EditorView` / `RenderView`) 变更需 ADR（与 block-foundation
+   149	同 freeze 级别 —— 触发 mdx-bridge 路由 + sample-blocks 同步更新）。
+   150	`serializePdf` / `parsePdf` 签名变更需配 mdx-bridge routing PR；`renderPdf` 签名变更
+   151	同步 Pdf.astro + Pdf.tsx 调用点（authority = ui-default/render-pdf.ts；ssr-render.test.ts 防漂移）。
+   152	
+   153	## Related
+   154	
+   155	- [@skb/block-foundation CONTRACT](../block-foundation/CONTRACT.md) — `BlockCoreDefinition` / `BlockUIDefinition` 接口权威
+   156	- [@skb/block-foundation RFC](../block-foundation/RFC.md) — registration walkthrough
+   157	- [@skb/block-math CONTRACT](../block-math/CONTRACT.md) — sister-block (Track D1，同 render-block-eng owner)
+   158	- [@skb/block-callout CONTRACT](../block-callout/CONTRACT.md) — Wave 2 simple-block template
+   159	- [scripts/extract-pdf-text.ts](../../scripts/extract-pdf-text.ts) — D2 prereq (Track I3, Wave 3 search-index consumer)
+   160	- [ADR-0003 headless / presentational 分层](../../docs/decisions/ADR-0003-headless-presentational-split.md)
+   161	- [ADR-0006 asymmetry audit checklist](../../docs/decisions/ADR-0006-asymmetry-audit-checklist.md) item #3 + #4 + #5
+   162	- [ADR-0008 D1 dead-dep + D2 interface freeze](../../docs/decisions/ADR-0008-wave-2-entry-policies.md)
+   163	- [ADR-0009 BlockKind union expansion](../../docs/decisions/ADR-0009-block-kind-union-expansion.md) — kind='render' 授权
+   164	- [Wave 2 plan §Task D2](../../docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md)
+   165	- [Wave 2 plan §Task I3](../../docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md)
+
+exec
+/bin/bash -lc "nl -ba packages/block-foundation/CONTRACT.md | sed -n '1,80p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	# @skb/block-foundation Contract
+     2	
+     3	## Public surface
+     4	
+     5	- `BlockRegistry` class — 双层注册表（ADR-0003）
+     6	  - `registerCore(core)` / `registerUI(ui)`
+     7	  - `getCore(name)` / `listCores()`
+     8	  - `getUI(coreName, uiId?)` / `listUIs(coreName)`
+     9	- `defineCore(def)` / `defineUI(def)` factory helpers
+    10	- `BlockCoreDefinition<T>` / `BlockUIDefinition<T>` / `BlockViewProps<T>` interfaces
+    11	- `BlockKind = 'prose' | 'component' | 'render' | 'viz'` （四分类，Wave 2 由 2→4 additive 扩展，ratified by [ADR-0009](../../docs/decisions/ADR-0009-block-kind-union-expansion.md)）
+    12	  - `'prose'` — Wave 1 default for headless prose blocks (无 MDX 组件，由 `proseExtensions` 提供 markdown 行为)
+    13	  - `'component'` — Wave 1 for MDX-component blocks（block-callout / block-code / block-image — Track C simple-block-eng）
+    14	  - `'render'` — **Wave 2 NEW** for hand-crafted render blocks consuming external runtime authority（block-math KaTeX / block-pdf iframe-based browser PDF viewer — Track D render-block-eng）
+    15	  - `'viz'` — **Wave 2 NEW** for visualization blocks consuming heavy runtime libs（block-jupyter Pyodide / block-nn-viz TensorFlow.js / block-agent-flow React Flow — Track E viz-block-eng / kernel consumer）
+    16	- `proseExtensions` — Tiptap 扩展数组，提供全部 markdown 行为
+    17	
+    18	## Invariants
+    19	
+    20	- `BlockKind` 四分不可破坏：新 block 必须明确归属 `prose` / `component` / `render` / `viz` 之一。Wave 1 仅 `prose` + `component` 二分；Wave 2 additive 扩展加 `render` + `viz`（由 `render-block-eng` 与 `viz-block-eng` 工种 own，与 agent-contract.md Tier 1 worker 分工一致；扩展授权见 [ADR-0009](../../docs/decisions/ADR-0009-block-kind-union-expansion.md)）。kind 定义不可被进一步窄化（不允许把 `render` 重新归并入 `component`），扩展再加 kind 需 ADR
+    21	- Prose blocks 零自写代码——任何看似需要新 prose block 的场景应通过组合 `proseExtensions` 内现有扩展或追加单条 Tiptap 扩展实现，不再加 prose-kind block
+    22	- `BlockCoreDefinition.mdxComponent` 必须 PascalCase，且与 MDX 文件 import 中使用的名字一致
+    23	- Core 与 UI 物理分离（ADR-0003）：core 不允许 import 任何 React/Tiptap 视觉 API；UI 必须 import core（不允许 inline 重复 schema）
+    24	- 同 core 多 UI 时 `getUI(name)` 取首个注册：约定首个 uiId 为 `'default'`；adopter 在 register 顺序上需谨慎
+    25	- **Defensive copy**：`listCores()` 与 `listUIs(coreName)` 每次返回 fresh array。Caller 修改返回值不影响 registry 内部 state。Implementation: `src/registry.ts:84` (`listCores`) + `src/registry.ts:96` (`listUIs`)；regression: `src/__tests__/registry.test.ts` "listCores returns a defensive copy" + "listUIs returns a defensive copy"
+    26	- **Idempotent register**：`registerCore` 同 `name` 第二次调用 throws `Duplicate core name: <name>`；`registerUI` 同 `(coreName, uiId)` 第二次 throws `Duplicate UI registration: core=<coreName> uiId=<uiId>`。避免 silent override；实现见 `src/registry.ts:60-63` + `src/registry.ts:71-75`
+    27	- **Schema strictness**：每个 `BlockCoreDefinition.propsSchema` 必须是 `z.object(...).strict()`；嵌套 `ZodObject` 同样必须 `.strict()`（[ADR-0006](../../docs/decisions/ADR-0006-asymmetry-audit-checklist.md) item #3 trip-hazard：`.strict()` 不传播）。当前类型仅约束到 `ZodTypeAny`（type-narrow 到 `ZodObject` 待 Wave 3）；Wave 2 行为约定 + reviewer + RFC.md §1 显式提醒。未 `.strict()` 不会 throw，但 `propsSchema.parse(input)` 会 silently strip unknown keys，引发 contract drift
+    28	- **Serialize / parse hook ownership**：MDX serialize/parse 由各 `block-*` 包的 `core/` own（ADR-0003 D1+D2），不在 `block-foundation` 注册。`block-foundation` 仅 own `BlockCoreDefinition` 形状（含 `mdxComponent` 字符串）；`mdx-bridge` 通过 `mdxJsxFlowElement.name` 字符串路由到对应 block 的 export（命名约定 verb-as-prefix：`serialize<BlockName>` / `parse<BlockName>`，与 mdx-bridge 现有 `mdxToTiptap` / `tiptapToMdx` 同 style）。详见 RFC.md §"5. Serialize / parse hook ownership"
+    29	
+    30	## Forward-compat consumers (Wave 2+)
+    31	
+    32	Wave 2 中段当 `BlockRegistry` 开始用 `@skb/content-types` 的 schema 验证
+    33	注册的 block props（如跨 block 共享的 frontmatter / metadata 形状），届时
+    34	`@skb/content-types` 将被同 PR 加入 `package.json#dependencies` +
+    35	`tsconfig.json#references`，并出现源码 `import { ... } from '@skb/content-types'`。
+    36	
+    37	当前 Wave 1 close 状态：源码无 content-types import，按
+    38	[ADR-0008](../../docs/decisions/ADR-0008-wave-2-entry-policies.md) D1
+    39	（dead-dep policy = tighten），dep 与 ref 均未声明；forward-compat 意图
+    40	仅在本 prose 段表达，不在 package.json / tsconfig 占位。
+    41	
+    42	## How to register a new `block-*` package
+    43	
+    44	step-by-step walkthrough (core / ui-default / 测试样板 / 错误场景 / serialize-parse 归属)
+    45	for the first real consumer 在 [RFC.md](./RFC.md) — 第一个 `block-*` PR
+    46	(Task C1 / C2) 必须 reference 此 RFC；后续 `block-*` PR 沿用相同模式。
+    47	RFC 是 consumer-facing 教程，CONTRACT.md 是 public API 形状 + 关键不变量
+    48	的权威；二者补充而非重叠（[ADR-0008 D2](../../docs/decisions/ADR-0008-wave-2-entry-policies.md)）。
+    49	
+    50	## Modifying this file
+    51	
+    52	公共表面（`BlockCoreDefinition` / `BlockUIDefinition` / `BlockRegistry` / `BlockKind` / `BlockViewProps` / `defineCore` / `defineUI` / `proseExtensions`）的任何字段或方法增删改一律需 ADR — **包括添加 optional 字段、改 `proseExtensions` 数组（增删 Tiptap 扩展、顺序变更、`as const` shape 变化）**。spec §2.3 把 block-foundation 列为接口包，规则"改动需 ADR；全员同步"不区分 optional vs required。
+    53	
+    54	原因：optional 字段会传播到 mdx-bridge serialization + 8 个 Wave 2 block 的 core+ui 实现 + apps/site frontmatter schema；`proseExtensions` 改动直接影响 mdx-bridge round-trip fixtures + editor-shell parsing 行为；无 ADR 协调会引发漂移。
+    55	
+    56	## Related
+    57	
+    58	- 设计规格 §1.5 / §2.5（`../../docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md`）
+    59	- ADR-0003 headless / presentational 分层（`../../docs/decisions/ADR-0003-headless-presentational-split.md`）
+    60	- ADR-0009 BlockKind union 2→4 expansion（`../../docs/decisions/ADR-0009-block-kind-union-expansion.md`）
+    61	- content-types 契约（`../content-types/CONTRACT.md`）
+    62	- mdx-bridge 契约（`../mdx-bridge/CONTRACT.md`）
+    63	- design-tokens 契约（`../design-tokens/CONTRACT.md`）
+
+exec
+/bin/bash -lc 'rg -n "react-pdf|pdfjs|iframe|browser-native|browser native|PDF viewer|renderPdf|URL fragment authority|fragment authority|sandbox" packages/block-foundation/CONTRACT.md packages/block-foundation/RFC.md agent-contract.md CLAUDE.md .claude/agents/render-block-eng.md packages/block-pdf/CONTRACT.md docs/decisions/ADR-0006-asymmetry-audit-checklist.md' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+packages/block-pdf/CONTRACT.md:5:浏览器原生 PDF viewer 是 runtime authority — 由 iframe + PDF Open Parameters
+packages/block-pdf/CONTRACT.md:6:fragment 驱动；本包不在 npm 拉 react-pdf / pdfjs-dist 渲染依赖（ADR-0008 D1
+packages/block-pdf/CONTRACT.md:7:dead-dep policy + Astro SSR 不可执行 react-pdf 的 worker 双重约束）。
+packages/block-pdf/CONTRACT.md:22:  - `renderPdf(src, page, searchable) → PdfRenderDescriptor` — single-source 渲染描述器（**single authority** for Pdf.tsx + Pdf.astro，定义在 `src/ui-default/render-pdf.ts`）
+packages/block-pdf/CONTRACT.md:24:- `./ui-default/Pdf.astro` — apps/site SSR consumer 直接 import 的 Astro 组件（亦走 `renderPdf` authority）
+packages/block-pdf/CONTRACT.md:30:方能渲染 iframe 容器边框 / 背景 / 间距 token。Astro page 直接
+packages/block-pdf/CONTRACT.md:32:import 任何 PDF 渲染库 —— 浏览器原生 viewer 处理 iframe 内容。
+packages/block-pdf/CONTRACT.md:57:- **Hook 命名 verb-as-prefix**: `serializePdf` / `parsePdf` / `renderPdf`
+packages/block-pdf/CONTRACT.md:60:- **浏览器原生 PDF viewer 是 runtime authority** + **renderPdf single authority**:
+packages/block-pdf/CONTRACT.md:63:  authority = browser embedded PDF viewer）。Pdf.tsx + Pdf.astro 都 import
+packages/block-pdf/CONTRACT.md:71:- **URL fragment authority**: `${src}#page=N` 由 `buildIframeSrc` 构造，
+packages/block-pdf/CONTRACT.md:77:  bundle pdfjs-dist 用于 viewer。`searchable=true` 走 build-time
+packages/block-pdf/CONTRACT.md:78:  `scripts/extract-pdf-text.ts`（pdfjs-dist legacy build 用于文本抽取，runtime 不
+packages/block-pdf/CONTRACT.md:89:  UI；本包不 silent-fallback 到 alt 文本 —— 容器 + iframe shell 始终渲染，
+packages/block-pdf/CONTRACT.md:119:## Wave 3 defense-in-depth: iframe sandbox（pending）
+packages/block-pdf/CONTRACT.md:121:Wave 2 iframe 不带 `sandbox` 属性。考虑因素：浏览器原生 PDF viewer 是
+packages/block-pdf/CONTRACT.md:123:本仓库静态托管的 `/files/*.pdf`（同源），引入 `sandbox` 会破坏 PDF viewer
+packages/block-pdf/CONTRACT.md:127:1. 评估是否引入 `sandbox="allow-same-origin allow-popups allow-forms"`
+packages/block-pdf/CONTRACT.md:128:   作为 baseline（保留 PDF viewer 必需能力，关闭 top-navigation +
+packages/block-pdf/CONTRACT.md:132:3. 决定是否为非同源 PDF（URL src）走更严格的 sandbox 子集
+packages/block-pdf/CONTRACT.md:134:Wave 2 跳过 sandbox 不阻塞 review（codex 5.5 R2-4 informational，Claude
+packages/block-pdf/CONTRACT.md:143:- **Tiptap NodeView (editor-shell)**: 用 `PdfEditorView`；NodeView wrapper 调 `renderPdf` 直拿 iframe descriptor
+packages/block-pdf/CONTRACT.md:150:`serializePdf` / `parsePdf` 签名变更需配 mdx-bridge routing PR；`renderPdf` 签名变更
+agent-contract.md:109:      你负责 block-math（KaTeX）与 block-pdf（iframe + 浏览器原生 PDF viewer，
+packages/block-foundation/RFC.md:56:  external runtime authority like KaTeX or the browser's native PDF viewer
+packages/block-foundation/RFC.md:57:  embedded via iframe); Track E viz-block-eng /
+.claude/agents/render-block-eng.md:17:你负责 block-math（KaTeX）与 block-pdf（iframe + 浏览器原生 PDF viewer，
+packages/block-foundation/CONTRACT.md:14:  - `'render'` — **Wave 2 NEW** for hand-crafted render blocks consuming external runtime authority（block-math KaTeX / block-pdf iframe-based browser PDF viewer — Track D render-block-eng）
+
+exec
+/bin/bash -lc "nl -ba packages/block-foundation/RFC.md | sed -n '40,80p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+    40	  propsSchema,
+    41	  mdxComponent: 'Callout',
+    42	});
+    43	```
+    44	
+    45	Notes that map directly to `BlockCoreDefinition` fields in
+    46	[`src/registry.ts`](./src/registry.ts):
+    47	
+    48	- `name`: kebab-case, globally unique. Used as the registry key — duplicate
+    49	  registration throws `Duplicate core name: <name>` at runtime.
+    50	- `kind`: `'prose' | 'component' | 'render' | 'viz'` (4-way Wave 2 union; Wave 1
+    51	  was binary `'prose' | 'component'` — additive expansion in Wave 2 authorized by
+    52	  [ADR-0009](../../docs/decisions/ADR-0009-block-kind-union-expansion.md)). Track C
+    53	  simple-block-eng owns `'component'` (block-callout / block-code / block-image —
+    54	  composable JSX with rich children); Track D render-block-eng owns `'render'`
+    55	  (block-math / block-pdf — visual rendering of a pure declarative input via
+    56	  external runtime authority like KaTeX or the browser's native PDF viewer
+    57	  embedded via iframe); Track E viz-block-eng /
+    58	  kernel consumer owns `'viz'` (block-jupyter / block-nn-viz / block-agent-flow —
+    59	  interactive visualization with heavy runtime libs). `'prose'` is reserved for
+    60	  behaviors covered by `proseExtensions` and is closed to new entries (CONTRACT
+    61	  invariant: "Prose blocks 零自写代码").
+    62	- `propsSchema`: must be a `z.object(...).strict()`; every nested
+    63	  `ZodObject` must independently call `.strict()`. See
+    64	  [`CONTRACT.md` § Invariants — Schema strictness](./CONTRACT.md#invariants)
+    65	  + [ADR-0006](../../docs/decisions/ADR-0006-asymmetry-audit-checklist.md) item #3
+    66	  (`.strict()` does not propagate into nested objects). The current type
+    67	  signature `BlockCoreDefinition<TSchema extends ZodTypeAny>` is wider than
+    68	  `ZodObject`; type-narrowing is deferred to Wave 3, so for Wave 2 this is
+    69	  a behavior contract enforced by RFC + reviewer + integration tests, not
+    70	  by TypeScript. Skipping `.strict()` does not throw — `propsSchema.parse`
+    71	  silently strips unknown keys, which is exactly the contract-drift class
+    72	  this rule prevents.
+    73	- `mdxComponent`: PascalCase, must match the JSX tag used in `.mdx` files
+    74	  exactly (the MDX bridge uses this string when serializing back). For
+    75	  `block-callout`, MDX content reads `<Callout variant="note">…</Callout>`
+    76	  so this field is `'Callout'`.
+    77	
+    78	`defineCore` is a no-op identity helper that exists purely to give TypeScript
+    79	inference a hand — the returned object satisfies `BlockCoreDefinition<T>`
+    80	with `T` inferred from `propsSchema`. Equivalent to writing the type
+
+exec
+/bin/bash -lc "nl -ba agent-contract.md | sed -n '95,120p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+    95	    llm: claude
+    96	    role: 写 simple block 模板（block-callout 等）
+    97	    permissions: [read_repo, edit_packages_block_simple, write_tests]
+    98	    description: |
+    99	      你为 block-callout / block-code / block-image 写**模板**实现（即第一个的 block-callout，
+   100	      其余由 codex-block-generator 仿造）。
+   101	      实现包含：EditorView (Tiptap NodeView) / RenderView (Astro) / MdxSerialize / MdxParse / Schema (Zod)。
+   102	
+   103	  - name: render-block-eng
+   104	    tier: 1
+   105	    llm: claude
+   106	    role: 写 math / pdf 的 block 实现
+   107	    permissions: [read_repo, edit_packages_block_render, write_tests]
+   108	    description: |
+   109	      你负责 block-math（KaTeX）与 block-pdf（iframe + 浏览器原生 PDF viewer，
+   110	      build-time 文本提取走 scripts/extract-pdf-text.ts）。
+   111	      block-pdf 复杂度高，独立 hand-craft，不让 codex 仿造。
+   112	
+   113	  - name: viz-block-eng
+   114	    tier: 1
+   115	    llm: claude
+   116	    role: 写可视化 block 实现 (jupyter / nn-viz / agent-flow)
+   117	    permissions: [read_repo, edit_packages_block_viz, write_tests]
+   118	    description: |
+   119	      你负责 block-jupyter (JupyterLite 嵌入) / block-nn-viz (TensorFlow.js) / block-agent-flow (React Flow)。
+   120	      每个独立 hand-craft；jupyter block 多实例独立 kernel session。
+
+exec
+/bin/bash -lc "nl -ba .claude/agents/render-block-eng.md | sed -n '1,50p'" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "nl -ba CLAUDE.md | sed -n '100,125p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	---
+     2	name: render-block-eng
+     3	description: "写 math / pdf 的 block 实现"
+     4	tier: 1 (Worker)
+     5	llm: claude
+     6	role: 写 math / pdf 的 block 实现
+     7	---
+     8	
+     9	# render-block-eng
+    10	
+    11	**Role**: 写 math / pdf 的 block 实现
+    12	
+    13	**Permissions**: read_repo, edit_packages_block_render, write_tests
+    14	
+    15	## Description
+    16	
+    17	你负责 block-math（KaTeX）与 block-pdf（iframe + 浏览器原生 PDF viewer，
+    18	build-time 文本提取走 scripts/extract-pdf-text.ts）。
+    19	block-pdf 复杂度高，独立 hand-craft，不让 codex 仿造。
+    20	
+    21	## Related
+    22	- [agent-contract.md](../../agent-contract.md) — single source
+    23	- [Spec §3.1](../../docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md)
+
+ succeeded in 0ms:
+   100	| `plan-challenger`        | `plan-challenger` | lock 前挑战 orchestrator 的 wave / track plan：检查 task 大小、可测性、边界场景。                  |
+   101	| `pr-gate`                | `pr-gate`         | 仅对**高风险 PR 中需 pr-gate 的那 4 类**启用。深度审查：漏洞 / 隐性破坏 / 跨包影响。               |
+   102	| `codex-api-crud-builder` | `scaffolder`      | 在 apps/api 按 RESTful 风格生成 CRUD 端点骨架（Pydantic schema + 路由），                          |
+   103	| `codex-block-generator`  | `scaffolder`      | 在 simple-block-eng / ux-ui-lead / editor-eng 提交 template 后，按模板仿造其余 block / submodule。 |
+   104	| `codex-css-stylist`      | `scaffolder`      | 写 packages/design-tokens / packages/ui 的 design tokens（颜色 / 间距 / 字体）+                    |
+   105	| `codex-script-builder`   | `scaffolder`      | 写 scripts/refactor-move.ts / scripts/new-block.ts / scripts/extract-pdf-text.ts 等工具。          |
+   106	| `codex-test-scaffolder`  | `scaffolder`      | 为每个 packages/<name> 生成 src/__tests__/ 下的 vitest 套件骨架，                                  |
+   107	
+   108	## Footer
+   109	
+   110	This file is GENERATED FROM `agent-contract.md`. Edits to this file will be overwritten
+   111	on the next `pnpm generate:configs` run.
+
+exec
+/bin/bash -lc "nl -ba docs/decisions/ADR-0006-asymmetry-audit-checklist.md | sed -n '1,220p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	# ADR-0006: Cross-location asymmetry-audit checklist (process rule)
+     2	
+     3	| 字段 | 值                                    |
+     4	| ---- | ------------------------------------- |
+     5	| 状态 | accepted                              |
+     6	| 日期 | 2026-04-30                            |
+     7	| 作者 | orchestrator (Claude Opus 4.7 1M ctx) |
+     8	| 触发 | Wave 1 codex 5.5 reviews caught 12 instances of the same meta-class across 6 tracks + 5 close-ceremony fix iterations (8 distinct items + 4 close-ceremony reinforcements of items #6 and #8) |
+     9	| 替代 | 不替代任何 ADR；扩展 [ADR-0001](ADR-0001-stack-selection.md) §3.2 review chain |
+    10	
+    11	## Context
+    12	
+    13	Wave 1 implementation produced strong empirical evidence that **a single bug class** dominates the failure mode at line-level review:
+    14	
+    15	> **Cross-location asymmetry**: a value, schema, algorithm, or invariant exists in two or more places, and an edit to one location is not symmetrically applied to all peers, so behavior diverges silently.
+    16	
+    17	Across 6 tracks + 5 close-ceremony fix iterations, codex 5.5 (`pr-gate`) caught **12 instances** of this meta-class (8 distinct failure-mode items + 4 close-ceremony reinforcements of items #6 and #8). Every PR that lasted ≥ 2 review rounds hit at least one instance. The pattern is so consistent that linear "fix the cited blocker, ship v_n+1" iteration would not have caught the second-order asymmetry; codex specifically catches the symmetric counterpart that the worker missed.
+    18	
+    19	### Wave 1 empirical record (12 instances)
+    20	
+    21	| # | Track | Round | Asymmetry pair | Bug behavior |
+    22	|---|---|---|---|---|
+    23	| 1 | Track B (block-foundation + content-types) | R1 → fixed v3 | `listUIs` mutability vs `listCores` defensive copy | Caller mutation of return value polluted registry singleton |
+    24	| 2 | Track D (apps/api) | R2 → fixed v4 | RFC 7235 `WWW-Authenticate` on framework-raised 401 vs custom `SkbError` 401 | 4 of 5 401 paths emitted spec-mandated header; the custom-error path silently dropped it |
+    25	| 3 | Track F (editor-commands) | R3 → fixed v4 | `.strict()` on top-level Zod object vs nested `frontmatterSchema` | Top-level rejected unknown keys; nested still silently stripped them |
+    26	| 4 | Track C (mdx-bridge) | R2 → fixed v4 | `marksEqual` link comparator: `href` only vs `href + title` | Same href, different titles silently merged into one link with the first title preserved |
+    27	| 5 | Track F v5 | R3 → fixed v6 | One CONTRACT.md updated to reflect code; sister CONTRACT.md (`agent-tools`) had stale wording | Documentation-vs-code drift in the file the worker did not edit |
+    28	| 6 | Track A | R1 → fixed v2 | FOUC inline IIFE saved-value algorithm + content schema | Truthy-coerce diverges from strict-whitelist for invalid / case-mismatched values; inline `z.object` redefinition diverges from `frontmatterSchema` authority |
+    29	| 7 | Track A v2 | R2 → fixed v3 | FOUC inline IIFE try/catch scope | Wide try/catch in IIFE swallowed `matchMedia` exceptions while authority's narrow try/catch propagated; storage-throws scenarios produced light→dark hydration flash |
+    30	| 8 | Wave 1 close bundle v1 | R1 → fixed v2 | ADR-0006 mandated reviewer-prompt updates vs actual `agent-contract.md` / generated `.claude/agents/*.md` / `docs/review-checklist.md` / `team-operations.md` content | The close-ceremony commit codified a process rule that mandates downstream behavior; consumer-side artifacts (reviewer prompts + runbook) had not been updated to embed the rule, so Wave 2 reviewers would not have seen it |
+    31	| 9 | Wave 1 close bundle v2 | R2 → fixed v3 | ADR-0006:81 within-document drift "7 distinct instances" | Single bullet missed during the v1→v2 count sweep — sister-bullet variant of item #6 within a single document |
+    32	| 10 | Wave 1 close bundle v3 | R3 → fixed v4 | ADR-0006:117 within-document drift "7 empirical instances + 18+ erratum candidates" (both numbers stale) | Second sister-bullet drift in the same file, a different bullet — proved per-citation fixes are themselves item #6 traps; comprehensive sweep at fix time is the robust pattern |
+    33	| 11 | Wave 1 close bundle v4 (informational) | R4 (informational) → fixed v5 | structure baseline:66 "× 7 endpoints" while apps/api has 4 routes / 11 tests | Pre-existing content-accuracy drift in the structure baseline document (authored at v1) — content number mismatched real code; surfaced during the broader 11th-class hunt |
+    34	| 12 | Wave 1 close bundle v5 | R2 (pr-gate) → fixed v6 | Regenerated `.claude/agents/code-reviewer.md` + `.claude/agents/pr-gate.md` + `docs/review-checklist.md` were not staged in the bundle commit — authority + generator code updated, but generator outputs remained at pre-update HEAD content | Sub-form of item #8: regenerating an artifact and `git add`'ing it are separate steps; a bundle that updates authority + generator without staging the regenerated outputs is silently stale. Motivated the "verify by clean second-run" step now part of item #8. |
+    35	
+    36	Codex's structured review consistently caught these with three patterns:
+    37	
+    38	1. After fixing one location, **codex audits all peer locations** (not just the cited site)
+    39	2. After a value/schema acquires an attribute, **codex audits every comparator/serialization function** for that attribute
+    40	3. After a "happy path" fix, **codex audits the exception path** for the same equivalence
+    41	
+    42	These three habits collectively define the process rule below.
+    43	
+    44	## Decision
+    45	
+    46	Adopt an **8-point asymmetry-audit checklist** as a mandatory part of `code-reviewer` (Codex 5.3-spark, default cheap) and `pr-gate` (Codex 5.5, deep) review prompts. Reviewers MUST work through every applicable item before declaring PASS.
+    47	
+    48	### The 8 items
+    49	
+    50	1. **Field/attribute audit**: After adding a field to a data shape (Zod schema, Pydantic model, TS interface, mdast attrs, etc.), audit every comparator / equality / serialization / canonicalization function that handles this shape. (Wave 1 evidence: instance #4 — `marksEqual` link branch missed `title` when serialize emitted it.)
+    51	
+    52	2. **Status code audit**: After adding a status code to one HTTP handler (or, generally, an exit/error code to one branch), audit every other handler emitting the same code. RFC-mandated headers (RFC 7235 `WWW-Authenticate` on 401, RFC 7231 `Allow` on 405) attach to **the status code itself**, not the framework code path that emitted it. (Wave 1 evidence: instance #2 — custom `SkbError` 401 path missed `WWW-Authenticate`.)
+    53	
+    54	3. **Strictness audit**: After adding `.strict()` (Zod) / `extra='forbid'` (Pydantic) at one level of an object schema, audit every nested object/sub-schema. The strictness setting **does not propagate**; nested objects must opt in independently. (Wave 1 evidence: instance #3 — top-level `.strict()` shipped while nested `frontmatterSchema` still silently stripped unknown keys.)
+    55	
+    56	4. **Consumer schema audit**: After defining a schema in a single-authority package (e.g. `@skb/content-types/frontmatterSchema`), audit every consumer for inline duplicates or inline redefinitions that should `import` instead. The "deferred swap" pattern — "I'll inline now and import later" — is a contract break that compounds over time. (Wave 1 evidence: instance #6 part 2 — apps/site/content.config.ts inlined `z.object(...)` rather than importing `frontmatterSchema`.)
+    57	
+    58	5. **Algorithm + runtime constant replication audit**: When an algorithm or runtime constant is replicated outside its authority (e.g. inline FOUC scripts, login challenge derivation, pre-hydration boot logic that cannot import from packages), audit every consumer-side replica for byte-equivalent reproduction. The replica must register a **regression test** that asserts equivalence against the authority across a representative input corpus. (Wave 1 evidence: instance #6 part 1 — FOUC IIFE truthy-coerce vs `getInitialTheme()` strict-whitelist; remediated with `apps/site/src/__tests__/fouc-script.test.ts` 16-row corpus.)
+    59	
+    60	6. **Sister-file documentation audit**: After updating one CONTRACT.md (or any document that describes a code surface), audit ALL related CONTRACT.md files in the package family for sister-file drift. Two CONTRACT.md files that describe two halves of the same contract must use **identical terminology** for the shared identifiers (function names, schema names, refine predicate names). (Wave 1 evidence: instance #5 — `editor-commands/CONTRACT.md` updated to cite `editBlockInputSchema` while `agent-tools/CONTRACT.md` still referred to the old shape.)
+    61	
+    62	7. **Exception-scope equivalence audit**: When replicating an algorithm + its exception handling across files, audit BOTH the happy-path semantics AND the `try/catch` scope between authority and replica. Narrow vs wide `try/catch` can produce divergent fall-through behavior even with identical happy-path logic. Specifically: when `localStorage` / `sessionStorage` / `IndexedDB` / `matchMedia` / any browser API in the algorithm path can throw, the `try/catch` MUST wrap ONLY the throwing call, with the fall-through branch (matchMedia / system default / DOM apply) running AFTER the catch handler — not inside it. (Wave 1 evidence: instance #7 — FOUC IIFE wide-scope try/catch swallowed matchMedia exceptions; remediated with narrow try/catch + 2 storage-throws regression tests.)
+    63	
+    64	8. **Authority-document → generated/consumed surface audit**: When updating an authority document (ADR, spec, `agent-contract.md`, runbook, CONVENTIONS) **OR a dependency authority (`package.json`)** that mandates behavior in downstream consumers, audit every consumer-side replica/generated artifact for synchronized update **AND staged-in-the-git-index in the same bundle**. Specifically: an ADR section that says "X file MUST be updated to do Y" requires the same commit to update X and provide a way to verify the synchronization. Generated artifacts (e.g. `docs/review-checklist.md` and `.claude/agents/*.md` derived from `agent-contract.md`; **`pnpm-lock.yaml` derived from `package.json`** — see sub-form C below) MUST be regenerated via the documented codegen step (`pnpm generate:configs` / `pnpm install`) AND **explicitly `git add`'d** so the git **index** (not just the working tree) contains the new content; runbooks (`docs/runbooks/team-operations.md`) MUST be cross-linked; Codex/Claude subagent prompt files MUST embed or reference the new rule.
+    65	
+    66	   **Operational sequence** (do not skip steps):
+    67	   ```bash
+    68	   # 1. Edit authority + generator code
+    69	   # 2. Run codegen
+    70	   pnpm generate:configs
+    71	   # 3. Stage regenerated outputs (CRITICAL — see Pitfall below)
+    72	   git add <regenerated/path/foo.md> <regenerated/path/bar.md>
+    73	   # 4. Verify index reflects content (NOT just working tree):
+    74	   git diff --cached --stat -- <regenerated paths>
+    75	   #    → expects non-empty diff with the expected line counts
+    76	   # 5. Verify idempotence: re-run codegen + confirm working tree matches index:
+    77	   pnpm generate:configs
+    78	   git status --short -- <regenerated paths>
+    79	   #    → expects column-1 'M' (staged) + column-2 blank (working tree clean)
+    80	   ```
+    81	
+    82	   **Pitfall (this is the load-bearing step)**: `git status --short` shows two columns: column 1 is index-vs-HEAD; column 2 is working-tree-vs-index. After running the generator without `git add`, you see `' M'` (space + M) — **working tree differs from index, but index still matches HEAD**. `git commit` only commits the index. Skipping `git add` means the regenerated content is in your working tree but NOT in the next commit. The bundle would land authority + generator-code changes WITHOUT the regenerated outputs, leaving consumers (Wave 2 reviewers reading `.claude/agents/*.md`) at pre-update content. Use `git diff --cached` (not `git status`) as the canonical staging-verification command — `--cached` shows index-vs-HEAD only, which is what `git commit` will produce.
+    83	
+    84	   **Pitfall extension — `pnpm-lock.yaml` is a generated artifact too (sub-form C below)**: when the authority is `package.json` (any dependency add / remove / version bump / `@types/*` shift), `pnpm install` regenerates `pnpm-lock.yaml` as a deterministic derived artifact. Skipping `git add pnpm-lock.yaml` produces the same class of failure as skipping `git add .claude/agents/*.md`: working tree has the synced lockfile but the **index** still holds HEAD's stale lockfile, so the bundle ships `package.json` ahead of its lockfile. CI runs `pnpm install --frozen-lockfile` from the bundled state, sees the stale lockfile disagreeing with the new `package.json`, and fails install. The same `git diff --cached --stat -- pnpm-lock.yaml` canonical verification applies. (Wave 1 erratum commit `e15ec36`; codified as sub-form C below.)
+    85	
+    86	   Generated-from-authority files carry their own header comment ("GENERATED FROM agent-contract.md — DO NOT EDIT BY HAND") OR YAML frontmatter declaring authority source — both forms are acceptable. `pnpm-lock.yaml` lacks an explicit header (the format is fixed by pnpm) but is implicitly declared by `pnpm install`'s contract — its authority is `package.json` + the workspace `pnpm-workspace.yaml`.
+    87	
+    88	   **Wave 1 evidence**: **instance #8** — ADR-0006 v1 commit codified reviewer-prompt mandates but did not update `agent-contract.md` / regenerate `.claude/agents/code-reviewer.md` / regenerate `.claude/agents/pr-gate.md` / cross-link `team-operations.md` / regenerate `docs/review-checklist.md`; pr-gate caught the dogfood failure during R1 review of the close-ceremony bundle, forcing a v2 fix. **instance #12 (sub-form A — pre-regeneration omission)** — v5 bundle updated authority files (`agent-contract.md`, generator code, `team-operations.md` cross-link) but had not run the generator at all post-edit; the 3 regenerated outputs were stale at HEAD content; pr-gate caught this during R2 review, forcing a v6 fix. **instance #12 (sub-form B — staging-vs-working-tree confusion)** — v6 bundle ran the generator (so working tree had new content) but did NOT `git add` the regenerated outputs; the git **index** still held HEAD blob hashes for the 3 generated files; orchestrator confused `git status --short` "M" prefix (working-tree-vs-index) with index-vs-HEAD; pr-gate caught this via `git ls-files --stage` blob-hash comparison during R3 review, forcing the v7 fix that explicitly stages with `git add` + verifies via `git diff --cached`. **instance #12 (sub-form C — lockfile is a generated-from-authority artifact)** — Wave 1 close ceremony commit `e15ec36` ("fix(deps): commit pnpm-lock.yaml for @tailwindcss/typography (lockfile drift)"): the design-tokens erratum (commit `fdc86a8`) added the `@tailwindcss/typography` dependency to `package.json` but did not stage the regenerated `pnpm-lock.yaml`; CI install used the pre-update lockfile, drifted against the new `package.json`, and failed `pnpm install --frozen-lockfile`. Resolution: commit `e15ec36` staged the lockfile separately. Lesson codified: when the authority is `package.json` (any dependency add / remove / version bump), `pnpm-lock.yaml` is the consumer-side generated artifact and must ride the same bundle — the class equivalence to `.claude/agents/*.md` regeneration is exact (deterministic derive + git-index staging required). The four sub-forms of the same item #8 class — pre-regeneration omission, post-regeneration commit-staging confusion, conceptually-correct-but-operationally-incomplete fix, AND lockfile-as-generated-artifact — together motivate the explicit operational sequence and `git diff --cached` canonical verification command codified above.
+    89	
+    90	### Wave 2 prep notes (forward-compatibility application)
+    91	
+    92	The 8 items have specific Wave 2 trip-hazards already identified by Wave 1's review record:
+    93	
+    94	- **Item #1 + Wave 2 attr-bearing marks**: when the first attr-bearing mark beyond `link` is added to mdx-bridge (e.g. `highlight: {color}`, `kbd: {style}`), the worker MUST simultaneously update `wrapMark` AND `marksEqual` AND add a fixture exercising attr-equality + attr-distinction. Default `return true` in `marksEqual` is a silent-drop trap for any attr-bearing mark. (See pr-gate Track C v4 R3 caveat.)
+    95	
+    96	- **Item #2 + Wave 2 new error categories**: when Wave 2+ adds new HTTP error categories (e.g. `auth-rate-limit`, `kernel-timeout`), each new `SkbError` subclass MUST emit the same RFC-mandated headers as framework-raised peers. Add a unit test asserting header presence per error type. (See `apps/api/CONVENTIONS.md` §5 Pitfall + Pitfall continued.)
+    97	
+    98	- **Item #5 + Wave 2 client-side replications**: when apps/site adds new client-side algorithm replications (theme variants beyond light/dark, locale negotiation pre-hydration, etc.), the worker MUST audit both saved-value semantics AND try/catch scope against authority. (See `packages/design-tokens/CONTRACT.md` Inverse-direction obligation invariant.)
+    99	
+   100	- **Item #7 + future inline scripts**: ANY future `<script is:inline>` block in the project that needs pre-hydration replication of a package algorithm MUST follow the FOUC template (narrow try/catch + corpus regression test).
+   101	
+   102	## Consequences
+   103	
+   104	### Positive
+   105	
+   106	- **Catch the failure mode proactively**: Wave 1 evidence shows reviewer-applied checklist would have caught all 12 instances on the first review round (including the close-ceremony dogfood instance #8 + the 4 fix-loop reinforcements), eliminating 12 round-trip cycles
+   107	- **Reviewer prompt clarity**: code-reviewer + pr-gate codex profile prompts gain a concrete, enumerable checklist rather than the implicit "look for symmetric counterparts" expectation
+   108	- **Worker self-audit**: workers gain a pre-PR checklist they can run before reporting `ready-for-review`, catching their own asymmetries (memory: `feedback_verification_fresh_state.md` showed the verification-rigor lesson; this checklist is the analogous rigor at code-design level)
+   109	- **Empirical grounding**: 12 distinct instances spread across 6 tracks + 5 close-ceremony fix iterations make this rule data-driven, not a "best practice" speculation; instances #9-12 reinforce items #6 + #8 specifically through close-ceremony fix-loop evidence
+   110	
+   111	### Costs
+   112	
+   113	- **Review-round time**: applying 8-point audit at every review adds ~5-10 minutes per round of code-reviewer + pr-gate runtime. Acceptable trade-off given Wave 1 round-counts (Track F: 5 rounds; Track A: 3 rounds; Track C: 4 rounds; Track D: 4 rounds) — front-loading review thoroughness reduces total cycles
+   114	- **Worker prompt overhead**: each spawn prompt now needs a reference to this ADR + the 8-point checklist. Marginal cost.
+   115	- **False-positive risk**: items that don't apply (e.g. #2 "status code" doesn't apply to TS-only packages) need to be triaged and skipped. Reviewer profile prompts must explicitly say "skip items not applicable to this PR's scope" to avoid bloat.
+   116	
+   117	### Risks (mitigated)
+   118	
+   119	- **Risk**: workers might mechanically check items without thinking, producing false confidence. **Mitigation**: each item enumerates concrete failure modes from Wave 1, not abstract heuristics — easier to apply
+   120	- **Risk**: this list might grow unbounded as Wave 2+ surfaces new asymmetry classes. **Mitigation**: ADR amendments are cheap; each new instance produces an ADR-0006 erratum capturing item #N+1. Wave 2 close ceremony reviews instances and adds items as needed.
+   121	
+   122	## Implementation
+   123	
+   124	### Reviewer prompt updates
+   125	
+   126	`code-reviewer` and `pr-gate` profile prompts MUST be updated to:
+   127	
+   128	1. State the 8-point checklist verbatim (or by reference to this ADR)
+   129	2. Require the reviewer's verdict structure to include "asymmetry-audit applied: items {1..8} verdicts: ..."
+   130	3. Explicitly mark FAIL if any applicable item is left un-audited
+   131	
+   132	`docs/runbooks/team-operations.md` §"角色与触发器" Tier 2 reviewer rows should cross-link to this ADR.
+   133	
+   134	### Worker pre-flight (template addition)
+   135	
+   136	Worker `ready-for-review` reports SHOULD include a brief asymmetry-audit summary: which of the 8 items applied, and the worker's self-audit verdict. Reviewers cross-check.
+   137	
+   138	### Wave 1 retroactive
+   139	
+   140	This ADR is **forward-applicable**. Wave 1 PRs that already shipped under earlier review without this checklist remain valid; the empirical instances they revealed are exactly what grounded this ADR. No retroactive re-review required.
+   141	
+   142	## Related
+   143	
+   144	- [ADR-0001](ADR-0001-stack-selection.md) §3.2 review chain — this ADR specifies what reviewers MUST do; ADR-0001 specifies who reviews
+   145	- [ADR-0002](ADR-0002-wave-1-close.md) Wave 1 close — collects the 12 empirical instances + 22 erratum candidates
+   146	- [ADR-0004](ADR-0004-agent-team-dispatch-model.md) team dispatch — orchestrator dispatches review chain per this checklist
+   147	- [docs/runbooks/team-operations.md](../runbooks/team-operations.md) — operational reference for reviewers and workers
+   148	- [packages/design-tokens/CONTRACT.md](../../packages/design-tokens/CONTRACT.md) Inverse-direction obligation — concrete application of items #5 + #7
+   149	- [apps/api/CONVENTIONS.md](../../apps/api/CONVENTIONS.md) §5 Pitfalls — concrete application of item #2
+
+exec
+/bin/bash -lc 'rg -n "react-pdf" packages/block-foundation/CONTRACT.md packages/block-foundation/RFC.md agent-contract.md CLAUDE.md .claude/agents/render-block-eng.md' in /home/weiyi/selfKnowledgeBaseWeb
+ exited 1 in 0ms:
+exec
+/bin/bash -lc 'rg -n "block-pdf|render-block-eng|PDF viewer|iframe|react-pdf" .claude/agents/render-block-eng.md' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+2:name: render-block-eng
+9:# render-block-eng
+17:你负责 block-math（KaTeX）与 block-pdf（iframe + 浏览器原生 PDF viewer，
+19:block-pdf 复杂度高，独立 hand-craft，不让 codex 仿造。
+
+exec
+/bin/bash -lc 'rg -n "block-pdf|render-block-eng|PDF viewer|iframe|react-pdf" CLAUDE.md' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+80:| T1 Worker       | `render-block-eng`     | 写 math / pdf 的 block 实现                                |
+
+exec
+/bin/bash -lc "rg -n \"\\"'$'"\\{["'^}]+'"\\}#page=|#page=\\"'$'"\\{|#page=\" packages/block-pdf/src packages/block-pdf/CONTRACT.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+packages/block-pdf/CONTRACT.md:61:  `src/ui-default/render-pdf.ts` 唯一构造 `${src}#page=${page}` PDF Open Parameters
+packages/block-pdf/CONTRACT.md:68:  （禁止 `${...}#page=` inline 模板）。Wave 2 documented gap：未端到端
+packages/block-pdf/CONTRACT.md:71:- **URL fragment authority**: `${src}#page=N` 由 `buildIframeSrc` 构造，
+packages/block-pdf/src/ui-default/render-pdf.ts:11: *   viewer; the `#page=N` fragment is part of the
+packages/block-pdf/src/ui-default/render-pdf.ts:26: * - `iframeSrc`: `${baseSrc}#page=${page}` — PDF Open Parameters fragment.
+packages/block-pdf/src/ui-default/render-pdf.ts:28: *   `<Pdf src="doc.pdf#section=intro" page={3} />` yields `doc.pdf#page=3`
+packages/block-pdf/src/ui-default/render-pdf.ts:52:  return `${base}#page=${page}`;
+packages/block-pdf/src/__tests__/ui-default.test.ts:38:    expect(desc.iframeSrc).toBe('/p.pdf#page=1');
+packages/block-pdf/src/__tests__/byte-equivalence.test.tsx:65:    expect(html).toContain('src="doc.pdf#page=4"');
+packages/block-pdf/src/__tests__/byte-equivalence.test.tsx:66:    expect(html).not.toContain('section=intro#page=');
+packages/block-pdf/src/__tests__/byte-equivalence.test.tsx:87:    // Drift sentinel — the file must NOT have an inline `${src}#page=` template
+packages/block-pdf/src/__tests__/byte-equivalence.test.tsx:89:    expect(astroSource).not.toMatch(/\$\{src\}#page=/);
+packages/block-pdf/src/__tests__/byte-equivalence.test.tsx:90:    expect(astroSource).not.toMatch(/`\$\{[^}]+\}#page=/);
+packages/block-pdf/src/__tests__/byte-equivalence.test.tsx:101:    expect(tsxSource).not.toMatch(/\$\{[^}]+\}#page=/);
+packages/block-pdf/src/__tests__/ssr-render.test.ts:13: *   2. assert PDF Open Parameters fragment shape (`#page=N`) — required for
+packages/block-pdf/src/__tests__/ssr-render.test.ts:26:  it('produces iframeSrc with #page=N fragment for default page=1', () => {
+packages/block-pdf/src/__tests__/ssr-render.test.ts:28:    expect(desc.iframeSrc).toBe('/files/paper.pdf#page=1');
+packages/block-pdf/src/__tests__/ssr-render.test.ts:34:  it('produces iframeSrc with #page=N for arbitrary page', () => {
+packages/block-pdf/src/__tests__/ssr-render.test.ts:36:    expect(desc.iframeSrc).toBe('https://example.com/doc.pdf#page=42');
+packages/block-pdf/src/__tests__/ssr-render.test.ts:46:    expect(desc.iframeSrc).toBe('/files/My Doc.pdf#page=1');
+packages/block-pdf/src/__tests__/ssr-render.test.ts:56:    expect(desc.iframeSrc).toBe('/does-not-exist.pdf#page=1');
+packages/block-pdf/src/__tests__/ssr-render.test.ts:68:  it('strips pre-existing fragment from src before appending #page= (R2-1 hazard)', () => {
+packages/block-pdf/src/__tests__/ssr-render.test.ts:72:    // the chosen page. Anything else would yield `doc.pdf#section=intro#page=3`
+packages/block-pdf/src/__tests__/ssr-render.test.ts:73:    // which the browser parses as fragment="section=intro#page=3" and ignores
+packages/block-pdf/src/__tests__/ssr-render.test.ts:76:    expect(desc.iframeSrc).toBe('doc.pdf#page=3');
+packages/block-pdf/src/__tests__/ssr-render.test.ts:82:    expect(desc.iframeSrc).toBe('foo.pdf#page=1');
+
+exec
+/bin/bash -lc "rg -n \"renderPdf\\(|buildIframeSrc|iframeSrc|section=intro|empty-fragment|fragment\" packages/block-pdf/src/__tests__ packages/block-pdf/src/ui-default" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+packages/block-pdf/src/ui-default/Pdf.astro:15:const desc = renderPdf(src, page, searchable);
+packages/block-pdf/src/ui-default/Pdf.astro:23:  <iframe src={desc.iframeSrc} title={`PDF: ${desc.src}`} loading="lazy"></iframe>
+packages/block-pdf/src/ui-default/render-pdf.ts:11: *   viewer; the `#page=N` fragment is part of the
+packages/block-pdf/src/ui-default/render-pdf.ts:26: * - `iframeSrc`: `${baseSrc}#page=${page}` — PDF Open Parameters fragment.
+packages/block-pdf/src/ui-default/render-pdf.ts:27: *   Any pre-existing `#fragment` on `src` is dropped before appending, so
+packages/block-pdf/src/ui-default/render-pdf.ts:28: *   `<Pdf src="doc.pdf#section=intro" page={3} />` yields `doc.pdf#page=3`
+packages/block-pdf/src/ui-default/render-pdf.ts:29: *   (PDF Open Parameters fragments are not mergeable — only one `#…` per URL,
+packages/block-pdf/src/ui-default/render-pdf.ts:39:  readonly iframeSrc: string;
+packages/block-pdf/src/ui-default/render-pdf.ts:47:function buildIframeSrc(src: string, page: number): string {
+packages/block-pdf/src/ui-default/render-pdf.ts:49:  // any pre-existing fragment otherwise. Authoritative per the Output shape
+packages/block-pdf/src/ui-default/render-pdf.ts:63:  iframeSrc: buildIframeSrc(src, page),
+packages/block-pdf/src/ui-default/Pdf.tsx:22:  const desc = renderPdf(props.src, props.page, props.searchable);
+packages/block-pdf/src/ui-default/Pdf.tsx:30:        src={desc.iframeSrc}
+packages/block-pdf/src/__tests__/ssr-render.test.ts:13: *   2. assert PDF Open Parameters fragment shape (`#page=N`) — required for
+packages/block-pdf/src/__tests__/ssr-render.test.ts:22: * structural invariants (iframeSrc fragment, data-attr shape, identity of
+packages/block-pdf/src/__tests__/ssr-render.test.ts:26:  it('produces iframeSrc with #page=N fragment for default page=1', () => {
+packages/block-pdf/src/__tests__/ssr-render.test.ts:27:    const desc = renderPdf('/files/paper.pdf', 1, false);
+packages/block-pdf/src/__tests__/ssr-render.test.ts:28:    expect(desc.iframeSrc).toBe('/files/paper.pdf#page=1');
+packages/block-pdf/src/__tests__/ssr-render.test.ts:34:  it('produces iframeSrc with #page=N for arbitrary page', () => {
+packages/block-pdf/src/__tests__/ssr-render.test.ts:35:    const desc = renderPdf('https://example.com/doc.pdf', 42, true);
+packages/block-pdf/src/__tests__/ssr-render.test.ts:36:    expect(desc.iframeSrc).toBe('https://example.com/doc.pdf#page=42');
+packages/block-pdf/src/__tests__/ssr-render.test.ts:44:    const desc = renderPdf('/files/My Doc.pdf', 1, false);
+packages/block-pdf/src/__tests__/ssr-render.test.ts:46:    expect(desc.iframeSrc).toBe('/files/My Doc.pdf#page=1');
+packages/block-pdf/src/__tests__/ssr-render.test.ts:55:    const desc = renderPdf('/does-not-exist.pdf', 1, false);
+packages/block-pdf/src/__tests__/ssr-render.test.ts:56:    expect(desc.iframeSrc).toBe('/does-not-exist.pdf#page=1');
+packages/block-pdf/src/__tests__/ssr-render.test.ts:60:  it('different page on same src produces different iframeSrc (page is part of URL fragment)', () => {
+packages/block-pdf/src/__tests__/ssr-render.test.ts:61:    const a = renderPdf('/files/paper.pdf', 1, false);
+packages/block-pdf/src/__tests__/ssr-render.test.ts:62:    const b = renderPdf('/files/paper.pdf', 5, false);
+packages/block-pdf/src/__tests__/ssr-render.test.ts:63:    expect(a.iframeSrc).not.toBe(b.iframeSrc);
+packages/block-pdf/src/__tests__/ssr-render.test.ts:68:  it('strips pre-existing fragment from src before appending #page= (R2-1 hazard)', () => {
+packages/block-pdf/src/__tests__/ssr-render.test.ts:69:    // `src` may carry an external fragment (e.g. anchor in a publishing CMS:
+packages/block-pdf/src/__tests__/ssr-render.test.ts:70:    // "doc.pdf#section=intro"). PDF Open Parameters URLs are not mergeable —
+packages/block-pdf/src/__tests__/ssr-render.test.ts:72:    // the chosen page. Anything else would yield `doc.pdf#section=intro#page=3`
+packages/block-pdf/src/__tests__/ssr-render.test.ts:73:    // which the browser parses as fragment="section=intro#page=3" and ignores
+packages/block-pdf/src/__tests__/ssr-render.test.ts:75:    const desc = renderPdf('doc.pdf#section=intro', 3, false);
+packages/block-pdf/src/__tests__/ssr-render.test.ts:76:    expect(desc.iframeSrc).toBe('doc.pdf#page=3');
+packages/block-pdf/src/__tests__/ssr-render.test.ts:77:    expect(desc.src).toBe('doc.pdf#section=intro'); // src verbatim per contract
+packages/block-pdf/src/__tests__/ssr-render.test.ts:80:  it('handles src with empty fragment ("foo.pdf#") cleanly', () => {
+packages/block-pdf/src/__tests__/ssr-render.test.ts:81:    const desc = renderPdf('foo.pdf#', 1, false);
+packages/block-pdf/src/__tests__/ssr-render.test.ts:82:    expect(desc.iframeSrc).toBe('foo.pdf#page=1');
+packages/block-pdf/src/__tests__/ui-default.test.ts:37:    const desc = renderPdf('/p.pdf', 1, false);
+packages/block-pdf/src/__tests__/ui-default.test.ts:38:    expect(desc.iframeSrc).toBe('/p.pdf#page=1');
+packages/block-pdf/src/__tests__/byte-equivalence.test.tsx:11: * call `renderPdf(...)` and emit identical container + iframe markup.
+packages/block-pdf/src/__tests__/byte-equivalence.test.tsx:22: *    './render-pdf'`, must invoke `renderPdf(`, must emit a `<div>` wrapper
+packages/block-pdf/src/__tests__/byte-equivalence.test.tsx:24: *    using `desc.iframeSrc` + `loading="lazy"`. This is the structural
+packages/block-pdf/src/__tests__/byte-equivalence.test.tsx:49:    const desc = renderPdf(props.src, props.page, props.searchable);
+packages/block-pdf/src/__tests__/byte-equivalence.test.tsx:57:    expect(html).toContain(`src="${desc.iframeSrc}"`);
+packages/block-pdf/src/__tests__/byte-equivalence.test.tsx:62:  it('PdfRenderView strips fragment from src in iframeSrc (R2-1 regression)', () => {
+packages/block-pdf/src/__tests__/byte-equivalence.test.tsx:63:    const props = { src: 'doc.pdf#section=intro', page: 4, searchable: false };
+packages/block-pdf/src/__tests__/byte-equivalence.test.tsx:66:    expect(html).not.toContain('section=intro#page=');
+packages/block-pdf/src/__tests__/byte-equivalence.test.tsx:83:    // iframe uses the descriptor's iframeSrc (not raw src) + lazy loading.
+packages/block-pdf/src/__tests__/byte-equivalence.test.tsx:84:    expect(astroSource).toMatch(/src=\{?desc\.iframeSrc\}?/);
+
+exec
+/bin/bash -lc "nl -ba CLAUDE.md | sed -n '70,88p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+    70	| Tier            | Name                   | Role                                                       |
+    71	| --------------- | ---------------------- | ---------------------------------------------------------- |
+    72	| T0 Orchestrator | `orchestrator`         | 整体规划 + dispatch 工种 + 维护 docs/plans/                |
+    73	| T1 Worker       | `api-builder`          | 写 apps/api FastAPI 后端                                   |
+    74	| T1 Worker       | `block-foundation-eng` | 维护 block-foundation 与 content-types 包                  |
+    75	| T1 Worker       | `editor-eng`           | 写 editor-commands 命令模式与 editor-shell                 |
+    76	| T1 Worker       | `editor-integrator`    | 把 editor 子模块集成到 site                                |
+    77	| T1 Worker       | `kernel-architect`     | 设计 KernelAdapter 接口与 KernelRegistry                   |
+    78	| T1 Worker       | `kernel-pyodide-eng`   | 实现 PyodideAdapter                                        |
+    79	| T1 Worker       | `mdx-bridge-eng`       | 维护 mdx-bridge 双向转换                                   |
+    80	| T1 Worker       | `render-block-eng`     | 写 math / pdf 的 block 实现                                |
+    81	| T1 Worker       | `simple-block-eng`     | 写 simple block 模板（block-callout 等）                   |
+    82	| T1 Worker       | `ux-ui-lead`           | 视觉单一权威 — 横跨 ui-default + apps/site + editor 子模块 |
+    83	| T1 Worker       | `viz-block-eng`        | 写可视化 block 实现 (jupyter / nn-viz / agent-flow)        |
+    84	| T2 Process      | `git-operator`         | 唯一 git 操作权                                            |
+    85	| T2 Process      | `pr-reviewer`          | 实现质量 + 降级风险 + 规格匹配 review                      |
+    86	| T2 Process      | `refactorer`           | 唯一跨包重组权                                             |
+    87	| T2 Process      | `researcher`           | 唯一外网访问权                                             |
+    88	| T3 Audit        | `link-checker`         | markdown 链接检查                                          |
+
+codex
+The targeted cross-doc files no longer contain `react-pdf`; the remaining `react-pdf` mentions are in the block-pdf contract/helper comments explaining that it is intentionally not a runtime dependency. I’m moving from source review into the requested scoped package checks.
+  ✓ Inspect block-pdf implementation, tests, and docs touched by R2
+  → Verify the six requested D2 audit points in source and tests
+  • Run block-pdf scoped test, typecheck, lint, and build commands
+  • Deliver PASS/FAIL with concrete findings and verification evidence
+exec
+/bin/bash -lc 'pnpm --filter @skb/block-pdf test' in /home/weiyi/selfKnowledgeBaseWeb
+ exited 1 in 665ms:
+
+> @skb/block-pdf@0.0.0 test /home/weiyi/selfKnowledgeBaseWeb/packages/block-pdf
+> vitest run
+
+failed to load config from /home/weiyi/selfKnowledgeBaseWeb/packages/block-pdf/vitest.config.ts
+
+⎯⎯⎯⎯⎯⎯⎯ Startup Error ⎯⎯⎯⎯⎯⎯⎯⎯
+Error: EROFS: read-only file system, open '/home/weiyi/selfKnowledgeBaseWeb/packages/block-pdf/node_modules/.vite-temp/vitest.config.ts.timestamp-1777585134379-6fbb26ff89985.mjs'
+    at async open (node:internal/fs/promises:639:25)
+    at async Object.writeFile (node:internal/fs/promises:1219:14)
+    at async loadConfigFromBundledFile (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:34769:3)
+    at async bundleAndLoadConfigFile (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:34632:17)
+    at async loadConfigFromFile (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:34599:42)
+    at async resolveConfig (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:34223:22)
+    at async _createServer (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:26029:65)
+    at async createViteServer (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vitest@4.1.5_@types+node@22.19.17_happy-dom@15.11.7_vite@8.0.10_@types+node@22.19.17_esbuild@_njtu3hruheo7esciutan5fga5a/node_modules/vitest/dist/chunks/cli-api.Cjt90eJu.js:8818:17)
+    at async createVitest (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vitest@4.1.5_@types+node@22.19.17_happy-dom@15.11.7_vite@8.0.10_@types+node@22.19.17_esbuild@_njtu3hruheo7esciutan5fga5a/node_modules/vitest/dist/chunks/cli-api.Cjt90eJu.js:14205:18)
+    at async prepareVitest (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vitest@4.1.5_@types+node@22.19.17_happy-dom@15.11.7_vite@8.0.10_@types+node@22.19.17_esbuild@_njtu3hruheo7esciutan5fga5a/node_modules/vitest/dist/chunks/cli-api.Cjt90eJu.js:14572:14) {
+  errno: -30,
+  code: 'EROFS',
+  syscall: 'open',
+  path: '/home/weiyi/selfKnowledgeBaseWeb/packages/block-pdf/node_modules/.vite-temp/vitest.config.ts.timestamp-1777585134379-6fbb26ff89985.mjs'
+}
+
+
+
+/home/weiyi/selfKnowledgeBaseWeb/packages/block-pdf:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @skb/block-pdf@0.0.0 test: `vitest run`
+Exit status 1
+
+codex
+The requested test command is blocked by this session’s read-only filesystem: Vite/Vitest tries to write a temporary bundled config under `packages/block-pdf/node_modules/.vite-temp`. I’m still running the remaining scoped checks so the final verdict can separate code findings from sandbox verification limits.
+exec
+/bin/bash -lc 'pnpm --filter @skb/block-pdf typecheck' in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc 'pnpm --filter @skb/block-pdf lint' in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc 'pnpm --filter @skb/block-pdf build' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 747ms:
+
+> @skb/block-pdf@0.0.0 build /home/weiyi/selfKnowledgeBaseWeb/packages/block-pdf
+> tsc -b
+
+
+ succeeded in 1992ms:
+
+> @skb/block-pdf@0.0.0 typecheck /home/weiyi/selfKnowledgeBaseWeb/packages/block-pdf
+> tsc --noEmit
+
+
+ succeeded in 3365ms:
+
+> @skb/block-pdf@0.0.0 lint /home/weiyi/selfKnowledgeBaseWeb/packages/block-pdf
+> eslint .
+
+
+exec
+/bin/bash -lc "rg -n \"configLoader|bundleConfigFile|VITE_.*CONFIG|vite-temp\" node_modules/.pnpm/vite@8.0.10_*/node_modules/vite/dist/node packages/block-pdf/node_modules/vite -g '*.js' -g '*.d.ts'" in /home/weiyi/selfKnowledgeBaseWeb
+ exited 2 in 0ms:
+rg: packages/block-pdf/node_modules/vite: No such file or directory (os error 2)
+node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/index.d.ts:3577:  configLoader?: "bundle" | "runner" | "native";
+node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/index.d.ts:3651:declare function loadConfigFromFile(configEnv: ConfigEnv, configFile?: string, configRoot?: string, logLevel?: LogLevel, customLogger?: Logger, configLoader?: "bundle" | "runner" | "native"): Promise<{
+node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/logger.js:322:export { OPTIMIZABLE_ENTRY_RE as A, ERR_FILE_NOT_FOUND_IN_OPTIMIZED_DEP_DIR as C, JS_TYPES_RE as D, FS_PREFIX as E, defaultAllowedOrigins as F, loopbackHosts as I, wildcardHosts as L, SPECIAL_QUERY_RE as M, VERSION as N, KNOWN_ASSET_TYPES as O, VITE_PACKAGE_DIR as P, require_picocolors as R, ENV_PUBLIC_PATH as S, ESBUILD_BASELINE_WIDELY_AVAILABLE_TARGET as T, DEFAULT_SERVER_CONDITIONS as _, CLIENT_ENTRY as a, DEV_PROD_CONDITION as b, DEFAULT_ASSETS_INLINE_LIMIT as c, DEFAULT_CLIENT_MAIN_FIELDS as d, DEFAULT_CONFIG_FILES as f, DEFAULT_PREVIEW_PORT as g, DEFAULT_EXTERNAL_CONDITIONS as h, CLIENT_DIR as i, ROLLUP_HOOKS as j, METADATA_FILENAME as k, DEFAULT_ASSETS_RE as l, DEFAULT_EXTENSIONS as m, createLogger as n, CLIENT_PUBLIC_PATH as o, DEFAULT_DEV_PORT as p, printServerUrls as r, CSS_LANGS_RE as s, LogLevels as t, DEFAULT_CLIENT_CONDITIONS as u, DEFAULT_SERVER_MAIN_FIELDS as v, ERR_OPTIMIZE_DEPS_PROCESSING_ERROR as w, ENV_ENTRY as x, DEP_VERSION_RE as y };
+node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/index.d.ts:3577:  configLoader?: "bundle" | "runner" | "native";
+node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/index.d.ts:3651:declare function loadConfigFromFile(configEnv: ConfigEnv, configFile?: string, configRoot?: string, logLevel?: LogLevel, customLogger?: Logger, configLoader?: "bundle" | "runner" | "native"): Promise<{
+node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/cli.js:666:	delete ret.configLoader;
+node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/cli.js:704:cli.option("-c, --config <file>", `[string] use specified config file`).option("--base <path>", `[string] public base path (default: /)`, { type: [convertBase] }).option("-l, --logLevel <level>", `[string] info | warn | error | silent`).option("--clearScreen", `[boolean] allow/disable clear screen when logging`).option("--configLoader <loader>", `[string] use 'bundle' to bundle the config with Rolldown, or 'runner' (experimental) to process it on the fly, or 'native' (experimental) to load using the native runtime (default: bundle)`).option("-d, --debug [feat]", `[string | boolean] show debug logs`).option("-f, --filter <filter>", `[string] filter debug logs`).option("-m, --mode <mode>", `[string] set env mode`);
+node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/cli.js:714:			configLoader: options.configLoader,
+node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/cli.js:772:			configLoader: options.configLoader,
+node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/cli.js:796:			configLoader: options.configLoader,
+node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/cli.js:813:			configLoader: options.configLoader,
+node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/cli.js:666:	delete ret.configLoader;
+node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/cli.js:704:cli.option("-c, --config <file>", `[string] use specified config file`).option("--base <path>", `[string] public base path (default: /)`, { type: [convertBase] }).option("-l, --logLevel <level>", `[string] info | warn | error | silent`).option("--clearScreen", `[boolean] allow/disable clear screen when logging`).option("--configLoader <loader>", `[string] use 'bundle' to bundle the config with Rolldown, or 'runner' (experimental) to process it on the fly, or 'native' (experimental) to load using the native runtime (default: bundle)`).option("-d, --debug [feat]", `[string | boolean] show debug logs`).option("-f, --filter <filter>", `[string] filter debug logs`).option("-m, --mode <mode>", `[string] set env mode`);
+node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/cli.js:714:			configLoader: options.configLoader,
+node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/cli.js:772:			configLoader: options.configLoader,
+node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/cli.js:796:			configLoader: options.configLoader,
+node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/cli.js:813:			configLoader: options.configLoader,
+node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:2:import { A as OPTIMIZABLE_ENTRY_RE, C as ERR_FILE_NOT_FOUND_IN_OPTIMIZED_DEP_DIR, D as JS_TYPES_RE, E as FS_PREFIX, F as defaultAllowedOrigins, I as loopbackHosts, L as wildcardHosts, M as SPECIAL_QUERY_RE, N as VERSION, O as KNOWN_ASSET_TYPES, P as VITE_PACKAGE_DIR, R as require_picocolors, S as ENV_PUBLIC_PATH, T as ESBUILD_BASELINE_WIDELY_AVAILABLE_TARGET, _ as DEFAULT_SERVER_CONDITIONS, a as CLIENT_ENTRY, b as DEV_PROD_CONDITION, c as DEFAULT_ASSETS_INLINE_LIMIT, d as DEFAULT_CLIENT_MAIN_FIELDS, f as DEFAULT_CONFIG_FILES, g as DEFAULT_PREVIEW_PORT, h as DEFAULT_EXTERNAL_CONDITIONS, i as CLIENT_DIR, j as ROLLUP_HOOKS, k as METADATA_FILENAME, l as DEFAULT_ASSETS_RE, m as DEFAULT_EXTENSIONS, n as createLogger, o as CLIENT_PUBLIC_PATH, p as DEFAULT_DEV_PORT, r as printServerUrls, s as CSS_LANGS_RE, t as LogLevels, u as DEFAULT_CLIENT_CONDITIONS, v as DEFAULT_SERVER_MAIN_FIELDS, w as ERR_OPTIMIZE_DEPS_PROCESSING_ERROR, x as ENV_ENTRY, y as DEP_VERSION_RE } from "./logger.js";
+node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:34223:		const loadResult = await loadConfigFromFile(configEnv, configFile, config.root, config.logLevel, config.customLogger, config.configLoader);
+node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:34582:async function loadConfigFromFile(configEnv, configFile, configRoot = process.cwd(), logLevel, customLogger, configLoader = "bundle") {
+node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:34583:	if (configLoader !== "bundle" && configLoader !== "runner" && configLoader !== "native") throw new Error(`Unsupported configLoader: ${configLoader}. Accepted values are 'bundle', 'runner', and 'native'.`);
+node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:34599:		const { configExport, dependencies } = await (configLoader === "bundle" ? bundleAndLoadConfigFile : configLoader === "runner" ? runnerImportConfigFile : nativeImportConfigFile)(resolvedPath);
+node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:34630:	const bundled = await bundleConfigFile(resolvedPath, isESM);
+node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:34636:async function bundleConfigFile(fileName, isESM) {
+node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:34762:			await fsp.mkdir(path.resolve(nodeModulesDir, ".vite-temp/"), { recursive: true });
+node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:34768:		const tempFileName = nodeModulesDir ? path.resolve(nodeModulesDir, `.vite-temp/${path.basename(fileName)}.${hash}.mjs`) : `${fileName}.${hash}.mjs`;
+node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:2:import { A as OPTIMIZABLE_ENTRY_RE, C as ERR_FILE_NOT_FOUND_IN_OPTIMIZED_DEP_DIR, D as JS_TYPES_RE, E as FS_PREFIX, F as defaultAllowedOrigins, I as loopbackHosts, L as wildcardHosts, M as SPECIAL_QUERY_RE, N as VERSION, O as KNOWN_ASSET_TYPES, P as VITE_PACKAGE_DIR, R as require_picocolors, S as ENV_PUBLIC_PATH, T as ESBUILD_BASELINE_WIDELY_AVAILABLE_TARGET, _ as DEFAULT_SERVER_CONDITIONS, a as CLIENT_ENTRY, b as DEV_PROD_CONDITION, c as DEFAULT_ASSETS_INLINE_LIMIT, d as DEFAULT_CLIENT_MAIN_FIELDS, f as DEFAULT_CONFIG_FILES, g as DEFAULT_PREVIEW_PORT, h as DEFAULT_EXTERNAL_CONDITIONS, i as CLIENT_DIR, j as ROLLUP_HOOKS, k as METADATA_FILENAME, l as DEFAULT_ASSETS_RE, m as DEFAULT_EXTENSIONS, n as createLogger, o as CLIENT_PUBLIC_PATH, p as DEFAULT_DEV_PORT, r as printServerUrls, s as CSS_LANGS_RE, t as LogLevels, u as DEFAULT_CLIENT_CONDITIONS, v as DEFAULT_SERVER_MAIN_FIELDS, w as ERR_OPTIMIZE_DEPS_PROCESSING_ERROR, x as ENV_ENTRY, y as DEP_VERSION_RE } from "./logger.js";
+node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:34223:		const loadResult = await loadConfigFromFile(configEnv, configFile, config.root, config.logLevel, config.customLogger, config.configLoader);
+node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:34582:async function loadConfigFromFile(configEnv, configFile, configRoot = process.cwd(), logLevel, customLogger, configLoader = "bundle") {
+node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:34583:	if (configLoader !== "bundle" && configLoader !== "runner" && configLoader !== "native") throw new Error(`Unsupported configLoader: ${configLoader}. Accepted values are 'bundle', 'runner', and 'native'.`);
+node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:34599:		const { configExport, dependencies } = await (configLoader === "bundle" ? bundleAndLoadConfigFile : configLoader === "runner" ? runnerImportConfigFile : nativeImportConfigFile)(resolvedPath);
+node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:34630:	const bundled = await bundleConfigFile(resolvedPath, isESM);
+node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:34636:async function bundleConfigFile(fileName, isESM) {
+node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:34762:			await fsp.mkdir(path.resolve(nodeModulesDir, ".vite-temp/"), { recursive: true });
+node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:34768:		const tempFileName = nodeModulesDir ? path.resolve(nodeModulesDir, `.vite-temp/${path.basename(fileName)}.${hash}.mjs`) : `${fileName}.${hash}.mjs`;
+node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/logger.js:322:export { OPTIMIZABLE_ENTRY_RE as A, ERR_FILE_NOT_FOUND_IN_OPTIMIZED_DEP_DIR as C, JS_TYPES_RE as D, FS_PREFIX as E, defaultAllowedOrigins as F, loopbackHosts as I, wildcardHosts as L, SPECIAL_QUERY_RE as M, VERSION as N, KNOWN_ASSET_TYPES as O, VITE_PACKAGE_DIR as P, require_picocolors as R, ENV_PUBLIC_PATH as S, ESBUILD_BASELINE_WIDELY_AVAILABLE_TARGET as T, DEFAULT_SERVER_CONDITIONS as _, CLIENT_ENTRY as a, DEV_PROD_CONDITION as b, DEFAULT_ASSETS_INLINE_LIMIT as c, DEFAULT_CLIENT_MAIN_FIELDS as d, DEFAULT_CONFIG_FILES as f, DEFAULT_PREVIEW_PORT as g, DEFAULT_EXTERNAL_CONDITIONS as h, CLIENT_DIR as i, ROLLUP_HOOKS as j, METADATA_FILENAME as k, DEFAULT_ASSETS_RE as l, DEFAULT_EXTENSIONS as m, createLogger as n, CLIENT_PUBLIC_PATH as o, DEFAULT_DEV_PORT as p, printServerUrls as r, CSS_LANGS_RE as s, LogLevels as t, DEFAULT_CLIENT_CONDITIONS as u, DEFAULT_SERVER_MAIN_FIELDS as v, ERR_OPTIMIZE_DEPS_PROCESSING_ERROR as w, ENV_ENTRY as x, DEP_VERSION_RE as y };
+
+exec
+/bin/bash -lc 'pnpm --filter @skb/block-pdf exec vitest --help' in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc 'cat packages/block-pdf/vitest.config.ts' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+import { defineConfig } from 'vitest/config';
+
+export default defineConfig({
+  test: {
+    include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
+    environment: 'happy-dom',
+    typecheck: { enabled: false },
+  },
+});
+
+ succeeded in 454ms:
+vitest/4.1.5
+
+Usage:
+  $ vitest [...filters]
+
+Commands:
+  run [...filters]      
+  related [...filters]  
+  watch [...filters]    
+  dev [...filters]      
+  bench [...filters]    
+  init <project>        
+  list [...filters]     
+  [...filters]          
+  complete [shell]      
+
+For more info, run any command with the `--help` flag:
+  $ vitest run --help
+  $ vitest related --help
+  $ vitest watch --help
+  $ vitest dev --help
+  $ vitest bench --help
+  $ vitest init --help
+  $ vitest list --help
+  $ vitest --help
+  $ vitest complete --help
+  $ vitest --help --expand-help
+
+Options:
+  -v, --version                                              Display version number 
+  -r, --root <path>                                          Root path 
+  -c, --config <path>                                        Path to config file 
+  -u, --update [type]                                        Update snapshot (accepts boolean, "new", "all" or "none") 
+  -w, --watch                                                Enable watch mode 
+  -t, --testNamePattern <pattern>                            Run tests with full names matching the specified regexp pattern 
+  --dir <path>                                               Base directory to scan for the test files 
+  --ui                                                       Enable UI 
+  --open                                                     Open UI automatically (default: !process.env.CI) 
+  --api [port]                                               Specify server port. Note if the port is already being used, Vite will automatically try the next available port so this may not be the actual port the server ends up listening on. If true will be set to 51204. Use '--help --api' for more info. 
+  --silent [value]                                           Silent console output from tests. Use 'passed-only' to see logs from failing tests only. 
+  --hideSkippedTests                                         Hide logs for skipped tests 
+  --reporter <name>                                          Specify reporters (default, agent, minimal, blob, verbose, dot, json, tap, tap-flat, junit, tree, hanging-process, github-actions) 
+  --outputFile <filename/-s>                                 Write test results to a file when supporter reporter is also specified, use cac's dot notation for individual outputs of multiple reporters (example: --outputFile.tap=./tap.txt) 
+  --coverage                                                 Enable coverage report. Use '--help --coverage' for more info. 
+  --mode <name>                                              Override Vite mode (default: test or benchmark) 
+  --isolate                                                  Run every test file in isolation. To disable isolation, use --no-isolate (default: true) 
+  --globals                                                  Inject apis globally 
+  --dom                                                      Mock browser API with happy-dom 
+  --browser <name>                                           Run tests in the browser. Equivalent to --browser.enabled (default: false). Use '--help --browser' for more info. 
+  --pool <pool>                                              Specify pool, if not running in the browser (default: forks) 
+  --execArgv <option>                                        Pass additional arguments to node process when spawning worker_threads or child_process. 
+  --vmMemoryLimit <limit>                                    Memory limit for VM pools. If you see memory leaks, try to tinker this value. 
+  --fileParallelism                                          Should all test files run in parallel. Use --no-file-parallelism to disable (default: true) 
+  --maxWorkers <workers>                                     Maximum number or percentage of workers to run tests in 
+  --environment <name>                                       Specify runner environment, if not running in the browser (default: node) 
+  --passWithNoTests                                          Pass when no tests are found 
+  --logHeapUsage                                             Show the size of heap for each test when running in node 
+  --detectAsyncLeaks                                         Detect asynchronous resources leaking from the test file (default: false) 
+  --allowOnly                                                Allow tests and suites that are marked as only (default: !process.env.CI) 
+  --dangerouslyIgnoreUnhandledErrors                         Ignore any unhandled errors that occur 
+  --shard <shards>                                           Test suite shard to execute in a format of <index>/<count> 
+  --changed [since]                                          Run tests that are affected by the changed files (default: false) 
+  --sequence <options>                                       Options for how tests should be sorted. Use '--help --sequence' for more info. 
+  --inspect [[host:]port]                                    Enable Node.js inspector (default: 127.0.0.1:9229) 
+  --inspectBrk [[host:]port]                                 Enable Node.js inspector and break before the test starts 
+  --testTimeout <timeout>                                    Default timeout of a test in milliseconds (default: 5000). Use 0 to disable timeout completely. 
+  --hookTimeout <timeout>                                    Default hook timeout in milliseconds (default: 10000). Use 0 to disable timeout completely. 
+  --bail <number>                                            Stop test execution when given number of tests have failed (default: 0) 
+  --retry <times>                                            Retry the test specific number of times if it fails (default: 0). Use '--help --retry' for more info. 
+  --diff <path>                                              DiffOptions object or a path to a module which exports DiffOptions object. Use '--help --diff' for more info. 
+  --exclude <glob>                                           Additional file globs to be excluded from test 
+  --expandSnapshotDiff                                       Show full diff when snapshot fails 
+  --disableConsoleIntercept                                  Disable automatic interception of console logging (default: false) 
+  --typecheck                                                Enable typechecking alongside tests (default: false). Use '--help --typecheck' for more info. 
+  --project <name>                                           The name of the project to run if you are using Vitest workspace feature. This can be repeated for multiple projects: --project=1 --project=2. You can also filter projects using wildcards like --project=packages*, and exclude projects with --project=!pattern. 
+  --slowTestThreshold <threshold>                            Threshold in milliseconds for a test or suite to be considered slow (default: 300) 
+  --teardownTimeout <timeout>                                Default timeout of a teardown function in milliseconds (default: 10000) 
+  --cache                                                    Enable cache. Use '--help --cache' for more info. 
+  --maxConcurrency <number>                                  Maximum number of concurrent tests and suites during test file execution (default: 5) 
+  --expect                                                   Configuration options for expect() matches. Use '--help --expect' for more info. 
+  --printConsoleTrace                                        Always print console stack traces 
+  --includeTaskLocation                                      Collect test and suite locations in the location property 
+  --attachmentsDir <dir>                                     The directory where attachments from context.annotate are stored in (default: .vitest-attachments) 
+  --run                                                      Disable watch mode 
+  --no-color                                                 Removes colors from the console output (default: true)
+  --clearScreen                                              Clear terminal screen when re-running tests during watch mode (default: true) 
+  --configLoader <loader>                                    Use bundle to bundle the config with esbuild or runner (experimental) to process it on the fly. This is only available in vite version 6.1.0 and above. (default: bundle) 
+  --standalone                                               Start Vitest without running tests. Tests will be running only on change. If browser mode is enabled, the UI will be opened automatically. This option is ignored when CLI file filters are passed. (default: false) 
+  --mergeReports [path]                                      Path to a blob reports directory. If this options is used, Vitest won't run any tests, it will only report previously recorded tests 
+  --listTags [type]                                          List all available tags instead of running tests. --list-tags=json will output tags in JSON format, unless there are no tags. 
+  --clearCache                                               Delete all Vitest caches, including experimental.fsModuleCache, without running any tests. This will reduce the performance in the subsequent test run. 
+  --tagsFilter <expression>                                  Run only tests with the specified tags. You can use logical operators && (and), || (or) and ! (not) to create complex expressions, see https://vitest.dev/guide/test-tags#syntax for more information. 
+  --strictTags                                               Should Vitest throw an error if test has a tag that is not defined in the config. (default: true) 
+  --experimental <features>                                  Experimental features.. Use '--help --experimental' for more info. 
+  -h, --help                                                 Display this message 
+
+codex
+Vitest exposes `--configLoader runner`, which avoids the bundled-config temp file that failed under the read-only mount. I’m rerunning the block-pdf test script with that loader as a sandbox-compatible equivalent, while keeping the exact command failure recorded.
+exec
+/bin/bash -lc 'pnpm --filter @skb/block-pdf test -- --configLoader runner' in /home/weiyi/selfKnowledgeBaseWeb
+ exited 1 in 1227ms:
+
+> @skb/block-pdf@0.0.0 test /home/weiyi/selfKnowledgeBaseWeb/packages/block-pdf
+> vitest run "--configLoader" "runner"
+
+
+ RUN  v4.1.5 /home/weiyi/selfKnowledgeBaseWeb/packages/block-pdf
+
+ ❯ src/__tests__/core.test.ts (0 test)
+ ❯ src/__tests__/ui-default.test.ts (0 test)
+ ❯ src/__tests__/byte-equivalence.test.tsx (0 test)
+ ❯ src/__tests__/ssr-render.test.ts (0 test)
+ ❯ src/__tests__/registry-integration.test.ts (0 test)
+
+⎯⎯⎯⎯⎯⎯ Failed Suites 5 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/__tests__/byte-equivalence.test.tsx [ src/__tests__/byte-equivalence.test.tsx ]
+ FAIL  src/__tests__/core.test.ts [ src/__tests__/core.test.ts ]
+ FAIL  src/__tests__/registry-integration.test.ts [ src/__tests__/registry-integration.test.ts ]
+ FAIL  src/__tests__/ssr-render.test.ts [ src/__tests__/ssr-render.test.ts ]
+ FAIL  src/__tests__/ui-default.test.ts [ src/__tests__/ui-default.test.ts ]
+Error: ENOENT: no such file or directory, mkdir '/tmp/zRr9SBOEp4bM2GKQ-as17/client'
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/5]⎯
+
+
+ Test Files  5 failed (5)
+      Tests  no tests
+   Start at  17:39:29
+   Duration  440ms (transform 0ms, setup 0ms, import 0ms, tests 0ms, environment 1.21s)
+
+/home/weiyi/selfKnowledgeBaseWeb/packages/block-pdf:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @skb/block-pdf@0.0.0 test: `vitest run "--configLoader" "runner"`
+Exit status 1
+
+exec
+/bin/bash -lc 'ls -ld /tmp /home/weiyi/selfKnowledgeBaseWeb/packages/block-pdf/node_modules/.vite-temp' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+drwxr-xr-x  2 weiyi  weiyi    4096 Apr 30 17:38 /home/weiyi/selfKnowledgeBaseWeb/packages/block-pdf/node_modules/.vite-temp
+drwxrwxrwt 45 nobody nogroup 12288 Apr 30 17:38 /tmp
+
+exec
+/bin/bash -lc 'pnpm --filter @skb/block-pdf test -- --configLoader native' in /home/weiyi/selfKnowledgeBaseWeb
+ exited 1 in 1294ms:
+
+> @skb/block-pdf@0.0.0 test /home/weiyi/selfKnowledgeBaseWeb/packages/block-pdf
+> vitest run "--configLoader" "native"
+
+
+ RUN  v4.1.5 /home/weiyi/selfKnowledgeBaseWeb/packages/block-pdf
+
+ ❯ src/__tests__/core.test.ts (0 test)
+ ❯ src/__tests__/ssr-render.test.ts (0 test)
+ ❯ src/__tests__/registry-integration.test.ts (0 test)
+ ❯ src/__tests__/ui-default.test.ts (0 test)
+ ❯ src/__tests__/byte-equivalence.test.tsx (0 test)
+
+⎯⎯⎯⎯⎯⎯ Failed Suites 5 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/__tests__/byte-equivalence.test.tsx [ src/__tests__/byte-equivalence.test.tsx ]
+ FAIL  src/__tests__/core.test.ts [ src/__tests__/core.test.ts ]
+ FAIL  src/__tests__/registry-integration.test.ts [ src/__tests__/registry-integration.test.ts ]
+ FAIL  src/__tests__/ssr-render.test.ts [ src/__tests__/ssr-render.test.ts ]
+ FAIL  src/__tests__/ui-default.test.ts [ src/__tests__/ui-default.test.ts ]
+Error: ENOENT: no such file or directory, mkdir '/tmp/sCyj43TzmOaT1RnIptZP6/client'
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/5]⎯
+
+
+ Test Files  5 failed (5)
+      Tests  no tests
+   Start at  17:39:43
+   Duration  472ms (transform 0ms, setup 0ms, import 0ms, tests 0ms, environment 1.23s)
+
+/home/weiyi/selfKnowledgeBaseWeb/packages/block-pdf:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @skb/block-pdf@0.0.0 test: `vitest run "--configLoader" "native"`
+Exit status 1
+
+exec
+/bin/bash -lc "rg -n \"mkdir\\(["'^'"\\n]*client|/client|attachmentsDir|cacheDir|browser\" node_modules/.pnpm/vitest@4.1.5_* node_modules/.pnpm/vite@8.0.10_* packages/block-pdf -g '*.js' -g '*.ts' -g '*.mjs'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+packages/block-pdf/src/ui-default/render-pdf.ts:10: *   rasterizer). All major browsers handle `application/pdf` via embedded
+packages/block-pdf/src/ui-default/render-pdf.ts:14: * - Astro SSR cannot run react-pdf (it requires a browser worker thread +
+packages/block-pdf/src/ui-default/render-pdf.ts:17: * - Failure mode is graceful: missing/inaccessible `src` shows the browser's
+packages/block-pdf/src/__tests__/ssr-render.test.ts:14: *      browser-native PDF viewer to honor initial page;
+packages/block-pdf/src/__tests__/ssr-render.test.ts:17: *      shell render and the browser's native viewer surfaces its own
+packages/block-pdf/src/__tests__/ssr-render.test.ts:21: * pin the exact rendered PDF visuals (browsers diverge); they assert
+packages/block-pdf/src/__tests__/ssr-render.test.ts:49:  it('handles missing-file-style src (browser viewer surfaces its own empty state)', () => {
+packages/block-pdf/src/__tests__/ssr-render.test.ts:51:    // Pdf.astro both render an iframe shell + container; the browser's native
+packages/block-pdf/src/__tests__/ssr-render.test.ts:73:    // which the browser parses as fragment="section=intro#page=3" and ignores
+
+exec
+/bin/bash -lc 'pnpm --filter @skb/block-pdf test -- --configLoader native --environment node' in /home/weiyi/selfKnowledgeBaseWeb
+ exited 1 in 1190ms:
+
+> @skb/block-pdf@0.0.0 test /home/weiyi/selfKnowledgeBaseWeb/packages/block-pdf
+> vitest run "--configLoader" "native" "--environment" "node"
+
+
+ RUN  v4.1.5 /home/weiyi/selfKnowledgeBaseWeb/packages/block-pdf
+
+ ❯ src/__tests__/byte-equivalence.test.tsx (0 test)
+ ❯ src/__tests__/core.test.ts (0 test)
+ ❯ src/__tests__/ssr-render.test.ts (0 test)
+ ❯ src/__tests__/registry-integration.test.ts (0 test)
+ ❯ src/__tests__/ui-default.test.ts (0 test)
+
+⎯⎯⎯⎯⎯⎯ Failed Suites 5 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/__tests__/byte-equivalence.test.tsx [ src/__tests__/byte-equivalence.test.tsx ]
+ FAIL  src/__tests__/core.test.ts [ src/__tests__/core.test.ts ]
+ FAIL  src/__tests__/registry-integration.test.ts [ src/__tests__/registry-integration.test.ts ]
+ FAIL  src/__tests__/ssr-render.test.ts [ src/__tests__/ssr-render.test.ts ]
+ FAIL  src/__tests__/ui-default.test.ts [ src/__tests__/ui-default.test.ts ]
+Error: ENOENT: no such file or directory, mkdir '/tmp/KsenR_979cNAGFzzRaCI8/ssr'
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/5]⎯
+
+
+ Test Files  5 failed (5)
+      Tests  no tests
+   Start at  17:39:57
+   Duration  228ms (transform 0ms, setup 0ms, import 0ms, tests 0ms, environment 1ms)
+
+/home/weiyi/selfKnowledgeBaseWeb/packages/block-pdf:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @skb/block-pdf@0.0.0 test: `vitest run "--configLoader" "native" "--environment" "node"`
+Exit status 1
+
+exec
+/bin/bash -lc 'pnpm --filter @skb/block-pdf exec vitest run --help --cache' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 435ms:
+vitest/4.1.5
+
+Usage:
+  $ vitest run [...filters]
+
+Options:
+  --cache                                                    Enable cache. Use '--help --cache' for more info. 
+
+exec
+/bin/bash -lc 'pnpm --filter @skb/block-pdf exec vitest run --help --expand-help' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 434ms:
+vitest/4.1.5
+
+Usage:
+  $ vitest run [...filters]
+
+Options:
+  -r, --root <path>                                          Root path 
+  -c, --config <path>                                        Path to config file 
+  -u, --update [type]                                        Update snapshot (accepts boolean, "new", "all" or "none") 
+  -w, --watch                                                Enable watch mode 
+  -t, --testNamePattern <pattern>                            Run tests with full names matching the specified regexp pattern 
+  --dir <path>                                               Base directory to scan for the test files 
+  --ui                                                       Enable UI 
+  --open                                                     Open UI automatically (default: !process.env.CI) 
+  --api [port]                                               Specify server port. Note if the port is already being used, Vite will automatically try the next available port so this may not be the actual port the server ends up listening on. If true will be set to 51204. Use '--help --api' for more info. 
+  --api.port [port]                                          Specify server port. Note if the port is already being used, Vite will automatically try the next available port so this may not be the actual port the server ends up listening on. If true will be set to 51204 
+  --api.host [host]                                          Specify which IP addresses the server should listen on. Set this to 0.0.0.0 or true to listen on all addresses, including LAN and public addresses 
+  --api.strictPort                                           Set to true to exit if port is already in use, instead of automatically trying the next available port 
+  --api.allowExec                                            Allow API to execute code. (Be careful when enabling this option in untrusted environments) 
+  --api.allowWrite                                           Allow API to edit files. (Be careful when enabling this option in untrusted environments) 
+  --silent [value]                                           Silent console output from tests. Use 'passed-only' to see logs from failing tests only. 
+  --hideSkippedTests                                         Hide logs for skipped tests 
+  --reporter <name>                                          Specify reporters (default, agent, minimal, blob, verbose, dot, json, tap, tap-flat, junit, tree, hanging-process, github-actions) 
+  --outputFile <filename/-s>                                 Write test results to a file when supporter reporter is also specified, use cac's dot notation for individual outputs of multiple reporters (example: --outputFile.tap=./tap.txt) 
+  --coverage                                                 Enable coverage report. Use '--help --coverage' for more info. 
+  --coverage.provider <name>                                 Select the tool for coverage collection, available values are: "v8", "istanbul" and "custom" 
+  --coverage.enabled                                         Enables coverage collection. Can be overridden using the --coverage CLI option (default: false) 
+  --coverage.include <pattern>                               Files included in coverage as glob patterns. May be specified more than once when using multiple patterns. By default only files covered by tests are included. 
+  --coverage.exclude <pattern>                               Files to be excluded in coverage. May be specified more than once when using multiple extensions. 
+  --coverage.clean                                           Clean coverage results before running tests (default: true) 
+  --coverage.cleanOnRerun                                    Clean coverage report on watch rerun (default: true) 
+  --coverage.reportsDirectory <path>                         Directory to write coverage report to (default: ./coverage) 
+  --coverage.reporter <name>                                 Coverage reporters to use. Visit https://vitest.dev/config/coverage#coverage-reporter) for more information (default: ["text", "html", "clover", "json"] 
+  --coverage.reportOnFailure                                 Generate coverage report even when tests fail (default: false) 
+  --coverage.allowExternal                                   Collect coverage of files outside the project root (default: false) 
+  --coverage.skipFull                                        Do not show files with 100% statement, branch, and function coverage (default: false) 
+  --coverage.thresholds.100                                  Shortcut to set all coverage thresholds to 100 (default: false) 
+  --coverage.thresholds.perFile                              Check thresholds per file. See --coverage.thresholds.lines, --coverage.thresholds.functions, --coverage.thresholds.branches and --coverage.thresholds.statements for the actual thresholds (default: false) 
+  --coverage.thresholds.autoUpdate <boolean|function>        Update threshold values: "lines", "functions", "branches" and "statements" to configuration file when current coverage is above the configured thresholds (default: false) 
+  --coverage.thresholds.lines <number>                       Threshold for lines. Visit https://github.com/istanbuljs/nyc#coverage-thresholds for more information. This option is not available for custom providers 
+  --coverage.thresholds.functions <number>                   Threshold for functions. Visit https://github.com/istanbuljs/nyc#coverage-thresholds for more information. This option is not available for custom providers 
+  --coverage.thresholds.branches <number>                    Threshold for branches. Visit https://github.com/istanbuljs/nyc#coverage-thresholds for more information. This option is not available for custom providers 
+  --coverage.thresholds.statements <number>                  Threshold for statements. Visit https://github.com/istanbuljs/nyc#coverage-thresholds for more information. This option is not available for custom providers 
+  --coverage.ignoreClassMethods <name>                       Array of class method names to ignore for coverage. Visit https://github.com/istanbuljs/nyc#ignoring-methods) for more information. This option is only available for the istanbul providers (default: [] 
+  --coverage.processingConcurrency <number>                  Concurrency limit used when processing the coverage results. (default min between 20 and the number of CPUs) 
+  --coverage.customProviderModule <path>                     Specifies the module name or path for the custom coverage provider module. Visit https://vitest.dev/guide/coverage#custom-coverage-provider for more information. This option is only available for custom providers 
+  --coverage.watermarks.statements <watermarks>              High and low watermarks for statements in the format of <high>,<low> 
+  --coverage.watermarks.lines <watermarks>                   High and low watermarks for lines in the format of <high>,<low> 
+  --coverage.watermarks.branches <watermarks>                High and low watermarks for branches in the format of <high>,<low> 
+  --coverage.watermarks.functions <watermarks>               High and low watermarks for functions in the format of <high>,<low> 
+  --coverage.changed <commit/branch>                         Collect coverage only for files changed since a specified commit or branch (e.g., origin/main or HEAD~1). Inherits value from --changed by default. 
+  --coverage.excludeAfterRemap                               Apply exclusions again after coverage has been remapped to original sources. (default: false) 
+  --coverage.htmlDir <path>                                  Directory of HTML coverage output to be served in UI mode and HTML reporter. 
+  --mode <name>                                              Override Vite mode (default: test or benchmark) 
+  --isolate                                                  Run every test file in isolation. To disable isolation, use --no-isolate (default: true) 
+  --globals                                                  Inject apis globally 
+  --dom                                                      Mock browser API with happy-dom 
+  --browser <name>                                           Run tests in the browser. Equivalent to --browser.enabled (default: false). Use '--help --browser' for more info. 
+  --browser.enabled                                          Run tests in the browser. Equivalent to --browser.enabled (default: false) 
+  --browser.name <name>                                      Run all tests in a specific browser. Some browsers are only available for specific providers (see --browser.provider). 
+  --browser.headless                                         Run the browser in headless mode (i.e. without opening the GUI (Graphical User Interface)). If you are running Vitest in CI, it will be enabled by default (default: process.env.CI) 
+  --browser.api [port]                                       Specify options for the browser API server. Does not affect the --api option. Use '--help --browser.api' for more info. 
+  --browser.api.port [port]                                  Specify server port. Note if the port is already being used, Vite will automatically try the next available port so this may not be the actual port the server ends up listening on. If true will be set to 63315 
+  --browser.api.host [host]                                  Specify which IP addresses the server should listen on. Set this to 0.0.0.0 or true to listen on all addresses, including LAN and public addresses 
+  --browser.api.strictPort                                   Set to true to exit if port is already in use, instead of automatically trying the next available port 
+  --browser.api.allowExec                                    Allow API to execute code. (Be careful when enabling this option in untrusted environments) 
+  --browser.api.allowWrite                                   Allow API to edit files. (Be careful when enabling this option in untrusted environments) 
+  --browser.isolate                                          Run every browser test file in isolation. To disable isolation, use --browser.isolate=false (default: true) 
+  --browser.ui                                               Show Vitest UI when running tests (default: !process.env.CI) 
+  --browser.detailsPanelPosition <position>                  Default position for the details panel in browser mode. Either right (horizontal split) or bottom (vertical split) (default: right) 
+  --browser.fileParallelism                                  Should browser test files run in parallel. Use --browser.fileParallelism=false to disable (default: true) 
+  --browser.connectTimeout <timeout>                         If connection to the browser takes longer, the test suite will fail (default: 60_000) 
+  --browser.trackUnhandledErrors                             Control if Vitest catches uncaught exceptions so they can be reported (default: true) 
+  --browser.trace <mode>                                     Enable trace view mode. Supported: "on", "off", "on-first-retry", "on-all-retries", "retain-on-failure". 
+  --browser.locators <options>                               Options for how locators should be handled by default. Use '--help --browser.locators' for more info. 
+  --browser.locators.exact                                   Should locators match the text exactly by default (default: false) 
+  --pool <pool>                                              Specify pool, if not running in the browser (default: forks) 
+  --execArgv <option>                                        Pass additional arguments to node process when spawning worker_threads or child_process. 
+  --vmMemoryLimit <limit>                                    Memory limit for VM pools. If you see memory leaks, try to tinker this value. 
+  --fileParallelism                                          Should all test files run in parallel. Use --no-file-parallelism to disable (default: true) 
+  --maxWorkers <workers>                                     Maximum number or percentage of workers to run tests in 
+  --environment <name>                                       Specify runner environment, if not running in the browser (default: node) 
+  --passWithNoTests                                          Pass when no tests are found 
+  --logHeapUsage                                             Show the size of heap for each test when running in node 
+  --detectAsyncLeaks                                         Detect asynchronous resources leaking from the test file (default: false) 
+  --allowOnly                                                Allow tests and suites that are marked as only (default: !process.env.CI) 
+  --dangerouslyIgnoreUnhandledErrors                         Ignore any unhandled errors that occur 
+  --shard <shards>                                           Test suite shard to execute in a format of <index>/<count> 
+  --changed [since]                                          Run tests that are affected by the changed files (default: false) 
+  --sequence <options>                                       Options for how tests should be sorted. Use '--help --sequence' for more info. 
+  --sequence.shuffle                                         Run files and tests in a random order. Enabling this option will impact Vitest's cache and have a performance impact. May be useful to find tests that accidentally depend on another run previously (default: false). Use '--help --sequence.shuffle' for more info. 
+  --sequence.shuffle.files                                   Run files in a random order. Long running tests will not start earlier if you enable this option. (default: false) 
+  --sequence.shuffle.tests                                   Run tests in a random order (default: false) 
+  --sequence.concurrent                                      Make tests run in parallel (default: false) 
+  --sequence.seed <seed>                                     Set the randomization seed. This option will have no effect if --sequence.shuffle is falsy. Visit https://en.wikipedia.org/wiki/Random_seed for more information 
+  --sequence.hooks <order>                                   Changes the order in which hooks are executed. Accepted values are: "stack", "list" and "parallel". Visit https://vitest.dev/config/sequence#sequence-hooks) for more information (default: "parallel" 
+  --sequence.setupFiles <order>                              Changes the order in which setup files are executed. Accepted values are: "list" and "parallel". If set to "list", will run setup files in the order they are defined. If set to "parallel", will run setup files in parallel (default: "parallel") 
+  --inspect [[host:]port]                                    Enable Node.js inspector (default: 127.0.0.1:9229) 
+  --inspectBrk [[host:]port]                                 Enable Node.js inspector and break before the test starts 
+  --testTimeout <timeout>                                    Default timeout of a test in milliseconds (default: 5000). Use 0 to disable timeout completely. 
+  --hookTimeout <timeout>                                    Default hook timeout in milliseconds (default: 10000). Use 0 to disable timeout completely. 
+  --bail <number>                                            Stop test execution when given number of tests have failed (default: 0) 
+  --retry <times>                                            Retry the test specific number of times if it fails (default: 0). Use '--help --retry' for more info. 
+  --retry.count <times>                                      Number of times to retry a test if it fails (default: 0) 
+  --retry.delay <ms>                                         Delay in milliseconds between retry attempts (default: 0) 
+  --retry.condition <pattern>                                Regex pattern to match error messages that should trigger a retry. Only errors matching this pattern will cause a retry (default: retry on all errors) 
+  --diff <path>                                              DiffOptions object or a path to a module which exports DiffOptions object. Use '--help --diff' for more info. 
+  --diff.aAnnotation <annotation>                            Annotation for expected lines (default: Expected) 
+  --diff.aIndicator <indicator>                              Indicator for expected lines (default: -) 
+  --diff.bAnnotation <annotation>                            Annotation for received lines (default: Received) 
+  --diff.bIndicator <indicator>                              Indicator for received lines (default: +) 
+  --diff.commonIndicator <indicator>                         Indicator for common lines (default:  ) 
+  --diff.contextLines <lines>                                Number of lines of context to show around each change (default: 5) 
+  --diff.emptyFirstOrLastLinePlaceholder <placeholder>       Placeholder for an empty first or last line (default: "") 
+  --diff.expand                                              Expand all common lines (default: true) 
+  --diff.includeChangeCounts                                 Include comparison counts in diff output (default: false) 
+  --diff.omitAnnotationLines                                 Omit annotation lines from the output (default: false) 
+  --diff.printBasicPrototype                                 Print basic prototype Object and Array (default: true) 
+  --diff.maxDepth <maxDepth>                                 Limit the depth to recurse when printing nested objects (default: 20) 
+  --diff.truncateThreshold <threshold>                       Number of lines to show before and after each change (default: 0) 
+  --diff.truncateAnnotation <annotation>                     Annotation for truncated lines (default: ... Diff result is truncated) 
+  --exclude <glob>                                           Additional file globs to be excluded from test 
+  --expandSnapshotDiff                                       Show full diff when snapshot fails 
+  --disableConsoleIntercept                                  Disable automatic interception of console logging (default: false) 
+  --typecheck                                                Enable typechecking alongside tests (default: false). Use '--help --typecheck' for more info. 
+  --typecheck.enabled                                        Enable typechecking alongside tests (default: false) 
+  --typecheck.only                                           Run only typecheck tests. This automatically enables typecheck (default: false) 
+  --typecheck.checker <name>                                 Specify the typechecker to use. Available values are: "tsc" and "vue-tsc" and a path to an executable (default: "tsc") 
+  --typecheck.allowJs                                        Allow JavaScript files to be typechecked. By default takes the value from tsconfig.json 
+  --typecheck.ignoreSourceErrors                             Ignore type errors from source files 
+  --typecheck.tsconfig <path>                                Path to a custom tsconfig file 
+  --typecheck.spawnTimeout <time>                            Minimum time in milliseconds it takes to spawn the typechecker 
+  --project <name>                                           The name of the project to run if you are using Vitest workspace feature. This can be repeated for multiple projects: --project=1 --project=2. You can also filter projects using wildcards like --project=packages*, and exclude projects with --project=!pattern. 
+  --slowTestThreshold <threshold>                            Threshold in milliseconds for a test or suite to be considered slow (default: 300) 
+  --teardownTimeout <timeout>                                Default timeout of a teardown function in milliseconds (default: 10000) 
+  --cache                                                    Enable cache. Use '--help --cache' for more info. 
+  --maxConcurrency <number>                                  Maximum number of concurrent tests and suites during test file execution (default: 5) 
+  --expect                                                   Configuration options for expect() matches. Use '--help --expect' for more info. 
+  --expect.requireAssertions                                 Require that all tests have at least one assertion 
+  --expect.poll                                              Default options for expect.poll(). Use '--help --expect.poll' for more info. 
+  --expect.poll.interval <interval>                          Poll interval in milliseconds for expect.poll() assertions (default: 50) 
+  --expect.poll.timeout <timeout>                            Poll timeout in milliseconds for expect.poll() assertions (default: 1000) 
+  --printConsoleTrace                                        Always print console stack traces 
+  --includeTaskLocation                                      Collect test and suite locations in the location property 
+  --attachmentsDir <dir>                                     The directory where attachments from context.annotate are stored in (default: .vitest-attachments) 
+  --run                                                      Disable watch mode 
+  --no-color                                                 Removes colors from the console output (default: true)
+  --clearScreen                                              Clear terminal screen when re-running tests during watch mode (default: true) 
+  --configLoader <loader>                                    Use bundle to bundle the config with esbuild or runner (experimental) to process it on the fly. This is only available in vite version 6.1.0 and above. (default: bundle) 
+  --standalone                                               Start Vitest without running tests. Tests will be running only on change. If browser mode is enabled, the UI will be opened automatically. This option is ignored when CLI file filters are passed. (default: false) 
+  --mergeReports [path]                                      Path to a blob reports directory. If this options is used, Vitest won't run any tests, it will only report previously recorded tests 
+  --listTags [type]                                          List all available tags instead of running tests. --list-tags=json will output tags in JSON format, unless there are no tags. 
+  --clearCache                                               Delete all Vitest caches, including experimental.fsModuleCache, without running any tests. This will reduce the performance in the subsequent test run. 
+  --tagsFilter <expression>                                  Run only tests with the specified tags. You can use logical operators && (and), || (or) and ! (not) to create complex expressions, see https://vitest.dev/guide/test-tags#syntax for more information. 
+  --strictTags                                               Should Vitest throw an error if test has a tag that is not defined in the config. (default: true) 
+  --experimental <features>                                  Experimental features.. Use '--help --experimental' for more info. 
+  --experimental.fsModuleCache                               Enable caching of modules on the file system between reruns. 
+  --experimental.importDurations                             Configure import duration collection and CLI display. Note that UI's "Module Graph" tab can always show import breakdown regardless of the print setting.. Use '--help --experimental.importDurations' for more info. 
+  --experimental.importDurations.print <boolean|on-warn>     When to print import breakdown to CLI terminal. Use true to always print, false to never print, or on-warn to print only when imports exceed the warn threshold (default: false). 
+  --experimental.importDurations.limit <number>              Maximum number of imports to collect and display (default: 0, or 10 if print or UI is enabled). 
+  --experimental.importDurations.failOnDanger                Fail the test run if any import exceeds the danger threshold (default: false). 
+  --experimental.importDurations.thresholds                  Duration thresholds in milliseconds for coloring and warnings.. Use '--help --experimental.importDurations.thresholds' for more info. 
+  --experimental.importDurations.thresholds.warn <number>    Warning threshold - imports exceeding this are shown in yellow/orange (default: 100). 
+  --experimental.importDurations.thresholds.danger <number>  Danger threshold - imports exceeding this are shown in red (default: 500). 
+  --experimental.viteModuleRunner                            Control whether Vitest uses Vite's module runner to run the code or fallback to the native import. (default: true) 
+  --experimental.nodeLoader                                  Controls whether Vitest will use Node.js Loader API to process in-source or mocked files. This has no effect if viteModuleRunner is enabled. Disabling this can increase performance. (default: true) 
+  --experimental.vcsProvider <path>                          Custom provider for detecting changed files. (default: git) 
+  --experimental.preParse                                    Parse test specifications before running them. This will apply .only flag and test name pattern across all files without running them. (default: false) 
+  -h, --help                                                 Display this message 
+
+exec
+/bin/bash -lc 'pnpm --filter @skb/block-pdf test -- --configLoader native --experimental.viteModuleRunner=false' in /home/weiyi/selfKnowledgeBaseWeb
+ exited 1 in 1443ms:
+
+> @skb/block-pdf@0.0.0 test /home/weiyi/selfKnowledgeBaseWeb/packages/block-pdf
+> vitest run "--configLoader" "native" "--experimental.viteModuleRunner=false"
+
+
+ RUN  v4.1.5 /home/weiyi/selfKnowledgeBaseWeb/packages/block-pdf
+
+ ❯ src/__tests__/byte-equivalence.test.tsx (0 test)
+ ❯ src/__tests__/core.test.ts (0 test)
+ ❯ src/__tests__/ui-default.test.ts (0 test)
+ ❯ src/__tests__/ssr-render.test.ts (0 test)
+ ❯ src/__tests__/registry-integration.test.ts (0 test)
+
+⎯⎯⎯⎯⎯⎯ Failed Suites 5 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/__tests__/byte-equivalence.test.tsx [ src/__tests__/byte-equivalence.test.tsx ]
+TypeError: Unknown file extension ".tsx" for /home/weiyi/selfKnowledgeBaseWeb/packages/block-pdf/src/__tests__/byte-equivalence.test.tsx
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/5]⎯
+
+ FAIL  src/__tests__/core.test.ts [ src/__tests__/core.test.ts ]
+Error: Cannot find module '/home/weiyi/selfKnowledgeBaseWeb/packages/block-pdf/src/core/core-definition' imported from /home/weiyi/selfKnowledgeBaseWeb/packages/block-pdf/src/__tests__/core.test.ts
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/5]⎯
+
+ FAIL  src/__tests__/registry-integration.test.ts [ src/__tests__/registry-integration.test.ts ]
+Error: Cannot find module '/home/weiyi/selfKnowledgeBaseWeb/packages/block-pdf/src/core/core-definition' imported from /home/weiyi/selfKnowledgeBaseWeb/packages/block-pdf/src/__tests__/registry-integration.test.ts
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/5]⎯
+
+ FAIL  src/__tests__/ssr-render.test.ts [ src/__tests__/ssr-render.test.ts ]
+Error: Cannot find module '/home/weiyi/selfKnowledgeBaseWeb/packages/block-pdf/src/ui-default/render-pdf' imported from /home/weiyi/selfKnowledgeBaseWeb/packages/block-pdf/src/__tests__/ssr-render.test.ts
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/5]⎯
+
+ FAIL  src/__tests__/ui-default.test.ts [ src/__tests__/ui-default.test.ts ]
+Error: Cannot find module '/home/weiyi/selfKnowledgeBaseWeb/packages/block-pdf/src/core/core-definition' imported from /home/weiyi/selfKnowledgeBaseWeb/packages/block-pdf/src/__tests__/ui-default.test.ts
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/5]⎯
+
+
+ Test Files  5 failed (5)
+      Tests  no tests
+   Start at  17:40:17
+   Duration  577ms (transform 0ms, setup 0ms, import 0ms, tests 0ms, environment 1.58s)
+
+/home/weiyi/selfKnowledgeBaseWeb/packages/block-pdf:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @skb/block-pdf@0.0.0 test: `vitest run "--configLoader" "native" "--experimental.viteModuleRunner=false"`
+Exit status 1
+
+exec
+/bin/bash -lc 'pnpm --filter @skb/block-pdf test -- --configLoader native --pool threads' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 1500ms:
+
+> @skb/block-pdf@0.0.0 test /home/weiyi/selfKnowledgeBaseWeb/packages/block-pdf
+> vitest run "--configLoader" "native" "--pool" "threads"
+
+
+ RUN  v4.1.5 /home/weiyi/selfKnowledgeBaseWeb/packages/block-pdf
+
+
+ Test Files  5 passed (5)
+      Tests  33 passed (33)
+   Start at  17:40:22
+   Duration  677ms (transform 316ms, setup 0ms, import 951ms, tests 47ms, environment 1.36s)
+
+
+exec
+/bin/bash -lc 'rg -n "''^'"\\s*it\\(\" packages/block-pdf/src/__tests__/byte-equivalence.test.tsx packages/block-pdf/src/__tests__/ssr-render.test.ts packages/block-pdf/src/__tests__/*.test.ts" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "nl -ba packages/block-pdf/src/__tests__/ssr-render.test.ts | sed -n '1,130p'" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "rg -n \"\\"'$'"\\{["'^}]+'"\\}#page=\" packages/block-pdf/src --glob '"'!**/__tests__/**'"'" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "rg -n \"#page=|iframeSrc|renderPdf\" packages/block-pdf/src --glob '"'!**/__tests__/**'"'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 133ms:
+packages/block-pdf/src/__tests__/ui-default.test.ts:21:  it('exposes the BlockUIDefinition shape with coreName + uiId="default"', () => {
+packages/block-pdf/src/__tests__/ui-default.test.ts:27:  it('EditorView and RenderView identity matches Pdf.tsx exports', () => {
+packages/block-pdf/src/__tests__/ui-default.test.ts:32:  it('re-exports renderPdf as the single authority callable from ./ui-default', () => {
+packages/block-pdf/src/__tests__/ui-default.test.ts:41:  it('exposes PDF_TOKENS witness for design-token surface bindings', () => {
+packages/block-pdf/src/__tests__/ssr-render.test.ts:26:  it('produces iframeSrc with #page=N fragment for default page=1', () => {
+packages/block-pdf/src/__tests__/ssr-render.test.ts:34:  it('produces iframeSrc with #page=N for arbitrary page', () => {
+packages/block-pdf/src/__tests__/ssr-render.test.ts:41:  it('preserves src verbatim (no encoding / normalization in render layer)', () => {
+packages/block-pdf/src/__tests__/ssr-render.test.ts:49:  it('handles missing-file-style src (browser viewer surfaces its own empty state)', () => {
+packages/block-pdf/src/__tests__/ssr-render.test.ts:60:  it('different page on same src produces different iframeSrc (page is part of URL fragment)', () => {
+packages/block-pdf/src/__tests__/ssr-render.test.ts:68:  it('strips pre-existing fragment from src before appending #page= (R2-1 hazard)', () => {
+packages/block-pdf/src/__tests__/ssr-render.test.ts:80:  it('handles src with empty fragment ("foo.pdf#") cleanly', () => {
+packages/block-pdf/src/__tests__/registry-integration.test.ts:19:  it('registerCore + getCore round-trip preserves identity', () => {
+packages/block-pdf/src/__tests__/registry-integration.test.ts:25:  it('registerUI + getUI round-trip preserves identity', () => {
+packages/block-pdf/src/__tests__/registry-integration.test.ts:33:  it('default UI lookup returns first-registered (pdfUiDefault uiId="default")', () => {
+packages/block-pdf/src/__tests__/registry-integration.test.ts:41:  it('registerUI before registerCore throws Unknown core', () => {
+packages/block-pdf/src/__tests__/registry-integration.test.ts:48:  it('getCore returns undefined for unknown name', () => {
+packages/block-pdf/src/__tests__/core.test.ts:6:  it('accepts valid src + page + searchable', () => {
+packages/block-pdf/src/__tests__/core.test.ts:16:  it('applies defaults for page=1 and searchable=false', () => {
+packages/block-pdf/src/__tests__/core.test.ts:24:  it('rejects empty src (z.string().min(1))', () => {
+packages/block-pdf/src/__tests__/core.test.ts:30:  it('rejects non-integer / out-of-range page', () => {
+packages/block-pdf/src/__tests__/core.test.ts:39:  it('rejects unknown keys (.strict)', () => {
+packages/block-pdf/src/__tests__/core.test.ts:45:  it('exports correct shape (BlockCoreDefinition contract)', () => {
+packages/block-pdf/src/__tests__/core.test.ts:53:  it('emits mdxJsxFlowElement with String(boolean) + String(number) attrs', () => {
+packages/block-pdf/src/__tests__/core.test.ts:69:  it('throws on contract drift (propsSchema.parse rejects bad attrs)', () => {
+packages/block-pdf/src/__tests__/core.test.ts:84:  it('parses string-form attrs into validated TiptapNode', () => {
+packages/block-pdf/src/__tests__/core.test.ts:101:  it('handles boolean shorthand <Pdf searchable> (attr.value === null)', () => {
+packages/block-pdf/src/__tests__/core.test.ts:115:  it('rejects non-true/false searchable string', () => {
+packages/block-pdf/src/__tests__/core.test.ts:129:  it('rejects non-numeric page string', () => {
+packages/block-pdf/src/__tests__/core.test.ts:143:  it('rejects mismatched mdxComponent name', () => {
+packages/block-pdf/src/__tests__/ssr-render.test.ts:26:  it('produces iframeSrc with #page=N fragment for default page=1', () => {
+packages/block-pdf/src/__tests__/ssr-render.test.ts:34:  it('produces iframeSrc with #page=N for arbitrary page', () => {
+packages/block-pdf/src/__tests__/ssr-render.test.ts:41:  it('preserves src verbatim (no encoding / normalization in render layer)', () => {
+packages/block-pdf/src/__tests__/ssr-render.test.ts:49:  it('handles missing-file-style src (browser viewer surfaces its own empty state)', () => {
+packages/block-pdf/src/__tests__/ssr-render.test.ts:60:  it('different page on same src produces different iframeSrc (page is part of URL fragment)', () => {
+packages/block-pdf/src/__tests__/ssr-render.test.ts:68:  it('strips pre-existing fragment from src before appending #page= (R2-1 hazard)', () => {
+packages/block-pdf/src/__tests__/ssr-render.test.ts:80:  it('handles src with empty fragment ("foo.pdf#") cleanly', () => {
+packages/block-pdf/src/__tests__/byte-equivalence.test.tsx:47:  it('PdfRenderView SSR markup matches renderPdf descriptor verbatim', () => {
+packages/block-pdf/src/__tests__/byte-equivalence.test.tsx:62:  it('PdfRenderView strips fragment from src in iframeSrc (R2-1 regression)', () => {
+packages/block-pdf/src/__tests__/byte-equivalence.test.tsx:69:  it('Pdf.astro source imports renderPdf authority + uses descriptor bindings', () => {
+packages/block-pdf/src/__tests__/byte-equivalence.test.tsx:93:  it('Pdf.tsx source imports renderPdf authority + uses descriptor bindings (sister sentinel)', () => {
+
+ succeeded in 131ms:
+     1	import { describe, expect, it } from 'vitest';
+     2	import { renderPdf } from '../ui-default/render-pdf';
+     3	
+     4	/**
+     5	 * Byte-equivalence corpus for renderPdf authority (ADR-0006 item #5).
+     6	 *
+     7	 * `renderPdf` is the single import point for iframe URL + data-attr
+     8	 * construction in this package; both Pdf.tsx (React/NodeView path) and
+     9	 * Pdf.astro (SSR path) call it. This suite exercises a representative input
+    10	 * corpus to:
+    11	 *   1. catch silent regressions if a future edit re-inlines the URL builder
+    12	 *      (drift detector for the algorithm-replication audit);
+    13	 *   2. assert PDF Open Parameters fragment shape (`#page=N`) — required for
+    14	 *      browser-native PDF viewer to honor initial page;
+    15	 *   3. cover the missing-file fallback path: even with a bogus `src`, the
+    16	 *      descriptor is structurally valid so the wrapper container + iframe
+    17	 *      shell render and the browser's native viewer surfaces its own
+    18	 *      empty-state UI.
+    19	 *
+    20	 * Browser-native PDF viewer is the runtime authority — these tests do NOT
+    21	 * pin the exact rendered PDF visuals (browsers diverge); they assert
+    22	 * structural invariants (iframeSrc fragment, data-attr shape, identity of
+    23	 * src round-trip).
+    24	 */
+    25	describe('renderPdf (iframe SSR authority)', () => {
+    26	  it('produces iframeSrc with #page=N fragment for default page=1', () => {
+    27	    const desc = renderPdf('/files/paper.pdf', 1, false);
+    28	    expect(desc.iframeSrc).toBe('/files/paper.pdf#page=1');
+    29	    expect(desc.dataAttrs['data-block']).toBe('pdf');
+    30	    expect(desc.dataAttrs['data-page']).toBe('1');
+    31	    expect(desc.dataAttrs['data-searchable']).toBe('false');
+    32	  });
+    33	
+    34	  it('produces iframeSrc with #page=N for arbitrary page', () => {
+    35	    const desc = renderPdf('https://example.com/doc.pdf', 42, true);
+    36	    expect(desc.iframeSrc).toBe('https://example.com/doc.pdf#page=42');
+    37	    expect(desc.dataAttrs['data-page']).toBe('42');
+    38	    expect(desc.dataAttrs['data-searchable']).toBe('true');
+    39	  });
+    40	
+    41	  it('preserves src verbatim (no encoding / normalization in render layer)', () => {
+    42	    // src normalization is propsSchema's job; renderPdf is downstream and must
+    43	    // not double-normalize. Test pinning string identity.
+    44	    const desc = renderPdf('/files/My Doc.pdf', 1, false);
+    45	    expect(desc.src).toBe('/files/My Doc.pdf');
+    46	    expect(desc.iframeSrc).toBe('/files/My Doc.pdf#page=1');
+    47	  });
+    48	
+    49	  it('handles missing-file-style src (browser viewer surfaces its own empty state)', () => {
+    50	    // Even with bogus src, the descriptor is structurally valid — Pdf.tsx /
+    51	    // Pdf.astro both render an iframe shell + container; the browser's native
+    52	    // PDF viewer renders its own empty-doc UI on the inside. Wave 2 invariant:
+    53	    // never silent-fallback to alt text; always show the iframe shell so users
+    54	    // see the failure.
+    55	    const desc = renderPdf('/does-not-exist.pdf', 1, false);
+    56	    expect(desc.iframeSrc).toBe('/does-not-exist.pdf#page=1');
+    57	    expect(desc.dataAttrs['data-block']).toBe('pdf');
+    58	  });
+    59	
+    60	  it('different page on same src produces different iframeSrc (page is part of URL fragment)', () => {
+    61	    const a = renderPdf('/files/paper.pdf', 1, false);
+    62	    const b = renderPdf('/files/paper.pdf', 5, false);
+    63	    expect(a.iframeSrc).not.toBe(b.iframeSrc);
+    64	    expect(a.dataAttrs['data-page']).toBe('1');
+    65	    expect(b.dataAttrs['data-page']).toBe('5');
+    66	  });
+    67	
+    68	  it('strips pre-existing fragment from src before appending #page= (R2-1 hazard)', () => {
+    69	    // `src` may carry an external fragment (e.g. anchor in a publishing CMS:
+    70	    // "doc.pdf#section=intro"). PDF Open Parameters URLs are not mergeable —
+    71	    // only one `#…` segment per URL, and `page=N` must be authoritative for
+    72	    // the chosen page. Anything else would yield `doc.pdf#section=intro#page=3`
+    73	    // which the browser parses as fragment="section=intro#page=3" and ignores
+    74	    // the page= directive entirely.
+    75	    const desc = renderPdf('doc.pdf#section=intro', 3, false);
+    76	    expect(desc.iframeSrc).toBe('doc.pdf#page=3');
+    77	    expect(desc.src).toBe('doc.pdf#section=intro'); // src verbatim per contract
+    78	  });
+    79	
+    80	  it('handles src with empty fragment ("foo.pdf#") cleanly', () => {
+    81	    const desc = renderPdf('foo.pdf#', 1, false);
+    82	    expect(desc.iframeSrc).toBe('foo.pdf#page=1');
+    83	  });
+    84	});
+
+ exited 1 in 158ms:
+ succeeded in 148ms:
+packages/block-pdf/src/ui-default/index.ts:3:export { renderPdf } from './render-pdf';
+packages/block-pdf/src/ui-default/Pdf.astro:2:import { renderPdf } from './render-pdf';
+packages/block-pdf/src/ui-default/Pdf.astro:13:// （ADR-0006 item #5 algorithm replication：authority = renderPdf；不允许在
+packages/block-pdf/src/ui-default/Pdf.astro:15:const desc = renderPdf(src, page, searchable);
+packages/block-pdf/src/ui-default/Pdf.astro:23:  <iframe src={desc.iframeSrc} title={`PDF: ${desc.src}`} loading="lazy"></iframe>
+packages/block-pdf/src/ui-default/render-pdf.ts:4: * `renderPdf` from here — never inline iframe `src` construction or container
+packages/block-pdf/src/ui-default/render-pdf.ts:11: *   viewer; the `#page=N` fragment is part of the
+packages/block-pdf/src/ui-default/render-pdf.ts:26: * - `iframeSrc`: `${baseSrc}#page=${page}` — PDF Open Parameters fragment.
+packages/block-pdf/src/ui-default/render-pdf.ts:28: *   `<Pdf src="doc.pdf#section=intro" page={3} />` yields `doc.pdf#page=3`
+packages/block-pdf/src/ui-default/render-pdf.ts:39:  readonly iframeSrc: string;
+packages/block-pdf/src/ui-default/render-pdf.ts:52:  return `${base}#page=${page}`;
+packages/block-pdf/src/ui-default/render-pdf.ts:55:export const renderPdf = (
+packages/block-pdf/src/ui-default/render-pdf.ts:63:  iframeSrc: buildIframeSrc(src, page),
+packages/block-pdf/src/ui-default/Pdf.tsx:3:import { renderPdf } from './render-pdf';
+packages/block-pdf/src/ui-default/Pdf.tsx:22:  const desc = renderPdf(props.src, props.page, props.searchable);
+packages/block-pdf/src/ui-default/Pdf.tsx:30:        src={desc.iframeSrc}
+
+exec
+/bin/bash -lc 'git status --short' in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc 'git diff --stat -- packages/block-pdf packages/block-foundation/CONTRACT.md packages/block-foundation/RFC.md agent-contract.md CLAUDE.md .claude/agents/render-block-eng.md docs/decisions/ADR-0006-asymmetry-audit-checklist.md' in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "git diff -- packages/block-pdf/src/ui-default/render-pdf.ts packages/block-pdf/src/__tests__/byte-equivalence.test.tsx packages/block-pdf/CONTRACT.md | sed -n '1,260p'" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "git diff -- packages/block-foundation/CONTRACT.md packages/block-foundation/RFC.md agent-contract.md CLAUDE.md .claude/agents/render-block-eng.md | sed -n '1,260p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 128ms:
+ .claude/agents/render-block-eng.md    | 3 ++-
+ agent-contract.md                     | 3 ++-
+ packages/block-foundation/CONTRACT.md | 2 +-
+ packages/block-foundation/RFC.md      | 3 ++-
+ 4 files changed, 7 insertions(+), 4 deletions(-)
+
+ succeeded in 138ms:
+ M .claude/agents/render-block-eng.md
+ M agent-contract.md
+ M packages/block-foundation/CONTRACT.md
+ M packages/block-foundation/RFC.md
+ M pnpm-lock.yaml
+ M tsconfig.json
+?? .agents/
+?? .claude/scheduled_tasks.lock
+?? .claude/skills/web-design-guidelines
+?? .codex
+?? .codex-runs/
+?? apps/site/.astro/
+?? docs/audits/codex-runs/2026-04-30-task-A1-code-review.txt
+?? docs/audits/codex-runs/2026-04-30-task-A1-pr-gate.txt
+?? docs/audits/codex-runs/2026-04-30-task-A2-code-review.txt
+?? docs/audits/codex-runs/2026-04-30-task-A2-pr-gate-r2.txt
+?? docs/audits/codex-runs/2026-04-30-task-A2-pr-gate-r3.txt
+?? docs/audits/codex-runs/2026-04-30-task-A2-pr-gate.txt
+?? docs/audits/codex-runs/2026-04-30-task-A2-pr-reviewer.txt
+?? docs/audits/codex-runs/2026-04-30-task-B1-code-review.txt
+?? docs/audits/codex-runs/2026-04-30-task-B2-code-review-r2.txt
+?? docs/audits/codex-runs/2026-04-30-task-B2-code-review.txt
+?? docs/audits/codex-runs/2026-04-30-task-B2-pr-gate-r2.txt
+?? docs/audits/codex-runs/2026-04-30-task-B2-pr-gate.txt
+?? docs/audits/codex-runs/2026-04-30-task-B2-pr-reviewer.txt
+?? docs/audits/codex-runs/2026-04-30-task-C1-pr-gate.txt
+?? docs/audits/codex-runs/2026-04-30-task-C2-pr-gate-r2.txt
+?? docs/audits/codex-runs/2026-04-30-task-C2-pr-gate.txt
+?? docs/audits/codex-runs/2026-04-30-task-C3-code-review.txt
+?? docs/audits/codex-runs/2026-04-30-task-C3-codex-block-generator.txt
+?? docs/audits/codex-runs/2026-04-30-task-C4-code-review.txt
+?? docs/audits/codex-runs/2026-04-30-task-C4-codex-block-generator.txt
+?? docs/audits/codex-runs/2026-04-30-task-D1-pr-gate-r4.txt
+?? docs/audits/codex-runs/2026-04-30-task-D2-code-review.txt
+?? docs/audits/codex-runs/2026-04-30-task-D2-pr-gate-r2.txt
+?? docs/audits/codex-runs/2026-04-30-task-D2-pr-gate.txt
+?? docs/audits/codex-runs/2026-04-30-task-D2-pr-reviewer-r2.txt
+?? docs/audits/codex-runs/2026-04-30-task-D2-pr-reviewer.txt
+?? docs/audits/codex-runs/2026-04-30-task-E1-code-review.txt
+?? docs/audits/codex-runs/2026-04-30-task-E1-pr-gate.txt
+?? docs/audits/codex-runs/2026-04-30-task-FIX-B2-code-review.txt
+?? docs/audits/codex-runs/2026-04-30-task-FIX-B2-r2-code-review.txt
+?? docs/audits/codex-runs/2026-04-30-task-FIX-I1-code-review.txt
+?? docs/audits/codex-runs/2026-04-30-task-I1-code-review.txt
+?? opencode.json
+?? packages/block-code/
+?? packages/block-image/
+?? packages/block-jupyter/
+?? packages/block-pdf/
+?? skills-lock.json
+
+ succeeded in 164ms:
+diff --git a/.claude/agents/render-block-eng.md b/.claude/agents/render-block-eng.md
+index e9675c7..604880c 100644
+--- a/.claude/agents/render-block-eng.md
++++ b/.claude/agents/render-block-eng.md
+@@ -14,7 +14,8 @@ role: 写 math / pdf 的 block 实现
+ 
+ ## Description
+ 
+-你负责 block-math（KaTeX）与 block-pdf（react-pdf + 文本提取）。
++你负责 block-math（KaTeX）与 block-pdf（iframe + 浏览器原生 PDF viewer，
++build-time 文本提取走 scripts/extract-pdf-text.ts）。
+ block-pdf 复杂度高，独立 hand-craft，不让 codex 仿造。
+ 
+ ## Related
+diff --git a/agent-contract.md b/agent-contract.md
+index 2d7ed96..fb747ec 100644
+--- a/agent-contract.md
++++ b/agent-contract.md
+@@ -106,7 +106,8 @@ agents:
+     role: 写 math / pdf 的 block 实现
+     permissions: [read_repo, edit_packages_block_render, write_tests]
+     description: |
+-      你负责 block-math（KaTeX）与 block-pdf（react-pdf + 文本提取）。
++      你负责 block-math（KaTeX）与 block-pdf（iframe + 浏览器原生 PDF viewer，
++      build-time 文本提取走 scripts/extract-pdf-text.ts）。
+       block-pdf 复杂度高，独立 hand-craft，不让 codex 仿造。
+ 
+   - name: viz-block-eng
+diff --git a/packages/block-foundation/CONTRACT.md b/packages/block-foundation/CONTRACT.md
+index a37509d..5d0f47b 100644
+--- a/packages/block-foundation/CONTRACT.md
++++ b/packages/block-foundation/CONTRACT.md
+@@ -11,7 +11,7 @@
+ - `BlockKind = 'prose' | 'component' | 'render' | 'viz'` （四分类，Wave 2 由 2→4 additive 扩展，ratified by [ADR-0009](../../docs/decisions/ADR-0009-block-kind-union-expansion.md)）
+   - `'prose'` — Wave 1 default for headless prose blocks (无 MDX 组件，由 `proseExtensions` 提供 markdown 行为)
+   - `'component'` — Wave 1 for MDX-component blocks（block-callout / block-code / block-image — Track C simple-block-eng）
+-  - `'render'` — **Wave 2 NEW** for hand-crafted render blocks consuming external runtime authority（block-math KaTeX / block-pdf react-pdf — Track D render-block-eng）
++  - `'render'` — **Wave 2 NEW** for hand-crafted render blocks consuming external runtime authority（block-math KaTeX / block-pdf iframe-based browser PDF viewer — Track D render-block-eng）
+   - `'viz'` — **Wave 2 NEW** for visualization blocks consuming heavy runtime libs（block-jupyter Pyodide / block-nn-viz TensorFlow.js / block-agent-flow React Flow — Track E viz-block-eng / kernel consumer）
+ - `proseExtensions` — Tiptap 扩展数组，提供全部 markdown 行为
+ 
+diff --git a/packages/block-foundation/RFC.md b/packages/block-foundation/RFC.md
+index c264e79..3f636dc 100644
+--- a/packages/block-foundation/RFC.md
++++ b/packages/block-foundation/RFC.md
+@@ -53,7 +53,8 @@ Notes that map directly to `BlockCoreDefinition` fields in
+   simple-block-eng owns `'component'` (block-callout / block-code / block-image —
+   composable JSX with rich children); Track D render-block-eng owns `'render'`
+   (block-math / block-pdf — visual rendering of a pure declarative input via
+-  external runtime authority like KaTeX or react-pdf); Track E viz-block-eng /
++  external runtime authority like KaTeX or the browser's native PDF viewer
++  embedded via iframe); Track E viz-block-eng /
+   kernel consumer owns `'viz'` (block-jupyter / block-nn-viz / block-agent-flow —
+   interactive visualization with heavy runtime libs). `'prose'` is reserved for
+   behaviors covered by `proseExtensions` and is closed to new entries (CONTRACT
+
+ succeeded in 177ms:
+codex
+The scoped package tests pass in this read-only session when Vitest avoids the bundle temp path: `pnpm --filter @skb/block-pdf test -- --configLoader native --pool threads` reports `33 passed (33)`. `typecheck`, `lint`, and `build` all exited 0.
+exec
+/bin/bash -lc "nl -ba packages/block-pdf/src/core/core-definition.ts | sed -n '1,180p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	import { defineCore, type BlockCoreDefinition } from '@skb/block-foundation';
+     2	import { z } from 'zod';
+     3	
+     4	const propsSchema = z
+     5	  .object({
+     6	    src: z.string().min(1),
+     7	    page: z.number().int().min(1).default(1),
+     8	    searchable: z.boolean().default(false),
+     9	  })
+    10	  .strict();
+    11	
+    12	export const pdfCore: BlockCoreDefinition<typeof propsSchema> = defineCore({
+    13	  name: 'pdf',
+    14	  kind: 'render',
+    15	  propsSchema,
+    16	  mdxComponent: 'Pdf',
+    17	});
+
+exec
+/bin/bash -lc "nl -ba packages/block-pdf/src/core/serialize.ts | sed -n '1,220p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	import { pdfCore } from './core-definition';
+     2	
+     3	/**
+     4	 * MDX 序列化 stub。完整实现等 Wave 3 mdx-bridge routing table 落地（RFC §5）：
+     5	 * mdx-bridge 拿到 TiptapNode{type:'pdf'} 时按 mdxComponent 字符串路由到本函数。
+     6	 *
+     7	 * Wave 2 阶段仅暴露稳定签名；mdx-bridge 还未引用此 export，所以 stub 抛错足够。
+     8	 */
+     9	export interface PdfTiptapNode {
+    10	  readonly type: 'pdf';
+    11	  readonly attrs: {
+    12	    readonly src: string;
+    13	    readonly page: number;
+    14	    readonly searchable: boolean;
+    15	  };
+    16	}
+    17	
+    18	/**
+    19	 * `value` is `string | null` per mdast-util-mdx-jsx convention:
+    20	 *   - `<Pdf searchable>` (boolean shorthand) → attribute with `value: null`
+    21	 *   - `<Pdf searchable="true">` / `<Pdf searchable="false">` → string
+    22	 *   - `<Pdf src="...">` → string (always)
+    23	 *   - `<Pdf page="2">` → string (numeric coerced on parse)
+    24	 * `parsePdf` handles boolean shorthand for `searchable`; `serializePdf` always
+    25	 * emits string form (`String(boolean)` / `String(number)`) for round-trip
+    26	 * stability.
+    27	 */
+    28	export interface PdfMdastJsxElement {
+    29	  readonly type: 'mdxJsxFlowElement';
+    30	  readonly name: string;
+    31	  readonly attributes: ReadonlyArray<{
+    32	    readonly type: 'mdxJsxAttribute';
+    33	    readonly name: string;
+    34	    readonly value: string | null;
+    35	  }>;
+    36	  readonly children: readonly unknown[];
+    37	}
+    38	
+    39	export function serializePdf(node: PdfTiptapNode): PdfMdastJsxElement {
+    40	  const validated = pdfCore.propsSchema.parse(node.attrs);
+    41	  return {
+    42	    type: 'mdxJsxFlowElement',
+    43	    name: pdfCore.mdxComponent,
+    44	    attributes: [
+    45	      { type: 'mdxJsxAttribute', name: 'src', value: validated.src },
+    46	      { type: 'mdxJsxAttribute', name: 'page', value: String(validated.page) },
+    47	      {
+    48	        type: 'mdxJsxAttribute',
+    49	        name: 'searchable',
+    50	        value: String(validated.searchable),
+    51	      },
+    52	    ],
+    53	    children: [],
+    54	  };
+    55	}
+
+exec
+/bin/bash -lc "nl -ba packages/block-pdf/src/ui-default/pdf.ui.ts | sed -n '1,180p'" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "nl -ba packages/block-pdf/src/core/parse.ts | sed -n '1,260p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	import { pdfCore } from './core-definition';
+     2	import type { PdfMdastJsxElement, PdfTiptapNode } from './serialize';
+     3	
+     4	/**
+     5	 * MDX 解析 stub。Wave 3 mdx-bridge 在 mdastBlockToTiptap 看到
+     6	 * mdxJsxFlowElement{name:'Pdf'} 时按 mdxComponent 路由到本函数（RFC §5）。
+     7	 *
+     8	 * `searchable` 三种 MDX 形式 (mdast-util-mdx-jsx convention):
+     9	 *   - `<Pdf searchable>` (boolean shorthand)        → attr.value === null  → true
+    10	 *   - `<Pdf searchable="true">`                     → attr.value === "true" → true
+    11	 *   - `<Pdf searchable="false">`                    → attr.value === "false"→ false
+    12	 * 任何其他形式（数字 / 非 true/false 字符串）throw — 不静默 false。
+    13	 *
+    14	 * `page` 字符串走 Number coerce → propsSchema.parse 校验 int.min(1)。非整数 / NaN
+    15	 * 由 zod 抛错，保持 explicit-error invariant。
+    16	 *
+    17	 * 其他 attr (如 src) 一律期望 string；null shorthand 仅 searchable 适用。
+    18	 */
+    19	export function parsePdf(node: PdfMdastJsxElement): PdfTiptapNode {
+    20	  if (node.name !== pdfCore.mdxComponent) {
+    21	    throw new Error(
+    22	      `parsePdf: expected mdxComponent="${pdfCore.mdxComponent}", got "${node.name}"`,
+    23	    );
+    24	  }
+    25	  const rawProps: Record<string, string | number | boolean> = {};
+    26	  for (const attr of node.attributes) {
+    27	    if (attr.name === 'searchable') {
+    28	      if (attr.value === null) {
+    29	        rawProps[attr.name] = true;
+    30	      } else if (attr.value === 'true' || attr.value === 'false') {
+    31	        rawProps[attr.name] = attr.value === 'true';
+    32	      } else {
+    33	        throw new Error(
+    34	          `parsePdf: invalid searchable attribute value: ${JSON.stringify(attr.value)}`,
+    35	        );
+    36	      }
+    37	    } else if (attr.name === 'page') {
+    38	      if (attr.value === null) {
+    39	        throw new Error(
+    40	          `parsePdf: attribute "page" must have a string value (got null shorthand; only "searchable" supports boolean shorthand)`,
+    41	        );
+    42	      }
+    43	      const numeric = Number(attr.value);
+    44	      if (!Number.isFinite(numeric)) {
+    45	        throw new Error(
+    46	          `parsePdf: page attribute must be a finite number, got ${JSON.stringify(attr.value)}`,
+    47	        );
+    48	      }
+    49	      rawProps[attr.name] = numeric;
+    50	    } else {
+    51	      if (attr.value === null) {
+    52	        throw new Error(
+    53	          `parsePdf: attribute "${attr.name}" must have a string value (got null shorthand; only "searchable" supports boolean shorthand)`,
+    54	        );
+    55	      }
+    56	      rawProps[attr.name] = attr.value;
+    57	    }
+    58	  }
+    59	  const validated = pdfCore.propsSchema.parse(rawProps);
+    60	  return {
+    61	    type: 'pdf',
+    62	    attrs: {
+    63	      src: validated.src,
+    64	      page: validated.page,
+    65	      searchable: validated.searchable,
+    66	    },
+    67	  };
+    68	}
+
+ succeeded in 0ms:
+     1	import { defineUI } from '@skb/block-foundation';
+     2	import { pdfCore } from '../core/core-definition';
+     3	import { PdfEditorView, PdfRenderView } from './Pdf';
+     4	
+     5	/**
+     6	 * 不显式 `BlockUIDefinition<typeof pdfCore.propsSchema>` 标注 —— 让 defineUI
+     7	 * 从 EditorView/RenderView 的实参推 generic，落到 ZodTypeAny 等价的 inference
+     8	 * 默认。理由：BlockRegistry.registerUI 接 BlockUIDefinition (默认 ZodTypeAny)，
+     9	 * generic 显式 narrow 后在 registerUI 处会因 ComponentType 的 contravariance +
+    10	 * exactOptionalPropertyTypes 报 TS2345。foundation 自身的 registry.test.ts 也
+    11	 * 走 inference 模式。Mirrors block-math/ui-default/math.ui.ts pattern.
+    12	 */
+    13	export const pdfUiDefault = defineUI({
+    14	  coreName: pdfCore.name,
+    15	  uiId: 'default',
+    16	  EditorView: PdfEditorView,
+    17	  RenderView: PdfRenderView,
+    18	});
+
+exec
+/bin/bash -lc 'rg -n "react-pdf" AGENTS.md CLAUDE.md .claude/agents/render-block-eng.md agent-contract.md packages/block-foundation/CONTRACT.md packages/block-foundation/RFC.md' in /home/weiyi/selfKnowledgeBaseWeb
+ exited 1 in 0ms:
+  ✓ Inspect block-pdf implementation, tests, and docs touched by R2
+  ✓ Verify the six requested D2 audit points in source and tests
+  ✓ Run block-pdf scoped test, typecheck, lint, and build commands
+  → Deliver PASS/FAIL with concrete findings and verification evidence
+codex
+Verdict: PASS. No blocking findings for D2/R2.
+
+Verified:
+- Fragment stripping is correct in [render-pdf.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/block-pdf/src/ui-default/render-pdf.ts:47): `doc.pdf#section` becomes `doc.pdf#page=N`.
+- The specified contract/generated surfaces have no `react-pdf` wording.
+- [byte-equivalence.test.tsx](/home/weiyi/selfKnowledgeBaseWeb/packages/block-pdf/src/__tests__/byte-equivalence.test.tsx:47) has 4 cases covering React SSR, fragment regression, Pdf.astro AST checks, and Pdf.tsx sentinel checks.
+- Production `packages/block-pdf/src` has no `${...}#page=` template literal outside `render-pdf.ts`.
+- [CONTRACT.md](/home/weiyi/selfKnowledgeBaseWeb/packages/block-pdf/CONTRACT.md:60) documents `renderPdf single authority`, [URL fragment authority](/home/weiyi/selfKnowledgeBaseWeb/packages/block-pdf/CONTRACT.md:71), and [Wave 3 sandbox deferral](/home/weiyi/selfKnowledgeBaseWeb/packages/block-pdf/CONTRACT.md:119).
+- ADR-0006 8-point audit applied; applicable items #5, #6, #8 pass.
+
+Verification:
+- Exact `pnpm --filter @skb/block-pdf test` is blocked by this Codex read-only sandbox before tests run because Vite tries to write `.vite-temp`.
+- Sandbox-compatible equivalent passed: `pnpm --filter @skb/block-pdf test -- --configLoader native --pool threads` → `33 passed (33)`.
+- `pnpm --filter @skb/block-pdf typecheck` → pass.
+- `pnpm --filter @skb/block-pdf lint` → pass.
+- `pnpm --filter @skb/block-pdf build` → pass.
+2026-04-30T21:41:52.755645Z ERROR codex_core::session: failed to record rollout items: thread 019de052-d570-75b1-88c0-5cf906a414a8 not found
+tokens used
+84,557
+Verdict: PASS. No blocking findings for D2/R2.
+
+Verified:
+- Fragment stripping is correct in [render-pdf.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/block-pdf/src/ui-default/render-pdf.ts:47): `doc.pdf#section` becomes `doc.pdf#page=N`.
+- The specified contract/generated surfaces have no `react-pdf` wording.
+- [byte-equivalence.test.tsx](/home/weiyi/selfKnowledgeBaseWeb/packages/block-pdf/src/__tests__/byte-equivalence.test.tsx:47) has 4 cases covering React SSR, fragment regression, Pdf.astro AST checks, and Pdf.tsx sentinel checks.
+- Production `packages/block-pdf/src` has no `${...}#page=` template literal outside `render-pdf.ts`.
+- [CONTRACT.md](/home/weiyi/selfKnowledgeBaseWeb/packages/block-pdf/CONTRACT.md:60) documents `renderPdf single authority`, [URL fragment authority](/home/weiyi/selfKnowledgeBaseWeb/packages/block-pdf/CONTRACT.md:71), and [Wave 3 sandbox deferral](/home/weiyi/selfKnowledgeBaseWeb/packages/block-pdf/CONTRACT.md:119).
+- ADR-0006 8-point audit applied; applicable items #5, #6, #8 pass.
+
+Verification:
+- Exact `pnpm --filter @skb/block-pdf test` is blocked by this Codex read-only sandbox before tests run because Vite tries to write `.vite-temp`.
+- Sandbox-compatible equivalent passed: `pnpm --filter @skb/block-pdf test -- --configLoader native --pool threads` → `33 passed (33)`.
+- `pnpm --filter @skb/block-pdf typecheck` → pass.
+- `pnpm --filter @skb/block-pdf lint` → pass.
+- `pnpm --filter @skb/block-pdf build` → pass.

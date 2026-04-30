@@ -1,0 +1,255 @@
+═══════════════════════════════════════════════════════════════════════════
+  Task D2 R2 — block-pdf — Claude pr-reviewer re-verify (ADR-0007 D2 row 1)
+═══════════════════════════════════════════════════════════════════════════
+Date:       2026-04-30
+Reviewer:   pr-reviewer-d2 (Claude Opus 4.7 1M ctx)
+Bundle:     packages/block-pdf/ + 4 cross-doc files (R2 fixes for pr-gate
+            cross-package findings)
+R1 verdict: APPROVE for in-package; pr-gate then surfaced 4 cross-package
+            blockers → R2 round
+Test run:   pnpm --filter @skb/block-pdf test → 33/33 PASS (5 files, 580ms)
+            pnpm --filter @skb/block-pdf typecheck → clean
+            pnpm --filter @skb/block-pdf lint → clean
+Repo state: full-repo typecheck shows packages/block-jupyter errors from
+            concurrent E1 WIP — out of D2 scope, ignored per team-lead
+            instruction
+───────────────────────────────────────────────────────────────────────────
+
+VERDICT: APPROVE
+
+───────────────────────────────────────────────────────────────────────────
+1. R2-1 — render-pdf.ts fragment-strip + 2 regression tests
+───────────────────────────────────────────────────────────────────────────
+PASS.
+
+  • render-pdf.ts:47-53 introduces buildIframeSrc(src, page) which calls
+    `src.split('#')[0]` to drop any pre-existing fragment before appending
+    `#page=N`. Inline construction at the previous renderPdf factory site
+    is replaced by the helper invocation (line 63).
+
+  • Output-shape contract docblock at lines 26-30 explicitly documents the
+    behavior: src verbatim retained on `desc.src`, fragment stripped only
+    inside `iframeSrc`. Justification cited (PDF Open Parameters fragments
+    are not mergeable; only one `#…` per URL).
+
+  • New ssr-render.test.ts cases:
+      - line 68-78: `'doc.pdf#section=intro' + page=3 → 'doc.pdf#page=3'`
+        with src verbatim preserved
+      - line 80-83: empty-fragment edge `'foo.pdf#' + page=1 → 'foo.pdf#page=1'`
+    Both green; ssr-render.test.ts now 7-row corpus (5 original + 2 new).
+
+  • Cross-check: byte-equivalence.test.tsx:62-67 also asserts the
+    fragment-strip behavior at the SSR-render layer (PdfRenderView
+    rendering `doc.pdf#section=intro` emits `src="doc.pdf#page=4"`).
+    Defense in depth — both authority-level + consumer-level coverage.
+
+───────────────────────────────────────────────────────────────────────────
+2. R2-2 — cross-doc react-pdf → iframe wording sync
+───────────────────────────────────────────────────────────────────────────
+PASS — all 3 authority files + 1 generated artifact updated; CLAUDE.md
+N/A (verified below).
+
+  Authority diffs (verified via `git diff HEAD`):
+  • packages/block-foundation/CONTRACT.md:14
+      OLD: "block-pdf react-pdf"
+      NEW: "block-pdf iframe-based browser PDF viewer"
+
+  • packages/block-foundation/RFC.md:55-57
+      OLD: "external runtime authority like KaTeX or react-pdf"
+      NEW: "external runtime authority like KaTeX or the browser's native
+            PDF viewer embedded via iframe"
+
+  • agent-contract.md:109-110 (description block, render-block-eng)
+      OLD: "block-pdf（react-pdf + 文本提取）"
+      NEW: "block-pdf（iframe + 浏览器原生 PDF viewer，build-time 文本提取
+            走 scripts/extract-pdf-text.ts）"
+
+  Generated artifact:
+  • .claude/agents/render-block-eng.md description block updated to match
+    agent-contract.md (verified — diff is the same wording).
+
+  CLAUDE.md scope check (per ADR-0006 #8 sub-form B staging-vs-working-tree
+  audit):
+  • CLAUDE.md only carries the **role** field of each agent in the
+    Tier 2/T1 Worker table (line 80: "写 math / pdf 的 block 实现").
+    The description block is NOT propagated to CLAUDE.md.
+  • `grep -n "react-pdf" CLAUDE.md` → no matches (exit 1).
+  • `grep -n "iframe + 浏览器" CLAUDE.md` → no matches.
+  • Therefore CLAUDE.md regeneration is correctly a no-op for R2-2; the
+    team-lead R2 brief mentioning "regenerated outputs (CLAUDE.md +
+    .claude/agents/render-block-eng.md)" applies only when the changed
+    field is one CLAUDE.md projects (e.g., role:); description: is not
+    one of those, so no CLAUDE.md diff is expected.
+
+  Out-of-scope stale react-pdf occurrences (verified to be out of R2
+  scope per team-lead's explicit list):
+  • docs/decisions/ADR-0001-stack-selection.md:38 — frozen ADR-0001
+    record of the original Phase 0 decision; ADR text is historical and
+    must not be retroactively rewritten.
+  • docs/decisions/ADR-0009-block-kind-union-expansion.md:27 — historical
+    "physical structure" comment block; ADR-0009 itself authorizes
+    kind='render' and is forward-document.
+  • docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:107,
+    1238 — frozen spec.
+  • docs/superpowers/plans/2026-04-29-phase-0-scaffolding.md:662 +
+    2026-04-30-phase-1-wave-2-implementation.md:68/1049/1056 — frozen
+    plan documents; the divergence is captured in CONTRACT.md and the
+    R2-2 forward authority files. Wave 2 close ceremony Z1 task is the
+    designated venue for retrospective spec/plan sync (ADR-0009 D3
+    "process improvement" already calls this out).
+
+  No stale react-pdf wording in any active forward-authority file.
+
+───────────────────────────────────────────────────────────────────────────
+3. R2-3 — byte-equivalence.test.tsx (react-dom SSR + Pdf.astro AST sentinels)
+───────────────────────────────────────────────────────────────────────────
+PASS — two-tier strategy correctly closes the ADR-0006 #5 algorithm-
+replication audit gap that pr-gate flagged in R1.
+
+  • New test file packages/block-pdf/src/__tests__/byte-equivalence.test.tsx
+    (103 lines, 4 cases). Vitest config picks up *.test.tsx already
+    (vitest.config.ts:5 `include: ['src/**/*.test.ts', 'src/**/*.test.tsx']`).
+
+  • New devDeps in package.json:29-32 — react-dom + @types/react-dom (^18.3.0)
+    matched in pnpm-lock.yaml:344-355. Stays in devDeps only — no
+    runtime react-dom dep, ADR-0008 D1 dead-dep policy preserved.
+
+  • Strategy docblock (lines 8-37) is honest about limits:
+      - Tier 1 (runtime SSR): renderToStaticMarkup of <PdfRenderView/>
+        asserts data-block / data-page / data-searchable / iframeSrc /
+        loading / title attrs match the renderPdf descriptor verbatim.
+      - Tier 2 (static AST regex): readFileSync of Pdf.astro source +
+        7 regex assertions confirm renderPdf import + descriptor bindings
+        + loading=lazy + drift sentinels (forbid `${...}#page=` inline
+        template literals).
+      - Documented gap: not a literal byte-compare of compiled Astro
+        output vs React SSR output (would require Astro toolchain in
+        vitest). Wave 3 mdx-doctor PR closes this via apps/site build
+        round-trip fixture — sister approach to the documented Wave 3
+        deferrals already pattern in this repo.
+
+  • Sentinel coverage:
+      - Pdf.astro: import sentinel + invocation sentinel + 3 dataAttr
+        bindings + iframeSrc + loading + 2 drift sentinels (line 89-90
+        forbid `${src}#page=` AND `\`${...}#page=` template literals).
+      - Pdf.tsx: symmetric sentinel set (line 99-101) — locks the
+        Pdf.tsx call site too. ssr-render.test.ts already exercises
+        renderPdf at the authority layer; this Pdf.tsx sentinel locks
+        the consumer-side wiring.
+
+  • Path resolution: PDF_ASTRO_PATH / PDF_TSX_PATH use `resolve('src/...')`
+    relative to vitest's cwd (packages/block-pdf/), avoiding import.meta.url
+    quirks under happy-dom. Comment at lines 40-44 explains rationale.
+
+  • Live execution: 4/4 PASS. The test correctly matches the actual
+    Pdf.astro structure (verified by inspection — line 2 import, line 15
+    invocation, lines 19-21 dataAttrs, line 23 iframeSrc + lazy).
+
+───────────────────────────────────────────────────────────────────────────
+4. R2-4 — iframe sandbox documented as Wave 3 deferred
+───────────────────────────────────────────────────────────────────────────
+PASS.
+
+  • CONTRACT.md lines 119-135 add new section "Wave 3 defense-in-depth:
+    iframe sandbox（pending）" with three substantive components:
+      a. Wave 2 rationale — browser PDF viewer is trusted (parity with
+         D1 KaTeX trust model), same-origin /files/*.pdf source, sandbox
+         would break legitimate viewer features (popup download,
+         fullscreen, form submission).
+      b. Wave 3 plan — three concrete steps (evaluate
+         `sandbox="allow-same-origin allow-popups allow-forms"` baseline,
+         CSP coordination, stricter sandbox subset for cross-origin src).
+      c. Cross-link to codex 5.5 R2-4 informational + Claude
+         pr-reviewer-d2 non-blocking (this verdict).
+
+  • Section structurally consistent with existing "Wave 3 mdx-bridge
+    integration（pending）" + "Wave 3 search-index 集成（pending）"
+    deferral sections in the same file. Sister-doc parity satisfied.
+
+  • Forward-compat consumers section (line 137-143) untouched —
+    documenting deferral via dedicated section keeps the Wave 2 surface
+    contract clean.
+
+───────────────────────────────────────────────────────────────────────────
+5. ADR-0006 8-point asymmetry re-audit (changes only)
+───────────────────────────────────────────────────────────────────────────
+   #5 Algorithm + runtime constant replication audit:
+       PASS (upgraded from R1) — buildIframeSrc fragment-strip behavior is
+       now the single authoritative algorithm for iframeSrc construction;
+       both ssr-render.test.ts and byte-equivalence.test.tsx exercise it
+       (authority + consumer levels). The drift sentinels in
+       byte-equivalence.test.tsx:89-90,101 specifically forbid the inline
+       `${...}#page=` pattern — the exact regression mode pr-gate flagged
+       in R1.
+
+   #6 Sister-file documentation audit:
+       PASS — block-foundation/CONTRACT.md:14 + RFC.md:55-57 +
+       agent-contract.md:109-110 + .claude/agents/render-block-eng.md
+       all use consistent "iframe + browser PDF viewer" terminology.
+       block-pdf/CONTRACT.md:6-7 already led with this wording in R1.
+       Authority + consumers aligned.
+
+   #8 Authority-document → generated/consumed surface audit:
+       PASS — `agent-contract.md` (authority) + `.claude/agents/
+       render-block-eng.md` (generated consumer) both staged with the
+       same wording diff. CLAUDE.md correctly unaffected (no description-
+       to-CLAUDE.md projection — verified via grep). pnpm-lock.yaml:329-359
+       correctly tracks new react-dom + @types/react-dom devDeps
+       (sub-form C lockfile-as-generated-artifact compliant). All
+       generated outputs match authority intent.
+
+   Items #1, #2, #3, #4, #7 unchanged from R1 verdict (PASS or N/A).
+
+───────────────────────────────────────────────────────────────────────────
+6. File sizes (spec §3.6 gates: 200/300/500)
+───────────────────────────────────────────────────────────────────────────
+PASS — largest file is core.test.ts at 153 lines; new byte-equivalence.test.tsx
+at 103 lines; render-pdf.ts grew from 57 → 69 lines (still ≤200). No file
+crosses the 200-line target. No splits required.
+
+───────────────────────────────────────────────────────────────────────────
+7. Regression risk
+───────────────────────────────────────────────────────────────────────────
+PASS — none.
+
+  • R2-1 fragment-strip is purely additive: empty-fragment src
+    ('foo.pdf#') + URL src + path-only src + verbatim-src cases all still
+    pass (ssr-render.test.ts cases 1-5 unchanged + cases 6-7 added).
+  • byte-equivalence.test.tsx is a new regression-detector net; it has no
+    runtime side effect on Pdf.tsx or Pdf.astro behavior.
+  • Cross-doc wording change does not alter any code path or schema.
+  • CONTRACT.md sandbox section is documentation-only; no surface change.
+  • pnpm-lock.yaml change is devDep-only addition (react-dom for the
+    test); runtime closure of @skb/block-pdf is unchanged.
+  • D1 (block-math) untouched in this round.
+
+───────────────────────────────────────────────────────────────────────────
+DECISION
+───────────────────────────────────────────────────────────────────────────
+APPROVE — D2 R2 bundle is ready for git-operator commit.
+
+All 4 R2 fixes verified:
+  R2-1 ✓ buildIframeSrc fragment-strip + 2 ssr-render regression tests +
+        cross-tier coverage in byte-equivalence test
+  R2-2 ✓ block-foundation/CONTRACT.md + RFC.md + agent-contract.md +
+        .claude/agents/render-block-eng.md (CLAUDE.md correctly N/A
+        per its projection scope)
+  R2-3 ✓ byte-equivalence.test.tsx with documented two-tier strategy
+        (runtime SSR + AST sentinels), 4/4 PASS, drift sentinels in
+        place for future edits to Pdf.astro / Pdf.tsx
+  R2-4 ✓ CONTRACT.md Wave 3 sandbox section with rationale + plan +
+        cross-link to this review
+
+Test execution: 33/33 PASS in 580ms across 5 files.
+Typecheck/lint clean (block-jupyter unrelated E1 WIP errors out of scope).
+
+ADR-0006 #5 algorithm-replication gap (the load-bearing pr-gate finding
+in R1) is now closed: buildIframeSrc is the single authority, both
+consumer files are AST-locked against drift, and a regression corpus
+exercises both fragment-strip + the wider iframe shape.
+
+Next step: git-operator → bundle commit under explicit-file-list 4-step
+protocol. Both gates (Codex pr-gate R2 + Claude pr-reviewer R2) now
+authorize the commit per ADR-0007 D2 row 1.
+
+═══════════════════════════════════════════════════════════════════════════

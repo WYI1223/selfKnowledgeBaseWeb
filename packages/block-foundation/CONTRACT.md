@@ -11,7 +11,7 @@
 - `BlockKind = 'prose' | 'component' | 'render' | 'viz'` （四分类，Wave 2 由 2→4 additive 扩展，ratified by [ADR-0009](../../docs/decisions/ADR-0009-block-kind-union-expansion.md)）
   - `'prose'` — Wave 1 default for headless prose blocks (无 MDX 组件，由 `proseExtensions` 提供 markdown 行为)
   - `'component'` — Wave 1 for MDX-component blocks（block-callout / block-code / block-image — Track C simple-block-eng）
-  - `'render'` — **Wave 2 NEW** for hand-crafted render blocks consuming external runtime authority（block-math KaTeX / block-pdf react-pdf — Track D render-block-eng）
+  - `'render'` — **Wave 2 NEW** for hand-crafted render blocks consuming external runtime authority（block-math KaTeX / block-pdf iframe-based browser PDF viewer — Track D render-block-eng）
   - `'viz'` — **Wave 2 NEW** for visualization blocks consuming heavy runtime libs（block-jupyter Pyodide / block-nn-viz TensorFlow.js / block-agent-flow React Flow — Track E viz-block-eng / kernel consumer）
 - `proseExtensions` — Tiptap 扩展数组，提供全部 markdown 行为
 

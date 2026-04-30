@@ -106,7 +106,8 @@ agents:
     role: 写 math / pdf 的 block 实现
     permissions: [read_repo, edit_packages_block_render, write_tests]
     description: |
-      你负责 block-math（KaTeX）与 block-pdf（react-pdf + 文本提取）。
+      你负责 block-math（KaTeX）与 block-pdf（iframe + 浏览器原生 PDF viewer，
+      build-time 文本提取走 scripts/extract-pdf-text.ts）。
       block-pdf 复杂度高，独立 hand-craft，不让 codex 仿造。
 
   - name: viz-block-eng

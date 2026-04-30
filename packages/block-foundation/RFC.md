@@ -53,7 +53,8 @@ Notes that map directly to `BlockCoreDefinition` fields in
   simple-block-eng owns `'component'` (block-callout / block-code / block-image —
   composable JSX with rich children); Track D render-block-eng owns `'render'`
   (block-math / block-pdf — visual rendering of a pure declarative input via
-  external runtime authority like KaTeX or react-pdf); Track E viz-block-eng /
+  external runtime authority like KaTeX or the browser's native PDF viewer
+  embedded via iframe); Track E viz-block-eng /
   kernel consumer owns `'viz'` (block-jupyter / block-nn-viz / block-agent-flow —
   interactive visualization with heavy runtime libs). `'prose'` is reserved for
   behaviors covered by `proseExtensions` and is closed to new entries (CONTRACT

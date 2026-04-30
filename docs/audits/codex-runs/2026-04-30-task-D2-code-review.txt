@@ -1,0 +1,2279 @@
+Reading prompt from stdin...
+OpenAI Codex v0.125.0 (research preview)
+--------
+workdir: /home/weiyi/selfKnowledgeBaseWeb
+model: gpt-5.3-codex-spark
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: xhigh
+reasoning summaries: none
+session id: 019de046-f59d-79c3-93d3-de38e472a3e6
+--------
+user
+You are codex 5.3-spark code-reviewer. Audit packages/block-pdf/ for Wave 2 Task #17 (D2: block-pdf by render-block-eng).
+
+D2 is the SECOND kind='render' block (D1 block-math is the precedent at `a30aaad`). Sister-block reference: packages/block-math/.
+
+Bundle: 20 new files in packages/block-pdf/ + tsconfig.json reference (+1 line) + lockfile delta.
+
+DESIGN DEVIATION ACCEPTED BY ORCHESTRATOR: instead of react-pdf dep, uses iframe-based browser-native PDF viewer pattern. Rationale (per render-block-eng-d2 report):
+- Astro SSR can't run react-pdf (browser worker + canvas APIs needed)
+- Single-source `renderPdf` between Pdf.tsx + Pdf.astro requires byte-equivalent output (ADR-0006 #5)
+- Iframe approach: both render `<div data-block="pdf"><iframe src={iframeSrc} loading="lazy" /></div>` with byte-equivalent attributes
+- ADR-0008 D1 dead-dep policy: declare only what's imported
+
+Verify:
+1. pdfCore.kind === 'render' (ratified by ADR-0009).
+2. propsSchema z.object({src, page, searchable}).strict().
+3. Headless purity: src/core has zero React/Tiptap/iframe imports.
+4. renderPdf single-source (not duplicated between Pdf.tsx and Pdf.astro) — ADR-0006 #5.
+5. ssr-render.test.ts byte-equal corpus including missing-file fallback.
+6. parse.ts handles MDX boolean shorthand for `searchable` + numeric `page` coerce.
+7. Sister-doc CONTRACT.md aligned with block-math/CONTRACT.md (5-entry public surface, design-tokens witness, kind='render' invariant + ADR-0009 cross-link, runtime authority documentation, consumer-import obligation).
+8. ADR-0008 D1 dead-dep: package.json deps match imports (no react-pdf, no pdfjs-dist; design-tokens type-only OK).
+9. tsconfig.json reference added.
+10. pnpm-lock.yaml has packages/block-pdf importer.
+11. ADR-0006 8-point asymmetry audit application.
+
+Run pnpm --filter @skb/block-pdf test (expect 27/27) + typecheck/lint/build.
+
+Verdict: PASS or FAIL with line-numbered issues.
+
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the vendored bubblewrap in the meantime.
+codex
+I’ll audit Wave 2 Task #17 by reading the `packages/block-pdf` implementation, its tests, contracts, and lockfile references, plus the sister `block-math` contract baseline, then run the requested command set. I’ll focus on exact line-based findings for each numbered verification item and return PASS/FAIL with concrete references.
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && rg --files packages/block-pdf && echo '---' && rg --files packages/block-math && echo '---' && ls -1 tsconfig.json packages" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+packages/block-pdf/tsconfig.json
+packages/block-pdf/src/index.ts
+packages/block-pdf/src/ui-default/pdf.ui.ts
+packages/block-pdf/src/ui-default/index.ts
+packages/block-pdf/src/ui-default/Pdf.astro
+packages/block-pdf/src/ui-default/pdf.css
+packages/block-pdf/src/ui-default/pdf-tokens.ts
+packages/block-pdf/src/ui-default/render-pdf.ts
+packages/block-pdf/src/ui-default/Pdf.tsx
+packages/block-pdf/src/core/parse.ts
+packages/block-pdf/vitest.config.ts
+packages/block-pdf/src/core/index.ts
+packages/block-pdf/src/core/core-definition.ts
+packages/block-pdf/src/core/serialize.ts
+packages/block-pdf/package.json
+packages/block-pdf/CONTRACT.md
+packages/block-pdf/src/__tests__/ui-default.test.ts
+packages/block-pdf/src/__tests__/core.test.ts
+packages/block-pdf/src/__tests__/registry-integration.test.ts
+packages/block-pdf/src/__tests__/ssr-render.test.ts
+---
+packages/block-math/tsconfig.json
+packages/block-math/vitest.config.ts
+packages/block-math/src/index.ts
+packages/block-math/CONTRACT.md
+packages/block-math/src/ui-default/math.ui.ts
+packages/block-math/src/ui-default/index.ts
+packages/block-math/src/ui-default/math.css
+packages/block-math/src/ui-default/Math.astro
+packages/block-math/src/ui-default/math-tokens.ts
+packages/block-math/src/ui-default/render-math.ts
+packages/block-math/src/ui-default/Math.tsx
+packages/block-math/src/core/parse.ts
+packages/block-math/src/core/index.ts
+packages/block-math/src/core/core-definition.ts
+packages/block-math/src/core/serialize.ts
+packages/block-math/package.json
+packages/block-math/src/__tests__/ui-default.test.ts
+packages/block-math/src/__tests__/ssr-render.test.ts
+packages/block-math/src/__tests__/core.test.ts
+packages/block-math/src/__tests__/registry-integration.test.ts
+---
+tsconfig.json
+
+packages:
+agent-tools
+block-callout
+block-code
+block-foundation
+block-image
+block-jupyter
+block-math
+block-pdf
+content-types
+design-tokens
+editor-commands
+editor-toolbar
+kernel-adapter
+kernel-pyodide
+kernel-registry
+mdx-bridge
+
+codex
+I’ve located the relevant package trees. Next I’m checking all `block-pdf` core/UI files, its tests, `CONTRACT.md`, `package.json`, plus `tsconfig.json`/`pnpm-lock.yaml` references and the sister `block-math` contract for parity checks.
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && nl -ba packages/block-pdf/src/core/core-definition.ts && echo '---' && nl -ba packages/block-pdf/src/core/parse.ts && echo '---' && nl -ba packages/block-pdf/src/ui-default/render-pdf.ts" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && nl -ba packages/block-pdf/src/ui-default/Pdf.tsx && echo '---' && nl -ba packages/block-pdf/src/ui-default/Pdf.astro && echo '---' && nl -ba packages/block-pdf/src/ui-default/index.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	import type { BlockViewProps } from '@skb/block-foundation';
+     2	import { pdfCore } from '../core/core-definition';
+     3	import { renderPdf } from './render-pdf';
+     4	
+     5	/**
+     6	 * PdfView 接受 inferred props ({ src, page, searchable }) — 与
+     7	 * `pdfCore.propsSchema` 的 ZodInfer 等价。函数式组件而非
+     8	 * `ComponentType<BlockViewProps<typeof ...>>` 显式标注，避免 generic 变 invariant
+     9	 * 在 BlockRegistry.registerUI 处与 ZodTypeAny widening 冲突（exactOptionalPropertyTypes 触发）。
+    10	 *
+    11	 * iframe 渲染走 `./render-pdf.ts` 单一权威，与 Pdf.astro SSR path 同源
+    12	 * （ADR-0006 item #5 algorithm replication）。浏览器原生 PDF viewer 是 runtime
+    13	 * authority；空 src 由 Pdf.astro 的 fallback box 处理（在 Astro layer，因
+    14	 * propsSchema.src.min(1) 已先 throw 在 build 前）。
+    15	 *
+    16	 * `searchable: true` 是 Wave 3 build-time search-index 提示
+    17	 * （consumer = scripts/extract-pdf-text.ts），runtime no-op。
+    18	 */
+    19	export function PdfView({
+    20	  props,
+    21	}: BlockViewProps<typeof pdfCore.propsSchema>): JSX.Element {
+    22	  const desc = renderPdf(props.src, props.page, props.searchable);
+    23	  return (
+    24	    <div
+    25	      data-block={desc.dataAttrs['data-block']}
+    26	      data-page={desc.dataAttrs['data-page']}
+    27	      data-searchable={desc.dataAttrs['data-searchable']}
+    28	    >
+    29	      <iframe
+    30	        src={desc.iframeSrc}
+    31	        title={`PDF: ${desc.src}`}
+    32	        loading="lazy"
+    33	      />
+    34	    </div>
+    35	  );
+    36	}
+    37	
+    38	export const PdfEditorView = PdfView;
+    39	export const PdfRenderView = PdfView;
+---
+     1	---
+     2	import { renderPdf } from './render-pdf';
+     3	
+     4	interface Props {
+     5	  src: string;
+     6	  page?: number;
+     7	  searchable?: boolean;
+     8	}
+     9	
+    10	const { src, page = 1, searchable = false } = Astro.props;
+    11	
+    12	// PDF 渲染走 `./render-pdf.ts` 单一权威，与 Pdf.tsx 同源
+    13	// （ADR-0006 item #5 algorithm replication：authority = renderPdf；不允许在
+    14	// 此文件内 inline iframe src 构造 + URL 拼接）。
+    15	const desc = renderPdf(src, page, searchable);
+    16	---
+    17	
+    18	<div
+    19	  data-block={desc.dataAttrs['data-block']}
+    20	  data-page={desc.dataAttrs['data-page']}
+    21	  data-searchable={desc.dataAttrs['data-searchable']}
+    22	>
+    23	  <iframe src={desc.iframeSrc} title={`PDF: ${desc.src}`} loading="lazy"></iframe>
+    24	</div>
+---
+     1	export { pdfUiDefault } from './pdf.ui';
+     2	export { PdfEditorView, PdfRenderView } from './Pdf';
+     3	export { renderPdf } from './render-pdf';
+     4	export type { PdfRenderDescriptor } from './render-pdf';
+     5	export { PDF_TOKENS } from './pdf-tokens';
+     6	export type { PdfTokens } from './pdf-tokens';
+
+ succeeded in 0ms:
+     1	import { defineCore, type BlockCoreDefinition } from '@skb/block-foundation';
+     2	import { z } from 'zod';
+     3	
+     4	const propsSchema = z
+     5	  .object({
+     6	    src: z.string().min(1),
+     7	    page: z.number().int().min(1).default(1),
+     8	    searchable: z.boolean().default(false),
+     9	  })
+    10	  .strict();
+    11	
+    12	export const pdfCore: BlockCoreDefinition<typeof propsSchema> = defineCore({
+    13	  name: 'pdf',
+    14	  kind: 'render',
+    15	  propsSchema,
+    16	  mdxComponent: 'Pdf',
+    17	});
+---
+     1	import { pdfCore } from './core-definition';
+     2	import type { PdfMdastJsxElement, PdfTiptapNode } from './serialize';
+     3	
+     4	/**
+     5	 * MDX 解析 stub。Wave 3 mdx-bridge 在 mdastBlockToTiptap 看到
+     6	 * mdxJsxFlowElement{name:'Pdf'} 时按 mdxComponent 路由到本函数（RFC §5）。
+     7	 *
+     8	 * `searchable` 三种 MDX 形式 (mdast-util-mdx-jsx convention):
+     9	 *   - `<Pdf searchable>` (boolean shorthand)        → attr.value === null  → true
+    10	 *   - `<Pdf searchable="true">`                     → attr.value === "true" → true
+    11	 *   - `<Pdf searchable="false">`                    → attr.value === "false"→ false
+    12	 * 任何其他形式（数字 / 非 true/false 字符串）throw — 不静默 false。
+    13	 *
+    14	 * `page` 字符串走 Number coerce → propsSchema.parse 校验 int.min(1)。非整数 / NaN
+    15	 * 由 zod 抛错，保持 explicit-error invariant。
+    16	 *
+    17	 * 其他 attr (如 src) 一律期望 string；null shorthand 仅 searchable 适用。
+    18	 */
+    19	export function parsePdf(node: PdfMdastJsxElement): PdfTiptapNode {
+    20	  if (node.name !== pdfCore.mdxComponent) {
+    21	    throw new Error(
+    22	      `parsePdf: expected mdxComponent="${pdfCore.mdxComponent}", got "${node.name}"`,
+    23	    );
+    24	  }
+    25	  const rawProps: Record<string, string | number | boolean> = {};
+    26	  for (const attr of node.attributes) {
+    27	    if (attr.name === 'searchable') {
+    28	      if (attr.value === null) {
+    29	        rawProps[attr.name] = true;
+    30	      } else if (attr.value === 'true' || attr.value === 'false') {
+    31	        rawProps[attr.name] = attr.value === 'true';
+    32	      } else {
+    33	        throw new Error(
+    34	          `parsePdf: invalid searchable attribute value: ${JSON.stringify(attr.value)}`,
+    35	        );
+    36	      }
+    37	    } else if (attr.name === 'page') {
+    38	      if (attr.value === null) {
+    39	        throw new Error(
+    40	          `parsePdf: attribute "page" must have a string value (got null shorthand; only "searchable" supports boolean shorthand)`,
+    41	        );
+    42	      }
+    43	      const numeric = Number(attr.value);
+    44	      if (!Number.isFinite(numeric)) {
+    45	        throw new Error(
+    46	          `parsePdf: page attribute must be a finite number, got ${JSON.stringify(attr.value)}`,
+    47	        );
+    48	      }
+    49	      rawProps[attr.name] = numeric;
+    50	    } else {
+    51	      if (attr.value === null) {
+    52	        throw new Error(
+    53	          `parsePdf: attribute "${attr.name}" must have a string value (got null shorthand; only "searchable" supports boolean shorthand)`,
+    54	        );
+    55	      }
+    56	      rawProps[attr.name] = attr.value;
+    57	    }
+    58	  }
+    59	  const validated = pdfCore.propsSchema.parse(rawProps);
+    60	  return {
+    61	    type: 'pdf',
+    62	    attrs: {
+    63	      src: validated.src,
+    64	      page: validated.page,
+    65	      searchable: validated.searchable,
+    66	    },
+    67	  };
+    68	}
+---
+     1	/**
+     2	 * Single authority for PDF rendering across this package (ADR-0006 item #5).
+     3	 * Pdf.tsx (React/NodeView path) and Pdf.astro (SSR path) MUST both import
+     4	 * `renderPdf` from here — never inline iframe `src` construction or container
+     5	 * markup with their own logic. ssr-render.test.ts exercises a corpus to detect
+     6	 * drift if a future edit accidentally re-inlines the URL builder.
+     7	 *
+     8	 * Why iframe (not react-pdf) for both paths:
+     9	 * - Browser-native PDF viewer is the runtime authority (no in-package canvas
+    10	 *   rasterizer). All major browsers handle `application/pdf` via embedded
+    11	 *   viewer; the `#page=N` fragment is part of the
+    12	 *   [PDF Open Parameters](https://opensource.adobe.com/dc-acrobat-sdk-docs/library/pdfsdk/pdfopenparams.html)
+    13	 *   convention recognized by Chrome/Edge/Firefox/Safari.
+    14	 * - Astro SSR cannot run react-pdf (it requires a browser worker thread +
+    15	 *   canvas APIs). Iframe yields byte-equivalent SSR + client output, satisfying
+    16	 *   the D1 single-source invariant pattern.
+    17	 * - Failure mode is graceful: missing/inaccessible `src` shows the browser's
+    18	 *   own empty-doc UI; the wrapper container retains a stable shell + bordered
+    19	 *   viewport via design-token CSS for the empty-state error path.
+    20	 *
+    21	 * Output shape contract:
+    22	 * - `src`: original `propsSchema.src` (URL or path) verbatim
+    23	 * - `page`: validated 1-based int (propsSchema floor = 1)
+    24	 * - `searchable`: build-time hint (Wave 3 search-index integration); runtime
+    25	 *   no-op in Wave 2
+    26	 * - `iframeSrc`: `${src}#page=${page}` — PDF Open Parameters fragment
+    27	 * - `dataAttrs`: stable `data-*` attribute map for Tag wrapper, used by
+    28	 *   pdf.css selectors. Keys are kebab-case strings ready for set:html /
+    29	 *   spread.
+    30	 */
+    31	export interface PdfRenderDescriptor {
+    32	  readonly src: string;
+    33	  readonly page: number;
+    34	  readonly searchable: boolean;
+    35	  readonly iframeSrc: string;
+    36	  readonly dataAttrs: {
+    37	    readonly 'data-block': 'pdf';
+    38	    readonly 'data-page': string;
+    39	    readonly 'data-searchable': string;
+    40	  };
+    41	}
+    42	
+    43	export const renderPdf = (
+    44	  src: string,
+    45	  page: number,
+    46	  searchable: boolean,
+    47	): PdfRenderDescriptor => ({
+    48	  src,
+    49	  page,
+    50	  searchable,
+    51	  iframeSrc: `${src}#page=${page}`,
+    52	  dataAttrs: {
+    53	    'data-block': 'pdf',
+    54	    'data-page': String(page),
+    55	    'data-searchable': String(searchable),
+    56	  },
+    57	});
+
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && nl -ba packages/block-pdf/src/core/index.ts && echo '---' && nl -ba packages/block-pdf/src/core/serialize.ts && echo '---' && nl -ba packages/block-pdf/src/core/index.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	export { pdfCore } from './core-definition';
+     2	export { serializePdf } from './serialize';
+     3	export { parsePdf } from './parse';
+     4	export type { PdfTiptapNode, PdfMdastJsxElement } from './serialize';
+---
+     1	import { pdfCore } from './core-definition';
+     2	
+     3	/**
+     4	 * MDX 序列化 stub。完整实现等 Wave 3 mdx-bridge routing table 落地（RFC §5）：
+     5	 * mdx-bridge 拿到 TiptapNode{type:'pdf'} 时按 mdxComponent 字符串路由到本函数。
+     6	 *
+     7	 * Wave 2 阶段仅暴露稳定签名；mdx-bridge 还未引用此 export，所以 stub 抛错足够。
+     8	 */
+     9	export interface PdfTiptapNode {
+    10	  readonly type: 'pdf';
+    11	  readonly attrs: {
+    12	    readonly src: string;
+    13	    readonly page: number;
+    14	    readonly searchable: boolean;
+    15	  };
+    16	}
+    17	
+    18	/**
+    19	 * `value` is `string | null` per mdast-util-mdx-jsx convention:
+    20	 *   - `<Pdf searchable>` (boolean shorthand) → attribute with `value: null`
+    21	 *   - `<Pdf searchable="true">` / `<Pdf searchable="false">` → string
+    22	 *   - `<Pdf src="...">` → string (always)
+    23	 *   - `<Pdf page="2">` → string (numeric coerced on parse)
+    24	 * `parsePdf` handles boolean shorthand for `searchable`; `serializePdf` always
+    25	 * emits string form (`String(boolean)` / `String(number)`) for round-trip
+    26	 * stability.
+    27	 */
+    28	export interface PdfMdastJsxElement {
+    29	  readonly type: 'mdxJsxFlowElement';
+    30	  readonly name: string;
+    31	  readonly attributes: ReadonlyArray<{
+    32	    readonly type: 'mdxJsxAttribute';
+    33	    readonly name: string;
+    34	    readonly value: string | null;
+    35	  }>;
+    36	  readonly children: readonly unknown[];
+    37	}
+    38	
+    39	export function serializePdf(node: PdfTiptapNode): PdfMdastJsxElement {
+    40	  const validated = pdfCore.propsSchema.parse(node.attrs);
+    41	  return {
+    42	    type: 'mdxJsxFlowElement',
+    43	    name: pdfCore.mdxComponent,
+    44	    attributes: [
+    45	      { type: 'mdxJsxAttribute', name: 'src', value: validated.src },
+    46	      { type: 'mdxJsxAttribute', name: 'page', value: String(validated.page) },
+    47	      {
+    48	        type: 'mdxJsxAttribute',
+    49	        name: 'searchable',
+    50	        value: String(validated.searchable),
+    51	      },
+    52	    ],
+    53	    children: [],
+    54	  };
+    55	}
+---
+     1	export { pdfCore } from './core-definition';
+     2	export { serializePdf } from './serialize';
+     3	export { parsePdf } from './parse';
+     4	export type { PdfTiptapNode, PdfMdastJsxElement } from './serialize';
+
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && nl -ba packages/block-pdf/package.json && echo '---' && nl -ba packages/block-pdf/tsconfig.json && echo '---' && nl -ba packages/block-pdf/CONTRACT.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	{
+     2	  "name": "@skb/block-pdf",
+     3	  "version": "0.0.0",
+     4	  "private": true,
+     5	  "type": "module",
+     6	  "exports": {
+     7	    ".": "./src/index.ts",
+     8	    "./core": "./src/core/index.ts",
+     9	    "./ui-default": "./src/ui-default/index.ts",
+    10	    "./ui-default/Pdf.astro": "./src/ui-default/Pdf.astro",
+    11	    "./ui-default/pdf.css": "./src/ui-default/pdf.css"
+    12	  },
+    13	  "scripts": {
+    14	    "build": "tsc -b",
+    15	    "lint": "eslint .",
+    16	    "typecheck": "tsc --noEmit",
+    17	    "test": "vitest run"
+    18	  },
+    19	  "dependencies": {
+    20	    "@skb/block-foundation": "workspace:*",
+    21	    "@skb/design-tokens": "workspace:*",
+    22	    "zod": "^3.23.0"
+    23	  },
+    24	  "peerDependencies": {
+    25	    "react": "^18.3.0 || ^19.0.0"
+    26	  },
+    27	  "devDependencies": {
+    28	    "@types/react": "^18.3.0",
+    29	    "happy-dom": "^15.0.0",
+    30	    "react": "^18.3.0",
+    31	    "typescript": "~5.6.0",
+    32	    "vitest": "^4.1.5"
+    33	  }
+    34	}
+---
+     1	{
+     2	  "extends": "../../tsconfig.base.json",
+     3	  "compilerOptions": {
+     4	    "rootDir": ".",
+     5	    "outDir": "dist",
+     6	    "jsx": "react-jsx"
+     7	  },
+     8	  "include": ["src/**/*", "vitest.config.ts"],
+     9	  "references": [{ "path": "../block-foundation" }, { "path": "../design-tokens" }]
+    10	}
+---
+     1	# @skb/block-pdf Contract
+     2	
+     3	PDF render block (Wave 2 Track D2). 第二个 `render-block-eng` 包；hand-craft
+     4	（与 D1 block-math 同 owner，独立实现，不走 codex-block-generator）。
+     5	浏览器原生 PDF viewer 是 runtime authority — 由 iframe + PDF Open Parameters
+     6	fragment 驱动；本包不在 npm 拉 react-pdf / pdfjs-dist 渲染依赖（ADR-0008 D1
+     7	dead-dep policy + Astro SSR 不可执行 react-pdf 的 worker 双重约束）。
+     8	
+     9	## Public surface
+    10	
+    11	五个 entry：
+    12	
+    13	- `.` (root barrel) — re-export `./core`
+    14	- `./core` — headless 层
+    15	  - `pdfCore: BlockCoreDefinition<typeof propsSchema>` — name=`'pdf'` / kind=`'render'` / mdxComponent=`'Pdf'`
+    16	  - `serializePdf(node) → mdxJsxFlowElement` — Tiptap → mdast (Wave 3 mdx-bridge routing 时启用)
+    17	  - `parsePdf(mdast) → TiptapNode` — mdast → Tiptap (同上；处理 `searchable` boolean shorthand + `page` 数字 coerce)
+    18	  - 类型: `PdfTiptapNode` / `PdfMdastJsxElement`
+    19	- `./ui-default` — presentational 层
+    20	  - `pdfUiDefault: BlockUIDefinition<typeof pdfCore.propsSchema>` — uiId=`'default'`
+    21	  - `PdfEditorView` / `PdfRenderView` — `ComponentType<BlockViewProps<...>>`
+    22	  - `renderPdf(src, page, searchable) → PdfRenderDescriptor` — single-source 渲染描述器（**single authority** for Pdf.tsx + Pdf.astro，定义在 `src/ui-default/render-pdf.ts`）
+    23	  - `PDF_TOKENS: PdfTokens` — design-token name witnesses（`@skb/design-tokens` 类型绑定）
+    24	- `./ui-default/Pdf.astro` — apps/site SSR consumer 直接 import 的 Astro 组件（亦走 `renderPdf` authority）
+    25	- `./ui-default/pdf.css` — 视觉规则单一来源（design-token-bound，border / bg / error 走 `var(--color-*)`）
+    26	
+    27	### Consumer 使用方式
+    28	
+    29	`apps/site` / `editor-shell` 必须 `import '@skb/block-pdf/ui-default/pdf.css';`
+    30	方能渲染 iframe 容器边框 / 背景 / 间距 token。Astro page 直接
+    31	`import Pdf from '@skb/block-pdf/ui-default/Pdf.astro';`。consumer 不需要
+    32	import 任何 PDF 渲染库 —— 浏览器原生 viewer 处理 iframe 内容。
+    33	
+    34	`propsSchema` 形状（见 `src/core/core-definition.ts`）：
+    35	
+    36	```typescript
+    37	z.object({
+    38	  src: z.string().min(1),
+    39	  page: z.number().int().min(1).default(1),
+    40	  searchable: z.boolean().default(false),
+    41	}).strict()
+    42	```
+    43	
+    44	## Invariants
+    45	
+    46	继承自 [block-foundation/CONTRACT.md](../block-foundation/CONTRACT.md#invariants)：
+    47	`Defensive copy` / `Schema strictness` / `Default UI lookup` / `Serialize / parse hook ownership`
+    48	（即 `BlockRegistry.listCores()` / `listUIs(coreName)` defensive-copy 行为、
+    49	`propsSchema` 必须 `.strict()`、同 `coreName` 多 UI 时 `getUI(coreName)` 取首注册 `uiId`、
+    50	serialize/parse 由本包 `core/` own 不在 foundation 注册）。
+    51	
+    52	block-pdf 特定不变量：
+    53	
+    54	- **`coreName='pdf'` (kebab-case)** + **`mdxComponent='Pdf'` (PascalCase)**:
+    55	  `pdfCore.name`/`.mdxComponent` 字面值固定，与 BlockRegistry / mdx-bridge 路由
+    56	  ([RFC §1](../block-foundation/RFC.md#1-core-side)) 一致
+    57	- **Hook 命名 verb-as-prefix**: `serializePdf` / `parsePdf` / `renderPdf`
+    58	  ([RFC §5](../block-foundation/RFC.md#5-serialize--parse-hook-ownership-scope-clarification))
+    59	- **`uiId='default'` reserved**: inherit foundation 的 `Default UI lookup` 不变量（首注册即 default）
+    60	- **浏览器原生 PDF viewer 是 runtime authority** + **renderPdf single authority**:
+    61	  `src/ui-default/render-pdf.ts` 唯一构造 `${src}#page=${page}` PDF Open Parameters
+    62	  fragment + data-attr map（ADR-0006 item #5 algorithm replication —
+    63	  authority = browser embedded PDF viewer）。Pdf.tsx + Pdf.astro 都 import
+    64	  `./render-pdf`；ssr-render.test.ts 5-row corpus 检测 inline 漂移
+    65	- **No DIY PDF parser / canvas rasterizer**: 本包不实现 PDF 渲染逻辑，不
+    66	  bundle pdfjs-dist 用于 viewer。`searchable=true` 走 build-time
+    67	  `scripts/extract-pdf-text.ts`（pdfjs-dist legacy build 用于文本抽取，runtime 不
+    68	  shared），与渲染路径完全解耦
+    69	- **Headless 自给**: `core/` 不 import React / Tiptap / PDF 库；仅依赖
+    70	  `@skb/block-foundation` + `zod`（ADR-0003 D1）。`ui-default/` 才 import React +
+    71	  design-tokens
+    72	- **propsSchema single authority**: 仅在 `src/core/core-definition.ts` 定义；
+    73	  ui-default / serialize / parse / 测试均 import `pdfCore.propsSchema`（ADR-0006 item #4）
+    74	- **Self-validating serialize/parse**: `serializePdf` / `parsePdf` 各自调
+    75	  `propsSchema.parse`（parse 侧 `searchable` 先 null/string coerce → boolean，
+    76	  `page` 先 string coerce → number）；契约偏离在 mdx-bridge 路由前 throw
+    77	- **错误显式（不静默）**: 缺失 / 不可读 PDF 由浏览器原生 viewer 显示空白文档
+    78	  UI；本包不 silent-fallback 到 alt 文本 —— 容器 + iframe shell 始终渲染，
+    79	  让用户看见加载失败状态（spec D2 等价 D1 "red error box with the source visible"
+    80	  原则的 PDF 等价物）
+    81	
+    82	## Wave 3 mdx-bridge 路由集成（pending）
+    83	
+    84	当前 `serializePdf` / `parsePdf` 是 stub —— 暴露稳定签名，未被 mdx-bridge 消费。
+    85	Wave 3 mdx-bridge routing table PR 会：
+    86	
+    87	1. 在 `mdx-bridge/parse.ts` 的 `mdastBlockToTiptap` 拦截 `mdxJsxFlowElement{name:'Pdf'}` →
+    88	   `parsePdf(node)` → 把返回 `PdfTiptapNode` 嵌入 doc.content
+    89	2. 在 `mdx-bridge/serialize.ts` 的 `tiptapToMdastBlock` 拦截 `type='pdf'` →
+    90	   `serializePdf(node)` → 返回 `mdxJsxFlowElement` 进 mdast
+    91	3. pdf block 无 children，递归不展开
+    92	
+    93	## Wave 3 search-index 集成（pending, `searchable=true`）
+    94	
+    95	`searchable: true` 是 build-time hint，runtime no-op（Wave 2）。Wave 3
+    96	search-index PR 将：
+    97	
+    98	1. apps/site build pipeline 扫描所有 `<Pdf searchable .../>` 实例
+    99	2. 调 [`scripts/extract-pdf-text.ts`](../../scripts/extract-pdf-text.ts) 的
+   100	   `extractPdfText({ pdfPath: src })` API 抽取 PDF 文本
+   101	3. 把抽出文本写入 search index（文档 id ↔ src ↔ 全文 mapping）
+   102	4. 提供 search UI 查询入口
+   103	
+   104	Wave 2 仅暴露 `searchable` schema 字段 + parse/serialize round-trip
+   105	+ runtime 无副作用；mdx-doctor 不会因为 `searchable` 在 props 而 fail
+   106	（schema 已声明 default=false）。
+   107	
+   108	## Forward-compat consumers
+   109	
+   110	- **Z0 sample-blocks**: `<Pdf src="/files/example.pdf" page={1} />` 实例
+   111	- **apps/site SSR**: import `@skb/block-pdf/ui-default/Pdf.astro`；consumer 同 PR 加 pdf.css import
+   112	- **Wave 3 mdx-bridge integration**: 见上节
+   113	- **Wave 3 search-index integration**: 见上节
+   114	- **Tiptap NodeView (editor-shell)**: 用 `PdfEditorView`；NodeView wrapper 调 `renderPdf` 直拿 iframe descriptor
+   115	
+   116	## Modifying this file
+   117	
+   118	`pdfCore` 公共字段 (`name` / `kind` / `propsSchema` / `mdxComponent`) 与 `pdfUiDefault`
+   119	公共字段 (`coreName` / `uiId` / `EditorView` / `RenderView`) 变更需 ADR（与 block-foundation
+   120	同 freeze 级别 —— 触发 mdx-bridge 路由 + sample-blocks 同步更新）。
+   121	`serializePdf` / `parsePdf` 签名变更需配 mdx-bridge routing PR；`renderPdf` 签名变更
+   122	同步 Pdf.astro + Pdf.tsx 调用点（authority = ui-default/render-pdf.ts；ssr-render.test.ts 防漂移）。
+   123	
+   124	## Related
+   125	
+   126	- [@skb/block-foundation CONTRACT](../block-foundation/CONTRACT.md) — `BlockCoreDefinition` / `BlockUIDefinition` 接口权威
+   127	- [@skb/block-foundation RFC](../block-foundation/RFC.md) — registration walkthrough
+   128	- [@skb/block-math CONTRACT](../block-math/CONTRACT.md) — sister-block (Track D1，同 render-block-eng owner)
+   129	- [@skb/block-callout CONTRACT](../block-callout/CONTRACT.md) — Wave 2 simple-block template
+   130	- [scripts/extract-pdf-text.ts](../../scripts/extract-pdf-text.ts) — D2 prereq (Track I3, Wave 3 search-index consumer)
+   131	- [ADR-0003 headless / presentational 分层](../../docs/decisions/ADR-0003-headless-presentational-split.md)
+   132	- [ADR-0006 asymmetry audit checklist](../../docs/decisions/ADR-0006-asymmetry-audit-checklist.md) item #3 + #4 + #5
+   133	- [ADR-0008 D1 dead-dep + D2 interface freeze](../../docs/decisions/ADR-0008-wave-2-entry-policies.md)
+   134	- [ADR-0009 BlockKind union expansion](../../docs/decisions/ADR-0009-block-kind-union-expansion.md) — kind='render' 授权
+   135	- [Wave 2 plan §Task D2](../../docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md)
+   136	- [Wave 2 plan §Task I3](../../docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md)
+
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && nl -ba packages/block-pdf/src/__tests__/ssr-render.test.ts && echo '---' && nl -ba packages/block-pdf/src/__tests__/core.test.ts && echo '---' && nl -ba packages/block-pdf/src/__tests__/registry-integration.test.ts && echo '---' && nl -ba packages/block-pdf/src/__tests__/ui-default.test.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	import { describe, expect, it } from 'vitest';
+     2	import { renderPdf } from '../ui-default/render-pdf';
+     3	
+     4	/**
+     5	 * Byte-equivalence corpus for renderPdf authority (ADR-0006 item #5).
+     6	 *
+     7	 * `renderPdf` is the single import point for iframe URL + data-attr
+     8	 * construction in this package; both Pdf.tsx (React/NodeView path) and
+     9	 * Pdf.astro (SSR path) call it. This suite exercises a representative input
+    10	 * corpus to:
+    11	 *   1. catch silent regressions if a future edit re-inlines the URL builder
+    12	 *      (drift detector for the algorithm-replication audit);
+    13	 *   2. assert PDF Open Parameters fragment shape (`#page=N`) — required for
+    14	 *      browser-native PDF viewer to honor initial page;
+    15	 *   3. cover the missing-file fallback path: even with a bogus `src`, the
+    16	 *      descriptor is structurally valid so the wrapper container + iframe
+    17	 *      shell render and the browser's native viewer surfaces its own
+    18	 *      empty-state UI.
+    19	 *
+    20	 * Browser-native PDF viewer is the runtime authority — these tests do NOT
+    21	 * pin the exact rendered PDF visuals (browsers diverge); they assert
+    22	 * structural invariants (iframeSrc fragment, data-attr shape, identity of
+    23	 * src round-trip).
+    24	 */
+    25	describe('renderPdf (iframe SSR authority)', () => {
+    26	  it('produces iframeSrc with #page=N fragment for default page=1', () => {
+    27	    const desc = renderPdf('/files/paper.pdf', 1, false);
+    28	    expect(desc.iframeSrc).toBe('/files/paper.pdf#page=1');
+    29	    expect(desc.dataAttrs['data-block']).toBe('pdf');
+    30	    expect(desc.dataAttrs['data-page']).toBe('1');
+    31	    expect(desc.dataAttrs['data-searchable']).toBe('false');
+    32	  });
+    33	
+    34	  it('produces iframeSrc with #page=N for arbitrary page', () => {
+    35	    const desc = renderPdf('https://example.com/doc.pdf', 42, true);
+    36	    expect(desc.iframeSrc).toBe('https://example.com/doc.pdf#page=42');
+    37	    expect(desc.dataAttrs['data-page']).toBe('42');
+    38	    expect(desc.dataAttrs['data-searchable']).toBe('true');
+    39	  });
+    40	
+    41	  it('preserves src verbatim (no encoding / normalization in render layer)', () => {
+    42	    // src normalization is propsSchema's job; renderPdf is downstream and must
+    43	    // not double-normalize. Test pinning string identity.
+    44	    const desc = renderPdf('/files/My Doc.pdf', 1, false);
+    45	    expect(desc.src).toBe('/files/My Doc.pdf');
+    46	    expect(desc.iframeSrc).toBe('/files/My Doc.pdf#page=1');
+    47	  });
+    48	
+    49	  it('handles missing-file-style src (browser viewer surfaces its own empty state)', () => {
+    50	    // Even with bogus src, the descriptor is structurally valid — Pdf.tsx /
+    51	    // Pdf.astro both render an iframe shell + container; the browser's native
+    52	    // PDF viewer renders its own empty-doc UI on the inside. Wave 2 invariant:
+    53	    // never silent-fallback to alt text; always show the iframe shell so users
+    54	    // see the failure.
+    55	    const desc = renderPdf('/does-not-exist.pdf', 1, false);
+    56	    expect(desc.iframeSrc).toBe('/does-not-exist.pdf#page=1');
+    57	    expect(desc.dataAttrs['data-block']).toBe('pdf');
+    58	  });
+    59	
+    60	  it('different page on same src produces different iframeSrc (page is part of URL fragment)', () => {
+    61	    const a = renderPdf('/files/paper.pdf', 1, false);
+    62	    const b = renderPdf('/files/paper.pdf', 5, false);
+    63	    expect(a.iframeSrc).not.toBe(b.iframeSrc);
+    64	    expect(a.dataAttrs['data-page']).toBe('1');
+    65	    expect(b.dataAttrs['data-page']).toBe('5');
+    66	  });
+    67	});
+---
+     1	import { describe, it, expect } from 'vitest';
+     2	import { pdfCore } from '../core/core-definition';
+     3	import { parsePdf, serializePdf } from '../core';
+     4	
+     5	describe('pdfCore.propsSchema', () => {
+     6	  it('accepts valid src + page + searchable', () => {
+     7	    expect(
+     8	      pdfCore.propsSchema.parse({
+     9	        src: '/files/paper.pdf',
+    10	        page: 3,
+    11	        searchable: true,
+    12	      }),
+    13	    ).toEqual({ src: '/files/paper.pdf', page: 3, searchable: true });
+    14	  });
+    15	
+    16	  it('applies defaults for page=1 and searchable=false', () => {
+    17	    expect(pdfCore.propsSchema.parse({ src: '/files/paper.pdf' })).toEqual({
+    18	      src: '/files/paper.pdf',
+    19	      page: 1,
+    20	      searchable: false,
+    21	    });
+    22	  });
+    23	
+    24	  it('rejects empty src (z.string().min(1))', () => {
+    25	    expect(() => pdfCore.propsSchema.parse({ src: '' })).toThrow(
+    26	      /too_small|String must contain at least|Invalid input/,
+    27	    );
+    28	  });
+    29	
+    30	  it('rejects non-integer / out-of-range page', () => {
+    31	    expect(() =>
+    32	      pdfCore.propsSchema.parse({ src: '/p.pdf', page: 0 }),
+    33	    ).toThrow(/too_small|greater than or equal/);
+    34	    expect(() =>
+    35	      pdfCore.propsSchema.parse({ src: '/p.pdf', page: 1.5 }),
+    36	    ).toThrow(/integer|invalid_type|Expected integer/);
+    37	  });
+    38	
+    39	  it('rejects unknown keys (.strict)', () => {
+    40	    expect(() =>
+    41	      pdfCore.propsSchema.parse({ src: '/p.pdf', extra: 'nope' }),
+    42	    ).toThrow(/unrecognized_keys/);
+    43	  });
+    44	
+    45	  it('exports correct shape (BlockCoreDefinition contract)', () => {
+    46	    expect(pdfCore.name).toBe('pdf');
+    47	    expect(pdfCore.kind).toBe('render');
+    48	    expect(pdfCore.mdxComponent).toBe('Pdf');
+    49	  });
+    50	});
+    51	
+    52	describe('serializePdf', () => {
+    53	  it('emits mdxJsxFlowElement with String(boolean) + String(number) attrs', () => {
+    54	    const tiptapNode = {
+    55	      type: 'pdf' as const,
+    56	      attrs: { src: '/p.pdf', page: 2, searchable: true },
+    57	    };
+    58	    const mdast = serializePdf(tiptapNode);
+    59	    expect(mdast.type).toBe('mdxJsxFlowElement');
+    60	    expect(mdast.name).toBe('Pdf');
+    61	    expect(mdast.attributes).toEqual([
+    62	      { type: 'mdxJsxAttribute', name: 'src', value: '/p.pdf' },
+    63	      { type: 'mdxJsxAttribute', name: 'page', value: '2' },
+    64	      { type: 'mdxJsxAttribute', name: 'searchable', value: 'true' },
+    65	    ]);
+    66	    expect(mdast.children).toEqual([]);
+    67	  });
+    68	
+    69	  it('throws on contract drift (propsSchema.parse rejects bad attrs)', () => {
+    70	    expect(() =>
+    71	      serializePdf({
+    72	        type: 'pdf',
+    73	        attrs: {
+    74	          src: '',
+    75	          page: 1,
+    76	          searchable: false,
+    77	        },
+    78	      } as never),
+    79	    ).toThrow();
+    80	  });
+    81	});
+    82	
+    83	describe('parsePdf', () => {
+    84	  it('parses string-form attrs into validated TiptapNode', () => {
+    85	    const node = parsePdf({
+    86	      type: 'mdxJsxFlowElement',
+    87	      name: 'Pdf',
+    88	      attributes: [
+    89	        { type: 'mdxJsxAttribute', name: 'src', value: '/p.pdf' },
+    90	        { type: 'mdxJsxAttribute', name: 'page', value: '4' },
+    91	        { type: 'mdxJsxAttribute', name: 'searchable', value: 'true' },
+    92	      ],
+    93	      children: [],
+    94	    });
+    95	    expect(node).toEqual({
+    96	      type: 'pdf',
+    97	      attrs: { src: '/p.pdf', page: 4, searchable: true },
+    98	    });
+    99	  });
+   100	
+   101	  it('handles boolean shorthand <Pdf searchable> (attr.value === null)', () => {
+   102	    const node = parsePdf({
+   103	      type: 'mdxJsxFlowElement',
+   104	      name: 'Pdf',
+   105	      attributes: [
+   106	        { type: 'mdxJsxAttribute', name: 'src', value: '/p.pdf' },
+   107	        { type: 'mdxJsxAttribute', name: 'searchable', value: null },
+   108	      ],
+   109	      children: [],
+   110	    });
+   111	    expect(node.attrs.searchable).toBe(true);
+   112	    expect(node.attrs.page).toBe(1);
+   113	  });
+   114	
+   115	  it('rejects non-true/false searchable string', () => {
+   116	    expect(() =>
+   117	      parsePdf({
+   118	        type: 'mdxJsxFlowElement',
+   119	        name: 'Pdf',
+   120	        attributes: [
+   121	          { type: 'mdxJsxAttribute', name: 'src', value: '/p.pdf' },
+   122	          { type: 'mdxJsxAttribute', name: 'searchable', value: 'yes' },
+   123	        ],
+   124	        children: [],
+   125	      }),
+   126	    ).toThrow(/invalid searchable attribute value/);
+   127	  });
+   128	
+   129	  it('rejects non-numeric page string', () => {
+   130	    expect(() =>
+   131	      parsePdf({
+   132	        type: 'mdxJsxFlowElement',
+   133	        name: 'Pdf',
+   134	        attributes: [
+   135	          { type: 'mdxJsxAttribute', name: 'src', value: '/p.pdf' },
+   136	          { type: 'mdxJsxAttribute', name: 'page', value: 'first' },
+   137	        ],
+   138	        children: [],
+   139	      }),
+   140	    ).toThrow(/page attribute must be a finite number/);
+   141	  });
+   142	
+   143	  it('rejects mismatched mdxComponent name', () => {
+   144	    expect(() =>
+   145	      parsePdf({
+   146	        type: 'mdxJsxFlowElement',
+   147	        name: 'NotPdf',
+   148	        attributes: [],
+   149	        children: [],
+   150	      }),
+   151	    ).toThrow(/expected mdxComponent="Pdf"/);
+   152	  });
+   153	});
+---
+     1	import { describe, expect, it } from 'vitest';
+     2	import { BlockRegistry, type BlockUIDefinition } from '@skb/block-foundation';
+     3	import { pdfCore } from '../core/core-definition';
+     4	import { pdfUiDefault } from '../ui-default/pdf.ui';
+     5	
+     6	/**
+     7	 * pdfUiDefault 类型为 BlockUIDefinition<typeof pdfCore.propsSchema>
+     8	 * (defineUI 从 EditorView/RenderView 的 BlockViewProps<TSchema> 推 generic)。
+     9	 * BlockRegistry.registerUI 形参为 BlockUIDefinition<ZodTypeAny>，因 ComponentType
+    10	 * 在 props 上 contravariant + exactOptionalPropertyTypes，narrow → wide 的赋值
+    11	 * 不通过；registerUI 运行期仅按 coreName/uiId 查表，不再触碰 EditorView 的具体
+    12	 * props 形状。这里 cast 到 wide 类型是 type-system 工件，行为安全。
+    13	 *
+    14	 * Mirrors block-math/__tests__/registry-integration.test.ts pattern.
+    15	 */
+    16	const widePdfUI = pdfUiDefault as unknown as BlockUIDefinition;
+    17	
+    18	describe('block-pdf registry integration', () => {
+    19	  it('registerCore + getCore round-trip preserves identity', () => {
+    20	    const reg = new BlockRegistry();
+    21	    reg.registerCore(pdfCore);
+    22	    expect(reg.getCore('pdf')).toBe(pdfCore);
+    23	  });
+    24	
+    25	  it('registerUI + getUI round-trip preserves identity', () => {
+    26	    const reg = new BlockRegistry();
+    27	    reg.registerCore(pdfCore);
+    28	    reg.registerUI(widePdfUI);
+    29	    expect(reg.getUI('pdf')).toBe(pdfUiDefault);
+    30	    expect(reg.getUI('pdf', 'default')).toBe(pdfUiDefault);
+    31	  });
+    32	
+    33	  it('default UI lookup returns first-registered (pdfUiDefault uiId="default")', () => {
+    34	    const reg = new BlockRegistry();
+    35	    reg.registerCore(pdfCore);
+    36	    reg.registerUI(widePdfUI);
+    37	    expect(pdfUiDefault.uiId).toBe('default');
+    38	    expect(reg.getUI('pdf')).toBe(pdfUiDefault);
+    39	  });
+    40	
+    41	  it('registerUI before registerCore throws Unknown core', () => {
+    42	    const reg = new BlockRegistry();
+    43	    expect(() => reg.registerUI(widePdfUI)).toThrow(
+    44	      /Unknown core for UI registration: pdf/,
+    45	    );
+    46	  });
+    47	
+    48	  it('getCore returns undefined for unknown name', () => {
+    49	    const reg = new BlockRegistry();
+    50	    expect(reg.getCore('not-pdf')).toBeUndefined();
+    51	  });
+    52	});
+---
+     1	import { describe, expect, it } from 'vitest';
+     2	import { pdfCore } from '../core/core-definition';
+     3	import {
+     4	  pdfUiDefault,
+     5	  PdfEditorView,
+     6	  PdfRenderView,
+     7	  renderPdf,
+     8	  PDF_TOKENS,
+     9	} from '../ui-default';
+    10	
+    11	/**
+    12	 * UI-default surface contract tests. Mirrors block-math/__tests__/ui-default.test.ts
+    13	 * shape contract (sister-doc invariant per ADR-0006 item #6). Stays in `.ts`
+    14	 * because PdfView is a thin iframe-wrapping component; full DOM-render
+    15	 * assertions live indirectly via ssr-render.test.ts (the underlying renderPdf
+    16	 * is the structural authority). When apps/site or editor-shell adds
+    17	 * DOM-assertion tests they will live alongside in their own happy-dom-enabled
+    18	 * vitest configs.
+    19	 */
+    20	describe('pdfUiDefault registration shape', () => {
+    21	  it('exposes the BlockUIDefinition shape with coreName + uiId="default"', () => {
+    22	    expect(pdfUiDefault.coreName).toBe(pdfCore.name);
+    23	    expect(pdfUiDefault.coreName).toBe('pdf');
+    24	    expect(pdfUiDefault.uiId).toBe('default');
+    25	  });
+    26	
+    27	  it('EditorView and RenderView identity matches Pdf.tsx exports', () => {
+    28	    expect(pdfUiDefault.EditorView).toBe(PdfEditorView);
+    29	    expect(pdfUiDefault.RenderView).toBe(PdfRenderView);
+    30	  });
+    31	
+    32	  it('re-exports renderPdf as the single authority callable from ./ui-default', () => {
+    33	    // structural identity check — barrel must re-export from render-pdf.ts so
+    34	    // consumers (Pdf.astro / future NodeView wrappers / sample-blocks) all
+    35	    // hit the same authority
+    36	    expect(typeof renderPdf).toBe('function');
+    37	    const desc = renderPdf('/p.pdf', 1, false);
+    38	    expect(desc.iframeSrc).toBe('/p.pdf#page=1');
+    39	  });
+    40	
+    41	  it('exposes PDF_TOKENS witness for design-token surface bindings', () => {
+    42	    expect(PDF_TOKENS.borderToken).toBe('border');
+    43	    expect(PDF_TOKENS.bgToken).toBe('surface1');
+    44	    expect(PDF_TOKENS.errorToken).toBe('error');
+    45	    expect(PDF_TOKENS.gutterToken).toBe('4');
+    46	  });
+    47	});
+
+codex
+Next I’m validating cross-cutting rules (public surface, headless purity, asymmetry/doc alignment, and dependency hygiene) by checking the remaining package files and `block-math`/ADR references once, then I’ll run the requested test/typecheck/lint/build commands.
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && nl -ba packages/block-pdf/src/ui-default/pdf.ui.ts && echo '---' && nl -ba packages/block-pdf/src/ui-default/pdf-tokens.ts && echo '---' && nl -ba packages/block-pdf/src/ui-default/pdf.css && echo '---' && nl -ba packages/block-pdf/src/ui-default/index.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	import { defineUI } from '@skb/block-foundation';
+     2	import { pdfCore } from '../core/core-definition';
+     3	import { PdfEditorView, PdfRenderView } from './Pdf';
+     4	
+     5	/**
+     6	 * 不显式 `BlockUIDefinition<typeof pdfCore.propsSchema>` 标注 —— 让 defineUI
+     7	 * 从 EditorView/RenderView 的实参推 generic，落到 ZodTypeAny 等价的 inference
+     8	 * 默认。理由：BlockRegistry.registerUI 接 BlockUIDefinition (默认 ZodTypeAny)，
+     9	 * generic 显式 narrow 后在 registerUI 处会因 ComponentType 的 contravariance +
+    10	 * exactOptionalPropertyTypes 报 TS2345。foundation 自身的 registry.test.ts 也
+    11	 * 走 inference 模式。Mirrors block-math/ui-default/math.ui.ts pattern.
+    12	 */
+    13	export const pdfUiDefault = defineUI({
+    14	  coreName: pdfCore.name,
+    15	  uiId: 'default',
+    16	  EditorView: PdfEditorView,
+    17	  RenderView: PdfRenderView,
+    18	});
+---
+     1	import type { ColorTokenName, SpaceTokenName } from '@skb/design-tokens';
+     2	
+     3	/**
+     4	 * Design-token names referenced by `./pdf.css`. Bound to `@skb/design-tokens`'s
+     5	 * public `ColorTokenName` / `SpaceTokenName` surface so renaming or removing a
+     6	 * token over there raises a static type error here. The CSS itself uses
+     7	 * `rgb(var(--color-X))` / `var(--space-X)` directly; this file is the
+     8	 * authoritative compile-time witness for the `@skb/design-tokens` source
+     9	 * import (ADR-0008 D1 dead-dep policy: every `@skb/*` dep must have ≥1
+    10	 * TS-source consumer).
+    11	 *
+    12	 * Mirrors block-math/ui-default/math-tokens.ts pattern (sister-doc invariant
+    13	 * per ADR-0006 item #6).
+    14	 */
+    15	export interface PdfTokens {
+    16	  readonly borderToken: ColorTokenName;
+    17	  readonly bgToken: ColorTokenName;
+    18	  readonly errorToken: ColorTokenName;
+    19	  readonly gutterToken: SpaceTokenName;
+    20	}
+    21	
+    22	export const PDF_TOKENS: PdfTokens = {
+    23	  borderToken: 'border',
+    24	  bgToken: 'surface1',
+    25	  errorToken: 'error',
+    26	  gutterToken: '4',
+    27	};
+---
+     1	/*
+     2	 * @skb/block-pdf — browser-native PDF iframe viewer styling.
+     3	 *
+     4	 * 视觉单一权威：本文件是 block-pdf 的所有视觉规则源；React/Astro 组件不带
+     5	 * inline `style`，仅 emit `data-block="pdf"` + `data-page` + `data-searchable`
+     6	 * 属性，CSS 通过这些 selector 落样式（与 block-callout / block-math
+     7	 * sister-doc invariant 一致）。
+     8	 *
+     9	 * 浏览器原生 PDF viewer (Chrome/Edge/Firefox/Safari) 渲染 iframe 内容；
+    10	 * 本 stylesheet 只控制 iframe 容器框 + 边距 + 加载态背景。Tokens 从
+    11	 * @skb/design-tokens 拉（--color-* / --space-* / --radius-*）。
+    12	 */
+    13	
+    14	[data-block='pdf'] {
+    15	  display: block;
+    16	  margin: var(--space-4) 0;
+    17	  border: 1px solid rgb(var(--color-border));
+    18	  border-radius: var(--radius-sm);
+    19	  background: rgb(var(--color-surface-1));
+    20	  overflow: hidden;
+    21	}
+    22	
+    23	[data-block='pdf'] > iframe {
+    24	  display: block;
+    25	  width: 100%;
+    26	  height: 70vh;
+    27	  min-height: 480px;
+    28	  border: 0;
+    29	  background: rgb(var(--color-surface-1));
+    30	}
+    31	
+    32	/*
+    33	 * 错误态: 浏览器原生 PDF viewer 自身已对不可读 / 跨域 / 404 PDF 显示空白。
+    34	 * 本规则提供包裹层 fallback 视觉提示（aria-hidden 占位伪元素，禁用 :empty
+    35	 * 误判 — Chromium iframe 即使加载失败仍非 :empty）。Wave 3 search-index
+    36	 * 集成时（searchable=true）会有更主动的 fallback；Wave 2 仅保留 box
+    37	 * 一致性。
+    38	 */
+    39	[data-block='pdf'][data-searchable='true']::after {
+    40	  content: '';
+    41	  display: none;
+    42	}
+---
+     1	export { pdfUiDefault } from './pdf.ui';
+     2	export { PdfEditorView, PdfRenderView } from './Pdf';
+     3	export { renderPdf } from './render-pdf';
+     4	export type { PdfRenderDescriptor } from './render-pdf';
+     5	export { PDF_TOKENS } from './pdf-tokens';
+     6	export type { PdfTokens } from './pdf-tokens';
+
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && nl -ba packages/block-math/CONTRACT.md | sed -n '1,180p' && echo '---' && nl -ba packages/block-math/src/core/core-definition.ts && echo '---' && nl -ba packages/block-math/src/core/parse.ts && echo '---' && nl -ba packages/block-math/src/ui-default/render-math.ts && echo '---' && nl -ba packages/block-math/src/ui-default/Math.tsx && echo '---' && nl -ba packages/block-math/src/ui-default/Math.astro" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	# @skb/block-math Contract
+     2	
+     3	KaTeX-backed math block (Wave 2 Track D1）。第一个 `render-block-eng` 包；
+     4	hand-craft（不走 codex-block-generator），block-pdf (D2) 同 owner 独立 hand-craft。
+     5	
+     6	## Public surface
+     7	
+     8	五个 entry：
+     9	
+    10	- `.` (root barrel) — re-export `./core`
+    11	- `./core` — headless 层
+    12	  - `mathCore: BlockCoreDefinition<typeof propsSchema>` — name=`'math'` / kind=`'render'` / mdxComponent=`'Math'`
+    13	  - `serializeMath(node) → mdxJsxFlowElement` — Tiptap → mdast (Wave 3 mdx-bridge routing 时启用)
+    14	  - `parseMath(mdast) → TiptapNode` — mdast → Tiptap (同上)
+    15	  - 类型: `MathTiptapNode` / `MathMdastJsxElement`
+    16	- `./ui-default` — presentational 层
+    17	  - `mathUiDefault: BlockUIDefinition<typeof mathCore.propsSchema>` — uiId=`'default'`
+    18	  - `MathEditorView` / `MathRenderView` — `ComponentType<BlockViewProps<...>>`
+    19	  - `renderMath(expression, display) → string` — KaTeX HTML 字符串生成器（**single authority** for editor + SSR + NodeView，定义在 `src/ui-default/render-math.ts`）
+    20	  - `MATH_TOKENS: MathTokens` — design-token name witnesses（`@skb/design-tokens` 类型绑定）
+    21	- `./ui-default/Math.astro` — apps/site SSR consumer 直接 import 的 Astro 组件（亦走 `renderMath` authority）
+    22	- `./ui-default/math.css` — 视觉规则单一来源（design-token-bound，error/fg color 走 `var(--color-*)`）
+    23	
+    24	### Consumer 使用方式
+    25	
+    26	`apps/site` / `editor-shell` 必须 `import '@skb/block-math/ui-default/math.css';`
+    27	方能渲染 KaTeX 错误态样式以及 display/inline 间距 token。同时
+    28	consumers 必须 `import 'katex/dist/katex.css';`（KaTeX 自身字体 + 内部布局；
+    29	本包不重发包，避免重复加载）。Astro page 直接 `import Math from '@skb/block-math/ui-default/Math.astro';`。
+    30	
+    31	`propsSchema` 形状（见 `src/core/core-definition.ts`）：
+    32	
+    33	```typescript
+    34	z.object({
+    35	  expression: z.string().min(1),
+    36	  display: z.boolean().default(false),
+    37	}).strict()
+    38	```
+    39	
+    40	## Invariants
+    41	
+    42	继承自 [block-foundation/CONTRACT.md](../block-foundation/CONTRACT.md#invariants)：
+    43	`Defensive copy` / `Schema strictness` / `Default UI lookup` / `Serialize / parse hook ownership`
+    44	（即 `BlockRegistry.listCores()` / `listUIs(coreName)` defensive-copy 行为、
+    45	`propsSchema` 必须 `.strict()`、同 `coreName` 多 UI 时 `getUI(coreName)` 取首注册 `uiId`、
+    46	serialize/parse 由本包 `core/` own 不在 foundation 注册）。
+    47	
+    48	block-math 特定不变量：
+    49	
+    50	- **`coreName='math'` (kebab-case)** + **`mdxComponent='Math'` (PascalCase)**:
+    51	  `mathCore.name`/`.mdxComponent` 字面值固定，与 BlockRegistry / mdx-bridge 路由 ([RFC §1](../block-foundation/RFC.md#1-core-side)) 一致
+    52	- **Hook 命名 verb-as-prefix**: `serializeMath` / `parseMath` / `renderMath` ([RFC §5](../block-foundation/RFC.md#5-serialize--parse-hook-ownership-scope-clarification))
+    53	- **`uiId='default'` reserved**: inherit foundation 的 `Default UI lookup` 不变量（首注册即 default）
+    54	- **KaTeX 是 runtime authority** + **renderMath single authority**: `src/ui-default/render-math.ts`
+    55	  唯一 wrap `katex.renderToString`（ADR-0006 item #5 algorithm replication —
+    56	  authority = `katex` npm 包）。Math.tsx + Math.astro 都 import `./render-math`；
+    57	  ssr-render.test.ts 4-row corpus 检测 inline 漂移
+    58	- **Headless 自给**: `core/` 不 import React / Tiptap / KaTeX；仅依赖 `@skb/block-foundation` + `zod`（ADR-0003 D1）。`ui-default/` 才 import React + katex + design-tokens
+    59	- **propsSchema single authority**: 仅在 `src/core/core-definition.ts` 定义；ui-default / serialize / parse / 测试均 import `mathCore.propsSchema`（ADR-0006 item #4）
+    60	- **Self-validating serialize/parse**: `serializeMath` / `parseMath` 各自调 `propsSchema.parse`（parse 侧 display 先字符串 coerce → boolean）；契约偏离在 mdx-bridge 路由前 throw
+    61	- **错误显式（不静默）**: KaTeX 配 `throwOnError: false` + `strict: 'ignore'`：
+    62	  软错误内联 `color:#cc0000` 片段（source visible），硬错误 `.katex-error` class；
+    63	  `math.css` 两条路径都 escalate 到 `--color-error` token 的 bordered box（spec D1 要求），不许 silent fallback
+    64	
+    65	## Wave 3 mdx-bridge 路由集成（pending）
+    66	
+    67	当前 `serializeMath` / `parseMath` 是 stub —— 暴露稳定签名，未被 mdx-bridge 消费。
+    68	Wave 3 mdx-bridge routing table PR 会：
+    69	
+    70	1. 在 `mdx-bridge/parse.ts` 的 `mdastBlockToTiptap` 拦截 `mdxJsxFlowElement{name:'Math'}` →
+    71	   `parseMath(node)` → 把返回 `MathTiptapNode` 嵌入 doc.content
+    72	2. 在 `mdx-bridge/serialize.ts` 的 `tiptapToMdastBlock` 拦截 `type='math'` →
+    73	   `serializeMath(node)` → 返回 `mdxJsxFlowElement` 进 mdast
+    74	3. math block 无 children，递归不展开
+    75	
+    76	## Forward-compat consumers
+    77	
+    78	- **Z0 sample-blocks**: `<Math expression="\\int_0^1 x^2 dx" display />` 实例
+    79	- **apps/site SSR**: import `@skb/block-math/ui-default/Math.astro`；consumer 同 PR 加 katex CSS import
+    80	- **Wave 3 mdx-bridge integration**: 见上节
+    81	- **Tiptap NodeView (editor-shell)**: 用 `MathEditorView`；NodeView wrapper 调 `renderMath` 直拿 HTML 字符串
+    82	
+    83	## Modifying this file
+    84	
+    85	`mathCore` 公共字段 (`name` / `kind` / `propsSchema` / `mdxComponent`) 与 `mathUiDefault`
+    86	公共字段 (`coreName` / `uiId` / `EditorView` / `RenderView`) 变更需 ADR（与 block-foundation
+    87	同 freeze 级别 —— 触发 mdx-bridge 路由 + sample-blocks 同步更新）。
+    88	`serializeMath` / `parseMath` 签名变更需配 mdx-bridge routing PR；`renderMath` 签名变更
+    89	同步 Math.astro + Math.tsx 调用点（authority = ui-default/render-math.ts；ssr-render.test.ts 防漂移）。
+    90	
+    91	## Related
+    92	
+    93	- [@skb/block-foundation CONTRACT](../block-foundation/CONTRACT.md) — `BlockCoreDefinition` / `BlockUIDefinition` 接口权威
+    94	- [@skb/block-foundation RFC](../block-foundation/RFC.md) — registration walkthrough
+    95	- [@skb/block-callout CONTRACT](../block-callout/CONTRACT.md) — sister-doc (Wave 2 simple-block template)
+    96	- [ADR-0003 headless / presentational 分层](../../docs/decisions/ADR-0003-headless-presentational-split.md)
+    97	- [ADR-0006 asymmetry audit checklist](../../docs/decisions/ADR-0006-asymmetry-audit-checklist.md) item #3 + #4 + #5
+    98	- [ADR-0008 D1 dead-dep + D2 interface freeze](../../docs/decisions/ADR-0008-wave-2-entry-policies.md)
+    99	- [Wave 2 plan §Task D1](../../docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md)
+---
+     1	import { defineCore, type BlockCoreDefinition } from '@skb/block-foundation';
+     2	import { z } from 'zod';
+     3	
+     4	const propsSchema = z
+     5	  .object({
+     6	    expression: z.string().min(1),
+     7	    display: z.boolean().default(false),
+     8	  })
+     9	  .strict();
+    10	
+    11	export const mathCore: BlockCoreDefinition<typeof propsSchema> = defineCore({
+    12	  name: 'math',
+    13	  kind: 'render',
+    14	  propsSchema,
+    15	  mdxComponent: 'Math',
+    16	});
+---
+     1	import { mathCore } from './core-definition';
+     2	import type { MathMdastJsxElement, MathTiptapNode } from './serialize';
+     3	
+     4	/**
+     5	 * MDX 解析 stub。Wave 3 mdx-bridge 在 mdastBlockToTiptap 看到
+     6	 * mdxJsxFlowElement{name:'Math'} 时按 mdxComponent 路由到本函数（RFC §5）。
+     7	 *
+     8	 * `display` 三种 MDX 形式 (mdast-util-mdx-jsx convention):
+     9	 *   - `<Math display>` (boolean shorthand)        → attr.value === null  → true
+    10	 *   - `<Math display="true">`                     → attr.value === "true" → true
+    11	 *   - `<Math display="false">`                    → attr.value === "false"→ false
+    12	 * 任何其他形式（数字 / 非 true/false 字符串）throw — 不静默 false。
+    13	 *
+    14	 * 其他 attr (如 expression) 一律期望 string；null shorthand 仅 display 适用。
+    15	 */
+    16	export function parseMath(node: MathMdastJsxElement): MathTiptapNode {
+    17	  if (node.name !== mathCore.mdxComponent) {
+    18	    throw new Error(
+    19	      `parseMath: expected mdxComponent="${mathCore.mdxComponent}", got "${node.name}"`,
+    20	    );
+    21	  }
+    22	  const rawProps: Record<string, string | boolean> = {};
+    23	  for (const attr of node.attributes) {
+    24	    if (attr.name === 'display') {
+    25	      if (attr.value === null) {
+    26	        rawProps[attr.name] = true;
+    27	      } else if (attr.value === 'true' || attr.value === 'false') {
+    28	        rawProps[attr.name] = attr.value === 'true';
+    29	      } else {
+    30	        throw new Error(
+    31	          `parseMath: invalid display attribute value: ${JSON.stringify(attr.value)}`,
+    32	        );
+    33	      }
+    34	    } else {
+    35	      if (attr.value === null) {
+    36	        throw new Error(
+    37	          `parseMath: attribute "${attr.name}" must have a string value (got null shorthand; only "display" supports boolean shorthand)`,
+    38	        );
+    39	      }
+    40	      rawProps[attr.name] = attr.value;
+    41	    }
+    42	  }
+    43	  const validated = mathCore.propsSchema.parse(rawProps);
+    44	  return {
+    45	    type: 'math',
+    46	    attrs: { expression: validated.expression, display: validated.display },
+    47	  };
+    48	}
+---
+     1	import katex from 'katex';
+     2	
+     3	/**
+     4	 * Single authority for KaTeX rendering across this package (ADR-0006 item #5).
+     5	 * Math.tsx (React/NodeView path) and Math.astro (SSR path) MUST both import
+     6	 * `renderMath` from here — never inline `katex.renderToString` with their own
+     7	 * options literal. The byte-equivalence between editor / SSR / NodeView output
+     8	 * follows from this single import. ssr-render.test.ts exercises a corpus to
+     9	 * detect drift if a future edit accidentally re-inlines the call.
+    10	 *
+    11	 * Options policy:
+    12	 * - `displayMode`: caller-controlled (inline vs block).
+    13	 * - `throwOnError: false`: KaTeX renders invalid LaTeX as `.katex-error` red box;
+    14	 *   error-explicit (math.css binds `.katex-error` to `--color-error` token).
+    15	 * - `output: 'html'`: HTML-only (no MathML); SSR + React DOM both consume HTML
+    16	 *   string. Matches Math.astro's `set:html` path.
+    17	 * - `strict: 'ignore'`: KaTeX warnings (deprecated commands, unicode chars) do
+    18	 *   not throw; consistent with `throwOnError: false`.
+    19	 */
+    20	export const renderMath = (expression: string, display: boolean): string =>
+    21	  katex.renderToString(expression, {
+    22	    displayMode: display,
+    23	    throwOnError: false,
+    24	    output: 'html',
+    25	    strict: 'ignore',
+    26	  });
+---
+     1	import type { BlockViewProps } from '@skb/block-foundation';
+     2	import { mathCore } from '../core/core-definition';
+     3	import { renderMath } from './render-math';
+     4	
+     5	/**
+     6	 * MathView 接受 inferred props ({ expression, display }) — 与
+     7	 * `mathCore.propsSchema` 的 ZodInfer 等价。函数式组件而非
+     8	 * `ComponentType<BlockViewProps<typeof ...>>` 显式标注，避免 generic 变 invariant
+     9	 * 在 BlockRegistry.registerUI 处与 ZodTypeAny widening 冲突（exactOptionalPropertyTypes 触发）。
+    10	 *
+    11	 * KaTeX 渲染走 `./render-math.ts` 单一权威，与 Math.astro SSR path 同源
+    12	 * （ADR-0006 item #5 algorithm replication）。错误态由 KaTeX 渲染为
+    13	 * `.katex-error` 红色块（math.css 绑 `--color-error` token）。
+    14	 */
+    15	export function MathView({
+    16	  props,
+    17	}: BlockViewProps<typeof mathCore.propsSchema>): JSX.Element {
+    18	  const html = renderMath(props.expression, props.display);
+    19	  const Tag = props.display ? 'div' : 'span';
+    20	  return (
+    21	    <Tag
+    22	      data-block="math"
+    23	      data-display={props.display ? 'true' : 'false'}
+    24	      // KaTeX 输出受信（npm 包内部生成），无 user HTML 注入路径
+    25	      dangerouslySetInnerHTML={{ __html: html }}
+    26	    />
+    27	  );
+    28	}
+    29	
+    30	export const MathEditorView = MathView;
+    31	export const MathRenderView = MathView;
+---
+     1	---
+     2	import { renderMath } from './render-math';
+     3	
+     4	interface Props {
+     5	  expression: string;
+     6	  display?: boolean;
+     7	}
+     8	
+     9	const { expression, display = false } = Astro.props;
+    10	
+    11	// KaTeX 渲染走 `./render-math.ts` 单一权威，与 Math.tsx 同源
+    12	// （ADR-0006 item #5 algorithm replication：authority = renderMath；不允许在
+    13	// 此文件内 inline `katex.renderToString` + options literal）。
+    14	const html = renderMath(expression, display);
+    15	
+    16	const Tag = display ? 'div' : 'span';
+    17	---
+    18	
+    19	<Tag data-block="math" data-display={String(display)} set:html={html} />
+
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && rg -n \"block-pdf|packages\\/block-pdf|\\\"block-pdf\\\"\" tsconfig.json pnpm-lock.yaml && echo '---' && rg -n \"block-pdf\" docs/decisions/ADR-0006-asymmetry-audit-checklist.md docs/decisions/ADR-0008-wave-2-entry-policies.md docs/decisions/ADR-0009-block-kind-union-expansion.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+pnpm-lock.yaml:329:  packages/block-pdf:
+tsconfig.json:17:    { "path": "./packages/block-pdf" },
+---
+docs/decisions/ADR-0009-block-kind-union-expansion.md:27:├── block-pdf/       # Track D2 — render block (react-pdf)
+docs/decisions/ADR-0009-block-kind-union-expansion.md:55:| `render` | **Wave 2** | render-block-eng | 渲染外部 runtime authority（KaTeX / pdf.js）的 block；UI hand-craft（不仿造）；renderXxx single-source 函数 shared between Tiptap NodeView + Astro SSR | block-math / block-pdf |
+
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && nl -ba tsconfig.json | sed -n '1,120p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	{
+     2	  "extends": "./tsconfig.base.json",
+     3	  "compilerOptions": {
+     4	    "composite": false,
+     5	    "noEmit": true
+     6	  },
+     7	  "include": [],
+     8	  "references": [
+     9	    { "path": "./scripts" },
+    10	    { "path": "./packages/content-types" },
+    11	    { "path": "./packages/block-callout" },
+    12	    { "path": "./packages/block-code" },
+    13	    { "path": "./packages/block-foundation" },
+    14	    { "path": "./packages/block-image" },
+    15	    { "path": "./packages/block-jupyter" },
+    16	    { "path": "./packages/block-math" },
+    17	    { "path": "./packages/block-pdf" },
+    18	    { "path": "./packages/editor-commands" },
+    19	    { "path": "./packages/editor-toolbar" },
+    20	    { "path": "./packages/agent-tools" },
+    21	    { "path": "./packages/design-tokens" },
+    22	    { "path": "./packages/kernel-adapter" },
+    23	    { "path": "./packages/kernel-pyodide" },
+    24	    { "path": "./packages/kernel-registry" },
+    25	    { "path": "./packages/mdx-bridge" }
+    26	  ]
+    27	}
+
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && nl -ba pnpm-lock.yaml | sed -n '300,380p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+   300	      '@skb/block-foundation':
+   301	        specifier: workspace:*
+   302	        version: link:../block-foundation
+   303	      '@skb/design-tokens':
+   304	        specifier: workspace:*
+   305	        version: link:../design-tokens
+   306	      katex:
+   307	        specifier: ^0.16.11
+   308	        version: 0.16.45
+   309	      zod:
+   310	        specifier: ^3.23.0
+   311	        version: 3.25.76
+   312	    devDependencies:
+   313	      '@types/katex':
+   314	        specifier: ^0.16.7
+   315	        version: 0.16.8
+   316	      '@types/react':
+   317	        specifier: ^18.3.0
+   318	        version: 18.3.28
+   319	      react:
+   320	        specifier: ^18.3.0
+   321	        version: 18.3.1
+   322	      typescript:
+   323	        specifier: ~5.6.0
+   324	        version: 5.6.3
+   325	      vitest:
+   326	        specifier: ^4.1.5
+   327	        version: 4.1.5(@types/node@22.19.17)(happy-dom@15.11.7)(vite@8.0.10(@types/node@22.19.17)(esbuild@0.27.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.3))
+   328	
+   329	  packages/block-pdf:
+   330	    dependencies:
+   331	      '@skb/block-foundation':
+   332	        specifier: workspace:*
+   333	        version: link:../block-foundation
+   334	      '@skb/design-tokens':
+   335	        specifier: workspace:*
+   336	        version: link:../design-tokens
+   337	      zod:
+   338	        specifier: ^3.23.0
+   339	        version: 3.25.76
+   340	    devDependencies:
+   341	      '@types/react':
+   342	        specifier: ^18.3.0
+   343	        version: 18.3.28
+   344	      happy-dom:
+   345	        specifier: ^15.0.0
+   346	        version: 15.11.7
+   347	      react:
+   348	        specifier: ^18.3.0
+   349	        version: 18.3.1
+   350	      typescript:
+   351	        specifier: ~5.6.0
+   352	        version: 5.6.3
+   353	      vitest:
+   354	        specifier: ^4.1.5
+   355	        version: 4.1.5(@types/node@22.19.17)(happy-dom@15.11.7)(vite@8.0.10(@types/node@22.19.17)(esbuild@0.27.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.3))
+   356	
+   357	  packages/content-types:
+   358	    dependencies:
+   359	      zod:
+   360	        specifier: ^3.23.0
+   361	        version: 3.25.76
+   362	    devDependencies:
+   363	      typescript:
+   364	        specifier: ~5.6.0
+   365	        version: 5.6.3
+   366	      vitest:
+   367	        specifier: ^4.1.5
+   368	        version: 4.1.5(@types/node@22.19.17)(happy-dom@15.11.7)(vite@8.0.10(@types/node@22.19.17)(esbuild@0.27.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.3))
+   369	
+   370	  packages/design-tokens:
+   371	    dependencies:
+   372	      '@tailwindcss/typography':
+   373	        specifier: ^0.5.15
+   374	        version: 0.5.19(tailwindcss@3.4.19(tsx@4.21.0)(yaml@2.8.3))
+   375	    devDependencies:
+   376	      '@testing-library/react':
+   377	        specifier: ^16.0.0
+   378	        version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+   379	      '@types/react':
+   380	        specifier: ^18.3.0
+
+codex
+I’m doing one final pass on the ADR cross-links and asymmetry checklist items, then I’ll execute the requested `pnpm --filter @skb/block-pdf ...` commands to confirm PASS/FAIL.
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && nl -ba docs/decisions/ADR-0006-asymmetry-audit-checklist.md | sed -n '1,220p'" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && nl -ba docs/decisions/ADR-0008-wave-2-entry-policies.md | sed -n '1,260p'" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && nl -ba docs/decisions/ADR-0009-block-kind-union-expansion.md | sed -n '1,220p'" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && nl -ba packages/block-pdf/src/core/serialize.ts | sed -n '1,220p' && echo '---' && nl -ba packages/block-pdf/src/ui-default/../../tsconfig.json | sed -n '1,80p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 150ms:
+     1	# ADR-0006: Cross-location asymmetry-audit checklist (process rule)
+     2	
+     3	| 字段 | 值                                    |
+     4	| ---- | ------------------------------------- |
+     5	| 状态 | accepted                              |
+     6	| 日期 | 2026-04-30                            |
+     7	| 作者 | orchestrator (Claude Opus 4.7 1M ctx) |
+     8	| 触发 | Wave 1 codex 5.5 reviews caught 12 instances of the same meta-class across 6 tracks + 5 close-ceremony fix iterations (8 distinct items + 4 close-ceremony reinforcements of items #6 and #8) |
+     9	| 替代 | 不替代任何 ADR；扩展 [ADR-0001](ADR-0001-stack-selection.md) §3.2 review chain |
+    10	
+    11	## Context
+    12	
+    13	Wave 1 implementation produced strong empirical evidence that **a single bug class** dominates the failure mode at line-level review:
+    14	
+    15	> **Cross-location asymmetry**: a value, schema, algorithm, or invariant exists in two or more places, and an edit to one location is not symmetrically applied to all peers, so behavior diverges silently.
+    16	
+    17	Across 6 tracks + 5 close-ceremony fix iterations, codex 5.5 (`pr-gate`) caught **12 instances** of this meta-class (8 distinct failure-mode items + 4 close-ceremony reinforcements of items #6 and #8). Every PR that lasted ≥ 2 review rounds hit at least one instance. The pattern is so consistent that linear "fix the cited blocker, ship v_n+1" iteration would not have caught the second-order asymmetry; codex specifically catches the symmetric counterpart that the worker missed.
+    18	
+    19	### Wave 1 empirical record (12 instances)
+    20	
+    21	| # | Track | Round | Asymmetry pair | Bug behavior |
+    22	|---|---|---|---|---|
+    23	| 1 | Track B (block-foundation + content-types) | R1 → fixed v3 | `listUIs` mutability vs `listCores` defensive copy | Caller mutation of return value polluted registry singleton |
+    24	| 2 | Track D (apps/api) | R2 → fixed v4 | RFC 7235 `WWW-Authenticate` on framework-raised 401 vs custom `SkbError` 401 | 4 of 5 401 paths emitted spec-mandated header; the custom-error path silently dropped it |
+    25	| 3 | Track F (editor-commands) | R3 → fixed v4 | `.strict()` on top-level Zod object vs nested `frontmatterSchema` | Top-level rejected unknown keys; nested still silently stripped them |
+    26	| 4 | Track C (mdx-bridge) | R2 → fixed v4 | `marksEqual` link comparator: `href` only vs `href + title` | Same href, different titles silently merged into one link with the first title preserved |
+    27	| 5 | Track F v5 | R3 → fixed v6 | One CONTRACT.md updated to reflect code; sister CONTRACT.md (`agent-tools`) had stale wording | Documentation-vs-code drift in the file the worker did not edit |
+    28	| 6 | Track A | R1 → fixed v2 | FOUC inline IIFE saved-value algorithm + content schema | Truthy-coerce diverges from strict-whitelist for invalid / case-mismatched values; inline `z.object` redefinition diverges from `frontmatterSchema` authority |
+    29	| 7 | Track A v2 | R2 → fixed v3 | FOUC inline IIFE try/catch scope | Wide try/catch in IIFE swallowed `matchMedia` exceptions while authority's narrow try/catch propagated; storage-throws scenarios produced light→dark hydration flash |
+    30	| 8 | Wave 1 close bundle v1 | R1 → fixed v2 | ADR-0006 mandated reviewer-prompt updates vs actual `agent-contract.md` / generated `.claude/agents/*.md` / `docs/review-checklist.md` / `team-operations.md` content | The close-ceremony commit codified a process rule that mandates downstream behavior; consumer-side artifacts (reviewer prompts + runbook) had not been updated to embed the rule, so Wave 2 reviewers would not have seen it |
+    31	| 9 | Wave 1 close bundle v2 | R2 → fixed v3 | ADR-0006:81 within-document drift "7 distinct instances" | Single bullet missed during the v1→v2 count sweep — sister-bullet variant of item #6 within a single document |
+    32	| 10 | Wave 1 close bundle v3 | R3 → fixed v4 | ADR-0006:117 within-document drift "7 empirical instances + 18+ erratum candidates" (both numbers stale) | Second sister-bullet drift in the same file, a different bullet — proved per-citation fixes are themselves item #6 traps; comprehensive sweep at fix time is the robust pattern |
+    33	| 11 | Wave 1 close bundle v4 (informational) | R4 (informational) → fixed v5 | structure baseline:66 "× 7 endpoints" while apps/api has 4 routes / 11 tests | Pre-existing content-accuracy drift in the structure baseline document (authored at v1) — content number mismatched real code; surfaced during the broader 11th-class hunt |
+    34	| 12 | Wave 1 close bundle v5 | R2 (pr-gate) → fixed v6 | Regenerated `.claude/agents/code-reviewer.md` + `.claude/agents/pr-gate.md` + `docs/review-checklist.md` were not staged in the bundle commit — authority + generator code updated, but generator outputs remained at pre-update HEAD content | Sub-form of item #8: regenerating an artifact and `git add`'ing it are separate steps; a bundle that updates authority + generator without staging the regenerated outputs is silently stale. Motivated the "verify by clean second-run" step now part of item #8. |
+    35	
+    36	Codex's structured review consistently caught these with three patterns:
+    37	
+    38	1. After fixing one location, **codex audits all peer locations** (not just the cited site)
+    39	2. After a value/schema acquires an attribute, **codex audits every comparator/serialization function** for that attribute
+    40	3. After a "happy path" fix, **codex audits the exception path** for the same equivalence
+    41	
+    42	These three habits collectively define the process rule below.
+    43	
+    44	## Decision
+    45	
+    46	Adopt an **8-point asymmetry-audit checklist** as a mandatory part of `code-reviewer` (Codex 5.3-spark, default cheap) and `pr-gate` (Codex 5.5, deep) review prompts. Reviewers MUST work through every applicable item before declaring PASS.
+    47	
+    48	### The 8 items
+    49	
+    50	1. **Field/attribute audit**: After adding a field to a data shape (Zod schema, Pydantic model, TS interface, mdast attrs, etc.), audit every comparator / equality / serialization / canonicalization function that handles this shape. (Wave 1 evidence: instance #4 — `marksEqual` link branch missed `title` when serialize emitted it.)
+    51	
+    52	2. **Status code audit**: After adding a status code to one HTTP handler (or, generally, an exit/error code to one branch), audit every other handler emitting the same code. RFC-mandated headers (RFC 7235 `WWW-Authenticate` on 401, RFC 7231 `Allow` on 405) attach to **the status code itself**, not the framework code path that emitted it. (Wave 1 evidence: instance #2 — custom `SkbError` 401 path missed `WWW-Authenticate`.)
+    53	
+    54	3. **Strictness audit**: After adding `.strict()` (Zod) / `extra='forbid'` (Pydantic) at one level of an object schema, audit every nested object/sub-schema. The strictness setting **does not propagate**; nested objects must opt in independently. (Wave 1 evidence: instance #3 — top-level `.strict()` shipped while nested `frontmatterSchema` still silently stripped unknown keys.)
+    55	
+    56	4. **Consumer schema audit**: After defining a schema in a single-authority package (e.g. `@skb/content-types/frontmatterSchema`), audit every consumer for inline duplicates or inline redefinitions that should `import` instead. The "deferred swap" pattern — "I'll inline now and import later" — is a contract break that compounds over time. (Wave 1 evidence: instance #6 part 2 — apps/site/content.config.ts inlined `z.object(...)` rather than importing `frontmatterSchema`.)
+    57	
+    58	5. **Algorithm + runtime constant replication audit**: When an algorithm or runtime constant is replicated outside its authority (e.g. inline FOUC scripts, login challenge derivation, pre-hydration boot logic that cannot import from packages), audit every consumer-side replica for byte-equivalent reproduction. The replica must register a **regression test** that asserts equivalence against the authority across a representative input corpus. (Wave 1 evidence: instance #6 part 1 — FOUC IIFE truthy-coerce vs `getInitialTheme()` strict-whitelist; remediated with `apps/site/src/__tests__/fouc-script.test.ts` 16-row corpus.)
+    59	
+    60	6. **Sister-file documentation audit**: After updating one CONTRACT.md (or any document that describes a code surface), audit ALL related CONTRACT.md files in the package family for sister-file drift. Two CONTRACT.md files that describe two halves of the same contract must use **identical terminology** for the shared identifiers (function names, schema names, refine predicate names). (Wave 1 evidence: instance #5 — `editor-commands/CONTRACT.md` updated to cite `editBlockInputSchema` while `agent-tools/CONTRACT.md` still referred to the old shape.)
+    61	
+    62	7. **Exception-scope equivalence audit**: When replicating an algorithm + its exception handling across files, audit BOTH the happy-path semantics AND the `try/catch` scope between authority and replica. Narrow vs wide `try/catch` can produce divergent fall-through behavior even with identical happy-path logic. Specifically: when `localStorage` / `sessionStorage` / `IndexedDB` / `matchMedia` / any browser API in the algorithm path can throw, the `try/catch` MUST wrap ONLY the throwing call, with the fall-through branch (matchMedia / system default / DOM apply) running AFTER the catch handler — not inside it. (Wave 1 evidence: instance #7 — FOUC IIFE wide-scope try/catch swallowed matchMedia exceptions; remediated with narrow try/catch + 2 storage-throws regression tests.)
+    63	
+    64	8. **Authority-document → generated/consumed surface audit**: When updating an authority document (ADR, spec, `agent-contract.md`, runbook, CONVENTIONS) **OR a dependency authority (`package.json`)** that mandates behavior in downstream consumers, audit every consumer-side replica/generated artifact for synchronized update **AND staged-in-the-git-index in the same bundle**. Specifically: an ADR section that says "X file MUST be updated to do Y" requires the same commit to update X and provide a way to verify the synchronization. Generated artifacts (e.g. `docs/review-checklist.md` and `.claude/agents/*.md` derived from `agent-contract.md`; **`pnpm-lock.yaml` derived from `package.json`** — see sub-form C below) MUST be regenerated via the documented codegen step (`pnpm generate:configs` / `pnpm install`) AND **explicitly `git add`'d** so the git **index** (not just the working tree) contains the new content; runbooks (`docs/runbooks/team-operations.md`) MUST be cross-linked; Codex/Claude subagent prompt files MUST embed or reference the new rule.
+    65	
+    66	   **Operational sequence** (do not skip steps):
+    67	   ```bash
+    68	   # 1. Edit authority + generator code
+    69	   # 2. Run codegen
+    70	   pnpm generate:configs
+    71	   # 3. Stage regenerated outputs (CRITICAL — see Pitfall below)
+    72	   git add <regenerated/path/foo.md> <regenerated/path/bar.md>
+    73	   # 4. Verify index reflects content (NOT just working tree):
+    74	   git diff --cached --stat -- <regenerated paths>
+    75	   #    → expects non-empty diff with the expected line counts
+    76	   # 5. Verify idempotence: re-run codegen + confirm working tree matches index:
+    77	   pnpm generate:configs
+    78	   git status --short -- <regenerated paths>
+    79	   #    → expects column-1 'M' (staged) + column-2 blank (working tree clean)
+    80	   ```
+    81	
+    82	   **Pitfall (this is the load-bearing step)**: `git status --short` shows two columns: column 1 is index-vs-HEAD; column 2 is working-tree-vs-index. After running the generator without `git add`, you see `' M'` (space + M) — **working tree differs from index, but index still matches HEAD**. `git commit` only commits the index. Skipping `git add` means the regenerated content is in your working tree but NOT in the next commit. The bundle would land authority + generator-code changes WITHOUT the regenerated outputs, leaving consumers (Wave 2 reviewers reading `.claude/agents/*.md`) at pre-update content. Use `git diff --cached` (not `git status`) as the canonical staging-verification command — `--cached` shows index-vs-HEAD only, which is what `git commit` will produce.
+    83	
+    84	   **Pitfall extension — `pnpm-lock.yaml` is a generated artifact too (sub-form C below)**: when the authority is `package.json` (any dependency add / remove / version bump / `@types/*` shift), `pnpm install` regenerates `pnpm-lock.yaml` as a deterministic derived artifact. Skipping `git add pnpm-lock.yaml` produces the same class of failure as skipping `git add .claude/agents/*.md`: working tree has the synced lockfile but the **index** still holds HEAD's stale lockfile, so the bundle ships `package.json` ahead of its lockfile. CI runs `pnpm install --frozen-lockfile` from the bundled state, sees the stale lockfile disagreeing with the new `package.json`, and fails install. The same `git diff --cached --stat -- pnpm-lock.yaml` canonical verification applies. (Wave 1 erratum commit `e15ec36`; codified as sub-form C below.)
+    85	
+    86	   Generated-from-authority files carry their own header comment ("GENERATED FROM agent-contract.md — DO NOT EDIT BY HAND") OR YAML frontmatter declaring authority source — both forms are acceptable. `pnpm-lock.yaml` lacks an explicit header (the format is fixed by pnpm) but is implicitly declared by `pnpm install`'s contract — its authority is `package.json` + the workspace `pnpm-workspace.yaml`.
+    87	
+    88	   **Wave 1 evidence**: **instance #8** — ADR-0006 v1 commit codified reviewer-prompt mandates but did not update `agent-contract.md` / regenerate `.claude/agents/code-reviewer.md` / regenerate `.claude/agents/pr-gate.md` / cross-link `team-operations.md` / regenerate `docs/review-checklist.md`; pr-gate caught the dogfood failure during R1 review of the close-ceremony bundle, forcing a v2 fix. **instance #12 (sub-form A — pre-regeneration omission)** — v5 bundle updated authority files (`agent-contract.md`, generator code, `team-operations.md` cross-link) but had not run the generator at all post-edit; the 3 regenerated outputs were stale at HEAD content; pr-gate caught this during R2 review, forcing a v6 fix. **instance #12 (sub-form B — staging-vs-working-tree confusion)** — v6 bundle ran the generator (so working tree had new content) but did NOT `git add` the regenerated outputs; the git **index** still held HEAD blob hashes for the 3 generated files; orchestrator confused `git status --short` "M" prefix (working-tree-vs-index) with index-vs-HEAD; pr-gate caught this via `git ls-files --stage` blob-hash comparison during R3 review, forcing the v7 fix that explicitly stages with `git add` + verifies via `git diff --cached`. **instance #12 (sub-form C — lockfile is a generated-from-authority artifact)** — Wave 1 close ceremony commit `e15ec36` ("fix(deps): commit pnpm-lock.yaml for @tailwindcss/typography (lockfile drift)"): the design-tokens erratum (commit `fdc86a8`) added the `@tailwindcss/typography` dependency to `package.json` but did not stage the regenerated `pnpm-lock.yaml`; CI install used the pre-update lockfile, drifted against the new `package.json`, and failed `pnpm install --frozen-lockfile`. Resolution: commit `e15ec36` staged the lockfile separately. Lesson codified: when the authority is `package.json` (any dependency add / remove / version bump), `pnpm-lock.yaml` is the consumer-side generated artifact and must ride the same bundle — the class equivalence to `.claude/agents/*.md` regeneration is exact (deterministic derive + git-index staging required). The four sub-forms of the same item #8 class — pre-regeneration omission, post-regeneration commit-staging confusion, conceptually-correct-but-operationally-incomplete fix, AND lockfile-as-generated-artifact — together motivate the explicit operational sequence and `git diff --cached` canonical verification command codified above.
+    89	
+    90	### Wave 2 prep notes (forward-compatibility application)
+    91	
+    92	The 8 items have specific Wave 2 trip-hazards already identified by Wave 1's review record:
+    93	
+    94	- **Item #1 + Wave 2 attr-bearing marks**: when the first attr-bearing mark beyond `link` is added to mdx-bridge (e.g. `highlight: {color}`, `kbd: {style}`), the worker MUST simultaneously update `wrapMark` AND `marksEqual` AND add a fixture exercising attr-equality + attr-distinction. Default `return true` in `marksEqual` is a silent-drop trap for any attr-bearing mark. (See pr-gate Track C v4 R3 caveat.)
+    95	
+    96	- **Item #2 + Wave 2 new error categories**: when Wave 2+ adds new HTTP error categories (e.g. `auth-rate-limit`, `kernel-timeout`), each new `SkbError` subclass MUST emit the same RFC-mandated headers as framework-raised peers. Add a unit test asserting header presence per error type. (See `apps/api/CONVENTIONS.md` §5 Pitfall + Pitfall continued.)
+    97	
+    98	- **Item #5 + Wave 2 client-side replications**: when apps/site adds new client-side algorithm replications (theme variants beyond light/dark, locale negotiation pre-hydration, etc.), the worker MUST audit both saved-value semantics AND try/catch scope against authority. (See `packages/design-tokens/CONTRACT.md` Inverse-direction obligation invariant.)
+    99	
+   100	- **Item #7 + future inline scripts**: ANY future `<script is:inline>` block in the project that needs pre-hydration replication of a package algorithm MUST follow the FOUC template (narrow try/catch + corpus regression test).
+   101	
+   102	## Consequences
+   103	
+   104	### Positive
+   105	
+   106	- **Catch the failure mode proactively**: Wave 1 evidence shows reviewer-applied checklist would have caught all 12 instances on the first review round (including the close-ceremony dogfood instance #8 + the 4 fix-loop reinforcements), eliminating 12 round-trip cycles
+   107	- **Reviewer prompt clarity**: code-reviewer + pr-gate codex profile prompts gain a concrete, enumerable checklist rather than the implicit "look for symmetric counterparts" expectation
+   108	- **Worker self-audit**: workers gain a pre-PR checklist they can run before reporting `ready-for-review`, catching their own asymmetries (memory: `feedback_verification_fresh_state.md` showed the verification-rigor lesson; this checklist is the analogous rigor at code-design level)
+   109	- **Empirical grounding**: 12 distinct instances spread across 6 tracks + 5 close-ceremony fix iterations make this rule data-driven, not a "best practice" speculation; instances #9-12 reinforce items #6 + #8 specifically through close-ceremony fix-loop evidence
+   110	
+   111	### Costs
+   112	
+   113	- **Review-round time**: applying 8-point audit at every review adds ~5-10 minutes per round of code-reviewer + pr-gate runtime. Acceptable trade-off given Wave 1 round-counts (Track F: 5 rounds; Track A: 3 rounds; Track C: 4 rounds; Track D: 4 rounds) — front-loading review thoroughness reduces total cycles
+   114	- **Worker prompt overhead**: each spawn prompt now needs a reference to this ADR + the 8-point checklist. Marginal cost.
+   115	- **False-positive risk**: items that don't apply (e.g. #2 "status code" doesn't apply to TS-only packages) need to be triaged and skipped. Reviewer profile prompts must explicitly say "skip items not applicable to this PR's scope" to avoid bloat.
+   116	
+   117	### Risks (mitigated)
+   118	
+   119	- **Risk**: workers might mechanically check items without thinking, producing false confidence. **Mitigation**: each item enumerates concrete failure modes from Wave 1, not abstract heuristics — easier to apply
+   120	- **Risk**: this list might grow unbounded as Wave 2+ surfaces new asymmetry classes. **Mitigation**: ADR amendments are cheap; each new instance produces an ADR-0006 erratum capturing item #N+1. Wave 2 close ceremony reviews instances and adds items as needed.
+   121	
+   122	## Implementation
+   123	
+   124	### Reviewer prompt updates
+   125	
+   126	`code-reviewer` and `pr-gate` profile prompts MUST be updated to:
+   127	
+   128	1. State the 8-point checklist verbatim (or by reference to this ADR)
+   129	2. Require the reviewer's verdict structure to include "asymmetry-audit applied: items {1..8} verdicts: ..."
+   130	3. Explicitly mark FAIL if any applicable item is left un-audited
+   131	
+   132	`docs/runbooks/team-operations.md` §"角色与触发器" Tier 2 reviewer rows should cross-link to this ADR.
+   133	
+   134	### Worker pre-flight (template addition)
+   135	
+   136	Worker `ready-for-review` reports SHOULD include a brief asymmetry-audit summary: which of the 8 items applied, and the worker's self-audit verdict. Reviewers cross-check.
+   137	
+   138	### Wave 1 retroactive
+   139	
+   140	This ADR is **forward-applicable**. Wave 1 PRs that already shipped under earlier review without this checklist remain valid; the empirical instances they revealed are exactly what grounded this ADR. No retroactive re-review required.
+   141	
+   142	## Related
+   143	
+   144	- [ADR-0001](ADR-0001-stack-selection.md) §3.2 review chain — this ADR specifies what reviewers MUST do; ADR-0001 specifies who reviews
+   145	- [ADR-0002](ADR-0002-wave-1-close.md) Wave 1 close — collects the 12 empirical instances + 22 erratum candidates
+   146	- [ADR-0004](ADR-0004-agent-team-dispatch-model.md) team dispatch — orchestrator dispatches review chain per this checklist
+   147	- [docs/runbooks/team-operations.md](../runbooks/team-operations.md) — operational reference for reviewers and workers
+   148	- [packages/design-tokens/CONTRACT.md](../../packages/design-tokens/CONTRACT.md) Inverse-direction obligation — concrete application of items #5 + #7
+   149	- [apps/api/CONVENTIONS.md](../../apps/api/CONVENTIONS.md) §5 Pitfalls — concrete application of item #2
+
+ succeeded in 144ms:
+     1	# ADR-0008: Wave 2 entry policies — dead-dep + block-foundation interface freeze
+     2	
+     3	| 字段 | 值                                                                                                                                                                |
+     4	| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+     5	| 状态 | accepted                                                                                                                                                          |
+     6	| 日期 | 2026-04-30                                                                                                                                                        |
+     7	| 作者 | refactorer (Claude Opus 4.7 1M ctx)                                                                                                                               |
+     8	| 触发 | structure-auditor Wave 1 close baseline §7 推荐 #1（dead-dep policy）+ #2（block-foundation interface freeze）；ADR-0002 D3 erratum #19（F1）+ #20（F2）+ #21（block-foundation RFC） |
+     9	| 替代 | 不替代任何 ADR；扩展 [ADR-0001](ADR-0001-stack-selection.md) §1.2/§1.8 monorepo 规则 + [ADR-0003](ADR-0003-headless-presentational-split.md) D2 双层接口        |
+    10	
+    11	## Context
+    12	
+    13	`docs/audits/structure-2026-04-29-wave-1.md` §7 提出 3 个结构关注点；其中 #1
+    14	（dead-dep policy）+ #2（block-foundation interface freeze）必须在 Wave 2 第一个
+    15	`block-*` PR 之前 lock，否则会让 block-callout 入门 PR 同时承担"消费 contract"+
+    16	"决议 dep policy" 双重负担，触发 R-round inflation（Wave 1 Track F 5 轮 + Track A
+    17	3 轮的同源教训）。
+    18	
+    19	ADR-0002 D3 已记录两处 forward-compat dead-dep：
+    20	
+    21	- **F1 — `packages/mdx-bridge`** `package.json#dependencies` 列出
+    22	  `@skb/block-foundation` + `@skb/content-types`，源码零 import；
+    23	  `tsconfig.json#references` 留空（即 package.json 与 tsconfig 不一致）。
+    24	- **F2 — `packages/block-foundation`** `package.json#dependencies` 列出
+    25	  `@skb/content-types`，源码零 import；`tsconfig.json#references` 已含
+    26	  `{ "path": "../content-types" }`（即 package.json 与 tsconfig 一致但都是 dead）。
+    27	
+    28	structure-auditor §7 推荐 #1 给出两条互斥路径：
+    29	
+    30	- **Option A（tighten）**：每个 `package.json#dependencies/peerDependencies` 中的
+    31	  `@skb/*` 必须对应至少一个源码 `from '@skb/<pkg>'` import；
+    32	  CONTRACT.md 可在 prose 段表达 forward-compat 意图，但 package.json 不占位。
+    33	- **Option B（relax）**：package.json 可 forward-declare；
+    34	  `tsconfig.json#references` 必须与 `package.json` 一致；CONTRACT.md 必须解释。
+    35	
+    36	structure-auditor §7 推荐 #2 提出 block-foundation MDX renderer interface freeze：
+    37	Wave 2 brings the first `block-callout` package (per agent-contract `simple-block-eng`)
+    38	作为 `block-foundation` 双层 API 第一个真实 consumer；任何接口 gap 会在
+    39	block-callout review 阶段反复返工。
+    40	
+    41	## Decision
+    42	
+    43	### D1：dead-dep policy = Option A（tighten）
+    44	
+    45	**规则**：每个 `package.json#dependencies` / `peerDependencies` 中的 `@skb/*`
+    46	工作区依赖**必须**对应至少一个源码 `from '@skb/<pkg>'` import。
+    47	forward-compat 意图（"Wave N+1 will consume X"）可在 CONTRACT.md prose 段表达，
+    48	但**不在 package.json 占位**。
+    49	
+    50	**理由（Option A 优于 Option B）**：
+    51	
+    52	1. **audit invariant 更简洁**：dead-dep = bug，结构审计不必为
+    53	   "forward-compat 是合法 dead-dep" 维护特例；structure-auditor 月度可机械化
+    54	   `grep` 检查（"package.json `@skb/*` ↔ source import 一一对应"），
+    55	   比 CONTRACT 文本对比可靠。
+    56	2. **YAGNI**：mdx-bridge / block-foundation 真用上时再加 dep 是同包改动 + 同 PR
+    57	   单点 churn；预先占位换来的"少改一行 package.json"不抵 audit 复杂度。
+    58	3. **CONTRACT prose 仍可表达意图**：authoring intent 不丢，只是不再让
+    59	   `package.json` 同时承担 "runtime fact" + "future plan" 双重语义。
+    60	4. **Phase 3 npm publish 反向证据弱**：当前 phase 全部 `private: true`
+    61	   workspace 包，npm publish 顾虑是 Phase 3 议题；届时若需 forward-compat 的
+    62	   package.json 形态可在 ADR-N 重新审视；当前不应被 hypothetical future
+    63	   requirement 绑架（CLAUDE.md hard rule "Don't design for hypothetical future"）。
+    64	
+    65	**具体执行（D1 应用范围限于 Wave 1 已识别的两处）**：
+    66	
+    67	| 包                             | 改动                                                                                                                                              |
+    68	| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+    69	| `packages/mdx-bridge`          | 删 `package.json#dependencies` 的 `@skb/block-foundation` + `@skb/content-types`；`tsconfig.json` 已无相关 references，无需改；`CONTRACT.md` § "Wave 1 declared peers" 改 prose（描述 forward-compat 意图，不再宣称 deps 占位）。 |
+    70	| `packages/block-foundation`    | 删 `package.json#dependencies` 的 `@skb/content-types`；删 `tsconfig.json#references` 中 `{ "path": "../content-types" }`（与 package.json 同步）；`CONTRACT.md` 加一段 prose 说明 Wave 2 引入 content-types 的时机。 |
+    71	
+    72	`structure-auditor` 月度审计（next: 2026-05）增加机械检查项：扫所有
+    73	`packages/*/package.json` 的 `@skb/*` deps，与同包 `src/**/*.{ts,tsx}` 的
+    74	`from '@skb/...'` import 比对，发现单边即报 violation。
+    75	
+    76	### D2：block-foundation 注册 API freeze（spec for first real consumer block-callout）
+    77	
+    78	在 `packages/block-foundation/RFC.md`（新增）写 walkthrough："block-callout
+    79	如何注册 core + ui-default 到 BlockRegistry"，覆盖：
+    80	
+    81	- `registerCore(core)` + `propsSchema` + `mdxComponent` name + `serialize/parse` hook 形状
+    82	- `registerUI(ui)` + `uiId` + `EditorView` / `RenderView` 类型契约
+    83	- 错误场景（unknown core / 重复 uiId / propsSchema 非 ZodObject）的 throw 行为
+    84	- consumer-side 测试样板（`block-callout/src/__tests__/registry-integration.test.ts` 雏形）
+    85	
+    86	第一个 `block-*` PR（C1: block-callout/core）必须 reference 此 RFC；后续
+    87	`block-*` PR 沿用模式。**RFC.md 不是 CONTRACT.md**：CONTRACT.md 规定 public API
+    88	形状（已存在），RFC.md 是 walkthrough（教 consumer 如何用）；二者补充而非重叠。
+    89	
+    90	D2 的实施在 Task A2（owner: `block-foundation-eng`，blocked_by Task A1=本 ADR commit）。
+    91	本 ADR 仅 freeze D2 的**目标**与**承诺**；具体 RFC.md 文本由 Task A2 PR 落地。
+    92	
+    93	## Consequences
+    94	
+    95	### 正面
+    96	
+    97	- **audit invariant 简洁可机械化**：structure-auditor 月度增加单条扫描（package.json `@skb/*` ↔ source import），覆盖 D1 不变量。
+    98	- **block-foundation 接口在 block-callout 入门前 freeze**：预防 Wave 1 R-round inflation 同源问题（教训源 ADR-0006 instances #1, #5）。
+    99	- **YAGNI 原则在 monorepo 层落地**：dead-dep 不再合法，迫使依赖在真消费时声明。
+   100	- **Wave 2 plan-draft 阻塞解锁**：Task A1 commit 后 Track C/D/E/G 全部解锁。
+   101	
+   102	### 负面
+   103	
+   104	- **若 Phase 3 npm publish 阶段需 forward-compat package.json 形态**（包发布前要把
+   105	  optional peer 显式声明），届时需 ADR-N 重新评估；当前判断该顾虑不充分（私有
+   106	  workspace 全程 `private: true`）。
+   107	- **block-foundation tsconfig 短期失去 content-types reference**：在 D2/D3
+   108	  block-callout 落地后会重建（block-callout 的 tsconfig refs 需要 content-types
+   109	  + block-foundation；block-foundation 自己若 Wave 2 中段开始 import content-types
+   110	  schema 用于 props 验证，再加 ref）。这是预期 churn，不是退化。
+   111	
+   112	### Risks (mitigated)
+   113	
+   114	- **风险**：Wave 2 中段 block-foundation 真消费 content-types 时漏加 dep + ref。
+   115	  **缓解**：`pnpm typecheck` + structure-auditor 双门会立刻报缺失（import 找不到 / refs 不一致），与 Wave 1 同类问题处理流程一致。
+   116	- **风险**：Option A 让"forward-compat 意图"只能进 CONTRACT prose，未来读者可能漏看。
+   117	  **缓解**：每个 block-* PR review chain 已强制读 CONTRACT.md（ADR-0007 D2 row 1 触发），prose 段是 review 必经；review 也会检查 dep 与 import 一致。
+   118	
+   119	## Implementation
+   120	
+   121	按 ADR-0006 D8 staging protocol（authority + generated/consumed surface 同 bundle staged）：
+   122	
+   123	1. **同 bundle commit（本 ADR + 应用同 PR）**：
+   124	   - `docs/decisions/ADR-0008-wave-2-entry-policies.md`（本 ADR 自身）
+   125	   - `docs/decisions/README.md`（索引加 ADR-0008 行）
+   126	   - `packages/mdx-bridge/package.json`（删 2 条 dead deps）
+   127	   - `packages/mdx-bridge/CONTRACT.md` § "Wave 1 declared peers" 改 prose
+   128	   - `packages/block-foundation/package.json`（删 1 条 dead dep）
+   129	   - `packages/block-foundation/tsconfig.json`（删 references content-types）
+   130	   - `packages/block-foundation/CONTRACT.md`（加 prose 说明 Wave 2 真消费时机）
+   131	   - `pnpm-lock.yaml`（如 `pnpm install` 后有变动 — workspace dep 删除通常无 lockfile 影响，但 ADR-0006 D8 sub-form C 要求 verify）
+   132	2. **后续 PR**（Task A2，blocked_by 本 commit）：
+   133	   - 新增 `packages/block-foundation/RFC.md`
+   134	   - `packages/block-foundation/CONTRACT.md` 加一行指向 RFC.md
+   135	3. **structure-auditor 2026-05 月度审计**：增加 D1 机械扫描项；任何 dead-dep
+   136	   再现 → 直接报 violation 阻断 PR。
+   137	
+   138	## Related
+   139	
+   140	- [ADR-0001](ADR-0001-stack-selection.md) — 技术栈基础与 monorepo 选型
+   141	- [ADR-0002](ADR-0002-wave-1-close.md) D3 erratum #19 / #20 / #21 — F1/F2 dead-dep + block-foundation RFC prereq 来源
+   142	- [ADR-0003](ADR-0003-headless-presentational-split.md) D2 — block-foundation 双层 API
+   143	- [ADR-0006](ADR-0006-asymmetry-audit-checklist.md) D8 — staging protocol 适用本 PR
+   144	- [ADR-0007](ADR-0007-job-function-codex-heavy-execution.md) D2 row 4 — 本 PR 触发 +pr-gate +pr-reviewer
+   145	- [docs/audits/structure-2026-04-29-wave-1.md](../audits/structure-2026-04-29-wave-1.md) §7 — 推荐 #1 + #2 来源
+   146	- [docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md](../superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md) Task A1 / A2 — 本 ADR 应用入口
+
+ succeeded in 171ms:
+     1	# ADR-0009: BlockKind union additive expansion (Wave 2)
+     2	
+     3	| 字段 | 值                                                                                                                                              |
+     4	| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+     5	| 状态 | accepted                                                                                                                                        |
+     6	| 日期 | 2026-04-30                                                                                                                                      |
+     7	| 作者 | orchestrator (Claude Opus 4.7 1M ctx)                                                                                                           |
+     8	| 触发 | Wave 2 Task D1 (block-math) 实施过程中 codex 5.5 pr-gate R3 verdict 提示 ADR 缺口；plan §66-71 块分类已暗含 4-way union 需求           |
+     9	| 替代 | 不替代；扩展 [ADR-0008](ADR-0008-wave-2-entry-policies.md) D2 block-foundation interface freeze rule（freeze 仍 in effect — 本 ADR 是 freeze 的 ADR-authorized exception 通道） |
+    10	
+    11	## Context
+    12	
+    13	Wave 1 [`packages/block-foundation/src/registry.ts`](../../packages/block-foundation/src/registry.ts) 定义：
+    14	
+    15	```typescript
+    16	export type BlockKind = 'prose' | 'component';
+    17	```
+    18	
+    19	Wave 1 仅 `prose`（headless prose blocks）+ `component`（MDX-component blocks，对应 Track C: callout/code/image）。Wave 2 plan §66-71 在物理结构层面已划分 4 组 block 集群：
+    20	
+    21	```text
+    22	packages/
+    23	├── block-callout/   # Track C — simple component (kind='component')
+    24	├── block-code/      # Track C
+    25	├── block-image/     # Track C
+    26	├── block-math/      # Track D1 — render block (KaTeX, hand-craft)
+    27	├── block-pdf/       # Track D2 — render block (react-pdf)
+    28	├── block-jupyter/   # Track E1 — viz block (JupyterLite + kernel-pyodide)
+    29	├── block-nn-viz/    # Track E2 — viz block (TensorFlow.js)
+    30	└── block-agent-flow/ # Track E3 — viz block (React Flow)
+    31	```
+    32	
+    33	[`packages/block-foundation/CONTRACT.md`](../../packages/block-foundation/CONTRACT.md) §"Modifying this file"（第 52 行）规则：BlockKind union 变更需 ADR。Wave 2 plan §66 的"render block" / "viz block" 分类是物理目录约定，未提升到 ADR 级形式化授权。
+    34	
+    35	[design spec §196](../superpowers/specs/2026-04-29-self-knowledge-base-design.md) 仍 documenting 二分类 `('prose'|'component')`。
+    36	
+    37	D1 实施时 render-block-eng-d1 在 R2 round 中 codex 5.3 catch 了 `kind: 'component'` 与 plan §66 "render block" 不一致；orchestrator 直接判定为"plan 暗含 4-way union"并指示 union 扩展。这跳过了 freeze gate，触发 codex 5.5 pr-gate R3 procedural FAIL。本 ADR 补足该授权。
+    38	
+    39	## Decision
+    40	
+    41	**Additive 扩展 BlockKind 到 4-way union**：
+    42	
+    43	```typescript
+    44	export type BlockKind = 'prose' | 'component' | 'render' | 'viz';
+    45	```
+    46	
+    47	Wave 1 二项 `'prose'` + `'component'` 字面值 + 语义 **完全保留**，扩展为纯 additive；本 ADR **不是** ADR-0008 D2 freeze 的撤回，而是 freeze 规则下的 **首次 ADR-authorized exception**。
+    48	
+    49	### D1: 4 个值的语义边界
+    50	
+    51	| kind | Wave | owner worker | 用途                                                                                                | 范例                                       |
+    52	| ---- | ---- | ------------ | --------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+    53	| `prose` | Wave 1 | block-foundation-eng | Headless prose blocks（无 MDX component），仅由 Tiptap 扩展组合实现；不在 packages/ 下单独建包 | StarterKit nodes（heading/paragraph/list/...） |
+    54	| `component` | Wave 1 | simple-block-eng | MDX-component blocks，简单字段映射，propsSchema 通常 ≤ 5 字段，UI 由 codex-block-generator 仿造 C2 模板 | block-callout / block-code / block-image |
+    55	| `render` | **Wave 2** | render-block-eng | 渲染外部 runtime authority（KaTeX / pdf.js）的 block；UI hand-craft（不仿造）；renderXxx single-source 函数 shared between Tiptap NodeView + Astro SSR | block-math / block-pdf |
+    56	| `viz` | **Wave 2** | viz-block-eng | 可视化 block，consumer of heavy runtime libs（Pyodide / TensorFlow.js / React Flow）；UI hand-craft；多个状态 + 交互 | block-jupyter / block-nn-viz / block-agent-flow |
+    57	
+    58	### D2: ADR-0008 D2 freeze 兼容性
+    59	
+    60	ADR-0008 D2 ("block-foundation interface freeze") 规则文本：
+    61	
+    62	> 公共表面（`BlockCoreDefinition` / `BlockUIDefinition` / `BlockRegistry` / `BlockKind` / `BlockViewProps` / `defineCore` / `defineUI` / `proseExtensions`）的任何字段或方法增删改一律需 ADR
+    63	
+    64	本 ADR 是该规则下的 **首次 ADR-authorized 改动**：
+    65	
+    66	- BlockKind union 添加 `render` + `viz` 字面值
+    67	- 不删除任何现有字面值（`prose` / `component` 不变）
+    68	- 不修改字面值语义（`prose` / `component` 行为完全不变）
+    69	- 不修改任何其它公共表面字段
+    70	
+    71	向后兼容性：所有 Wave 1 BlockKind 消费点（block-callout/core, block-foundation tests, sample-blocks 等）继续 typecheck / runtime PASS without changes — 由 union 加宽的语义确保（`'prose' | 'component'` ⊂ `'prose' | 'component' | 'render' | 'viz'`）。
+    72	
+    73	### D3: 实施顺序锁定
+    74	
+    75	本 ADR 在 D1 (block-math) 实施之前应该 first-of-Wave-2 land，但实际操作中先发现需要再 author。**Wave 2 process 改进**：
+    76	
+    77	- 起 Wave 3 时，结构性 union 扩展（如新加 BlockKind 值）应先单独走 ADR PR（codex 5.5 pr-gate + Claude pr-reviewer），后续 D / E track block 实施才依赖之；不与 block 实施 PR 同 bundle。
+    78	- Wave 2 例外：本 ADR 与 D1 (block-math) 同 bundle commit，因 D1 是 union 扩展的首个消费方且 BlockKind:render usage + ADR 授权都集中在同一 PR 单点 review 更便利（避免 cross-PR 时序断裂）。
+    79	
+    80	## Consequences
+    81	
+    82	### Pros
+    83	- BlockKind union 4-way 形式化授权 — D1/D2/E1/E2/E3 实施 worker 可以直接引用本 ADR 而不重新讨论
+    84	- Wave 1 invariant 保留（prose/component 行为不变）
+    85	- ADR-0008 D2 freeze rule 有了首次"工作示例"：列在 CONTRACT.md 的"Modifying this file"规则下，作为正确的扩展范本
+    86	
+    87	### Cons
+    88	- design spec §196 与 ADR 同步漂移（spec 仍说 binary）；Wave 2 close ceremony (Z1 ADR-0009/Z1 实际为 ADR-0010 close ceremony) 应该批量更新 spec 引用
+    89	- Wave 2 process 没有"先 land structural ADR PR + 再 land 消费方 block PR"的先发约束 — 改进意见见 D3
+    90	
+    91	### 衡量标准
+    92	- [ ] 本 ADR 与 D1 (block-math) 同 commit landed
+    93	- [ ] block-foundation/CONTRACT.md 的 BlockKind invariant 段 cross-link 到本 ADR
+    94	- [ ] block-foundation/RFC.md §1 BlockKind documentation cross-link 到本 ADR
+    95	- [ ] design spec §196 在 Wave 2 close ceremony bulk-updated 到 4-way union（Z1 task）
+    96	
+    97	## Related
+    98	
+    99	- [ADR-0001](ADR-0001-stack-selection.md) §1.8 monorepo 包结构 — 隐含 4-way 块分类约定
+   100	- [ADR-0003](ADR-0003-headless-presentational-split.md) D1+D2 — `kind` 与 headless/UI split 关系
+   101	- [ADR-0006](ADR-0006-asymmetry-audit-checklist.md) — sister-doc 对齐规则（本 ADR 同 bundle 触发了 #6 多处更新）
+   102	- [ADR-0007](ADR-0007-job-function-codex-heavy-execution.md) — render-block-eng / viz-block-eng worker 职能
+   103	- [ADR-0008](ADR-0008-wave-2-entry-policies.md) D2 — block-foundation interface freeze rule
+   104	- [Wave 2 plan §66-71](../superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md) — 4 集群物理结构
+
+ succeeded in 162ms:
+     1	import { pdfCore } from './core-definition';
+     2	
+     3	/**
+     4	 * MDX 序列化 stub。完整实现等 Wave 3 mdx-bridge routing table 落地（RFC §5）：
+     5	 * mdx-bridge 拿到 TiptapNode{type:'pdf'} 时按 mdxComponent 字符串路由到本函数。
+     6	 *
+     7	 * Wave 2 阶段仅暴露稳定签名；mdx-bridge 还未引用此 export，所以 stub 抛错足够。
+     8	 */
+     9	export interface PdfTiptapNode {
+    10	  readonly type: 'pdf';
+    11	  readonly attrs: {
+    12	    readonly src: string;
+    13	    readonly page: number;
+    14	    readonly searchable: boolean;
+    15	  };
+    16	}
+    17	
+    18	/**
+    19	 * `value` is `string | null` per mdast-util-mdx-jsx convention:
+    20	 *   - `<Pdf searchable>` (boolean shorthand) → attribute with `value: null`
+    21	 *   - `<Pdf searchable="true">` / `<Pdf searchable="false">` → string
+    22	 *   - `<Pdf src="...">` → string (always)
+    23	 *   - `<Pdf page="2">` → string (numeric coerced on parse)
+    24	 * `parsePdf` handles boolean shorthand for `searchable`; `serializePdf` always
+    25	 * emits string form (`String(boolean)` / `String(number)`) for round-trip
+    26	 * stability.
+    27	 */
+    28	export interface PdfMdastJsxElement {
+    29	  readonly type: 'mdxJsxFlowElement';
+    30	  readonly name: string;
+    31	  readonly attributes: ReadonlyArray<{
+    32	    readonly type: 'mdxJsxAttribute';
+    33	    readonly name: string;
+    34	    readonly value: string | null;
+    35	  }>;
+    36	  readonly children: readonly unknown[];
+    37	}
+    38	
+    39	export function serializePdf(node: PdfTiptapNode): PdfMdastJsxElement {
+    40	  const validated = pdfCore.propsSchema.parse(node.attrs);
+    41	  return {
+    42	    type: 'mdxJsxFlowElement',
+    43	    name: pdfCore.mdxComponent,
+    44	    attributes: [
+    45	      { type: 'mdxJsxAttribute', name: 'src', value: validated.src },
+    46	      { type: 'mdxJsxAttribute', name: 'page', value: String(validated.page) },
+    47	      {
+    48	        type: 'mdxJsxAttribute',
+    49	        name: 'searchable',
+    50	        value: String(validated.searchable),
+    51	      },
+    52	    ],
+    53	    children: [],
+    54	  };
+    55	}
+---
+     1	{
+     2	  "extends": "../../tsconfig.base.json",
+     3	  "compilerOptions": {
+     4	    "rootDir": ".",
+     5	    "outDir": "dist",
+     6	    "jsx": "react-jsx"
+     7	  },
+     8	  "include": ["src/**/*", "vitest.config.ts"],
+     9	  "references": [{ "path": "../block-foundation" }, { "path": "../design-tokens" }]
+    10	}
+
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && nl -ba packages/block-math/src/__tests__/ssr-render.test.ts && echo '---' && nl -ba packages/block-math/vitest.config.ts && echo '---' && nl -ba packages/block-pdf/vitest.config.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	import { describe, expect, it } from 'vitest';
+     2	import { renderMath } from '../ui-default/render-math';
+     3	
+     4	/**
+     5	 * Byte-equality corpus for renderMath authority (ADR-0006 item #5).
+     6	 *
+     7	 * `renderMath` is the single import point for KaTeX in this package; both
+     8	 * Math.tsx (React/NodeView path) and Math.astro (SSR path) call it. This
+     9	 * suite exercises a representative input corpus to:
+    10	 *   1. catch silent regressions if a future edit re-inlines `katex.renderToString`
+    11	 *      with diverging options (drift detector for the algorithm-replication audit);
+    12	 *   2. assert error-explicit behavior — invalid LaTeX must surface as
+    13	 *      `.katex-error` in the output (spec D1 "red error box with the source
+    14	 *      visible"; not silent fallback).
+    15	 *
+    16	 * KaTeX is the runtime authority — these tests do NOT pin the exact HTML byte
+    17	 * shape (KaTeX patch versions can shift markup); they assert structural
+    18	 * invariants (root class, displayMode discriminator, error-class presence)
+    19	 * that any in-package option-divergence would break.
+    20	 */
+    21	describe('renderMath (KaTeX SSR authority)', () => {
+    22	  it('renders inline expression with displayMode=false (no display block)', () => {
+    23	    const html = renderMath('a^2 + b^2', false);
+    24	    expect(html).toMatch(/class="katex"/);
+    25	    expect(html).not.toMatch(/class="katex-display"/);
+    26	  });
+    27	
+    28	  it('renders display expression with displayMode=true (wraps in katex-display)', () => {
+    29	    const html = renderMath('\\sum_{i=0}^n x_i', true);
+    30	    expect(html).toMatch(/class="katex-display"/);
+    31	    expect(html).toMatch(/class="katex"/);
+    32	  });
+    33	
+    34	  it('renders multiline displayed expression (multi-row aligned env)', () => {
+    35	    const html = renderMath(
+    36	      '\\begin{aligned} a &= 1 \\\\ b &= 2 \\end{aligned}',
+    37	      true,
+    38	    );
+    39	    expect(html).toMatch(/class="katex-display"/);
+    40	    // multi-line rendering produces multiple mord/mrel spans
+    41	    expect(html).toMatch(/class="katex"/);
+    42	    expect(html.length).toBeGreaterThan(100);
+    43	  });
+    44	
+    45	  it('renders malformed LaTeX with errorColor inline + source visible (throwOnError=false invariant)', () => {
+    46	    const html = renderMath('\\notARealCommand{x}', false);
+    47	    // KaTeX with throwOnError=false renders unknown commands inline with
+    48	    // errorColor (default #cc0000); source string is preserved verbatim so the
+    49	    // user can see the offending expression (spec D1 "red error box with the
+    50	    // source visible"). math.css uses [data-block='math'] [style*="cc0000"]
+    51	    // upgrade selector to bind --color-error token + bordered box.
+    52	    expect(html).toMatch(/class="katex"/);
+    53	    expect(html).toMatch(/notARealCommand/);
+    54	    expect(html).toMatch(/#cc0000/);
+    55	  });
+    56	
+    57	  it('inline + display same expression produce different output (displayMode discriminator)', () => {
+    58	    const expr = '\\frac{1}{2}';
+    59	    const inlineHtml = renderMath(expr, false);
+    60	    const displayHtml = renderMath(expr, true);
+    61	    expect(inlineHtml).not.toBe(displayHtml);
+    62	    expect(displayHtml).toMatch(/class="katex-display"/);
+    63	    expect(inlineHtml).not.toMatch(/class="katex-display"/);
+    64	  });
+    65	});
+---
+     1	import { defineConfig } from 'vitest/config';
+     2	
+     3	export default defineConfig({
+     4	  test: {
+     5	    include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
+     6	    typecheck: { enabled: false },
+     7	  },
+     8	});
+---
+     1	import { defineConfig } from 'vitest/config';
+     2	
+     3	export default defineConfig({
+     4	  test: {
+     5	    include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
+     6	    environment: 'happy-dom',
+     7	    typecheck: { enabled: false },
+     8	  },
+     9	});
+
+codex
+Running the requested validation suite now: `test`, `typecheck`, `lint`, and `build` in package scope, then I’ll summarize exact pass/fail status with counts and any deviations.
+exec
+/bin/bash -lc 'cd /home/weiyi/selfKnowledgeBaseWeb && pnpm --filter @skb/block-pdf test -- --runInBand && pnpm --filter @skb/block-pdf typecheck && pnpm --filter @skb/block-pdf lint && pnpm --filter @skb/block-pdf build' in /home/weiyi/selfKnowledgeBaseWeb
+ exited 1 in 433ms:
+
+> @skb/block-pdf@0.0.0 test /home/weiyi/selfKnowledgeBaseWeb/packages/block-pdf
+> vitest run "--runInBand"
+
+file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vitest@4.1.5_@types+node@22.19.17_happy-dom@15.11.7_vite@8.0.10_@types+node@22.19.17_esbuild@_njtu3hruheo7esciutan5fga5a/node_modules/vitest/dist/chunks/cac.DJJmV0dT.js:406
+          throw new CACError(`Unknown option \`${name.length > 1 ? `--${name}` : `-${name}`}\``);
+                ^
+
+CACError: Unknown option `--runInBand`
+    at Command.checkUnknownOptions (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vitest@4.1.5_@types+node@22.19.17_happy-dom@15.11.7_vite@8.0.10_@types+node@22.19.17_esbuild@_njtu3hruheo7esciutan5fga5a/node_modules/vitest/dist/chunks/cac.DJJmV0dT.js:406:17)
+    at CAC.runMatchedCommand (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vitest@4.1.5_@types+node@22.19.17_happy-dom@15.11.7_vite@8.0.10_@types+node@22.19.17_esbuild@_njtu3hruheo7esciutan5fga5a/node_modules/vitest/dist/chunks/cac.DJJmV0dT.js:606:13)
+    at CAC.parse (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vitest@4.1.5_@types+node@22.19.17_happy-dom@15.11.7_vite@8.0.10_@types+node@22.19.17_esbuild@_njtu3hruheo7esciutan5fga5a/node_modules/vitest/dist/chunks/cac.DJJmV0dT.js:547:12)
+    at file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vitest@4.1.5_@types+node@22.19.17_happy-dom@15.11.7_vite@8.0.10_@types+node@22.19.17_esbuild@_njtu3hruheo7esciutan5fga5a/node_modules/vitest/dist/cli.js:11:13
+    at ModuleJob.run (node:internal/modules/esm/module_job:343:25)
+    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:665:26)
+    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:117:5)
+
+Node.js v22.22.2
+/home/weiyi/selfKnowledgeBaseWeb/packages/block-pdf:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @skb/block-pdf@0.0.0 test: `vitest run "--runInBand"`
+Exit status 1
+
+codex
+The `--runInBand` flag is not supported by this Vitest version, so I’m rerunning the four requested checks with package defaults to get real results and test counts.
+exec
+/bin/bash -lc 'cd /home/weiyi/selfKnowledgeBaseWeb && pnpm --filter @skb/block-pdf test' in /home/weiyi/selfKnowledgeBaseWeb
+ exited 1 in 712ms:
+
+> @skb/block-pdf@0.0.0 test /home/weiyi/selfKnowledgeBaseWeb/packages/block-pdf
+> vitest run
+
+failed to load config from /home/weiyi/selfKnowledgeBaseWeb/packages/block-pdf/vitest.config.ts
+
+⎯⎯⎯⎯⎯⎯⎯ Startup Error ⎯⎯⎯⎯⎯⎯⎯⎯
+Error: EROFS: read-only file system, open '/home/weiyi/selfKnowledgeBaseWeb/packages/block-pdf/node_modules/.vite-temp/vitest.config.ts.timestamp-1777584262893-cfa2f717d45f5.mjs'
+    at async open (node:internal/fs/promises:639:25)
+    at async Object.writeFile (node:internal/fs/promises:1219:14)
+    at async loadConfigFromBundledFile (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:34769:3)
+    at async bundleAndLoadConfigFile (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:34632:17)
+    at async loadConfigFromFile (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:34599:42)
+    at async resolveConfig (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:34223:22)
+    at async _createServer (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:26029:65)
+    at async createViteServer (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vitest@4.1.5_@types+node@22.19.17_happy-dom@15.11.7_vite@8.0.10_@types+node@22.19.17_esbuild@_njtu3hruheo7esciutan5fga5a/node_modules/vitest/dist/chunks/cli-api.Cjt90eJu.js:8818:17)
+    at async createVitest (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vitest@4.1.5_@types+node@22.19.17_happy-dom@15.11.7_vite@8.0.10_@types+node@22.19.17_esbuild@_njtu3hruheo7esciutan5fga5a/node_modules/vitest/dist/chunks/cli-api.Cjt90eJu.js:14205:18)
+    at async prepareVitest (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vitest@4.1.5_@types+node@22.19.17_happy-dom@15.11.7_vite@8.0.10_@types+node@22.19.17_esbuild@_njtu3hruheo7esciutan5fga5a/node_modules/vitest/dist/chunks/cli-api.Cjt90eJu.js:14572:14) {
+  errno: -30,
+  code: 'EROFS',
+  syscall: 'open',
+  path: '/home/weiyi/selfKnowledgeBaseWeb/packages/block-pdf/node_modules/.vite-temp/vitest.config.ts.timestamp-1777584262893-cfa2f717d45f5.mjs'
+}
+
+
+
+/home/weiyi/selfKnowledgeBaseWeb/packages/block-pdf:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @skb/block-pdf@0.0.0 test: `vitest run`
+Exit status 1
+
+exec
+/bin/bash -lc 'cd /home/weiyi/selfKnowledgeBaseWeb && pnpm --filter @skb/block-pdf typecheck' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 1877ms:
+
+> @skb/block-pdf@0.0.0 typecheck /home/weiyi/selfKnowledgeBaseWeb/packages/block-pdf
+> tsc --noEmit
+
+
+codex
+`test` currently fails in this sandbox because Vitest tries to write under `packages/block-pdf/node_modules/.vite-temp` on a read-only fs. I’m collecting the remaining checks (`lint`, `build`) and then reporting this environment constraint explicitly.
+exec
+/bin/bash -lc 'cd /home/weiyi/selfKnowledgeBaseWeb && pnpm --filter @skb/block-pdf lint' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 3669ms:
+
+> @skb/block-pdf@0.0.0 lint /home/weiyi/selfKnowledgeBaseWeb/packages/block-pdf
+> eslint .
+
+
+exec
+/bin/bash -lc 'cd /home/weiyi/selfKnowledgeBaseWeb && pnpm --filter @skb/block-pdf build' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 684ms:
+
+> @skb/block-pdf@0.0.0 build /home/weiyi/selfKnowledgeBaseWeb/packages/block-pdf
+> tsc -b
+
+
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && pnpm --filter @skb/block-pdf exec vitest run --help | sed -n '1,120p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 440ms:
+vitest/4.1.5
+
+Usage:
+  $ vitest run [...filters]
+
+Options:
+  -r, --root <path>                                          Root path 
+  -c, --config <path>                                        Path to config file 
+  -u, --update [type]                                        Update snapshot (accepts boolean, "new", "all" or "none") 
+  -w, --watch                                                Enable watch mode 
+  -t, --testNamePattern <pattern>                            Run tests with full names matching the specified regexp pattern 
+  --dir <path>                                               Base directory to scan for the test files 
+  --ui                                                       Enable UI 
+  --open                                                     Open UI automatically (default: !process.env.CI) 
+  --api [port]                                               Specify server port. Note if the port is already being used, Vite will automatically try the next available port so this may not be the actual port the server ends up listening on. If true will be set to 51204. Use '--help --api' for more info. 
+  --silent [value]                                           Silent console output from tests. Use 'passed-only' to see logs from failing tests only. 
+  --hideSkippedTests                                         Hide logs for skipped tests 
+  --reporter <name>                                          Specify reporters (default, agent, minimal, blob, verbose, dot, json, tap, tap-flat, junit, tree, hanging-process, github-actions) 
+  --outputFile <filename/-s>                                 Write test results to a file when supporter reporter is also specified, use cac's dot notation for individual outputs of multiple reporters (example: --outputFile.tap=./tap.txt) 
+  --coverage                                                 Enable coverage report. Use '--help --coverage' for more info. 
+  --mode <name>                                              Override Vite mode (default: test or benchmark) 
+  --isolate                                                  Run every test file in isolation. To disable isolation, use --no-isolate (default: true) 
+  --globals                                                  Inject apis globally 
+  --dom                                                      Mock browser API with happy-dom 
+  --browser <name>                                           Run tests in the browser. Equivalent to --browser.enabled (default: false). Use '--help --browser' for more info. 
+  --pool <pool>                                              Specify pool, if not running in the browser (default: forks) 
+  --execArgv <option>                                        Pass additional arguments to node process when spawning worker_threads or child_process. 
+  --vmMemoryLimit <limit>                                    Memory limit for VM pools. If you see memory leaks, try to tinker this value. 
+  --fileParallelism                                          Should all test files run in parallel. Use --no-file-parallelism to disable (default: true) 
+  --maxWorkers <workers>                                     Maximum number or percentage of workers to run tests in 
+  --environment <name>                                       Specify runner environment, if not running in the browser (default: node) 
+  --passWithNoTests                                          Pass when no tests are found 
+  --logHeapUsage                                             Show the size of heap for each test when running in node 
+  --detectAsyncLeaks                                         Detect asynchronous resources leaking from the test file (default: false) 
+  --allowOnly                                                Allow tests and suites that are marked as only (default: !process.env.CI) 
+  --dangerouslyIgnoreUnhandledErrors                         Ignore any unhandled errors that occur 
+  --shard <shards>                                           Test suite shard to execute in a format of <index>/<count> 
+  --changed [since]                                          Run tests that are affected by the changed files (default: false) 
+  --sequence <options>                                       Options for how tests should be sorted. Use '--help --sequence' for more info. 
+  --inspect [[host:]port]                                    Enable Node.js inspector (default: 127.0.0.1:9229) 
+  --inspectBrk [[host:]port]                                 Enable Node.js inspector and break before the test starts 
+  --testTimeout <timeout>                                    Default timeout of a test in milliseconds (default: 5000). Use 0 to disable timeout completely. 
+  --hookTimeout <timeout>                                    Default hook timeout in milliseconds (default: 10000). Use 0 to disable timeout completely. 
+  --bail <number>                                            Stop test execution when given number of tests have failed (default: 0) 
+  --retry <times>                                            Retry the test specific number of times if it fails (default: 0). Use '--help --retry' for more info. 
+  --diff <path>                                              DiffOptions object or a path to a module which exports DiffOptions object. Use '--help --diff' for more info. 
+  --exclude <glob>                                           Additional file globs to be excluded from test 
+  --expandSnapshotDiff                                       Show full diff when snapshot fails 
+  --disableConsoleIntercept                                  Disable automatic interception of console logging (default: false) 
+  --typecheck                                                Enable typechecking alongside tests (default: false). Use '--help --typecheck' for more info. 
+  --project <name>                                           The name of the project to run if you are using Vitest workspace feature. This can be repeated for multiple projects: --project=1 --project=2. You can also filter projects using wildcards like --project=packages*, and exclude projects with --project=!pattern. 
+  --slowTestThreshold <threshold>                            Threshold in milliseconds for a test or suite to be considered slow (default: 300) 
+  --teardownTimeout <timeout>                                Default timeout of a teardown function in milliseconds (default: 10000) 
+  --cache                                                    Enable cache. Use '--help --cache' for more info. 
+  --maxConcurrency <number>                                  Maximum number of concurrent tests and suites during test file execution (default: 5) 
+  --expect                                                   Configuration options for expect() matches. Use '--help --expect' for more info. 
+  --printConsoleTrace                                        Always print console stack traces 
+  --includeTaskLocation                                      Collect test and suite locations in the location property 
+  --attachmentsDir <dir>                                     The directory where attachments from context.annotate are stored in (default: .vitest-attachments) 
+  --run                                                      Disable watch mode 
+  --no-color                                                 Removes colors from the console output (default: true)
+  --clearScreen                                              Clear terminal screen when re-running tests during watch mode (default: true) 
+  --configLoader <loader>                                    Use bundle to bundle the config with esbuild or runner (experimental) to process it on the fly. This is only available in vite version 6.1.0 and above. (default: bundle) 
+  --standalone                                               Start Vitest without running tests. Tests will be running only on change. If browser mode is enabled, the UI will be opened automatically. This option is ignored when CLI file filters are passed. (default: false) 
+  --mergeReports [path]                                      Path to a blob reports directory. If this options is used, Vitest won't run any tests, it will only report previously recorded tests 
+  --listTags [type]                                          List all available tags instead of running tests. --list-tags=json will output tags in JSON format, unless there are no tags. 
+  --clearCache                                               Delete all Vitest caches, including experimental.fsModuleCache, without running any tests. This will reduce the performance in the subsequent test run. 
+  --tagsFilter <expression>                                  Run only tests with the specified tags. You can use logical operators && (and), || (or) and ! (not) to create complex expressions, see https://vitest.dev/guide/test-tags#syntax for more information. 
+  --strictTags                                               Should Vitest throw an error if test has a tag that is not defined in the config. (default: true) 
+  --experimental <features>                                  Experimental features.. Use '--help --experimental' for more info. 
+  -h, --help                                                 Display this message 
+
+codex
+I’ll do one quick static check for duplicated PDF URL construction in UI components (beyond `renderPdf`) before finalizing the audit outcome.
+exec
+/bin/bash -lc 'cd /home/weiyi/selfKnowledgeBaseWeb && rg -n "iframeSrc|#page=|renderPdf|searchable" packages/block-pdf/src/ui-default packages/block-math/src/ui-default' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+packages/block-pdf/src/ui-default/index.ts:3:export { renderPdf } from './render-pdf';
+packages/block-pdf/src/ui-default/Pdf.astro:2:import { renderPdf } from './render-pdf';
+packages/block-pdf/src/ui-default/Pdf.astro:7:  searchable?: boolean;
+packages/block-pdf/src/ui-default/Pdf.astro:10:const { src, page = 1, searchable = false } = Astro.props;
+packages/block-pdf/src/ui-default/Pdf.astro:13:// （ADR-0006 item #5 algorithm replication：authority = renderPdf；不允许在
+packages/block-pdf/src/ui-default/Pdf.astro:15:const desc = renderPdf(src, page, searchable);
+packages/block-pdf/src/ui-default/Pdf.astro:21:  data-searchable={desc.dataAttrs['data-searchable']}
+packages/block-pdf/src/ui-default/Pdf.astro:23:  <iframe src={desc.iframeSrc} title={`PDF: ${desc.src}`} loading="lazy"></iframe>
+packages/block-pdf/src/ui-default/pdf.css:5: * inline `style`，仅 emit `data-block="pdf"` + `data-page` + `data-searchable`
+packages/block-pdf/src/ui-default/pdf.css:36: * 集成时（searchable=true）会有更主动的 fallback；Wave 2 仅保留 box
+packages/block-pdf/src/ui-default/pdf.css:39:[data-block='pdf'][data-searchable='true']::after {
+packages/block-pdf/src/ui-default/Pdf.tsx:3:import { renderPdf } from './render-pdf';
+packages/block-pdf/src/ui-default/Pdf.tsx:6: * PdfView 接受 inferred props ({ src, page, searchable }) — 与
+packages/block-pdf/src/ui-default/Pdf.tsx:16: * `searchable: true` 是 Wave 3 build-time search-index 提示
+packages/block-pdf/src/ui-default/Pdf.tsx:22:  const desc = renderPdf(props.src, props.page, props.searchable);
+packages/block-pdf/src/ui-default/Pdf.tsx:27:      data-searchable={desc.dataAttrs['data-searchable']}
+packages/block-pdf/src/ui-default/Pdf.tsx:30:        src={desc.iframeSrc}
+packages/block-pdf/src/ui-default/render-pdf.ts:4: * `renderPdf` from here — never inline iframe `src` construction or container
+packages/block-pdf/src/ui-default/render-pdf.ts:11: *   viewer; the `#page=N` fragment is part of the
+packages/block-pdf/src/ui-default/render-pdf.ts:24: * - `searchable`: build-time hint (Wave 3 search-index integration); runtime
+packages/block-pdf/src/ui-default/render-pdf.ts:26: * - `iframeSrc`: `${src}#page=${page}` — PDF Open Parameters fragment
+packages/block-pdf/src/ui-default/render-pdf.ts:34:  readonly searchable: boolean;
+packages/block-pdf/src/ui-default/render-pdf.ts:35:  readonly iframeSrc: string;
+packages/block-pdf/src/ui-default/render-pdf.ts:39:    readonly 'data-searchable': string;
+packages/block-pdf/src/ui-default/render-pdf.ts:43:export const renderPdf = (
+packages/block-pdf/src/ui-default/render-pdf.ts:46:  searchable: boolean,
+packages/block-pdf/src/ui-default/render-pdf.ts:50:  searchable,
+packages/block-pdf/src/ui-default/render-pdf.ts:51:  iframeSrc: `${src}#page=${page}`,
+packages/block-pdf/src/ui-default/render-pdf.ts:55:    'data-searchable': String(searchable),
+
+exec
+/bin/bash -lc 'cd /home/weiyi/selfKnowledgeBaseWeb && rg --files packages/block-pdf | wc -l' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 120ms:
+20
+
+codex
+I confirmed `packages/block-pdf` contains 20 files as described in the task, and I’ll do one final dependency/content scan for any prohibited `react-pdf`/`pdfjs-dist` traces before closing.
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && rg -n \"react-pdf|pdfjs-dist|iframe src\\=|renderPdf\\(|@skb/block-pdf\" packages/block-pdf/package.json packages/block-pdf/src packages/block-pdf/CONTRACT.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+packages/block-pdf/CONTRACT.md:1:# @skb/block-pdf Contract
+packages/block-pdf/CONTRACT.md:6:fragment 驱动；本包不在 npm 拉 react-pdf / pdfjs-dist 渲染依赖（ADR-0008 D1
+packages/block-pdf/CONTRACT.md:7:dead-dep policy + Astro SSR 不可执行 react-pdf 的 worker 双重约束）。
+packages/block-pdf/CONTRACT.md:22:  - `renderPdf(src, page, searchable) → PdfRenderDescriptor` — single-source 渲染描述器（**single authority** for Pdf.tsx + Pdf.astro，定义在 `src/ui-default/render-pdf.ts`）
+packages/block-pdf/CONTRACT.md:29:`apps/site` / `editor-shell` 必须 `import '@skb/block-pdf/ui-default/pdf.css';`
+packages/block-pdf/CONTRACT.md:31:`import Pdf from '@skb/block-pdf/ui-default/Pdf.astro';`。consumer 不需要
+packages/block-pdf/CONTRACT.md:66:  bundle pdfjs-dist 用于 viewer。`searchable=true` 走 build-time
+packages/block-pdf/CONTRACT.md:67:  `scripts/extract-pdf-text.ts`（pdfjs-dist legacy build 用于文本抽取，runtime 不
+packages/block-pdf/CONTRACT.md:111:- **apps/site SSR**: import `@skb/block-pdf/ui-default/Pdf.astro`；consumer 同 PR 加 pdf.css import
+packages/block-pdf/package.json:2:  "name": "@skb/block-pdf",
+packages/block-pdf/src/__tests__/ui-default.test.ts:37:    const desc = renderPdf('/p.pdf', 1, false);
+packages/block-pdf/src/__tests__/ssr-render.test.ts:27:    const desc = renderPdf('/files/paper.pdf', 1, false);
+packages/block-pdf/src/__tests__/ssr-render.test.ts:35:    const desc = renderPdf('https://example.com/doc.pdf', 42, true);
+packages/block-pdf/src/__tests__/ssr-render.test.ts:44:    const desc = renderPdf('/files/My Doc.pdf', 1, false);
+packages/block-pdf/src/__tests__/ssr-render.test.ts:55:    const desc = renderPdf('/does-not-exist.pdf', 1, false);
+packages/block-pdf/src/__tests__/ssr-render.test.ts:61:    const a = renderPdf('/files/paper.pdf', 1, false);
+packages/block-pdf/src/__tests__/ssr-render.test.ts:62:    const b = renderPdf('/files/paper.pdf', 5, false);
+packages/block-pdf/src/ui-default/Pdf.astro:15:const desc = renderPdf(src, page, searchable);
+packages/block-pdf/src/ui-default/Pdf.astro:23:  <iframe src={desc.iframeSrc} title={`PDF: ${desc.src}`} loading="lazy"></iframe>
+packages/block-pdf/src/ui-default/pdf.css:2: * @skb/block-pdf — browser-native PDF iframe viewer styling.
+packages/block-pdf/src/ui-default/render-pdf.ts:8: * Why iframe (not react-pdf) for both paths:
+packages/block-pdf/src/ui-default/render-pdf.ts:14: * - Astro SSR cannot run react-pdf (it requires a browser worker thread +
+packages/block-pdf/src/ui-default/Pdf.tsx:22:  const desc = renderPdf(props.src, props.page, props.searchable);
+
+exec
+/bin/bash -lc 'cd /home/weiyi/selfKnowledgeBaseWeb && pnpm --filter @skb/block-pdf exec vitest run --root /tmp --config /home/weiyi/selfKnowledgeBaseWeb/packages/block-pdf/vitest.config.ts' in /home/weiyi/selfKnowledgeBaseWeb
+ exited 1 in 723ms:
+failed to load config from /home/weiyi/selfKnowledgeBaseWeb/packages/block-pdf/vitest.config.ts
+
+⎯⎯⎯⎯⎯⎯⎯ Startup Error ⎯⎯⎯⎯⎯⎯⎯⎯
+Error: EROFS: read-only file system, open '/home/weiyi/selfKnowledgeBaseWeb/packages/block-pdf/node_modules/.vite-temp/vitest.config.ts.timestamp-1777584294431-76fb9fc36a575.mjs'
+    at async open (node:internal/fs/promises:639:25)
+    at async Object.writeFile (node:internal/fs/promises:1219:14)
+    at async loadConfigFromBundledFile (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:34769:3)
+    at async bundleAndLoadConfigFile (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:34632:17)
+    at async loadConfigFromFile (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:34599:42)
+    at async resolveConfig (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:34223:22)
+    at async _createServer (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:26029:65)
+    at async createViteServer (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vitest@4.1.5_@types+node@22.19.17_happy-dom@15.11.7_vite@8.0.10_@types+node@22.19.17_esbuild@_njtu3hruheo7esciutan5fga5a/node_modules/vitest/dist/chunks/cli-api.Cjt90eJu.js:8818:17)
+    at async createVitest (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vitest@4.1.5_@types+node@22.19.17_happy-dom@15.11.7_vite@8.0.10_@types+node@22.19.17_esbuild@_njtu3hruheo7esciutan5fga5a/node_modules/vitest/dist/chunks/cli-api.Cjt90eJu.js:14205:18)
+    at async prepareVitest (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vitest@4.1.5_@types+node@22.19.17_happy-dom@15.11.7_vite@8.0.10_@types+node@22.19.17_esbuild@_njtu3hruheo7esciutan5fga5a/node_modules/vitest/dist/chunks/cli-api.Cjt90eJu.js:14572:14) {
+  errno: -30,
+  code: 'EROFS',
+  syscall: 'open',
+  path: '/home/weiyi/selfKnowledgeBaseWeb/packages/block-pdf/node_modules/.vite-temp/vitest.config.ts.timestamp-1777584294431-76fb9fc36a575.mjs'
+}
+
+
+
+undefined
+/home/weiyi/selfKnowledgeBaseWeb/packages/block-pdf:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: vitest run --root /tmp --config /home/weiyi/selfKnowledgeBaseWeb/packages/block-pdf/vitest.config.ts
+
+codex
+FAIL
+
+1. `pnpm --filter @skb/block-pdf test` cannot run in this sandbox (command-level blocker).
+   - Failure is `EROFS` while Vitest tries to write `/home/weiyi/selfKnowledgeBaseWeb/packages/block-pdf/node_modules/.vite-temp/...` (read-only filesystem), so no `27/27` test result was produced in this environment.
+
+2. Requested checks 1–10 + asymmetry artifacts are internally consistent in code/docs:
+   1. `pdfCore.kind` is `render` in [packages/block-pdf/src/core/core-definition.ts:14](packages/block-pdf/src/core/core-definition.ts:14) and matches the ADR-0009 render-kind contract.
+   2. `propsSchema` is strict in [packages/block-pdf/src/core/core-definition.ts:4-10](packages/block-pdf/src/core/core-definition.ts:4), with all required fields and defaults.
+   3. `src/core` has no React/Tiptap/iframe imports in:
+      - [packages/block-pdf/src/core/core-definition.ts:1-2](packages/block-pdf/src/core/core-definition.ts:1)
+      - [packages/block-pdf/src/core/parse.ts:1](packages/block-pdf/src/core/parse.ts:1)
+      - [packages/block-pdf/src/core/serialize.ts:1](packages/block-pdf/src/core/serialize.ts:1)
+   4. Single-source render authority is centralized in [packages/block-pdf/src/ui-default/render-pdf.ts:43-56](packages/block-pdf/src/ui-default/render-pdf.ts:43); both [packages/block-pdf/src/ui-default/Pdf.tsx:3,22-30](packages/block-pdf/src/ui-default/Pdf.tsx:3) and [packages/block-pdf/src/ui-default/Pdf.astro:2,15-23](packages/block-pdf/src/ui-default/Pdf.astro:2) call that helper.
+   5. SSR corpus test covers missing-file fallback and page variants in [packages/block-pdf/src/__tests__/ssr-render.test.ts:25-66](packages/block-pdf/src/__tests__/ssr-render.test.ts:25).
+   6. `parsePdf` supports boolean shorthand for `searchable` and numeric coercion for `page` in [packages/block-pdf/src/core/parse.ts:27-50](packages/block-pdf/src/core/parse.ts:27).
+   7. Sister-doc parity points are present in [packages/block-pdf/CONTRACT.md:9-25,60-63,66-71,116-123](packages/block-pdf/CONTRACT.md:9) and aligned to [packages/block-math/CONTRACT.md](packages/block-math/CONTRACT.md:1) structure/invariants.
+   8. Dead-dep policy holds for forbidden runtime deps: [packages/block-pdf/package.json](packages/block-pdf/package.json:1) has no `react-pdf` or `pdfjs-dist`; contract documents runtime intent in [packages/block-pdf/CONTRACT.md:6-7](packages/block-pdf/CONTRACT.md:6).
+   9. Root references include `./packages/block-pdf` at [tsconfig.json:17](tsconfig.json:17).
+   10. Lockfile has importer entry at [pnpm-lock.yaml:329-339](pnpm-lock.yaml:329).
+   11. ADR-0006 asymmetry hygiene is applied through documented single-authority usage and cross-doc alignment (notably in [packages/block-pdf/CONTRACT.md:132](packages/block-pdf/CONTRACT.md:132), and linked ADRs), and no obvious asymmetric drift is visible in the current scope.
+
+3. Command results:
+   - `pnpm --filter @skb/block-pdf typecheck` passed.
+   - `pnpm --filter @skb/block-pdf lint` passed.
+   - `pnpm --filter @skb/block-pdf build` passed.
+   - `pnpm --filter @skb/block-pdf test` failed due sandbox write restriction before execution.
+2026-04-30T21:25:01.025838Z ERROR codex_core::session: failed to record rollout items: thread 019de046-f59d-79c3-93d3-de38e472a3e6 not found
+tokens used
+71,977
+FAIL
+
+1. `pnpm --filter @skb/block-pdf test` cannot run in this sandbox (command-level blocker).
+   - Failure is `EROFS` while Vitest tries to write `/home/weiyi/selfKnowledgeBaseWeb/packages/block-pdf/node_modules/.vite-temp/...` (read-only filesystem), so no `27/27` test result was produced in this environment.
+
+2. Requested checks 1–10 + asymmetry artifacts are internally consistent in code/docs:
+   1. `pdfCore.kind` is `render` in [packages/block-pdf/src/core/core-definition.ts:14](packages/block-pdf/src/core/core-definition.ts:14) and matches the ADR-0009 render-kind contract.
+   2. `propsSchema` is strict in [packages/block-pdf/src/core/core-definition.ts:4-10](packages/block-pdf/src/core/core-definition.ts:4), with all required fields and defaults.
+   3. `src/core` has no React/Tiptap/iframe imports in:
+      - [packages/block-pdf/src/core/core-definition.ts:1-2](packages/block-pdf/src/core/core-definition.ts:1)
+      - [packages/block-pdf/src/core/parse.ts:1](packages/block-pdf/src/core/parse.ts:1)
+      - [packages/block-pdf/src/core/serialize.ts:1](packages/block-pdf/src/core/serialize.ts:1)
+   4. Single-source render authority is centralized in [packages/block-pdf/src/ui-default/render-pdf.ts:43-56](packages/block-pdf/src/ui-default/render-pdf.ts:43); both [packages/block-pdf/src/ui-default/Pdf.tsx:3,22-30](packages/block-pdf/src/ui-default/Pdf.tsx:3) and [packages/block-pdf/src/ui-default/Pdf.astro:2,15-23](packages/block-pdf/src/ui-default/Pdf.astro:2) call that helper.
+   5. SSR corpus test covers missing-file fallback and page variants in [packages/block-pdf/src/__tests__/ssr-render.test.ts:25-66](packages/block-pdf/src/__tests__/ssr-render.test.ts:25).
+   6. `parsePdf` supports boolean shorthand for `searchable` and numeric coercion for `page` in [packages/block-pdf/src/core/parse.ts:27-50](packages/block-pdf/src/core/parse.ts:27).
+   7. Sister-doc parity points are present in [packages/block-pdf/CONTRACT.md:9-25,60-63,66-71,116-123](packages/block-pdf/CONTRACT.md:9) and aligned to [packages/block-math/CONTRACT.md](packages/block-math/CONTRACT.md:1) structure/invariants.
+   8. Dead-dep policy holds for forbidden runtime deps: [packages/block-pdf/package.json](packages/block-pdf/package.json:1) has no `react-pdf` or `pdfjs-dist`; contract documents runtime intent in [packages/block-pdf/CONTRACT.md:6-7](packages/block-pdf/CONTRACT.md:6).
+   9. Root references include `./packages/block-pdf` at [tsconfig.json:17](tsconfig.json:17).
+   10. Lockfile has importer entry at [pnpm-lock.yaml:329-339](pnpm-lock.yaml:329).
+   11. ADR-0006 asymmetry hygiene is applied through documented single-authority usage and cross-doc alignment (notably in [packages/block-pdf/CONTRACT.md:132](packages/block-pdf/CONTRACT.md:132), and linked ADRs), and no obvious asymmetric drift is visible in the current scope.
+
+3. Command results:
+   - `pnpm --filter @skb/block-pdf typecheck` passed.
+   - `pnpm --filter @skb/block-pdf lint` passed.
+   - `pnpm --filter @skb/block-pdf build` passed.
+   - `pnpm --filter @skb/block-pdf test` failed due sandbox write restriction before execution.
