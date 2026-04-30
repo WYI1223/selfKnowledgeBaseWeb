@@ -13,6 +13,7 @@
 | [0005](ADR-0005-api-conventions.md)                       | REST API conventions（/v1 / camelCase / RFC 7807）         | 2026-04-29 | accepted |
 | [0006](ADR-0006-asymmetry-audit-checklist.md)             | Cross-location asymmetry-audit checklist (process rule)    | 2026-04-30 | accepted |
 | [0007](ADR-0007-job-function-codex-heavy-execution.md)    | 职能化分工 + Codex-heavy 执行 + teammate / tool 切分      | 2026-04-30 | accepted |
+| [0008](ADR-0008-wave-2-entry-policies.md)                 | Wave 2 entry policies — dead-dep + block-foundation freeze | 2026-04-30 | accepted |
 
 ## 模板
 

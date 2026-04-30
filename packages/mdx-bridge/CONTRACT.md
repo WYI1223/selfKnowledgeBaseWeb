@@ -141,12 +141,19 @@ Regression tests assert all of these in `src/__tests__/round-trip.test.ts`.
   and a re-baseline run on every fixture. Patch / minor bumps proceed
   through the normal `mdx-doctor` PR check.
 
-## Wave 1 declared peers (forward-compat)
+## Forward-compat consumers (Wave 2+)
 
-`@skb/block-foundation` and `@skb/content-types` are listed as workspace
-dependencies but not yet imported. They will be wired in once Wave 2 starts
-emitting `mdxJsxFlowElement` for component blocks (the nodes will reference
-schemas defined in those packages).
+This package will start importing `@skb/block-foundation` (for
+`BlockCoreDefinition` types) and `@skb/content-types` (for shared schemas)
+once Wave 2 begins emitting `mdxJsxFlowElement` for component blocks — at
+which point the dependency MUST be added to `package.json` and a matching
+entry MUST appear in `tsconfig.json#references`. Until then, neither is
+declared as a workspace dependency.
+
+Per [ADR-0008](../../docs/decisions/ADR-0008-wave-2-entry-policies.md) D1
+(dead-dep policy = tighten): every `package.json#dependencies/@skb/*` MUST
+correspond to at least one source `import from '@skb/<pkg>'`. Forward-compat
+intent lives here in prose, not as a placeholder dependency.
 
 ## Related
 

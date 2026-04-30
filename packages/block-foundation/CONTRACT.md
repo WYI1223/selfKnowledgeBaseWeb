@@ -19,6 +19,18 @@
 - Core 与 UI 物理分离（ADR-0003）：core 不允许 import 任何 React/Tiptap 视觉 API；UI 必须 import core（不允许 inline 重复 schema）
 - 同 core 多 UI 时 `getUI(name)` 取首个注册：约定首个 uiId 为 `'default'`；adopter 在 register 顺序上需谨慎
 
+## Forward-compat consumers (Wave 2+)
+
+Wave 2 中段当 `BlockRegistry` 开始用 `@skb/content-types` 的 schema 验证
+注册的 block props（如跨 block 共享的 frontmatter / metadata 形状），届时
+`@skb/content-types` 将被同 PR 加入 `package.json#dependencies` +
+`tsconfig.json#references`，并出现源码 `import { ... } from '@skb/content-types'`。
+
+当前 Wave 1 close 状态：源码无 content-types import，按
+[ADR-0008](../../docs/decisions/ADR-0008-wave-2-entry-policies.md) D1
+（dead-dep policy = tighten），dep 与 ref 均未声明；forward-compat 意图
+仅在本 prose 段表达，不在 package.json / tsconfig 占位。
+
 ## Modifying this file
 
 公共表面（`BlockCoreDefinition` / `BlockUIDefinition` / `BlockRegistry` / `BlockKind` / `BlockViewProps` / `defineCore` / `defineUI` / `proseExtensions`）的任何字段或方法增删改一律需 ADR — **包括添加 optional 字段、改 `proseExtensions` 数组（增删 Tiptap 扩展、顺序变更、`as const` shape 变化）**。spec §2.3 把 block-foundation 列为接口包，规则"改动需 ADR；全员同步"不区分 optional vs required。
