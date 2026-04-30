@@ -1,0 +1,832 @@
+Reading prompt from stdin...
+OpenAI Codex v0.125.0 (research preview)
+--------
+workdir: /home/weiyi/selfKnowledgeBaseWeb
+model: gpt-5.3-codex-spark
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: xhigh
+reasoning summaries: none
+session id: 019ddfef-6cca-7662-951c-6f0fd45ed46a
+--------
+user
+You are codex 5.3-spark code-reviewer. Re-review packages/block-callout/ R2 bundle for Wave 2 Task #10 (C1: block-callout/core, template by simple-block-eng).
+
+R1 audit log: docs/audits/codex-runs/2026-04-30-task-C1-code-review.txt — flagged 2 issues:
+  [高] package.json exposes "./ui-default" subpath without src/ui-default/ implementation.
+  [中] CONTRACT.md sister-doc alignment terminology incomplete.
+
+R2 fix scope (also includes pr-reviewer-c1 follow-up):
+  Issue 1 fix: package.json "./ui-default" entry removed (verify exports now only ".": "./src/index.ts" + "./core": "./src/core/index.ts").
+  Issue 2 fix: CONTRACT.md additions per simple-block-eng (verify sister-doc terminology now references registerCore / registerUI / coreName / uiId / kebab-case appropriately + Defensive copy / Default UI lookup invariant inheritance from block-foundation).
+  Issue 3 (new): src/__tests__/registry-integration.test.ts added (registerCore + getCore round-trip test) — verify it executes the round-trip with `.toBe(calloutCore)` reference identity.
+
+Verify:
+1. package.json exports field byte-correct.
+2. CONTRACT.md sister-doc alignment is now sufficient.
+3. registry-integration.test.ts exists, imports BlockRegistry from @skb/block-foundation, uses .toBe() for identity.
+4. Run: cd /home/weiyi/selfKnowledgeBaseWeb && pnpm --filter @skb/block-callout test (expect 6/6 PASS).
+5. ADR-0006 8-point asymmetry audit re-application.
+
+Verdict: PASS or FAIL with line-numbered issues.
+
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the vendored bubblewrap in the meantime.
+codex
+Review objective understood: I’ll verify the three requested areas in `packages/block-callout` (exports map, sister-doc alignment, registry integration test semantics), then run the scoped test command, and finish with a PASS/FAIL verdict plus any line-numbered findings. I’ll also re-check the ADR-0006 asymmetry audit points during the pass.
+exec
+/bin/bash -lc 'cd /home/weiyi/selfKnowledgeBaseWeb && nl -ba packages/block-callout/CONTRACT.md' in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc 'cd /home/weiyi/selfKnowledgeBaseWeb && nl -ba packages/block-callout/src/__tests__/registry-integration.test.ts' in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc 'cd /home/weiyi/selfKnowledgeBaseWeb && nl -ba packages/block-callout/package.json' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	import { describe, expect, it } from 'vitest';
+     2	import { BlockRegistry } from '@skb/block-foundation';
+     3	import { calloutCore } from '../core/core-definition';
+     4	
+     5	describe('block-callout registry integration', () => {
+     6	  it('registerCore + getCore round-trip preserves identity', () => {
+     7	    const reg = new BlockRegistry();
+     8	    reg.registerCore(calloutCore);
+     9	    expect(reg.getCore('callout')).toBe(calloutCore);
+    10	  });
+    11	
+    12	  it('getCore returns undefined for unknown name', () => {
+    13	    const reg = new BlockRegistry();
+    14	    expect(reg.getCore('unknown-block')).toBeUndefined();
+    15	  });
+    16	});
+
+ succeeded in 0ms:
+     1	{
+     2	  "name": "@skb/block-callout",
+     3	  "version": "0.0.0",
+     4	  "private": true,
+     5	  "type": "module",
+     6	  "exports": {
+     7	    ".": "./src/index.ts",
+     8	    "./core": "./src/core/index.ts"
+     9	  },
+    10	  "scripts": {
+    11	    "build": "tsc -b",
+    12	    "lint": "eslint .",
+    13	    "typecheck": "tsc --noEmit",
+    14	    "test": "vitest run"
+    15	  },
+    16	  "dependencies": {
+    17	    "@skb/block-foundation": "workspace:*",
+    18	    "zod": "^3.23.0"
+    19	  },
+    20	  "devDependencies": {
+    21	    "typescript": "~5.6.0",
+    22	    "vitest": "^4.1.5"
+    23	  }
+    24	}
+
+ succeeded in 0ms:
+     1	# @skb/block-callout Contract
+     2	
+     3	第一个真实 `BlockRegistry` 消费者（Wave 2 Track C1 template）。
+     4	后续 `block-code` / `block-image` 等 simple block 包按本包结构 clone（codex-block-generator + scripts/new-block.ts）。
+     5	
+     6	## Public surface
+     7	
+     8	三个 entry：
+     9	
+    10	- `.` (root barrel) — re-export `./core`
+    11	- `./core` — headless 层
+    12	  - `calloutCore: BlockCoreDefinition<typeof propsSchema>` — name=`'callout'` / kind=`'component'` / mdxComponent=`'Callout'`
+    13	  - `serializeCallout(node) → mdxJsxFlowElement` — Tiptap → mdast (Wave 3 mdx-bridge routing 时启用)
+    14	  - `parseCallout(mdast) → TiptapNode` — mdast → Tiptap (同上)
+    15	  - 类型: `CalloutTiptapNode` / `CalloutMdastJsxElement`
+    16	- `./ui-default` — presentational 层（Track C2 by `ux-ui-lead`，本 PR 不含）
+    17	
+    18	`propsSchema` 形状（见 `src/core/core-definition.ts`）：
+    19	
+    20	```typescript
+    21	z.object({
+    22	  variant: z.enum(['note', 'tip', 'warning', 'danger']),
+    23	  title: z.string().optional(),
+    24	}).strict()
+    25	```
+    26	
+    27	## Invariants
+    28	
+    29	继承自 [block-foundation/CONTRACT.md](../block-foundation/CONTRACT.md#invariants)：
+    30	`Defensive copy` / `Schema strictness` / `Default UI lookup` / `Serialize / parse hook ownership`
+    31	（即 `BlockRegistry.listCores()` / `listUIs(coreName)` defensive-copy 行为、
+    32	`propsSchema` 必须 `.strict()`、同 `coreName` 多 UI 时 `getUI(coreName)` 取首注册 `uiId`、
+    33	serialize/parse 由本包 `core/` own 不在 foundation 注册）。
+    34	
+    35	block-callout 特定不变量：
+    36	
+    37	- **`coreName='callout'` (kebab-case)**: `calloutCore.name` 字面值固定，与 `BlockRegistry.registerCore`
+    38	  注册键一致；后续 `block-code` / `block-image` 同 `coreName` kebab-case 约定
+    39	- **`mdxComponent='Callout'` (PascalCase)**: 与 `<Callout variant=...>` JSX 标签一致；
+    40	  mdx-bridge 通过 `mdxJsxFlowElement.name` 字符串路由（[block-foundation RFC §1](../block-foundation/RFC.md#1-core-side)）
+    41	- **Serialize / parse hook 命名**: `serializeCallout` / `parseCallout`，verb-as-prefix
+    42	  约定（[RFC §5](../block-foundation/RFC.md#5-serialize--parse-hook-ownership-scope-clarification)）
+    43	- **`uiId='default'` reserved**: Track C2 `registerUI` 注册时 `uiId='default'`；本包 inherit
+    44	  foundation 的 `Default UI lookup` 不变量（首注册即 default）
+    45	- **Headless 自给**: `core/` 不 import 任何 React / Tiptap UI 模块；仅依赖
+    46	  `@skb/block-foundation` 类型 + `zod`（ADR-0003 D1）
+    47	- **propsSchema single authority**: 仅在 `src/core/core-definition.ts` 定义，
+    48	  ui-default / serialize / parse / 测试均 import `calloutCore.propsSchema`，
+    49	  不允许在 consumer 处 inline 重复（ADR-0006 item #4）
+    50	- **Self-validating serialize/parse**: `serializeCallout` 调 `propsSchema.parse(node.attrs)`；
+    51	  `parseCallout` 调 `propsSchema.parse(rawProps)`。任何契约偏离在 mdx-bridge 路由前已 throw
+    52	- **Registry integration**: `registerCore(calloutCore)` + `getCore('callout')` round-trip —
+    53	  see [`src/__tests__/registry-integration.test.ts`](src/__tests__/registry-integration.test.ts)
+    54	
+    55	## Wave 3 mdx-bridge 路由集成（pending）
+    56	
+    57	当前 `serializeCallout` / `parseCallout` 是 stub —— 暴露稳定签名，未被 mdx-bridge 消费。
+    58	Wave 3 mdx-bridge routing table PR 会：
+    59	
+    60	1. 在 `mdx-bridge/parse.ts` 的 `mdastBlockToTiptap` 拦截 `mdxJsxFlowElement{name:'Callout'}` →
+    61	   `parseCallout(node)` → 把返回 `CalloutTiptapNode` 嵌入 doc.content
+    62	2. 在 `mdx-bridge/serialize.ts` 的 `tiptapToMdastBlock` 拦截 `type='callout'` →
+    63	   `serializeCallout(node)` → 返回 `mdxJsxFlowElement` 进 mdast
+    64	3. children 递归走 mdx-bridge 现有 inline / block 处理
+    65	
+    66	集成完成后，`__tests__/fixtures/` 下三组 fixture 移交给 `packages/mdx-bridge/__tests__/fixtures/`
+    67	（编号 10-12）配 RTT 测试（`mdx-doctor` 强制 byte-equivalent 双向）。
+    68	
+    69	## Forward-compat consumers
+    70	
+    71	- **Wave 2 Track C2 ui-default** (`ux-ui-lead`): 加 `./ui-default` 入口 + `EditorView` /
+    72	  `RenderView` React 组件 + design-tokens 引用 + a11y 属性。届时
+    73	  `package.json#dependencies` 加 `@skb/design-tokens` + `react`；`tsconfig.json#references`
+    74	  加 `../design-tokens`（按 ADR-0008 D1 dead-dep policy：deps 必有 source import）
+    75	- **Wave 3 mdx-bridge integration**: 见上节
+    76	- **Wave 2 后续 block packages**: `block-code` / `block-image` 按本包结构 clone；
+    77	  `scripts/new-block.ts` 模板 source = `packages/block-callout/`
+    78	
+    79	## Modifying this file
+    80	
+    81	`calloutCore` 公共字段 (`name` / `kind` / `propsSchema` / `mdxComponent`) 的字段或值变更需 ADR
+    82	（与 block-foundation/CONTRACT.md 同 freeze 级别 —— 改 propsSchema 形状 / 改 mdxComponent /
+    83	改 kind 都触发 mdx-bridge 路由 + ui-default + sample-blocks 同步更新）。
+    84	
+    85	`serializeCallout` / `parseCallout` 签名变更需配 mdx-bridge routing PR 同步（强耦合）。
+    86	
+    87	## Related
+    88	
+    89	- [@skb/block-foundation CONTRACT](../block-foundation/CONTRACT.md) — `BlockCoreDefinition` 接口权威
+    90	- [@skb/block-foundation RFC](../block-foundation/RFC.md) — registration walkthrough（本包是 §1 + §3 + §5 唯一真 consumer）
+    91	- [ADR-0003 headless / presentational 分层](../../docs/decisions/ADR-0003-headless-presentational-split.md)
+    92	- [ADR-0006 asymmetry audit checklist](../../docs/decisions/ADR-0006-asymmetry-audit-checklist.md) item #3 + #4
+    93	- [ADR-0008 D1 dead-dep + D2 interface freeze](../../docs/decisions/ADR-0008-wave-2-entry-policies.md)
+    94	- [Wave 2 plan §Task C1](../../docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md)
+
+codex
+I’ve confirmed the three direct files and will now cross-check the ADR-0006 checklist and core contract semantics, then execute the scoped test command to validate runtime behavior.
+exec
+/bin/bash -lc 'cd /home/weiyi/selfKnowledgeBaseWeb && nl -ba docs/decisions/ADR-0006-asymmetry-audit-checklist.md' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	# ADR-0006: Cross-location asymmetry-audit checklist (process rule)
+     2	
+     3	| 字段 | 值                                    |
+     4	| ---- | ------------------------------------- |
+     5	| 状态 | accepted                              |
+     6	| 日期 | 2026-04-30                            |
+     7	| 作者 | orchestrator (Claude Opus 4.7 1M ctx) |
+     8	| 触发 | Wave 1 codex 5.5 reviews caught 12 instances of the same meta-class across 6 tracks + 5 close-ceremony fix iterations (8 distinct items + 4 close-ceremony reinforcements of items #6 and #8) |
+     9	| 替代 | 不替代任何 ADR；扩展 [ADR-0001](ADR-0001-stack-selection.md) §3.2 review chain |
+    10	
+    11	## Context
+    12	
+    13	Wave 1 implementation produced strong empirical evidence that **a single bug class** dominates the failure mode at line-level review:
+    14	
+    15	> **Cross-location asymmetry**: a value, schema, algorithm, or invariant exists in two or more places, and an edit to one location is not symmetrically applied to all peers, so behavior diverges silently.
+    16	
+    17	Across 6 tracks + 5 close-ceremony fix iterations, codex 5.5 (`pr-gate`) caught **12 instances** of this meta-class (8 distinct failure-mode items + 4 close-ceremony reinforcements of items #6 and #8). Every PR that lasted ≥ 2 review rounds hit at least one instance. The pattern is so consistent that linear "fix the cited blocker, ship v_n+1" iteration would not have caught the second-order asymmetry; codex specifically catches the symmetric counterpart that the worker missed.
+    18	
+    19	### Wave 1 empirical record (12 instances)
+    20	
+    21	| # | Track | Round | Asymmetry pair | Bug behavior |
+    22	|---|---|---|---|---|
+    23	| 1 | Track B (block-foundation + content-types) | R1 → fixed v3 | `listUIs` mutability vs `listCores` defensive copy | Caller mutation of return value polluted registry singleton |
+    24	| 2 | Track D (apps/api) | R2 → fixed v4 | RFC 7235 `WWW-Authenticate` on framework-raised 401 vs custom `SkbError` 401 | 4 of 5 401 paths emitted spec-mandated header; the custom-error path silently dropped it |
+    25	| 3 | Track F (editor-commands) | R3 → fixed v4 | `.strict()` on top-level Zod object vs nested `frontmatterSchema` | Top-level rejected unknown keys; nested still silently stripped them |
+    26	| 4 | Track C (mdx-bridge) | R2 → fixed v4 | `marksEqual` link comparator: `href` only vs `href + title` | Same href, different titles silently merged into one link with the first title preserved |
+    27	| 5 | Track F v5 | R3 → fixed v6 | One CONTRACT.md updated to reflect code; sister CONTRACT.md (`agent-tools`) had stale wording | Documentation-vs-code drift in the file the worker did not edit |
+    28	| 6 | Track A | R1 → fixed v2 | FOUC inline IIFE saved-value algorithm + content schema | Truthy-coerce diverges from strict-whitelist for invalid / case-mismatched values; inline `z.object` redefinition diverges from `frontmatterSchema` authority |
+    29	| 7 | Track A v2 | R2 → fixed v3 | FOUC inline IIFE try/catch scope | Wide try/catch in IIFE swallowed `matchMedia` exceptions while authority's narrow try/catch propagated; storage-throws scenarios produced light→dark hydration flash |
+    30	| 8 | Wave 1 close bundle v1 | R1 → fixed v2 | ADR-0006 mandated reviewer-prompt updates vs actual `agent-contract.md` / generated `.claude/agents/*.md` / `docs/review-checklist.md` / `team-operations.md` content | The close-ceremony commit codified a process rule that mandates downstream behavior; consumer-side artifacts (reviewer prompts + runbook) had not been updated to embed the rule, so Wave 2 reviewers would not have seen it |
+    31	| 9 | Wave 1 close bundle v2 | R2 → fixed v3 | ADR-0006:81 within-document drift "7 distinct instances" | Single bullet missed during the v1→v2 count sweep — sister-bullet variant of item #6 within a single document |
+    32	| 10 | Wave 1 close bundle v3 | R3 → fixed v4 | ADR-0006:117 within-document drift "7 empirical instances + 18+ erratum candidates" (both numbers stale) | Second sister-bullet drift in the same file, a different bullet — proved per-citation fixes are themselves item #6 traps; comprehensive sweep at fix time is the robust pattern |
+    33	| 11 | Wave 1 close bundle v4 (informational) | R4 (informational) → fixed v5 | structure baseline:66 "× 7 endpoints" while apps/api has 4 routes / 11 tests | Pre-existing content-accuracy drift in the structure baseline document (authored at v1) — content number mismatched real code; surfaced during the broader 11th-class hunt |
+    34	| 12 | Wave 1 close bundle v5 | R2 (pr-gate) → fixed v6 | Regenerated `.claude/agents/code-reviewer.md` + `.claude/agents/pr-gate.md` + `docs/review-checklist.md` were not staged in the bundle commit — authority + generator code updated, but generator outputs remained at pre-update HEAD content | Sub-form of item #8: regenerating an artifact and `git add`'ing it are separate steps; a bundle that updates authority + generator without staging the regenerated outputs is silently stale. Motivated the "verify by clean second-run" step now part of item #8. |
+    35	
+    36	Codex's structured review consistently caught these with three patterns:
+    37	
+    38	1. After fixing one location, **codex audits all peer locations** (not just the cited site)
+    39	2. After a value/schema acquires an attribute, **codex audits every comparator/serialization function** for that attribute
+    40	3. After a "happy path" fix, **codex audits the exception path** for the same equivalence
+    41	
+    42	These three habits collectively define the process rule below.
+    43	
+    44	## Decision
+    45	
+    46	Adopt an **8-point asymmetry-audit checklist** as a mandatory part of `code-reviewer` (Codex 5.3-spark, default cheap) and `pr-gate` (Codex 5.5, deep) review prompts. Reviewers MUST work through every applicable item before declaring PASS.
+    47	
+    48	### The 8 items
+    49	
+    50	1. **Field/attribute audit**: After adding a field to a data shape (Zod schema, Pydantic model, TS interface, mdast attrs, etc.), audit every comparator / equality / serialization / canonicalization function that handles this shape. (Wave 1 evidence: instance #4 — `marksEqual` link branch missed `title` when serialize emitted it.)
+    51	
+    52	2. **Status code audit**: After adding a status code to one HTTP handler (or, generally, an exit/error code to one branch), audit every other handler emitting the same code. RFC-mandated headers (RFC 7235 `WWW-Authenticate` on 401, RFC 7231 `Allow` on 405) attach to **the status code itself**, not the framework code path that emitted it. (Wave 1 evidence: instance #2 — custom `SkbError` 401 path missed `WWW-Authenticate`.)
+    53	
+    54	3. **Strictness audit**: After adding `.strict()` (Zod) / `extra='forbid'` (Pydantic) at one level of an object schema, audit every nested object/sub-schema. The strictness setting **does not propagate**; nested objects must opt in independently. (Wave 1 evidence: instance #3 — top-level `.strict()` shipped while nested `frontmatterSchema` still silently stripped unknown keys.)
+    55	
+    56	4. **Consumer schema audit**: After defining a schema in a single-authority package (e.g. `@skb/content-types/frontmatterSchema`), audit every consumer for inline duplicates or inline redefinitions that should `import` instead. The "deferred swap" pattern — "I'll inline now and import later" — is a contract break that compounds over time. (Wave 1 evidence: instance #6 part 2 — apps/site/content.config.ts inlined `z.object(...)` rather than importing `frontmatterSchema`.)
+    57	
+    58	5. **Algorithm + runtime constant replication audit**: When an algorithm or runtime constant is replicated outside its authority (e.g. inline FOUC scripts, login challenge derivation, pre-hydration boot logic that cannot import from packages), audit every consumer-side replica for byte-equivalent reproduction. The replica must register a **regression test** that asserts equivalence against the authority across a representative input corpus. (Wave 1 evidence: instance #6 part 1 — FOUC IIFE truthy-coerce vs `getInitialTheme()` strict-whitelist; remediated with `apps/site/src/__tests__/fouc-script.test.ts` 16-row corpus.)
+    59	
+    60	6. **Sister-file documentation audit**: After updating one CONTRACT.md (or any document that describes a code surface), audit ALL related CONTRACT.md files in the package family for sister-file drift. Two CONTRACT.md files that describe two halves of the same contract must use **identical terminology** for the shared identifiers (function names, schema names, refine predicate names). (Wave 1 evidence: instance #5 — `editor-commands/CONTRACT.md` updated to cite `editBlockInputSchema` while `agent-tools/CONTRACT.md` still referred to the old shape.)
+    61	
+    62	7. **Exception-scope equivalence audit**: When replicating an algorithm + its exception handling across files, audit BOTH the happy-path semantics AND the `try/catch` scope between authority and replica. Narrow vs wide `try/catch` can produce divergent fall-through behavior even with identical happy-path logic. Specifically: when `localStorage` / `sessionStorage` / `IndexedDB` / `matchMedia` / any browser API in the algorithm path can throw, the `try/catch` MUST wrap ONLY the throwing call, with the fall-through branch (matchMedia / system default / DOM apply) running AFTER the catch handler — not inside it. (Wave 1 evidence: instance #7 — FOUC IIFE wide-scope try/catch swallowed matchMedia exceptions; remediated with narrow try/catch + 2 storage-throws regression tests.)
+    63	
+    64	8. **Authority-document → generated/consumed surface audit**: When updating an authority document (ADR, spec, `agent-contract.md`, runbook, CONVENTIONS) **OR a dependency authority (`package.json`)** that mandates behavior in downstream consumers, audit every consumer-side replica/generated artifact for synchronized update **AND staged-in-the-git-index in the same bundle**. Specifically: an ADR section that says "X file MUST be updated to do Y" requires the same commit to update X and provide a way to verify the synchronization. Generated artifacts (e.g. `docs/review-checklist.md` and `.claude/agents/*.md` derived from `agent-contract.md`; **`pnpm-lock.yaml` derived from `package.json`** — see sub-form C below) MUST be regenerated via the documented codegen step (`pnpm generate:configs` / `pnpm install`) AND **explicitly `git add`'d** so the git **index** (not just the working tree) contains the new content; runbooks (`docs/runbooks/team-operations.md`) MUST be cross-linked; Codex/Claude subagent prompt files MUST embed or reference the new rule.
+    65	
+    66	   **Operational sequence** (do not skip steps):
+    67	   ```bash
+    68	   # 1. Edit authority + generator code
+    69	   # 2. Run codegen
+    70	   pnpm generate:configs
+    71	   # 3. Stage regenerated outputs (CRITICAL — see Pitfall below)
+    72	   git add <regenerated/path/foo.md> <regenerated/path/bar.md>
+    73	   # 4. Verify index reflects content (NOT just working tree):
+    74	   git diff --cached --stat -- <regenerated paths>
+    75	   #    → expects non-empty diff with the expected line counts
+    76	   # 5. Verify idempotence: re-run codegen + confirm working tree matches index:
+    77	   pnpm generate:configs
+    78	   git status --short -- <regenerated paths>
+    79	   #    → expects column-1 'M' (staged) + column-2 blank (working tree clean)
+    80	   ```
+    81	
+    82	   **Pitfall (this is the load-bearing step)**: `git status --short` shows two columns: column 1 is index-vs-HEAD; column 2 is working-tree-vs-index. After running the generator without `git add`, you see `' M'` (space + M) — **working tree differs from index, but index still matches HEAD**. `git commit` only commits the index. Skipping `git add` means the regenerated content is in your working tree but NOT in the next commit. The bundle would land authority + generator-code changes WITHOUT the regenerated outputs, leaving consumers (Wave 2 reviewers reading `.claude/agents/*.md`) at pre-update content. Use `git diff --cached` (not `git status`) as the canonical staging-verification command — `--cached` shows index-vs-HEAD only, which is what `git commit` will produce.
+    83	
+    84	   **Pitfall extension — `pnpm-lock.yaml` is a generated artifact too (sub-form C below)**: when the authority is `package.json` (any dependency add / remove / version bump / `@types/*` shift), `pnpm install` regenerates `pnpm-lock.yaml` as a deterministic derived artifact. Skipping `git add pnpm-lock.yaml` produces the same class of failure as skipping `git add .claude/agents/*.md`: working tree has the synced lockfile but the **index** still holds HEAD's stale lockfile, so the bundle ships `package.json` ahead of its lockfile. CI runs `pnpm install --frozen-lockfile` from the bundled state, sees the stale lockfile disagreeing with the new `package.json`, and fails install. The same `git diff --cached --stat -- pnpm-lock.yaml` canonical verification applies. (Wave 1 erratum commit `e15ec36`; codified as sub-form C below.)
+    85	
+    86	   Generated-from-authority files carry their own header comment ("GENERATED FROM agent-contract.md — DO NOT EDIT BY HAND") OR YAML frontmatter declaring authority source — both forms are acceptable. `pnpm-lock.yaml` lacks an explicit header (the format is fixed by pnpm) but is implicitly declared by `pnpm install`'s contract — its authority is `package.json` + the workspace `pnpm-workspace.yaml`.
+    87	
+    88	   **Wave 1 evidence**: **instance #8** — ADR-0006 v1 commit codified reviewer-prompt mandates but did not update `agent-contract.md` / regenerate `.claude/agents/code-reviewer.md` / regenerate `.claude/agents/pr-gate.md` / cross-link `team-operations.md` / regenerate `docs/review-checklist.md`; pr-gate caught the dogfood failure during R1 review of the close-ceremony bundle, forcing a v2 fix. **instance #12 (sub-form A — pre-regeneration omission)** — v5 bundle updated authority files (`agent-contract.md`, generator code, `team-operations.md` cross-link) but had not run the generator at all post-edit; the 3 regenerated outputs were stale at HEAD content; pr-gate caught this during R2 review, forcing a v6 fix. **instance #12 (sub-form B — staging-vs-working-tree confusion)** — v6 bundle ran the generator (so working tree had new content) but did NOT `git add` the regenerated outputs; the git **index** still held HEAD blob hashes for the 3 generated files; orchestrator confused `git status --short` "M" prefix (working-tree-vs-index) with index-vs-HEAD; pr-gate caught this via `git ls-files --stage` blob-hash comparison during R3 review, forcing the v7 fix that explicitly stages with `git add` + verifies via `git diff --cached`. **instance #12 (sub-form C — lockfile is a generated-from-authority artifact)** — Wave 1 close ceremony commit `e15ec36` ("fix(deps): commit pnpm-lock.yaml for @tailwindcss/typography (lockfile drift)"): the design-tokens erratum (commit `fdc86a8`) added the `@tailwindcss/typography` dependency to `package.json` but did not stage the regenerated `pnpm-lock.yaml`; CI install used the pre-update lockfile, drifted against the new `package.json`, and failed `pnpm install --frozen-lockfile`. Resolution: commit `e15ec36` staged the lockfile separately. Lesson codified: when the authority is `package.json` (any dependency add / remove / version bump), `pnpm-lock.yaml` is the consumer-side generated artifact and must ride the same bundle — the class equivalence to `.claude/agents/*.md` regeneration is exact (deterministic derive + git-index staging required). The four sub-forms of the same item #8 class — pre-regeneration omission, post-regeneration commit-staging confusion, conceptually-correct-but-operationally-incomplete fix, AND lockfile-as-generated-artifact — together motivate the explicit operational sequence and `git diff --cached` canonical verification command codified above.
+    89	
+    90	### Wave 2 prep notes (forward-compatibility application)
+    91	
+    92	The 8 items have specific Wave 2 trip-hazards already identified by Wave 1's review record:
+    93	
+    94	- **Item #1 + Wave 2 attr-bearing marks**: when the first attr-bearing mark beyond `link` is added to mdx-bridge (e.g. `highlight: {color}`, `kbd: {style}`), the worker MUST simultaneously update `wrapMark` AND `marksEqual` AND add a fixture exercising attr-equality + attr-distinction. Default `return true` in `marksEqual` is a silent-drop trap for any attr-bearing mark. (See pr-gate Track C v4 R3 caveat.)
+    95	
+    96	- **Item #2 + Wave 2 new error categories**: when Wave 2+ adds new HTTP error categories (e.g. `auth-rate-limit`, `kernel-timeout`), each new `SkbError` subclass MUST emit the same RFC-mandated headers as framework-raised peers. Add a unit test asserting header presence per error type. (See `apps/api/CONVENTIONS.md` §5 Pitfall + Pitfall continued.)
+    97	
+    98	- **Item #5 + Wave 2 client-side replications**: when apps/site adds new client-side algorithm replications (theme variants beyond light/dark, locale negotiation pre-hydration, etc.), the worker MUST audit both saved-value semantics AND try/catch scope against authority. (See `packages/design-tokens/CONTRACT.md` Inverse-direction obligation invariant.)
+    99	
+   100	- **Item #7 + future inline scripts**: ANY future `<script is:inline>` block in the project that needs pre-hydration replication of a package algorithm MUST follow the FOUC template (narrow try/catch + corpus regression test).
+   101	
+   102	## Consequences
+   103	
+   104	### Positive
+   105	
+   106	- **Catch the failure mode proactively**: Wave 1 evidence shows reviewer-applied checklist would have caught all 12 instances on the first review round (including the close-ceremony dogfood instance #8 + the 4 fix-loop reinforcements), eliminating 12 round-trip cycles
+   107	- **Reviewer prompt clarity**: code-reviewer + pr-gate codex profile prompts gain a concrete, enumerable checklist rather than the implicit "look for symmetric counterparts" expectation
+   108	- **Worker self-audit**: workers gain a pre-PR checklist they can run before reporting `ready-for-review`, catching their own asymmetries (memory: `feedback_verification_fresh_state.md` showed the verification-rigor lesson; this checklist is the analogous rigor at code-design level)
+   109	- **Empirical grounding**: 12 distinct instances spread across 6 tracks + 5 close-ceremony fix iterations make this rule data-driven, not a "best practice" speculation; instances #9-12 reinforce items #6 + #8 specifically through close-ceremony fix-loop evidence
+   110	
+   111	### Costs
+   112	
+   113	- **Review-round time**: applying 8-point audit at every review adds ~5-10 minutes per round of code-reviewer + pr-gate runtime. Acceptable trade-off given Wave 1 round-counts (Track F: 5 rounds; Track A: 3 rounds; Track C: 4 rounds; Track D: 4 rounds) — front-loading review thoroughness reduces total cycles
+   114	- **Worker prompt overhead**: each spawn prompt now needs a reference to this ADR + the 8-point checklist. Marginal cost.
+   115	- **False-positive risk**: items that don't apply (e.g. #2 "status code" doesn't apply to TS-only packages) need to be triaged and skipped. Reviewer profile prompts must explicitly say "skip items not applicable to this PR's scope" to avoid bloat.
+   116	
+   117	### Risks (mitigated)
+   118	
+   119	- **Risk**: workers might mechanically check items without thinking, producing false confidence. **Mitigation**: each item enumerates concrete failure modes from Wave 1, not abstract heuristics — easier to apply
+   120	- **Risk**: this list might grow unbounded as Wave 2+ surfaces new asymmetry classes. **Mitigation**: ADR amendments are cheap; each new instance produces an ADR-0006 erratum capturing item #N+1. Wave 2 close ceremony reviews instances and adds items as needed.
+   121	
+   122	## Implementation
+   123	
+   124	### Reviewer prompt updates
+   125	
+   126	`code-reviewer` and `pr-gate` profile prompts MUST be updated to:
+   127	
+   128	1. State the 8-point checklist verbatim (or by reference to this ADR)
+   129	2. Require the reviewer's verdict structure to include "asymmetry-audit applied: items {1..8} verdicts: ..."
+   130	3. Explicitly mark FAIL if any applicable item is left un-audited
+   131	
+   132	`docs/runbooks/team-operations.md` §"角色与触发器" Tier 2 reviewer rows should cross-link to this ADR.
+   133	
+   134	### Worker pre-flight (template addition)
+   135	
+   136	Worker `ready-for-review` reports SHOULD include a brief asymmetry-audit summary: which of the 8 items applied, and the worker's self-audit verdict. Reviewers cross-check.
+   137	
+   138	### Wave 1 retroactive
+   139	
+   140	This ADR is **forward-applicable**. Wave 1 PRs that already shipped under earlier review without this checklist remain valid; the empirical instances they revealed are exactly what grounded this ADR. No retroactive re-review required.
+   141	
+   142	## Related
+   143	
+   144	- [ADR-0001](ADR-0001-stack-selection.md) §3.2 review chain — this ADR specifies what reviewers MUST do; ADR-0001 specifies who reviews
+   145	- [ADR-0002](ADR-0002-wave-1-close.md) Wave 1 close — collects the 12 empirical instances + 22 erratum candidates
+   146	- [ADR-0004](ADR-0004-agent-team-dispatch-model.md) team dispatch — orchestrator dispatches review chain per this checklist
+   147	- [docs/runbooks/team-operations.md](../runbooks/team-operations.md) — operational reference for reviewers and workers
+   148	- [packages/design-tokens/CONTRACT.md](../../packages/design-tokens/CONTRACT.md) Inverse-direction obligation — concrete application of items #5 + #7
+   149	- [apps/api/CONVENTIONS.md](../../apps/api/CONVENTIONS.md) §5 Pitfalls — concrete application of item #2
+
+exec
+/bin/bash -lc 'cd /home/weiyi/selfKnowledgeBaseWeb && nl -ba packages/block-foundation/CONTRACT.md' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	# @skb/block-foundation Contract
+     2	
+     3	## Public surface
+     4	
+     5	- `BlockRegistry` class — 双层注册表（ADR-0003）
+     6	  - `registerCore(core)` / `registerUI(ui)`
+     7	  - `getCore(name)` / `listCores()`
+     8	  - `getUI(coreName, uiId?)` / `listUIs(coreName)`
+     9	- `defineCore(def)` / `defineUI(def)` factory helpers
+    10	- `BlockCoreDefinition<T>` / `BlockUIDefinition<T>` / `BlockViewProps<T>` interfaces
+    11	- `BlockKind = 'prose' | 'component'` （二分类，spec §1.5 关键不变量）
+    12	- `proseExtensions` — Tiptap 扩展数组，提供全部 markdown 行为
+    13	
+    14	## Invariants
+    15	
+    16	- `BlockKind` 二分不可破坏：新 block 必须明确归属 `prose` 或 `component`
+    17	- Prose blocks 零自写代码——任何看似需要新 prose block 的场景应通过组合 `proseExtensions` 内现有扩展或追加单条 Tiptap 扩展实现，不再加 prose-kind block
+    18	- `BlockCoreDefinition.mdxComponent` 必须 PascalCase，且与 MDX 文件 import 中使用的名字一致
+    19	- Core 与 UI 物理分离（ADR-0003）：core 不允许 import 任何 React/Tiptap 视觉 API；UI 必须 import core（不允许 inline 重复 schema）
+    20	- 同 core 多 UI 时 `getUI(name)` 取首个注册：约定首个 uiId 为 `'default'`；adopter 在 register 顺序上需谨慎
+    21	- **Defensive copy**：`listCores()` 与 `listUIs(coreName)` 每次返回 fresh array。Caller 修改返回值不影响 registry 内部 state。Implementation: `src/registry.ts:84` (`listCores`) + `src/registry.ts:96` (`listUIs`)；regression: `src/__tests__/registry.test.ts` "listCores returns a defensive copy" + "listUIs returns a defensive copy"
+    22	- **Idempotent register**：`registerCore` 同 `name` 第二次调用 throws `Duplicate core name: <name>`；`registerUI` 同 `(coreName, uiId)` 第二次 throws `Duplicate UI registration: core=<coreName> uiId=<uiId>`。避免 silent override；实现见 `src/registry.ts:60-63` + `src/registry.ts:71-75`
+    23	- **Schema strictness**：每个 `BlockCoreDefinition.propsSchema` 必须是 `z.object(...).strict()`；嵌套 `ZodObject` 同样必须 `.strict()`（[ADR-0006](../../docs/decisions/ADR-0006-asymmetry-audit-checklist.md) item #3 trip-hazard：`.strict()` 不传播）。当前类型仅约束到 `ZodTypeAny`（type-narrow 到 `ZodObject` 待 Wave 3）；Wave 2 行为约定 + reviewer + RFC.md §1 显式提醒。未 `.strict()` 不会 throw，但 `propsSchema.parse(input)` 会 silently strip unknown keys，引发 contract drift
+    24	- **Serialize / parse hook ownership**：MDX serialize/parse 由各 `block-*` 包的 `core/` own（ADR-0003 D1+D2），不在 `block-foundation` 注册。`block-foundation` 仅 own `BlockCoreDefinition` 形状（含 `mdxComponent` 字符串）；`mdx-bridge` 通过 `mdxJsxFlowElement.name` 字符串路由到对应 block 的 export（命名约定 verb-as-prefix：`serialize<BlockName>` / `parse<BlockName>`，与 mdx-bridge 现有 `mdxToTiptap` / `tiptapToMdx` 同 style）。详见 RFC.md §"5. Serialize / parse hook ownership"
+    25	
+    26	## Forward-compat consumers (Wave 2+)
+    27	
+    28	Wave 2 中段当 `BlockRegistry` 开始用 `@skb/content-types` 的 schema 验证
+    29	注册的 block props（如跨 block 共享的 frontmatter / metadata 形状），届时
+    30	`@skb/content-types` 将被同 PR 加入 `package.json#dependencies` +
+    31	`tsconfig.json#references`，并出现源码 `import { ... } from '@skb/content-types'`。
+    32	
+    33	当前 Wave 1 close 状态：源码无 content-types import，按
+    34	[ADR-0008](../../docs/decisions/ADR-0008-wave-2-entry-policies.md) D1
+    35	（dead-dep policy = tighten），dep 与 ref 均未声明；forward-compat 意图
+    36	仅在本 prose 段表达，不在 package.json / tsconfig 占位。
+    37	
+    38	## How to register a new `block-*` package
+    39	
+    40	step-by-step walkthrough (core / ui-default / 测试样板 / 错误场景 / serialize-parse 归属)
+    41	for the first real consumer 在 [RFC.md](./RFC.md) — 第一个 `block-*` PR
+    42	(Task C1 / C2) 必须 reference 此 RFC；后续 `block-*` PR 沿用相同模式。
+    43	RFC 是 consumer-facing 教程，CONTRACT.md 是 public API 形状 + 关键不变量
+    44	的权威；二者补充而非重叠（[ADR-0008 D2](../../docs/decisions/ADR-0008-wave-2-entry-policies.md)）。
+    45	
+    46	## Modifying this file
+    47	
+    48	公共表面（`BlockCoreDefinition` / `BlockUIDefinition` / `BlockRegistry` / `BlockKind` / `BlockViewProps` / `defineCore` / `defineUI` / `proseExtensions`）的任何字段或方法增删改一律需 ADR — **包括添加 optional 字段、改 `proseExtensions` 数组（增删 Tiptap 扩展、顺序变更、`as const` shape 变化）**。spec §2.3 把 block-foundation 列为接口包，规则"改动需 ADR；全员同步"不区分 optional vs required。
+    49	
+    50	原因：optional 字段会传播到 mdx-bridge serialization + 8 个 Wave 2 block 的 core+ui 实现 + apps/site frontmatter schema；`proseExtensions` 改动直接影响 mdx-bridge round-trip fixtures + editor-shell parsing 行为；无 ADR 协调会引发漂移。
+    51	
+    52	## Related
+    53	
+    54	- 设计规格 §1.5 / §2.5（`../../docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md`）
+    55	- ADR-0003 headless / presentational 分层（`../../docs/decisions/ADR-0003-headless-presentational-split.md`）
+    56	- content-types 契约（`../content-types/CONTRACT.md`）
+    57	- mdx-bridge 契约（`../mdx-bridge/CONTRACT.md`）
+    58	- design-tokens 契约（`../design-tokens/CONTRACT.md`）
+
+exec
+/bin/bash -lc 'cd /home/weiyi/selfKnowledgeBaseWeb && nl -ba packages/block-foundation/src/registry.ts' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	import type { ZodTypeAny, infer as ZodInfer } from 'zod';
+     2	import type { ComponentType } from 'react';
+     3	
+     4	export type BlockKind = 'prose' | 'component';
+     5	
+     6	/**
+     7	 * BlockCore：headless 层 —— 无 React 依赖，纯逻辑（props schema + MDX 序列化在
+     8	 * mdx-bridge 处理）。Core 可被 Adopter 复用并配自定义 UI。
+     9	 */
+    10	export interface BlockCoreDefinition<TSchema extends ZodTypeAny = ZodTypeAny> {
+    11	  /** kebab-case identifier，全局唯一 */
+    12	  readonly name: string;
+    13	  readonly kind: BlockKind;
+    14	  readonly propsSchema: TSchema;
+    15	  /** MDX 中实际使用的 PascalCase 组件名，例如 "Callout" / "JupyterBlock" */
+    16	  readonly mdxComponent: string;
+    17	}
+    18	
+    19	export interface BlockViewProps<TSchema extends ZodTypeAny> {
+    20	  readonly props: ZodInfer<TSchema>;
+    21	  readonly content?: string;
+    22	  /** Wave 2 起追加 runtime context（kernel session / theme / etc.） */
+    23	}
+    24	
+    25	/**
+    26	 * BlockUI：presentational 层 —— React 组件，绑定到已注册的 core。
+    27	 * 同一 core 可挂多个 UI（uiId 区分），Adopter 可写自己的 UI 替代 ui-default。
+    28	 */
+    29	export interface BlockUIDefinition<TSchema extends ZodTypeAny = ZodTypeAny> {
+    30	  /** 必须指向已 registerCore 的 core */
+    31	  readonly coreName: string;
+    32	  /** UI 实现 id：'default' / 'minimal' / 用户自定义 */
+    33	  readonly uiId: string;
+    34	  readonly EditorView: ComponentType<BlockViewProps<TSchema>>;
+    35	  readonly RenderView: ComponentType<BlockViewProps<TSchema>>;
+    36	}
+    37	
+    38	export function defineCore<T extends ZodTypeAny>(
+    39	  def: BlockCoreDefinition<T>,
+    40	): BlockCoreDefinition<T> {
+    41	  return def;
+    42	}
+    43	
+    44	export function defineUI<T extends ZodTypeAny>(
+    45	  def: BlockUIDefinition<T>,
+    46	): BlockUIDefinition<T> {
+    47	  return def;
+    48	}
+    49	
+    50	/**
+    51	 * BlockRegistry：双层注册表（ADR-0003）。
+    52	 * registerCore：挂业务定义；registerUI：挂视觉实现。
+    53	 * 同 core 多 UI 场景：getUI(name) 不带 uiId 时取首个注册的（约定为 'default'）。
+    54	 */
+    55	export class BlockRegistry {
+    56	  readonly #cores = new Map<string, BlockCoreDefinition>();
+    57	  readonly #uis = new Map<string, BlockUIDefinition[]>();
+    58	
+    59	  registerCore(core: BlockCoreDefinition): void {
+    60	    if (this.#cores.has(core.name)) {
+    61	      throw new Error(`Duplicate core name: ${core.name}`);
+    62	    }
+    63	    this.#cores.set(core.name, core);
+    64	  }
+    65	
+    66	  registerUI(ui: BlockUIDefinition): void {
+    67	    if (!this.#cores.has(ui.coreName)) {
+    68	      throw new Error(`Unknown core for UI registration: ${ui.coreName}`);
+    69	    }
+    70	    const existing = this.#uis.get(ui.coreName) ?? [];
+    71	    if (existing.some((u) => u.uiId === ui.uiId)) {
+    72	      throw new Error(
+    73	        `Duplicate UI registration: core=${ui.coreName} uiId=${ui.uiId}`,
+    74	      );
+    75	    }
+    76	    existing.push(ui);
+    77	    this.#uis.set(ui.coreName, existing);
+    78	  }
+    79	
+    80	  getCore(name: string): BlockCoreDefinition | undefined {
+    81	    return this.#cores.get(name);
+    82	  }
+    83	
+    84	  listCores(): readonly BlockCoreDefinition[] {
+    85	    return [...this.#cores.values()];
+    86	  }
+    87	
+    88	  /** 不传 uiId 时返回首个（约定为 'default'）；传了精确匹配 */
+    89	  getUI(coreName: string, uiId?: string): BlockUIDefinition | undefined {
+    90	    const list = this.#uis.get(coreName);
+    91	    if (!list || list.length === 0) return undefined;
+    92	    if (uiId === undefined) return list[0];
+    93	    return list.find((u) => u.uiId === uiId);
+    94	  }
+    95	
+    96	  listUIs(coreName: string): readonly BlockUIDefinition[] {
+    97	    return [...(this.#uis.get(coreName) ?? [])];
+    98	  }
+    99	}
+
+codex
+I’ve validated the requested docs/content files so far; next I’m checking core entry exports and the new registry test usage directly, then executing the test command to confirm the expected 6/6 result.
+exec
+/bin/bash -lc 'cd /home/weiyi/selfKnowledgeBaseWeb && nl -ba packages/block-callout/src/index.ts' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	export * from './core';
+
+exec
+/bin/bash -lc 'cd /home/weiyi/selfKnowledgeBaseWeb && nl -ba packages/block-callout/src/core/index.ts' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	export { calloutCore } from './core-definition';
+     2	export { serializeCallout } from './serialize';
+     3	export { parseCallout } from './parse';
+     4	export type { CalloutTiptapNode, CalloutMdastJsxElement } from './serialize';
+
+exec
+/bin/bash -lc 'cd /home/weiyi/selfKnowledgeBaseWeb && nl -ba packages/block-callout/src/core/core-definition.ts' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	import type { BlockCoreDefinition } from '@skb/block-foundation';
+     2	import { z } from 'zod';
+     3	
+     4	const propsSchema = z
+     5	  .object({
+     6	    variant: z.enum(['note', 'tip', 'warning', 'danger']),
+     7	    title: z.string().optional(),
+     8	  })
+     9	  .strict();
+    10	
+    11	export const calloutCore: BlockCoreDefinition<typeof propsSchema> = {
+    12	  name: 'callout',
+    13	  kind: 'component',
+    14	  propsSchema,
+    15	  mdxComponent: 'Callout',
+    16	};
+
+exec
+/bin/bash -lc 'cd /home/weiyi/selfKnowledgeBaseWeb && pnpm --filter @skb/block-callout test' in /home/weiyi/selfKnowledgeBaseWeb
+ exited 1 in 744ms:
+
+> @skb/block-callout@0.0.0 test /home/weiyi/selfKnowledgeBaseWeb/packages/block-callout
+> vitest run
+
+failed to load config from /home/weiyi/selfKnowledgeBaseWeb/packages/block-callout/vitest.config.ts
+
+⎯⎯⎯⎯⎯⎯⎯ Startup Error ⎯⎯⎯⎯⎯⎯⎯⎯
+Error: EROFS: read-only file system, open '/home/weiyi/selfKnowledgeBaseWeb/packages/block-callout/node_modules/.vite-temp/vitest.config.ts.timestamp-1777578514387-7fa275b05dd61.mjs'
+    at async open (node:internal/fs/promises:639:25)
+    at async Object.writeFile (node:internal/fs/promises:1219:14)
+    at async loadConfigFromBundledFile (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:34769:3)
+    at async bundleAndLoadConfigFile (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:34632:17)
+    at async loadConfigFromFile (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:34599:42)
+    at async resolveConfig (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:34223:22)
+    at async _createServer (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:26029:65)
+    at async createViteServer (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vitest@4.1.5_@types+node@22.19.17_happy-dom@15.11.7_vite@8.0.10_@types+node@22.19.17_esbuild@_njtu3hruheo7esciutan5fga5a/node_modules/vitest/dist/chunks/cli-api.Cjt90eJu.js:8818:17)
+    at async createVitest (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vitest@4.1.5_@types+node@22.19.17_happy-dom@15.11.7_vite@8.0.10_@types+node@22.19.17_esbuild@_njtu3hruheo7esciutan5fga5a/node_modules/vitest/dist/chunks/cli-api.Cjt90eJu.js:14205:18)
+    at async prepareVitest (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vitest@4.1.5_@types+node@22.19.17_happy-dom@15.11.7_vite@8.0.10_@types+node@22.19.17_esbuild@_njtu3hruheo7esciutan5fga5a/node_modules/vitest/dist/chunks/cli-api.Cjt90eJu.js:14572:14) {
+  errno: -30,
+  code: 'EROFS',
+  syscall: 'open',
+  path: '/home/weiyi/selfKnowledgeBaseWeb/packages/block-callout/node_modules/.vite-temp/vitest.config.ts.timestamp-1777578514387-7fa275b05dd61.mjs'
+}
+
+
+
+/home/weiyi/selfKnowledgeBaseWeb/packages/block-callout:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @skb/block-callout@0.0.0 test: `vitest run`
+Exit status 1
+
+codex
+I’ve finished the file-level checks; I still need one more pass to confirm the test harness in `block-callout` (expected 6 tests) and then I’ll produce the verdict with itemized findings.
+exec
+/bin/bash -lc 'cd /home/weiyi/selfKnowledgeBaseWeb && nl -ba packages/block-callout/vitest.config.ts' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	import { defineConfig } from 'vitest/config';
+     2	
+     3	export default defineConfig({
+     4	  test: {
+     5	    include: ['src/**/*.test.ts'],
+     6	    typecheck: { enabled: false },
+     7	  },
+     8	});
+
+exec
+/bin/bash -lc 'cd /home/weiyi/selfKnowledgeBaseWeb && rg --files packages/block-callout/src/__tests__' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 117ms:
+packages/block-callout/src/__tests__/core.test.ts
+packages/block-callout/src/__tests__/registry-integration.test.ts
+
+codex
+I also checked test discovery and will quickly inspect the existing core tests to ensure the new registry integration assertions align with intended identity/regression semantics.
+exec
+/bin/bash -lc 'cd /home/weiyi/selfKnowledgeBaseWeb && nl -ba packages/block-callout/src/__tests__/core.test.ts' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	import { describe, it, expect } from 'vitest';
+     2	import { calloutCore } from '../core/core-definition';
+     3	
+     4	describe('calloutCore.propsSchema', () => {
+     5	  it('accepts valid variant + optional title', () => {
+     6	    expect(calloutCore.propsSchema.parse({ variant: 'note' })).toEqual({
+     7	      variant: 'note',
+     8	    });
+     9	    expect(
+    10	      calloutCore.propsSchema.parse({ variant: 'tip', title: 'Pro tip' }),
+    11	    ).toEqual({ variant: 'tip', title: 'Pro tip' });
+    12	  });
+    13	
+    14	  it('rejects unknown variant (z.enum)', () => {
+    15	    expect(() =>
+    16	      calloutCore.propsSchema.parse({ variant: 'foo' }),
+    17	    ).toThrow(/invalid_enum_value|invalid_value/);
+    18	  });
+    19	
+    20	  it('rejects unknown keys (.strict)', () => {
+    21	    expect(() =>
+    22	      calloutCore.propsSchema.parse({ variant: 'note', extra: 'x' }),
+    23	    ).toThrow(/unrecognized_keys/);
+    24	  });
+    25	
+    26	  it('exports correct shape (BlockCoreDefinition contract)', () => {
+    27	    expect(calloutCore.name).toBe('callout');
+    28	    expect(calloutCore.kind).toBe('component');
+    29	    expect(calloutCore.mdxComponent).toBe('Callout');
+    30	  });
+    31	});
+
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && nl -ba packages/block-callout/src/core/serialize.ts && echo '---' && nl -ba packages/block-callout/src/core/parse.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	import { calloutCore } from './core-definition';
+     2	
+     3	/**
+     4	 * MDX 序列化 stub。完整实现等 Wave 3 mdx-bridge routing table 落地（RFC §5）：
+     5	 * mdx-bridge 拿到 TiptapNode{type:'callout'} 时按 mdxComponent 字符串路由到本函数。
+     6	 *
+     7	 * Wave 2 阶段仅暴露稳定签名；mdx-bridge 还未引用此 export，所以 stub 抛错足够。
+     8	 */
+     9	export interface CalloutTiptapNode {
+    10	  readonly type: 'callout';
+    11	  readonly attrs: { readonly variant: string; readonly title?: string };
+    12	  readonly content?: readonly unknown[];
+    13	}
+    14	
+    15	export interface CalloutMdastJsxElement {
+    16	  readonly type: 'mdxJsxFlowElement';
+    17	  readonly name: string;
+    18	  readonly attributes: ReadonlyArray<{
+    19	    readonly type: 'mdxJsxAttribute';
+    20	    readonly name: string;
+    21	    readonly value: string;
+    22	  }>;
+    23	  readonly children: readonly unknown[];
+    24	}
+    25	
+    26	export function serializeCallout(node: CalloutTiptapNode): CalloutMdastJsxElement {
+    27	  const validated = calloutCore.propsSchema.parse(node.attrs);
+    28	  const attributes: CalloutMdastJsxElement['attributes'] = [
+    29	    { type: 'mdxJsxAttribute', name: 'variant', value: validated.variant },
+    30	    ...(validated.title !== undefined
+    31	      ? [{ type: 'mdxJsxAttribute' as const, name: 'title', value: validated.title }]
+    32	      : []),
+    33	  ];
+    34	  return {
+    35	    type: 'mdxJsxFlowElement',
+    36	    name: calloutCore.mdxComponent,
+    37	    attributes,
+    38	    children: node.content ?? [],
+    39	  };
+    40	}
+---
+     1	import { calloutCore } from './core-definition';
+     2	import type { CalloutMdastJsxElement, CalloutTiptapNode } from './serialize';
+     3	
+     4	/**
+     5	 * MDX 解析 stub。Wave 3 mdx-bridge 在 mdastBlockToTiptap 看到
+     6	 * mdxJsxFlowElement{name:'Callout'} 时按 mdxComponent 路由到本函数（RFC §5）。
+     7	 *
+     8	 * 当前 stub: 把 attributes 数组取回成 props 对象，propsSchema.parse 校验后构造
+     9	 * Tiptap node。children 透传，留 mdx-bridge 后续递归解析为 inline TiptapNode[].
+    10	 */
+    11	export function parseCallout(node: CalloutMdastJsxElement): CalloutTiptapNode {
+    12	  if (node.name !== calloutCore.mdxComponent) {
+    13	    throw new Error(
+    14	      `parseCallout: expected mdxComponent="${calloutCore.mdxComponent}", got "${node.name}"`,
+    15	    );
+    16	  }
+    17	  const rawProps: Record<string, string> = {};
+    18	  for (const attr of node.attributes) {
+    19	    rawProps[attr.name] = attr.value;
+    20	  }
+    21	  const validated = calloutCore.propsSchema.parse(rawProps);
+    22	  const attrs: CalloutTiptapNode['attrs'] =
+    23	    validated.title !== undefined
+    24	      ? { variant: validated.variant, title: validated.title }
+    25	      : { variant: validated.variant };
+    26	  return {
+    27	    type: 'callout',
+    28	    attrs,
+    29	    content: node.children,
+    30	  };
+    31	}
+
+codex
+The direct test run was blocked by the workspace’s read-only mode (Vite tries to write `.vite-temp`). I’ll try a read-only-safe invocation with an explicit writable cache directory to still validate the test result.
+exec
+/bin/bash -lc 'cd /home/weiyi/selfKnowledgeBaseWeb && pnpm --filter @skb/block-callout exec vitest run --cacheDir /tmp/vitest-cache-block-callout' in /home/weiyi/selfKnowledgeBaseWeb
+ exited 1 in 455ms:
+file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vitest@4.1.5_@types+node@22.19.17_happy-dom@15.11.7_vite@8.0.10_@types+node@22.19.17_esbuild@_njtu3hruheo7esciutan5fga5a/node_modules/vitest/dist/chunks/cac.DJJmV0dT.js:406
+          throw new CACError(`Unknown option \`${name.length > 1 ? `--${name}` : `-${name}`}\``);
+                ^
+
+CACError: Unknown option `--cacheDir`
+    at Command.checkUnknownOptions (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vitest@4.1.5_@types+node@22.19.17_happy-dom@15.11.7_vite@8.0.10_@types+node@22.19.17_esbuild@_njtu3hruheo7esciutan5fga5a/node_modules/vitest/dist/chunks/cac.DJJmV0dT.js:406:17)
+    at CAC.runMatchedCommand (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vitest@4.1.5_@types+node@22.19.17_happy-dom@15.11.7_vite@8.0.10_@types+node@22.19.17_esbuild@_njtu3hruheo7esciutan5fga5a/node_modules/vitest/dist/chunks/cac.DJJmV0dT.js:606:13)
+    at CAC.parse (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vitest@4.1.5_@types+node@22.19.17_happy-dom@15.11.7_vite@8.0.10_@types+node@22.19.17_esbuild@_njtu3hruheo7esciutan5fga5a/node_modules/vitest/dist/chunks/cac.DJJmV0dT.js:547:12)
+    at file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vitest@4.1.5_@types+node@22.19.17_happy-dom@15.11.7_vite@8.0.10_@types+node@22.19.17_esbuild@_njtu3hruheo7esciutan5fga5a/node_modules/vitest/dist/cli.js:11:13
+    at ModuleJob.run (node:internal/modules/esm/module_job:343:25)
+    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:665:26)
+    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:117:5)
+
+Node.js v22.22.2
+undefined
+/home/weiyi/selfKnowledgeBaseWeb/packages/block-callout:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: vitest run --cacheDir /tmp/vitest-cache-block-callout
+
+exec
+/bin/bash -lc 'cd /home/weiyi/selfKnowledgeBaseWeb && pnpm --filter @skb/block-callout exec vitest --help | rg -n "cache|temp|workspace|config"' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 453ms:
+32:  -c, --config <path>                                        Path to config file 
+75:  --project <name>                                           The name of the project to run if you are using Vitest workspace feature. This can be repeated for multiple projects: --project=1 --project=2. You can also filter projects using wildcards like --project=packages*, and exclude projects with --project=!pattern. 
+78:  --cache                                                    Enable cache. Use '--help --cache' for more info. 
+87:  --configLoader <loader>                                    Use bundle to bundle the config with esbuild or runner (experimental) to process it on the fly. This is only available in vite version 6.1.0 and above. (default: bundle) 
+91:  --clearCache                                               Delete all Vitest caches, including experimental.fsModuleCache, without running any tests. This will reduce the performance in the subsequent test run. 
+93:  --strictTags                                               Should Vitest throw an error if test has a tag that is not defined in the config. (default: true) 
+
+exec
+/bin/bash -lc 'cd /home/weiyi/selfKnowledgeBaseWeb && pnpm --filter @skb/block-callout exec vitest run --configLoader runner' in /home/weiyi/selfKnowledgeBaseWeb
+ exited 1 in 943ms:
+
+ RUN  v4.1.5 /home/weiyi/selfKnowledgeBaseWeb/packages/block-callout
+
+ ❯ src/__tests__/registry-integration.test.ts (0 test)
+ ❯ src/__tests__/core.test.ts (0 test)
+
+⎯⎯⎯⎯⎯⎯ Failed Suites 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/__tests__/core.test.ts [ src/__tests__/core.test.ts ]
+ FAIL  src/__tests__/registry-integration.test.ts [ src/__tests__/registry-integration.test.ts ]
+Error: ENOENT: no such file or directory, mkdir '/tmp/2TxU5pXITCY9blUuxJ51h/ssr'
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+
+ Test Files  2 failed (2)
+      Tests  no tests
+   Start at  15:48:48
+   Duration  132ms (transform 0ms, setup 0ms, import 0ms, tests 0ms, environment 0ms)
+
+undefined
+/home/weiyi/selfKnowledgeBaseWeb/packages/block-callout:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: vitest run --configLoader runner
+
+codex
+Verdict: **FAIL**
+
+1) **[PASS] `package.json` exports byte-correct**
+- `packages/block-callout/package.json:6-9` now only includes:
+  - `"." : "./src/index.ts"`
+  - `"./core": "./src/core/index.ts"`
+- No `./ui-default` export is present.
+
+2) **[PASS] `CONTRACT.md` sister-doc alignment**
+- `packages/block-callout/CONTRACT.md:29-33` now aligns with `block-foundation` invariant language (`Defensive copy`, `default UI` lookup semantics).
+- `registerCore` / `registerUI` / `coreName` / `uiId` / kebab-case are present:
+  - `registerCore` at `:52`
+  - `registerUI` at `:43`
+  - `coreName='callout'` at `:37`
+  - `uiId='default'` at `:43-44`
+- Minor note: line `16` still documents `./ui-default` as a Track C2 future artifact (with explicit note), which is acceptable if intended for forward-track planning.
+
+3) **[PASS] Registry integration test added and identity assertion**
+- `packages/block-callout/src/__tests__/registry-integration.test.ts:2-9` imports `BlockRegistry` from `@skb/block-foundation`.
+- Uses strict identity assertion `.toBe(calloutCore)` in `line 9`.
+
+4) **[FAIL] Required test execution could not be completed in this sandbox**
+- `pnpm --filter @skb/block-callout test` fails: `EROFS: read-only file system` while Vitest tries to write `node_modules/.vite-temp/...` in this environment.
+- Alternate runner attempt still fails with missing writable temp path under `/tmp`.
+- I therefore cannot verify the expected `6/6 PASS` result from this environment.
+
+5) **[PASS] ADR-0006 8-point asymmetry audit re-application**
+- Applicable items reviewed with no asymmetry introduced in this R2 scope:
+  - Item #3 / #4: strictness and schema authority now documented and not duplicated.
+  - Item #6: sister-doc terminology alignment updated consistently with foundational identifiers.
+  - Item #8: no new package/dependency authority drift requiring generated artifact sync was introduced in this change set.
+
+**Blocking issue for rollout:** only the test-run environment blocker in (4). If you rerun in a writable FS, the remaining checks are in scope-complete and should pass based on code inspection.
+2026-04-30T19:48:55.406068Z ERROR codex_core::session: failed to record rollout items: thread 019ddfef-6cca-7662-951c-6f0fd45ed46a not found
+tokens used
+32,773
+Verdict: **FAIL**
+
+1) **[PASS] `package.json` exports byte-correct**
+- `packages/block-callout/package.json:6-9` now only includes:
+  - `"." : "./src/index.ts"`
+  - `"./core": "./src/core/index.ts"`
+- No `./ui-default` export is present.
+
+2) **[PASS] `CONTRACT.md` sister-doc alignment**
+- `packages/block-callout/CONTRACT.md:29-33` now aligns with `block-foundation` invariant language (`Defensive copy`, `default UI` lookup semantics).
+- `registerCore` / `registerUI` / `coreName` / `uiId` / kebab-case are present:
+  - `registerCore` at `:52`
+  - `registerUI` at `:43`
+  - `coreName='callout'` at `:37`
+  - `uiId='default'` at `:43-44`
+- Minor note: line `16` still documents `./ui-default` as a Track C2 future artifact (with explicit note), which is acceptable if intended for forward-track planning.
+
+3) **[PASS] Registry integration test added and identity assertion**
+- `packages/block-callout/src/__tests__/registry-integration.test.ts:2-9` imports `BlockRegistry` from `@skb/block-foundation`.
+- Uses strict identity assertion `.toBe(calloutCore)` in `line 9`.
+
+4) **[FAIL] Required test execution could not be completed in this sandbox**
+- `pnpm --filter @skb/block-callout test` fails: `EROFS: read-only file system` while Vitest tries to write `node_modules/.vite-temp/...` in this environment.
+- Alternate runner attempt still fails with missing writable temp path under `/tmp`.
+- I therefore cannot verify the expected `6/6 PASS` result from this environment.
+
+5) **[PASS] ADR-0006 8-point asymmetry audit re-application**
+- Applicable items reviewed with no asymmetry introduced in this R2 scope:
+  - Item #3 / #4: strictness and schema authority now documented and not duplicated.
+  - Item #6: sister-doc terminology alignment updated consistently with foundational identifiers.
+  - Item #8: no new package/dependency authority drift requiring generated artifact sync was introduced in this change set.
+
+**Blocking issue for rollout:** only the test-run environment blocker in (4). If you rerun in a writable FS, the remaining checks are in scope-complete and should pass based on code inspection.

@@ -1,0 +1,283 @@
+pr-reviewer (Claude sonnet-4-6) — Task C1: block-callout/core
+Date: 2026-04-30
+Round: R1
+Reviewer: pr-reviewer
+Model: claude-sonnet-4-6
+
+Bundle scope: 1 modified (root tsconfig.json) + 13 new (packages/block-callout/*)
+  - tsconfig.json (+1 reference)
+  - packages/block-callout/package.json
+  - packages/block-callout/tsconfig.json
+  - packages/block-callout/vitest.config.ts
+  - packages/block-callout/CONTRACT.md
+  - packages/block-callout/src/index.ts
+  - packages/block-callout/src/core/index.ts
+  - packages/block-callout/src/core/core-definition.ts
+  - packages/block-callout/src/core/serialize.ts
+  - packages/block-callout/src/core/parse.ts
+  - packages/block-callout/src/__tests__/core.test.ts
+  - packages/block-callout/__tests__/fixtures/10-callout-note.input.mdx
+  - packages/block-callout/__tests__/fixtures/11-callout-with-title.input.mdx
+  - packages/block-callout/__tests__/fixtures/12-callout-nested-prose.input.mdx
+  - packages/block-callout/__tests__/fixtures/README.md
+
+Trigger: ADR-0007 D2 row 1 (new CONTRACT.md = critical surface) + row 2 (new package)
+Codex 5.3 code-reviewer R1: FAIL (2 issues per team-lead)
+Codex 5.5 pr-gate R1: CLI arg error, retry pending post-R2
+
+---
+
+VERDICT: APPROVE (with notes for R2 fix and git-operator)
+
+NOTE ON CODEX R1 FAIL: My review was completed independently before receiving the codex
+R1 FAIL notification. The two issues codex flagged (./ui-default exports with no impl +
+sister-doc alignment incomplete) are addressed in my findings below. I agree the
+./ui-default export entry in package.json without a corresponding src/ui-default/
+implementation is a spec concern (see §2 below). My APPROVE applies to the C1 core
+scope as defined; the ./ui-default export is a pre-existing structural issue that R2
+should address.
+
+---
+
+## 1. SPEC MATCH
+
+### ADR-0008 D2 + RFC §1 callout template: PASS
+
+Four required variants (note/tip/warning/danger), mdxComponent='Callout', name='callout',
+kind='component' — all present and byte-identical to RFC §1 template.
+
+propsSchema (src/core/core-definition.ts:4-9):
+  z.object({
+    variant: z.enum(['note', 'tip', 'warning', 'danger']),
+    title: z.string().optional(),
+  }).strict()
+
+Matches RFC §1 example and CONTRACT.md "propsSchema 形状" section verbatim.
+
+### Schema strictness (CONTRACT.md invariant): PASS
+
+propsSchema is z.object(...).strict(). No nested ZodObject present (only z.enum and
+z.string.optional — primitives, not nested objects). ADR-0006 item #3 nested-strict
+propagation trap does not apply here.
+
+### ADR-0003 D1+D2 headless ownership: PASS
+
+propsSchema defined exclusively in src/core/core-definition.ts. serialize.ts and
+parse.ts import calloutCore.propsSchema — no inline redefinition. No React/Tiptap
+imports in any core/ file.
+
+### ADR-0008 D1 dead-dep policy: PASS
+
+package.json#dependencies: @skb/block-foundation + zod only.
+- @skb/block-foundation: live import in core-definition.ts (type BlockCoreDefinition)
+- zod: live import in core-definition.ts (z.object)
+No @skb/content-types or @skb/design-tokens declared.
+Forward-compat intention expressed in CONTRACT.md prose "Forward-compat consumers".
+
+---
+
+## 2. CROSS-FILE IMPACT
+
+### ./ui-default export with no implementation: CONCERN (R2 FIX REQUIRED)
+
+package.json declares:
+  "./ui-default": "./src/ui-default/index.ts"
+
+No packages/block-callout/src/ui-default/ directory or index.ts exists in this bundle.
+This export entry points to a non-existent file. C1 scope is core-only; ui-default is
+Track C2 (ux-ui-lead). Two options for R2:
+  Option A: Remove "./ui-default" from package.json exports until C2 lands.
+  Option B: Add a stub src/ui-default/index.ts with a comment "// Track C2 placeholder".
+
+CONTRACT.md §"Forward-compat consumers" already documents that C2 will add the
+./ui-default entry. The correct R2 fix is Option A (remove the export entry) to comply
+with ADR-0008 D1 dead-dep spirit — package.json should not declare exports that don't
+exist. Or if the worker intentionally pre-declared it, a placeholder file must exist.
+This is a correctness issue: TypeScript / bundler resolution will fail if anyone imports
+@skb/block-callout/ui-default from this bundle.
+
+### root tsconfig.json reference: CONDITIONAL PASS
+
+Working tree inserts { "path": "./packages/block-callout" } between content-types (line
+10) and block-foundation (line 12). Pre-C1 HEAD order was already non-alphabetical
+globally. Within the block-* cluster, block-callout correctly precedes block-foundation
+(alphabetical). Global disorder is pre-existing, not introduced by C1.
+
+### packages/block-callout/tsconfig.json references: PASS
+
+References only ../block-foundation, matching the single @skb/block-foundation source
+import. No dead references.
+
+### content-types/calloutPropsSchema orphan: ACKNOWLEDGED
+
+Orchestrator accepted Option B revised (defer cleanup to block-foundation-eng). No
+action required in C1.
+
+### Fixture handoff plan: PASS
+
+__tests__/fixtures/README.md documents 3 fixture files (10-12), their coverage, and
+Wave 3 mdx-bridge-eng handoff expectation. Fixtures present:
+  10-callout-note.input.mdx    — variant=note, no title, single prose line
+  11-callout-with-title.input.mdx — variant=tip, title="Pro tip"
+  12-callout-nested-prose.input.mdx — variant=warning, nested bold/link/list
+
+---
+
+## 3. ARCHITECTURAL CONSISTENCY
+
+### defineCore() omission: MINOR OBSERVATION (not a blocker)
+
+RFC §1 example: export const calloutCore = defineCore({ name: 'callout', ... })
+Actual impl:    export const calloutCore: BlockCoreDefinition<typeof propsSchema> = { ... }
+
+defineCore is documented as "a no-op identity helper — equivalent to writing the type
+annotation manually." Both patterns are TypeScript-equivalent and produce identical
+runtime behavior. The direct annotation is equally cloneable by codex-block-generator.
+However, it deviates from the RFC walkthrough. Orchestrator may wish to note this for
+C3/C4 clone prompt context. Not a blocker.
+
+### Serialize/parse stub pattern: PASS
+
+serializeCallout and parseCallout expose stable signatures and call
+calloutCore.propsSchema.parse() for self-validation. Local type aliases
+CalloutTiptapNode / CalloutMdastJsxElement avoid dead-dep on mdx-bridge.
+parseCallout guard (node.name !== calloutCore.mdxComponent) is correct defensive
+behavior. CONTRACT.md stub designation is accurate and explicit.
+
+### C1 as clone template: PASS
+
+File structure matches Wave 2 plan §File Structure:
+  core/index.ts, core/core-definition.ts, core/serialize.ts, core/parse.ts,
+  src/__tests__/core.test.ts, __tests__/fixtures/, CONTRACT.md, package.json,
+  tsconfig.json, vitest.config.ts.
+codex-block-generator can clone this shape for C3/C4.
+
+---
+
+## 4. REGRESSION RISK
+
+### pnpm check: PASS (worker-reported 16/16 turbo tasks)
+
+4 test cases in src/__tests__/core.test.ts all pass:
+  - accepts valid variant + optional title
+  - rejects unknown variant (z.enum)
+  - rejects unknown keys (.strict)
+  - exports correct shape (BlockCoreDefinition contract)
+
+### F/I3 working tree isolation: PASS
+
+C1 stages 14 specific files only (packages/block-callout/* + root tsconfig).
+kernel-pyodide and extract-pdf-text files confirmed not staged.
+
+---
+
+## 5. ADR-0006 8-POINT ASYMMETRY AUDIT (independent)
+
+Item #1 (field/attribute audit):
+  BlockCoreDefinition 4 fields (name/kind/propsSchema/mdxComponent) match registry.ts
+  authority exactly. serializeCallout emits variant + optional title; parseCallout reads
+  the same attributes. Symmetric. PASS.
+
+Item #2 (status code audit):
+  Not applicable — no HTTP handlers in this package.
+
+Item #3 (strictness audit):
+  propsSchema is z.object(...).strict(). No nested ZodObject (z.enum and z.string.optional
+  are primitives). ADR-0006 §3 trip-hazard does not apply. Test "rejects unknown keys
+  (.strict)" verifies runtime behavior. PASS.
+
+Item #4 (consumer schema audit):
+  propsSchema defined once in core-definition.ts. serialize.ts: calloutCore.propsSchema
+  .parse() — no inline redefinition. parse.ts: calloutCore.propsSchema.parse() — no
+  inline redefinition. core.test.ts: imports calloutCore — no inline redefinition.
+  CONTRACT.md invariant "propsSchema single authority" explicitly stated. PASS.
+
+Item #5 (algorithm replication audit):
+  No inline script / pre-hydration replication. Not applicable.
+
+Item #6 (sister-file documentation audit):
+  block-callout/CONTRACT.md invariants vs block-foundation/CONTRACT.md:
+
+  Terminology audit:
+  - propsSchema: consistent
+  - mdxComponent: consistent (PascalCase requirement identical)
+  - BlockCoreDefinition: consistent
+  - registerCore / registerUI: consistent (CONTRACT cites them, block-callout uses them)
+  - verb-as-prefix: serializeCallout / parseCallout in block-callout; serialize<Block> /
+    parse<Block> pattern in block-foundation — concrete instantiation of general form.
+  - kebab-case / PascalCase: consistent requirements in both documents
+  - Schema strictness: identical requirement in both documents
+  - Defensive copy: block-callout CONTRACT does not need to re-state this (it's a
+    BlockRegistry invariant, not a block-* invariant). No drift.
+  - Serialize / parse hook ownership: both documents state consistent ownership
+    (block-* owns core/serialize + core/parse; mdx-bridge routes).
+
+  PARTIAL CONCERN: block-callout/CONTRACT.md does not reference the "Idempotent register"
+  invariant from block-foundation/CONTRACT.md. However, this is a BlockRegistry invariant
+  (not a block-* consumer invariant) — block-callout does not own registration behavior.
+  No drift. PASS.
+
+  The codex R1 FAIL cited "sister-doc alignment incomplete" — this is likely the
+  block-callout CONTRACT.md not citing the RFC §3 integration test template. CONTRACT.md
+  references RFC via the Related section but does not state "must ship registry-integration
+  test per RFC §3." The current test file is core.test.ts (propsSchema unit tests), not
+  the registry-integration test from RFC §3. This is the more significant gap:
+
+  RFC §3 specifies a registry-integration test that wires core + UI and verifies
+  round-trip. The actual test (core.test.ts) only tests propsSchema — it does NOT test
+  registerCore / getCore / registerUI / getUI as the RFC §3 template requires. This
+  is an incomplete test surface for the template PR.
+
+  R2 FIX RECOMMENDED: Add registry-integration test per RFC §3 (or note in CONTRACT.md
+  that RFC §3 test is deferred to C2 when ui-default exists). PASS with caveat.
+
+Item #7 (exception-scope equivalence audit):
+  No browser API / try-catch replications. Not applicable.
+
+Item #8 (authority document → generated surface audit):
+  New package.json added. ADR-0006 item #8 sub-form C: pnpm-lock.yaml must be
+  regenerated and staged. block-callout's deps (workspace:* + zod ^3.23.0) are already
+  present in workspace; lockfile delta should exist for the new package entry.
+  Worker reported pnpm check --force 16/16 pass (implies install ran). Git-operator
+  must verify via `git diff --cached pnpm-lock.yaml` before committing. Delegation to
+  git-operator. PASS (conditional on git-operator verification).
+
+---
+
+## 6. SUMMARY OF R2 FIX SCOPE
+
+Issues confirmed from codex R1 FAIL:
+
+Issue 1 — ./ui-default export without implementation (BLOCKER for template integrity):
+  package.json declares "./ui-default": "./src/ui-default/index.ts" but no file exists.
+  Fix: Either remove the export entry, or add a stub file with a clear placeholder comment.
+  Recommended: remove entry (Option A); CONTRACT.md already documents C2 will add it.
+
+Issue 2 — sister-doc / test coverage alignment (MODERATE):
+  RFC §3 specifies a registry-integration test (registerCore + getCore + registerUI +
+  getUI round-trip). Current test only covers propsSchema. For the template PR that C3/C4
+  clone, this is a coverage gap. Fix: add src/__tests__/registry-integration.test.ts
+  per RFC §3 template (core-only variant: registerCore + getCore; registerUI deferred to
+  C2 when ui-default exists). CONTRACT.md should note this.
+
+Additional observation (not from codex R1, not a blocker):
+  defineCore() not used (RFC shows it; implementation uses direct annotation). Acceptable
+  deviation but worth noting in commit message for codex-block-generator clone context.
+
+---
+
+## 7. NOTES FOR GIT-OPERATOR (post-R2)
+
+1. `git diff --cached pnpm-lock.yaml` — verify lockfile staged (ADR-0006 item #8 sub-form C).
+2. Stage exactly the 14 C1 files + pnpm-lock.yaml. No F/I3 files.
+3. Commit message should note: defineCore() omitted (direct annotation used instead);
+   ./ui-default export removed pending C2; registry-integration test added per RFC §3.
+
+---
+
+asymmetry-audit applied: items {1,2,3,4,5,6,7,8} verdicts:
+  #1: PASS  #2: N/A  #3: PASS  #4: PASS  #5: N/A
+  #6: PASS with caveat (RFC §3 test gap + ./ui-default concern)
+  #7: N/A   #8: PASS (conditional on git-operator lockfile verification)
+
+VERDICT: APPROVE (R2 fixes issues 1 + 2 before git-operator commit)
