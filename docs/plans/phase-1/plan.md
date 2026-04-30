@@ -20,12 +20,22 @@
 
 ## Wave 2 plan 写作时需要前置考虑（迁移自 active.md 备忘）
 
-- Playwright MCP server 加入 Claude Code（让 viz / editor agent 能开浏览器自检）
-- **每个 component block 拆 core/ + ui-default/（ADR-0003）**：core 由 Claude template，ui-default 部分由 codex-block-generator 仿造，部分由 codex-css-stylist 装填样式
-- 3 个 editor 子模块（editor-slash-menu / editor-drag-handle / editor-toolbar）由 editor-integrator；这三个本质是 UI，需消费 design-tokens preset
-- kernel-pyodide 实现（kernel-pyodide-eng）
-- codex-test-scaffolder / codex-script-builder / codex-css-stylist 首次实战（评估 5.3-spark 在脚手架场景的产出质量）
-- 设计 skill 流水线（frontend-design → ui-ux-pro-max → Vercel）作用对象明确：仅各 block 的 ui-default/，绝不碰 core/
+**Wave 2 Pre-Task 0 必先**：实施 [ADR-0007](../../decisions/ADR-0007-job-function-codex-heavy-execution.md)（agent-contract restructure + ux-ui-lead 加入 + codex agents 降为 tool）。完工后才能起 Wave 2 真正实施 task。
+
+后续工作（Wave 2 主体）：
+- Playwright MCP server 加入 Claude Code（让 viz / editor 工种能开浏览器自检）
+- **每个 component block 拆 core/ + ui-default/（ADR-0003）**：
+  - core 试点（ADR-0007 D3）：block-callout/core/ template by simple-block-eng；block-code/core/ + block-image/core/ clone by codex-block-generator（tool）；render block / viz block 仍 hand-craft
+  - ui-default 全部由 **ux-ui-lead**（新 Claude teammate, ADR-0007 D1）写第一 template + codex-block-generator (tool) clone 7 个
+- 3 个 editor 子模块（editor-slash-menu / editor-drag-handle / editor-toolbar）由 editor-eng template + codex-block-generator clone（ADR-0007 D3）
+- kernel-pyodide 实现（kernel-pyodide-eng）—— 仍 hand-craft（kernel session 复杂）
+- codex-test-scaffolder / codex-script-builder / codex-css-stylist 首次实战 **作 tool 而非 teammate 调用**（ADR-0007 D5）；orchestrator + 工种 lead 直接 Bash 调用
+- 设计 skill 流水线注入 ux-ui-lead spawn prompt（ADR-0007 D4）—— frontend-design + ui-ux-pro-max-skill + web-design-guidelines 一次性全注入
+- review chain 改为：默认 codex 5.3-spark + orchestrator 自检；ADR-0007 D2 列出的 7 类高风险触发 codex 5.5 pr-gate + Claude pr-reviewer
+
+**Wave 1 erratum 顺手清单**（Wave 2 起手时一并处理）：
+- detail 页 duplicate H1：删 sample MDX 的 `# Sample` 行（保留 layout 的 frontmatter title 渲染）
+- Wave 1 review 仅做了 ts/js 测试 + size + lint，**未做视觉测试** —— Wave 2 加 Playwright 视觉烟测覆盖 prose render
 
 ## Wave 间衔接原则
 

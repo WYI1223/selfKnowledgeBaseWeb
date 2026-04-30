@@ -3,25 +3,44 @@
 > SessionStart hook 读取此文件，把当前 wave 印在 session 起手位置。
 
 **当前 phase**: 1
-**当前 wave**: Wave 1 ✅ **closed** (2026-04-30, HEAD `b5e7217`) → Wave 2 plan 待起草
+**当前 wave**: Wave 1 ✅ **closed** (2026-04-30, HEAD `b5e7217`) → Wave 2 plan 待起草（**前置 ADR-0007 实施**）
 **新增架构 ADR**:
 - [ADR-0002](../decisions/ADR-0002-wave-1-close.md) Wave 1 close — 22 errata + 3 cross-package single-authority invariants
 - [ADR-0006](../decisions/ADR-0006-asymmetry-audit-checklist.md) 8-point cross-location asymmetry-audit checklist (process rule, mandatory for code-reviewer + pr-gate; embedded in `agent-contract.md` + regenerated subagent prompts + cross-linked from team-operations.md)
+- [ADR-0007](../decisions/ADR-0007-job-function-codex-heavy-execution.md) **职能化分工 + Codex-heavy 执行 + teammate/tool 切分** (Wave 2 起重大架构调整：新增 ux-ui-lead；Claude pr-reviewer 改选择性；codex agents 降级为 orchestrator-direct tools)
 **结构 baseline**: [docs/audits/structure-2026-04-29-wave-1.md](../audits/structure-2026-04-29-wave-1.md) (first monthly audit at Wave 1 close)
 **Wave 索引**: [docs/plans/phase-1/plan.md](phase-1/plan.md)
 **团队操作手册**: [docs/runbooks/team-operations.md](../runbooks/team-operations.md)（必须前置注入每个 spawn 的 prompt；Tier 2 reviewer rows 现已 cross-link ADR-0006 8-point checklist；reviewer subagent prompts 也已 regen 嵌入 8 项摘要）
 
 ## 起手指引（新 session 拉到此文件后）
 
-Wave 1 已闭环；下一步是 **Wave 2 plan 起草**：
+Wave 1 已闭环；下一步分两阶段：
 
-1. 读 [ADR-0002](../decisions/ADR-0002-wave-1-close.md)（Wave 1 闭环 + 22 errata + cross-package invariants）+ [ADR-0006](../decisions/ADR-0006-asymmetry-audit-checklist.md)（8-point checklist 必读）
-2. 读 [docs/audits/structure-2026-04-29-wave-1.md](../audits/structure-2026-04-29-wave-1.md)（结构 baseline，Wave 2 plan 据此判断哪些包/接口需先于 component block 实施）
+### A. **Wave 2 Pre-Task 0：实施 ADR-0007**（高风险，必先执行）
+
+ADR-0007 重构 agent 阵容。**实施作为 Wave 2 第一个 task 走完整 review chain**（codex 5.3-spark + codex 5.5 pr-gate + Claude pr-reviewer，因 ADR-0007 D2 触发条件命中）。**严格按 ADR-0006 D8 staging protocol** 执行（authority + generator code + 全部生成产物在同一 bundle commit；显式 `git add` + `git diff --cached --stat` 验证）。
+
+具体步骤参 [ADR-0007 §"Wave 2 Pre-Task 0 实施指南"](../decisions/ADR-0007-job-function-codex-heavy-execution.md#wave-2-pre-task-0-实施指南高风险须走完整-review-chain) 7-step 序列：
+
+1. agent-contract.md 加 ux-ui-lead
+2. agent-contract.md schema 扩展 `tool_patterns:` 段
+3. 更新 `scripts/render/types.ts`（加 `ToolPatternSchema`）
+4. 更新 5 个 renderer + 新增 `codex-tool-runbook.ts`
+5. 更新 `.claude/settings.json` permissions（如需）
+6. `pnpm generate:configs` + 严格 staging protocol（见 ADR-0007 Step 6 完整 git add 命令）
+7. 测试 + commit + push（CI 全绿，含 agent-contract drift check）
+
+### B. **Wave 2 plan 起草**（在 A 完工后）
+
+A 完工 + 新 agent 阵容生效后，再起草 Wave 2 plan：
+
+1. 读 [ADR-0002](../decisions/ADR-0002-wave-1-close.md) + [ADR-0006](../decisions/ADR-0006-asymmetry-audit-checklist.md) + **[ADR-0007](../decisions/ADR-0007-job-function-codex-heavy-execution.md)**（必读）
+2. 读 [docs/audits/structure-2026-04-29-wave-1.md](../audits/structure-2026-04-29-wave-1.md)
 3. 读 [phase-1/plan.md](phase-1/plan.md) 的"Wave 2 plan 写作时需要前置考虑"段
-4. 读 Wave 1 plan retrospective（review-round count, fixture growth pattern, codex catch rate） — 用于校准 Wave 2 任务粒度与 review 预算
-5. 用 `superpowers:writing-plans` 起草 Wave 2 plan，写入 `docs/superpowers/plans/2026-MM-DD-phase-1-wave-2-component-blocks.md`
-6. plan-challenger 挑战 → orchestrator 修订 → lock
-7. Pre-Task 0：TeamCreate `phase-1-wave-2` + spawn teammates（roster 可能调整：Wave 2 多用 codex-block-generator / codex-css-stylist / codex-test-scaffolder）
+4. 读 Wave 1 plan retrospective（review-round count, fixture growth, codex catch rate）
+5. 用 `superpowers:writing-plans` 起草 Wave 2 plan
+6. plan-challenger（**现在是 tool**，按 ADR-0007 D5）通过 `codex exec --profile plan-challenger < plan.md > challenge.txt` 挑战 → orchestrator 修订 → lock
+7. Pre-Task 0（**真正的** Wave 2 Task 0，agent-contract.md 已重构后）：TeamCreate `phase-1-wave-2` + spawn 17 teammates（含 ux-ui-lead）
 
 ## Wave 1 完工归档（参考）
 
@@ -39,7 +58,20 @@ Wave 1 已闭环；下一步是 **Wave 2 plan 起草**：
 ## Wave 2 plan 起草时的前置备忘
 
 见 [phase-1/plan.md](phase-1/plan.md) 的"Wave 2 plan 写作时需要前置考虑"段。
-**新增**：Wave 2 各 component block 的 task 拆为 core 实现 + ui-default 实现两部分（ADR-0003）；codex-block-generator 在 block-callout/{core+ui} 完成后承担其余 simple block 的批量仿造。
+
+**新增（ADR-0003）**：Wave 2 各 component block 的 task 拆为 core 实现 + ui-default 实现两部分；codex-block-generator 在 block-callout/{core+ui} 完成后承担其余 simple block 的批量仿造。
+
+**新增（ADR-0007）**：
+- 8 个 ui-default 由 **ux-ui-lead** (新 Claude teammate) 写第一个 template，其余 codex-block-generator (tool) clone（D1 + D3）
+- core 试点：simple block 集群（callout template + code/image clone）；render block / viz block 不试点（D3）
+- editor 三子模块（slash-menu / drag-handle / toolbar）同 template+clone 模式（D3）
+- ui-default review 由 ux-ui-lead 做视觉一致性审 + codex tool 做代码层审
+- review chain 默认 codex 5.3-spark + orchestrator 自检；ADR-0007 D2 列表的 7 类高风险 PR 才追加 pr-gate / Claude pr-reviewer
+- spawn ux-ui-lead 时必须注入三个设计 skill（frontend-design / ui-ux-pro-max-skill / web-design-guidelines）—— D4
+
+**Wave 1 erratum（smoke test 时发现）**：
+- `apps/site` `<main class="prose">` 在 Wave 1 实际无效 —— `@tailwindcss/typography` 没装。已修：commit `fdc86a8` 加入 design-tokens 依赖 + Tailwind preset bundle plugin + 把 `--tw-prose-*` CSS vars 绑到 design-token vars。Wave 2 ui-default 实现可基于此 plugin 假设
+- detail 页有 duplicate H1（layout `<h1>{title}</h1>` + MDX `# Sample`）—— 1 行修法（删 sample MDX 的 `# Sample` 行 OR 拿掉 layout 的 `<h1>`），Wave 2 plan 第一批简单清理 task 顺手做
 
 ## Related
 
@@ -49,3 +81,4 @@ Wave 1 已闭环；下一步是 **Wave 2 plan 起草**：
 - [phase-1 wave 索引](phase-1/plan.md)
 - [ADR-0001](../decisions/ADR-0001-stack-selection.md)
 - [ADR-0003](../decisions/ADR-0003-headless-presentational-split.md) headless / UI 分层 + design-tokens + 开源就绪
+- [ADR-0007](../decisions/ADR-0007-job-function-codex-heavy-execution.md) 职能化分工 + Codex-heavy 执行 + teammate/tool 切分

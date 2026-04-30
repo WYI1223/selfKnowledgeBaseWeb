@@ -1272,3 +1272,10 @@ PR / commit 数量随任务自然产生，不预设目标。Wave 内若实际工
 | 2026-04-29 | 资源命名 files → pages | "pages" 比 "files" 语义化；slug 限定 `[a-z0-9-]+`，路径映射到 content/notes/{slug}/index.mdx |
 | 2026-04-29 | 错误格式锁定 RFC 7807 Problem Details lite | 客户端 dispatch 简单（switch error.type）；err handler 集中注册；不暴露内部栈 |
 | 2026-04-29 | 项目锁定 orchestrator-managed team 模式（ADR-0004 D8） | review-gate 依赖超出 TaskList blocked_by 表达；高风险 escalate / Codex 配额由 orchestrator 集中调度 |
+| 2026-04-30 | **新增 ux-ui-lead Claude teammate（ADR-0007 D1）** | Wave 2 8 个 ui-default 跨 block 统一视觉权威；防视觉八头蛇 |
+| 2026-04-30 | Claude pr-reviewer 改选择性触发（ADR-0007 D2） | Wave 1 数据：codex 5.5 抓 9/12 asymmetry；Claude pr-reviewer 价值集中在跨包 / 长上下文，常规 PR 不浪费 |
+| 2026-04-30 | template + codex-clone 模式扩展到 core 与 editor 子模块（ADR-0007 D3） | Wave 1 ui-default 已经是这个模式；core 在 simple block 集群试点；editor 三子模块同模式 |
+| 2026-04-30 | ux-ui-lead spawn prompt 注入三个设计 skill（ADR-0007 D4） | frontend-design + ui-ux-pro-max + web-design-guidelines；视觉契约一次性灌入避免分阶段串行 |
+| 2026-04-30 | **codex agents 降级为 orchestrator-direct tools（ADR-0007 D5）** | Wave 1 codex wrapper 是纯 context 搬运；省 ~2-3 turn / PR；agent-contract.md 拆 agents:/tool_patterns: 两段 |
+| 2026-04-30 | spec §3.1 agent 阵容 27 → 17 teammate + 8 tool pattern | Wave 2 Pre-Task 0 按 ADR-0007 实施时同步 |
+| 2026-04-30 | spec §3.2 review 工作流改为"orchestrator 自检常规 PR + 选择性 escalate" | ADR-0007 D2 + D5 联动；Wave 2 Pre-Task 0 实施时同步文字 |
