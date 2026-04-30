@@ -1,0 +1,114 @@
+Wave 2 Task F R1 — Claude pr-reviewer audit
+=============================================
+Date: 2026-04-30
+Reviewer: pr-reviewer-f (Claude sonnet-4-6)
+Bundle: 13 new + 2 modified files (kernel-pyodide package + root tsconfig + lockfile)
+Triggers: ADR-0007 D2 row 1 (CONTRACT-level new package + first KernelAdapter consumer)
+codex 5.3-spark R1: FAIL items #5 + #7
+codex 5.5 pr-gate R1: still running (likely also FAIL per cross-reviewer alignment)
+Claude pr-reviewer (this) R1: REJECT
+
+VERDICT: REJECT
+
+================================================================
+2 BLOCKING (must fix before APPROVE)
+================================================================
+
+BLOCKING #1: KernelImportError silently swallowed in startSession (item #7)
+
+Location: packages/kernel-pyodide/src/adapter.ts:33-37
+
+```ts
+} catch (cause) {
+  if (cause instanceof KernelStartupError) throw cause;
+  throw new KernelStartupError('PyodideAdapter.startSession failed', { cause });
+}
+```
+
+createDefaultHostFactory.create() (boot.ts:33-39) deliberately throws KernelImportError for loadPackage failures (distinct from KernelStartupError = Pyodide binary load failure). adapter.ts catch re-wraps every non-KernelStartupError into KernelStartupError, silently destroying the KernelImportError class.
+
+Spec violation:
+1. kernel-pyodide/CONTRACT.md:32-33 documents KernelImportError as distinct typed throw surface
+2. kernel-adapter/CONTRACT.md:29 mandates subclasses MUST be distinguishable
+3. Wave 3 block-jupyter retry logic needs to distinguish 'Pyodide load fail' vs 'lib install fail'
+
+Fix:
+```ts
+} catch (cause) {
+  if (cause instanceof KernelError) throw cause;
+  throw new KernelStartupError('PyodideAdapter.startSession failed', { cause });
+}
+```
+
+================================================================
+
+BLOCKING #2: session.ts sentinel 'runError !== undefined' unsound for Promise.reject(undefined) (item #7)
+
+Location: session.ts:49, 78
+
+If host.runCode rejects with undefined (Promise.reject() with no arg, valid JS), runError stays undefined → sentinel check false → status:idle emitted with no error event. Consumer sees busy→idle, indistinguishable from successful void execution.
+
+Fix: boolean sentinel
+```ts
+let runError: unknown;
+let hasRunError = false;
+// ...
+.catch((err) => { runError = err; hasRunError = true; });
+// ...
+if (hasRunError) yield toErrorEvent(runError);
+```
++ add test case for Promise.reject(undefined).
+
+================================================================
+ADR-0006 8-POINT INDEPENDENT SELF-AUDIT
+================================================================
+
+Item 1 (field/attribute): PASS — KernelEvent 6 variants imported from authority; capabilities.libraries 3 sites byte-identical; adapter.test.ts:33 regression locked
+Item 2 (status code): N/A
+Item 3 (.strict()): N/A
+Item 4 (consumer schema): PASS on imports (zero inline redefinition); FAIL at call site (BLOCKING #1)
+Item 5 (algorithm/runtime constants): PASS on alignment; regression locked
+Item 6 (sister-doc): PASS — kernel-pyodide/CONTRACT.md mirrors kernel-adapter/CONTRACT.md terminology; minor SymPy gap noted as observation
+Item 7 (try/catch scope): FAIL (BLOCKING #1 + #2 above)
+Item 8 (authority → consumer): PASS — package.json + tsconfig refs + root tsconfig + lockfile all aligned per ADR-0008 D1 dead-dep policy
+
+================================================================
+SPEC MATCH
+================================================================
+
+KernelAdapter / KernelSession / 6 KernelEvent variants / 5 KernelError types — all implemented.
+Surface coverage PASS; call-site preservation FAIL on KernelImportError (BLOCKING #1).
+
+================================================================
+ARCHITECTURE
+================================================================
+
+PyodideHost swap-point design correct (Wave 3 worker thread can swap without touching adapter/session/KernelAdapter).
+boot.ts is only file importing 'pyodide' (correct isolation).
+
+================================================================
+CROSS-PACKAGE REGRESSION RISK
+================================================================
+
+NONE. New additive package; kernel-registry not modified; kernel-adapter not modified; pnpm-lock.yaml clean delta.
+
+================================================================
+NON-BLOCKING OBSERVATIONS
+================================================================
+
+OBS-1: CONTRACT.md:3 mentions 'SymPy 全可用' but PYODIDE_LIBRARIES / DEFAULT_LIBS lack sympy.
+   Fix option A: add sympy to DEFAULT_LIBS
+   Fix option B: clarify CONTRACT — "available via micropip, not pre-loaded"
+
+OBS-2: session.test.ts lacks test for Promise.reject(undefined) — added as part of BLOCKING #2 fix
+
+OBS-3: matplotlib.integration.test.ts (deferred local manual test mentioned in CONTRACT) does not exist — acceptable Wave 2; E1 should create before depending on real Pyodide behavior
+
+================================================================
+SUMMARY
+================================================================
+
+2 BLOCKING fixes (~10 lines combined, two files: adapter.ts + session.ts) required before APPROVE.
+After fixes + re-run pnpm check + R2 dispatch → re-review.
+
+VERDICT: REJECT

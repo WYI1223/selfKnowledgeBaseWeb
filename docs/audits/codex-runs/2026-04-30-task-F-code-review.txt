@@ -1,0 +1,1362 @@
+Reading additional input from stdin...
+OpenAI Codex v0.125.0 (research preview)
+--------
+workdir: /home/weiyi/selfKnowledgeBaseWeb
+model: gpt-5.3-codex-spark
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: xhigh
+reasoning summaries: none
+session id: 019ddfd2-b8e8-7a11-ae70-b0ac3f2ddcc3
+--------
+user
+你是 code-reviewer profile (gpt-5.3-spark)。审 SelfKnowledgeBaseWeb Wave 2 Task #9 (F: kernel-pyodide PyodideAdapter implementation)。
+
+## Bundle scope (working tree, unstaged + untracked)
+**仅审 packages/kernel-pyodide/ + 修改的 root tsconfig.json + pnpm-lock.yaml**：
+
+新增 (13 files):
+- packages/kernel-pyodide/CONTRACT.md
+- packages/kernel-pyodide/package.json (peerDeps: kernel-adapter)
+- packages/kernel-pyodide/tsconfig.json (refs: ../kernel-adapter)
+- packages/kernel-pyodide/vitest.config.ts
+- packages/kernel-pyodide/src/{index,adapter,session,boot,host,errors}.ts (6 files; 92/87/41/27/12/7 lines)
+- packages/kernel-pyodide/src/__tests__/{adapter,session,matplotlib}.test.ts (47/116/73 lines, 4+8+3=15 tests)
+
+修改 (2 files):
+- root tsconfig.json (+1 line: { 'path': './packages/kernel-pyodide' } reference, alphabetical)
+- pnpm-lock.yaml (pyodide@0.27.7 + ws@8.20.0 transitive)
+
+## 不审范围 (其他 worker in-flight)
+- scripts/new-block.ts + scripts/__tests__/new-block.test.ts (I2 / FIX-I2 by refactorer)
+- scripts/__tests__/fixtures/new-block/ (I2 fixtures)
+
+## 触发链
+ADR-0007 D2 row 1 (新建 packages/kernel-pyodide/CONTRACT.md + 第一个 KernelAdapter consumer，Wave 2 关键 surface) → 你 Step 1 baseline。后续 codex 5.5 pr-gate + Claude pr-reviewer 必跑。
+
+## 必跑 ADR-0006 8-point asymmetry-audit checklist
+重点：
+- **item #1 字段/属性**: PyodideAdapter / PyodideSession 实现 KernelAdapter / KernelSession 接口；KernelEvent 6 variants 序列化字段是否与 packages/kernel-adapter/src/adapter.ts authority byte-aligned
+- **item #4 consumer schema**: kernel-pyodide imports KernelAdapter / KernelSession / KernelEvent / KernelCapabilities from @skb/kernel-adapter (single-source). verify NO inline 重定义。errors.ts 加 KernelImportError extends KernelError 是否符合 kernel-adapter CONTRACT 'adapters MAY define subclasses non-breaking' 条款
+- **item #5 算法/常量复刻**: capabilities.libraries 常量 ['numpy', 'pandas', 'matplotlib'] 在 adapter.ts:11 + boot.ts:7 (DEFAULT_LIBS) + CONTRACT.md 三处复刻；adapter.test.ts:37 是 sister-aligned regression check
+- **item #6 sister-doc**: kernel-pyodide/CONTRACT.md vs kernel-adapter/CONTRACT.md sister-aligned (KernelAdapter / KernelSession / KernelCapabilities / KernelEvent / KernelError 4 frozen subclass 名)
+- **item #7 异常 scope**: boot.ts loadPyodide vs loadPackage 分独立 try/catch (KernelStartupError vs KernelImportError 各自映射)；session.ts:53-58 runCode error path narrow
+- **item #8 authority → consumer**: @skb/kernel-adapter 是 authority；kernel-pyodide 是 first consumer (sister-aligned per ADR-0008 D1)；package.json deps + tsconfig refs + lockfile 同 bundle
+
+worker self-report 要点 (kernel-pyodide-eng):
+- 15/15 tests PASS (kernel-pyodide tests)
+- pnpm check 大部分 PASS (root lint fail in scripts/new-block.ts = I2 in-flight, NOT F)
+- KernelImportError extends KernelError (kernel-adapter CONTRACT 允许)
+- pyodide@0.27.7 npm package；CDN fallback 待 Wave 3
+- Worker thread 决策 defer Wave 3 (PyodideHost interface 是 swap point)
+- matplotlib 用 mock event schema (per plan-challenger NICE 8)；真实 Pyodide CDN 留 Wave 4 Playwright
+
+## 必查
+1. 5/5 项 ADR-0006 applied 都正确 (worker 报 detailed evidence)
+2. PyodideHost swap point 设计是否合理（Wave 3 worker thread future-compat）
+3. 6 KernelEvent variants 都 emit 路径是否完整（status idle/busy bookends + stdout/stderr hooks + display_data + execute_result + error）
+4. 5 KernelError types 处理（4 from kernel-adapter + 1 KernelImportError adapter-local）
+5. CONTRACT.md sister-aligned with kernel-adapter/CONTRACT.md
+
+输出 verdict: PASS/FAIL + 'asymmetry-audit applied: items {1..8} verdicts: ...'。开始。
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the vendored bubblewrap in the meantime.
+codex
+我先快速拉齐审查对象（kernel-pyodide 新增/修改文件及 `kernel-adapter` 的权威契约与接口源），然后按 ADR-0006 的 1..8 条逐项校验并给出 PASS/FAIL 结论。
+exec
+/bin/bash -lc "printf '%s
+' '--- packages/kernel-pyodide/CONTRACT.md ---' && sed -n '1,240p' packages/kernel-pyodide/CONTRACT.md && printf '
+--- packages/kernel-pyodide/package.json ---' && sed -n '1,240p' packages/kernel-pyodide/package.json && printf '
+--- packages/kernel-pyodide/tsconfig.json ---' && sed -n '1,240p' packages/kernel-pyodide/tsconfig.json && printf '
+--- packages/kernel-pyodide/vitest.config.ts ---' && sed -n '1,240p' packages/kernel-pyodide/vitest.config.ts && printf '
+--- packages/kernel-pyodide/src/index.ts ---' && sed -n '1,260p' packages/kernel-pyodide/src/index.ts && printf '
+--- packages/kernel-pyodide/src/adapter.ts ---' && sed -n '1,260p' packages/kernel-pyodide/src/adapter.ts && printf '
+--- packages/kernel-pyodide/src/session.ts ---' && sed -n '1,260p' packages/kernel-pyodide/src/session.ts && printf '
+--- packages/kernel-pyodide/src/boot.ts ---' && sed -n '1,260p' packages/kernel-pyodide/src/boot.ts && printf '
+--- packages/kernel-pyodide/src/host.ts ---' && sed -n '1,260p' packages/kernel-pyodide/src/host.ts && printf '
+--- packages/kernel-pyodide/src/errors.ts ---' && sed -n '1,260p' packages/kernel-pyodide/src/errors.ts && printf '
+--- packages/kernel-pyodide/src/__tests__/adapter.test.ts ---' && sed -n '1,280p' packages/kernel-pyodide/src/__tests__/adapter.test.ts && printf '
+--- packages/kernel-pyodide/src/__tests__/session.test.ts ---' && sed -n '1,320p' packages/kernel-pyodide/src/__tests__/session.test.ts && printf '
+--- packages/kernel-pyodide/src/__tests__/matplotlib.test.ts ---' && sed -n '1,260p' packages/kernel-pyodide/src/__tests__/matplotlib.test.ts && printf '
+--- root tsconfig.json ---' && sed -n '1,260p' tsconfig.json" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+--- packages/kernel-pyodide/CONTRACT.md ---
+# @skb/kernel-pyodide Contract
+
+Phase 1 唯一 `KernelAdapter` 实现。在浏览器内通过 Pyodide 运行 Python（NumPy /
+Pandas / Matplotlib / SymPy 全可用，零后端）。
+
+## Public surface
+
+### Class
+
+- `PyodideAdapter implements KernelAdapter` — `id = 'pyodide'`，`capabilities`
+  暴露 `libraries: ['numpy', 'pandas', 'matplotlib']` / `gpu: false` /
+  `persistentState: true`；`startSession(sessionId)` 返回 `PyodideSession`
+- `PyodideSession implements KernelSession` — `execute(code)` /
+  `interrupt()` / `shutdown()`
+
+### Constructor options
+
+```ts
+new PyodideAdapter({
+  hostFactory?: PyodideHostFactory; // override (tests / Wave 3 worker)
+  boot?: { indexURL?: string; libraries?: readonly string[] };
+});
+```
+
+`hostFactory` 是 Wave 2 → Wave 3 的演进点：默认 factory 在当前线程
+`loadPyodide()`，Wave 3 将引入 `createWorkerHostFactory()` 把 Pyodide
+搬入 Web Worker（`SharedArrayBuffer` 中断 + 主线程不阻塞）。`KernelAdapter`
+公共契约不变。
+
+### Errors (typed throw surface)
+
+- `KernelStartupError`（继承自 `@skb/kernel-adapter`）— Pyodide 加载失败
+- `KernelImportError`（本包扩展子类）— `loadPackage` / micropip install 失败
+- `KernelShutdownError` / `KernelInterruptError`（继承自 `@skb/kernel-adapter`）—
+  对 shutdown 后会话调用 `execute` / `interrupt` / 二次 `shutdown`
+- 用户 Python 代码抛出的运行时异常**不**作为 throw，而是作为
+  `KernelEvent { type: 'error', ename, evalue, traceback }` 出现在事件流中
+  （`@skb/kernel-adapter` CONTRACT.md 规定）
+
+`KernelImportError` 是 `KernelError` 子类，调用方 `instanceof KernelError`
+仍可一次捕获（`@skb/kernel-adapter` CONTRACT.md "Adapters MAY define their own
+subclasses … adding new subclasses is non-breaking" 允许，无需 ADR）。
+
+## Event stream contract
+
+`PyodideSession.execute(code)` 产生的事件流满足以下不变量（与
+`@skb/kernel-adapter` 6-variant `KernelEvent` 同款字段）：
+
+- 首事件必为 `{ type: 'status', state: 'busy' }`
+- 末事件必为 `{ type: 'status', state: 'idle' }`
+- 中间按到达顺序产生 `stdout` / `stderr` / `display_data` 事件
+- 若代码产生返回值，在末 status 之前产生**单次** `execute_result`
+- 若代码抛出异常，在末 status 之前产生**单次** `error` 事件（不再产
+  `execute_result`）
+- `error` 事件字段：`ename`（异常类名）/ `evalue`（消息字符串）/
+  `traceback`（行数组，至少含 1 行）
+
+## Invariants
+
+- 6 个 `KernelEvent` 变体的字段按 `@skb/kernel-adapter` 公共类型导入，**不在本
+  包内 inline 重定义**（ADR-0006 item #4 consumer schema audit）
+- `PyodideAdapter.id` 字符串字面量 `'pyodide'` 必须与
+  `@skb/kernel-registry` 的 `register` 输入一致；本包是唯一权威
+- `capabilities.libraries` 必须与 `boot.ts` 默认 `loadPackage(...)` 列表
+  逐字相同（authority ↔ runtime-fact 同步；ADR-0006 item #1）
+- `KernelImportError` 必须 `extends KernelError`（保证 `instanceof
+  KernelError` 一次捕获）
+
+## Test strategy
+
+- `adapter.test.ts`：TS-level 类型契约 + capability 字段 + `startSession`
+  返回值形状（mock host）
+- `session.test.ts`：6 event variants 流（status bookends / stdout / stderr /
+  execute_result / error / interrupt / shutdown lifecycle）
+- `matplotlib.test.ts`：mock `display_data` event schema 形状（mime types map +
+  payload 类型）。**真 Pyodide CDN 不在 CI 跑**（plan-challenger NICE 8 修订）：
+  - 集成层（本地手动）：`matplotlib.integration.test.ts`，`it.skipIf(process.env.CI)`
+  - E2E 层（Wave 4）：Playwright 跑真页面 + 真 CDN
+
+## Wave 3 evolution points
+
+- `boot.ts` 的 `wrapPyodide` 当前 `interrupt()` no-op；Wave 3 引入 worker host
+  时实现 `SharedArrayBuffer` 中断
+- `boot.ts` 当前在主线程 import；Wave 3 把 `loadPyodide` 搬入 Worker 通过
+  postMessage 中转事件流
+- 两次演进**均不改 `PyodideAdapter` / `PyodideSession` / `PyodideHost`
+  公共签名**（`PyodideHost` 是稳定 swap point）
+
+## Modifying this file
+
+- 加方法可任意；改 `PyodideAdapter` / `PyodideSession` 公共签名是契约破坏
+  （影响 `@skb/kernel-registry` 路由 + `block-jupyter` consumer）
+- `capabilities` 字段增删需同步 `@skb/kernel-adapter` `KernelCapabilities`
+  类型扩展（后者改动需 ADR）
+
+## Related
+
+- [@skb/kernel-adapter CONTRACT.md](../kernel-adapter/CONTRACT.md) — 接口权威
+- [@skb/kernel-registry CONTRACT.md](../kernel-registry/CONTRACT.md) — 路由层
+- [设计规格 §1.6 / §2.6](../../docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md)
+- [ADR-0001 §3.1](../../docs/decisions/ADR-0001-stack-selection.md) — 内核选型理由
+
+--- packages/kernel-pyodide/package.json ---{
+  "name": "@skb/kernel-pyodide",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "lint": "eslint .",
+    "typecheck": "tsc -b",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@skb/kernel-adapter": "workspace:*",
+    "pyodide": "^0.27.0"
+  },
+  "devDependencies": {
+    "typescript": "~5.6.0",
+    "vitest": "^4.1.5"
+  }
+}
+
+--- packages/kernel-pyodide/tsconfig.json ---{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": { "rootDir": ".", "outDir": "dist" },
+  "include": ["src/**/*", "vitest.config.ts"],
+  "references": [{ "path": "../kernel-adapter" }]
+}
+
+--- packages/kernel-pyodide/vitest.config.ts ---import { defineConfig } from 'vitest/config';
+
+export default defineConfig({
+  test: {
+    include: ['src/**/*.test.ts'],
+    typecheck: { enabled: false },
+  },
+});
+
+--- packages/kernel-pyodide/src/index.ts ---export { PyodideAdapter } from './adapter';
+export type { PyodideAdapterOptions } from './adapter';
+export { PyodideSession } from './session';
+export { createDefaultHostFactory } from './boot';
+export type { PyodideBootOptions } from './boot';
+export type { PyodideHost, PyodideHostFactory } from './host';
+export { KernelImportError } from './errors';
+
+--- packages/kernel-pyodide/src/adapter.ts ---import type { KernelAdapter, KernelCapabilities, KernelSession } from '@skb/kernel-adapter';
+import { KernelStartupError } from '@skb/kernel-adapter';
+import { createDefaultHostFactory, type PyodideBootOptions } from './boot';
+import type { PyodideHostFactory } from './host';
+import { PyodideSession } from './session';
+
+const PYODIDE_LIBRARIES = ['numpy', 'pandas', 'matplotlib'] as const;
+
+export interface PyodideAdapterOptions {
+  /** Override factory used by `startSession`. Pass a mock for tests. */
+  hostFactory?: PyodideHostFactory;
+  /** Forwarded to the default factory when `hostFactory` is not provided. */
+  boot?: PyodideBootOptions;
+}
+
+export class PyodideAdapter implements KernelAdapter {
+  readonly id = 'pyodide';
+  readonly capabilities: KernelCapabilities = {
+    libraries: PYODIDE_LIBRARIES,
+    gpu: false,
+    persistentState: true,
+  };
+
+  #factory: PyodideHostFactory;
+
+  constructor(options: PyodideAdapterOptions = {}) {
+    this.#factory = options.hostFactory ?? createDefaultHostFactory(options.boot);
+  }
+
+  async startSession(sessionId: string): Promise<KernelSession> {
+    void sessionId;
+    let host;
+    try {
+      host = await this.#factory.create();
+    } catch (cause) {
+      if (cause instanceof KernelStartupError) throw cause;
+      throw new KernelStartupError('PyodideAdapter.startSession failed', { cause });
+    }
+    return new PyodideSession(host);
+  }
+}
+
+--- packages/kernel-pyodide/src/session.ts ---import type { KernelEvent, KernelSession } from '@skb/kernel-adapter';
+import { KernelInterruptError, KernelShutdownError } from '@skb/kernel-adapter';
+import type { PyodideHost } from './host';
+
+export class PyodideSession implements KernelSession {
+  #host: PyodideHost;
+  #shutdown = false;
+
+  constructor(host: PyodideHost) {
+    this.#host = host;
+  }
+
+  execute(code: string): AsyncIterable<KernelEvent> {
+    if (this.#shutdown) {
+      throw new KernelShutdownError('execute() called on shutdown session');
+    }
+    return this.#run(code);
+  }
+
+  interrupt(): Promise<void> {
+    if (this.#shutdown) {
+      return Promise.reject(
+        new KernelInterruptError('interrupt() called on shutdown session'),
+      );
+    }
+    this.#host.interrupt();
+    return Promise.resolve();
+  }
+
+  async shutdown(): Promise<void> {
+    if (this.#shutdown) {
+      throw new KernelShutdownError('shutdown() called twice');
+    }
+    this.#shutdown = true;
+    await this.#host.shutdown();
+  }
+
+  async *#run(code: string): AsyncIterable<KernelEvent> {
+    const queue: KernelEvent[] = [];
+    let waiter: (() => void) | null = null;
+    const emit = (event: KernelEvent): void => {
+      queue.push(event);
+      waiter?.();
+      waiter = null;
+    };
+
+    yield { type: 'status', state: 'busy' };
+
+    let runError: unknown;
+    let result: Record<string, unknown> | null = null;
+    const done = this.#host
+      .runCode(code, emit)
+      .then((value) => {
+        result = value;
+      })
+      .catch((err: unknown) => {
+        runError = err;
+      });
+
+    let settled = false;
+    void done.finally(() => {
+      settled = true;
+      waiter?.();
+      waiter = null;
+    });
+
+    while (true) {
+      if (queue.length > 0) {
+        yield queue.shift()!;
+        continue;
+      }
+      if (settled) break;
+      await new Promise<void>((resolve) => {
+        waiter = resolve;
+      });
+    }
+
+    if (runError !== undefined) {
+      yield toErrorEvent(runError);
+    } else if (result !== null) {
+      yield { type: 'execute_result', data: result };
+    }
+    yield { type: 'status', state: 'idle' };
+  }
+}
+
+function toErrorEvent(err: unknown): KernelEvent {
+  const message = err instanceof Error ? err.message : String(err);
+  const ename = err instanceof Error ? err.name : 'Error';
+  const stack = err instanceof Error && err.stack ? err.stack.split('\n') : [message];
+  return { type: 'error', ename, evalue: message, traceback: stack };
+}
+
+--- packages/kernel-pyodide/src/boot.ts ---import type { PyodideInterface } from 'pyodide';
+import type { KernelEvent } from '@skb/kernel-adapter';
+import { KernelStartupError } from '@skb/kernel-adapter';
+import { KernelImportError } from './errors';
+import type { PyodideHost, PyodideHostFactory } from './host';
+
+const DEFAULT_LIBS = ['numpy', 'pandas', 'matplotlib'] as const;
+
+export interface PyodideBootOptions {
+  indexURL?: string;
+  libraries?: readonly string[];
+}
+
+/**
+ * Default factory boots real Pyodide (npm package) on the current thread.
+ * Wave 3 will move this into a Worker; the host abstraction lets the
+ * adapter swap implementations without changing PyodideAdapter or the
+ * KernelAdapter contract.
+ */
+export function createDefaultHostFactory(opts: PyodideBootOptions = {}): PyodideHostFactory {
+  return {
+    async create(): Promise<PyodideHost> {
+      const libraries = opts.libraries ?? DEFAULT_LIBS;
+      let pyodide: PyodideInterface;
+      try {
+        const mod = await import('pyodide');
+        pyodide = await mod.loadPyodide(
+          opts.indexURL === undefined ? {} : { indexURL: opts.indexURL },
+        );
+      } catch (cause) {
+        throw new KernelStartupError('failed to load Pyodide runtime', { cause });
+      }
+      try {
+        await pyodide.loadPackage([...libraries]);
+      } catch (cause) {
+        throw new KernelImportError(
+          `failed to load default libraries: ${libraries.join(', ')}`,
+          { cause },
+        );
+      }
+      return wrapPyodide(pyodide);
+    },
+  };
+}
+
+function stringifyResult(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
+    return String(value);
+  }
+  try {
+    return JSON.stringify(value) ?? Object.prototype.toString.call(value);
+  } catch {
+    return Object.prototype.toString.call(value);
+  }
+}
+
+function wrapPyodide(pyodide: PyodideInterface): PyodideHost {
+  let activeEmit: ((event: KernelEvent) => void) | null = null;
+  pyodide.setStdout({
+    batched: (text: string) => activeEmit?.({ type: 'stdout', text }),
+  });
+  pyodide.setStderr({
+    batched: (text: string) => activeEmit?.({ type: 'stderr', text }),
+  });
+  return {
+    async runCode(code, emit) {
+      activeEmit = emit;
+      try {
+        const value: unknown = await pyodide.runPythonAsync(code);
+        return value === undefined || value === null
+          ? null
+          : { 'text/plain': stringifyResult(value) };
+      } finally {
+        activeEmit = null;
+      }
+    },
+    interrupt() {
+      // Main-thread Pyodide has no cancellation primitive in 0.27.x; Wave 3
+      // worker-isolated host will implement SharedArrayBuffer interrupt.
+    },
+    shutdown() {
+      // Single-host adapter has no per-session teardown surface in 0.27.x.
+      return Promise.resolve();
+    },
+  };
+}
+
+--- packages/kernel-pyodide/src/host.ts ---import type { KernelEvent } from '@skb/kernel-adapter';
+
+/**
+ * Swap point between real Pyodide runtime and test mocks.
+ *
+ * `runCode` runs Python source. The host emits 0-N KernelEvent values
+ * to `emit` (display_data / stdout / stderr) as the code runs, and resolves
+ * with the final execute_result data (or null when the cell produced no value).
+ * Errors raised by user Python code MUST be re-thrown so the session layer
+ * can convert them to a single `error` KernelEvent — the host MUST NOT emit
+ * `error` events itself.
+ *
+ * `interrupt` MAY no-op when the host has no cancellation primitive (Wave 2
+ * main-thread Pyodide); the session layer still flips status back to idle.
+ */
+export interface PyodideHost {
+  runCode(
+    code: string,
+    emit: (event: KernelEvent) => void,
+  ): Promise<Record<string, unknown> | null>;
+  interrupt(): void;
+  shutdown(): Promise<void>;
+}
+
+export interface PyodideHostFactory {
+  create(): Promise<PyodideHost>;
+}
+
+--- packages/kernel-pyodide/src/errors.ts ---import { KernelError } from '@skb/kernel-adapter';
+
+/**
+ * Pyodide-specific subclass for `micropip.install` / package import failures.
+ *
+ * Allowed by `@skb/kernel-adapter` CONTRACT.md: "Adapters MAY define their
+ * own subclasses (e.g. RemoteAuthError extends KernelError); adding new
+ * subclasses is non-breaking." Caller `instanceof KernelError` still catches.
+ */
+export class KernelImportError extends KernelError {
+  readonly kind = 'import' as const;
+}
+
+--- packages/kernel-pyodide/src/__tests__/adapter.test.ts ---import { describe, it, expect, expectTypeOf } from 'vitest';
+import type { KernelAdapter, KernelEvent, KernelSession } from '@skb/kernel-adapter';
+import { PyodideAdapter } from '../adapter';
+import type { PyodideHost, PyodideHostFactory } from '../host';
+
+const stubHost: PyodideHost = {
+  runCode: () => Promise.resolve(null),
+  interrupt: () => {},
+  shutdown: () => Promise.resolve(),
+};
+
+const stubFactory: PyodideHostFactory = {
+  create: () => Promise.resolve(stubHost),
+};
+
+describe('PyodideAdapter contract', () => {
+  it('satisfies KernelAdapter interface (TS-level)', () => {
+    expectTypeOf<PyodideAdapter>().toExtend<KernelAdapter>();
+  });
+
+  it('startSession resolves to KernelSession', async () => {
+    const adapter = new PyodideAdapter({ hostFactory: stubFactory });
+    const session = await adapter.startSession('s1');
+    expectTypeOf(session).toExtend<KernelSession>();
+    expect(typeof session.execute).toBe('function');
+    expect(typeof session.interrupt).toBe('function');
+    expect(typeof session.shutdown).toBe('function');
+  });
+
+  it('exposes id="pyodide" + capabilities including numpy/pandas/matplotlib + gpu=false + persistentState=true', () => {
+    const adapter = new PyodideAdapter({ hostFactory: stubFactory });
+    expect(adapter.id).toBe('pyodide');
+    expect(adapter.capabilities.libraries).toEqual(['numpy', 'pandas', 'matplotlib']);
+    expect(adapter.capabilities.gpu).toBe(false);
+    expect(adapter.capabilities.persistentState).toBe(true);
+  });
+
+  it('execute() returns AsyncIterable<KernelEvent>', async () => {
+    const adapter = new PyodideAdapter({ hostFactory: stubFactory });
+    const session = await adapter.startSession('s1');
+    const iter = session.execute('1 + 1');
+    expectTypeOf(iter).toExtend<AsyncIterable<KernelEvent>>();
+    const events: KernelEvent[] = [];
+    for await (const e of iter) events.push(e);
+    expect(events.length).toBeGreaterThan(0);
+  });
+});
+
+--- packages/kernel-pyodide/src/__tests__/session.test.ts ---import { describe, it, expect } from 'vitest';
+import type { KernelEvent } from '@skb/kernel-adapter';
+import { KernelInterruptError, KernelShutdownError } from '@skb/kernel-adapter';
+import { PyodideSession } from '../session';
+import type { PyodideHost } from '../host';
+
+function makeHost(
+  runCode: PyodideHost['runCode'],
+  hooks: Partial<PyodideHost> = {},
+): PyodideHost {
+  return {
+    runCode,
+    interrupt: hooks.interrupt ?? (() => {}),
+    shutdown: hooks.shutdown ?? (() => Promise.resolve()),
+  };
+}
+
+async function collect(iter: AsyncIterable<KernelEvent>): Promise<KernelEvent[]> {
+  const out: KernelEvent[] = [];
+  for await (const e of iter) out.push(e);
+  return out;
+}
+
+describe('PyodideSession.execute event stream', () => {
+  it('emits status:busy → execute_result → status:idle for value-producing code', async () => {
+    const host = makeHost(() => Promise.resolve({ 'text/plain': '2' }));
+    const session = new PyodideSession(host);
+    const events = await collect(session.execute('1+1'));
+    expect(events).toEqual([
+      { type: 'status', state: 'busy' },
+      { type: 'execute_result', data: { 'text/plain': '2' } },
+      { type: 'status', state: 'idle' },
+    ]);
+  });
+
+  it('emits status:busy → status:idle for void code (no execute_result)', async () => {
+    const host = makeHost(() => Promise.resolve(null));
+    const session = new PyodideSession(host);
+    const events = await collect(session.execute('x = 1'));
+    expect(events).toEqual([
+      { type: 'status', state: 'busy' },
+      { type: 'status', state: 'idle' },
+    ]);
+  });
+
+  it('passes stdout / stderr emitted by host through in arrival order', async () => {
+    const host = makeHost((_code, emit) => {
+      emit({ type: 'stdout', text: 'hello\n' });
+      emit({ type: 'stderr', text: 'warn\n' });
+      emit({ type: 'stdout', text: 'world\n' });
+      return Promise.resolve(null);
+    });
+    const session = new PyodideSession(host);
+    const events = await collect(session.execute('print("hi")'));
+    expect(events).toEqual([
+      { type: 'status', state: 'busy' },
+      { type: 'stdout', text: 'hello\n' },
+      { type: 'stderr', text: 'warn\n' },
+      { type: 'stdout', text: 'world\n' },
+      { type: 'status', state: 'idle' },
+    ]);
+  });
+
+  it('converts host-thrown Python error into a single error KernelEvent then status:idle', async () => {
+    const boom = new Error('NameError: name "x" is not defined');
+    boom.name = 'PythonError';
+    const host = makeHost(() => Promise.reject(boom));
+    const session = new PyodideSession(host);
+    const events = await collect(session.execute('x'));
+    expect(events[0]).toEqual({ type: 'status', state: 'busy' });
+    const errEvent = events[1];
+    expect(errEvent?.type).toBe('error');
+    if (errEvent?.type !== 'error') throw new Error('expected error event');
+    expect(errEvent.ename).toBe('PythonError');
+    expect(errEvent.evalue).toBe('NameError: name "x" is not defined');
+    expect(Array.isArray(errEvent.traceback)).toBe(true);
+    expect(events.at(-1)).toEqual({ type: 'status', state: 'idle' });
+  });
+
+  it('interrupt() delegates to host.interrupt()', async () => {
+    let called = 0;
+    const host = makeHost(
+      () => Promise.resolve(null),
+      { interrupt: () => void called++ },
+    );
+    const session = new PyodideSession(host);
+    await session.interrupt();
+    expect(called).toBe(1);
+  });
+
+  it('shutdown() delegates to host.shutdown() and blocks subsequent execute()', async () => {
+    let shutdownCalled = 0;
+    const host = makeHost(() => Promise.resolve(null), {
+      shutdown: () => {
+        shutdownCalled++;
+        return Promise.resolve();
+      },
+    });
+    const session = new PyodideSession(host);
+    await session.shutdown();
+    expect(shutdownCalled).toBe(1);
+    expect(() => session.execute('x')).toThrow(KernelShutdownError);
+  });
+
+  it('shutdown() called twice throws KernelShutdownError', async () => {
+    const session = new PyodideSession(makeHost(() => Promise.resolve(null)));
+    await session.shutdown();
+    await expect(session.shutdown()).rejects.toBeInstanceOf(KernelShutdownError);
+  });
+
+  it('interrupt() on shutdown session throws KernelInterruptError', async () => {
+    const session = new PyodideSession(makeHost(() => Promise.resolve(null)));
+    await session.shutdown();
+    await expect(session.interrupt()).rejects.toBeInstanceOf(KernelInterruptError);
+  });
+});
+
+--- packages/kernel-pyodide/src/__tests__/matplotlib.test.ts ---import { describe, it, expect } from 'vitest';
+import type { KernelEvent } from '@skb/kernel-adapter';
+import { PyodideSession } from '../session';
+import type { PyodideHost } from '../host';
+
+/**
+ * mock-based matplotlib smoke test (per plan-challenger NICE 8 revision):
+ * verifies the `display_data` KernelEvent schema shape. Real Pyodide CDN
+ * boot is intentionally NOT exercised here — that lives in the Wave 4
+ * Playwright e2e layer to keep CI deterministic.
+ */
+
+const PNG_BASE64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+
+function mockMatplotlibHost(): PyodideHost {
+  return {
+    runCode: (_code, emit) => {
+      emit({
+        type: 'display_data',
+        data: {
+          'image/png': PNG_BASE64,
+          'text/plain': '<Figure size 640x480 with 1 Axes>',
+        },
+      });
+      return Promise.resolve(null);
+    },
+    interrupt: () => {},
+    shutdown: () => Promise.resolve(),
+  };
+}
+
+describe('matplotlib display_data event schema (mocked Pyodide)', () => {
+  it('emits display_data event with image/png mime + base64 string when figure renders', async () => {
+    const session = new PyodideSession(mockMatplotlibHost());
+    const events: KernelEvent[] = [];
+    for await (const e of session.execute('plt.plot([1,2,3]); plt.show()')) {
+      events.push(e);
+    }
+    const display = events.find((e) => e.type === 'display_data');
+    expect(display).toBeDefined();
+    if (display?.type !== 'display_data') throw new Error('expected display_data');
+    const png = display.data['image/png'];
+    const txt = display.data['text/plain'];
+    expect(typeof png).toBe('string');
+    expect(typeof txt).toBe('string');
+    expect((png as string).length).toBeGreaterThan(0);
+  });
+
+  it('display_data event sits between status:busy and status:idle bookends', async () => {
+    const session = new PyodideSession(mockMatplotlibHost());
+    const events: KernelEvent[] = [];
+    for await (const e of session.execute('plt.show()')) events.push(e);
+    expect(events[0]).toEqual({ type: 'status', state: 'busy' });
+    expect(events.at(-1)).toEqual({ type: 'status', state: 'idle' });
+    const displayIdx = events.findIndex((e) => e.type === 'display_data');
+    expect(displayIdx).toBeGreaterThan(0);
+    expect(displayIdx).toBeLessThan(events.length - 1);
+  });
+
+  it('display_data.data is Record<string, unknown> (mime → payload map shape)', async () => {
+    const session = new PyodideSession(mockMatplotlibHost());
+    for await (const e of session.execute('plt.show()')) {
+      if (e.type === 'display_data') {
+        expect(typeof e.data).toBe('object');
+        expect(e.data).not.toBeNull();
+        expect(Array.isArray(e.data)).toBe(false);
+        for (const key of Object.keys(e.data)) {
+          expect(key).toMatch(/^[a-z]+\/[a-z0-9.+-]+$/);
+        }
+      }
+    }
+  });
+});
+
+--- root tsconfig.json ---{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "composite": false,
+    "noEmit": true
+  },
+  "include": [],
+  "references": [
+    { "path": "./scripts" },
+    { "path": "./packages/content-types" },
+    { "path": "./packages/block-foundation" },
+    { "path": "./packages/editor-commands" },
+    { "path": "./packages/agent-tools" },
+    { "path": "./packages/design-tokens" },
+    { "path": "./packages/kernel-adapter" },
+    { "path": "./packages/kernel-pyodide" },
+    { "path": "./packages/kernel-registry" },
+    { "path": "./packages/mdx-bridge" }
+  ]
+}
+
+codex
+已拿到 wave 2 文件主体。下一步对齐权威接口做对照：先查 `kernel-adapter` 的 `CONTRACT.md` 与事件/错误类型定义，再对照当前实现和 `lockfile`。
+exec
+/bin/bash -lc "printf '%s
+' '--- packages/kernel-adapter/CONTRACT.md ---' && sed -n '1,280p' packages/kernel-adapter/CONTRACT.md && printf '
+--- packages/kernel-adapter/src/adapter.ts ---' && sed -n '1,320p' packages/kernel-adapter/src/adapter.ts && printf '
+--- packages/kernel-registry/CONTRACT.md ---' && sed -n '1,220p' packages/kernel-registry/CONTRACT.md && printf '
+--- packages/kernel-adapter/src/errors.ts ---' && sed -n '1,260p' packages/kernel-adapter/src/errors.ts && printf '
+--- packages/kernel-registry/src/registry.ts ---' && sed -n '1,260p' packages/kernel-registry/src/registry.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+--- packages/kernel-adapter/CONTRACT.md ---
+# @skb/kernel-adapter Contract
+
+## Public surface
+
+### Types & interfaces
+
+- `KernelAdapter` interface — `id` / `capabilities` / `startSession()`
+- `KernelSession` interface — `execute()` / `interrupt()` / `shutdown()`
+- `KernelEvent` discriminated union — 6 type 覆盖 stdout/stderr/display/result/error/status
+- `KernelCapabilities` interface
+
+### Error classes (typed throw surface)
+
+- `KernelError` — abstract base; all adapter-thrown errors extend this so callers can catch with one `instanceof` check
+- `KernelStartupError` (`kind: 'startup'`) — `startSession()` could not bring the kernel online
+- `KernelShutdownError` (`kind: 'shutdown'`) — shutdown failed or invoked on already-shutdown session
+- `KernelInterruptError` (`kind: 'interrupt'`) — interrupt requested but adapter could not honor it
+- `KernelTimeoutError` (`kind: 'timeout'`) — operation did not complete within adapter-specific deadline (Phase 2+ remote adapters; reusable in Wave 2 if Pyodide hangs)
+
+In-band Python/runtime exceptions (e.g. user code raises) are NOT thrown — they
+arrive as `KernelEvent { type: 'error', ename, evalue, traceback }` on the
+event stream. Errors above are reserved for adapter-level failures.
+
+## Invariants
+
+- KernelEvent 必须保持 discriminated union（`type` 字段 literal）—— packages/kernel-pyodide 与未来 RemoteJupyterAdapter 都依赖此
+- `KernelEvent.type` 当前枚举：`stdout` · `stderr` · `display_data` · `execute_result` · `error` · `status`
+- 包内**只放 type / interface / error 类**，不放具体实现（实现归属各 adapter 包，例如 `@skb/kernel-pyodide`）
+- 所有 adapter 抛出的非-event 错误必须 `extends KernelError`（包括 adapter 自定义子类如 `RemoteAuthError`），保证调用方 `instanceof KernelError` 一次捕获
+
+## Implementations
+
+- Phase 1：`@skb/kernel-pyodide` (Wave 2)
+- Phase 2+：`@skb/kernel-remote-jupyter` 等
+
+## Modifying this file
+
+公共表面（`KernelAdapter` / `KernelSession` / `KernelCapabilities` / `KernelEvent` / `KernelError` 及其 4 个子类）的任何字段或方法增删改一律需 ADR — **包括添加 optional 字段、新增 KernelEvent 变体、新增 KernelError 子类**。spec §2.3 把 kernel-adapter 列为接口包，规则"改动需 ADR；全员同步"不区分 optional vs required。
+
+原因：`KernelAdapter` 接口 freeze 是 Wave 2 PyodideAdapter 与 Phase 2 RemoteJupyterAdapter 共同的契约基础；optional 字段会在 2+ 实现间产生兼容性矩阵，无 ADR 协调会引发漂移。同步范围：本文件 + kernel-registry + 全部已实现 adapter 包。
+
+## Related
+
+- [设计规格 §1.6 / §2.6](../../docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md)
+- [kernel-registry/CONTRACT.md](../kernel-registry/CONTRACT.md)
+
+--- packages/kernel-adapter/src/adapter.ts ---export type KernelEvent =
+  | { type: 'stdout'; text: string }
+  | { type: 'stderr'; text: string }
+  | { type: 'display_data'; data: Record<string, unknown> }
+  | { type: 'execute_result'; data: Record<string, unknown> }
+  | { type: 'error'; ename: string; evalue: string; traceback: string[] }
+  | { type: 'status'; state: 'idle' | 'busy' };
+
+export interface KernelCapabilities {
+  readonly libraries: readonly string[];
+  readonly gpu: boolean;
+  readonly persistentState: boolean;
+  readonly maxMemoryMB?: number;
+}
+
+export interface KernelSession {
+  execute(code: string): AsyncIterable<KernelEvent>;
+  interrupt(): Promise<void>;
+  shutdown(): Promise<void>;
+}
+
+export interface KernelAdapter {
+  readonly id: string;
+  readonly capabilities: KernelCapabilities;
+  startSession(sessionId: string): Promise<KernelSession>;
+}
+
+--- packages/kernel-registry/CONTRACT.md ---# @skb/kernel-registry Contract
+
+## Public surface
+
+- `KernelRegistry` class — `register` / `get` / `list` / `startSession`
+- 路由策略：JupyterBlock 在 frontmatter 写 `kernel="pyodide"` / `kernel="remote:gpu-box"`，`startSession(adapterId, sessionId)` 解析
+
+## Invariants
+
+- 每个 KernelAdapter id 全局唯一（`register` 重复 id 抛错）
+- 注册顺序无关；`get` / `startSession` 查找 O(1)
+- `list` 返回值为快照（readonly array），调用方修改不影响 registry
+
+## Modifying this file
+
+- 加方法可任意；改方法签名是契约破坏（影响 jupyter / runnable-code blocks）
+
+## Related
+
+- [kernel-adapter/CONTRACT.md](../kernel-adapter/CONTRACT.md)
+- [设计规格 §1.6](../../docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md)
+
+--- packages/kernel-adapter/src/errors.ts ---/**
+ * Typed error hierarchy for KernelAdapter implementations.
+ *
+ * All adapter-thrown errors should extend `KernelError`, so callers can
+ * `catch (e) { if (e instanceof KernelError) ... }` without depending on
+ * adapter-specific subclasses (PyodideAdapter, RemoteKernelAdapter, ...).
+ *
+ * Adapters MAY define their own subclasses (e.g. `RemoteAuthError extends
+ * KernelError`); adding new subclasses is non-breaking. Renaming or removing
+ * any class below is a contract break and requires an ADR.
+ */
+
+export abstract class KernelError extends Error {
+  abstract readonly kind: string;
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = new.target.name;
+  }
+}
+
+export class KernelStartupError extends KernelError {
+  readonly kind = 'startup' as const;
+}
+
+export class KernelShutdownError extends KernelError {
+  readonly kind = 'shutdown' as const;
+}
+
+export class KernelInterruptError extends KernelError {
+  readonly kind = 'interrupt' as const;
+}
+
+export class KernelTimeoutError extends KernelError {
+  readonly kind = 'timeout' as const;
+}
+
+--- packages/kernel-registry/src/registry.ts ---import type { KernelAdapter, KernelSession } from '@skb/kernel-adapter';
+
+export class KernelRegistry {
+  readonly #adapters = new Map<string, KernelAdapter>();
+
+  register(adapter: KernelAdapter): void {
+    if (this.#adapters.has(adapter.id)) {
+      throw new Error(`Duplicate kernel adapter id: ${adapter.id}`);
+    }
+    this.#adapters.set(adapter.id, adapter);
+  }
+
+  get(id: string): KernelAdapter | undefined {
+    return this.#adapters.get(id);
+  }
+
+  list(): readonly KernelAdapter[] {
+    return [...this.#adapters.values()];
+  }
+
+  async startSession(adapterId: string, sessionId: string): Promise<KernelSession> {
+    const adapter = this.#adapters.get(adapterId);
+    if (!adapter) throw new Error(`Unknown kernel adapter: ${adapterId}`);
+    return adapter.startSession(sessionId);
+  }
+}
+
+exec
+/bin/bash -lc "printf '%s
+' '--- lockfile: pyodide ---' && rg -n \"pyodide@|pyodide\" pnpm-lock.yaml | head -n 40 && printf '
+--- lockfile: ws ---' && rg -n \"\\bws@|\\\"ws\\\": \" pnpm-lock.yaml | head -n 40" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+--- lockfile: pyodide ---
+228:  packages/kernel-pyodide:
+233:      pyodide:
+3111:  pyodide@0.27.7:
+7177:  pyodide@0.27.7:
+
+--- lockfile: ws ---3882:  ws@8.20.0:
+8042:  ws@8.20.0: {}
+
+exec
+/bin/bash -lc "sed -n '228,280p' pnpm-lock.yaml && printf '
+--- pyodide block ---
+' && sed -n '3090,3145p' pnpm-lock.yaml && printf '
+--- ws block ---
+' && sed -n '3828,3920p' pnpm-lock.yaml && printf '
+--- other pyodide ref (packages maybe) ---
+' && sed -n '7150,7205p' pnpm-lock.yaml" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+  packages/kernel-pyodide:
+    dependencies:
+      '@skb/kernel-adapter':
+        specifier: workspace:*
+        version: link:../kernel-adapter
+      pyodide:
+        specifier: ^0.27.0
+        version: 0.27.7
+    devDependencies:
+      typescript:
+        specifier: ~5.6.0
+        version: 5.6.3
+      vitest:
+        specifier: ^4.1.5
+        version: 4.1.5(@types/node@22.19.17)(happy-dom@15.11.7)(vite@8.0.10(@types/node@22.19.17)(esbuild@0.27.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.3))
+
+  packages/kernel-registry:
+    dependencies:
+      '@skb/kernel-adapter':
+        specifier: workspace:*
+        version: link:../kernel-adapter
+    devDependencies:
+      typescript:
+        specifier: ~5.6.0
+        version: 5.6.3
+      vitest:
+        specifier: ^4.1.5
+        version: 4.1.5(@types/node@22.19.17)(happy-dom@15.11.7)(vite@8.0.10(@types/node@22.19.17)(esbuild@0.27.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.3))
+
+  packages/mdx-bridge:
+    dependencies:
+      remark-frontmatter:
+        specifier: ^5.0.0
+        version: 5.0.0
+      remark-mdx:
+        specifier: ^3.0.0
+        version: 3.1.1
+      remark-parse:
+        specifier: ^11.0.0
+        version: 11.0.0
+      remark-stringify:
+        specifier: ^11.0.0
+        version: 11.0.0
+      unified:
+        specifier: ^11.0.0
+        version: 11.0.5
+      vfile:
+        specifier: ^6.0.0
+        version: 6.0.3
+    devDependencies:
+      '@types/mdast':
+        specifier: ^4.0.0
+        version: 4.0.4
+
+--- pyodide block ---
+  prosemirror-trailing-node@3.0.0:
+    resolution: {integrity: sha512-xiun5/3q0w5eRnGYfNlW1uU9W6x5MoFKWwq/0TIRgt09lv7Hcser2QYV8t4muXbEr+Fwo0geYn79Xs4GKywrRQ==}
+    peerDependencies:
+      prosemirror-model: ^1.22.1
+      prosemirror-state: ^1.4.2
+      prosemirror-view: ^1.33.8
+
+  prosemirror-transform@1.12.0:
+    resolution: {integrity: sha512-GxboyN4AMIsoHNtz5uf2r2Ru551i5hWeCMD6E2Ib4Eogqoub0NflniaBPVQ4MrGE5yZ8JV9tUHg9qcZTTrcN4w==}
+
+  prosemirror-view@1.41.8:
+    resolution: {integrity: sha512-TnKDdohEatgyZNGCDWIdccOHXhYloJwbwU+phw/a23KBvJIR9lWQWW7WHHK3vBdOLDNuF7TaX98GObUZOWkOnA==}
+
+  punycode.js@2.3.1:
+    resolution: {integrity: sha512-uxFIHU0YlHYhDQtV4R9J6a52SLx28BCjT+4ieh7IGbgwVJWO+km431c4yRlREUAsAmt/uMjQUyQHNEPf0M39CA==}
+    engines: {node: '>=6'}
+
+  punycode@2.3.1:
+    resolution: {integrity: sha512-vYt7UD1U9Wg6138shLtLOvdAu+8DsC/ilFtEVHcH+wydcSpNE20AfSOduf6MkRFahL5FY7X1oU7nKVZFtfq8Fg==}
+    engines: {node: '>=6'}
+
+  pyodide@0.27.7:
+    resolution: {integrity: sha512-RUSVJlhQdfWfgO9hVHCiXoG+nVZQRS5D9FzgpLJ/VcgGBLSAKoPL8kTiOikxbHQm1kRISeWUBdulEgO26qpSRA==}
+    engines: {node: '>=18.0.0'}
+
+  queue-microtask@1.2.3:
+    resolution: {integrity: sha512-NuaNSa6flKT5JaSYQzJok04JzTL1CA6aGhv5rfLW3PgqA+M2ChpZQnAC8h8i4ZFkBS8X5RqkDBHA7r4hej3K9A==}
+
+  radix3@1.1.2:
+    resolution: {integrity: sha512-b484I/7b8rDEdSDKckSSBA8knMpcdsXudlE/LNL639wFoHKwLbEkQFZHWEYwDC0wa0FKUcCY+GAF73Z7wxNVFA==}
+
+  react-dom@18.3.1:
+    resolution: {integrity: sha512-5m4nQKp+rZRb09LNH59GM4BxTh9251/ylbKIbpe7TpGxfJ+9kv6BLkLBXIjjspbgbnIBNqlI23tRnTWT0snUIw==}
+    peerDependencies:
+      react: ^18.3.1
+
+  react-is@17.0.2:
+    resolution: {integrity: sha512-w2GsyukL62IJnlaff/nRegPQR94C/XXamvMWmSHRJ4y7Ts/4ocGRmTHvOs8PSE6pB3dWOrD/nueuU5sduBsQ4w==}
+
+  react-refresh@0.17.0:
+    resolution: {integrity: sha512-z6F7K9bV85EfseRCp2bzrpyQ0Gkw1uLoCel9XBVWPg/TjRj94SkJzUTGfOa4bs7iJvBWtQG0Wq7wnI0syw3EBQ==}
+    engines: {node: '>=0.10.0'}
+
+  react@18.3.1:
+    resolution: {integrity: sha512-wS+hAgJShR0KhEvPJArfuPVN1+Hz1t0Y6n5jLrGQbkb4urgPE/0Rve+1kMB1v/oWgHgm4WIcV+i7F2pTVj+2iQ==}
+    engines: {node: '>=0.10.0'}
+
+  read-cache@1.0.0:
+    resolution: {integrity: sha512-Owdv/Ft7IjOgm/i0xvNDZ1LrRANRfew4b2prF3OWMQLxLfu3bS8FVhCsrSCMK4lR56Y9ya+AThoTpDCTxCmpRA==}
+
+  readdirp@3.6.0:
+    resolution: {integrity: sha512-hOS089on8RduqdbhvQ5Z37A0ESjsqz6qnRcffsMU3495FuTdqSm+7bhJ29JvIOsBDEEnan5DPu9t3To9VRlMzA==}
+    engines: {node: '>=8.10.0'}
+
+  readdirp@4.1.2:
+    resolution: {integrity: sha512-GDhwkLfywWL2s6vEjyhri+eXmfH6j1L7JE27WhqLeYzoh/A3DBaYGEj2H/HFZCn/kMfim73FXxEJTw06WtxQwg==}
+
+--- ws block ---
+  vscode-languageserver@9.0.1:
+    resolution: {integrity: sha512-woByF3PDpkHFUreUa7Hos7+pUWdeWMXRd26+ZX2A8cFx6v/JPTtd4/uN0/jB6XQHYaOlHbio03NTHCqrgG5n7g==}
+    hasBin: true
+
+  vscode-nls@5.2.0:
+    resolution: {integrity: sha512-RAaHx7B14ZU04EU31pT+rKz2/zSl7xMsfIZuo8pd+KZO6PXtQmpevpq3vxvWNcrGbdmhM/rr5Uw5Mz+NBfhVng==}
+
+  vscode-uri@3.1.0:
+    resolution: {integrity: sha512-/BpdSx+yCQGnCvecbyXdxHDkuk55/G3xwnC0GqY4gmQ3j+A+g8kzzgB4Nk/SINjqn6+waqw3EgbVF2QKExkRxQ==}
+
+  w3c-keyname@2.2.8:
+    resolution: {integrity: sha512-dpojBhNsCNN7T82Tm7k26A6G9ML3NkhDsnw9n/eoxSRlVBB4CEtIQ/KTCLI2Fwf3ataSXRhYFkQi3SlnFwPvPQ==}
+
+  web-namespaces@2.0.1:
+    resolution: {integrity: sha512-bKr1DkiNa2krS7qxNtdrtHAmzuYGFQLiQ13TsorsdT6ULTkPLKuu5+GsFpDlg6JFjUTwX2DyhMPG2be8uPrqsQ==}
+
+  webidl-conversions@7.0.0:
+    resolution: {integrity: sha512-VwddBukDzu71offAQR975unBIGqfKZpM+8ZX6ySk8nYhVoo5CYaZyzt3YBvYtRtO+aoGlqxPg/B87NGVZ/fu6g==}
+    engines: {node: '>=12'}
+
+  whatwg-mimetype@3.0.0:
+    resolution: {integrity: sha512-nt+N2dzIutVRxARx1nghPKGv1xHikU7HKdfafKkLNLindmPU/ch3U31NOCGGA/dmPcmb1VlofO0vnKAcsm0o/Q==}
+    engines: {node: '>=12'}
+
+  which-pm-runs@1.1.0:
+    resolution: {integrity: sha512-n1brCuqClxfFfq/Rb0ICg9giSZqCS+pLtccdag6C2HyufBrh3fBOiy9nb6ggRMvWOVH5GrdJskj5iGTZNxd7SA==}
+    engines: {node: '>=4'}
+
+  which@2.0.2:
+    resolution: {integrity: sha512-BLI3Tl1TW3Pvl70l3yq3Y64i+awpwXqsGBYWkkqMtnbXgrMD+yj7rhW0kuEDxzJaYXGjEW5ogapKNMEKNMjibA==}
+    engines: {node: '>= 8'}
+    hasBin: true
+
+  why-is-node-running@2.3.0:
+    resolution: {integrity: sha512-hUrmaWBdVDcxvYqnyh09zunKzROWjbZTiNy8dBEjkS7ehEDQibXJ7XvlmtbwuTclUiIyN+CyXQD4Vmko8fNm8w==}
+    engines: {node: '>=8'}
+    hasBin: true
+
+  widest-line@5.0.0:
+    resolution: {integrity: sha512-c9bZp7b5YtRj2wOe6dlj32MK+Bx/M/d+9VB2SHM1OtsUHR0aV0tdP6DWh/iMt0kWi1t5g1Iudu6hQRNd1A4PVA==}
+    engines: {node: '>=18'}
+
+  word-wrap@1.2.5:
+    resolution: {integrity: sha512-BN22B5eaMMI9UMtjrGd5g5eCYPpCPDUy0FJXbYsaT5zYxjFOckS53SQDE3pWkVoWpHXVb3BrYcEN4Twa55B5cA==}
+    engines: {node: '>=0.10.0'}
+
+  wrap-ansi@7.0.0:
+    resolution: {integrity: sha512-YVGIj2kamLSTxw6NsZjoBxfSwsn0ycdesmc4p+Q21c5zPuZ1pl+NfxVdxPtdHvmNVOQ6XSYG4AUtyt/Fi7D16Q==}
+    engines: {node: '>=10'}
+
+  wrap-ansi@9.0.2:
+    resolution: {integrity: sha512-42AtmgqjV+X1VpdOfyTGOYRi0/zsoLqtXQckTmqTeybT+BDIbM/Guxo7x3pE2vtpr1ok6xRqM9OpBe+Jyoqyww==}
+    engines: {node: '>=18'}
+
+  ws@8.20.0:
+    resolution: {integrity: sha512-sAt8BhgNbzCtgGbt2OxmpuryO63ZoDk/sqaB/znQm94T4fCEsy/yV+7CdC1kJhOU9lboAEU7R3kquuycDoibVA==}
+    engines: {node: '>=10.0.0'}
+    peerDependencies:
+      bufferutil: ^4.0.1
+      utf-8-validate: '>=5.0.2'
+    peerDependenciesMeta:
+      bufferutil:
+        optional: true
+      utf-8-validate:
+        optional: true
+
+  xxhash-wasm@1.1.0:
+    resolution: {integrity: sha512-147y/6YNh+tlp6nd/2pWq38i9h6mz/EuQ6njIrmW8D1BS5nCqs0P6DG+m6zTGnNz5I+uhZ0SHxBs9BsPrwcKDA==}
+
+  y18n@5.0.8:
+    resolution: {integrity: sha512-0pfFzegeDWJHJIAmTLRP2DwHjdF5s7jo9tuztdQxAhINCdvS+3nGINqPd00AphqJR/0LhANUS6/+7SCb98YOfA==}
+    engines: {node: '>=10'}
+
+  yallist@3.1.1:
+    resolution: {integrity: sha512-a4UGQaWPH59mOXUYnAG2ewncQS4i4F43Tv3JoAM+s2VDAmS9NsK8GpDMLrCHPksFT7h3K6TOoUNn2pb7RoXx4g==}
+
+  yaml-language-server@1.20.0:
+    resolution: {integrity: sha512-qhjK/bzSRZ6HtTvgeFvjNPJGWdZ0+x5NREV/9XZWFjIGezew2b4r5JPy66IfOhd5OA7KeFwk1JfmEbnTvev0cA==}
+    hasBin: true
+
+  yaml@2.7.1:
+    resolution: {integrity: sha512-10ULxpnOCQXxJvBgxsn9ptjq6uviG/htZKk9veJGhlqn3w/DxQ631zFF+nlQXLwmImeS5amR2dl2U8sg6U9jsQ==}
+    engines: {node: '>= 14'}
+    hasBin: true
+
+  yaml@2.8.3:
+    resolution: {integrity: sha512-AvbaCLOO2Otw/lW5bmh9d/WEdcDFdQp2Z2ZUH3pX9U2ihyUY0nvLv7J6TrWowklRGPYbB/IuIMfYgxaCPg5Bpg==}
+    engines: {node: '>= 14.6'}
+    hasBin: true
+
+  yargs-parser@21.1.1:
+    resolution: {integrity: sha512-tVpsJW7DdjecAiFpbIB1e3qxIQsE6NoPc5/eTdrbbIC4h0LVsWhnoa3g+m2HclBIujHzsxZ4VJVA+GUuc2/LBw==}
+    engines: {node: '>=12'}
+
+--- other pyodide ref (packages maybe) ---
+      prosemirror-model: 1.25.4
+      prosemirror-state: 1.4.4
+      prosemirror-transform: 1.12.0
+      prosemirror-view: 1.41.8
+
+  prosemirror-trailing-node@3.0.0(prosemirror-model@1.25.4)(prosemirror-state@1.4.4)(prosemirror-view@1.41.8):
+    dependencies:
+      '@remirror/core-constants': 3.0.0
+      escape-string-regexp: 4.0.0
+      prosemirror-model: 1.25.4
+      prosemirror-state: 1.4.4
+      prosemirror-view: 1.41.8
+
+  prosemirror-transform@1.12.0:
+    dependencies:
+      prosemirror-model: 1.25.4
+
+  prosemirror-view@1.41.8:
+    dependencies:
+      prosemirror-model: 1.25.4
+      prosemirror-state: 1.4.4
+      prosemirror-transform: 1.12.0
+
+  punycode.js@2.3.1: {}
+
+  punycode@2.3.1: {}
+
+  pyodide@0.27.7:
+    dependencies:
+      ws: 8.20.0
+    transitivePeerDependencies:
+      - bufferutil
+      - utf-8-validate
+
+  queue-microtask@1.2.3: {}
+
+  radix3@1.1.2: {}
+
+  react-dom@18.3.1(react@18.3.1):
+    dependencies:
+      loose-envify: 1.4.0
+      react: 18.3.1
+      scheduler: 0.23.2
+
+  react-is@17.0.2: {}
+
+  react-refresh@0.17.0: {}
+
+  react@18.3.1:
+    dependencies:
+      loose-envify: 1.4.0
+
+  read-cache@1.0.0:
+    dependencies:
+      pify: 2.3.0
+
+
+exec
+/bin/bash -lc "sed -n '1,220p' packages/kernel-registry/package.json" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 131ms:
+{
+  "name": "@skb/kernel-registry",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "lint": "eslint .",
+    "typecheck": "tsc -b",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@skb/kernel-adapter": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "~5.6.0",
+    "vitest": "^4.1.5"
+  }
+}
+
+codex
+我再补一眼同类包的契约/接口惯例，确认 `@skb/kernel-pyodide` 的导出与依赖形态与现有约定一致，再给出可执行的 review 结论。
+exec
+/bin/bash -lc "sed -n '1,220p' packages/kernel-adapter/package.json && printf '
+--- kernel-adapter/ src/index style ---
+' && sed -n '1,220p' packages/kernel-adapter/src/index.ts && printf '
+--- kernel-registry maybe tsconfig ref pattern ---
+' && sed -n '1,240p' packages/kernel-registry/tsconfig.json && printf '
+--- root scripts package maybe for ts references style ---
+' && sed -n '1,240p' scripts/tsconfig.json" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+{
+  "name": "@skb/kernel-adapter",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "lint": "eslint .",
+    "typecheck": "tsc -b",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "typescript": "~5.6.0",
+    "vitest": "^4.1.5"
+  }
+}
+
+--- kernel-adapter/ src/index style ---
+export type {
+  KernelAdapter,
+  KernelSession,
+  KernelEvent,
+  KernelCapabilities,
+} from './adapter';
+
+export {
+  KernelError,
+  KernelStartupError,
+  KernelShutdownError,
+  KernelInterruptError,
+  KernelTimeoutError,
+} from './errors';
+
+--- kernel-registry maybe tsconfig ref pattern ---
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": { "rootDir": ".", "outDir": "dist" },
+  "include": ["src/**/*", "vitest.config.ts"],
+  "references": [{ "path": "../kernel-adapter" }]
+}
+
+--- root scripts package maybe for ts references style ---
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": false,
+    "noEmit": true,
+    "rootDir": ".",
+    "types": ["node"],
+    "allowImportingTsExtensions": true
+  },
+  "include": ["**/*.ts"]
+}
+
+codex
+FAIL
+
+主要问题（按严重度）：
+1. **高** — `KernelImportError` 被上层吞并（`@skb/kernel-adapter` 错误分层被削平）  
+   在 [adapter.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/kernel-pyodide/src/adapter.ts) 的 `startSession()` 中，`create()` 抛出的除 `KernelStartupError` 外都被再次包成 `KernelStartupError`。  
+   这会把 `KernelImportError`（包加载失败）转成启动错误，消费者无法直接基于 `instanceof KernelImportError` 进行区分处理，和自定义子类的设计意图不一致，也弱化了 ADR-0006 item #4/#7 的异常分层可观测性。
+
+2. **低** — `runCode` 异常映射路径使用了不完整哨兵（`runError !== undefined`）  
+   在 [session.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/kernel-pyodide/src/session.ts) 的 `#run()` 中，`runError` 初始化为 `undefined`。若 `host.runCode` 使用 `Promise.reject()`（无参数）或 reject `undefined`，最终会被当成“无错误”处理，直接产出 `status: idle` 而不是 `error` 事件。  
+   建议改成 `hasRunError` 布尔位或显式 `runError` 标记初值以保证错误映射完整性（对应 ADR-0006 item #7）。
+
+`asymmetry-audit applied: items {1..8} verdicts:`
+1. PASS — `PyodideAdapter` 与 `PyodideSession` 分别实现 `KernelAdapter` / `KernelSession`，事件变体字段与 `kernel-adapter` 联合类型对齐（`stdout/stderr/display_data/execute_result/error/status`）。
+2. PASS — `KernelEvent` 与能力字段使用的是 `@skb/kernel-adapter` 公开类型（未在本包内重定义）。
+3. PASS — `KernelError` 相关命名与 `kernel-adapter` 契约一致（无内联重定义错误基类）；`KernelImportError` 继承自 `KernelError`。
+4. PASS — 运行 `KernelAdapter`/`KernelSession` / `KernelEvent` / 错误类均来自单一 authority；`@skb/kernel-adapter` 为唯一来源（未发现 `enum`/schema 重定义）。
+5. FAIL — 常量复刻一致但异常分层未完全保留：`capabilities.libraries` 与 `boot.ts` 的 `DEFAULT_LIBS` 一致，且测试有回归点；但 `startSession` 会重包 `KernelImportError`。
+6. PASS — [CONTRACT.md](/home/weiyi/selfKnowledgeBaseWeb/packages/kernel-pyodide/CONTRACT.md) 与 [kernel-adapter/CONTRACT.md](/home/weiyi/selfKnowledgeBaseWeb/packages/kernel-adapter/CONTRACT.md) 的核心冻结面基本对齐（接口/事件/错误类命名与语义）。
+7. FAIL — 异常 scope 上存在两点偏差：`boot.ts` 区分了 `loadPyodide` 与 `loadPackage` 的 try/catch，但 `PyodideSession` 的错误哨兵处理对 `undefined` 拒绝不稳；此外 `startSession` 把非启动错误统一重包为启动错误。
+8. PASS — authority → consumer 链路打通：`kernel-pyodide` 依赖 `@skb/kernel-adapter`、项目引用链含 `packages/kernel-pyodide`、lockfile 已同步 `pyodide@0.27.7` 与 `ws@8.20.0`。
+
+`asymmetry-audit wave 2` 需要修正后再判定 PASS。
+2026-04-30T19:17:27.822748Z ERROR codex_core::session: failed to record rollout items: thread 019ddfd2-b8e8-7a11-ae70-b0ac3f2ddcc3 not found
+tokens used
+35,805
+FAIL
+
+主要问题（按严重度）：
+1. **高** — `KernelImportError` 被上层吞并（`@skb/kernel-adapter` 错误分层被削平）  
+   在 [adapter.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/kernel-pyodide/src/adapter.ts) 的 `startSession()` 中，`create()` 抛出的除 `KernelStartupError` 外都被再次包成 `KernelStartupError`。  
+   这会把 `KernelImportError`（包加载失败）转成启动错误，消费者无法直接基于 `instanceof KernelImportError` 进行区分处理，和自定义子类的设计意图不一致，也弱化了 ADR-0006 item #4/#7 的异常分层可观测性。
+
+2. **低** — `runCode` 异常映射路径使用了不完整哨兵（`runError !== undefined`）  
+   在 [session.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/kernel-pyodide/src/session.ts) 的 `#run()` 中，`runError` 初始化为 `undefined`。若 `host.runCode` 使用 `Promise.reject()`（无参数）或 reject `undefined`，最终会被当成“无错误”处理，直接产出 `status: idle` 而不是 `error` 事件。  
+   建议改成 `hasRunError` 布尔位或显式 `runError` 标记初值以保证错误映射完整性（对应 ADR-0006 item #7）。
+
+`asymmetry-audit applied: items {1..8} verdicts:`
+1. PASS — `PyodideAdapter` 与 `PyodideSession` 分别实现 `KernelAdapter` / `KernelSession`，事件变体字段与 `kernel-adapter` 联合类型对齐（`stdout/stderr/display_data/execute_result/error/status`）。
+2. PASS — `KernelEvent` 与能力字段使用的是 `@skb/kernel-adapter` 公开类型（未在本包内重定义）。
+3. PASS — `KernelError` 相关命名与 `kernel-adapter` 契约一致（无内联重定义错误基类）；`KernelImportError` 继承自 `KernelError`。
+4. PASS — 运行 `KernelAdapter`/`KernelSession` / `KernelEvent` / 错误类均来自单一 authority；`@skb/kernel-adapter` 为唯一来源（未发现 `enum`/schema 重定义）。
+5. FAIL — 常量复刻一致但异常分层未完全保留：`capabilities.libraries` 与 `boot.ts` 的 `DEFAULT_LIBS` 一致，且测试有回归点；但 `startSession` 会重包 `KernelImportError`。
+6. PASS — [CONTRACT.md](/home/weiyi/selfKnowledgeBaseWeb/packages/kernel-pyodide/CONTRACT.md) 与 [kernel-adapter/CONTRACT.md](/home/weiyi/selfKnowledgeBaseWeb/packages/kernel-adapter/CONTRACT.md) 的核心冻结面基本对齐（接口/事件/错误类命名与语义）。
+7. FAIL — 异常 scope 上存在两点偏差：`boot.ts` 区分了 `loadPyodide` 与 `loadPackage` 的 try/catch，但 `PyodideSession` 的错误哨兵处理对 `undefined` 拒绝不稳；此外 `startSession` 把非启动错误统一重包为启动错误。
+8. PASS — authority → consumer 链路打通：`kernel-pyodide` 依赖 `@skb/kernel-adapter`、项目引用链含 `packages/kernel-pyodide`、lockfile 已同步 `pyodide@0.27.7` 与 `ws@8.20.0`。
+
+`asymmetry-audit wave 2` 需要修正后再判定 PASS。

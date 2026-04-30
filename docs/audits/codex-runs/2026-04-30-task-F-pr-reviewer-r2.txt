@@ -1,0 +1,98 @@
+pr-reviewer R2 — Task #9 (F: kernel-pyodide PyodideAdapter)
+Reviewer: pr-reviewer (Claude Sonnet 4.6)
+Date: 2026-04-30
+Verdict: APPROVE
+
+== R2 BLOCKING CLOSURE ==
+
+B1 — KernelError subclass preservation
+  adapter.ts:42: `if (cause instanceof KernelError) throw cause` before wrapping.
+  Tests: rejects.toBe(importBoom) + rejects.toBe(startupBoom) + rejects.toBeInstanceOf(KernelStartupError).
+  CLOSED.
+
+B2 — hasRunError boolean sentinel + toErrorEvent non-Error hardening
+  session.ts:60-61: dedicated `hasRunError = false` boolean, set true in catch path.
+  Eliminates `runError !== undefined` sentinel that would silently drop Promise.reject(undefined).
+  toErrorEvent (session.ts:100-107): stringifyNonError handles all non-Error cases including undefined.
+  Test (session.test.ts:80-95): Promise.reject(undefined) -> ename:'Error', evalue:'undefined', traceback:['undefined'].
+  CLOSED.
+
+B3 — interrupt + shutdown host-error wrapping with KernelError preservation
+  session.ts:28-33 (interrupt) + session.ts:41-46 (shutdown): identical instanceof-preserve-then-wrap pattern.
+  4 tests: wrap-as-typed + .toBe(customBoom) identity preservation for both methods.
+  CLOSED.
+
+B4 — Structural alias PYODIDE_LIBRARIES = DEFAULT_LIBS
+  adapter.ts:13: `export const PYODIDE_LIBRARIES = DEFAULT_LIBS;` — binding alias, not a copy.
+  adapter.ts:3: imports DEFAULT_LIBS directly from './boot'.
+  Test (adapter.test.ts:79): expect(PYODIDE_LIBRARIES).toBe(DEFAULT_LIBS) — reference equality.
+  R1 self-deception confirmed corrected: R1 used toEqual (passes on copy); R2 uses toBe (fails on copy).
+  Public API concern: PYODIDE_LIBRARIES not in index.ts; neither name in public package surface. No deprecation path needed.
+  CLOSED.
+
+B5 — Sister-doc kind literals + scope + KernelTimeoutError reserved
+  kernel-pyodide/CONTRACT.md lines 36-48: all 5 kind literals documented ('startup','import','shutdown','interrupt','timeout').
+  Byte-aligned with kernel-adapter/errors.ts lines 22-34 + kernel-adapter/CONTRACT.md lines 15-18.
+  KernelTimeoutError correctly marked reserved-not-emitted with Wave 3 rationale.
+  Cross-link to kernel-adapter/CONTRACT.md at CONTRACT.md:116.
+  ADR-0006 item #6: kernel-adapter CONTRACT.md unmodified (kernel-pyodide is entirely new untracked package). No drift introduced.
+  CLOSED.
+
+== CONCERN / OBS CLOSURE ==
+
+OBS-1 — SymPy micropip clarification
+  CONTRACT.md line 4-5: "SymPy 等其他 Pyodide 兼容包需运行时通过 micropip 安装，不在 default libraries" — accurate.
+  CLOSED.
+
+C2 — PNG magic byte regex + strict mime keys
+  matplotlib.test.ts:49: .toMatch(/^iVBORw0KGgo/) — locks actual base64 PNG magic bytes.
+  matplotlib.test.ts:53-65: Object.keys(e.data).sort() === ['image/png','text/plain'] — strict key set.
+  CLOSED.
+
+== ARCHITECTURAL CONSISTENCY ==
+
+B3 shutdown semantic (#shutdown = true BEFORE await host):
+  session.ts:40-42: flag set before await. Host-throw leaves session closed (retry-impossible design). Correct per spec.
+
+host.ts:23 interrupt returns void | Promise<void>:
+  session.ts:29 awaits it. Awaiting void is a no-op; awaiting Promise<void> resolves normally.
+  Wave 3 worker hosts returning Promise<void> are compatible without session layer changes. SOUND.
+
+B4 public API surface:
+  Neither PYODIDE_LIBRARIES nor DEFAULT_LIBS in index.ts. No deprecation concern.
+  CONTRACT.md lines 81-83 documents the alias pattern and regression test purpose.
+
+== CROSS-PACKAGE ISOLATION ==
+
+packages/kernel-adapter/ and packages/kernel-registry/: zero modifications confirmed.
+kernel-pyodide is entirely new untracked package. No regressions to existing packages.
+
+== FILE SIZE COMPLIANCE ==
+
+adapter.ts:  47 lines  (limit 500)
+session.ts:  121 lines (limit 500)
+boot.ts:     92 lines  (limit 500)
+errors.ts:   12 lines  (limit 500)
+host.ts:     29 lines  (limit 500)
+CONTRACT.md: 119 lines (limit 500)
+All within limits.
+
+== SPEC MATCH ==
+
+ADR-0001 §"内核选型" (Pyodide, Wave 2, browser-native): fulfilled.
+ADR-0008 D2 (block-foundation interface freeze): not affected (kernel-pyodide does not touch block-foundation).
+kernel-adapter CONTRACT.md: 6 KernelEvent variants, 5 KernelError classes,
+  KernelAdapter/KernelSession/KernelCapabilities interfaces: all fully implemented.
+
+== CODEX DEFERRED CONCERN (informational, not blocking) ==
+
+codex 5.3 R2 + codex 5.5 pr-gate R2: both PASS.
+1 deferred CONCERN (Wave 3 sync host runCode): not in scope for Wave 2 — main-thread Pyodide
+  constraint is a known architectural limitation documented in boot.ts comments and CONTRACT.md Wave 3 evolution points.
+  No action required for this PR.
+
+== VERDICT: APPROVE ==
+
+All 5 BLOCKING items closed. Both CONCERNs addressed. OBS-1 clarified.
+No new regressions. Implementation structurally sound, spec-aligned, architecturally consistent.
+Ready for git-operator.

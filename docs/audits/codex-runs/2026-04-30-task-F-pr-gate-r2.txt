@@ -1,0 +1,2868 @@
+Reading additional input from stdin...
+OpenAI Codex v0.125.0 (research preview)
+--------
+workdir: /home/weiyi/selfKnowledgeBaseWeb
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: xhigh
+reasoning summaries: none
+session id: 019ddfe1-be59-7e32-b89a-865515187d97
+--------
+user
+你是 pr-gate profile (gpt-5.5)。**R2** 深审 Wave 2 Task #9 (F: kernel-pyodide PyodideAdapter R2-supplement)。
+
+## R1 history
+你 R1 (log: docs/audits/codex-runs/2026-04-30-task-F-pr-gate.txt) 给 4 BLOCKING (B1 swallow + B3 interrupt+shutdown wrap + B4 weak regression + B5 sister-doc + KernelTimeoutError 缺) + 2 CONCERN (display_data real path + matplotlib regex weak)。
+
+## R2 + R2-supplement fix 摘要
+worker 完整修 5 BLOCKING + 1 OBS + 1 CONCERN：
+- B1 adapter.ts: preserve KernelError subclasses (3 regression tests)
+- B2 session.ts: hasRunError boolean + toErrorEvent harden (1 test)
+- B3 session.ts: interrupt+shutdown wrap host errors (4 tests)
+- B4 adapter.ts/boot.ts: PYODIDE_LIBRARIES = DEFAULT_LIBS alias (structural elimination, 1 regression test)
+- B5 CONTRACT.md: sister-aligned error surface (kind literals + scope text + KernelTimeoutError reserved)
+- OBS-1 CONTRACT.md: SymPy via micropip
+- C2 matplotlib.test.ts: PNG magic byte regex + strict mime keys
+
+总 25/25 tests PASS。
+
+## R2 Bundle (working tree, 8 modified files in packages/kernel-pyodide/)
+
+## 你必做（R2 独立 verdict）
+
+1. **R1 4 BLOCKING + 2 CONCERN closed verify**:
+   - B1 真 preserve all KernelError? regression tests 含 customBoom identity check (rejects.toBe)
+   - B3 interrupt+shutdown wrap 真完整 (含 sync throw + Promise reject + KernelError preserve + non-KernelError wrap 4 cases)
+   - B4 alias 真消除 duplication (PYODIDE_LIBRARIES = DEFAULT_LIBS by reference, regression test toBe; vs original toEqual that was post-decision string match)
+   - B5 CONTRACT.md error surface byte-aligned with kernel-adapter/CONTRACT.md (kind 'startup'/'shutdown'/'interrupt' literals)
+   - C2 matplotlib regex tightened (iVBORw0KGgo PNG magic + 'image/png' + 'text/plain' exactly)
+
+2. **R2 8th-class hunt** (R2 fix 引入新 asymmetry?):
+   - host.ts:21 interrupt 返回 type 'void | Promise<void>' — Wave 3 worker host async 兼容；但 Wave 2 main-thread sync 也能用；是否引入新 type ambiguity?
+   - shutdown(): #shutdown = true BEFORE await host.shutdown — 如 host throw, session 已 mark shutdown but caller 看 KernelShutdownError 抛。是 retry-impossible 设计；与 kernel-adapter CONTRACT.md 'shutdown 后任何调用都 throw' 一致吗？
+   - PYODIDE_LIBRARIES = DEFAULT_LIBS alias — 公开 API 名仍是 PYODIDE_LIBRARIES，外部 consumer 不知道它 alias DEFAULT_LIBS。是否需要 public API 命名 standardize?
+
+3. ADR-0006 8-point checklist 全 8 项 R2 verdict
+   - item #5 PASS (alias 结构性消除 drift)
+   - item #6 PASS (sister-doc strengthened)
+   - item #7 PASS (interrupt+shutdown 都 wrap，与 startSession 同 pattern)
+   - item #8 PASS
+
+## verdict 要求
+- PASS / FAIL
+- asymmetry-audit applied: items {1..8} verdicts (含 8th-class hunt)
+- BLOCKING / CONCERN / OBSERVATION
+- 显式 'R1 BLOCKING B1-B5 + CONCERN closed verdict' list
+
+输出。开始。
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the vendored bubblewrap in the meantime.
+exec
+/bin/bash -lc "sed -n '1,220p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/f95024a0/skills/using-superpowers/SKILL.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+---
+name: using-superpowers
+description: Use when starting any conversation - establishes how to find and use skills, requiring Skill tool invocation before ANY response including clarifying questions
+---
+
+<SUBAGENT-STOP>
+If you were dispatched as a subagent to execute a specific task, skip this skill.
+</SUBAGENT-STOP>
+
+<EXTREMELY-IMPORTANT>
+If you think there is even a 1% chance a skill might apply to what you are doing, you ABSOLUTELY MUST invoke the skill.
+
+IF A SKILL APPLIES TO YOUR TASK, YOU DO NOT HAVE A CHOICE. YOU MUST USE IT.
+
+This is not negotiable. This is not optional. You cannot rationalize your way out of this.
+</EXTREMELY-IMPORTANT>
+
+## Instruction Priority
+
+Superpowers skills override default system prompt behavior, but **user instructions always take precedence**:
+
+1. **User's explicit instructions** (CLAUDE.md, GEMINI.md, AGENTS.md, direct requests) — highest priority
+2. **Superpowers skills** — override default system behavior where they conflict
+3. **Default system prompt** — lowest priority
+
+If CLAUDE.md, GEMINI.md, or AGENTS.md says "don't use TDD" and a skill says "always use TDD," follow the user's instructions. The user is in control.
+
+## How to Access Skills
+
+**In Claude Code:** Use the `Skill` tool. When you invoke a skill, its content is loaded and presented to you—follow it directly. Never use the Read tool on skill files.
+
+**In Copilot CLI:** Use the `skill` tool. Skills are auto-discovered from installed plugins. The `skill` tool works the same as Claude Code's `Skill` tool.
+
+**In Gemini CLI:** Skills activate via the `activate_skill` tool. Gemini loads skill metadata at session start and activates the full content on demand.
+
+**In other environments:** Check your platform's documentation for how skills are loaded.
+
+## Platform Adaptation
+
+Skills use Claude Code tool names. Non-CC platforms: see `references/copilot-tools.md` (Copilot CLI), `references/codex-tools.md` (Codex) for tool equivalents. Gemini CLI users get the tool mapping loaded automatically via GEMINI.md.
+
+# Using Skills
+
+## The Rule
+
+**Invoke relevant or requested skills BEFORE any response or action.** Even a 1% chance a skill might apply means that you should invoke the skill to check. If an invoked skill turns out to be wrong for the situation, you don't need to use it.
+
+```dot
+digraph skill_flow {
+    "User message received" [shape=doublecircle];
+    "About to EnterPlanMode?" [shape=doublecircle];
+    "Already brainstormed?" [shape=diamond];
+    "Invoke brainstorming skill" [shape=box];
+    "Might any skill apply?" [shape=diamond];
+    "Invoke Skill tool" [shape=box];
+    "Announce: 'Using [skill] to [purpose]'" [shape=box];
+    "Has checklist?" [shape=diamond];
+    "Create TodoWrite todo per item" [shape=box];
+    "Follow skill exactly" [shape=box];
+    "Respond (including clarifications)" [shape=doublecircle];
+
+    "About to EnterPlanMode?" -> "Already brainstormed?";
+    "Already brainstormed?" -> "Invoke brainstorming skill" [label="no"];
+    "Already brainstormed?" -> "Might any skill apply?" [label="yes"];
+    "Invoke brainstorming skill" -> "Might any skill apply?";
+
+    "User message received" -> "Might any skill apply?";
+    "Might any skill apply?" -> "Invoke Skill tool" [label="yes, even 1%"];
+    "Might any skill apply?" -> "Respond (including clarifications)" [label="definitely not"];
+    "Invoke Skill tool" -> "Announce: 'Using [skill] to [purpose]'";
+    "Announce: 'Using [skill] to [purpose]'" -> "Has checklist?";
+    "Has checklist?" -> "Create TodoWrite todo per item" [label="yes"];
+    "Has checklist?" -> "Follow skill exactly" [label="no"];
+    "Create TodoWrite todo per item" -> "Follow skill exactly";
+}
+```
+
+## Red Flags
+
+These thoughts mean STOP—you're rationalizing:
+
+| Thought | Reality |
+|---------|---------|
+| "This is just a simple question" | Questions are tasks. Check for skills. |
+| "I need more context first" | Skill check comes BEFORE clarifying questions. |
+| "Let me explore the codebase first" | Skills tell you HOW to explore. Check first. |
+| "I can check git/files quickly" | Files lack conversation context. Check for skills. |
+| "Let me gather information first" | Skills tell you HOW to gather information. |
+| "This doesn't need a formal skill" | If a skill exists, use it. |
+| "I remember this skill" | Skills evolve. Read current version. |
+| "This doesn't count as a task" | Action = task. Check for skills. |
+| "The skill is overkill" | Simple things become complex. Use it. |
+| "I'll just do this one thing first" | Check BEFORE doing anything. |
+| "This feels productive" | Undisciplined action wastes time. Skills prevent this. |
+| "I know what that means" | Knowing the concept ≠ using the skill. Invoke it. |
+
+## Skill Priority
+
+When multiple skills could apply, use this order:
+
+1. **Process skills first** (brainstorming, debugging) - these determine HOW to approach the task
+2. **Implementation skills second** (frontend-design, mcp-builder) - these guide execution
+
+"Let's build X" → brainstorming first, then implementation skills.
+"Fix this bug" → debugging first, then domain-specific skills.
+
+## Skill Types
+
+**Rigid** (TDD, debugging): Follow exactly. Don't adapt away discipline.
+
+**Flexible** (patterns): Adapt principles to context.
+
+The skill itself tells you which.
+
+## User Instructions
+
+Instructions say WHAT, not HOW. "Add X" or "Fix Y" doesn't mean skip workflows.
+
+codex
+I’m using `superpowers:using-superpowers` for required workflow discipline, and `superpowers:verification-before-completion` because the requested output is a pass/fail gate that must be backed by inspected evidence. I’ll stay read-only and focus on the R1 closure list plus the R2 asymmetry hunt.
+exec
+/bin/bash -lc "sed -n '1,260p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/f95024a0/skills/verification-before-completion/SKILL.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+---
+name: verification-before-completion
+description: Use when about to claim work is complete, fixed, or passing, before committing or creating PRs - requires running verification commands and confirming output before making any success claims; evidence before assertions always
+---
+
+# Verification Before Completion
+
+## Overview
+
+Claiming work is complete without verification is dishonesty, not efficiency.
+
+**Core principle:** Evidence before claims, always.
+
+**Violating the letter of this rule is violating the spirit of this rule.**
+
+## The Iron Law
+
+```
+NO COMPLETION CLAIMS WITHOUT FRESH VERIFICATION EVIDENCE
+```
+
+If you haven't run the verification command in this message, you cannot claim it passes.
+
+## The Gate Function
+
+```
+BEFORE claiming any status or expressing satisfaction:
+
+1. IDENTIFY: What command proves this claim?
+2. RUN: Execute the FULL command (fresh, complete)
+3. READ: Full output, check exit code, count failures
+4. VERIFY: Does output confirm the claim?
+   - If NO: State actual status with evidence
+   - If YES: State claim WITH evidence
+5. ONLY THEN: Make the claim
+
+Skip any step = lying, not verifying
+```
+
+## Common Failures
+
+| Claim | Requires | Not Sufficient |
+|-------|----------|----------------|
+| Tests pass | Test command output: 0 failures | Previous run, "should pass" |
+| Linter clean | Linter output: 0 errors | Partial check, extrapolation |
+| Build succeeds | Build command: exit 0 | Linter passing, logs look good |
+| Bug fixed | Test original symptom: passes | Code changed, assumed fixed |
+| Regression test works | Red-green cycle verified | Test passes once |
+| Agent completed | VCS diff shows changes | Agent reports "success" |
+| Requirements met | Line-by-line checklist | Tests passing |
+
+## Red Flags - STOP
+
+- Using "should", "probably", "seems to"
+- Expressing satisfaction before verification ("Great!", "Perfect!", "Done!", etc.)
+- About to commit/push/PR without verification
+- Trusting agent success reports
+- Relying on partial verification
+- Thinking "just this once"
+- Tired and wanting work over
+- **ANY wording implying success without having run verification**
+
+## Rationalization Prevention
+
+| Excuse | Reality |
+|--------|---------|
+| "Should work now" | RUN the verification |
+| "I'm confident" | Confidence ≠ evidence |
+| "Just this once" | No exceptions |
+| "Linter passed" | Linter ≠ compiler |
+| "Agent said success" | Verify independently |
+| "I'm tired" | Exhaustion ≠ excuse |
+| "Partial check is enough" | Partial proves nothing |
+| "Different words so rule doesn't apply" | Spirit over letter |
+
+## Key Patterns
+
+**Tests:**
+```
+✅ [Run test command] [See: 34/34 pass] "All tests pass"
+❌ "Should pass now" / "Looks correct"
+```
+
+**Regression tests (TDD Red-Green):**
+```
+✅ Write → Run (pass) → Revert fix → Run (MUST FAIL) → Restore → Run (pass)
+❌ "I've written a regression test" (without red-green verification)
+```
+
+**Build:**
+```
+✅ [Run build] [See: exit 0] "Build passes"
+❌ "Linter passed" (linter doesn't check compilation)
+```
+
+**Requirements:**
+```
+✅ Re-read plan → Create checklist → Verify each → Report gaps or completion
+❌ "Tests pass, phase complete"
+```
+
+**Agent delegation:**
+```
+✅ Agent reports success → Check VCS diff → Verify changes → Report actual state
+❌ Trust agent report
+```
+
+## Why This Matters
+
+From 24 failure memories:
+- your human partner said "I don't believe you" - trust broken
+- Undefined functions shipped - would crash
+- Missing requirements shipped - incomplete features
+- Time wasted on false completion → redirect → rework
+- Violates: "Honesty is a core value. If you lie, you'll be replaced."
+
+## When To Apply
+
+**ALWAYS before:**
+- ANY variation of success/completion claims
+- ANY expression of satisfaction
+- ANY positive statement about work state
+- Committing, PR creation, task completion
+- Moving to next task
+- Delegating to agents
+
+**Rule applies to:**
+- Exact phrases
+- Paraphrases and synonyms
+- Implications of success
+- ANY communication suggesting completion/correctness
+
+## The Bottom Line
+
+**No shortcuts for verification.**
+
+Run the command. Read the output. THEN claim the result.
+
+This is non-negotiable.
+
+codex
+I’ll first establish the exact changed surface and read the prior R1 findings, then inspect the implementation, tests, and contract text against each requested gate item. After that I’ll run the package’s verification command if the repo exposes one that is safe in read-only mode.
+exec
+/bin/bash -lc 'git status --short' in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1,260p' docs/audits/codex-runs/2026-04-30-task-F-pr-gate.txt" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+Reading additional input from stdin...
+OpenAI Codex v0.125.0 (research preview)
+--------
+workdir: /home/weiyi/selfKnowledgeBaseWeb
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: xhigh
+reasoning summaries: none
+session id: 019ddfd3-1b0c-7582-bbf6-e575d2e66b42
+--------
+user
+你是 pr-gate profile (gpt-5.5)。深审 SelfKnowledgeBaseWeb Wave 2 Task #9 (F: kernel-pyodide PyodideAdapter)。
+
+## Bundle (working tree)
+**仅审 packages/kernel-pyodide/ + root tsconfig.json + pnpm-lock.yaml**
+
+13 new + 2 modified files。Source size 总 266 lines (max session.ts 92)，全 < 200 lines。
+
+## 不审范围
+- scripts/* (I2 / FIX-I2 不属本 PR)
+
+## 触发链
+ADR-0007 D2 row 1 (新 CONTRACT.md + 第一个 KernelAdapter consumer = Wave 2 critical surface) → 你 pr-gate 深审层。
+
+## 你必做（独立 verdict）
+
+### 1. ADR-0006 8-point checklist 全 8 项独立审
+
+重点：
+- **item #4 consumer schema**: kernel-pyodide.src/* import KernelAdapter / KernelSession / KernelEvent / KernelCapabilities / KernelError 全部来源 @skb/kernel-adapter；任何 inline 重定义 → FAIL。errors.ts 的 KernelImportError extends KernelError 是否符合 kernel-adapter CONTRACT 'adapters MAY define subclasses non-breaking' (cite kernel-adapter/CONTRACT.md 实际行号 verify)
+- **item #5 算法/常量复刻**: capabilities.libraries 三处复刻 (adapter.ts:11 + boot.ts:7 + CONTRACT.md) 是否真 byte-equivalent (用 grep 实际验证); adapter.test.ts:37 regression test 是否真 lock byte-equivalence
+- **item #6 sister-doc**: kernel-pyodide/CONTRACT.md vs kernel-adapter/CONTRACT.md 不仅术语一致，且 6 KernelEvent variants 名 + 5 KernelError 名 byte-aligned; 'Adapters MAY define subclasses' 条款引用方式与 kernel-adapter CONTRACT 现行措辞一致 (verify hand-craft)
+- **item #7 try/catch scope**: boot.ts loadPyodide / loadPackage 两个 try/catch 是否真 narrow (避免 wide catch 误捕)；session.ts runCode error path 是否在 catch 后才 emit error event (避免 nested-emission)
+- **item #8 authority → consumer**: package.json deps (@skb/kernel-adapter workspace:*) + tsconfig refs (../kernel-adapter) + root tsconfig 加 ./packages/kernel-pyodide 三处一致；ADR-0008 D1 'no dead-deps' rule satisfied (deps 必有 source import)；pnpm-lock.yaml 仅 pyodide + ws transitive，无 phantom
+
+### 2. 8th-class hunt
+- KernelEvent 6 variants emit 路径完整性：status (idle/busy bookends in session.ts) + stdout/stderr (boot.ts hooks pyodide.setStdout/setStderr) + display_data (host emits during runCode) + execute_result (session.ts wraps host return) + error (session.ts catches → toErrorEvent helper)。任一 path missing 是 FAIL
+- 5 KernelError types: 4 from kernel-adapter (KernelStartupError boot.ts:30 / KernelShutdownError session.ts:13/24 / KernelInterruptError session.ts:21 / KernelTimeoutError reserved) + 1 adapter-local KernelImportError (errors.ts)。是否完整覆盖 kernel-adapter CONTRACT.md 列出的 5 KernelError concrete subclasses
+- PyodideHost swap point design 是否真隔离 Pyodide-specific concepts (boot.ts 应是唯一 import 'pyodide'; adapter.ts/session.ts 不应直接 reference Pyodide types)
+- matplotlib mock approach: PNG_BASE64 fixture inline + display_data event schema 形状验证；mime regex (image/png + text/plain) 严密度
+- pyodide@0.27.7 vs npm 上 0.27.x 最新版是否安全选择
+- Worker thread 决策 defer Wave 3 是否真合理；PyodideHost 接口足够 Wave 3 swap (vs 改 KernelAdapter / KernelSession)
+- adapter.test.ts:14-18 + session.test.ts makeHost helper + matplotlib.test.ts mockMatplotlibHost 三处 mock factory 模式是否 sister-aligned (test 风格 / setup helper / fixture 风格)
+
+### 3. 跨包影响审
+- packages/kernel-pyodide/ 是新 package；root tsconfig.json reference 添加正确（alphabetical）
+- pnpm-lock.yaml 91 lines pyodide deps clean；无 cross-task 污染（I2/FIX-I2 不动 lockfile）
+- packages/kernel-registry 是 future consumer (Wave 3) — 本 PR 不应 modify；verify
+
+## verdict 要求
+- PASS / FAIL
+- asymmetry-audit applied: items {1..8} verdicts (含 8th-class hunt findings)
+- BLOCKING / CONCERN / OBSERVATION 分类列举
+
+输出。开始。
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the vendored bubblewrap in the meantime.
+codex
+我会按 `pr-gate` 深审口径做只读审查；先读取相关合同、包文件、测试和 lockfile，再逐项给出独立 verdict。
+exec
+/bin/bash -lc "sed -n '1,220p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/f95024a0/skills/using-superpowers/SKILL.md && sed -n '1,220p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/f95024a0/skills/verification-before-completion/SKILL.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 104ms:
+---
+name: using-superpowers
+description: Use when starting any conversation - establishes how to find and use skills, requiring Skill tool invocation before ANY response including clarifying questions
+---
+
+<SUBAGENT-STOP>
+If you were dispatched as a subagent to execute a specific task, skip this skill.
+</SUBAGENT-STOP>
+
+<EXTREMELY-IMPORTANT>
+If you think there is even a 1% chance a skill might apply to what you are doing, you ABSOLUTELY MUST invoke the skill.
+
+IF A SKILL APPLIES TO YOUR TASK, YOU DO NOT HAVE A CHOICE. YOU MUST USE IT.
+
+This is not negotiable. This is not optional. You cannot rationalize your way out of this.
+</EXTREMELY-IMPORTANT>
+
+## Instruction Priority
+
+Superpowers skills override default system prompt behavior, but **user instructions always take precedence**:
+
+1. **User's explicit instructions** (CLAUDE.md, GEMINI.md, AGENTS.md, direct requests) — highest priority
+2. **Superpowers skills** — override default system behavior where they conflict
+3. **Default system prompt** — lowest priority
+
+If CLAUDE.md, GEMINI.md, or AGENTS.md says "don't use TDD" and a skill says "always use TDD," follow the user's instructions. The user is in control.
+
+## How to Access Skills
+
+**In Claude Code:** Use the `Skill` tool. When you invoke a skill, its content is loaded and presented to you—follow it directly. Never use the Read tool on skill files.
+
+**In Copilot CLI:** Use the `skill` tool. Skills are auto-discovered from installed plugins. The `skill` tool works the same as Claude Code's `Skill` tool.
+
+**In Gemini CLI:** Skills activate via the `activate_skill` tool. Gemini loads skill metadata at session start and activates the full content on demand.
+
+**In other environments:** Check your platform's documentation for how skills are loaded.
+
+## Platform Adaptation
+
+Skills use Claude Code tool names. Non-CC platforms: see `references/copilot-tools.md` (Copilot CLI), `references/codex-tools.md` (Codex) for tool equivalents. Gemini CLI users get the tool mapping loaded automatically via GEMINI.md.
+
+# Using Skills
+
+## The Rule
+
+**Invoke relevant or requested skills BEFORE any response or action.** Even a 1% chance a skill might apply means that you should invoke the skill to check. If an invoked skill turns out to be wrong for the situation, you don't need to use it.
+
+```dot
+digraph skill_flow {
+    "User message received" [shape=doublecircle];
+    "About to EnterPlanMode?" [shape=doublecircle];
+    "Already brainstormed?" [shape=diamond];
+    "Invoke brainstorming skill" [shape=box];
+    "Might any skill apply?" [shape=diamond];
+    "Invoke Skill tool" [shape=box];
+    "Announce: 'Using [skill] to [purpose]'" [shape=box];
+    "Has checklist?" [shape=diamond];
+    "Create TodoWrite todo per item" [shape=box];
+    "Follow skill exactly" [shape=box];
+    "Respond (including clarifications)" [shape=doublecircle];
+
+    "About to EnterPlanMode?" -> "Already brainstormed?";
+    "Already brainstormed?" -> "Invoke brainstorming skill" [label="no"];
+    "Already brainstormed?" -> "Might any skill apply?" [label="yes"];
+    "Invoke brainstorming skill" -> "Might any skill apply?";
+
+    "User message received" -> "Might any skill apply?";
+    "Might any skill apply?" -> "Invoke Skill tool" [label="yes, even 1%"];
+    "Might any skill apply?" -> "Respond (including clarifications)" [label="definitely not"];
+    "Invoke Skill tool" -> "Announce: 'Using [skill] to [purpose]'";
+    "Announce: 'Using [skill] to [purpose]'" -> "Has checklist?";
+    "Has checklist?" -> "Create TodoWrite todo per item" [label="yes"];
+    "Has checklist?" -> "Follow skill exactly" [label="no"];
+    "Create TodoWrite todo per item" -> "Follow skill exactly";
+}
+```
+
+## Red Flags
+
+These thoughts mean STOP—you're rationalizing:
+
+| Thought | Reality |
+|---------|---------|
+| "This is just a simple question" | Questions are tasks. Check for skills. |
+| "I need more context first" | Skill check comes BEFORE clarifying questions. |
+| "Let me explore the codebase first" | Skills tell you HOW to explore. Check first. |
+| "I can check git/files quickly" | Files lack conversation context. Check for skills. |
+| "Let me gather information first" | Skills tell you HOW to gather information. |
+| "This doesn't need a formal skill" | If a skill exists, use it. |
+| "I remember this skill" | Skills evolve. Read current version. |
+| "This doesn't count as a task" | Action = task. Check for skills. |
+| "The skill is overkill" | Simple things become complex. Use it. |
+| "I'll just do this one thing first" | Check BEFORE doing anything. |
+| "This feels productive" | Undisciplined action wastes time. Skills prevent this. |
+| "I know what that means" | Knowing the concept ≠ using the skill. Invoke it. |
+
+## Skill Priority
+
+When multiple skills could apply, use this order:
+
+1. **Process skills first** (brainstorming, debugging) - these determine HOW to approach the task
+2. **Implementation skills second** (frontend-design, mcp-builder) - these guide execution
+
+"Let's build X" → brainstorming first, then implementation skills.
+"Fix this bug" → debugging first, then domain-specific skills.
+
+## Skill Types
+
+**Rigid** (TDD, debugging): Follow exactly. Don't adapt away discipline.
+
+**Flexible** (patterns): Adapt principles to context.
+
+The skill itself tells you which.
+
+## User Instructions
+
+Instructions say WHAT, not HOW. "Add X" or "Fix Y" doesn't mean skip workflows.
+---
+name: verification-before-completion
+description: Use when about to claim work is complete, fixed, or passing, before committing or creating PRs - requires running verification commands and confirming output before making any success claims; evidence before assertions always
+---
+
+# Verification Before Completion
+
+## Overview
+
+Claiming work is complete without verification is dishonesty, not efficiency.
+
+**Core principle:** Evidence before claims, always.
+
+**Violating the letter of this rule is violating the spirit of this rule.**
+
+## The Iron Law
+
+```
+NO COMPLETION CLAIMS WITHOUT FRESH VERIFICATION EVIDENCE
+```
+
+If you haven't run the verification command in this message, you cannot claim it passes.
+
+## The Gate Function
+
+```
+BEFORE claiming any status or expressing satisfaction:
+
+1. IDENTIFY: What command proves this claim?
+2. RUN: Execute the FULL command (fresh, complete)
+3. READ: Full output, check exit code, count failures
+4. VERIFY: Does output confirm the claim?
+   - If NO: State actual status with evidence
+   - If YES: State claim WITH evidence
+5. ONLY THEN: Make the claim
+
+Skip any step = lying, not verifying
+```
+
+## Common Failures
+
+| Claim | Requires | Not Sufficient |
+|-------|----------|----------------|
+| Tests pass | Test command output: 0 failures | Previous run, "should pass" |
+| Linter clean | Linter output: 0 errors | Partial check, extrapolation |
+| Build succeeds | Build command: exit 0 | Linter passing, logs look good |
+| Bug fixed | Test original symptom: passes | Code changed, assumed fixed |
+| Regression test works | Red-green cycle verified | Test passes once |
+| Agent completed | VCS diff shows changes | Agent reports "success" |
+| Requirements met | Line-by-line checklist | Tests passing |
+
+## Red Flags - STOP
+
+- Using "should", "probably", "seems to"
+- Expressing satisfaction before verification ("Great!", "Perfect!", "Done!", etc.)
+- About to commit/push/PR without verification
+- Trusting agent success reports
+- Relying on partial verification
+- Thinking "just this once"
+- Tired and wanting work over
+- **ANY wording implying success without having run verification**
+
+## Rationalization Prevention
+
+| Excuse | Reality |
+|--------|---------|
+| "Should work now" | RUN the verification |
+| "I'm confident" | Confidence ≠ evidence |
+| "Just this once" | No exceptions |
+| "Linter passed" | Linter ≠ compiler |
+| "Agent said success" | Verify independently |
+| "I'm tired" | Exhaustion ≠ excuse |
+| "Partial check is enough" | Partial proves nothing |
+| "Different words so rule doesn't apply" | Spirit over letter |
+
+## Key Patterns
+
+**Tests:**
+```
+✅ [Run test command] [See: 34/34 pass] "All tests pass"
+
+exec
+/bin/bash -lc 'git diff -- packages/kernel-pyodide' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+ succeeded in 102ms:
+codex
+The package is currently untracked, so `git diff -- packages/kernel-pyodide` is empty. I’m switching to direct file reads for the package surface and will treat the working tree files as the review bundle.
+exec
+/bin/bash -lc 'rg --files packages/kernel-pyodide' in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc 'tail -n 180 docs/audits/codex-runs/2026-04-30-task-F-pr-gate.txt' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+packages/kernel-pyodide/src/__tests__/adapter.test.ts:2:import type { KernelAdapter, KernelEvent, KernelSession } from '@skb/kernel-adapter';
+
+exec
+/bin/bash -lc 'pnpm --filter @skb/kernel-pyodide lint' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 2756ms:
+
+> @skb/kernel-pyodide@0.0.0 lint /home/weiyi/selfKnowledgeBaseWeb/packages/kernel-pyodide
+> eslint .
+
+
+exec
+/bin/bash -lc 'git status --short -- packages/kernel-pyodide tsconfig.json pnpm-lock.yaml packages/kernel-registry' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+ M pnpm-lock.yaml
+ M tsconfig.json
+?? packages/kernel-pyodide/
+
+exec
+/bin/bash -lc "rg -n \"packages/kernel-pyodide|pyodide@0\\.27\\.7|ws@8\\.20\\.0|pyodide:|specifier: \\"'^0'"\\.27\\.0|version: 0\\.27\\.7\" pnpm-lock.yaml" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+228:  packages/kernel-pyodide:
+233:      pyodide:
+234:        specifier: ^0.27.0
+235:        version: 0.27.7
+3111:  pyodide@0.27.7:
+3882:  ws@8.20.0:
+7177:  pyodide@0.27.7:
+8042:  ws@8.20.0: {}
+
+exec
+/bin/bash -lc 'rg -n "packages/kernel-registry|@skb/kernel-pyodide|kernel-pyodide|KernelRegistry" packages/kernel-registry packages/kernel-pyodide tsconfig.json pnpm-lock.yaml' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+pnpm-lock.yaml:228:  packages/kernel-pyodide:
+pnpm-lock.yaml:244:  packages/kernel-registry:
+tsconfig.json:16:    { "path": "./packages/kernel-pyodide" },
+tsconfig.json:17:    { "path": "./packages/kernel-registry" },
+packages/kernel-registry/src/index.ts:1:export { KernelRegistry } from './registry';
+packages/kernel-registry/src/registry.ts:3:export class KernelRegistry {
+packages/kernel-registry/CONTRACT.md:5:- `KernelRegistry` class — `register` / `get` / `list` / `startSession`
+packages/kernel-registry/src/__tests__/registry.test.ts:3:import { KernelRegistry } from '../registry';
+packages/kernel-registry/src/__tests__/registry.test.ts:28:describe('KernelRegistry', () => {
+packages/kernel-registry/src/__tests__/registry.test.ts:30:    const reg = new KernelRegistry();
+packages/kernel-registry/src/__tests__/registry.test.ts:37:    const reg = new KernelRegistry();
+packages/kernel-registry/src/__tests__/registry.test.ts:42:    const reg = new KernelRegistry();
+packages/kernel-registry/src/__tests__/registry.test.ts:51:    const reg = new KernelRegistry();
+packages/kernel-registry/src/__tests__/registry.test.ts:57:    const reg = new KernelRegistry();
+packages/kernel-registry/src/__tests__/registry.test.ts:66:    const reg = new KernelRegistry();
+packages/kernel-pyodide/package.json:2:  "name": "@skb/kernel-pyodide",
+packages/kernel-pyodide/CONTRACT.md:1:# @skb/kernel-pyodide Contract
+
+exec
+/bin/bash -lc 'rg -n "display_data|image/png|text/plain|PNG_BASE64|toMatch" packages/kernel-pyodide/src/__tests__/matplotlib.test.ts packages/kernel-pyodide/src packages/kernel-adapter/src/adapter.ts' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+packages/kernel-adapter/src/adapter.ts:4:  | { type: 'display_data'; data: Record<string, unknown> }
+packages/kernel-pyodide/src/__tests__/matplotlib.test.ts:8: * verifies the `display_data` KernelEvent schema shape. Real Pyodide CDN
+packages/kernel-pyodide/src/__tests__/matplotlib.test.ts:13:const PNG_BASE64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+packages/kernel-pyodide/src/__tests__/matplotlib.test.ts:19:        type: 'display_data',
+packages/kernel-pyodide/src/__tests__/matplotlib.test.ts:21:          'image/png': PNG_BASE64,
+packages/kernel-pyodide/src/__tests__/matplotlib.test.ts:22:          'text/plain': '<Figure size 640x480 with 1 Axes>',
+packages/kernel-pyodide/src/__tests__/matplotlib.test.ts:32:describe('matplotlib display_data event schema (mocked Pyodide)', () => {
+packages/kernel-pyodide/src/__tests__/matplotlib.test.ts:33:  it('emits display_data event with image/png mime + base64 string when figure renders', async () => {
+packages/kernel-pyodide/src/__tests__/matplotlib.test.ts:39:    const display = events.find((e) => e.type === 'display_data');
+packages/kernel-pyodide/src/__tests__/matplotlib.test.ts:41:    if (display?.type !== 'display_data') throw new Error('expected display_data');
+packages/kernel-pyodide/src/__tests__/matplotlib.test.ts:42:    const png = display.data['image/png'];
+packages/kernel-pyodide/src/__tests__/matplotlib.test.ts:43:    const txt = display.data['text/plain'];
+packages/kernel-pyodide/src/__tests__/matplotlib.test.ts:49:  it('display_data event sits between status:busy and status:idle bookends', async () => {
+packages/kernel-pyodide/src/__tests__/matplotlib.test.ts:55:    const displayIdx = events.findIndex((e) => e.type === 'display_data');
+packages/kernel-pyodide/src/__tests__/matplotlib.test.ts:60:  it('display_data.data is Record<string, unknown> (mime → payload map shape)', async () => {
+packages/kernel-pyodide/src/__tests__/matplotlib.test.ts:63:      if (e.type === 'display_data') {
+packages/kernel-pyodide/src/__tests__/matplotlib.test.ts:68:          expect(key).toMatch(/^[a-z]+\/[a-z0-9.+-]+$/);
+packages/kernel-pyodide/src/host.ts:7: * to `emit` (display_data / stdout / stderr) as the code runs, and resolves
+packages/kernel-pyodide/src/boot.ts:73:          : { 'text/plain': stringifyResult(value) };
+packages/kernel-pyodide/src/__tests__/session.test.ts:26:    const host = makeHost(() => Promise.resolve({ 'text/plain': '2' }));
+packages/kernel-pyodide/src/__tests__/session.test.ts:31:      { type: 'execute_result', data: { 'text/plain': '2' } },
+packages/kernel-pyodide/src/__tests__/matplotlib.test.ts:8: * verifies the `display_data` KernelEvent schema shape. Real Pyodide CDN
+packages/kernel-pyodide/src/__tests__/matplotlib.test.ts:13:const PNG_BASE64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+packages/kernel-pyodide/src/__tests__/matplotlib.test.ts:19:        type: 'display_data',
+packages/kernel-pyodide/src/__tests__/matplotlib.test.ts:21:          'image/png': PNG_BASE64,
+packages/kernel-pyodide/src/__tests__/matplotlib.test.ts:22:          'text/plain': '<Figure size 640x480 with 1 Axes>',
+packages/kernel-pyodide/src/__tests__/matplotlib.test.ts:32:describe('matplotlib display_data event schema (mocked Pyodide)', () => {
+packages/kernel-pyodide/src/__tests__/matplotlib.test.ts:33:  it('emits display_data event with image/png mime + base64 string when figure renders', async () => {
+packages/kernel-pyodide/src/__tests__/matplotlib.test.ts:39:    const display = events.find((e) => e.type === 'display_data');
+packages/kernel-pyodide/src/__tests__/matplotlib.test.ts:41:    if (display?.type !== 'display_data') throw new Error('expected display_data');
+packages/kernel-pyodide/src/__tests__/matplotlib.test.ts:42:    const png = display.data['image/png'];
+packages/kernel-pyodide/src/__tests__/matplotlib.test.ts:43:    const txt = display.data['text/plain'];
+packages/kernel-pyodide/src/__tests__/matplotlib.test.ts:49:  it('display_data event sits between status:busy and status:idle bookends', async () => {
+packages/kernel-pyodide/src/__tests__/matplotlib.test.ts:55:    const displayIdx = events.findIndex((e) => e.type === 'display_data');
+packages/kernel-pyodide/src/__tests__/matplotlib.test.ts:60:  it('display_data.data is Record<string, unknown> (mime → payload map shape)', async () => {
+packages/kernel-pyodide/src/__tests__/matplotlib.test.ts:63:      if (e.type === 'display_data') {
+packages/kernel-pyodide/src/__tests__/matplotlib.test.ts:68:          expect(key).toMatch(/^[a-z]+\/[a-z0-9.+-]+$/);
+
+exec
+/bin/bash -lc 'rg -n "KernelTimeoutError|timeout" packages/kernel-pyodide packages/kernel-adapter' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+packages/kernel-adapter/src/index.ts:13:  KernelTimeoutError,
+packages/kernel-adapter/src/errors.ts:33:export class KernelTimeoutError extends KernelError {
+packages/kernel-adapter/src/errors.ts:34:  readonly kind = 'timeout' as const;
+packages/kernel-adapter/src/__tests__/errors.test.ts:7:  KernelTimeoutError,
+packages/kernel-adapter/src/__tests__/errors.test.ts:16:      new KernelTimeoutError('boom'),
+packages/kernel-adapter/src/__tests__/errors.test.ts:28:    expect(new KernelTimeoutError('x').kind).toBe('timeout');
+packages/kernel-adapter/src/__tests__/errors.test.ts:33:    expect(new KernelTimeoutError('x').name).toBe('KernelTimeoutError');
+packages/kernel-adapter/src/__tests__/errors.test.ts:46:    expect(() => new KernelTimeoutError('ok')).not.toThrow();
+packages/kernel-adapter/CONTRACT.md:18:- `KernelTimeoutError` (`kind: 'timeout'`) — operation did not complete within adapter-specific deadline (Phase 2+ remote adapters; reusable in Wave 2 if Pyodide hangs)
+
+web search: 
+web search: 
+web search: 
+web search: registry.npmjs.org pyodide 0.27.7 0.27.6
+web search: 
+web search: https://pyodide.org/en/0.27.7/usage/downloading-and-deploying.html
+codex
+FAIL
+
+asymmetry-audit applied: items {1..8} verdicts:
+1 PASS/NA field audit
+2 NA status-code
+3 NA strictness
+4 PASS consumer schema imports from `@skb/kernel-adapter`; no inline `KernelEvent`/adapter schema found
+5 FAIL constants match now, but no regression test asserts `adapter.ts` libraries == `boot.ts` defaults
+6 FAIL sister-doc drift on error surface / subclass clause
+7 FAIL `startSession()` catch scope collapses import errors into startup errors
+8 PASS with caveat: deps/refs/lock align in working tree; staged index not verifiable from this review bundle
+
+**BLOCKING**
+- [adapter.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/kernel-pyodide/src/adapter.ts:33) catches `hostFactory.create()` and rewraps every non-`KernelStartupError` as `KernelStartupError`. That swallows [boot.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/kernel-pyodide/src/boot.ts:33) `KernelImportError`, contradicting [CONTRACT.md](/home/weiyi/selfKnowledgeBaseWeb/packages/kernel-pyodide/CONTRACT.md:32) which says `loadPackage` failures surface as `KernelImportError`.
+
+- [session.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/kernel-pyodide/src/session.ts:26) and [session.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/kernel-pyodide/src/session.ts:35) do not wrap host interrupt/shutdown failures. `kernel-adapter` defines `KernelInterruptError` / `KernelShutdownError` for those adapter-level failures in [CONTRACT.md](/home/weiyi/selfKnowledgeBaseWeb/packages/kernel-adapter/CONTRACT.md:16), and requires adapter non-event errors to extend `KernelError` in [CONTRACT.md](/home/weiyi/selfKnowledgeBaseWeb/packages/kernel-adapter/CONTRACT.md:29).
+
+- ADR-0006 item #5 is not actually locked. `['numpy', 'pandas', 'matplotlib']` is byte-equal in [adapter.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/kernel-pyodide/src/adapter.ts:7), [boot.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/kernel-pyodide/src/boot.ts:7), and [CONTRACT.md](/home/weiyi/selfKnowledgeBaseWeb/packages/kernel-pyodide/CONTRACT.md:11), but [adapter.test.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/kernel-pyodide/src/__tests__/adapter.test.ts:30) only asserts one literal. If `boot.ts` drifts, the test still passes.
+
+- ADR-0006 item #6 sister-doc drift: [kernel-pyodide/CONTRACT.md](/home/weiyi/selfKnowledgeBaseWeb/packages/kernel-pyodide/CONTRACT.md:40) cites an English “Adapters MAY...” clause as if it is in `kernel-adapter/CONTRACT.md`; the actual contract allowance is [kernel-adapter/CONTRACT.md](/home/weiyi/selfKnowledgeBaseWeb/packages/kernel-adapter/CONTRACT.md:29). Also `KernelTimeoutError` is listed by adapter authority at [kernel-adapter/CONTRACT.md](/home/weiyi/selfKnowledgeBaseWeb/packages/kernel-adapter/CONTRACT.md:18) but is absent from the pyodide error-surface doc.
+
+**CONCERN**
+- `display_data` is only proven through mock hosts. The session relay path is present, but default [boot.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/kernel-pyodide/src/boot.ts:67) does not emit real matplotlib `display_data`; it only wires stdout/stderr and final text/plain result.
+
+- [matplotlib.test.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/kernel-pyodide/src/__tests__/matplotlib.test.ts:68) checks a generic MIME regex, not strict expected keys or PNG base64 shape. Fine for schema smoke, weak for the claimed matplotlib path.
+
+**OBSERVATION**
+- `pyodide@0.27.7` is a coherent 0.27.x pin: Pyodide’s 0.27.7 docs publish the `v0.27.7/full/` CDN path, and npm shows package version `0.27.7`. Overall Pyodide has newer releases, so this is safe only as a deliberate 0.27.x track choice. Sources: Pyodide docs lines 91-112, npm package page lines 19 and 136-138.
+
+- Cross-package scope: `packages/kernel-registry` has no diff; root `tsconfig.json` adds `./packages/kernel-pyodide` between adapter and registry; `pnpm-lock.yaml` only adds `packages/kernel-pyodide`, `pyodide@0.27.7`, and `ws@8.20.0`.
+
+Verification run:
+`pnpm --filter @skb/kernel-pyodide typecheck` passed; `pnpm --filter @skb/kernel-pyodide lint` passed. `pnpm --filter @skb/kernel-pyodide test` could not run in this read-only sandbox because Vitest tried to write `.vite-temp`.
+2026-04-30T19:21:48.612850Z ERROR codex_core::session: failed to record rollout items: thread 019ddfd3-1b0c-7582-bbf6-e575d2e66b42 not found
+tokens used
+99,717
+FAIL
+
+asymmetry-audit applied: items {1..8} verdicts:
+1 PASS/NA field audit
+2 NA status-code
+3 NA strictness
+4 PASS consumer schema imports from `@skb/kernel-adapter`; no inline `KernelEvent`/adapter schema found
+5 FAIL constants match now, but no regression test asserts `adapter.ts` libraries == `boot.ts` defaults
+6 FAIL sister-doc drift on error surface / subclass clause
+7 FAIL `startSession()` catch scope collapses import errors into startup errors
+8 PASS with caveat: deps/refs/lock align in working tree; staged index not verifiable from this review bundle
+
+**BLOCKING**
+- [adapter.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/kernel-pyodide/src/adapter.ts:33) catches `hostFactory.create()` and rewraps every non-`KernelStartupError` as `KernelStartupError`. That swallows [boot.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/kernel-pyodide/src/boot.ts:33) `KernelImportError`, contradicting [CONTRACT.md](/home/weiyi/selfKnowledgeBaseWeb/packages/kernel-pyodide/CONTRACT.md:32) which says `loadPackage` failures surface as `KernelImportError`.
+
+- [session.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/kernel-pyodide/src/session.ts:26) and [session.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/kernel-pyodide/src/session.ts:35) do not wrap host interrupt/shutdown failures. `kernel-adapter` defines `KernelInterruptError` / `KernelShutdownError` for those adapter-level failures in [CONTRACT.md](/home/weiyi/selfKnowledgeBaseWeb/packages/kernel-adapter/CONTRACT.md:16), and requires adapter non-event errors to extend `KernelError` in [CONTRACT.md](/home/weiyi/selfKnowledgeBaseWeb/packages/kernel-adapter/CONTRACT.md:29).
+
+- ADR-0006 item #5 is not actually locked. `['numpy', 'pandas', 'matplotlib']` is byte-equal in [adapter.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/kernel-pyodide/src/adapter.ts:7), [boot.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/kernel-pyodide/src/boot.ts:7), and [CONTRACT.md](/home/weiyi/selfKnowledgeBaseWeb/packages/kernel-pyodide/CONTRACT.md:11), but [adapter.test.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/kernel-pyodide/src/__tests__/adapter.test.ts:30) only asserts one literal. If `boot.ts` drifts, the test still passes.
+
+- ADR-0006 item #6 sister-doc drift: [kernel-pyodide/CONTRACT.md](/home/weiyi/selfKnowledgeBaseWeb/packages/kernel-pyodide/CONTRACT.md:40) cites an English “Adapters MAY...” clause as if it is in `kernel-adapter/CONTRACT.md`; the actual contract allowance is [kernel-adapter/CONTRACT.md](/home/weiyi/selfKnowledgeBaseWeb/packages/kernel-adapter/CONTRACT.md:29). Also `KernelTimeoutError` is listed by adapter authority at [kernel-adapter/CONTRACT.md](/home/weiyi/selfKnowledgeBaseWeb/packages/kernel-adapter/CONTRACT.md:18) but is absent from the pyodide error-surface doc.
+
+**CONCERN**
+- `display_data` is only proven through mock hosts. The session relay path is present, but default [boot.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/kernel-pyodide/src/boot.ts:67) does not emit real matplotlib `display_data`; it only wires stdout/stderr and final text/plain result.
+
+- [matplotlib.test.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/kernel-pyodide/src/__tests__/matplotlib.test.ts:68) checks a generic MIME regex, not strict expected keys or PNG base64 shape. Fine for schema smoke, weak for the claimed matplotlib path.
+
+**OBSERVATION**
+- `pyodide@0.27.7` is a coherent 0.27.x pin: Pyodide’s 0.27.7 docs publish the `v0.27.7/full/` CDN path, and npm shows package version `0.27.7`. Overall Pyodide has newer releases, so this is safe only as a deliberate 0.27.x track choice. Sources: Pyodide docs lines 91-112, npm package page lines 19 and 136-138.
+
+- Cross-package scope: `packages/kernel-registry` has no diff; root `tsconfig.json` adds `./packages/kernel-pyodide` between adapter and registry; `pnpm-lock.yaml` only adds `packages/kernel-pyodide`, `pyodide@0.27.7`, and `ws@8.20.0`.
+
+Verification run:
+`pnpm --filter @skb/kernel-pyodide typecheck` passed; `pnpm --filter @skb/kernel-pyodide lint` passed. `pnpm --filter @skb/kernel-pyodide test` could not run in this read-only sandbox because Vitest tried to write `.vite-temp`.
+
+exec
+/bin/bash -lc "sed -n '1,260p' packages/kernel-pyodide/CONTRACT.md" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1,260p' packages/kernel-adapter/CONTRACT.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+# @skb/kernel-pyodide Contract
+
+Phase 1 唯一 `KernelAdapter` 实现。在浏览器内通过 Pyodide 运行 Python，零后端。
+默认 pre-load `numpy` / `pandas` / `matplotlib`（见 `capabilities.libraries`）；
+SymPy 等其他 Pyodide 兼容包需运行时通过 micropip 安装，不在 default libraries。
+
+## Public surface
+
+### Class
+
+- `PyodideAdapter implements KernelAdapter` — `id = 'pyodide'`，`capabilities`
+  暴露 `libraries: ['numpy', 'pandas', 'matplotlib']` / `gpu: false` /
+  `persistentState: true`；`startSession(sessionId)` 返回 `PyodideSession`
+- `PyodideSession implements KernelSession` — `execute(code)` /
+  `interrupt()` / `shutdown()`
+
+### Constructor options
+
+```ts
+new PyodideAdapter({
+  hostFactory?: PyodideHostFactory; // override (tests / Wave 3 worker)
+  boot?: { indexURL?: string; libraries?: readonly string[] };
+});
+```
+
+`hostFactory` 是 Wave 2 → Wave 3 的演进点：默认 factory 在当前线程
+`loadPyodide()`，Wave 3 将引入 `createWorkerHostFactory()` 把 Pyodide
+搬入 Web Worker（`SharedArrayBuffer` 中断 + 主线程不阻塞）。`KernelAdapter`
+公共契约不变。
+
+### Errors (typed throw surface)
+
+术语与 [@skb/kernel-adapter CONTRACT.md](../kernel-adapter/CONTRACT.md) §"Error
+classes" 同步（同 family；公开 surface 一致）：
+
+- `KernelStartupError`（继承自 `@skb/kernel-adapter`，`kind: 'startup'`）— Pyodide
+  加载失败（`startSession()` could not bring the kernel online）
+- `KernelImportError`（本包扩展子类，`kind: 'import'`）— `loadPackage` / micropip
+  install 失败（adapter-specific 子类，sister-aligned 与 kernel-adapter 同语）
+- `KernelShutdownError`（继承自 `@skb/kernel-adapter`，`kind: 'shutdown'`）—
+  shutdown 失败 OR 在已 shutdown session 上再次调用 `execute` / `shutdown`
+- `KernelInterruptError`（继承自 `@skb/kernel-adapter`，`kind: 'interrupt'`）—
+  interrupt 失败 OR 在已 shutdown session 上调用 `interrupt`
+- `KernelTimeoutError`（继承自 `@skb/kernel-adapter`，`kind: 'timeout'`）—
+  **reserved for future timeout-wired sessions; not currently emitted by
+  Wave 2 PyodideAdapter**（main-thread Pyodide 0.27.x 无 cancellation primitive；
+  Wave 3 worker-isolated host 引入 `SharedArrayBuffer` 中断后会用此）
+- 用户 Python 代码抛出的运行时异常**不**作为 throw，而是作为
+  `KernelEvent { type: 'error', ename, evalue, traceback }` 出现在事件流中
+  （`@skb/kernel-adapter` CONTRACT.md 规定）
+
+`KernelImportError` 是 `KernelError` 子类，调用方 `instanceof KernelError`
+仍可一次捕获。Per [@skb/kernel-adapter](../kernel-adapter/CONTRACT.md) §"Error
+classes": "Adapters MAY define their own subclasses (e.g. `RemoteAuthError
+extends KernelError`); adding new subclasses is non-breaking" — 即 sister-doc
+同款规则：所有 adapter 抛出的非-event 错误必须 `extends KernelError`，保证
+调用方 `instanceof KernelError` 一次捕获（无需 ADR）。
+
+## Event stream contract
+
+`PyodideSession.execute(code)` 产生的事件流满足以下不变量（与
+`@skb/kernel-adapter` 6-variant `KernelEvent` 同款字段）：
+
+- 首事件必为 `{ type: 'status', state: 'busy' }`
+- 末事件必为 `{ type: 'status', state: 'idle' }`
+- 中间按到达顺序产生 `stdout` / `stderr` / `display_data` 事件
+- 若代码产生返回值，在末 status 之前产生**单次** `execute_result`
+- 若代码抛出异常，在末 status 之前产生**单次** `error` 事件（不再产
+  `execute_result`）
+- `error` 事件字段：`ename`（异常类名）/ `evalue`（消息字符串）/
+  `traceback`（行数组，至少含 1 行）
+
+## Invariants
+
+- 6 个 `KernelEvent` 变体的字段按 `@skb/kernel-adapter` 公共类型导入，**不在本
+  包内 inline 重定义**（ADR-0006 item #4 consumer schema audit）
+- `PyodideAdapter.id` 字符串字面量 `'pyodide'` 必须与
+  `@skb/kernel-registry` 的 `register` 输入一致；本包是唯一权威
+- `capabilities.libraries` 必须与 `boot.ts` 默认 `loadPackage(...)` 列表
+  逐字相同（authority ↔ runtime-fact 同步；ADR-0006 item #5）；当前实现
+  `PYODIDE_LIBRARIES = DEFAULT_LIBS` 通过引用别名让漂移在结构上不可能，
+  并由 adapter.test.ts 的 `expect(PYODIDE_LIBRARIES).toBe(DEFAULT_LIBS)`
+  锁定（防御未来 revert 引入并行字面量）
+- `KernelImportError` 必须 `extends KernelError`（保证 `instanceof
+  KernelError` 一次捕获）
+
+## Test strategy
+
+- `adapter.test.ts`：TS-level 类型契约 + capability 字段 + `startSession`
+  返回值形状（mock host）
+- `session.test.ts`：6 event variants 流（status bookends / stdout / stderr /
+  execute_result / error / interrupt / shutdown lifecycle）
+- `matplotlib.test.ts`：mock `display_data` event schema 形状（mime types map +
+  payload 类型）。**真 Pyodide CDN 不在 CI 跑**（plan-challenger NICE 8 修订）：
+  - 集成层（本地手动）：`matplotlib.integration.test.ts`，`it.skipIf(process.env.CI)`
+  - E2E 层（Wave 4）：Playwright 跑真页面 + 真 CDN
+
+## Wave 3 evolution points
+
+- `boot.ts` 的 `wrapPyodide` 当前 `interrupt()` no-op；Wave 3 引入 worker host
+  时实现 `SharedArrayBuffer` 中断
+- `boot.ts` 当前在主线程 import；Wave 3 把 `loadPyodide` 搬入 Worker 通过
+  postMessage 中转事件流
+- 两次演进**均不改 `PyodideAdapter` / `PyodideSession` / `PyodideHost`
+  公共签名**（`PyodideHost` 是稳定 swap point）
+
+## Modifying this file
+
+- 加方法可任意；改 `PyodideAdapter` / `PyodideSession` 公共签名是契约破坏
+  （影响 `@skb/kernel-registry` 路由 + `block-jupyter` consumer）
+- `capabilities` 字段增删需同步 `@skb/kernel-adapter` `KernelCapabilities`
+  类型扩展（后者改动需 ADR）
+
+## Related
+
+- [@skb/kernel-adapter CONTRACT.md](../kernel-adapter/CONTRACT.md) — 接口权威
+- [@skb/kernel-registry CONTRACT.md](../kernel-registry/CONTRACT.md) — 路由层
+- [设计规格 §1.6 / §2.6](../../docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md)
+- [ADR-0001 §3.1](../../docs/decisions/ADR-0001-stack-selection.md) — 内核选型理由
+
+ succeeded in 0ms:
+# @skb/kernel-adapter Contract
+
+## Public surface
+
+### Types & interfaces
+
+- `KernelAdapter` interface — `id` / `capabilities` / `startSession()`
+- `KernelSession` interface — `execute()` / `interrupt()` / `shutdown()`
+- `KernelEvent` discriminated union — 6 type 覆盖 stdout/stderr/display/result/error/status
+- `KernelCapabilities` interface
+
+### Error classes (typed throw surface)
+
+- `KernelError` — abstract base; all adapter-thrown errors extend this so callers can catch with one `instanceof` check
+- `KernelStartupError` (`kind: 'startup'`) — `startSession()` could not bring the kernel online
+- `KernelShutdownError` (`kind: 'shutdown'`) — shutdown failed or invoked on already-shutdown session
+- `KernelInterruptError` (`kind: 'interrupt'`) — interrupt requested but adapter could not honor it
+- `KernelTimeoutError` (`kind: 'timeout'`) — operation did not complete within adapter-specific deadline (Phase 2+ remote adapters; reusable in Wave 2 if Pyodide hangs)
+
+In-band Python/runtime exceptions (e.g. user code raises) are NOT thrown — they
+arrive as `KernelEvent { type: 'error', ename, evalue, traceback }` on the
+event stream. Errors above are reserved for adapter-level failures.
+
+## Invariants
+
+- KernelEvent 必须保持 discriminated union（`type` 字段 literal）—— packages/kernel-pyodide 与未来 RemoteJupyterAdapter 都依赖此
+- `KernelEvent.type` 当前枚举：`stdout` · `stderr` · `display_data` · `execute_result` · `error` · `status`
+- 包内**只放 type / interface / error 类**，不放具体实现（实现归属各 adapter 包，例如 `@skb/kernel-pyodide`）
+- 所有 adapter 抛出的非-event 错误必须 `extends KernelError`（包括 adapter 自定义子类如 `RemoteAuthError`），保证调用方 `instanceof KernelError` 一次捕获
+
+## Implementations
+
+- Phase 1：`@skb/kernel-pyodide` (Wave 2)
+- Phase 2+：`@skb/kernel-remote-jupyter` 等
+
+## Modifying this file
+
+公共表面（`KernelAdapter` / `KernelSession` / `KernelCapabilities` / `KernelEvent` / `KernelError` 及其 4 个子类）的任何字段或方法增删改一律需 ADR — **包括添加 optional 字段、新增 KernelEvent 变体、新增 KernelError 子类**。spec §2.3 把 kernel-adapter 列为接口包，规则"改动需 ADR；全员同步"不区分 optional vs required。
+
+原因：`KernelAdapter` 接口 freeze 是 Wave 2 PyodideAdapter 与 Phase 2 RemoteJupyterAdapter 共同的契约基础；optional 字段会在 2+ 实现间产生兼容性矩阵，无 ADR 协调会引发漂移。同步范围：本文件 + kernel-registry + 全部已实现 adapter 包。
+
+## Related
+
+- [设计规格 §1.6 / §2.6](../../docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md)
+- [kernel-registry/CONTRACT.md](../kernel-registry/CONTRACT.md)
+
+ succeeded in 104ms:
+packages/kernel-pyodide/tsconfig.json
+packages/kernel-pyodide/vitest.config.ts
+packages/kernel-pyodide/CONTRACT.md
+packages/kernel-pyodide/package.json
+packages/kernel-pyodide/src/index.ts
+packages/kernel-pyodide/src/errors.ts
+packages/kernel-pyodide/src/adapter.ts
+packages/kernel-pyodide/src/session.ts
+packages/kernel-pyodide/src/host.ts
+packages/kernel-pyodide/src/boot.ts
+packages/kernel-pyodide/src/__tests__/session.test.ts
+packages/kernel-pyodide/src/__tests__/matplotlib.test.ts
+packages/kernel-pyodide/src/__tests__/adapter.test.ts
+
+codex
+I have the R1 blockers from the saved log. Next I’m reading the current R2 source and tests with line numbers so the verdict can cite the actual working tree, not the R1 state.
+exec
+/bin/bash -lc 'nl -ba packages/kernel-pyodide/src/adapter.ts' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	import type { KernelAdapter, KernelCapabilities, KernelSession } from '@skb/kernel-adapter';
+     2	import { KernelError, KernelStartupError } from '@skb/kernel-adapter';
+     3	import { createDefaultHostFactory, DEFAULT_LIBS, type PyodideBootOptions } from './boot';
+     4	import type { PyodideHostFactory } from './host';
+     5	import { PyodideSession } from './session';
+     6	
+     7	/**
+     8	 * Library list exposed via `capabilities.libraries`. Aliased to
+     9	 * `DEFAULT_LIBS` (boot.ts) to make adapter ↔ boot drift structurally
+    10	 * impossible — `capabilities.libraries` and the runtime `loadPackage`
+    11	 * call site share a single authority (ADR-0006 item #5).
+    12	 */
+    13	export const PYODIDE_LIBRARIES = DEFAULT_LIBS;
+    14	
+    15	export interface PyodideAdapterOptions {
+    16	  /** Override factory used by `startSession`. Pass a mock for tests. */
+    17	  hostFactory?: PyodideHostFactory;
+    18	  /** Forwarded to the default factory when `hostFactory` is not provided. */
+    19	  boot?: PyodideBootOptions;
+    20	}
+    21	
+    22	export class PyodideAdapter implements KernelAdapter {
+    23	  readonly id = 'pyodide';
+    24	  readonly capabilities: KernelCapabilities = {
+    25	    libraries: PYODIDE_LIBRARIES,
+    26	    gpu: false,
+    27	    persistentState: true,
+    28	  };
+    29	
+    30	  #factory: PyodideHostFactory;
+    31	
+    32	  constructor(options: PyodideAdapterOptions = {}) {
+    33	    this.#factory = options.hostFactory ?? createDefaultHostFactory(options.boot);
+    34	  }
+    35	
+    36	  async startSession(sessionId: string): Promise<KernelSession> {
+    37	    void sessionId;
+    38	    let host;
+    39	    try {
+    40	      host = await this.#factory.create();
+    41	    } catch (cause) {
+    42	      if (cause instanceof KernelError) throw cause;
+    43	      throw new KernelStartupError('PyodideAdapter.startSession failed', { cause });
+    44	    }
+    45	    return new PyodideSession(host);
+    46	  }
+    47	}
+
+exec
+/bin/bash -lc 'nl -ba packages/kernel-pyodide/src/session.ts' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	import type { KernelEvent, KernelSession } from '@skb/kernel-adapter';
+     2	import {
+     3	  KernelError,
+     4	  KernelInterruptError,
+     5	  KernelShutdownError,
+     6	} from '@skb/kernel-adapter';
+     7	import type { PyodideHost } from './host';
+     8	
+     9	export class PyodideSession implements KernelSession {
+    10	  #host: PyodideHost;
+    11	  #shutdown = false;
+    12	
+    13	  constructor(host: PyodideHost) {
+    14	    this.#host = host;
+    15	  }
+    16	
+    17	  execute(code: string): AsyncIterable<KernelEvent> {
+    18	    if (this.#shutdown) {
+    19	      throw new KernelShutdownError('execute() called on shutdown session');
+    20	    }
+    21	    return this.#run(code);
+    22	  }
+    23	
+    24	  async interrupt(): Promise<void> {
+    25	    if (this.#shutdown) {
+    26	      throw new KernelInterruptError('interrupt() called on shutdown session');
+    27	    }
+    28	    try {
+    29	      await this.#host.interrupt();
+    30	    } catch (cause) {
+    31	      if (cause instanceof KernelError) throw cause;
+    32	      throw new KernelInterruptError('PyodideSession.interrupt failed', { cause });
+    33	    }
+    34	  }
+    35	
+    36	  async shutdown(): Promise<void> {
+    37	    if (this.#shutdown) {
+    38	      throw new KernelShutdownError('shutdown() called twice');
+    39	    }
+    40	    this.#shutdown = true;
+    41	    try {
+    42	      await this.#host.shutdown();
+    43	    } catch (cause) {
+    44	      if (cause instanceof KernelError) throw cause;
+    45	      throw new KernelShutdownError('PyodideSession.shutdown failed', { cause });
+    46	    }
+    47	  }
+    48	
+    49	  async *#run(code: string): AsyncIterable<KernelEvent> {
+    50	    const queue: KernelEvent[] = [];
+    51	    let waiter: (() => void) | null = null;
+    52	    const emit = (event: KernelEvent): void => {
+    53	      queue.push(event);
+    54	      waiter?.();
+    55	      waiter = null;
+    56	    };
+    57	
+    58	    yield { type: 'status', state: 'busy' };
+    59	
+    60	    let runError: unknown;
+    61	    let hasRunError = false;
+    62	    let result: Record<string, unknown> | null = null;
+    63	    const done = this.#host
+    64	      .runCode(code, emit)
+    65	      .then((value) => {
+    66	        result = value;
+    67	      })
+    68	      .catch((err: unknown) => {
+    69	        runError = err;
+    70	        hasRunError = true;
+    71	      });
+    72	
+    73	    let settled = false;
+    74	    void done.finally(() => {
+    75	      settled = true;
+    76	      waiter?.();
+    77	      waiter = null;
+    78	    });
+    79	
+    80	    while (true) {
+    81	      if (queue.length > 0) {
+    82	        yield queue.shift()!;
+    83	        continue;
+    84	      }
+    85	      if (settled) break;
+    86	      await new Promise<void>((resolve) => {
+    87	        waiter = resolve;
+    88	      });
+    89	    }
+    90	
+    91	    if (hasRunError) {
+    92	      yield toErrorEvent(runError);
+    93	    } else if (result !== null) {
+    94	      yield { type: 'execute_result', data: result };
+    95	    }
+    96	    yield { type: 'status', state: 'idle' };
+    97	  }
+    98	}
+    99	
+   100	function toErrorEvent(err: unknown): KernelEvent {
+   101	  if (err instanceof Error) {
+   102	    const stack = err.stack ? err.stack.split('\n') : [err.message];
+   103	    return { type: 'error', ename: err.name, evalue: err.message, traceback: stack };
+   104	  }
+   105	  const evalue = stringifyNonError(err);
+   106	  return { type: 'error', ename: 'Error', evalue, traceback: [evalue] };
+   107	}
+   108	
+   109	function stringifyNonError(err: unknown): string {
+   110	  if (err === undefined) return 'undefined';
+   111	  if (err === null) return 'null';
+   112	  if (typeof err === 'string') return err;
+   113	  if (typeof err === 'number' || typeof err === 'boolean' || typeof err === 'bigint') {
+   114	    return String(err);
+   115	  }
+   116	  try {
+   117	    return JSON.stringify(err) ?? Object.prototype.toString.call(err);
+   118	  } catch {
+   119	    return Object.prototype.toString.call(err);
+   120	  }
+   121	}
+
+exec
+/bin/bash -lc 'nl -ba packages/kernel-pyodide/src/boot.ts' in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc 'nl -ba packages/kernel-pyodide/src/host.ts' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	import type { PyodideInterface } from 'pyodide';
+     2	import type { KernelEvent } from '@skb/kernel-adapter';
+     3	import { KernelStartupError } from '@skb/kernel-adapter';
+     4	import { KernelImportError } from './errors';
+     5	import type { PyodideHost, PyodideHostFactory } from './host';
+     6	
+     7	/**
+     8	 * Default libraries pre-loaded by `createDefaultHostFactory`. Exported so
+     9	 * the cross-file regression test can lock byte-equivalence with
+    10	 * `PYODIDE_LIBRARIES` in adapter.ts (ADR-0006 item #5).
+    11	 */
+    12	export const DEFAULT_LIBS = ['numpy', 'pandas', 'matplotlib'] as const;
+    13	
+    14	export interface PyodideBootOptions {
+    15	  indexURL?: string;
+    16	  libraries?: readonly string[];
+    17	}
+    18	
+    19	/**
+    20	 * Default factory boots real Pyodide (npm package) on the current thread.
+    21	 * Wave 3 will move this into a Worker; the host abstraction lets the
+    22	 * adapter swap implementations without changing PyodideAdapter or the
+    23	 * KernelAdapter contract.
+    24	 */
+    25	export function createDefaultHostFactory(opts: PyodideBootOptions = {}): PyodideHostFactory {
+    26	  return {
+    27	    async create(): Promise<PyodideHost> {
+    28	      const libraries = opts.libraries ?? DEFAULT_LIBS;
+    29	      let pyodide: PyodideInterface;
+    30	      try {
+    31	        const mod = await import('pyodide');
+    32	        pyodide = await mod.loadPyodide(
+    33	          opts.indexURL === undefined ? {} : { indexURL: opts.indexURL },
+    34	        );
+    35	      } catch (cause) {
+    36	        throw new KernelStartupError('failed to load Pyodide runtime', { cause });
+    37	      }
+    38	      try {
+    39	        await pyodide.loadPackage([...libraries]);
+    40	      } catch (cause) {
+    41	        throw new KernelImportError(
+    42	          `failed to load default libraries: ${libraries.join(', ')}`,
+    43	          { cause },
+    44	        );
+    45	      }
+    46	      return wrapPyodide(pyodide);
+    47	    },
+    48	  };
+    49	}
+    50	
+    51	function stringifyResult(value: unknown): string {
+    52	  if (typeof value === 'string') return value;
+    53	  if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
+    54	    return String(value);
+    55	  }
+    56	  try {
+    57	    return JSON.stringify(value) ?? Object.prototype.toString.call(value);
+    58	  } catch {
+    59	    return Object.prototype.toString.call(value);
+    60	  }
+    61	}
+    62	
+    63	function wrapPyodide(pyodide: PyodideInterface): PyodideHost {
+    64	  let activeEmit: ((event: KernelEvent) => void) | null = null;
+    65	  pyodide.setStdout({
+    66	    batched: (text: string) => activeEmit?.({ type: 'stdout', text }),
+    67	  });
+    68	  pyodide.setStderr({
+    69	    batched: (text: string) => activeEmit?.({ type: 'stderr', text }),
+    70	  });
+    71	  return {
+    72	    async runCode(code, emit) {
+    73	      activeEmit = emit;
+    74	      try {
+    75	        const value: unknown = await pyodide.runPythonAsync(code);
+    76	        return value === undefined || value === null
+    77	          ? null
+    78	          : { 'text/plain': stringifyResult(value) };
+    79	      } finally {
+    80	        activeEmit = null;
+    81	      }
+    82	    },
+    83	    interrupt() {
+    84	      // Main-thread Pyodide has no cancellation primitive in 0.27.x; Wave 3
+    85	      // worker-isolated host will implement SharedArrayBuffer interrupt.
+    86	    },
+    87	    shutdown() {
+    88	      // Single-host adapter has no per-session teardown surface in 0.27.x.
+    89	      return Promise.resolve();
+    90	    },
+    91	  };
+    92	}
+
+ succeeded in 0ms:
+     1	import type { KernelEvent } from '@skb/kernel-adapter';
+     2	
+     3	/**
+     4	 * Swap point between real Pyodide runtime and test mocks.
+     5	 *
+     6	 * `runCode` runs Python source. The host emits 0-N KernelEvent values
+     7	 * to `emit` (display_data / stdout / stderr) as the code runs, and resolves
+     8	 * with the final execute_result data (or null when the cell produced no value).
+     9	 * Errors raised by user Python code MUST be re-thrown so the session layer
+    10	 * can convert them to a single `error` KernelEvent — the host MUST NOT emit
+    11	 * `error` events itself.
+    12	 *
+    13	 * `interrupt` MAY no-op when the host has no cancellation primitive (Wave 2
+    14	 * main-thread Pyodide); the session layer still flips status back to idle.
+    15	 * Returning `Promise<void>` (Wave 3 worker host) is also allowed — session
+    16	 * awaits the result so async failures wrap into KernelInterruptError.
+    17	 */
+    18	export interface PyodideHost {
+    19	  runCode(
+    20	    code: string,
+    21	    emit: (event: KernelEvent) => void,
+    22	  ): Promise<Record<string, unknown> | null>;
+    23	  interrupt(): void | Promise<void>;
+    24	  shutdown(): Promise<void>;
+    25	}
+    26	
+    27	export interface PyodideHostFactory {
+    28	  create(): Promise<PyodideHost>;
+    29	}
+
+exec
+/bin/bash -lc 'nl -ba packages/kernel-pyodide/src/errors.ts' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	import { KernelError } from '@skb/kernel-adapter';
+     2	
+     3	/**
+     4	 * Pyodide-specific subclass for `micropip.install` / package import failures.
+     5	 *
+     6	 * Allowed by `@skb/kernel-adapter` CONTRACT.md: "Adapters MAY define their
+     7	 * own subclasses (e.g. RemoteAuthError extends KernelError); adding new
+     8	 * subclasses is non-breaking." Caller `instanceof KernelError` still catches.
+     9	 */
+    10	export class KernelImportError extends KernelError {
+    11	  readonly kind = 'import' as const;
+    12	}
+
+exec
+/bin/bash -lc 'nl -ba packages/kernel-pyodide/src/index.ts' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	export { PyodideAdapter } from './adapter';
+     2	export type { PyodideAdapterOptions } from './adapter';
+     3	export { PyodideSession } from './session';
+     4	export { createDefaultHostFactory } from './boot';
+     5	export type { PyodideBootOptions } from './boot';
+     6	export type { PyodideHost, PyodideHostFactory } from './host';
+     7	export { KernelImportError } from './errors';
+
+exec
+/bin/bash -lc 'nl -ba packages/kernel-pyodide/src/__tests__/matplotlib.test.ts' in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc 'nl -ba packages/kernel-pyodide/src/__tests__/adapter.test.ts' in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc 'nl -ba packages/kernel-pyodide/src/__tests__/session.test.ts' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	import { describe, it, expect } from 'vitest';
+     2	import type { KernelEvent } from '@skb/kernel-adapter';
+     3	import { PyodideSession } from '../session';
+     4	import type { PyodideHost } from '../host';
+     5	
+     6	/**
+     7	 * mock-based matplotlib smoke test (per plan-challenger NICE 8 revision):
+     8	 * verifies the `display_data` KernelEvent schema shape. Real Pyodide CDN
+     9	 * boot is intentionally NOT exercised here — that lives in the Wave 4
+    10	 * Playwright e2e layer to keep CI deterministic.
+    11	 */
+    12	
+    13	const PNG_BASE64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+    14	
+    15	function mockMatplotlibHost(): PyodideHost {
+    16	  return {
+    17	    runCode: (_code, emit) => {
+    18	      emit({
+    19	        type: 'display_data',
+    20	        data: {
+    21	          'image/png': PNG_BASE64,
+    22	          'text/plain': '<Figure size 640x480 with 1 Axes>',
+    23	        },
+    24	      });
+    25	      return Promise.resolve(null);
+    26	    },
+    27	    interrupt: () => {},
+    28	    shutdown: () => Promise.resolve(),
+    29	  };
+    30	}
+    31	
+    32	describe('matplotlib display_data event schema (mocked Pyodide)', () => {
+    33	  it('emits display_data event with image/png mime + base64 string when figure renders', async () => {
+    34	    const session = new PyodideSession(mockMatplotlibHost());
+    35	    const events: KernelEvent[] = [];
+    36	    for await (const e of session.execute('plt.plot([1,2,3]); plt.show()')) {
+    37	      events.push(e);
+    38	    }
+    39	    const display = events.find((e) => e.type === 'display_data');
+    40	    expect(display).toBeDefined();
+    41	    if (display?.type !== 'display_data') throw new Error('expected display_data');
+    42	    const png = display.data['image/png'];
+    43	    const txt = display.data['text/plain'];
+    44	    expect(typeof png).toBe('string');
+    45	    expect(typeof txt).toBe('string');
+    46	    expect((png as string).length).toBeGreaterThan(0);
+    47	    // PNG magic bytes 89 50 4e 47 = "\x89PNG" → base64 prefix "iVBORw0KGgo".
+    48	    // F R2 CONCERN C2: stricter than length>0 — locks the actual format.
+    49	    expect(png as string).toMatch(/^iVBORw0KGgo/);
+    50	    expect(display.data['text/plain']).toMatch(/^<Figure /);
+    51	  });
+    52	
+    53	  it('display_data data has exactly the expected mime keys (image/png + text/plain)', () => {
+    54	    // F R2 CONCERN C2: lock the strict expected key set so a future fixture
+    55	    // swap that drops image/png (the load-bearing payload for matplotlib)
+    56	    // would fail loud, not silently degrade.
+    57	    const session = new PyodideSession(mockMatplotlibHost());
+    58	    return (async () => {
+    59	      for await (const e of session.execute('plt.show()')) {
+    60	        if (e.type === 'display_data') {
+    61	          expect(Object.keys(e.data).sort()).toEqual(['image/png', 'text/plain']);
+    62	          return;
+    63	        }
+    64	      }
+    65	      throw new Error('no display_data event emitted');
+    66	    })();
+    67	  });
+    68	
+    69	  it('display_data event sits between status:busy and status:idle bookends', async () => {
+    70	    const session = new PyodideSession(mockMatplotlibHost());
+    71	    const events: KernelEvent[] = [];
+    72	    for await (const e of session.execute('plt.show()')) events.push(e);
+    73	    expect(events[0]).toEqual({ type: 'status', state: 'busy' });
+    74	    expect(events.at(-1)).toEqual({ type: 'status', state: 'idle' });
+    75	    const displayIdx = events.findIndex((e) => e.type === 'display_data');
+    76	    expect(displayIdx).toBeGreaterThan(0);
+    77	    expect(displayIdx).toBeLessThan(events.length - 1);
+    78	  });
+    79	
+    80	  it('display_data.data is Record<string, unknown> (mime → payload map shape)', async () => {
+    81	    const session = new PyodideSession(mockMatplotlibHost());
+    82	    for await (const e of session.execute('plt.show()')) {
+    83	      if (e.type === 'display_data') {
+    84	        expect(typeof e.data).toBe('object');
+    85	        expect(e.data).not.toBeNull();
+    86	        expect(Array.isArray(e.data)).toBe(false);
+    87	        for (const key of Object.keys(e.data)) {
+    88	          expect(key).toMatch(/^[a-z]+\/[a-z0-9.+-]+$/);
+    89	        }
+    90	      }
+    91	    }
+    92	  });
+    93	});
+
+ succeeded in 0ms:
+     1	import { describe, it, expect, expectTypeOf } from 'vitest';
+     2	import type { KernelAdapter, KernelEvent, KernelSession } from '@skb/kernel-adapter';
+     3	import { KernelStartupError } from '@skb/kernel-adapter';
+     4	import { PyodideAdapter, PYODIDE_LIBRARIES } from '../adapter';
+     5	import { DEFAULT_LIBS } from '../boot';
+     6	import { KernelImportError } from '../errors';
+     7	import type { PyodideHost, PyodideHostFactory } from '../host';
+     8	
+     9	const stubHost: PyodideHost = {
+    10	  runCode: () => Promise.resolve(null),
+    11	  interrupt: () => {},
+    12	  shutdown: () => Promise.resolve(),
+    13	};
+    14	
+    15	const stubFactory: PyodideHostFactory = {
+    16	  create: () => Promise.resolve(stubHost),
+    17	};
+    18	
+    19	describe('PyodideAdapter contract', () => {
+    20	  it('satisfies KernelAdapter interface (TS-level)', () => {
+    21	    expectTypeOf<PyodideAdapter>().toExtend<KernelAdapter>();
+    22	  });
+    23	
+    24	  it('startSession resolves to KernelSession', async () => {
+    25	    const adapter = new PyodideAdapter({ hostFactory: stubFactory });
+    26	    const session = await adapter.startSession('s1');
+    27	    expectTypeOf(session).toExtend<KernelSession>();
+    28	    expect(typeof session.execute).toBe('function');
+    29	    expect(typeof session.interrupt).toBe('function');
+    30	    expect(typeof session.shutdown).toBe('function');
+    31	  });
+    32	
+    33	  it('exposes id="pyodide" + capabilities including numpy/pandas/matplotlib + gpu=false + persistentState=true', () => {
+    34	    const adapter = new PyodideAdapter({ hostFactory: stubFactory });
+    35	    expect(adapter.id).toBe('pyodide');
+    36	    expect(adapter.capabilities.libraries).toEqual(['numpy', 'pandas', 'matplotlib']);
+    37	    expect(adapter.capabilities.gpu).toBe(false);
+    38	    expect(adapter.capabilities.persistentState).toBe(true);
+    39	  });
+    40	
+    41	  it('execute() returns AsyncIterable<KernelEvent>', async () => {
+    42	    const adapter = new PyodideAdapter({ hostFactory: stubFactory });
+    43	    const session = await adapter.startSession('s1');
+    44	    const iter = session.execute('1 + 1');
+    45	    expectTypeOf(iter).toExtend<AsyncIterable<KernelEvent>>();
+    46	    const events: KernelEvent[] = [];
+    47	    for await (const e of iter) events.push(e);
+    48	    expect(events.length).toBeGreaterThan(0);
+    49	  });
+    50	
+    51	  it('preserves KernelImportError thrown by factory (does not wrap as KernelStartupError)', async () => {
+    52	    // F R2 BLOCKING B1: boot.ts distinguishes Pyodide-binary failure
+    53	    // (KernelStartupError) from library-install failure (KernelImportError).
+    54	    // PyodideAdapter must preserve any KernelError subclass so consumers
+    55	    // (block-jupyter Wave 3) can branch retry logic on the typed throw.
+    56	    const importBoom = new KernelImportError('numpy install failed');
+    57	    const failingFactory: PyodideHostFactory = {
+    58	      create: () => Promise.reject(importBoom),
+    59	    };
+    60	    const adapter = new PyodideAdapter({ hostFactory: failingFactory });
+    61	    await expect(adapter.startSession('s1')).rejects.toBe(importBoom);
+    62	  });
+    63	
+    64	  it('preserves KernelStartupError thrown by factory (does not double-wrap)', async () => {
+    65	    const startupBoom = new KernelStartupError('Pyodide load failed');
+    66	    const failingFactory: PyodideHostFactory = {
+    67	      create: () => Promise.reject(startupBoom),
+    68	    };
+    69	    const adapter = new PyodideAdapter({ hostFactory: failingFactory });
+    70	    await expect(adapter.startSession('s1')).rejects.toBe(startupBoom);
+    71	  });
+    72	
+    73	  it('PYODIDE_LIBRARIES is alias of DEFAULT_LIBS (cross-file regression — ADR-0006 item #5)', () => {
+    74	    // F R2 BLOCKING B4: capabilities.libraries (adapter.ts) and the
+    75	    // runtime loadPackage list (boot.ts) MUST stay byte-equivalent.
+    76	    // Currently enforced structurally by aliasing (PYODIDE_LIBRARIES
+    77	    // = DEFAULT_LIBS); this test catches any future regression that
+    78	    // re-introduces a parallel literal.
+    79	    expect(PYODIDE_LIBRARIES).toBe(DEFAULT_LIBS);
+    80	    expect([...PYODIDE_LIBRARIES]).toEqual(['numpy', 'pandas', 'matplotlib']);
+    81	  });
+    82	
+    83	  it('wraps non-KernelError causes as KernelStartupError', async () => {
+    84	    const genericBoom = new Error('network down');
+    85	    const failingFactory: PyodideHostFactory = {
+    86	      create: () => Promise.reject(genericBoom),
+    87	    };
+    88	    const adapter = new PyodideAdapter({ hostFactory: failingFactory });
+    89	    await expect(adapter.startSession('s1')).rejects.toBeInstanceOf(KernelStartupError);
+    90	  });
+    91	});
+
+ succeeded in 0ms:
+     1	import { describe, it, expect } from 'vitest';
+     2	import type { KernelEvent } from '@skb/kernel-adapter';
+     3	import { KernelInterruptError, KernelShutdownError } from '@skb/kernel-adapter';
+     4	import { PyodideSession } from '../session';
+     5	import type { PyodideHost } from '../host';
+     6	
+     7	function makeHost(
+     8	  runCode: PyodideHost['runCode'],
+     9	  hooks: Partial<PyodideHost> = {},
+    10	): PyodideHost {
+    11	  return {
+    12	    runCode,
+    13	    interrupt: hooks.interrupt ?? (() => {}),
+    14	    shutdown: hooks.shutdown ?? (() => Promise.resolve()),
+    15	  };
+    16	}
+    17	
+    18	async function collect(iter: AsyncIterable<KernelEvent>): Promise<KernelEvent[]> {
+    19	  const out: KernelEvent[] = [];
+    20	  for await (const e of iter) out.push(e);
+    21	  return out;
+    22	}
+    23	
+    24	describe('PyodideSession.execute event stream', () => {
+    25	  it('emits status:busy → execute_result → status:idle for value-producing code', async () => {
+    26	    const host = makeHost(() => Promise.resolve({ 'text/plain': '2' }));
+    27	    const session = new PyodideSession(host);
+    28	    const events = await collect(session.execute('1+1'));
+    29	    expect(events).toEqual([
+    30	      { type: 'status', state: 'busy' },
+    31	      { type: 'execute_result', data: { 'text/plain': '2' } },
+    32	      { type: 'status', state: 'idle' },
+    33	    ]);
+    34	  });
+    35	
+    36	  it('emits status:busy → status:idle for void code (no execute_result)', async () => {
+    37	    const host = makeHost(() => Promise.resolve(null));
+    38	    const session = new PyodideSession(host);
+    39	    const events = await collect(session.execute('x = 1'));
+    40	    expect(events).toEqual([
+    41	      { type: 'status', state: 'busy' },
+    42	      { type: 'status', state: 'idle' },
+    43	    ]);
+    44	  });
+    45	
+    46	  it('passes stdout / stderr emitted by host through in arrival order', async () => {
+    47	    const host = makeHost((_code, emit) => {
+    48	      emit({ type: 'stdout', text: 'hello\n' });
+    49	      emit({ type: 'stderr', text: 'warn\n' });
+    50	      emit({ type: 'stdout', text: 'world\n' });
+    51	      return Promise.resolve(null);
+    52	    });
+    53	    const session = new PyodideSession(host);
+    54	    const events = await collect(session.execute('print("hi")'));
+    55	    expect(events).toEqual([
+    56	      { type: 'status', state: 'busy' },
+    57	      { type: 'stdout', text: 'hello\n' },
+    58	      { type: 'stderr', text: 'warn\n' },
+    59	      { type: 'stdout', text: 'world\n' },
+    60	      { type: 'status', state: 'idle' },
+    61	    ]);
+    62	  });
+    63	
+    64	  it('converts host-thrown Python error into a single error KernelEvent then status:idle', async () => {
+    65	    const boom = new Error('NameError: name "x" is not defined');
+    66	    boom.name = 'PythonError';
+    67	    const host = makeHost(() => Promise.reject(boom));
+    68	    const session = new PyodideSession(host);
+    69	    const events = await collect(session.execute('x'));
+    70	    expect(events[0]).toEqual({ type: 'status', state: 'busy' });
+    71	    const errEvent = events[1];
+    72	    expect(errEvent?.type).toBe('error');
+    73	    if (errEvent?.type !== 'error') throw new Error('expected error event');
+    74	    expect(errEvent.ename).toBe('PythonError');
+    75	    expect(errEvent.evalue).toBe('NameError: name "x" is not defined');
+    76	    expect(Array.isArray(errEvent.traceback)).toBe(true);
+    77	    expect(events.at(-1)).toEqual({ type: 'status', state: 'idle' });
+    78	  });
+    79	
+    80	  it('emits error event when host rejects with undefined (sentinel-soundness regression)', async () => {
+    81	    // Promise.reject(undefined) is legal JS — using `runError !== undefined`
+    82	    // as a presence sentinel would silently drop the error. F R2 BLOCKING B2.
+    83	    // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors -- intentionally exercising the bad-actor rejection path
+    84	    const host = makeHost(() => Promise.reject(undefined));
+    85	    const session = new PyodideSession(host);
+    86	    const events = await collect(session.execute('boom'));
+    87	    expect(events[0]).toEqual({ type: 'status', state: 'busy' });
+    88	    const errEvent = events[1];
+    89	    expect(errEvent?.type).toBe('error');
+    90	    if (errEvent?.type !== 'error') throw new Error('expected error event');
+    91	    expect(errEvent.ename).toBe('Error');
+    92	    expect(errEvent.evalue).toBe('undefined');
+    93	    expect(errEvent.traceback).toEqual(['undefined']);
+    94	    expect(events.at(-1)).toEqual({ type: 'status', state: 'idle' });
+    95	  });
+    96	
+    97	  it('interrupt() delegates to host.interrupt()', async () => {
+    98	    let called = 0;
+    99	    const host = makeHost(
+   100	      () => Promise.resolve(null),
+   101	      { interrupt: () => void called++ },
+   102	    );
+   103	    const session = new PyodideSession(host);
+   104	    await session.interrupt();
+   105	    expect(called).toBe(1);
+   106	  });
+   107	
+   108	  it('shutdown() delegates to host.shutdown() and blocks subsequent execute()', async () => {
+   109	    let shutdownCalled = 0;
+   110	    const host = makeHost(() => Promise.resolve(null), {
+   111	      shutdown: () => {
+   112	        shutdownCalled++;
+   113	        return Promise.resolve();
+   114	      },
+   115	    });
+   116	    const session = new PyodideSession(host);
+   117	    await session.shutdown();
+   118	    expect(shutdownCalled).toBe(1);
+   119	    expect(() => session.execute('x')).toThrow(KernelShutdownError);
+   120	  });
+   121	
+   122	  it('shutdown() called twice throws KernelShutdownError', async () => {
+   123	    const session = new PyodideSession(makeHost(() => Promise.resolve(null)));
+   124	    await session.shutdown();
+   125	    await expect(session.shutdown()).rejects.toBeInstanceOf(KernelShutdownError);
+   126	  });
+   127	
+   128	  it('interrupt() on shutdown session throws KernelInterruptError', async () => {
+   129	    const session = new PyodideSession(makeHost(() => Promise.resolve(null)));
+   130	    await session.shutdown();
+   131	    await expect(session.interrupt()).rejects.toBeInstanceOf(KernelInterruptError);
+   132	  });
+   133	
+   134	  it('wraps host interrupt failure as KernelInterruptError (F R2 BLOCKING B3)', async () => {
+   135	    const host = makeHost(() => Promise.resolve(null), {
+   136	      interrupt: () => {
+   137	        throw new Error('host interrupt failed');
+   138	      },
+   139	    });
+   140	    const session = new PyodideSession(host);
+   141	    await expect(session.interrupt()).rejects.toBeInstanceOf(KernelInterruptError);
+   142	  });
+   143	
+   144	  it('wraps host shutdown failure as KernelShutdownError (F R2 BLOCKING B3)', async () => {
+   145	    const host = makeHost(() => Promise.resolve(null), {
+   146	      shutdown: () => Promise.reject(new Error('host shutdown failed')),
+   147	    });
+   148	    const session = new PyodideSession(host);
+   149	    await expect(session.shutdown()).rejects.toBeInstanceOf(KernelShutdownError);
+   150	  });
+   151	
+   152	  it('preserves KernelError subclass thrown by host.interrupt() (B3 cause-preservation)', async () => {
+   153	    const customBoom = new KernelInterruptError('custom interrupt boom');
+   154	    const host = makeHost(() => Promise.resolve(null), {
+   155	      interrupt: () => {
+   156	        throw customBoom;
+   157	      },
+   158	    });
+   159	    const session = new PyodideSession(host);
+   160	    await expect(session.interrupt()).rejects.toBe(customBoom);
+   161	  });
+   162	
+   163	  it('preserves KernelError subclass thrown by host.shutdown() (B3 cause-preservation)', async () => {
+   164	    const customBoom = new KernelShutdownError('custom shutdown boom');
+   165	    const host = makeHost(() => Promise.resolve(null), {
+   166	      shutdown: () => Promise.reject(customBoom),
+   167	    });
+   168	    const session = new PyodideSession(host);
+   169	    await expect(session.shutdown()).rejects.toBe(customBoom);
+   170	  });
+   171	});
+
+exec
+/bin/bash -lc 'nl -ba packages/kernel-pyodide/package.json' in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc 'nl -ba packages/kernel-pyodide/tsconfig.json' in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc 'nl -ba tsconfig.json' in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc 'nl -ba packages/kernel-adapter/src/errors.ts' in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc 'nl -ba packages/kernel-adapter/src/adapter.ts' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	export type KernelEvent =
+     2	  | { type: 'stdout'; text: string }
+     3	  | { type: 'stderr'; text: string }
+     4	  | { type: 'display_data'; data: Record<string, unknown> }
+     5	  | { type: 'execute_result'; data: Record<string, unknown> }
+     6	  | { type: 'error'; ename: string; evalue: string; traceback: string[] }
+     7	  | { type: 'status'; state: 'idle' | 'busy' };
+     8	
+     9	export interface KernelCapabilities {
+    10	  readonly libraries: readonly string[];
+    11	  readonly gpu: boolean;
+    12	  readonly persistentState: boolean;
+    13	  readonly maxMemoryMB?: number;
+    14	}
+    15	
+    16	export interface KernelSession {
+    17	  execute(code: string): AsyncIterable<KernelEvent>;
+    18	  interrupt(): Promise<void>;
+    19	  shutdown(): Promise<void>;
+    20	}
+    21	
+    22	export interface KernelAdapter {
+    23	  readonly id: string;
+    24	  readonly capabilities: KernelCapabilities;
+    25	  startSession(sessionId: string): Promise<KernelSession>;
+    26	}
+
+ succeeded in 124ms:
+     1	{
+     2	  "name": "@skb/kernel-pyodide",
+     3	  "version": "0.0.0",
+     4	  "private": true,
+     5	  "type": "module",
+     6	  "main": "./src/index.ts",
+     7	  "types": "./src/index.ts",
+     8	  "exports": {
+     9	    ".": "./src/index.ts"
+    10	  },
+    11	  "scripts": {
+    12	    "build": "tsc -b",
+    13	    "lint": "eslint .",
+    14	    "typecheck": "tsc -b",
+    15	    "test": "vitest run"
+    16	  },
+    17	  "dependencies": {
+    18	    "@skb/kernel-adapter": "workspace:*",
+    19	    "pyodide": "^0.27.0"
+    20	  },
+    21	  "devDependencies": {
+    22	    "typescript": "~5.6.0",
+    23	    "vitest": "^4.1.5"
+    24	  }
+    25	}
+
+ succeeded in 119ms:
+     1	{
+     2	  "extends": "../../tsconfig.base.json",
+     3	  "compilerOptions": { "rootDir": ".", "outDir": "dist" },
+     4	  "include": ["src/**/*", "vitest.config.ts"],
+     5	  "references": [{ "path": "../kernel-adapter" }]
+     6	}
+
+ succeeded in 125ms:
+     1	{
+     2	  "extends": "./tsconfig.base.json",
+     3	  "compilerOptions": {
+     4	    "composite": false,
+     5	    "noEmit": true
+     6	  },
+     7	  "include": [],
+     8	  "references": [
+     9	    { "path": "./scripts" },
+    10	    { "path": "./packages/content-types" },
+    11	    { "path": "./packages/block-callout" },
+    12	    { "path": "./packages/block-foundation" },
+    13	    { "path": "./packages/editor-commands" },
+    14	    { "path": "./packages/agent-tools" },
+    15	    { "path": "./packages/design-tokens" },
+    16	    { "path": "./packages/kernel-adapter" },
+    17	    { "path": "./packages/kernel-pyodide" },
+    18	    { "path": "./packages/kernel-registry" },
+    19	    { "path": "./packages/mdx-bridge" }
+    20	  ]
+    21	}
+
+ succeeded in 107ms:
+     1	/**
+     2	 * Typed error hierarchy for KernelAdapter implementations.
+     3	 *
+     4	 * All adapter-thrown errors should extend `KernelError`, so callers can
+     5	 * `catch (e) { if (e instanceof KernelError) ... }` without depending on
+     6	 * adapter-specific subclasses (PyodideAdapter, RemoteKernelAdapter, ...).
+     7	 *
+     8	 * Adapters MAY define their own subclasses (e.g. `RemoteAuthError extends
+     9	 * KernelError`); adding new subclasses is non-breaking. Renaming or removing
+    10	 * any class below is a contract break and requires an ADR.
+    11	 */
+    12	
+    13	export abstract class KernelError extends Error {
+    14	  abstract readonly kind: string;
+    15	  constructor(message: string, options?: { cause?: unknown }) {
+    16	    super(message, options);
+    17	    this.name = new.target.name;
+    18	  }
+    19	}
+    20	
+    21	export class KernelStartupError extends KernelError {
+    22	  readonly kind = 'startup' as const;
+    23	}
+    24	
+    25	export class KernelShutdownError extends KernelError {
+    26	  readonly kind = 'shutdown' as const;
+    27	}
+    28	
+    29	export class KernelInterruptError extends KernelError {
+    30	  readonly kind = 'interrupt' as const;
+    31	}
+    32	
+    33	export class KernelTimeoutError extends KernelError {
+    34	  readonly kind = 'timeout' as const;
+    35	}
+
+codex
+The R2 source now shows the main B1/B3/B4 implementation changes: KernelError preservation in `startSession`, wrapped interrupt/shutdown, and a direct `PYODIDE_LIBRARIES = DEFAULT_LIBS` alias. I’m checking config and package-level tests next, including whether this read-only sandbox can execute Vitest without writing temp files.
+exec
+/bin/bash -lc 'nl -ba packages/kernel-pyodide/vitest.config.ts' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	import { defineConfig } from 'vitest/config';
+     2	
+     3	export default defineConfig({
+     4	  test: {
+     5	    include: ['src/**/*.test.ts'],
+     6	    typecheck: { enabled: false },
+     7	  },
+     8	});
+
+exec
+/bin/bash -lc 'pnpm --filter @skb/kernel-pyodide typecheck' in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc 'pnpm --filter @skb/kernel-pyodide lint' in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc 'pnpm --filter @skb/kernel-pyodide test' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 660ms:
+
+> @skb/kernel-pyodide@0.0.0 typecheck /home/weiyi/selfKnowledgeBaseWeb/packages/kernel-pyodide
+> tsc -b
+
+
+ exited 1 in 750ms:
+
+> @skb/kernel-pyodide@0.0.0 test /home/weiyi/selfKnowledgeBaseWeb/packages/kernel-pyodide
+> vitest run
+
+failed to load config from /home/weiyi/selfKnowledgeBaseWeb/packages/kernel-pyodide/vitest.config.ts
+
+⎯⎯⎯⎯⎯⎯⎯ Startup Error ⎯⎯⎯⎯⎯⎯⎯⎯
+Error: EROFS: read-only file system, open '/home/weiyi/selfKnowledgeBaseWeb/packages/kernel-pyodide/node_modules/.vite-temp/vitest.config.ts.timestamp-1777577683784-39d11f9065c44.mjs'
+    at async open (node:internal/fs/promises:639:25)
+    at async Object.writeFile (node:internal/fs/promises:1219:14)
+    at async loadConfigFromBundledFile (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:34769:3)
+    at async bundleAndLoadConfigFile (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:34632:17)
+    at async loadConfigFromFile (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:34599:42)
+    at async resolveConfig (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:34223:22)
+    at async _createServer (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:26029:65)
+    at async createViteServer (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vitest@4.1.5_@types+node@22.19.17_happy-dom@15.11.7_vite@8.0.10_@types+node@22.19.17_esbuild@_njtu3hruheo7esciutan5fga5a/node_modules/vitest/dist/chunks/cli-api.Cjt90eJu.js:8818:17)
+    at async createVitest (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vitest@4.1.5_@types+node@22.19.17_happy-dom@15.11.7_vite@8.0.10_@types+node@22.19.17_esbuild@_njtu3hruheo7esciutan5fga5a/node_modules/vitest/dist/chunks/cli-api.Cjt90eJu.js:14205:18)
+    at async prepareVitest (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vitest@4.1.5_@types+node@22.19.17_happy-dom@15.11.7_vite@8.0.10_@types+node@22.19.17_esbuild@_njtu3hruheo7esciutan5fga5a/node_modules/vitest/dist/chunks/cli-api.Cjt90eJu.js:14572:14) {
+  errno: -30,
+  code: 'EROFS',
+  syscall: 'open',
+  path: '/home/weiyi/selfKnowledgeBaseWeb/packages/kernel-pyodide/node_modules/.vite-temp/vitest.config.ts.timestamp-1777577683784-39d11f9065c44.mjs'
+}
+
+
+
+/home/weiyi/selfKnowledgeBaseWeb/packages/kernel-pyodide:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @skb/kernel-pyodide@0.0.0 test: `vitest run`
+Exit status 1
+
+ succeeded in 2666ms:
+
+> @skb/kernel-pyodide@0.0.0 lint /home/weiyi/selfKnowledgeBaseWeb/packages/kernel-pyodide
+> eslint .
+
+
+codex
+Typecheck and lint pass in this sandbox. Vitest cannot start because Vite attempts to write `.vite-temp` under the package `node_modules`, so I can only verify the tests structurally here, not rerun the claimed 25/25.
+exec
+/bin/bash -lc "rg -n \"from 'pyodide'|from \\\"pyodide\\\"|import\\('pyodide'\\)|Pyodide\" packages/kernel-pyodide/src" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+packages/kernel-pyodide/src/index.ts:1:export { PyodideAdapter } from './adapter';
+packages/kernel-pyodide/src/index.ts:2:export type { PyodideAdapterOptions } from './adapter';
+packages/kernel-pyodide/src/index.ts:3:export { PyodideSession } from './session';
+packages/kernel-pyodide/src/index.ts:5:export type { PyodideBootOptions } from './boot';
+packages/kernel-pyodide/src/index.ts:6:export type { PyodideHost, PyodideHostFactory } from './host';
+packages/kernel-pyodide/src/errors.ts:4: * Pyodide-specific subclass for `micropip.install` / package import failures.
+packages/kernel-pyodide/src/adapter.ts:3:import { createDefaultHostFactory, DEFAULT_LIBS, type PyodideBootOptions } from './boot';
+packages/kernel-pyodide/src/adapter.ts:4:import type { PyodideHostFactory } from './host';
+packages/kernel-pyodide/src/adapter.ts:5:import { PyodideSession } from './session';
+packages/kernel-pyodide/src/adapter.ts:15:export interface PyodideAdapterOptions {
+packages/kernel-pyodide/src/adapter.ts:17:  hostFactory?: PyodideHostFactory;
+packages/kernel-pyodide/src/adapter.ts:19:  boot?: PyodideBootOptions;
+packages/kernel-pyodide/src/adapter.ts:22:export class PyodideAdapter implements KernelAdapter {
+packages/kernel-pyodide/src/adapter.ts:30:  #factory: PyodideHostFactory;
+packages/kernel-pyodide/src/adapter.ts:32:  constructor(options: PyodideAdapterOptions = {}) {
+packages/kernel-pyodide/src/adapter.ts:43:      throw new KernelStartupError('PyodideAdapter.startSession failed', { cause });
+packages/kernel-pyodide/src/adapter.ts:45:    return new PyodideSession(host);
+packages/kernel-pyodide/src/session.ts:7:import type { PyodideHost } from './host';
+packages/kernel-pyodide/src/session.ts:9:export class PyodideSession implements KernelSession {
+packages/kernel-pyodide/src/session.ts:10:  #host: PyodideHost;
+packages/kernel-pyodide/src/session.ts:13:  constructor(host: PyodideHost) {
+packages/kernel-pyodide/src/session.ts:32:      throw new KernelInterruptError('PyodideSession.interrupt failed', { cause });
+packages/kernel-pyodide/src/session.ts:45:      throw new KernelShutdownError('PyodideSession.shutdown failed', { cause });
+packages/kernel-pyodide/src/boot.ts:1:import type { PyodideInterface } from 'pyodide';
+packages/kernel-pyodide/src/boot.ts:5:import type { PyodideHost, PyodideHostFactory } from './host';
+packages/kernel-pyodide/src/boot.ts:14:export interface PyodideBootOptions {
+packages/kernel-pyodide/src/boot.ts:20: * Default factory boots real Pyodide (npm package) on the current thread.
+packages/kernel-pyodide/src/boot.ts:22: * adapter swap implementations without changing PyodideAdapter or the
+packages/kernel-pyodide/src/boot.ts:25:export function createDefaultHostFactory(opts: PyodideBootOptions = {}): PyodideHostFactory {
+packages/kernel-pyodide/src/boot.ts:27:    async create(): Promise<PyodideHost> {
+packages/kernel-pyodide/src/boot.ts:29:      let pyodide: PyodideInterface;
+packages/kernel-pyodide/src/boot.ts:31:        const mod = await import('pyodide');
+packages/kernel-pyodide/src/boot.ts:32:        pyodide = await mod.loadPyodide(
+packages/kernel-pyodide/src/boot.ts:36:        throw new KernelStartupError('failed to load Pyodide runtime', { cause });
+packages/kernel-pyodide/src/boot.ts:46:      return wrapPyodide(pyodide);
+packages/kernel-pyodide/src/boot.ts:63:function wrapPyodide(pyodide: PyodideInterface): PyodideHost {
+packages/kernel-pyodide/src/boot.ts:84:      // Main-thread Pyodide has no cancellation primitive in 0.27.x; Wave 3
+packages/kernel-pyodide/src/host.ts:4: * Swap point between real Pyodide runtime and test mocks.
+packages/kernel-pyodide/src/host.ts:14: * main-thread Pyodide); the session layer still flips status back to idle.
+packages/kernel-pyodide/src/host.ts:18:export interface PyodideHost {
+packages/kernel-pyodide/src/host.ts:27:export interface PyodideHostFactory {
+packages/kernel-pyodide/src/host.ts:28:  create(): Promise<PyodideHost>;
+packages/kernel-pyodide/src/__tests__/matplotlib.test.ts:3:import { PyodideSession } from '../session';
+packages/kernel-pyodide/src/__tests__/matplotlib.test.ts:4:import type { PyodideHost } from '../host';
+packages/kernel-pyodide/src/__tests__/matplotlib.test.ts:8: * verifies the `display_data` KernelEvent schema shape. Real Pyodide CDN
+packages/kernel-pyodide/src/__tests__/matplotlib.test.ts:15:function mockMatplotlibHost(): PyodideHost {
+packages/kernel-pyodide/src/__tests__/matplotlib.test.ts:32:describe('matplotlib display_data event schema (mocked Pyodide)', () => {
+packages/kernel-pyodide/src/__tests__/matplotlib.test.ts:34:    const session = new PyodideSession(mockMatplotlibHost());
+packages/kernel-pyodide/src/__tests__/matplotlib.test.ts:57:    const session = new PyodideSession(mockMatplotlibHost());
+packages/kernel-pyodide/src/__tests__/matplotlib.test.ts:70:    const session = new PyodideSession(mockMatplotlibHost());
+packages/kernel-pyodide/src/__tests__/matplotlib.test.ts:81:    const session = new PyodideSession(mockMatplotlibHost());
+packages/kernel-pyodide/src/__tests__/session.test.ts:4:import { PyodideSession } from '../session';
+packages/kernel-pyodide/src/__tests__/session.test.ts:5:import type { PyodideHost } from '../host';
+packages/kernel-pyodide/src/__tests__/session.test.ts:8:  runCode: PyodideHost['runCode'],
+packages/kernel-pyodide/src/__tests__/session.test.ts:9:  hooks: Partial<PyodideHost> = {},
+packages/kernel-pyodide/src/__tests__/session.test.ts:10:): PyodideHost {
+packages/kernel-pyodide/src/__tests__/session.test.ts:24:describe('PyodideSession.execute event stream', () => {
+packages/kernel-pyodide/src/__tests__/session.test.ts:27:    const session = new PyodideSession(host);
+packages/kernel-pyodide/src/__tests__/session.test.ts:38:    const session = new PyodideSession(host);
+packages/kernel-pyodide/src/__tests__/session.test.ts:53:    const session = new PyodideSession(host);
+packages/kernel-pyodide/src/__tests__/session.test.ts:68:    const session = new PyodideSession(host);
+packages/kernel-pyodide/src/__tests__/session.test.ts:85:    const session = new PyodideSession(host);
+packages/kernel-pyodide/src/__tests__/session.test.ts:103:    const session = new PyodideSession(host);
+packages/kernel-pyodide/src/__tests__/session.test.ts:116:    const session = new PyodideSession(host);
+packages/kernel-pyodide/src/__tests__/session.test.ts:123:    const session = new PyodideSession(makeHost(() => Promise.resolve(null)));
+packages/kernel-pyodide/src/__tests__/session.test.ts:129:    const session = new PyodideSession(makeHost(() => Promise.resolve(null)));
+packages/kernel-pyodide/src/__tests__/session.test.ts:140:    const session = new PyodideSession(host);
+packages/kernel-pyodide/src/__tests__/session.test.ts:148:    const session = new PyodideSession(host);
+packages/kernel-pyodide/src/__tests__/session.test.ts:159:    const session = new PyodideSession(host);
+packages/kernel-pyodide/src/__tests__/session.test.ts:168:    const session = new PyodideSession(host);
+packages/kernel-pyodide/src/__tests__/adapter.test.ts:4:import { PyodideAdapter, PYODIDE_LIBRARIES } from '../adapter';
+packages/kernel-pyodide/src/__tests__/adapter.test.ts:7:import type { PyodideHost, PyodideHostFactory } from '../host';
+packages/kernel-pyodide/src/__tests__/adapter.test.ts:9:const stubHost: PyodideHost = {
+packages/kernel-pyodide/src/__tests__/adapter.test.ts:15:const stubFactory: PyodideHostFactory = {
+packages/kernel-pyodide/src/__tests__/adapter.test.ts:19:describe('PyodideAdapter contract', () => {
+packages/kernel-pyodide/src/__tests__/adapter.test.ts:21:    expectTypeOf<PyodideAdapter>().toExtend<KernelAdapter>();
+packages/kernel-pyodide/src/__tests__/adapter.test.ts:25:    const adapter = new PyodideAdapter({ hostFactory: stubFactory });
+packages/kernel-pyodide/src/__tests__/adapter.test.ts:34:    const adapter = new PyodideAdapter({ hostFactory: stubFactory });
+packages/kernel-pyodide/src/__tests__/adapter.test.ts:42:    const adapter = new PyodideAdapter({ hostFactory: stubFactory });
+packages/kernel-pyodide/src/__tests__/adapter.test.ts:52:    // F R2 BLOCKING B1: boot.ts distinguishes Pyodide-binary failure
+packages/kernel-pyodide/src/__tests__/adapter.test.ts:54:    // PyodideAdapter must preserve any KernelError subclass so consumers
+packages/kernel-pyodide/src/__tests__/adapter.test.ts:57:    const failingFactory: PyodideHostFactory = {
+packages/kernel-pyodide/src/__tests__/adapter.test.ts:60:    const adapter = new PyodideAdapter({ hostFactory: failingFactory });
+packages/kernel-pyodide/src/__tests__/adapter.test.ts:65:    const startupBoom = new KernelStartupError('Pyodide load failed');
+packages/kernel-pyodide/src/__tests__/adapter.test.ts:66:    const failingFactory: PyodideHostFactory = {
+packages/kernel-pyodide/src/__tests__/adapter.test.ts:69:    const adapter = new PyodideAdapter({ hostFactory: failingFactory });
+packages/kernel-pyodide/src/__tests__/adapter.test.ts:85:    const failingFactory: PyodideHostFactory = {
+packages/kernel-pyodide/src/__tests__/adapter.test.ts:88:    const adapter = new PyodideAdapter({ hostFactory: failingFactory });
+
+exec
+/bin/bash -lc 'rg -n "interface Kernel|type Kernel|KernelEvent|KernelAdapter|KernelSession|KernelCapabilities|KernelError|KernelStartupError|KernelShutdownError|KernelInterruptError|KernelTimeoutError" packages/kernel-pyodide/src' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+packages/kernel-pyodide/src/errors.ts:1:import { KernelError } from '@skb/kernel-adapter';
+packages/kernel-pyodide/src/errors.ts:7: * own subclasses (e.g. RemoteAuthError extends KernelError); adding new
+packages/kernel-pyodide/src/errors.ts:8: * subclasses is non-breaking." Caller `instanceof KernelError` still catches.
+packages/kernel-pyodide/src/errors.ts:10:export class KernelImportError extends KernelError {
+packages/kernel-pyodide/src/adapter.ts:1:import type { KernelAdapter, KernelCapabilities, KernelSession } from '@skb/kernel-adapter';
+packages/kernel-pyodide/src/adapter.ts:2:import { KernelError, KernelStartupError } from '@skb/kernel-adapter';
+packages/kernel-pyodide/src/adapter.ts:22:export class PyodideAdapter implements KernelAdapter {
+packages/kernel-pyodide/src/adapter.ts:24:  readonly capabilities: KernelCapabilities = {
+packages/kernel-pyodide/src/adapter.ts:36:  async startSession(sessionId: string): Promise<KernelSession> {
+packages/kernel-pyodide/src/adapter.ts:42:      if (cause instanceof KernelError) throw cause;
+packages/kernel-pyodide/src/adapter.ts:43:      throw new KernelStartupError('PyodideAdapter.startSession failed', { cause });
+packages/kernel-pyodide/src/session.ts:1:import type { KernelEvent, KernelSession } from '@skb/kernel-adapter';
+packages/kernel-pyodide/src/session.ts:3:  KernelError,
+packages/kernel-pyodide/src/session.ts:4:  KernelInterruptError,
+packages/kernel-pyodide/src/session.ts:5:  KernelShutdownError,
+packages/kernel-pyodide/src/session.ts:9:export class PyodideSession implements KernelSession {
+packages/kernel-pyodide/src/session.ts:17:  execute(code: string): AsyncIterable<KernelEvent> {
+packages/kernel-pyodide/src/session.ts:19:      throw new KernelShutdownError('execute() called on shutdown session');
+packages/kernel-pyodide/src/session.ts:26:      throw new KernelInterruptError('interrupt() called on shutdown session');
+packages/kernel-pyodide/src/session.ts:31:      if (cause instanceof KernelError) throw cause;
+packages/kernel-pyodide/src/session.ts:32:      throw new KernelInterruptError('PyodideSession.interrupt failed', { cause });
+packages/kernel-pyodide/src/session.ts:38:      throw new KernelShutdownError('shutdown() called twice');
+packages/kernel-pyodide/src/session.ts:44:      if (cause instanceof KernelError) throw cause;
+packages/kernel-pyodide/src/session.ts:45:      throw new KernelShutdownError('PyodideSession.shutdown failed', { cause });
+packages/kernel-pyodide/src/session.ts:49:  async *#run(code: string): AsyncIterable<KernelEvent> {
+packages/kernel-pyodide/src/session.ts:50:    const queue: KernelEvent[] = [];
+packages/kernel-pyodide/src/session.ts:52:    const emit = (event: KernelEvent): void => {
+packages/kernel-pyodide/src/session.ts:100:function toErrorEvent(err: unknown): KernelEvent {
+packages/kernel-pyodide/src/__tests__/session.test.ts:2:import type { KernelEvent } from '@skb/kernel-adapter';
+packages/kernel-pyodide/src/__tests__/session.test.ts:3:import { KernelInterruptError, KernelShutdownError } from '@skb/kernel-adapter';
+packages/kernel-pyodide/src/__tests__/session.test.ts:18:async function collect(iter: AsyncIterable<KernelEvent>): Promise<KernelEvent[]> {
+packages/kernel-pyodide/src/__tests__/session.test.ts:19:  const out: KernelEvent[] = [];
+packages/kernel-pyodide/src/__tests__/session.test.ts:64:  it('converts host-thrown Python error into a single error KernelEvent then status:idle', async () => {
+packages/kernel-pyodide/src/__tests__/session.test.ts:119:    expect(() => session.execute('x')).toThrow(KernelShutdownError);
+packages/kernel-pyodide/src/__tests__/session.test.ts:122:  it('shutdown() called twice throws KernelShutdownError', async () => {
+packages/kernel-pyodide/src/__tests__/session.test.ts:125:    await expect(session.shutdown()).rejects.toBeInstanceOf(KernelShutdownError);
+packages/kernel-pyodide/src/__tests__/session.test.ts:128:  it('interrupt() on shutdown session throws KernelInterruptError', async () => {
+packages/kernel-pyodide/src/__tests__/session.test.ts:131:    await expect(session.interrupt()).rejects.toBeInstanceOf(KernelInterruptError);
+packages/kernel-pyodide/src/__tests__/session.test.ts:134:  it('wraps host interrupt failure as KernelInterruptError (F R2 BLOCKING B3)', async () => {
+packages/kernel-pyodide/src/__tests__/session.test.ts:141:    await expect(session.interrupt()).rejects.toBeInstanceOf(KernelInterruptError);
+packages/kernel-pyodide/src/__tests__/session.test.ts:144:  it('wraps host shutdown failure as KernelShutdownError (F R2 BLOCKING B3)', async () => {
+packages/kernel-pyodide/src/__tests__/session.test.ts:149:    await expect(session.shutdown()).rejects.toBeInstanceOf(KernelShutdownError);
+packages/kernel-pyodide/src/__tests__/session.test.ts:152:  it('preserves KernelError subclass thrown by host.interrupt() (B3 cause-preservation)', async () => {
+packages/kernel-pyodide/src/__tests__/session.test.ts:153:    const customBoom = new KernelInterruptError('custom interrupt boom');
+packages/kernel-pyodide/src/__tests__/session.test.ts:163:  it('preserves KernelError subclass thrown by host.shutdown() (B3 cause-preservation)', async () => {
+packages/kernel-pyodide/src/__tests__/session.test.ts:164:    const customBoom = new KernelShutdownError('custom shutdown boom');
+packages/kernel-pyodide/src/__tests__/matplotlib.test.ts:2:import type { KernelEvent } from '@skb/kernel-adapter';
+packages/kernel-pyodide/src/__tests__/matplotlib.test.ts:8: * verifies the `display_data` KernelEvent schema shape. Real Pyodide CDN
+packages/kernel-pyodide/src/__tests__/matplotlib.test.ts:35:    const events: KernelEvent[] = [];
+packages/kernel-pyodide/src/__tests__/matplotlib.test.ts:71:    const events: KernelEvent[] = [];
+packages/kernel-pyodide/src/__tests__/adapter.test.ts:2:import type { KernelAdapter, KernelEvent, KernelSession } from '@skb/kernel-adapter';
+packages/kernel-pyodide/src/__tests__/adapter.test.ts:3:import { KernelStartupError } from '@skb/kernel-adapter';
+packages/kernel-pyodide/src/__tests__/adapter.test.ts:20:  it('satisfies KernelAdapter interface (TS-level)', () => {
+packages/kernel-pyodide/src/__tests__/adapter.test.ts:21:    expectTypeOf<PyodideAdapter>().toExtend<KernelAdapter>();
+packages/kernel-pyodide/src/__tests__/adapter.test.ts:24:  it('startSession resolves to KernelSession', async () => {
+packages/kernel-pyodide/src/__tests__/adapter.test.ts:27:    expectTypeOf(session).toExtend<KernelSession>();
+packages/kernel-pyodide/src/__tests__/adapter.test.ts:41:  it('execute() returns AsyncIterable<KernelEvent>', async () => {
+packages/kernel-pyodide/src/__tests__/adapter.test.ts:45:    expectTypeOf(iter).toExtend<AsyncIterable<KernelEvent>>();
+packages/kernel-pyodide/src/__tests__/adapter.test.ts:46:    const events: KernelEvent[] = [];
+packages/kernel-pyodide/src/__tests__/adapter.test.ts:51:  it('preserves KernelImportError thrown by factory (does not wrap as KernelStartupError)', async () => {
+packages/kernel-pyodide/src/__tests__/adapter.test.ts:53:    // (KernelStartupError) from library-install failure (KernelImportError).
+packages/kernel-pyodide/src/__tests__/adapter.test.ts:54:    // PyodideAdapter must preserve any KernelError subclass so consumers
+packages/kernel-pyodide/src/__tests__/adapter.test.ts:64:  it('preserves KernelStartupError thrown by factory (does not double-wrap)', async () => {
+packages/kernel-pyodide/src/__tests__/adapter.test.ts:65:    const startupBoom = new KernelStartupError('Pyodide load failed');
+packages/kernel-pyodide/src/__tests__/adapter.test.ts:83:  it('wraps non-KernelError causes as KernelStartupError', async () => {
+packages/kernel-pyodide/src/__tests__/adapter.test.ts:89:    await expect(adapter.startSession('s1')).rejects.toBeInstanceOf(KernelStartupError);
+packages/kernel-pyodide/src/boot.ts:2:import type { KernelEvent } from '@skb/kernel-adapter';
+packages/kernel-pyodide/src/boot.ts:3:import { KernelStartupError } from '@skb/kernel-adapter';
+packages/kernel-pyodide/src/boot.ts:23: * KernelAdapter contract.
+packages/kernel-pyodide/src/boot.ts:36:        throw new KernelStartupError('failed to load Pyodide runtime', { cause });
+packages/kernel-pyodide/src/boot.ts:64:  let activeEmit: ((event: KernelEvent) => void) | null = null;
+packages/kernel-pyodide/src/host.ts:1:import type { KernelEvent } from '@skb/kernel-adapter';
+packages/kernel-pyodide/src/host.ts:6: * `runCode` runs Python source. The host emits 0-N KernelEvent values
+packages/kernel-pyodide/src/host.ts:10: * can convert them to a single `error` KernelEvent — the host MUST NOT emit
+packages/kernel-pyodide/src/host.ts:16: * awaits the result so async failures wrap into KernelInterruptError.
+packages/kernel-pyodide/src/host.ts:21:    emit: (event: KernelEvent) => void,
+
+exec
+/bin/bash -lc "rg -n \"KernelEvent.type|stdout|stderr|display_data|execute_result|error|status|KernelStartupError|KernelShutdownError|KernelInterruptError|KernelTimeoutError|KernelImportError|kind: 'startup'|kind: 'shutdown'|kind: 'interrupt'|kind: 'timeout'|kind: 'import'|Adapters MAY|all adapter-thrown|非-event|extends KernelError\" packages/kernel-adapter/CONTRACT.md packages/kernel-pyodide/CONTRACT.md" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "rg -n \"PYODIDE_LIBRARIES|DEFAULT_LIBS|\\['numpy', 'pandas', 'matplotlib'\\]|numpy.*pandas.*matplotlib\" packages/kernel-pyodide/src packages/kernel-pyodide/CONTRACT.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+packages/kernel-pyodide/CONTRACT.md:4:默认 pre-load `numpy` / `pandas` / `matplotlib`（见 `capabilities.libraries`）；
+packages/kernel-pyodide/CONTRACT.md:12:  暴露 `libraries: ['numpy', 'pandas', 'matplotlib']` / `gpu: false` /
+packages/kernel-pyodide/CONTRACT.md:81:  `PYODIDE_LIBRARIES = DEFAULT_LIBS` 通过引用别名让漂移在结构上不可能，
+packages/kernel-pyodide/CONTRACT.md:82:  并由 adapter.test.ts 的 `expect(PYODIDE_LIBRARIES).toBe(DEFAULT_LIBS)`
+packages/kernel-pyodide/src/adapter.ts:3:import { createDefaultHostFactory, DEFAULT_LIBS, type PyodideBootOptions } from './boot';
+packages/kernel-pyodide/src/adapter.ts:9: * `DEFAULT_LIBS` (boot.ts) to make adapter ↔ boot drift structurally
+packages/kernel-pyodide/src/adapter.ts:13:export const PYODIDE_LIBRARIES = DEFAULT_LIBS;
+packages/kernel-pyodide/src/adapter.ts:25:    libraries: PYODIDE_LIBRARIES,
+packages/kernel-pyodide/src/boot.ts:10: * `PYODIDE_LIBRARIES` in adapter.ts (ADR-0006 item #5).
+packages/kernel-pyodide/src/boot.ts:12:export const DEFAULT_LIBS = ['numpy', 'pandas', 'matplotlib'] as const;
+packages/kernel-pyodide/src/boot.ts:28:      const libraries = opts.libraries ?? DEFAULT_LIBS;
+packages/kernel-pyodide/src/__tests__/adapter.test.ts:4:import { PyodideAdapter, PYODIDE_LIBRARIES } from '../adapter';
+packages/kernel-pyodide/src/__tests__/adapter.test.ts:5:import { DEFAULT_LIBS } from '../boot';
+packages/kernel-pyodide/src/__tests__/adapter.test.ts:33:  it('exposes id="pyodide" + capabilities including numpy/pandas/matplotlib + gpu=false + persistentState=true', () => {
+packages/kernel-pyodide/src/__tests__/adapter.test.ts:36:    expect(adapter.capabilities.libraries).toEqual(['numpy', 'pandas', 'matplotlib']);
+packages/kernel-pyodide/src/__tests__/adapter.test.ts:73:  it('PYODIDE_LIBRARIES is alias of DEFAULT_LIBS (cross-file regression — ADR-0006 item #5)', () => {
+packages/kernel-pyodide/src/__tests__/adapter.test.ts:76:    // Currently enforced structurally by aliasing (PYODIDE_LIBRARIES
+packages/kernel-pyodide/src/__tests__/adapter.test.ts:77:    // = DEFAULT_LIBS); this test catches any future regression that
+packages/kernel-pyodide/src/__tests__/adapter.test.ts:79:    expect(PYODIDE_LIBRARIES).toBe(DEFAULT_LIBS);
+packages/kernel-pyodide/src/__tests__/adapter.test.ts:80:    expect([...PYODIDE_LIBRARIES]).toEqual(['numpy', 'pandas', 'matplotlib']);
+
+ succeeded in 107ms:
+packages/kernel-adapter/CONTRACT.md:9:- `KernelEvent` discriminated union — 6 type 覆盖 stdout/stderr/display/result/error/status
+packages/kernel-adapter/CONTRACT.md:14:- `KernelError` — abstract base; all adapter-thrown errors extend this so callers can catch with one `instanceof` check
+packages/kernel-adapter/CONTRACT.md:15:- `KernelStartupError` (`kind: 'startup'`) — `startSession()` could not bring the kernel online
+packages/kernel-adapter/CONTRACT.md:16:- `KernelShutdownError` (`kind: 'shutdown'`) — shutdown failed or invoked on already-shutdown session
+packages/kernel-adapter/CONTRACT.md:17:- `KernelInterruptError` (`kind: 'interrupt'`) — interrupt requested but adapter could not honor it
+packages/kernel-adapter/CONTRACT.md:18:- `KernelTimeoutError` (`kind: 'timeout'`) — operation did not complete within adapter-specific deadline (Phase 2+ remote adapters; reusable in Wave 2 if Pyodide hangs)
+packages/kernel-adapter/CONTRACT.md:21:arrive as `KernelEvent { type: 'error', ename, evalue, traceback }` on the
+packages/kernel-adapter/CONTRACT.md:27:- `KernelEvent.type` 当前枚举：`stdout` · `stderr` · `display_data` · `execute_result` · `error` · `status`
+packages/kernel-adapter/CONTRACT.md:28:- 包内**只放 type / interface / error 类**，不放具体实现（实现归属各 adapter 包，例如 `@skb/kernel-pyodide`）
+packages/kernel-adapter/CONTRACT.md:29:- 所有 adapter 抛出的非-event 错误必须 `extends KernelError`（包括 adapter 自定义子类如 `RemoteAuthError`），保证调用方 `instanceof KernelError` 一次捕获
+packages/kernel-pyodide/CONTRACT.md:36:- `KernelStartupError`（继承自 `@skb/kernel-adapter`，`kind: 'startup'`）— Pyodide
+packages/kernel-pyodide/CONTRACT.md:38:- `KernelImportError`（本包扩展子类，`kind: 'import'`）— `loadPackage` / micropip
+packages/kernel-pyodide/CONTRACT.md:40:- `KernelShutdownError`（继承自 `@skb/kernel-adapter`，`kind: 'shutdown'`）—
+packages/kernel-pyodide/CONTRACT.md:42:- `KernelInterruptError`（继承自 `@skb/kernel-adapter`，`kind: 'interrupt'`）—
+packages/kernel-pyodide/CONTRACT.md:44:- `KernelTimeoutError`（继承自 `@skb/kernel-adapter`，`kind: 'timeout'`）—
+packages/kernel-pyodide/CONTRACT.md:49:  `KernelEvent { type: 'error', ename, evalue, traceback }` 出现在事件流中
+packages/kernel-pyodide/CONTRACT.md:52:`KernelImportError` 是 `KernelError` 子类，调用方 `instanceof KernelError`
+packages/kernel-pyodide/CONTRACT.md:54:classes": "Adapters MAY define their own subclasses (e.g. `RemoteAuthError
+packages/kernel-pyodide/CONTRACT.md:55:extends KernelError`); adding new subclasses is non-breaking" — 即 sister-doc
+packages/kernel-pyodide/CONTRACT.md:56:同款规则：所有 adapter 抛出的非-event 错误必须 `extends KernelError`，保证
+packages/kernel-pyodide/CONTRACT.md:64:- 首事件必为 `{ type: 'status', state: 'busy' }`
+packages/kernel-pyodide/CONTRACT.md:65:- 末事件必为 `{ type: 'status', state: 'idle' }`
+packages/kernel-pyodide/CONTRACT.md:66:- 中间按到达顺序产生 `stdout` / `stderr` / `display_data` 事件
+packages/kernel-pyodide/CONTRACT.md:67:- 若代码产生返回值，在末 status 之前产生**单次** `execute_result`
+packages/kernel-pyodide/CONTRACT.md:68:- 若代码抛出异常，在末 status 之前产生**单次** `error` 事件（不再产
+packages/kernel-pyodide/CONTRACT.md:69:  `execute_result`）
+packages/kernel-pyodide/CONTRACT.md:70:- `error` 事件字段：`ename`（异常类名）/ `evalue`（消息字符串）/
+packages/kernel-pyodide/CONTRACT.md:84:- `KernelImportError` 必须 `extends KernelError`（保证 `instanceof
+packages/kernel-pyodide/CONTRACT.md:91:- `session.test.ts`：6 event variants 流（status bookends / stdout / stderr /
+packages/kernel-pyodide/CONTRACT.md:92:  execute_result / error / interrupt / shutdown lifecycle）
+packages/kernel-pyodide/CONTRACT.md:93:- `matplotlib.test.ts`：mock `display_data` event schema 形状（mime types map +
+
+codex
+The contract text now includes `KernelTimeoutError` and the three adapter-authority kind literals, and the source imports all kernel schema types from `@skb/kernel-adapter`. I’m doing one last pass over line-numbered contracts and dependency refs before forming the gate verdict.
+exec
+/bin/bash -lc 'nl -ba packages/kernel-adapter/CONTRACT.md' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	# @skb/kernel-adapter Contract
+     2	
+     3	## Public surface
+     4	
+     5	### Types & interfaces
+     6	
+     7	- `KernelAdapter` interface — `id` / `capabilities` / `startSession()`
+     8	- `KernelSession` interface — `execute()` / `interrupt()` / `shutdown()`
+     9	- `KernelEvent` discriminated union — 6 type 覆盖 stdout/stderr/display/result/error/status
+    10	- `KernelCapabilities` interface
+    11	
+    12	### Error classes (typed throw surface)
+    13	
+    14	- `KernelError` — abstract base; all adapter-thrown errors extend this so callers can catch with one `instanceof` check
+    15	- `KernelStartupError` (`kind: 'startup'`) — `startSession()` could not bring the kernel online
+    16	- `KernelShutdownError` (`kind: 'shutdown'`) — shutdown failed or invoked on already-shutdown session
+    17	- `KernelInterruptError` (`kind: 'interrupt'`) — interrupt requested but adapter could not honor it
+    18	- `KernelTimeoutError` (`kind: 'timeout'`) — operation did not complete within adapter-specific deadline (Phase 2+ remote adapters; reusable in Wave 2 if Pyodide hangs)
+    19	
+    20	In-band Python/runtime exceptions (e.g. user code raises) are NOT thrown — they
+    21	arrive as `KernelEvent { type: 'error', ename, evalue, traceback }` on the
+    22	event stream. Errors above are reserved for adapter-level failures.
+    23	
+    24	## Invariants
+    25	
+    26	- KernelEvent 必须保持 discriminated union（`type` 字段 literal）—— packages/kernel-pyodide 与未来 RemoteJupyterAdapter 都依赖此
+    27	- `KernelEvent.type` 当前枚举：`stdout` · `stderr` · `display_data` · `execute_result` · `error` · `status`
+    28	- 包内**只放 type / interface / error 类**，不放具体实现（实现归属各 adapter 包，例如 `@skb/kernel-pyodide`）
+    29	- 所有 adapter 抛出的非-event 错误必须 `extends KernelError`（包括 adapter 自定义子类如 `RemoteAuthError`），保证调用方 `instanceof KernelError` 一次捕获
+    30	
+    31	## Implementations
+    32	
+    33	- Phase 1：`@skb/kernel-pyodide` (Wave 2)
+    34	- Phase 2+：`@skb/kernel-remote-jupyter` 等
+    35	
+    36	## Modifying this file
+    37	
+    38	公共表面（`KernelAdapter` / `KernelSession` / `KernelCapabilities` / `KernelEvent` / `KernelError` 及其 4 个子类）的任何字段或方法增删改一律需 ADR — **包括添加 optional 字段、新增 KernelEvent 变体、新增 KernelError 子类**。spec §2.3 把 kernel-adapter 列为接口包，规则"改动需 ADR；全员同步"不区分 optional vs required。
+    39	
+    40	原因：`KernelAdapter` 接口 freeze 是 Wave 2 PyodideAdapter 与 Phase 2 RemoteJupyterAdapter 共同的契约基础；optional 字段会在 2+ 实现间产生兼容性矩阵，无 ADR 协调会引发漂移。同步范围：本文件 + kernel-registry + 全部已实现 adapter 包。
+    41	
+    42	## Related
+    43	
+    44	- [设计规格 §1.6 / §2.6](../../docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md)
+    45	- [kernel-registry/CONTRACT.md](../kernel-registry/CONTRACT.md)
+
+exec
+/bin/bash -lc 'nl -ba packages/kernel-pyodide/CONTRACT.md' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	# @skb/kernel-pyodide Contract
+     2	
+     3	Phase 1 唯一 `KernelAdapter` 实现。在浏览器内通过 Pyodide 运行 Python，零后端。
+     4	默认 pre-load `numpy` / `pandas` / `matplotlib`（见 `capabilities.libraries`）；
+     5	SymPy 等其他 Pyodide 兼容包需运行时通过 micropip 安装，不在 default libraries。
+     6	
+     7	## Public surface
+     8	
+     9	### Class
+    10	
+    11	- `PyodideAdapter implements KernelAdapter` — `id = 'pyodide'`，`capabilities`
+    12	  暴露 `libraries: ['numpy', 'pandas', 'matplotlib']` / `gpu: false` /
+    13	  `persistentState: true`；`startSession(sessionId)` 返回 `PyodideSession`
+    14	- `PyodideSession implements KernelSession` — `execute(code)` /
+    15	  `interrupt()` / `shutdown()`
+    16	
+    17	### Constructor options
+    18	
+    19	```ts
+    20	new PyodideAdapter({
+    21	  hostFactory?: PyodideHostFactory; // override (tests / Wave 3 worker)
+    22	  boot?: { indexURL?: string; libraries?: readonly string[] };
+    23	});
+    24	```
+    25	
+    26	`hostFactory` 是 Wave 2 → Wave 3 的演进点：默认 factory 在当前线程
+    27	`loadPyodide()`，Wave 3 将引入 `createWorkerHostFactory()` 把 Pyodide
+    28	搬入 Web Worker（`SharedArrayBuffer` 中断 + 主线程不阻塞）。`KernelAdapter`
+    29	公共契约不变。
+    30	
+    31	### Errors (typed throw surface)
+    32	
+    33	术语与 [@skb/kernel-adapter CONTRACT.md](../kernel-adapter/CONTRACT.md) §"Error
+    34	classes" 同步（同 family；公开 surface 一致）：
+    35	
+    36	- `KernelStartupError`（继承自 `@skb/kernel-adapter`，`kind: 'startup'`）— Pyodide
+    37	  加载失败（`startSession()` could not bring the kernel online）
+    38	- `KernelImportError`（本包扩展子类，`kind: 'import'`）— `loadPackage` / micropip
+    39	  install 失败（adapter-specific 子类，sister-aligned 与 kernel-adapter 同语）
+    40	- `KernelShutdownError`（继承自 `@skb/kernel-adapter`，`kind: 'shutdown'`）—
+    41	  shutdown 失败 OR 在已 shutdown session 上再次调用 `execute` / `shutdown`
+    42	- `KernelInterruptError`（继承自 `@skb/kernel-adapter`，`kind: 'interrupt'`）—
+    43	  interrupt 失败 OR 在已 shutdown session 上调用 `interrupt`
+    44	- `KernelTimeoutError`（继承自 `@skb/kernel-adapter`，`kind: 'timeout'`）—
+    45	  **reserved for future timeout-wired sessions; not currently emitted by
+    46	  Wave 2 PyodideAdapter**（main-thread Pyodide 0.27.x 无 cancellation primitive；
+    47	  Wave 3 worker-isolated host 引入 `SharedArrayBuffer` 中断后会用此）
+    48	- 用户 Python 代码抛出的运行时异常**不**作为 throw，而是作为
+    49	  `KernelEvent { type: 'error', ename, evalue, traceback }` 出现在事件流中
+    50	  （`@skb/kernel-adapter` CONTRACT.md 规定）
+    51	
+    52	`KernelImportError` 是 `KernelError` 子类，调用方 `instanceof KernelError`
+    53	仍可一次捕获。Per [@skb/kernel-adapter](../kernel-adapter/CONTRACT.md) §"Error
+    54	classes": "Adapters MAY define their own subclasses (e.g. `RemoteAuthError
+    55	extends KernelError`); adding new subclasses is non-breaking" — 即 sister-doc
+    56	同款规则：所有 adapter 抛出的非-event 错误必须 `extends KernelError`，保证
+    57	调用方 `instanceof KernelError` 一次捕获（无需 ADR）。
+    58	
+    59	## Event stream contract
+    60	
+    61	`PyodideSession.execute(code)` 产生的事件流满足以下不变量（与
+    62	`@skb/kernel-adapter` 6-variant `KernelEvent` 同款字段）：
+    63	
+    64	- 首事件必为 `{ type: 'status', state: 'busy' }`
+    65	- 末事件必为 `{ type: 'status', state: 'idle' }`
+    66	- 中间按到达顺序产生 `stdout` / `stderr` / `display_data` 事件
+    67	- 若代码产生返回值，在末 status 之前产生**单次** `execute_result`
+    68	- 若代码抛出异常，在末 status 之前产生**单次** `error` 事件（不再产
+    69	  `execute_result`）
+    70	- `error` 事件字段：`ename`（异常类名）/ `evalue`（消息字符串）/
+    71	  `traceback`（行数组，至少含 1 行）
+    72	
+    73	## Invariants
+    74	
+    75	- 6 个 `KernelEvent` 变体的字段按 `@skb/kernel-adapter` 公共类型导入，**不在本
+    76	  包内 inline 重定义**（ADR-0006 item #4 consumer schema audit）
+    77	- `PyodideAdapter.id` 字符串字面量 `'pyodide'` 必须与
+    78	  `@skb/kernel-registry` 的 `register` 输入一致；本包是唯一权威
+    79	- `capabilities.libraries` 必须与 `boot.ts` 默认 `loadPackage(...)` 列表
+    80	  逐字相同（authority ↔ runtime-fact 同步；ADR-0006 item #5）；当前实现
+    81	  `PYODIDE_LIBRARIES = DEFAULT_LIBS` 通过引用别名让漂移在结构上不可能，
+    82	  并由 adapter.test.ts 的 `expect(PYODIDE_LIBRARIES).toBe(DEFAULT_LIBS)`
+    83	  锁定（防御未来 revert 引入并行字面量）
+    84	- `KernelImportError` 必须 `extends KernelError`（保证 `instanceof
+    85	  KernelError` 一次捕获）
+    86	
+    87	## Test strategy
+    88	
+    89	- `adapter.test.ts`：TS-level 类型契约 + capability 字段 + `startSession`
+    90	  返回值形状（mock host）
+    91	- `session.test.ts`：6 event variants 流（status bookends / stdout / stderr /
+    92	  execute_result / error / interrupt / shutdown lifecycle）
+    93	- `matplotlib.test.ts`：mock `display_data` event schema 形状（mime types map +
+    94	  payload 类型）。**真 Pyodide CDN 不在 CI 跑**（plan-challenger NICE 8 修订）：
+    95	  - 集成层（本地手动）：`matplotlib.integration.test.ts`，`it.skipIf(process.env.CI)`
+    96	  - E2E 层（Wave 4）：Playwright 跑真页面 + 真 CDN
+    97	
+    98	## Wave 3 evolution points
+    99	
+   100	- `boot.ts` 的 `wrapPyodide` 当前 `interrupt()` no-op；Wave 3 引入 worker host
+   101	  时实现 `SharedArrayBuffer` 中断
+   102	- `boot.ts` 当前在主线程 import；Wave 3 把 `loadPyodide` 搬入 Worker 通过
+   103	  postMessage 中转事件流
+   104	- 两次演进**均不改 `PyodideAdapter` / `PyodideSession` / `PyodideHost`
+   105	  公共签名**（`PyodideHost` 是稳定 swap point）
+   106	
+   107	## Modifying this file
+   108	
+   109	- 加方法可任意；改 `PyodideAdapter` / `PyodideSession` 公共签名是契约破坏
+   110	  （影响 `@skb/kernel-registry` 路由 + `block-jupyter` consumer）
+   111	- `capabilities` 字段增删需同步 `@skb/kernel-adapter` `KernelCapabilities`
+   112	  类型扩展（后者改动需 ADR）
+   113	
+   114	## Related
+   115	
+   116	- [@skb/kernel-adapter CONTRACT.md](../kernel-adapter/CONTRACT.md) — 接口权威
+   117	- [@skb/kernel-registry CONTRACT.md](../kernel-registry/CONTRACT.md) — 路由层
+   118	- [设计规格 §1.6 / §2.6](../../docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md)
+   119	- [ADR-0001 §3.1](../../docs/decisions/ADR-0001-stack-selection.md) — 内核选型理由
+
+exec
+/bin/bash -lc "sed -n '220,250p' pnpm-lock.yaml" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '3100,3120p' pnpm-lock.yaml" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '7168,7184p' pnpm-lock.yaml" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 120ms:
+        version: 4.1.5(@types/node@22.19.17)(happy-dom@15.11.7)(vite@8.0.10(@types/node@22.19.17)(esbuild@0.27.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.3))
+
+  packages/editor-commands:
+    dependencies:
+      '@skb/content-types':
+        specifier: workspace:*
+        version: link:../content-types
+      zod:
+        specifier: ^3.23.0
+        version: 3.25.76
+    devDependencies:
+      typescript:
+        specifier: ~5.6.0
+        version: 5.6.3
+      vitest:
+        specifier: ^4.1.5
+        version: 4.1.5(@types/node@22.19.17)(happy-dom@15.11.7)(vite@8.0.10(@types/node@22.19.17)(esbuild@0.27.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.3))
+
+  packages/kernel-adapter:
+    devDependencies:
+      typescript:
+        specifier: ~5.6.0
+        version: 5.6.3
+      vitest:
+        specifier: ^4.1.5
+        version: 4.1.5(@types/node@22.19.17)(happy-dom@15.11.7)(vite@8.0.10(@types/node@22.19.17)(esbuild@0.27.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.3))
+
+  packages/kernel-pyodide:
+    dependencies:
+      '@skb/kernel-adapter':
+        specifier: workspace:*
+
+ succeeded in 118ms:
+    resolution: {integrity: sha512-IQ7TZdoaqbT+LCpShg46jnZVlhWD2w6iQYAcYXfHARZ7X1t/UGhhceQDs5X0cGqKvYlHNOuv7Oa1xmb0oQuA3w==}
+    engines: {node: '>=4'}
+
+  postcss-selector-parser@6.1.2:
+    resolution: {integrity: sha512-Q8qQfPiZ+THO/3ZrOrO0cJJKfpYCagtMUkXbnEfmgUjwXg6z/WBeOyS9APBBPCTSiDV+s4SwQGu8yFsiMRIudg==}
+    engines: {node: '>=4'}
+
+  postcss-value-parser@4.2.0:
+    resolution: {integrity: sha512-1NNCs6uurfkVbeXG4S8JFT9t19m45ICnif8zWLd5oPSZ50QnwMfK+H3jv408d4jw/7Bttv5axS5IiHoLaVNHeQ==}
+
+  postcss@8.5.12:
+    resolution: {integrity: sha512-W62t/Se6rA0Az3DfCL0AqJwXuKwBeYg6nOaIgzP+xZ7N5BFCI7DYi1qs6ygUYT6rvfi6t9k65UMLJC+PHZpDAA==}
+    engines: {node: ^10 || ^12 || >=14}
+
+  prelude-ls@1.2.1:
+    resolution: {integrity: sha512-vkcDPrRZo1QZLbn5RLGPpg/WmIQ65qoWWhcGKf/b5eplkkarX0m9z8ppCat4mlOqUsWpyNuYgO3VRyrYHSzX5g==}
+    engines: {node: '>= 0.8.0'}
+
+  prettier@3.8.3:
+    resolution: {integrity: sha512-7igPTM53cGHMW8xWuVTydi2KO233VFiTNyF5hLJqpilHfmn8C8gPf+PS7dUT64YcXFbiMGZxS9pCSxL/Dxm/Jw==}
+    engines: {node: '>=14'}
+
+ succeeded in 115ms:
+      jiti: 1.21.7
+      postcss: 8.5.12
+      tsx: 4.21.0
+      yaml: 2.8.3
+
+  postcss-nested@6.2.0(postcss@8.5.12):
+    dependencies:
+      postcss: 8.5.12
+      postcss-selector-parser: 6.1.2
+
+  postcss-selector-parser@6.0.10:
+    dependencies:
+      cssesc: 3.0.0
+      util-deprecate: 1.0.2
+
+  postcss-selector-parser@6.1.2:
+    dependencies:
+
+exec
+/bin/bash -lc "nl -ba pnpm-lock.yaml | sed -n '3108,3118p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+  3108	    resolution: {integrity: sha512-1NNCs6uurfkVbeXG4S8JFT9t19m45ICnif8zWLd5oPSZ50QnwMfK+H3jv408d4jw/7Bttv5axS5IiHoLaVNHeQ==}
+  3109	
+  3110	  postcss@8.5.12:
+  3111	    resolution: {integrity: sha512-W62t/Se6rA0Az3DfCL0AqJwXuKwBeYg6nOaIgzP+xZ7N5BFCI7DYi1qs6ygUYT6rvfi6t9k65UMLJC+PHZpDAA==}
+  3112	    engines: {node: ^10 || ^12 || >=14}
+  3113	
+  3114	  prelude-ls@1.2.1:
+  3115	    resolution: {integrity: sha512-vkcDPrRZo1QZLbn5RLGPpg/WmIQ65qoWWhcGKf/b5eplkkarX0m9z8ppCat4mlOqUsWpyNuYgO3VRyrYHSzX5g==}
+  3116	    engines: {node: '>= 0.8.0'}
+  3117	
+  3118	  prettier@3.8.3:
+
+exec
+/bin/bash -lc "nl -ba pnpm-lock.yaml | sed -n '228,242p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+   228	        specifier: ^3.23.0
+   229	        version: 3.25.76
+   230	    devDependencies:
+   231	      typescript:
+   232	        specifier: ~5.6.0
+   233	        version: 5.6.3
+   234	      vitest:
+   235	        specifier: ^4.1.5
+   236	        version: 4.1.5(@types/node@22.19.17)(happy-dom@15.11.7)(vite@8.0.10(@types/node@22.19.17)(esbuild@0.27.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.3))
+   237	
+   238	  packages/kernel-adapter:
+   239	    devDependencies:
+   240	      typescript:
+   241	        specifier: ~5.6.0
+   242	        version: 5.6.3
+
+exec
+/bin/bash -lc "nl -ba pnpm-lock.yaml | sed -n '8038,8046p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+  8038	      pathe: 2.0.3
+  8039	      picomatch: 4.0.4
+  8040	      std-env: 4.1.0
+  8041	      tinybench: 2.9.0
+  8042	      tinyexec: 1.1.2
+  8043	      tinyglobby: 0.2.16
+  8044	      tinyrainbow: 3.1.0
+  8045	      vite: 8.0.10(@types/node@22.19.17)(esbuild@0.27.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.3)
+  8046	      why-is-node-running: 2.3.0
+
+exec
+/bin/bash -lc "nl -ba pnpm-lock.yaml | sed -n '3880,3888p'" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "nl -ba pnpm-lock.yaml | sed -n '7174,7182p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+  7174	    dependencies:
+  7175	      postcss: 8.5.12
+  7176	      postcss-selector-parser: 6.1.2
+  7177	
+  7178	  postcss-selector-parser@6.0.10:
+  7179	    dependencies:
+  7180	      cssesc: 3.0.0
+  7181	      util-deprecate: 1.0.2
+  7182	
+
+ succeeded in 0ms:
+  3880	        optional: true
+  3881	
+  3882	  volar-service-typescript@0.0.70:
+  3883	    resolution: {integrity: sha512-l46Bx4cokkUedTd74ojO5H/zqHZJ8SUuyZ0IB8JN4jfRqUM3bQFBHoOwlZCyZmOeO0A3RQNkMnFclxO4c++gsg==}
+  3884	    peerDependencies:
+  3885	      '@volar/language-service': ~2.4.0
+  3886	    peerDependenciesMeta:
+  3887	      '@volar/language-service':
+  3888	        optional: true
+
+exec
+/bin/bash -lc "rg -n \"pyodide|ws@8\\.20\\.0\" pnpm-lock.yaml" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+247:  packages/kernel-pyodide:
+252:      pyodide:
+3204:  pyodide@0.27.7:
+3975:  ws@8.20.0:
+7322:  pyodide@0.27.7:
+8187:  ws@8.20.0: {}
+
+exec
+/bin/bash -lc "nl -ba pnpm-lock.yaml | sed -n '3202,3210p'" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "nl -ba pnpm-lock.yaml | sed -n '247,262p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+  3202	    engines: {node: '>=6'}
+  3203	
+  3204	  pyodide@0.27.7:
+  3205	    resolution: {integrity: sha512-RUSVJlhQdfWfgO9hVHCiXoG+nVZQRS5D9FzgpLJ/VcgGBLSAKoPL8kTiOikxbHQm1kRISeWUBdulEgO26qpSRA==}
+  3206	    engines: {node: '>=18.0.0'}
+  3207	
+  3208	  queue-microtask@1.2.3:
+  3209	    resolution: {integrity: sha512-NuaNSa6flKT5JaSYQzJok04JzTL1CA6aGhv5rfLW3PgqA+M2ChpZQnAC8h8i4ZFkBS8X5RqkDBHA7r4hej3K9A==}
+  3210	
+
+ succeeded in 0ms:
+   247	  packages/kernel-pyodide:
+   248	    dependencies:
+   249	      '@skb/kernel-adapter':
+   250	        specifier: workspace:*
+   251	        version: link:../kernel-adapter
+   252	      pyodide:
+   253	        specifier: ^0.27.0
+   254	        version: 0.27.7
+   255	    devDependencies:
+   256	      typescript:
+   257	        specifier: ~5.6.0
+   258	        version: 5.6.3
+   259	      vitest:
+   260	        specifier: ^4.1.5
+   261	        version: 4.1.5(@types/node@22.19.17)(happy-dom@15.11.7)(vite@8.0.10(@types/node@22.19.17)(esbuild@0.27.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.3))
+   262	
+
+exec
+/bin/bash -lc "nl -ba pnpm-lock.yaml | sed -n '7320,7332p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+  7320	  punycode@2.3.1: {}
+  7321	
+  7322	  pyodide@0.27.7:
+  7323	    dependencies:
+  7324	      ws: 8.20.0
+  7325	    transitivePeerDependencies:
+  7326	      - bufferutil
+  7327	      - utf-8-validate
+  7328	
+  7329	  queue-microtask@1.2.3: {}
+  7330	
+  7331	  radix3@1.1.2: {}
+  7332	
+
+exec
+/bin/bash -lc "nl -ba pnpm-lock.yaml | sed -n '3973,3981p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+  3973	    engines: {node: '>=18'}
+  3974	
+  3975	  ws@8.20.0:
+  3976	    resolution: {integrity: sha512-sAt8BhgNbzCtgGbt2OxmpuryO63ZoDk/sqaB/znQm94T4fCEsy/yV+7CdC1kJhOU9lboAEU7R3kquuycDoibVA==}
+  3977	    engines: {node: '>=10.0.0'}
+  3978	    peerDependencies:
+  3979	      bufferutil: ^4.0.1
+  3980	      utf-8-validate: '>=5.0.2'
+  3981	    peerDependenciesMeta:
+
+exec
+/bin/bash -lc "nl -ba pnpm-lock.yaml | sed -n '8185,8190p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+  8185	      strip-ansi: 7.2.0
+  8186	
+  8187	  ws@8.20.0: {}
+  8188	
+  8189	  xxhash-wasm@1.1.0: {}
+  8190	
+
+exec
+/bin/bash -lc 'pnpm --filter @skb/kernel-pyodide exec vitest --help' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 434ms:
+vitest/4.1.5
+
+Usage:
+  $ vitest [...filters]
+
+Commands:
+  run [...filters]      
+  related [...filters]  
+  watch [...filters]    
+  dev [...filters]      
+  bench [...filters]    
+  init <project>        
+  list [...filters]     
+  [...filters]          
+  complete [shell]      
+
+For more info, run any command with the `--help` flag:
+  $ vitest run --help
+  $ vitest related --help
+  $ vitest watch --help
+  $ vitest dev --help
+  $ vitest bench --help
+  $ vitest init --help
+  $ vitest list --help
+  $ vitest --help
+  $ vitest complete --help
+  $ vitest --help --expand-help
+
+Options:
+  -v, --version                                              Display version number 
+  -r, --root <path>                                          Root path 
+  -c, --config <path>                                        Path to config file 
+  -u, --update [type]                                        Update snapshot (accepts boolean, "new", "all" or "none") 
+  -w, --watch                                                Enable watch mode 
+  -t, --testNamePattern <pattern>                            Run tests with full names matching the specified regexp pattern 
+  --dir <path>                                               Base directory to scan for the test files 
+  --ui                                                       Enable UI 
+  --open                                                     Open UI automatically (default: !process.env.CI) 
+  --api [port]                                               Specify server port. Note if the port is already being used, Vite will automatically try the next available port so this may not be the actual port the server ends up listening on. If true will be set to 51204. Use '--help --api' for more info. 
+  --silent [value]                                           Silent console output from tests. Use 'passed-only' to see logs from failing tests only. 
+  --hideSkippedTests                                         Hide logs for skipped tests 
+  --reporter <name>                                          Specify reporters (default, agent, minimal, blob, verbose, dot, json, tap, tap-flat, junit, tree, hanging-process, github-actions) 
+  --outputFile <filename/-s>                                 Write test results to a file when supporter reporter is also specified, use cac's dot notation for individual outputs of multiple reporters (example: --outputFile.tap=./tap.txt) 
+  --coverage                                                 Enable coverage report. Use '--help --coverage' for more info. 
+  --mode <name>                                              Override Vite mode (default: test or benchmark) 
+  --isolate                                                  Run every test file in isolation. To disable isolation, use --no-isolate (default: true) 
+  --globals                                                  Inject apis globally 
+  --dom                                                      Mock browser API with happy-dom 
+  --browser <name>                                           Run tests in the browser. Equivalent to --browser.enabled (default: false). Use '--help --browser' for more info. 
+  --pool <pool>                                              Specify pool, if not running in the browser (default: forks) 
+  --execArgv <option>                                        Pass additional arguments to node process when spawning worker_threads or child_process. 
+  --vmMemoryLimit <limit>                                    Memory limit for VM pools. If you see memory leaks, try to tinker this value. 
+  --fileParallelism                                          Should all test files run in parallel. Use --no-file-parallelism to disable (default: true) 
+  --maxWorkers <workers>                                     Maximum number or percentage of workers to run tests in 
+  --environment <name>                                       Specify runner environment, if not running in the browser (default: node) 
+  --passWithNoTests                                          Pass when no tests are found 
+  --logHeapUsage                                             Show the size of heap for each test when running in node 
+  --detectAsyncLeaks                                         Detect asynchronous resources leaking from the test file (default: false) 
+  --allowOnly                                                Allow tests and suites that are marked as only (default: !process.env.CI) 
+  --dangerouslyIgnoreUnhandledErrors                         Ignore any unhandled errors that occur 
+  --shard <shards>                                           Test suite shard to execute in a format of <index>/<count> 
+  --changed [since]                                          Run tests that are affected by the changed files (default: false) 
+  --sequence <options>                                       Options for how tests should be sorted. Use '--help --sequence' for more info. 
+  --inspect [[host:]port]                                    Enable Node.js inspector (default: 127.0.0.1:9229) 
+  --inspectBrk [[host:]port]                                 Enable Node.js inspector and break before the test starts 
+  --testTimeout <timeout>                                    Default timeout of a test in milliseconds (default: 5000). Use 0 to disable timeout completely. 
+  --hookTimeout <timeout>                                    Default hook timeout in milliseconds (default: 10000). Use 0 to disable timeout completely. 
+  --bail <number>                                            Stop test execution when given number of tests have failed (default: 0) 
+  --retry <times>                                            Retry the test specific number of times if it fails (default: 0). Use '--help --retry' for more info. 
+  --diff <path>                                              DiffOptions object or a path to a module which exports DiffOptions object. Use '--help --diff' for more info. 
+  --exclude <glob>                                           Additional file globs to be excluded from test 
+  --expandSnapshotDiff                                       Show full diff when snapshot fails 
+  --disableConsoleIntercept                                  Disable automatic interception of console logging (default: false) 
+  --typecheck                                                Enable typechecking alongside tests (default: false). Use '--help --typecheck' for more info. 
+  --project <name>                                           The name of the project to run if you are using Vitest workspace feature. This can be repeated for multiple projects: --project=1 --project=2. You can also filter projects using wildcards like --project=packages*, and exclude projects with --project=!pattern. 
+  --slowTestThreshold <threshold>                            Threshold in milliseconds for a test or suite to be considered slow (default: 300) 
+  --teardownTimeout <timeout>                                Default timeout of a teardown function in milliseconds (default: 10000) 
+  --cache                                                    Enable cache. Use '--help --cache' for more info. 
+  --maxConcurrency <number>                                  Maximum number of concurrent tests and suites during test file execution (default: 5) 
+  --expect                                                   Configuration options for expect() matches. Use '--help --expect' for more info. 
+  --printConsoleTrace                                        Always print console stack traces 
+  --includeTaskLocation                                      Collect test and suite locations in the location property 
+  --attachmentsDir <dir>                                     The directory where attachments from context.annotate are stored in (default: .vitest-attachments) 
+  --run                                                      Disable watch mode 
+  --no-color                                                 Removes colors from the console output (default: true)
+  --clearScreen                                              Clear terminal screen when re-running tests during watch mode (default: true) 
+  --configLoader <loader>                                    Use bundle to bundle the config with esbuild or runner (experimental) to process it on the fly. This is only available in vite version 6.1.0 and above. (default: bundle) 
+  --standalone                                               Start Vitest without running tests. Tests will be running only on change. If browser mode is enabled, the UI will be opened automatically. This option is ignored when CLI file filters are passed. (default: false) 
+  --mergeReports [path]                                      Path to a blob reports directory. If this options is used, Vitest won't run any tests, it will only report previously recorded tests 
+  --listTags [type]                                          List all available tags instead of running tests. --list-tags=json will output tags in JSON format, unless there are no tags. 
+  --clearCache                                               Delete all Vitest caches, including experimental.fsModuleCache, without running any tests. This will reduce the performance in the subsequent test run. 
+  --tagsFilter <expression>                                  Run only tests with the specified tags. You can use logical operators && (and), || (or) and ! (not) to create complex expressions, see https://vitest.dev/guide/test-tags#syntax for more information. 
+  --strictTags                                               Should Vitest throw an error if test has a tag that is not defined in the config. (default: true) 
+  --experimental <features>                                  Experimental features.. Use '--help --experimental' for more info. 
+  -h, --help                                                 Display this message 
+
+codex
+Vitest exposes `--configLoader runner`, which can avoid the config bundling path that tried to write under `node_modules`. I’m trying that variant so the final test status is based on a fresh run if possible.
+exec
+/bin/bash -lc 'pnpm --filter @skb/kernel-pyodide exec vitest run --configLoader runner' in /home/weiyi/selfKnowledgeBaseWeb
+ exited 1 in 1041ms:
+
+ RUN  v4.1.5 /home/weiyi/selfKnowledgeBaseWeb/packages/kernel-pyodide
+
+ ❯ src/__tests__/session.test.ts (0 test)
+ ❯ src/__tests__/matplotlib.test.ts (0 test)
+ ❯ src/__tests__/adapter.test.ts (0 test)
+
+⎯⎯⎯⎯⎯⎯ Failed Suites 3 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/__tests__/adapter.test.ts [ src/__tests__/adapter.test.ts ]
+ FAIL  src/__tests__/matplotlib.test.ts [ src/__tests__/matplotlib.test.ts ]
+ FAIL  src/__tests__/session.test.ts [ src/__tests__/session.test.ts ]
+Error: ENOENT: no such file or directory, mkdir '/tmp/Lb4_5Kxgx1hbUTEiA4ywH/ssr'
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+
+
+ Test Files  3 failed (3)
+      Tests  no tests
+   Start at  15:36:42
+   Duration  179ms (transform 0ms, setup 0ms, import 0ms, tests 0ms, environment 0ms)
+
+undefined
+/home/weiyi/selfKnowledgeBaseWeb/packages/kernel-pyodide:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: vitest run --configLoader runner
+
+exec
+/bin/bash -lc 'git status --short -- packages/kernel-pyodide packages/kernel-registry tsconfig.json pnpm-lock.yaml' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+ M pnpm-lock.yaml
+ M tsconfig.json
+?? packages/kernel-pyodide/
+
+exec
+/bin/bash -lc "rg --files docs | rg 'ADR-0006|0006|adr-0006'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+docs/decisions/ADR-0006-asymmetry-audit-checklist.md
+
+exec
+/bin/bash -lc "rg -n \"ADR-0006|8-point|item #|consumer schema|algorithm|sister-doc|try/catch|authority\" docs packages -g '*.md'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+docs/review-checklist.md:20:## ADR-0006 asymmetry-audit checklist (mandatory for code-reviewer + pr-gate)
+docs/review-checklist.md:22:Apply each item that is in scope for the PR; explicitly skip items that are not (e.g. item #2 "status code" doesn't apply to TS-only packages). Reviewer verdict structure MUST include `asymmetry-audit applied: items {1..8} verdicts: ...`. See [ADR-0006](decisions/ADR-0006-asymmetry-audit-checklist.md) for empirical evidence + full rationale per item.
+docs/review-checklist.md:27:- [ ] **#4 Consumer schema audit**: After defining a schema in a single-authority package, audit every consumer for inline duplicates; "deferred swap" is a contract break.
+docs/review-checklist.md:28:- [ ] **#5 Algorithm + runtime constant replication audit**: When an algorithm or constant is replicated outside its authority (inline FOUC scripts, login challenge derivation, etc.), audit consumer-side replicas for byte-equivalent reproduction; replica MUST register a regression test against the authority's input corpus.
+docs/review-checklist.md:30:- [ ] **#7 Exception-scope equivalence audit**: When replicating an algorithm + its exception handling, audit BOTH happy-path semantics AND `try/catch` scope between authority and replica; narrow vs wide try/catch can produce divergent fall-through behavior.
+docs/review-checklist.md:31:- [ ] **#8 Authority-document → generated/consumed surface audit**: When updating an authority document (ADR, spec, `agent-contract.md`, runbook, CONVENTIONS) that mandates downstream behavior, audit every consumer-side replica/generated artifact in the same commit; regenerate codegen outputs (`pnpm generate:configs`); cross-link runbooks; embed in subagent prompts.
+packages/kernel-pyodide/CONTRACT.md:55:extends KernelError`); adding new subclasses is non-breaking" — 即 sister-doc
+packages/kernel-pyodide/CONTRACT.md:76:  包内 inline 重定义**（ADR-0006 item #4 consumer schema audit）
+packages/kernel-pyodide/CONTRACT.md:80:  逐字相同（authority ↔ runtime-fact 同步；ADR-0006 item #5）；当前实现
+packages/block-foundation/RFC.md:56:  + [ADR-0006](../../docs/decisions/ADR-0006-asymmetry-audit-checklist.md) item #3
+packages/block-foundation/RFC.md:80:redefines its schema — see ADR-0006 item #4: "single-authority schema → audit
+packages/block-foundation/RFC.md:315:- [ADR-0006](../../docs/decisions/ADR-0006-asymmetry-audit-checklist.md) items #3 / #4 — `.strict()` propagation + single-authority schema
+packages/block-foundation/RFC.md:316:- [ADR-0008](../../docs/decisions/ADR-0008-wave-2-entry-policies.md) D2 — interface freeze authority
+packages/editor-commands/CONTRACT.md:23:- **Frontmatter schema authority**：从 `@skb/content-types` 导入 `frontmatterSchema`，但本包消费时一律加 `.strict()` 防止 agent typo 被静默 strip（R3 erratum）。`create_page.frontmatter` 用 `frontmatterSchema.strict()`；`update_frontmatter.patch` 用 `frontmatterSchema.strict().partial()`。不重新定义结构。
+packages/editor-commands/CONTRACT.md:24:- **Slug schema authority**：`slugSchema` 在本包定义并导出（regex `/^[a-z0-9-]+$/`），`@skb/agent-tools` 复用同一 schema 供 `read_page` 等 tool 输入校验，与 apps/api/CONVENTIONS.md §1 slug 约束对齐。
+packages/block-foundation/CONTRACT.md:23:- **Schema strictness**：每个 `BlockCoreDefinition.propsSchema` 必须是 `z.object(...).strict()`；嵌套 `ZodObject` 同样必须 `.strict()`（[ADR-0006](../../docs/decisions/ADR-0006-asymmetry-audit-checklist.md) item #3 trip-hazard：`.strict()` 不传播）。当前类型仅约束到 `ZodTypeAny`（type-narrow 到 `ZodObject` 待 Wave 3）；Wave 2 行为约定 + reviewer + RFC.md §1 显式提醒。未 `.strict()` 不会 throw，但 `propsSchema.parse(input)` 会 silently strip unknown keys，引发 contract drift
+packages/design-tokens/CONTRACT.md:24:## Inverse-direction obligation: replicas of pre-hydration algorithms
+packages/design-tokens/CONTRACT.md:26:Some algorithms in this package must be replicated in inline code that runs **before any module loads** (e.g. an Astro `<script is:inline>` in `<head>` that prevents FOUC), and therefore cannot import from `@skb/design-tokens`. Those replicas carry an inverse-direction obligation: the authority lives here, but the correctness contract binds every consumer that ships its own copy.
+packages/design-tokens/CONTRACT.md:30:Any consumer that replicates this algorithm in inline code MUST be byte-equivalent to the authority in BOTH happy-path AND exception handling:
+packages/design-tokens/CONTRACT.md:33:2. **Narrow `try/catch` scope**: the `try/catch` MUST wrap ONLY the `localStorage.getItem` call. `matchMedia` + DOM apply MUST run AFTER the catch handler. A wide-scope `try/catch` swallows the `matchMedia` path on Safari Private Mode / iOS WebView with storage restrictions / browsers with localStorage disabled — producing light when system pref is dark, i.e. hydration flash.
+packages/design-tokens/CONTRACT.md:36:**Required regression test**: every consumer with an inline replica MUST register a test that asserts byte-equivalence against the authority. Template: `apps/site/src/__tests__/fouc-script.test.ts` — extracts the IIFE from the consumer file, evaluates it via `new Function('localStorage', 'window', 'document', iife)` against parametrized fakes, compares output against `getInitialTheme()` for a 16-row saved-value × system-preference corpus + 2 storage-throws × system-preference rows + 1 truthy-coerce regression assertion (20 tests total). The two storage-throws rows are critical: the saved-value corpus alone passes under a wide-scope `try/catch`.
+packages/design-tokens/CONTRACT.md:38:**Failure mode reference**: Track A v1 review caught happy-path divergence (truthy-coerce); v2 fixed (1) but kept wide-scope `try/catch`; v3 fixed (2). Both v1 and v2 would have shipped visible hydration flash without pr-gate's catch.
+packages/design-tokens/CONTRACT.md:45:- **FOUC bridge** (apps/site responsibility): the BaseLayout `<script is:inline>` in `<head>` must read `localStorage.getItem('skb-theme')` literally, fall back to `matchMedia('(prefers-color-scheme: dark)').matches`, and set `data-theme="dark"` on `<html>` accordingly — **before** any React island hydrates. The inline script must NOT write localStorage. The detailed correctness obligation (algorithm + try/catch scope + literal sync + required regression test) is enumerated in the **Inverse-direction obligation** section above.
+docs/runbooks/team-operations.md:95:| `code-reviewer` (tool)                  | orchestrator 触发，PR ready                                          | 读 git diff；orchestrator Bash 调 `codex exec --profile code-reviewer < /dev/null`；输出 PASS / FAIL + 具体问题；stdout 落盘到 `docs/audits/codex-runs/`。**强制 [ADR-0006](../decisions/ADR-0006-asymmetry-audit-checklist.md) 8-point asymmetry-audit checklist**（每条可适用项目都要在 verdict 里给结论） |
+docs/runbooks/team-operations.md:96:| `pr-gate` (tool)                        | code-reviewer pass 后，orchestrator 判断高风险触发（ADR-0007 D2 表） | orchestrator Bash 调 `codex exec --profile pr-gate < /dev/null`（5.5）；输出 PASS / FAIL。**强制 [ADR-0006](../decisions/ADR-0006-asymmetry-audit-checklist.md) 8-point asymmetry-audit checklist + 8th-class hunt**（独立验证 R1 结论 + 主动 hunt cited-fix 之外的对称性缺口）                              |
+docs/runbooks/team-operations.md:230:- [ADR-0006 cross-location asymmetry-audit checklist](../decisions/ADR-0006-asymmetry-audit-checklist.md)
+packages/block-callout/CONTRACT.md:39:- **propsSchema single authority**: 仅在 `src/core/core-definition.ts` 定义，
+packages/block-callout/CONTRACT.md:41:  不允许在 consumer 处 inline 重复（ADR-0006 item #4）
+packages/block-callout/CONTRACT.md:82:- [ADR-0006 asymmetry audit checklist](../../docs/decisions/ADR-0006-asymmetry-audit-checklist.md) item #3 + #4
+docs/audits/structure-2026-04-29-wave-1.md:100:- **`getInitialTheme`**: defined in `packages/design-tokens/src/use-theme.ts:13`. Consumers: `apps/site/src/__tests__/fouc-script.test.ts` (compared against IIFE in BaseLayout for byte-equivalence), `packages/design-tokens/src/__tests__/use-theme.test.tsx` (unit tests). The inline IIFE in `apps/site/src/layouts/BaseLayout.astro` is documented to be byte-equivalent (algorithm + try/catch scope + literal). The 20-test corpus enforces. No drift.
+docs/audits/structure-2026-04-29-wave-1.md:286:event triggers: ADR-0006 asymmetry-check failures, contract-touching PR clusters,
+docs/audits/structure-2026-04-29-wave-1.md:297:- [ADR-0006 asymmetry-audit checklist](../decisions/ADR-0006-asymmetry-audit-checklist.md)
+docs/plans/active.md:10:- [ADR-0002](../decisions/ADR-0002-wave-1-close.md) Wave 1 close — 22 errata + 3 cross-package single-authority invariants
+docs/plans/active.md:11:- [ADR-0006](../decisions/ADR-0006-asymmetry-audit-checklist.md) 8-point cross-location asymmetry-audit checklist (process rule, mandatory for code-reviewer + pr-gate; embedded in `agent-contract.md` + regenerated subagent prompts + cross-linked from team-operations.md)
+docs/plans/active.md:15:**团队操作手册**: [docs/runbooks/team-operations.md](../runbooks/team-operations.md)（必须前置注入每个 spawn 的 prompt；Tier 2 reviewer rows 现已 cross-link ADR-0006 8-point checklist；reviewer subagent prompts 也已 regen 嵌入 8 项摘要）
+docs/plans/active.md:23:ADR-0007 重构 agent 阵容。**实施作为 Wave 2 第一个 task 走完整 review chain**（codex 5.3-spark + codex 5.5 pr-gate + Claude pr-reviewer，因 ADR-0007 D2 触发条件命中）。**严格按 ADR-0006 D8 staging protocol** 执行（authority + generator code + 全部生成产物在同一 bundle commit；显式 `git add` + `git diff --cached --stat` 验证）。
+docs/plans/active.md:39:1. 读 [ADR-0002](../decisions/ADR-0002-wave-1-close.md) + [ADR-0006](../decisions/ADR-0006-asymmetry-audit-checklist.md) + **[ADR-0007](../decisions/ADR-0007-job-function-codex-heavy-execution.md)**（必读）
+docs/plans/active.md:50:- 12 cross-location asymmetry meta-class 实例（worker layer 1-7：B R1 / D R2 / F R3 / C R2 / F R5 / A R1 / A R2；close-ceremony 8-12：v1 dogfood failure / v2 ADR-0006:81 drift / v3 ADR-0006:117 drift / v4 structure baseline:66 / v5 generator outputs not staged）已编入 ADR-0006 empirical 8-point checklist（8 distinct items + 4 close-ceremony reinforcements of items #6 + #8）
+docs/plans/active.md:51:- 3 cross-package single-authority invariants 已对称落地到 CONTRACT.md（`frontmatterSchema` / `editBlockInputSchema` / `getInitialTheme()`）
+docs/runbooks/codex-tool-invocations.md:32:## ADR-0006 D8 reminder
+docs/runbooks/codex-tool-invocations.md:36:(commit `e15ec36` extension to D8: lockfile is generated-from-authority artifact).
+docs/runbooks/codex-tool-invocations.md:64:**强制：ADR-0006 8-point asymmetry-audit checklist**（见 `docs/decisions/ADR-0006-asymmetry-audit-checklist.md`）必须按可适用项目逐条审查，verdict 结构应包含
+docs/runbooks/codex-tool-invocations.md:69:(4) single-authority schema → 审所有 consumer 是否复刻定义；
+docs/runbooks/codex-tool-invocations.md:72:(7) try/catch 范围 → narrow vs wide 在 happy-path 等价时仍可异常分流；
+docs/runbooks/codex-tool-invocations.md:73:(8) authority 文档（ADR/agent-contract/runbook/CONVENTIONS）改动 → 审 generated/consumed surface（`.claude/agents/*`、`docs/review-checklist.md`、`team-operations.md`、`docs/runbooks/codex-tool-invocations.md`、Codex profiles、**pnpm-lock.yaml**）是否在同一 commit 里同步（commit `e15ec36` 教训：lockfile 也属 generated-from-authority artifact）。
+docs/runbooks/codex-tool-invocations.md:135:**强制：ADR-0006 8-point asymmetry-audit checklist**（见 `docs/decisions/ADR-0006-asymmetry-audit-checklist.md`）— 你是这项规则的主要执行者，必须独立验证所有可适用项目（不仅依赖 code-reviewer 的 R1 结论），并主动 hunt 8th-class beyond the cited fix。verdict 结构应包含
+docs/runbooks/codex-tool-invocations.md:271:- [ADR-0006](../decisions/ADR-0006-asymmetry-audit-checklist.md) — 8-point asymmetry audit (mandatory for code-reviewer + pr-gate profiles)
+docs/decisions/README.md:14:| [0006](ADR-0006-asymmetry-audit-checklist.md)             | Cross-location asymmetry-audit checklist (process rule)    | 2026-04-30 | accepted |
+docs/decisions/ADR-0007-job-function-codex-heavy-execution.md:23:- Codex 5.5 在 review 阶段抓住 9/12 cross-location asymmetry（[ADR-0006](ADR-0006-asymmetry-audit-checklist.md) 数据）
+docs/decisions/ADR-0007-job-function-codex-heavy-execution.md:204:- **agent-contract.md restructure 是 high-risk PR**（触碰 authority + 全部 generated outputs），必须严格走 ADR-0006 D8 staging protocol
+docs/decisions/ADR-0007-job-function-codex-heavy-execution.md:220:| ADR-0006 8-point checklist | 不破坏；本 ADR 实施时**就是** ADR-0006 D8 的考验场（authority + generator + outputs 必须同 bundle staged） |
+docs/decisions/ADR-0007-job-function-codex-heavy-execution.md:224:本 ADR 是决策记录；实际实施作为 **Wave 2 Pre-Task 0** 在 team 流程中执行。**实施步骤序列**（必须严格按此顺序，并满足 ADR-0006 D8 staging protocol）：
+docs/decisions/ADR-0007-job-function-codex-heavy-execution.md:308:### Step 6: 跑生成器 + 严格按 ADR-0006 D8 staging protocol
+docs/decisions/ADR-0007-job-function-codex-heavy-execution.md:318:# 3. 显式 git add 所有改动 + 生成产物（关键步骤，参 ADR-0006 D8 + 实例 #12 教训）：
+docs/decisions/ADR-0007-job-function-codex-heavy-execution.md:364:- codex 5.5 pr-gate 必跑（agent-contract 是 authority）
+docs/decisions/ADR-0007-job-function-codex-heavy-execution.md:367:**这 PR 是 ADR-0006 8-point checklist 的标准考场** —— 实施者预期会撞 instance #8 子类（authority + generator + outputs not staged）。提前 grep `git status --short`/`git diff --cached --stat` 双检查。
+docs/decisions/ADR-0007-job-function-codex-heavy-execution.md:381:- [ADR-0006](ADR-0006-asymmetry-audit-checklist.md) 本 ADR 实施时必经的 review checklist；尤其 D8 + instance #12 staging 教训
+docs/decisions/ADR-0008-wave-2-entry-policies.md:98:- **block-foundation 接口在 block-callout 入门前 freeze**：预防 Wave 1 R-round inflation 同源问题（教训源 ADR-0006 instances #1, #5）。
+docs/decisions/ADR-0008-wave-2-entry-policies.md:121:按 ADR-0006 D8 staging protocol（authority + generated/consumed surface 同 bundle staged）：
+docs/decisions/ADR-0008-wave-2-entry-policies.md:131:   - `pnpm-lock.yaml`（如 `pnpm install` 后有变动 — workspace dep 删除通常无 lockfile 影响，但 ADR-0006 D8 sub-form C 要求 verify）
+docs/decisions/ADR-0008-wave-2-entry-policies.md:143:- [ADR-0006](ADR-0006-asymmetry-audit-checklist.md) D8 — staging protocol 适用本 PR
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:660:| `code-reviewer` | gpt-5.3-codex-spark（默认廉价） | 行级 review：类型 / lint / 契约同步 / 文件大小 / 风格 / 边界条件；强制 ADR-0006 8-point asymmetry-audit |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:668:Wave 1 数据（codex 5.5 抓 9/12 cross-location asymmetry，[ADR-0006](../../decisions/ADR-0006-asymmetry-audit-checklist.md)）
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:680:│  ── 强制 ADR-0006 8-point asymmetry-audit checklist       │
+docs/decisions/ADR-0002-wave-1-close.md:15:1. Capture empirical lessons that should bind Wave 2+ (recorded as ADR-0006 process rule and inline notes in CONTRACT.md / CONVENTIONS.md)
+docs/decisions/ADR-0002-wave-1-close.md:26:### D1 — Process rule codified as ADR-0006
+docs/decisions/ADR-0002-wave-1-close.md:28:The 8-point cross-location asymmetry-audit checklist becomes mandatory reviewer practice (see [ADR-0006](ADR-0006-asymmetry-audit-checklist.md)). Wave 1's empirical evidence (12 instances across 6 tracks + 5 close-ceremony fix iterations — 8 distinct failure-mode items + 4 close-ceremony reinforcements of items #6 and #8) is the data behind this rule.
+docs/decisions/ADR-0002-wave-1-close.md:73:9. **`packages/content-types/frontmatterSchema` is the single authority** for note frontmatter. Consumers (`apps/site`, future block-foundation block plugins) MUST `import { frontmatterSchema } from '@skb/content-types'` rather than redefine inline. Documented in `apps/site/CONTRACT.md` + `content-types/CONTRACT.md`.
+docs/decisions/ADR-0002-wave-1-close.md:75:10. **`packages/editor-commands/editBlockInputSchema` is the single authority** for the `edit_block` agent-tool input shape. Composed via `editBlockBase.omit({type: true}).refine(editBlockHasChange)`. Consumers (`@skb/agent-tools`) MUST import; cannot duplicate the `.refine()` predicate. Documented in both packages' CONTRACT.md.
+docs/decisions/ADR-0002-wave-1-close.md:77:11. **`packages/design-tokens/getInitialTheme()` is the single authority** for FOUC initial-theme algorithm. Consumer-side replicas (currently `apps/site/BaseLayout.astro` IIFE) MUST be byte-equivalent in BOTH happy-path AND exception scope; replica MUST register a regression test (template: `apps/site/src/__tests__/fouc-script.test.ts`). Documented in `design-tokens/CONTRACT.md` Inverse-direction obligation invariant.
+docs/decisions/ADR-0002-wave-1-close.md:123:- **Empirical lessons preserved**: 22 errata + ADR-0006 8-point checklist + 3 cross-package single-authority invariants now codified at the right scope (CONTRACT.md / CONVENTIONS.md / ADR). Wave 2+ workers won't re-litigate.
+docs/decisions/ADR-0002-wave-1-close.md:126:- **Single-authority discipline**: 3 cross-package authority pairs (frontmatter schema / edit-block input schema / FOUC algorithm) all have consumer-side test gates + bidirectional CONTRACT.md documentation.
+docs/decisions/ADR-0002-wave-1-close.md:131:- **Review-round count was high** for some tracks (Track F: 5 + 4 = 9 review rounds total; Track A: 3 + 3 = 6). ADR-0006 should reduce this in Wave 2 by front-loading the asymmetry-audit at code-reviewer level.
+docs/decisions/ADR-0002-wave-1-close.md:137:- **Risk**: Wave 2 workers may not read ADR-0006 carefully and hit the same 8-point class. **Mitigation**: ADR-0006 v2 also updates `agent-contract.md` (code-reviewer + pr-gate descriptions embed the 8-item summary), regenerates `.claude/agents/{code-reviewer,pr-gate}.md` + `docs/review-checklist.md` via `pnpm generate:configs`, and adds an ADR-0006 cross-link to `docs/runbooks/team-operations.md` Tier 2 reviewer rows. Every spawn prompt prefix-injects `team-operations.md`, so reviewers see the rule on entry; the regenerated subagent prompts also embed the 8-item summary directly.
+docs/decisions/ADR-0002-wave-1-close.md:145:2. ✅ ADR-0006 written (`docs/decisions/ADR-0006-asymmetry-audit-checklist.md`)
+docs/decisions/ADR-0002-wave-1-close.md:152:9. ⏳ Wave 1 close commit (orchestrator-direct via git-operator) — bundles ADR-0002 + ADR-0006 + structure baseline + active.md update + decisions/README.md index
+docs/decisions/ADR-0002-wave-1-close.md:161:- [ADR-0006](ADR-0006-asymmetry-audit-checklist.md) — 8-point asymmetry-audit checklist (process rule)
+docs/decisions/ADR-0002-wave-1-close.md:163:- [设计规格](../superpowers/specs/2026-04-29-self-knowledge-base-design.md) — spec authority
+docs/decisions/ADR-0006-asymmetry-audit-checklist.md:1:# ADR-0006: Cross-location asymmetry-audit checklist (process rule)
+docs/decisions/ADR-0006-asymmetry-audit-checklist.md:15:> **Cross-location asymmetry**: a value, schema, algorithm, or invariant exists in two or more places, and an edit to one location is not symmetrically applied to all peers, so behavior diverges silently.
+docs/decisions/ADR-0006-asymmetry-audit-checklist.md:28:| 6 | Track A | R1 → fixed v2 | FOUC inline IIFE saved-value algorithm + content schema | Truthy-coerce diverges from strict-whitelist for invalid / case-mismatched values; inline `z.object` redefinition diverges from `frontmatterSchema` authority |
+docs/decisions/ADR-0006-asymmetry-audit-checklist.md:29:| 7 | Track A v2 | R2 → fixed v3 | FOUC inline IIFE try/catch scope | Wide try/catch in IIFE swallowed `matchMedia` exceptions while authority's narrow try/catch propagated; storage-throws scenarios produced light→dark hydration flash |
+docs/decisions/ADR-0006-asymmetry-audit-checklist.md:30:| 8 | Wave 1 close bundle v1 | R1 → fixed v2 | ADR-0006 mandated reviewer-prompt updates vs actual `agent-contract.md` / generated `.claude/agents/*.md` / `docs/review-checklist.md` / `team-operations.md` content | The close-ceremony commit codified a process rule that mandates downstream behavior; consumer-side artifacts (reviewer prompts + runbook) had not been updated to embed the rule, so Wave 2 reviewers would not have seen it |
+docs/decisions/ADR-0006-asymmetry-audit-checklist.md:31:| 9 | Wave 1 close bundle v2 | R2 → fixed v3 | ADR-0006:81 within-document drift "7 distinct instances" | Single bullet missed during the v1→v2 count sweep — sister-bullet variant of item #6 within a single document |
+docs/decisions/ADR-0006-asymmetry-audit-checklist.md:32:| 10 | Wave 1 close bundle v3 | R3 → fixed v4 | ADR-0006:117 within-document drift "7 empirical instances + 18+ erratum candidates" (both numbers stale) | Second sister-bullet drift in the same file, a different bullet — proved per-citation fixes are themselves item #6 traps; comprehensive sweep at fix time is the robust pattern |
+docs/decisions/ADR-0006-asymmetry-audit-checklist.md:34:| 12 | Wave 1 close bundle v5 | R2 (pr-gate) → fixed v6 | Regenerated `.claude/agents/code-reviewer.md` + `.claude/agents/pr-gate.md` + `docs/review-checklist.md` were not staged in the bundle commit — authority + generator code updated, but generator outputs remained at pre-update HEAD content | Sub-form of item #8: regenerating an artifact and `git add`'ing it are separate steps; a bundle that updates authority + generator without staging the regenerated outputs is silently stale. Motivated the "verify by clean second-run" step now part of item #8. |
+docs/decisions/ADR-0006-asymmetry-audit-checklist.md:46:Adopt an **8-point asymmetry-audit checklist** as a mandatory part of `code-reviewer` (Codex 5.3-spark, default cheap) and `pr-gate` (Codex 5.5, deep) review prompts. Reviewers MUST work through every applicable item before declaring PASS.
+docs/decisions/ADR-0006-asymmetry-audit-checklist.md:56:4. **Consumer schema audit**: After defining a schema in a single-authority package (e.g. `@skb/content-types/frontmatterSchema`), audit every consumer for inline duplicates or inline redefinitions that should `import` instead. The "deferred swap" pattern — "I'll inline now and import later" — is a contract break that compounds over time. (Wave 1 evidence: instance #6 part 2 — apps/site/content.config.ts inlined `z.object(...)` rather than importing `frontmatterSchema`.)
+docs/decisions/ADR-0006-asymmetry-audit-checklist.md:58:5. **Algorithm + runtime constant replication audit**: When an algorithm or runtime constant is replicated outside its authority (e.g. inline FOUC scripts, login challenge derivation, pre-hydration boot logic that cannot import from packages), audit every consumer-side replica for byte-equivalent reproduction. The replica must register a **regression test** that asserts equivalence against the authority across a representative input corpus. (Wave 1 evidence: instance #6 part 1 — FOUC IIFE truthy-coerce vs `getInitialTheme()` strict-whitelist; remediated with `apps/site/src/__tests__/fouc-script.test.ts` 16-row corpus.)
+docs/decisions/ADR-0006-asymmetry-audit-checklist.md:62:7. **Exception-scope equivalence audit**: When replicating an algorithm + its exception handling across files, audit BOTH the happy-path semantics AND the `try/catch` scope between authority and replica. Narrow vs wide `try/catch` can produce divergent fall-through behavior even with identical happy-path logic. Specifically: when `localStorage` / `sessionStorage` / `IndexedDB` / `matchMedia` / any browser API in the algorithm path can throw, the `try/catch` MUST wrap ONLY the throwing call, with the fall-through branch (matchMedia / system default / DOM apply) running AFTER the catch handler — not inside it. (Wave 1 evidence: instance #7 — FOUC IIFE wide-scope try/catch swallowed matchMedia exceptions; remediated with narrow try/catch + 2 storage-throws regression tests.)
+docs/decisions/ADR-0006-asymmetry-audit-checklist.md:64:8. **Authority-document → generated/consumed surface audit**: When updating an authority document (ADR, spec, `agent-contract.md`, runbook, CONVENTIONS) **OR a dependency authority (`package.json`)** that mandates behavior in downstream consumers, audit every consumer-side replica/generated artifact for synchronized update **AND staged-in-the-git-index in the same bundle**. Specifically: an ADR section that says "X file MUST be updated to do Y" requires the same commit to update X and provide a way to verify the synchronization. Generated artifacts (e.g. `docs/review-checklist.md` and `.claude/agents/*.md` derived from `agent-contract.md`; **`pnpm-lock.yaml` derived from `package.json`** — see sub-form C below) MUST be regenerated via the documented codegen step (`pnpm generate:configs` / `pnpm install`) AND **explicitly `git add`'d** so the git **index** (not just the working tree) contains the new content; runbooks (`docs/runbooks/team-operations.md`) MUST be cross-linked; Codex/Claude subagent prompt files MUST embed or reference the new rule.
+docs/decisions/ADR-0006-asymmetry-audit-checklist.md:68:   # 1. Edit authority + generator code
+docs/decisions/ADR-0006-asymmetry-audit-checklist.md:82:   **Pitfall (this is the load-bearing step)**: `git status --short` shows two columns: column 1 is index-vs-HEAD; column 2 is working-tree-vs-index. After running the generator without `git add`, you see `' M'` (space + M) — **working tree differs from index, but index still matches HEAD**. `git commit` only commits the index. Skipping `git add` means the regenerated content is in your working tree but NOT in the next commit. The bundle would land authority + generator-code changes WITHOUT the regenerated outputs, leaving consumers (Wave 2 reviewers reading `.claude/agents/*.md`) at pre-update content. Use `git diff --cached` (not `git status`) as the canonical staging-verification command — `--cached` shows index-vs-HEAD only, which is what `git commit` will produce.
+docs/decisions/ADR-0006-asymmetry-audit-checklist.md:84:   **Pitfall extension — `pnpm-lock.yaml` is a generated artifact too (sub-form C below)**: when the authority is `package.json` (any dependency add / remove / version bump / `@types/*` shift), `pnpm install` regenerates `pnpm-lock.yaml` as a deterministic derived artifact. Skipping `git add pnpm-lock.yaml` produces the same class of failure as skipping `git add .claude/agents/*.md`: working tree has the synced lockfile but the **index** still holds HEAD's stale lockfile, so the bundle ships `package.json` ahead of its lockfile. CI runs `pnpm install --frozen-lockfile` from the bundled state, sees the stale lockfile disagreeing with the new `package.json`, and fails install. The same `git diff --cached --stat -- pnpm-lock.yaml` canonical verification applies. (Wave 1 erratum commit `e15ec36`; codified as sub-form C below.)
+docs/decisions/ADR-0006-asymmetry-audit-checklist.md:86:   Generated-from-authority files carry their own header comment ("GENERATED FROM agent-contract.md — DO NOT EDIT BY HAND") OR YAML frontmatter declaring authority source — both forms are acceptable. `pnpm-lock.yaml` lacks an explicit header (the format is fixed by pnpm) but is implicitly declared by `pnpm install`'s contract — its authority is `package.json` + the workspace `pnpm-workspace.yaml`.
+docs/decisions/ADR-0006-asymmetry-audit-checklist.md:88:   **Wave 1 evidence**: **instance #8** — ADR-0006 v1 commit codified reviewer-prompt mandates but did not update `agent-contract.md` / regenerate `.claude/agents/code-reviewer.md` / regenerate `.claude/agents/pr-gate.md` / cross-link `team-operations.md` / regenerate `docs/review-checklist.md`; pr-gate caught the dogfood failure during R1 review of the close-ceremony bundle, forcing a v2 fix. **instance #12 (sub-form A — pre-regeneration omission)** — v5 bundle updated authority files (`agent-contract.md`, generator code, `team-operations.md` cross-link) but had not run the generator at all post-edit; the 3 regenerated outputs were stale at HEAD content; pr-gate caught this during R2 review, forcing a v6 fix. **instance #12 (sub-form B — staging-vs-working-tree confusion)** — v6 bundle ran the generator (so working tree had new content) but did NOT `git add` the regenerated outputs; the git **index** still held HEAD blob hashes for the 3 generated files; orchestrator confused `git status --short` "M" prefix (working-tree-vs-index) with index-vs-HEAD; pr-gate caught this via `git ls-files --stage` blob-hash comparison during R3 review, forcing the v7 fix that explicitly stages with `git add` + verifies via `git diff --cached`. **instance #12 (sub-form C — lockfile is a generated-from-authority artifact)** — Wave 1 close ceremony commit `e15ec36` ("fix(deps): commit pnpm-lock.yaml for @tailwindcss/typography (lockfile drift)"): the design-tokens erratum (commit `fdc86a8`) added the `@tailwindcss/typography` dependency to `package.json` but did not stage the regenerated `pnpm-lock.yaml`; CI install used the pre-update lockfile, drifted against the new `package.json`, and failed `pnpm install --frozen-lockfile`. Resolution: commit `e15ec36` staged the lockfile separately. Lesson codified: when the authority is `package.json` (any dependency add / remove / version bump), `pnpm-lock.yaml` is the consumer-side generated artifact and must ride the same bundle — the class equivalence to `.claude/agents/*.md` regeneration is exact (deterministic derive + git-index staging required). The four sub-forms of the same item #8 class — pre-regeneration omission, post-regeneration commit-staging confusion, conceptually-correct-but-operationally-incomplete fix, AND lockfile-as-generated-artifact — together motivate the explicit operational sequence and `git diff --cached` canonical verification command codified above.
+docs/decisions/ADR-0006-asymmetry-audit-checklist.md:98:- **Item #5 + Wave 2 client-side replications**: when apps/site adds new client-side algorithm replications (theme variants beyond light/dark, locale negotiation pre-hydration, etc.), the worker MUST audit both saved-value semantics AND try/catch scope against authority. (See `packages/design-tokens/CONTRACT.md` Inverse-direction obligation invariant.)
+docs/decisions/ADR-0006-asymmetry-audit-checklist.md:100:- **Item #7 + future inline scripts**: ANY future `<script is:inline>` block in the project that needs pre-hydration replication of a package algorithm MUST follow the FOUC template (narrow try/catch + corpus regression test).
+docs/decisions/ADR-0006-asymmetry-audit-checklist.md:113:- **Review-round time**: applying 8-point audit at every review adds ~5-10 minutes per round of code-reviewer + pr-gate runtime. Acceptable trade-off given Wave 1 round-counts (Track F: 5 rounds; Track A: 3 rounds; Track C: 4 rounds; Track D: 4 rounds) — front-loading review thoroughness reduces total cycles
+docs/decisions/ADR-0006-asymmetry-audit-checklist.md:114:- **Worker prompt overhead**: each spawn prompt now needs a reference to this ADR + the 8-point checklist. Marginal cost.
+docs/decisions/ADR-0006-asymmetry-audit-checklist.md:120:- **Risk**: this list might grow unbounded as Wave 2+ surfaces new asymmetry classes. **Mitigation**: ADR amendments are cheap; each new instance produces an ADR-0006 erratum capturing item #N+1. Wave 2 close ceremony reviews instances and adds items as needed.
+docs/decisions/ADR-0006-asymmetry-audit-checklist.md:128:1. State the 8-point checklist verbatim (or by reference to this ADR)
+docs/decisions/ADR-0006-asymmetry-audit-checklist.md:149:- [apps/api/CONVENTIONS.md](../../apps/api/CONVENTIONS.md) §5 Pitfalls — concrete application of item #2
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:8:- **template + codex-clone 模式（ADR-0007 D3）**：visual single-authority 由 `ux-ui-lead`（新 Claude teammate, ADR-0007 D1）写第一个 ui-default，其余 7 个由 codex-block-generator (tool) 仿造 + ux-ui-lead 视觉一致性审；core 在 simple block 集群试点（block-callout core 是 template，block-code/block-image core 是 clone），render block 与 viz block 仍 hand-craft；editor 三子模块同模式（toolbar template + slash-menu/drag-handle clone）。
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:10:- **8-point asymmetry-audit（ADR-0006）强制**：每个 reviewer 必须按 8 项逐条审；Wave 2 第一个 attr-bearing mark（如 `highlight`/`kbd`）扩展时 simul-update wrapMark + marksEqual + fixture（item #1 trip-hazard）。
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:25:- [ADR-0002](../../decisions/ADR-0002-wave-1-close.md) Wave 1 close — 22 errata + 3 cross-package single-authority invariants（**含 erratum #19 dead-dep policy / #21 block-foundation/RFC.md / #16 attr-bearing mark expansion**）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:27:- [ADR-0006](../../decisions/ADR-0006-asymmetry-audit-checklist.md) 8-point asymmetry-audit checklist（mandatory for code-reviewer + pr-gate）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:274:cat docs/decisions/ADR-0006-asymmetry-audit-checklist.md
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:979:   ADR-0006 8-point checklist 适用 item #6 (sister-doc): block-callout vs block-code 的
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1160:  2. 工种 worker 在 ready-for-review 报告时**强制自审**：在 ADR-0006 8-point self-audit 段必须明示"item #1: PROPS 含 attr-bearing fields = YES/NO + 列字段名 / NO 的理由"；reviewer cross-check
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1165:**Risk level**: 高（ADR-0002 erratum #16 + ADR-0006 item #1 trip-hazard：marksEqual 默认 `return true` 是 silent-drop trap）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1188:- [ ] **Step 4: review chain（D2 row 1 改 CONTRACT.md）**：full chain；ADR-0006 item #1 是核心审
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1263:- codex catch rate vs Wave 1（ADR-0006 8-point 实战数据）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1317:**4. ADR-0006 8-point trip-hazards 列**:
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1318:- [x] item #1: Track J 显式处理 attr-bearing mark 触发 wrapMark + marksEqual + fixture
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1319:- [x] item #6: Track C 强制 sister-doc alignment（block-callout vs block-code vs block-image 3 份 CONTRACT.md）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1320:- [x] item #8: Pre-Task 0 + Task A1 + Task B3 都强调 ADR-0006 D8 staging protocol（authority + generator + outputs 同 bundle）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1351:- [ADR-0002](../../decisions/ADR-0002-wave-1-close.md) Wave 1 close — 22 errata + 3 cross-package single-authority invariants
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1353:- [ADR-0006](../../decisions/ADR-0006-asymmetry-audit-checklist.md) 8-point asymmetry-audit checklist
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:2040:    token = jwt.encode(payload, secret, algorithm=JWT_ALGO)
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:2047:        data = jwt.decode(token, secret, algorithms=[JWT_ALGO])
+
+exec
+/bin/bash -lc "nl -ba docs/decisions/ADR-0006-asymmetry-audit-checklist.md | sed -n '52,66p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+    52	2. **Status code audit**: After adding a status code to one HTTP handler (or, generally, an exit/error code to one branch), audit every other handler emitting the same code. RFC-mandated headers (RFC 7235 `WWW-Authenticate` on 401, RFC 7231 `Allow` on 405) attach to **the status code itself**, not the framework code path that emitted it. (Wave 1 evidence: instance #2 — custom `SkbError` 401 path missed `WWW-Authenticate`.)
+    53	
+    54	3. **Strictness audit**: After adding `.strict()` (Zod) / `extra='forbid'` (Pydantic) at one level of an object schema, audit every nested object/sub-schema. The strictness setting **does not propagate**; nested objects must opt in independently. (Wave 1 evidence: instance #3 — top-level `.strict()` shipped while nested `frontmatterSchema` still silently stripped unknown keys.)
+    55	
+    56	4. **Consumer schema audit**: After defining a schema in a single-authority package (e.g. `@skb/content-types/frontmatterSchema`), audit every consumer for inline duplicates or inline redefinitions that should `import` instead. The "deferred swap" pattern — "I'll inline now and import later" — is a contract break that compounds over time. (Wave 1 evidence: instance #6 part 2 — apps/site/content.config.ts inlined `z.object(...)` rather than importing `frontmatterSchema`.)
+    57	
+    58	5. **Algorithm + runtime constant replication audit**: When an algorithm or runtime constant is replicated outside its authority (e.g. inline FOUC scripts, login challenge derivation, pre-hydration boot logic that cannot import from packages), audit every consumer-side replica for byte-equivalent reproduction. The replica must register a **regression test** that asserts equivalence against the authority across a representative input corpus. (Wave 1 evidence: instance #6 part 1 — FOUC IIFE truthy-coerce vs `getInitialTheme()` strict-whitelist; remediated with `apps/site/src/__tests__/fouc-script.test.ts` 16-row corpus.)
+    59	
+    60	6. **Sister-file documentation audit**: After updating one CONTRACT.md (or any document that describes a code surface), audit ALL related CONTRACT.md files in the package family for sister-file drift. Two CONTRACT.md files that describe two halves of the same contract must use **identical terminology** for the shared identifiers (function names, schema names, refine predicate names). (Wave 1 evidence: instance #5 — `editor-commands/CONTRACT.md` updated to cite `editBlockInputSchema` while `agent-tools/CONTRACT.md` still referred to the old shape.)
+    61	
+    62	7. **Exception-scope equivalence audit**: When replicating an algorithm + its exception handling across files, audit BOTH the happy-path semantics AND the `try/catch` scope between authority and replica. Narrow vs wide `try/catch` can produce divergent fall-through behavior even with identical happy-path logic. Specifically: when `localStorage` / `sessionStorage` / `IndexedDB` / `matchMedia` / any browser API in the algorithm path can throw, the `try/catch` MUST wrap ONLY the throwing call, with the fall-through branch (matchMedia / system default / DOM apply) running AFTER the catch handler — not inside it. (Wave 1 evidence: instance #7 — FOUC IIFE wide-scope try/catch swallowed matchMedia exceptions; remediated with narrow try/catch + 2 storage-throws regression tests.)
+    63	
+    64	8. **Authority-document → generated/consumed surface audit**: When updating an authority document (ADR, spec, `agent-contract.md`, runbook, CONVENTIONS) **OR a dependency authority (`package.json`)** that mandates behavior in downstream consumers, audit every consumer-side replica/generated artifact for synchronized update **AND staged-in-the-git-index in the same bundle**. Specifically: an ADR section that says "X file MUST be updated to do Y" requires the same commit to update X and provide a way to verify the synchronization. Generated artifacts (e.g. `docs/review-checklist.md` and `.claude/agents/*.md` derived from `agent-contract.md`; **`pnpm-lock.yaml` derived from `package.json`** — see sub-form C below) MUST be regenerated via the documented codegen step (`pnpm generate:configs` / `pnpm install`) AND **explicitly `git add`'d** so the git **index** (not just the working tree) contains the new content; runbooks (`docs/runbooks/team-operations.md`) MUST be cross-linked; Codex/Claude subagent prompt files MUST embed or reference the new rule.
+    65	
+    66	   **Operational sequence** (do not skip steps):
+
+exec
+/bin/bash -lc "nl -ba docs/decisions/ADR-0006-asymmetry-audit-checklist.md | sed -n '48,52p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+    48	### The 8 items
+    49	
+    50	1. **Field/attribute audit**: After adding a field to a data shape (Zod schema, Pydantic model, TS interface, mdast attrs, etc.), audit every comparator / equality / serialization / canonicalization function that handles this shape. (Wave 1 evidence: instance #4 — `marksEqual` link branch missed `title` when serialize emitted it.)
+    51	
+    52	2. **Status code audit**: After adding a status code to one HTTP handler (or, generally, an exit/error code to one branch), audit every other handler emitting the same code. RFC-mandated headers (RFC 7235 `WWW-Authenticate` on 401, RFC 7231 `Allow` on 405) attach to **the status code itself**, not the framework code path that emitted it. (Wave 1 evidence: instance #2 — custom `SkbError` 401 path missed `WWW-Authenticate`.)
+
+codex
+PASS
+
+asymmetry-audit applied: items {1..8} verdicts:
+1. PASS/NA: no new field/attribute comparator surface.
+2. PASS/NA: no HTTP/status-code surface.
+3. PASS/NA: no Zod/Pydantic strictness surface.
+4. PASS: kernel schema types/classes are imported from `@skb/kernel-adapter`; no inline redefinition found.
+5. PASS: `PYODIDE_LIBRARIES = DEFAULT_LIBS` by reference in [adapter.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/kernel-pyodide/src/adapter.ts:13), default runtime list is [boot.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/kernel-pyodide/src/boot.ts:12), and regression uses `toBe` in [adapter.test.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/kernel-pyodide/src/__tests__/adapter.test.ts:79).
+6. PASS: sister-doc now includes `startup` / `shutdown` / `interrupt` / `timeout` and local `import` surface in [CONTRACT.md](/home/weiyi/selfKnowledgeBaseWeb/packages/kernel-pyodide/CONTRACT.md:36).
+7. PASS: `loadPyodide` and `loadPackage` catches are narrow, `startSession()` preserves `KernelError`, and interrupt/shutdown wrap host failures.
+8. PASS: source dependency/ref/lockfile surfaces align; package is still a working-tree bundle, so staged-index verification is not applicable here.
+
+R1 closure verdict:
+- B1: CLOSED. [adapter.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/kernel-pyodide/src/adapter.ts:42) preserves all `KernelError` subclasses; tests assert identity for import/startup errors.
+- B2: CLOSED. `hasRunError` sentinel covers `Promise.reject(undefined)` in [session.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/kernel-pyodide/src/session.ts:60).
+- B3: CLOSED. `interrupt()`/`shutdown()` wrap non-`KernelError` and preserve `KernelError`; regression coverage is in [session.test.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/kernel-pyodide/src/__tests__/session.test.ts:134).
+- B4: CLOSED. Constant duplication is structurally eliminated by alias.
+- B5: CLOSED. Error surface now includes `KernelTimeoutError` reserved text and aligned kind literals.
+- C1 display_data real path: CLOSED AS SCOPED. Real Pyodide matplotlib rendering remains deferred; the contract now states mock schema coverage and Wave 4 real-path coverage.
+- C2 matplotlib regex: CLOSED. PNG magic prefix and exact mime keys are checked in [matplotlib.test.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/kernel-pyodide/src/__tests__/matplotlib.test.ts:49) and [matplotlib.test.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/kernel-pyodide/src/__tests__/matplotlib.test.ts:61).
+
+BLOCKING: none.
+
+CONCERN:
+- [session.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/kernel-pyodide/src/session.ts:63) still assumes `host.runCode()` returns a Promise before failure. A synchronous throw from a future host would escape the event stream instead of yielding `error` then `status:idle`. Current default `boot.ts` is `async`, so this is not a Wave 2 blocker, but Wave 3 worker host should either keep `runCode` strictly async or the session should wrap this call.
+
+OBSERVATION:
+- I verified `typecheck` and `lint` pass. Vitest could not be rerun in this read-only sandbox: Vite tries to write `.vite-temp`, and even the runner config path needed `/tmp` writes. I structurally verified the 25 test cases in source but cannot independently claim a fresh 25/25 run here.
+2026-04-30T19:38:58.353255Z ERROR codex_core::session: failed to record rollout items: thread 019ddfe1-be59-7e32-b89a-865515187d97 not found
+tokens used
+97,189
+PASS
+
+asymmetry-audit applied: items {1..8} verdicts:
+1. PASS/NA: no new field/attribute comparator surface.
+2. PASS/NA: no HTTP/status-code surface.
+3. PASS/NA: no Zod/Pydantic strictness surface.
+4. PASS: kernel schema types/classes are imported from `@skb/kernel-adapter`; no inline redefinition found.
+5. PASS: `PYODIDE_LIBRARIES = DEFAULT_LIBS` by reference in [adapter.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/kernel-pyodide/src/adapter.ts:13), default runtime list is [boot.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/kernel-pyodide/src/boot.ts:12), and regression uses `toBe` in [adapter.test.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/kernel-pyodide/src/__tests__/adapter.test.ts:79).
+6. PASS: sister-doc now includes `startup` / `shutdown` / `interrupt` / `timeout` and local `import` surface in [CONTRACT.md](/home/weiyi/selfKnowledgeBaseWeb/packages/kernel-pyodide/CONTRACT.md:36).
+7. PASS: `loadPyodide` and `loadPackage` catches are narrow, `startSession()` preserves `KernelError`, and interrupt/shutdown wrap host failures.
+8. PASS: source dependency/ref/lockfile surfaces align; package is still a working-tree bundle, so staged-index verification is not applicable here.
+
+R1 closure verdict:
+- B1: CLOSED. [adapter.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/kernel-pyodide/src/adapter.ts:42) preserves all `KernelError` subclasses; tests assert identity for import/startup errors.
+- B2: CLOSED. `hasRunError` sentinel covers `Promise.reject(undefined)` in [session.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/kernel-pyodide/src/session.ts:60).
+- B3: CLOSED. `interrupt()`/`shutdown()` wrap non-`KernelError` and preserve `KernelError`; regression coverage is in [session.test.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/kernel-pyodide/src/__tests__/session.test.ts:134).
+- B4: CLOSED. Constant duplication is structurally eliminated by alias.
+- B5: CLOSED. Error surface now includes `KernelTimeoutError` reserved text and aligned kind literals.
+- C1 display_data real path: CLOSED AS SCOPED. Real Pyodide matplotlib rendering remains deferred; the contract now states mock schema coverage and Wave 4 real-path coverage.
+- C2 matplotlib regex: CLOSED. PNG magic prefix and exact mime keys are checked in [matplotlib.test.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/kernel-pyodide/src/__tests__/matplotlib.test.ts:49) and [matplotlib.test.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/kernel-pyodide/src/__tests__/matplotlib.test.ts:61).
+
+BLOCKING: none.
+
+CONCERN:
+- [session.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/kernel-pyodide/src/session.ts:63) still assumes `host.runCode()` returns a Promise before failure. A synchronous throw from a future host would escape the event stream instead of yielding `error` then `status:idle`. Current default `boot.ts` is `async`, so this is not a Wave 2 blocker, but Wave 3 worker host should either keep `runCode` strictly async or the session should wrap this call.
+
+OBSERVATION:
+- I verified `typecheck` and `lint` pass. Vitest could not be rerun in this read-only sandbox: Vite tries to write `.vite-temp`, and even the runner config path needed `/tmp` writes. I structurally verified the 25 test cases in source but cannot independently claim a fresh 25/25 run here.
