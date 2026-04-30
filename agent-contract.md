@@ -36,6 +36,9 @@ agents:
       <multi-line description used in .claude/agents/<name>.md>
 
 tool_patterns:
+  # NOTE: pr-gate.triggered_by entries MUST carry inline `# ADR-0007 D2 row N`
+  # annotations (rows 1/2/4/8 are the pr-gate triggers per D2 carve-out).
+  # See follow-up² PR 932a919 for the rationale.
   - name: <pattern-id>
     profile: scaffolder | code-reviewer | pr-gate | plan-challenger
     invocation: <bash template, e.g. "codex exec --profile X < /dev/null">

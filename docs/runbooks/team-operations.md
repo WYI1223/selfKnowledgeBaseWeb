@@ -152,13 +152,20 @@ Claude Code agent team 支持两种协作模式，**本项目（SelfKnowledgeBas
 
 ## 高风险 PR escalate 触发条件
 
-orchestrator 在派 review 时如果检测到以下任一，**追加 pr-gate 5.5 review**：
+orchestrator 在派 review 时按 [ADR-0007 D2](../decisions/ADR-0007-job-function-codex-heavy-execution.md) 表 8 行判断；**rows 1/2/4/8 → 追加 codex 5.5 pr-gate + Claude pr-reviewer**；**rows 3/5/6/7 → 仅追加 Claude pr-reviewer（不跑 pr-gate）**。
 
-- PR 修改任何 `*/CONTRACT.md`
-- PR 新增或删除 package
-- PR 触碰核心架构包：`kernel-adapter` · `mdx-bridge` · `agent-tools` · `editor-commands` · `block-foundation` · `design-tokens`
-- PR 触发 ADR 创建（`docs/decisions/ADR-NNNN-*.md`）
-- PR 修改 CI workflow / deploy / auth / security 路径
+| Row | 触发条件 | pr-gate? | pr-reviewer? |
+|---|---|---|---|
+| 1 | 修改任何 `*/CONTRACT.md`（接口形状变化，非补充） | ✅ | ✅ |
+| 2 | 新增 / 删除 package | ✅ | ✅ |
+| 3 | 修改 spec / `agent-contract.md` / 任何 ADR | — | ✅ |
+| 4 | 触发新 ADR 创建（`docs/decisions/ADR-NNNN-*.md`） | ✅ | ✅ |
+| 5 | 删除 / 重命名 package | — | ✅ |
+| 6 | 跨 ≥ 3 个 package 的 PR | — | ✅ |
+| 7 | performance-auditor 标记的 PR | — | ✅ |
+| 8 | 修改 CI workflow / deploy / auth / security | ✅ | ✅ |
+
+4-vs-4 carve-out 理由（ADR-0007 D2）：rows 1/2/4/8 是**接口/包结构/CI 类**改动，5.5 深审高 ROI；rows 3/5/6/7 是**文档 / 删除重命名 / 单调跨包 / 已被 perf-auditor 标记**，Claude pr-reviewer 的 spec-match + 跨包影响视角足够，5.5 深审边际收益低。
 
 ## Fast lane（豁免）
 

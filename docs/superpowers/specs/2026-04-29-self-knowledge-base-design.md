@@ -1044,7 +1044,7 @@ agents:
     llm: codex
     profile: pr-gate
     role: "高风险 PR 深度审查"
-    triggers: [contract_change, package_add_remove, core_arch_touch, adr_required]
+    triggers: [contract_change, package_add_remove, adr_required]
     # ...
 ```
 

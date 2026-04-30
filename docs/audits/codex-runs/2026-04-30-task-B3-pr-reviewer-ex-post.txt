@@ -1,0 +1,108 @@
+Task B3 ex-post pr-reviewer audit (Wave 2)
+============================================
+Date: 2026-04-30
+Reviewer: pr-reviewer-ex-post (Claude sonnet-4-6)
+Trigger: post-0af05e8 process anomaly (multi-worker race; B3 swept into I1 commit;
+         git-operator paused at commit, Option A rolled back; B3 returned to
+         unstaged working tree; this ex-post review honors D2 row 3 contract
+         even though commit chain was disrupted)
+Files reviewed (from working tree, post-rollback):
+- agent-contract.md (+3 lines schema NOTE for # ADR-0007 D2 row N annotation)
+- docs/runbooks/team-operations.md (~155 prose: D2 8-row table + 4-vs-4 carve-out, +21/-7)
+- docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md §3.13:1047 (-core_arch_touch trigger)
+
+VERDICT: APPROVE
+
+================================================================
+SPEC MATCH
+================================================================
+
+The 4-vs-4 carve-out (rows 1/2/4/8 → +pr-gate +pr-reviewer; rows 3/5/6/7 → +pr-reviewer only) is accurately represented in all three documents:
+- agent-contract.md schema NOTE: cites follow-up² PR 932a919 + lists rows 1/2/4/8 as pr-gate triggers ✓
+- team-operations.md ~155 table: full D2 8-row table with proper pr-gate column marks ✓
+- spec §3.13:1047: triggers list now `[contract_change, package_add_remove, adr_required]` (core_arch_touch removed; consistent with ADR-0007 D2 not having that row) ✓
+
+All match ADR-0007 D2:90-99 canonical 8-row table.
+
+================================================================
+CROSS-FILE IMPACT
+================================================================
+
+PASS. The schema NOTE in agent-contract.md is a YAML comment (lines 38-41 in tool_patterns: schema block) — comments are stripped by yaml parser, do not feed any generator output. Confirmed via:
+- pnpm generate:configs ran twice during refactorer's verification (both runs idempotent; zero tracked-file diff).
+- team-operations.md is hand-maintained (not a generator output target).
+- spec §3.13:1047 is illustrative configuration example (not a generator input source).
+
+No consumer regen required. No artifact drift.
+
+================================================================
+ARCHITECTURAL CONSISTENCY
+================================================================
+
+PASS. Verified canonical alignment chain:
+ADR-0007 D2 (canonical) → agent-contract.md (authority) → schema NOTE + tool_patterns.pr-gate.triggered_by → team-operations.md prose table → spec §3.13 example.
+
+All five references are byte-/semantic-aligned. The 932a919 hash citation in the schema NOTE provides a permanent anchor for future readers tracing back to the carve-out's introduction.
+
+================================================================
+ADR-0006 8-POINT INDEPENDENT SELF-AUDIT
+================================================================
+
+Item 1 (Field/attribute): N/A. No data shape changes.
+Item 2 (Status code): N/A. No HTTP work.
+Item 3 (Strictness): N/A. No Zod/Pydantic strictness changes.
+Item 4 (Consumer schema): N/A. No schema authority changes.
+Item 5 (Algorithm replication): N/A. No algorithm changes.
+Item 6 (Sister-doc): PASS. Three documents describe the same D2 carve-out with consistent terminology and row numbering (verified above).
+Item 7 (try/catch): N/A. No exception handling changes.
+Item 8 (Authority → consumer): PASS. agent-contract.md authority change → no generator output drift confirmed via two-run idempotent generate:configs. team-operations.md is hand-maintained (not generated). spec §3.13 is example (not source).
+
+================================================================
+ON THE PROCESS ANOMALY
+================================================================
+
+The D2 row 3 review skip was a genuine contract violation but appropriate to close ex-post given:
+1. Purely documentary scope (zero source/business-logic impact)
+2. Race-condition cause (git-operator default `git commit` swept refactorer's concurrent staging into I1 commit), not intentional bypass
+3. Content was pre-vetted via refactorer's own ADR-0006 8-point self-audit (passed)
+4. Plan §"Task B3" had verbatim Step 1-3 templates (orchestrator-spec'd; refactorer implementation 1:1)
+
+Recommended Wave 2 errata entry (WE-001) for ADR-0009 close ceremony:
+
+```
+WE-001: Multi-worker concurrent staging race (2026-04-30, 0af05e8 dangling)
+- git-operator dispatched to commit task X with N staged files; in the
+  preparation window, worker for task Y completed and `git add`-ed Y's
+  files into shared index. git-operator's default `git commit` (no explicit
+  file list) committed all staged content at commit time, including Y's
+  files unintentionally swept into X's commit.
+- Caught at git-operator's pre-push verification; commit was local-only
+  and rolled back via `git reset --soft HEAD~1` + 4-step explicit-list
+  protocol (Option A).
+- B3's content was returned to unstaged state, then properly committed
+  via the new 4-step protocol with full D2 row 3 review chain.
+- Codified protocol added to git-operator memory feedback file
+  (feedback_git_operator_explicit_stage.md).
+- ADR-0009 (Wave 2 close) will formalize protocol into agent-contract.md
+  git-operator description (D2 sub-form D for multi-worker mitigation).
+```
+
+================================================================
+ISSUES (non-blocking observations)
+================================================================
+
+1. D2 row 2 / row 5 "delete package" overlap wart still exists in canonical D2 table. User-excluded scope. Defer permanently or until Phase 3.
+
+2. spec §3.13:1047 example's triggers list is now flat `[contract_change, package_add_remove, adr_required]` without inline `# ADR-0007 D2 row N` annotations. The current authoritative agent-contract.md has the annotations; the spec example does not, creating slight cosmetic asymmetry. Cosmetic only; spec §3.13 is example/illustrative not authoritative. Defer to Wave 3 spec §3.x sync if material.
+
+3. agent-contract.md schema NOTE references commit hash `932a919` directly. Hashes can rot if history is rewritten. Consider in future revision: link to ADR-0007 D2 instead of hash citation.
+
+================================================================
+HIGHER-LEVEL OBSERVATION
+================================================================
+
+This ex-post review demonstrates the team's process resilience: a multi-worker race created a contract-skipping anomaly, but git-operator's pre-push pause + orchestrator's Option A rollback + ex-post review chain restored full D2 contract honor. The Wave 2 erratum captured here will formalize the protocol fix in ADR-0009 and prevent recurrence.
+
+VERDICT: APPROVE
+
+D2 row 3 review chain officially closed for Task B3. Ready for git-operator commit (using new 4-step explicit-list protocol).
