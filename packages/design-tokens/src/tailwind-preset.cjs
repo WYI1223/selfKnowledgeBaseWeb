@@ -7,9 +7,17 @@
  *
  * Color channel pattern: `rgb(var(--color-xxx) / <alpha-value>)` keeps full
  * Tailwind opacity-modifier support intact.
+ *
+ * Bundled plugins:
+ *  - @tailwindcss/typography: provides the `prose` utility class for MDX/markdown
+ *    content rendering. Theme bindings below derive prose colors from our CSS
+ *    vars so prose styling auto-tracks light/dark theme switches.
  */
+const typography = require('@tailwindcss/typography');
+
 /** @type {import('tailwindcss').Config} */
 module.exports = {
+  plugins: [typography],
   theme: {
     colors: {
       transparent: 'transparent',
@@ -68,6 +76,48 @@ module.exports = {
     transitionTimingFunction: {
       base: 'var(--ease-base)',
     },
-    extend: {},
+    extend: {
+      // typography plugin hook: bind prose colors to our design-token CSS vars
+      // so light/dark theme switching applies to MDX prose content as well.
+      typography: () => ({
+        DEFAULT: {
+          css: {
+            '--tw-prose-body': 'rgb(var(--color-fg))',
+            '--tw-prose-headings': 'rgb(var(--color-fg))',
+            '--tw-prose-lead': 'rgb(var(--color-muted))',
+            '--tw-prose-links': 'rgb(var(--color-accent))',
+            '--tw-prose-bold': 'rgb(var(--color-fg))',
+            '--tw-prose-counters': 'rgb(var(--color-muted))',
+            '--tw-prose-bullets': 'rgb(var(--color-muted))',
+            '--tw-prose-hr': 'rgb(var(--color-border))',
+            '--tw-prose-quotes': 'rgb(var(--color-fg))',
+            '--tw-prose-quote-borders': 'rgb(var(--color-border))',
+            '--tw-prose-captions': 'rgb(var(--color-muted))',
+            '--tw-prose-code': 'rgb(var(--color-fg))',
+            '--tw-prose-pre-code': 'rgb(var(--color-fg))',
+            '--tw-prose-pre-bg': 'rgb(var(--color-surface-1))',
+            '--tw-prose-th-borders': 'rgb(var(--color-border))',
+            '--tw-prose-td-borders': 'rgb(var(--color-border))',
+            // dark mode uses same vars (which auto-flip via :root[data-theme=dark])
+            '--tw-prose-invert-body': 'rgb(var(--color-fg))',
+            '--tw-prose-invert-headings': 'rgb(var(--color-fg))',
+            '--tw-prose-invert-links': 'rgb(var(--color-accent))',
+            '--tw-prose-invert-bold': 'rgb(var(--color-fg))',
+            '--tw-prose-invert-quotes': 'rgb(var(--color-fg))',
+            '--tw-prose-invert-quote-borders': 'rgb(var(--color-border))',
+            '--tw-prose-invert-pre-bg': 'rgb(var(--color-surface-1))',
+            // inline code: small visual differentiation via surface tone
+            'code': {
+              backgroundColor: 'rgb(var(--color-surface-2))',
+              padding: '0.125em 0.375em',
+              borderRadius: 'var(--radius-sm)',
+              fontWeight: '400',
+            },
+            'code::before': { content: 'none' },
+            'code::after': { content: 'none' },
+          },
+        },
+      }),
+    },
   },
 };
