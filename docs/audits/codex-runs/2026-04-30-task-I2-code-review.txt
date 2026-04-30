@@ -1,0 +1,1175 @@
+Reading additional input from stdin...
+OpenAI Codex v0.125.0 (research preview)
+--------
+workdir: /home/weiyi/selfKnowledgeBaseWeb
+model: gpt-5.3-codex-spark
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: xhigh
+reasoning summaries: none
+session id: 019ddfc9-6efa-7500-a1f6-887150a0c953
+--------
+user
+你是 code-reviewer profile (gpt-5.3-spark)。审 SelfKnowledgeBaseWeb Wave 2 Task #7 (I2: scripts/new-block.ts CLI 工具)。
+
+## Bundle (7 files staged)
+- scripts/new-block.ts (新, 287 行 commander CLI + ts-morph + 包脚手架)
+- scripts/__tests__/new-block.test.ts (新, 130 行, 5 cases)
+- scripts/__tests__/fixtures/new-block/initial/* (4 fixture files: tsconfig.json + block-callout shell 子结构 + package.json + core/callout.ts + ui-default/index.ts)
+- docs/audits/codex-runs/2026-04-30-task-I2-new-block.txt (audit log)
+
+## 触发链
+普通 PR (D2 row 不触发) → 你是唯一 reviewer。
+
+## 历史 context
+- I1 (refactor-move) 类似模式 + lessons (TS2379 hot-fix 经验): codex 5.3 R1 过但 CI 类型错；这次 codex 已 verify uncached pnpm typecheck PASS + 5/5 test PASS
+- I2 是 spec-only 实现：block-callout package 当前不存在；CLI 接受参数 + 验证 + 报 'block-callout template not yet created' (exit 0 不算 fail)；C1 完工后 new-block.ts 自动激活生成功能
+
+## 必查
+1. ADR-0006 8-point checklist:
+   - item #1 (字段/属性): kind enum {simple,render,viz} + name regex 是否 explicit 表
+   - item #4 consumer schema: N/A
+   - item #6 sister-doc: scripts/new-block.ts 风格与 scripts/refactor-move.ts (I1) 一致 (commander CLI + 错误处理 + --help / --dry-run flags)
+   - item #8: N/A (无 generator output)
+2. CLI 行为:
+   - 无 block-callout 时 exit 0 + 提示语义 (blocks C1 prereq pattern 合理)
+   - dry-run / --help / 错误 cases (5 测试)
+3. ts-morph 用法是否合理（read root tsconfig.json + add reference）
+4. 5 测试 case fixture 是否覆盖 representative scenarios
+5. uncached typecheck verify (FIX-I1 lesson 应用)
+
+## 不在 scope
+- 不审 working tree 中 in-flight (kernel-pyodide-eng F 在跑)
+- 不修改文件
+
+输出 verdict: PASS/FAIL + 'asymmetry-audit applied'。开始。
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the vendored bubblewrap in the meantime.
+codex
+我先做一遍只读审查：先把 `scripts/new-block.ts` 与对应测试、fixture 一起读完，按你给的 ADR-0006 checklist 逐项核对；不改代码也不跑测试。然后给出仅问题导向的结论（PASS/FAIL + asymmetry-audit）和每条发现。
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && nl -ba scripts/new-block.ts | sed -n '1,260p'" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && nl -ba scripts/__tests__/new-block.test.ts | sed -n '1,260p'" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && nl -ba docs/audits/codex-runs/2026-04-30-task-I2-new-block.txt | sed -n '1,260p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+     2	import { tmpdir } from 'node:os';
+     3	import { join } from 'node:path';
+     4	import { describe, expect, it } from 'vitest';
+     5	import { newBlock, PRECONDITION_ERROR } from '../new-block.ts';
+     6	
+     7	const FIXTURE_ROOT = join(process.cwd(), 'scripts/__tests__/fixtures/new-block');
+     8	
+     9	function buildWorkspace(): string {
+    10	  const workspace = mkdtempSync(join(tmpdir(), 'new-block-'));
+    11	  cpSync(join(FIXTURE_ROOT, 'initial'), workspace, { recursive: true });
+    12	  return workspace;
+    13	}
+    14	
+    15	describe('newBlock', () => {
+    16	  it('returns prerequisite warning when template is missing and exits with code 0', () => {
+    17	    const workspace = mkdtempSync(join(tmpdir(), 'new-block-missing-template-'));
+    18	
+    19	    try {
+    20	      const report = newBlock({
+    21	        name: 'note',
+    22	        kind: 'simple',
+    23	        cwd: workspace,
+    24	      });
+    25	
+    26	      expect(report.exitCode).toBe(0);
+    27	      expect(report.prerequisiteMissing).toBe(true);
+    28	      expect(report.plan.join('\n')).toContain(PRECONDITION_ERROR);
+    29	      expect(report.packagePath).toContain('packages/block-note');
+    30	      expect(existsSync(join(workspace, 'packages/block-note'))).toBe(false);
+    31	    } finally {
+    32	      rmSync(workspace, { recursive: true, force: true });
+    33	    }
+    34	  });
+    35	
+    36	  it('prints a dry-run plan and does not write files', () => {
+    37	    const workspace = buildWorkspace();
+    38	    const templateCalloutSource = readFileSync(
+    39	      join(FIXTURE_ROOT, 'initial/packages/block-callout/core/callout.ts'),
+    40	      'utf8',
+    41	    );
+    42	    const tsconfigBefore = readFileSync(join(FIXTURE_ROOT, 'initial/tsconfig.json'), 'utf8');
+    43	
+    44	    try {
+    45	      const report = newBlock({
+    46	        name: 'timeline',
+    47	        kind: 'render',
+    48	        dryRun: true,
+    49	        cwd: workspace,
+    50	      });
+    51	
+    52	      expect(report.dryRun).toBe(true);
+    53	      expect(report.plan[0]).toContain('DRY RUN: no files will be written.');
+    54	      expect(existsSync(join(workspace, 'packages/block-timeline'))).toBe(false);
+    55	      expect(readFileSync(join(workspace, 'packages/block-callout/core/callout.ts'), 'utf8')).toBe(
+    56	        templateCalloutSource,
+    57	      );
+    58	      expect(readFileSync(join(workspace, 'tsconfig.json'), 'utf8')).toBe(tsconfigBefore);
+    59	    } finally {
+    60	      rmSync(workspace, { recursive: true, force: true });
+    61	    }
+    62	  });
+    63	
+    64	  it('generates a new block package and updates tsconfig references when template exists', () => {
+    65	    const workspace = buildWorkspace();
+    66	
+    67	    try {
+    68	      const report = newBlock({
+    69	        name: 'timeline',
+    70	        kind: 'viz',
+    71	        cwd: workspace,
+    72	      });
+    73	
+    74	      const generatedCore = readFileSync(
+    75	        join(workspace, 'packages/block-timeline/core/callout.ts'),
+    76	        'utf8',
+    77	      );
+    78	      const generatedUi = readFileSync(
+    79	        join(workspace, 'packages/block-timeline/ui-default/index.ts'),
+    80	        'utf8',
+    81	      );
+    82	      const tsconfig = JSON.parse(readFileSync(join(workspace, 'tsconfig.json'), 'utf8')) as {
+    83	        references?: Array<{ path: string }>;
+    84	      };
+    85	
+    86	      expect(report.dryRun).toBe(false);
+    87	      expect(report.tsconfigUpdated).toBe(true);
+    88	      expect(generatedCore).toContain('timeline');
+    89	      expect(generatedCore).toContain('Timeline');
+    90	      expect(generatedUi).toContain('TimelineUi');
+    91	      expect(tsconfig.references).toEqual(
+    92	        expect.arrayContaining([{ path: './scripts' }, { path: './packages/content-types' }, { path: './packages/block-timeline' }]),
+    93	      );
+    94	    } finally {
+    95	      rmSync(workspace, { recursive: true, force: true });
+    96	    }
+    97	  });
+    98	
+    99	  it('throws when target package already exists', () => {
+   100	    const workspace = buildWorkspace();
+   101	
+   102	    try {
+   103	      expect(() =>
+   104	        newBlock({
+   105	          name: 'callout',
+   106	          kind: 'simple',
+   107	          cwd: workspace,
+   108	        }),
+   109	      ).toThrow(/Package already exists/);
+   110	    } finally {
+   111	      rmSync(workspace, { recursive: true, force: true });
+   112	    }
+   113	  });
+   114	
+   115	  it('throws when kind is invalid', () => {
+   116	    const workspace = buildWorkspace();
+   117	
+   118	    try {
+   119	      expect(() =>
+   120	        newBlock({
+   121	          name: 'timeline',
+   122	          kind: 'not-a-kind' as 'simple',
+   123	          cwd: workspace,
+   124	        }),
+   125	      ).toThrow(/Invalid --kind/);
+   126	    } finally {
+   127	      rmSync(workspace, { recursive: true, force: true });
+   128	    }
+   129	  });
+   130	});
+
+ succeeded in 0ms:
+     1	Reading additional input from stdin...
+     2	OpenAI Codex v0.125.0 (research preview)
+     3	--------
+     4	workdir: /home/weiyi/selfKnowledgeBaseWeb
+     5	model: gpt-5.3-codex-spark
+     6	provider: openai
+     7	approval: never
+     8	sandbox: workspace-write [workdir, /tmp, $TMPDIR, /home/weiyi/.codex/memories]
+     9	reasoning effort: xhigh
+    10	reasoning summaries: none
+    11	session id: 019ddfc7-ad82-7593-be47-75673852f0c3
+    12	--------
+    13	user
+    14	你是 codex-script-builder。在 SelfKnowledgeBaseWeb 项目根目录创建 `scripts/new-block.ts`：CLI 工具，基于 block-callout 模板生成新 block 包骨架。
+    15	
+    16	但**当前 block-callout package 尚未存在**（待 simple-block-eng 在 Task C1 创建）。所以 new-block.ts 当前只能是**spec-only**：CLI 接受参数 + 验证 + 报 'block-callout template not yet created' 错。当 C1 完工后，new-block.ts 自动激活生成功能。
+    17	
+    18	要求：
+    19	- CLI 形态: `new-block <name> --kind=simple|render|viz [--ui=default] [--dry-run] [--help]`
+    20	- 用 commander 解析（已是 dev dep）
+    21	- 检查 packages/block-callout/ 是否存在 + 含 core/ + ui-default/ 子结构
+    22	  - 如未存在: 报 'block-callout template not yet created (Task C1 prerequisite); cannot scaffold yet' + exit 0 (dry-run-equivalent，不算 fail)
+    23	  - 如存在: 复制 packages/block-callout/ 结构到 packages/block-<name>/
+    24	    - 替换文件内 'callout' → '<name>' / 'Callout' → '<Name>' (PascalCase 自动 derive from name)
+    25	    - 更新 root tsconfig.json#references 加新包
+    26	- 错误处理: 包已存在 / kind 非法值 / name 含非法字符 → throw + exit 1
+    27	- --dry-run: 打印 plan 不实际改
+    28	- --help: 显示用法
+    29	
+    30	测试 `scripts/__tests__/new-block.test.ts` 含 5 case：
+    31	1. block-callout 不存在时 → 报 prerequisite + exit 0
+    32	2. dry-run 模式打印 plan 不改文件
+    33	3. 正常生成（用 fixture mock-callout 模拟 template + temp workspace）
+    34	4. 包已存在抛错
+    35	5. kind 非法值抛错
+    36	
+    37	依赖：commander + ts-morph 已装（I1 留下）。
+    38	
+    39	ADR-0006 8-point checklist: 
+    40	- item #6 sister-doc: scripts/new-block.ts 风格与 scripts/refactor-move.ts (I1) 一致 (commander CLI + 错误处理 + --help / --dry-run flags)
+    41	- item #1 attr audit: kind enum (simple/render/viz) + name validation regex 加 explicit 表
+    42	- item #4: N/A (无 single-authority schema)
+    43	- item #8: 不生成 generator output
+    44	
+    45	**关键: 必须跑 root pnpm typecheck (uncached) verify** —— 防 TS2379 类 type error 盲区 (FIX-I1 lesson)。如有 type error 修后再交。
+    46	
+    47	完工后输出新建文件列表 + 测试运行 PASS/FAIL + uncached pnpm typecheck PASS confirm。
+    48	warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the vendored bubblewrap in the meantime.
+    49	codex
+    50	我会先快速查看现有脚本结构（尤其是 `scripts/refactor-move.ts` 的 CLI 风格和测试惯例），然后一次性添加 `scripts/new-block.ts` 与 `scripts/__tests__/new-block.test.ts`，最后执行你要求的两类校验：`pnpm typecheck` 与目标测试。
+    51	exec
+    52	/bin/bash -lc 'ls -1 scripts' in /home/weiyi/selfKnowledgeBaseWeb
+    53	exec
+    54	/bin/bash -lc 'pwd && ls -1' in /home/weiyi/selfKnowledgeBaseWeb
+    55	exec
+    56	/bin/bash -lc 'rg --files scripts/__tests__' in /home/weiyi/selfKnowledgeBaseWeb
+    57	 succeeded in 133ms:
+    58	/home/weiyi/selfKnowledgeBaseWeb
+    59	AGENTS.md
+    60	CLAUDE.md
+    61	LICENSE
+    62	agent-contract.md
+    63	apps
+    64	claude+codex.md
+    65	codex.md
+    66	content
+    67	docs
+    68	eslint.config.js
+    69	node_modules
+    70	opencode.json
+    71	package.json
+    72	packages
+    73	pnpm-lock.yaml
+    74	pnpm-workspace.yaml
+    75	prettier.config.cjs
+    76	scripts
+    77	skills-lock.json
+    78	tmp
+    79	tsconfig.base.json
+    80	tsconfig.json
+    81	turbo.json
+    82	vitest.config.ts
+    83	
+    84	 succeeded in 136ms:
+    85	__tests__
+    86	check-size-limits.mjs
+    87	generate-configs.ts
+    88	hooks
+    89	refactor-move.ts
+    90	render
+    91	tsconfig.json
+    92	tsconfig.tsbuildinfo
+    93	
+    94	 succeeded in 149ms:
+    95	scripts/__tests__/generate-configs.test.ts
+    96	scripts/__tests__/refactor-move.test.ts
+    97	scripts/__tests__/fixtures/refactor-move/initial/packages/feature/consumer.ts
+    98	scripts/__tests__/fixtures/refactor-move/initial/apps/feature/app.ts
+    99	scripts/__tests__/fixtures/refactor-move/initial/packages/feature/util.ts
+   100	scripts/__tests__/fixtures/refactor-move/after/apps/feature/app.ts
+   101	scripts/__tests__/fixtures/refactor-move/after/packages/feature/consumer.ts
+   102	scripts/__tests__/fixtures/refactor-move/after/packages/feature/shared/util.ts
+   103	
+   104	exec
+   105	/bin/bash -lc 'cat package.json' in /home/weiyi/selfKnowledgeBaseWeb
+   106	exec
+   107	/bin/bash -lc 'cat scripts/refactor-move.ts' in /home/weiyi/selfKnowledgeBaseWeb
+   108	exec
+   109	/bin/bash -lc 'cat scripts/__tests__/refactor-move.test.ts' in /home/weiyi/selfKnowledgeBaseWeb
+   110	 succeeded in 109ms:
+   111	{
+   112	  "name": "self-knowledge-base-web",
+   113	  "version": "0.0.0",
+   114	  "private": true,
+   115	  "packageManager": "pnpm@9.12.0",
+   116	  "type": "module",
+   117	  "engines": {
+   118	    "node": ">=22",
+   119	    "pnpm": ">=9"
+   120	  },
+   121	  "scripts": {
+   122	    "build": "turbo run build",
+   123	    "dev": "turbo run dev --parallel",
+   124	    "lint": "eslint .",
+   125	    "lint:packages": "turbo run lint",
+   126	    "typecheck": "tsc -b",
+   127	    "typecheck:packages": "turbo run typecheck",
+   128	    "test": "vitest run",
+   129	    "test:packages": "turbo run test",
+   130	    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm size-check && pnpm lint:packages && pnpm typecheck:packages && pnpm test:packages",
+   131	    "check:affected": "turbo run lint typecheck test --filter=...[origin/main]",
+   132	    "size-check": "node scripts/check-size-limits.mjs",
+   133	    "link-check": "lychee --config .lychee.toml './**/*.md'",
+   134	    "generate:configs": "tsx scripts/generate-configs.ts",
+   135	    "format": "prettier --write \"**/*.{ts,tsx,js,mjs,cjs,json,md,yaml,yml}\""
+   136	  },
+   137	  "devDependencies": {
+   138	    "@eslint/js": "^9.0.0",
+   139	    "@types/node": "^22.0.0",
+   140	    "commander": "^11.1.0",
+   141	    "eslint": "^9.0.0",
+   142	    "globals": "^15.0.0",
+   143	    "prettier": "^3.0.0",
+   144	    "turbo": "^2.0.0",
+   145	    "ts-morph": "^28.0.0",
+   146	    "tsx": "^4.21.0",
+   147	    "typescript": "~5.6.0",
+   148	    "typescript-eslint": "^8.0.0",
+   149	    "vitest": "^4.1.5",
+   150	    "yaml": "^2.8.3",
+   151	    "zod": "^3.23.0"
+   152	  }
+   153	}
+   154	
+   155	 succeeded in 109ms:
+   156	#!/usr/bin/env tsx
+   157	import { Command } from 'commander';
+   158	import { Project, type ExportDeclaration, type SourceFile } from 'ts-morph';
+   159	import { existsSync, mkdirSync, renameSync } from 'node:fs';
+   160	import { dirname, extname, relative, resolve, sep } from 'node:path';
+   161	
+   162	const SOURCE_GLOBS = ['packages/**/*.{ts,tsx}', 'apps/**/*.{ts,tsx}'];
+   163	
+   164	type RewriteRecord = {
+   165	  filePath: string;
+   166	  from: string;
+   167	  to: string;
+   168	  apply: () => void;
+   169	};
+   170	
+   171	export type RefactorMoveReport = {
+   172	  from: string;
+   173	  to: string;
+   174	  dryRun: boolean;
+   175	  updates: Array<{ filePath: string; from: string; to: string }>;
+   176	  plan: string[];
+   177	};
+   178	
+   179	type RefactorMoveOptions = {
+   180	  from: string;
+   181	  to: string;
+   182	  dryRun?: boolean;
+   183	  cwd?: string;
+   184	};
+   185	
+   186	const TS_IMPORT_EXT = /\.tsx?$/;
+   187	
+   188	function asPosix(filePath: string): string {
+   189	  return filePath.split(sep).join('/');
+   190	}
+   191	
+   192	function toDisplayPath(path: string, baseDir: string): string {
+   193	  const rel = relative(baseDir, path);
+   194	  return asPosix(rel === '' ? '.' : rel);
+   195	}
+   196	
+   197	function candidatesForImport(sourceDir: string, moduleSpecifier: string): string[] {
+   198	  const base = resolve(sourceDir, moduleSpecifier);
+   199	  return [base, `${base}.ts`, `${base}.tsx`, resolve(base, 'index.ts'), resolve(base, 'index.tsx')];
+   200	}
+   201	
+   202	function hasMatchingTarget(
+   203	  sourceDir: string,
+   204	  moduleSpecifier: string,
+   205	  targetAbsolutePath: string,
+   206	): boolean {
+   207	  if (!moduleSpecifier.startsWith('.')) {
+   208	    return false;
+   209	  }
+   210	  return candidatesForImport(sourceDir, moduleSpecifier).includes(targetAbsolutePath);
+   211	}
+   212	
+   213	function nextSpecifier(sourceDir: string, targetAbsolutePath: string, oldSpecifier: string): string {
+   214	  let next = asPosix(relative(sourceDir, targetAbsolutePath));
+   215	  if (!next.startsWith('.')) {
+   216	    next = `./${next}`;
+   217	  }
+   218	
+   219	  const requestedExt = extname(oldSpecifier);
+   220	  const keepExt = requestedExt === '.ts' || requestedExt === '.tsx';
+   221	  if (keepExt) {
+   222	    return `${next.replace(TS_IMPORT_EXT, '')}${requestedExt}`;
+   223	  }
+   224	  return next.replace(TS_IMPORT_EXT, '');
+   225	}
+   226	
+   227	function appendImportUpdate(
+   228	  sourceFile: SourceFile,
+   229	  moduleSpecifier: string,
+   230	  oldFileAbsolutePath: string,
+   231	  newFileAbsolutePath: string,
+   232	  updates: RewriteRecord[],
+   233	): void {
+   234	  const sourceDir = sourceFile.getDirectoryPath();
+   235	  if (!hasMatchingTarget(sourceDir, moduleSpecifier, oldFileAbsolutePath)) {
+   236	    return;
+   237	  }
+   238	
+   239	  const newSpecifier = nextSpecifier(sourceDir, newFileAbsolutePath, moduleSpecifier);
+   240	  if (newSpecifier === moduleSpecifier) {
+   241	    return;
+   242	  }
+   243	
+   244	  updates.push({
+   245	    filePath: sourceFile.getFilePath(),
+   246	    from: moduleSpecifier,
+   247	    to: newSpecifier,
+   248	    apply: () => sourceFile
+   249	      .getImportDeclarations()
+   250	      .filter((i) => i.getModuleSpecifierValue() === moduleSpecifier)
+   251	      .forEach((i) => i.setModuleSpecifier(newSpecifier)),
+   252	  });
+   253	}
+   254	
+   255	function appendExportUpdate(
+   256	  sourceFile: SourceFile,
+   257	  exportDecl: ExportDeclaration,
+   258	  oldFileAbsolutePath: string,
+   259	  newFileAbsolutePath: string,
+   260	  updates: RewriteRecord[],
+
+ succeeded in 0ms:
+     1	#!/usr/bin/env tsx
+     2	import { Command } from 'commander';
+     3	import {
+     4	  cpSync,
+     5	  existsSync,
+     6	  readdirSync,
+     7	  readFileSync,
+     8	  writeFileSync,
+     9	} from 'node:fs';
+    10	import { relative, resolve } from 'node:path';
+    11	
+    12	export const PRECONDITION_ERROR =
+    13	  'block-callout template not yet created (Task C1 prerequisite); cannot scaffold yet';
+    14	
+    15	const KIND_AUDIT_TABLE = [
+    16	  { value: 'simple', label: 'Simple block kind' },
+    17	  { value: 'render', label: 'Rendered block kind' },
+    18	  { value: 'viz', label: 'Visualization block kind' },
+    19	] as const;
+    20	
+    21	const KIND_SET: Set<string> = new Set(KIND_AUDIT_TABLE.map((entry) => entry.value));
+    22	
+    23	export const BLOCK_KINDS = KIND_AUDIT_TABLE.map((row) => row.value);
+    24	export type NewBlockKind = (typeof BLOCK_KINDS)[number];
+    25	
+    26	const NAME_VALIDATION_RULES = [
+    27	  {
+    28	    name: 'only lowercase letters, digits, and hyphens',
+    29	    check: (value: string) => /^[a-z0-9-]+$/.test(value),
+    30	  },
+    31	  {
+    32	    name: 'must start with lowercase letter',
+    33	    check: (value: string) => /^[a-z]/.test(value),
+    34	  },
+    35	  {
+    36	    name: 'must end with lowercase letter or digit',
+    37	    check: (value: string) => /[a-z0-9]$/.test(value),
+    38	  },
+    39	  {
+    40	    name: 'must not contain consecutive hyphens',
+    41	    check: (value: string) => !value.includes('--'),
+    42	  },
+    43	] as const;
+    44	
+    45	type NewBlockOptions = {
+    46	  name: string;
+    47	  kind: NewBlockKind | string;
+    48	  ui?: string | undefined;
+    49	  dryRun?: boolean | undefined;
+    50	  cwd?: string;
+    51	};
+    52	
+    53	export type NewBlockReport = {
+    54	  dryRun: boolean;
+    55	  prerequisiteMissing: boolean;
+    56	  name: string;
+    57	  kind: NewBlockKind;
+    58	  ui: string;
+    59	  packageName: string;
+    60	  packagePath: string;
+    61	  targetTemplatePath: string;
+    62	  tsconfigUpdated: boolean;
+    63	  plan: string[];
+    64	  exitCode: 0 | 1;
+    65	};
+    66	
+    67	function derivePascalCase(name: string): string {
+    68	  return name
+    69	    .split('-')
+    70	    .filter((segment) => segment.length > 0)
+    71	    .map((segment) => `${segment[0]?.toUpperCase()}${segment.slice(1)}`)
+    72	    .join('');
+    73	}
+    74	
+    75	function validateKind(value: string | undefined): NewBlockKind {
+    76	  if (!value) {
+    77	    throw new Error(`Missing --kind. Accepted values: ${KIND_AUDIT_TABLE.map((v) => v.value).join(', ')}`);
+    78	  }
+    79	
+    80	  if (!KIND_SET.has(value)) {
+    81	    throw new Error(
+    82	      `Invalid --kind: ${value}. Accepted values: ${KIND_AUDIT_TABLE.map((v) => v.value).join(', ')}`,
+    83	    );
+    84	  }
+    85	
+    86	  return value as NewBlockKind;
+    87	}
+    88	
+    89	function validateName(name: string): void {
+    90	  if (!name || name.trim().length === 0) {
+    91	    throw new Error(`Invalid block name: cannot be empty`);
+    92	  }
+    93	
+    94	  for (const rule of NAME_VALIDATION_RULES) {
+    95	    if (!rule.check(name)) {
+    96	      throw new Error(`Invalid block name "${name}": must satisfy ${rule.name}`);
+    97	    }
+    98	  }
+    99	}
+   100	
+   101	function replaceTokens(filePath: string, name: string, pascal: string): boolean {
+   102	  const content = readFileSync(filePath, 'utf8');
+   103	  const replaced = content.replaceAll('callout', name).replaceAll('Callout', pascal);
+   104	
+   105	  if (replaced === content) {
+   106	    return false;
+   107	  }
+   108	
+   109	  writeFileSync(filePath, replaced, 'utf8');
+   110	  return true;
+   111	}
+   112	
+   113	function walkFiles(basePath: string, rootPath: string, onFile: (filePath: string) => void): void {
+   114	  for (const entry of readdirSync(basePath, { withFileTypes: true })) {
+   115	    const absolute = resolve(basePath, entry.name);
+   116	    if (entry.isDirectory()) {
+   117	      walkFiles(absolute, rootPath, onFile);
+   118	      continue;
+   119	    }
+   120	
+   121	    if (entry.isFile()) {
+   122	      onFile(absolute);
+   123	    }
+   124	  }
+   125	}
+   126	
+   127	function updateRootTsConfigReferences(
+   128	  rootDir: string,
+   129	  packageName: string,
+   130	  dryRun: boolean,
+   131	): boolean {
+   132	  const tsconfigPath = resolve(rootDir, 'tsconfig.json');
+   133	  const raw = readFileSync(tsconfigPath, 'utf8');
+   134	  const tsconfig = JSON.parse(raw) as { references?: Array<{ path: string }>; [key: string]: unknown };
+   135	  const references = [...(tsconfig.references ?? [])];
+   136	  const target = `./packages/${packageName}`;
+   137	
+   138	  if (references.some((entry) => entry.path === target)) {
+   139	    return false;
+   140	  }
+   141	
+   142	  const insertAfterIndex = references.findIndex((entry) => entry.path.localeCompare(target) > 0);
+   143	  if (insertAfterIndex === -1) {
+   144	    references.push({ path: target });
+   145	  } else {
+   146	    references.splice(insertAfterIndex, 0, { path: target });
+   147	  }
+   148	
+   149	  if (!dryRun) {
+   150	    tsconfig.references = references;
+   151	    writeFileSync(tsconfigPath, `${JSON.stringify(tsconfig, null, 2)}\n`, 'utf8');
+   152	  }
+   153	
+   154	  return true;
+   155	}
+   156	
+   157	function buildPlan(baseDir: string, name: string, kind: NewBlockKind, ui: string, dryRun: boolean): string[] {
+   158	  const root = relative(process.cwd(), baseDir) || '.';
+   159	  return [
+   160	    dryRun ? 'DRY RUN: no files will be written.' : 'Applying scaffold plan.',
+   161	    `Target package: ${resolve(root, 'packages', `block-${name}`)}`,
+   162	    `Template source: ${resolve(root, 'packages', 'block-callout')}`,
+   163	    `Kind: ${kind}`,
+   164	    `UI variant: ${ui}`,
+   165	  ];
+   166	}
+   167	
+   168	export function newBlock(options: NewBlockOptions): NewBlockReport {
+   169	  const cwd = resolve(options.cwd ?? process.cwd());
+   170	  const name = options.name.trim();
+   171	  const dryRun = Boolean(options.dryRun);
+   172	  const ui = options.ui?.trim() ? options.ui!.trim() : 'default';
+   173	  const kind = validateKind(options.kind);
+   174	
+   175	  validateName(name);
+   176	
+   177	  const templateRoot = resolve(cwd, 'packages', 'block-callout');
+   178	  const templateCore = resolve(templateRoot, 'core');
+   179	  const templateUiDefault = resolve(templateRoot, 'ui-default');
+   180	
+   181	  if (!existsSync(templateRoot) || !existsSync(templateCore) || !existsSync(templateUiDefault)) {
+   182	    return {
+   183	      dryRun,
+   184	      prerequisiteMissing: true,
+   185	      name,
+   186	      kind,
+   187	      ui,
+   188	      packageName: `block-${name}`,
+   189	      packagePath: resolve(cwd, 'packages', `block-${name}`),
+   190	      targetTemplatePath: templateRoot,
+   191	      tsconfigUpdated: false,
+   192	      plan: [PRECONDITION_ERROR],
+   193	      exitCode: 0,
+   194	    };
+   195	  }
+   196	
+   197	  const packageName = `block-${name}`;
+   198	  const packagePath = resolve(cwd, 'packages', packageName);
+   199	  if (existsSync(packagePath)) {
+   200	    throw new Error(`Package already exists: packages/${packageName}`);
+   201	  }
+   202	
+   203	  const plan = buildPlan(cwd, name, kind, ui, dryRun);
+   204	  const pascalName = derivePascalCase(name);
+   205	  let tsconfigUpdated = false;
+   206	
+   207	  if (!dryRun) {
+   208	    cpSync(templateRoot, packagePath, { recursive: true });
+   209	    let rewrittenCount = 0;
+   210	
+   211	    walkFiles(packagePath, packagePath, (filePath) => {
+   212	      if (replaceTokens(filePath, name, pascalName)) {
+   213	        rewrittenCount += 1;
+   214	      }
+   215	    });
+   216	
+   217	    plan.push(`Updated ${rewrittenCount} files with block token replacements.`);
+   218	    tsconfigUpdated = updateRootTsConfigReferences(cwd, packageName, dryRun);
+   219	    plan.push(
+   220	      tsconfigUpdated
+   221	        ? `Updated root tsconfig references for ${packageName}`
+   222	        : `Root tsconfig already references ${packageName}`,
+   223	    );
+   224	  } else {
+   225	    plan.push('DRY RUN: no file content replacements will be written.');
+   226	    tsconfigUpdated = updateRootTsConfigReferences(cwd, packageName, true);
+   227	    plan.push(
+   228	      tsconfigUpdated
+   229	        ? `Would add ./packages/${packageName} to root tsconfig references.`
+   230	        : `Root tsconfig already references ${packageName}.`,
+   231	    );
+   232	  }
+   233	
+   234	  return {
+   235	    dryRun,
+   236	    prerequisiteMissing: false,
+   237	    name,
+   238	    kind,
+   239	    ui,
+   240	    packageName,
+   241	    packagePath,
+   242	    targetTemplatePath: templateRoot,
+   243	    tsconfigUpdated,
+   244	    plan,
+   245	    exitCode: 0,
+   246	  };
+   247	}
+   248	
+   249	function runCli(): void {
+   250	  const program = new Command();
+   251	
+   252	  program
+   253	    .name('new-block')
+   254	    .description('Scaffold a new block package from the block-callout template')
+   255	    .argument('<name>', 'block name (lowercase-kebab, e.g. callout-admonition)')
+   256	    .option('--kind <kind>', 'block kind: simple | render | viz')
+   257	    .option('--ui <ui>', 'ui variant', 'default')
+   258	    .option('--dry-run', 'print planned changes without writing files')
+   259	    .helpOption('--help', 'display help for command')
+   260	    .action((name: string, options: { kind?: string; ui?: string; dryRun?: boolean }) => {
+
+codex
+我接下来补齐 fixture 侧重点（initial fixture 的模板结构与 token 内容），确认替换与 `tsconfig` 变更点是否对齐、并用于发现回归面。
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && nl -ba scripts/__tests__/fixtures/new-block/initial/package.json | sed -n '1,260p'" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && nl -ba scripts/__tests__/fixtures/new-block/initial/tsconfig.json | sed -n '1,260p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	{
+     2	  "extends": "../tsconfig.base.json",
+     3	  "references": [
+     4	    { "path": "./scripts" },
+     5	    { "path": "./packages/content-types" }
+     6	  ]
+     7	}
+
+ succeeded in 0ms:
+nl: scripts/__tests__/fixtures/new-block/initial/package.json: No such file or directory
+
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && nl -ba scripts/__tests__/fixtures/new-block/initial/packages/block-callout/core/callout.ts | sed -n '1,260p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	export const calloutId = 'callout';
+     2	
+     3	export function renderCallout(): string {
+     4	  return 'Callout';
+     5	}
+
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && nl -ba scripts/__tests__/fixtures/new-block/initial/packages/block-callout/ui-default/index.ts | sed -n '1,260p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	import { renderCallout } from '../core/callout';
+     2	
+     3	export const CalloutUi = renderCallout();
+     4	export const callout = 'callout';
+
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && nl -ba scripts/__tests__/fixtures/new-block/initial/packages/block-callout/package.json | sed -n '1,260p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 139ms:
+     1	{
+     2	  "name": "@local/block-callout"
+     3	}
+
+codex
+我再补读 `new-block.ts` 的 tail（仅这一个文件末尾）以确认 CLI 入口和错误分支是否与 spec 一致；其余文件不再重复读取。
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && nl -ba scripts/new-block.ts | sed -n '248,360p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+   248	
+   249	function runCli(): void {
+   250	  const program = new Command();
+   251	
+   252	  program
+   253	    .name('new-block')
+   254	    .description('Scaffold a new block package from the block-callout template')
+   255	    .argument('<name>', 'block name (lowercase-kebab, e.g. callout-admonition)')
+   256	    .option('--kind <kind>', 'block kind: simple | render | viz')
+   257	    .option('--ui <ui>', 'ui variant', 'default')
+   258	    .option('--dry-run', 'print planned changes without writing files')
+   259	    .helpOption('--help', 'display help for command')
+   260	    .action((name: string, options: { kind?: string; ui?: string; dryRun?: boolean }) => {
+   261	      const report = newBlock({
+   262	        name,
+   263	        kind: options.kind ?? '',
+   264	        ui: options.ui ?? 'default',
+   265	        dryRun: options.dryRun,
+   266	      });
+   267	
+   268	      for (const line of report.plan) {
+   269	        console.log(line);
+   270	      }
+   271	
+   272	      if (report.exitCode !== 0) {
+   273	        process.exit(report.exitCode);
+   274	      }
+   275	    });
+   276	
+   277	  try {
+   278	    program.parse(process.argv);
+   279	  } catch (error) {
+   280	    console.error((error as Error).message);
+   281	    process.exit(1);
+   282	  }
+   283	}
+   284	
+   285	if (import.meta.url === `file://${process.argv[1]}`) {
+   286	  runCli();
+   287	}
+
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && sed -n '1,260p' docs/audits/codex-runs/2026-04-30-task-I2-new-block.txt" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+Reading additional input from stdin...
+OpenAI Codex v0.125.0 (research preview)
+--------
+workdir: /home/weiyi/selfKnowledgeBaseWeb
+model: gpt-5.3-codex-spark
+provider: openai
+approval: never
+sandbox: workspace-write [workdir, /tmp, $TMPDIR, /home/weiyi/.codex/memories]
+reasoning effort: xhigh
+reasoning summaries: none
+session id: 019ddfc7-ad82-7593-be47-75673852f0c3
+--------
+user
+你是 codex-script-builder。在 SelfKnowledgeBaseWeb 项目根目录创建 `scripts/new-block.ts`：CLI 工具，基于 block-callout 模板生成新 block 包骨架。
+
+但**当前 block-callout package 尚未存在**（待 simple-block-eng 在 Task C1 创建）。所以 new-block.ts 当前只能是**spec-only**：CLI 接受参数 + 验证 + 报 'block-callout template not yet created' 错。当 C1 完工后，new-block.ts 自动激活生成功能。
+
+要求：
+- CLI 形态: `new-block <name> --kind=simple|render|viz [--ui=default] [--dry-run] [--help]`
+- 用 commander 解析（已是 dev dep）
+- 检查 packages/block-callout/ 是否存在 + 含 core/ + ui-default/ 子结构
+  - 如未存在: 报 'block-callout template not yet created (Task C1 prerequisite); cannot scaffold yet' + exit 0 (dry-run-equivalent，不算 fail)
+  - 如存在: 复制 packages/block-callout/ 结构到 packages/block-<name>/
+    - 替换文件内 'callout' → '<name>' / 'Callout' → '<Name>' (PascalCase 自动 derive from name)
+    - 更新 root tsconfig.json#references 加新包
+- 错误处理: 包已存在 / kind 非法值 / name 含非法字符 → throw + exit 1
+- --dry-run: 打印 plan 不实际改
+- --help: 显示用法
+
+测试 `scripts/__tests__/new-block.test.ts` 含 5 case：
+1. block-callout 不存在时 → 报 prerequisite + exit 0
+2. dry-run 模式打印 plan 不改文件
+3. 正常生成（用 fixture mock-callout 模拟 template + temp workspace）
+4. 包已存在抛错
+5. kind 非法值抛错
+
+依赖：commander + ts-morph 已装（I1 留下）。
+
+ADR-0006 8-point checklist: 
+- item #6 sister-doc: scripts/new-block.ts 风格与 scripts/refactor-move.ts (I1) 一致 (commander CLI + 错误处理 + --help / --dry-run flags)
+- item #1 attr audit: kind enum (simple/render/viz) + name validation regex 加 explicit 表
+- item #4: N/A (无 single-authority schema)
+- item #8: 不生成 generator output
+
+**关键: 必须跑 root pnpm typecheck (uncached) verify** —— 防 TS2379 类 type error 盲区 (FIX-I1 lesson)。如有 type error 修后再交。
+
+完工后输出新建文件列表 + 测试运行 PASS/FAIL + uncached pnpm typecheck PASS confirm。
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the vendored bubblewrap in the meantime.
+codex
+我会先快速查看现有脚本结构（尤其是 `scripts/refactor-move.ts` 的 CLI 风格和测试惯例），然后一次性添加 `scripts/new-block.ts` 与 `scripts/__tests__/new-block.test.ts`，最后执行你要求的两类校验：`pnpm typecheck` 与目标测试。
+exec
+/bin/bash -lc 'ls -1 scripts' in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc 'pwd && ls -1' in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc 'rg --files scripts/__tests__' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 133ms:
+/home/weiyi/selfKnowledgeBaseWeb
+AGENTS.md
+CLAUDE.md
+LICENSE
+agent-contract.md
+apps
+claude+codex.md
+codex.md
+content
+docs
+eslint.config.js
+node_modules
+opencode.json
+package.json
+packages
+pnpm-lock.yaml
+pnpm-workspace.yaml
+prettier.config.cjs
+scripts
+skills-lock.json
+tmp
+tsconfig.base.json
+tsconfig.json
+turbo.json
+vitest.config.ts
+
+ succeeded in 136ms:
+__tests__
+check-size-limits.mjs
+generate-configs.ts
+hooks
+refactor-move.ts
+render
+tsconfig.json
+tsconfig.tsbuildinfo
+
+ succeeded in 149ms:
+scripts/__tests__/generate-configs.test.ts
+scripts/__tests__/refactor-move.test.ts
+scripts/__tests__/fixtures/refactor-move/initial/packages/feature/consumer.ts
+scripts/__tests__/fixtures/refactor-move/initial/apps/feature/app.ts
+scripts/__tests__/fixtures/refactor-move/initial/packages/feature/util.ts
+scripts/__tests__/fixtures/refactor-move/after/apps/feature/app.ts
+scripts/__tests__/fixtures/refactor-move/after/packages/feature/consumer.ts
+scripts/__tests__/fixtures/refactor-move/after/packages/feature/shared/util.ts
+
+exec
+/bin/bash -lc 'cat package.json' in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc 'cat scripts/refactor-move.ts' in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc 'cat scripts/__tests__/refactor-move.test.ts' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 109ms:
+{
+  "name": "self-knowledge-base-web",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "pnpm@9.12.0",
+  "type": "module",
+  "engines": {
+    "node": ">=22",
+    "pnpm": ">=9"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev --parallel",
+    "lint": "eslint .",
+    "lint:packages": "turbo run lint",
+    "typecheck": "tsc -b",
+    "typecheck:packages": "turbo run typecheck",
+    "test": "vitest run",
+    "test:packages": "turbo run test",
+    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm size-check && pnpm lint:packages && pnpm typecheck:packages && pnpm test:packages",
+    "check:affected": "turbo run lint typecheck test --filter=...[origin/main]",
+    "size-check": "node scripts/check-size-limits.mjs",
+    "link-check": "lychee --config .lychee.toml './**/*.md'",
+    "generate:configs": "tsx scripts/generate-configs.ts",
+    "format": "prettier --write \"**/*.{ts,tsx,js,mjs,cjs,json,md,yaml,yml}\""
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "@types/node": "^22.0.0",
+    "commander": "^11.1.0",
+    "eslint": "^9.0.0",
+    "globals": "^15.0.0",
+    "prettier": "^3.0.0",
+    "turbo": "^2.0.0",
+    "ts-morph": "^28.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "~5.6.0",
+    "typescript-eslint": "^8.0.0",
+    "vitest": "^4.1.5",
+    "yaml": "^2.8.3",
+    "zod": "^3.23.0"
+  }
+}
+
+ succeeded in 109ms:
+#!/usr/bin/env tsx
+import { Command } from 'commander';
+import { Project, type ExportDeclaration, type SourceFile } from 'ts-morph';
+import { existsSync, mkdirSync, renameSync } from 'node:fs';
+import { dirname, extname, relative, resolve, sep } from 'node:path';
+
+const SOURCE_GLOBS = ['packages/**/*.{ts,tsx}', 'apps/**/*.{ts,tsx}'];
+
+type RewriteRecord = {
+  filePath: string;
+  from: string;
+  to: string;
+  apply: () => void;
+};
+
+export type RefactorMoveReport = {
+  from: string;
+  to: string;
+  dryRun: boolean;
+  updates: Array<{ filePath: string; from: string; to: string }>;
+  plan: string[];
+};
+
+type RefactorMoveOptions = {
+  from: string;
+  to: string;
+  dryRun?: boolean;
+  cwd?: string;
+};
+
+const TS_IMPORT_EXT = /\.tsx?$/;
+
+function asPosix(filePath: string): string {
+  return filePath.split(sep).join('/');
+}
+
+function toDisplayPath(path: string, baseDir: string): string {
+  const rel = relative(baseDir, path);
+  return asPosix(rel === '' ? '.' : rel);
+}
+
+function candidatesForImport(sourceDir: string, moduleSpecifier: string): string[] {
+  const base = resolve(sourceDir, moduleSpecifier);
+  return [base, `${base}.ts`, `${base}.tsx`, resolve(base, 'index.ts'), resolve(base, 'index.tsx')];
+}
+
+function hasMatchingTarget(
+  sourceDir: string,
+  moduleSpecifier: string,
+  targetAbsolutePath: string,
+): boolean {
+  if (!moduleSpecifier.startsWith('.')) {
+    return false;
+  }
+  return candidatesForImport(sourceDir, moduleSpecifier).includes(targetAbsolutePath);
+}
+
+function nextSpecifier(sourceDir: string, targetAbsolutePath: string, oldSpecifier: string): string {
+  let next = asPosix(relative(sourceDir, targetAbsolutePath));
+  if (!next.startsWith('.')) {
+    next = `./${next}`;
+  }
+
+  const requestedExt = extname(oldSpecifier);
+  const keepExt = requestedExt === '.ts' || requestedExt === '.tsx';
+  if (keepExt) {
+    return `${next.replace(TS_IMPORT_EXT, '')}${requestedExt}`;
+  }
+  return next.replace(TS_IMPORT_EXT, '');
+}
+
+function appendImportUpdate(
+  sourceFile: SourceFile,
+  moduleSpecifier: string,
+  oldFileAbsolutePath: string,
+  newFileAbsolutePath: string,
+  updates: RewriteRecord[],
+): void {
+  const sourceDir = sourceFile.getDirectoryPath();
+  if (!hasMatchingTarget(sourceDir, moduleSpecifier, oldFileAbsolutePath)) {
+    return;
+  }
+
+  const newSpecifier = nextSpecifier(sourceDir, newFileAbsolutePath, moduleSpecifier);
+  if (newSpecifier === moduleSpecifier) {
+    return;
+  }
+
+  updates.push({
+    filePath: sourceFile.getFilePath(),
+    from: moduleSpecifier,
+    to: newSpecifier,
+    apply: () => sourceFile
+      .getImportDeclarations()
+      .filter((i) => i.getModuleSpecifierValue() === moduleSpecifier)
+      .forEach((i) => i.setModuleSpecifier(newSpecifier)),
+  });
+}
+
+function appendExportUpdate(
+  sourceFile: SourceFile,
+  exportDecl: ExportDeclaration,
+  oldFileAbsolutePath: string,
+  newFileAbsolutePath: string,
+  updates: RewriteRecord[],
+
+codex
+我会再读一次 I2 spec 的关键段落确认 “ts-morph” 和 `--ui` 是否是硬性要求；确认后再给出准确的 PASS/FAIL 结论。
+exec
+/bin/bash -lc 'cd /home/weiyi/selfKnowledgeBaseWeb && rg -n "new-block|I2|kind|ts-morph|--ui|--dry-run|block-callout" docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+196:│   ├─ name / kind ('prose'|'component')                  │
+337:│   ├── block-callout/                       # core/ + ui-default/
+527:   block-callout / block-code / block-image           (3 simple-block-eng)
+611:| `simple-block-eng` | block-callout（core 试点 template），其余 simple block core 由 `codex-block-generator` 仿造 |
+799:│   ├── wave-2-block-callout-template.md    # Claude template
+1127:| Simple blocks | block-callout (simple-block-eng) | block-code, block-image (codex-block-generator) |
+1133:| Scripts | — | refactor-move + new-block + extract-pdf-text 交 codex-script-builder |
+1136:- block-callout 模板交付**之前不启动** codex-block-generator（保证模板质量）
+
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && nl -ba docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md | sed -n '1100,1165p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+  1100	- `agent-contract.md` → 下游配置生成验证通过（CI 检查跑生成器后无 diff）
+  1101	- WSL2 setup 文档被独立验证（推荐让 user 重置环境跑一遍）
+  1102	
+  1103	### 4.2 Phase 1：MVP 知识库
+  1104	
+  1105	**节奏**：事件驱动。每个 wave 由所有 track 双 review pass 触发下一波；wave 内 task 并行进行。
+  1106	
+  1107	**4.2.1 Wave 1 — 基础设施 + 接口（6 路并行）**
+  1108	
+  1109	| Track | Agent | LLM | 退出标准 |
+  1110	|---|---|---|---|
+  1111	| A. Astro site 骨架 | editor-integrator | Claude | 公开页可渲染静态 MDX，路由生效 |
+  1112	| B. block-foundation | block-foundation-eng | Claude | BlockRegistry 接口 + Prose blocks（StarterKit 包装）+ 单测 ≥ 80% |
+  1113	| C. mdx-bridge + RTT 基线 | mdx-bridge-eng | Claude | RTT 测试 fixture 至少 5 个 prose 用例通过 |
+  1114	| D. apps/api FastAPI 骨架 | api-builder | Claude | auth + 文件 CRUD + git ops + WS endpoint stub + LLMProvider interface 全有 |
+  1115	| E. kernel-adapter + registry | kernel-architect | Claude | 接口 + 类型 + CONTRACT.md 完整；单测覆盖接口约束 |
+  1116	| F. editor-commands + agent-tools schema | editor-eng | Claude | 命令模式 API + agent-tools type stubs + CONTRACT.md |
+  1117	
+  1118	**Wave 1 退出标准**：
+  1119	- 所有 6 track 双 review pass（高风险 track B/C/E/F 多过 pr-gate 5.5）
+  1120	- structure-auditor 跑一次 baseline
+  1121	- ADR-0002 记录 wave 1 完成
+  1122	
+  1123	**4.2.2 Wave 2 — 实现层（最大并发）**
+  1124	
+  1125	| Cluster | Templates (Claude) | Variants (Codex 5.3-spark) |
+  1126	|---|---|---|
+  1127	| Simple blocks | block-callout (simple-block-eng) | block-code, block-image (codex-block-generator) |
+  1128	| Render blocks | block-math (render-block-eng) | block-pdf 由 render-block-eng hand-craft（PDF 复杂，不仿造） |
+  1129	| Viz blocks | block-jupyter, block-nn-viz, block-agent-flow（独立 hand-craft） (viz-block-eng) | — |
+  1130	| Editor 子模块 | editor-slash-menu, editor-drag-handle, editor-toolbar (editor-integrator) | — |
+  1131	| Kernel 实现 | kernel-pyodide (kernel-pyodide-eng) | — |
+  1132	| Test 脚手架 | — | 全包统一交 codex-test-scaffolder 跑过一遍 |
+  1133	| Scripts | — | refactor-move + new-block + extract-pdf-text 交 codex-script-builder |
+  1134	
+  1135	**节奏约束**：
+  1136	- block-callout 模板交付**之前不启动** codex-block-generator（保证模板质量）
+  1137	- jupyter / nn-viz / agent-flow 是 viz-block-eng 的"重头戏"，可分批做不必同时启动
+  1138	
+  1139	**Wave 2 退出标准**：
+  1140	- 8 个 component block 都通过：单测 ≥ 80% / round-trip 测试 / mdx-doctor 全 case 通过
+  1141	- 所有 PR 双 review pass
+  1142	- structure-auditor 第二次审计
+  1143	
+  1144	**4.2.3 Wave 3 — 集成**
+  1145	
+  1146	| Task | Agent | 退出标准 |
+  1147	|---|---|---|
+  1148	| editor-shell 集成全部 block | editor-integrator | 编辑器能创建包含全部 8 种 component block 的页面 |
+  1149	| apps/site 接入 editor + 登录流 | editor-integrator + api-builder | 登录 → 编辑 → 保存 → 公开页面更新闭环 |
+  1150	| search-index + Pagefind | editor-integrator | 全站搜索（含 PDF 文本）可用 |
+  1151	| WS 通道 + LLMProvider 接口冻结 | api-builder | 接口定义 + 占位 echo 实现 |
+  1152	
+  1153	**4.2.4 Wave 4 — 验收 + 部署**
+  1154	
+  1155	| Task | Agent | 退出标准 |
+  1156	|---|---|---|
+  1157	| Playwright E2E | editor-integrator | "创建笔记 → 加 jupyter block → 跑代码 → 保存 → 公开访问" 闭环通过 |
+  1158	| Cloudflare Pages 部署 | git-operator + api-builder | 公开 URL 可访问 |
+  1159	| Cloudflare Tunnel + Edit API 上线 | api-builder | Edit API 通过 Tunnel 可被 site 调用 |
+  1160	| performance-auditor 首次基线 | performance-auditor | Lighthouse → `docs/audits/perf-phase-1-baseline.md` |
+  1161	| 接入个人主页 | git-operator | 个人主页加超链 |
+  1162	
+  1163	**Phase 1 退出标准**：MVP 上线，公开 URL 可访问，全部 8 种 block 可用，E2E 流程通过。
+  1164	
+  1165	**Pause point（强制）**：Phase 1 结束后**显式 pause**，让用户写真实笔记 + auditors 跑全套，发现痛点；反馈喂回 Phase 2a plan 调整。这是用户提到的"停下脚步重新看"的窗口。
+
+codex
+FAIL — asymmetry-audit applied
+
+1. `scripts/new-block.ts:173` 在执行参数校验（`validateKind`）之后才进行 `block-callout` 前置模板存在性判断。  
+   这意味着当 `packages/block-callout` 缺失时，`--kind` 缺失/非法会先抛 `Invalid/Missing --kind` 并以 exit 1 结束，而不是返回预置前置条件提示与 exit 0（`PRECONDITION_ERROR`）。该行为与 C1 未完成阶段“缺失模板应安全降级”的语义边界不一致。应优先做模板存在性短路检查。
+
+2. `scripts/__tests__/new-block.test.ts` 的 5 个 case 未覆盖 `--help` 路径。  
+   你在审核要求里明确要求检查 `dry-run / --help / 错误 cases`，当前测试集中覆盖 dry-run、非法 kind、缺失模板、正常生成、已存在包，但没有断言 CLI `--help` 的 exit code/输出，留有回归盲点。
+
+---
+
+补充：
+- `scripts/new-block.ts` 的 kind 枚举与 name 校验规则、错误抛出语义和 dry-run 行为本身是自洽的。
+2026-04-30T19:07:18.496392Z ERROR codex_core::session: failed to record rollout items: thread 019ddfc9-6efa-7500-a1f6-887150a0c953 not found
+tokens used
+34,281
+FAIL — asymmetry-audit applied
+
+1. `scripts/new-block.ts:173` 在执行参数校验（`validateKind`）之后才进行 `block-callout` 前置模板存在性判断。  
+   这意味着当 `packages/block-callout` 缺失时，`--kind` 缺失/非法会先抛 `Invalid/Missing --kind` 并以 exit 1 结束，而不是返回预置前置条件提示与 exit 0（`PRECONDITION_ERROR`）。该行为与 C1 未完成阶段“缺失模板应安全降级”的语义边界不一致。应优先做模板存在性短路检查。
+
+2. `scripts/__tests__/new-block.test.ts` 的 5 个 case 未覆盖 `--help` 路径。  
+   你在审核要求里明确要求检查 `dry-run / --help / 错误 cases`，当前测试集中覆盖 dry-run、非法 kind、缺失模板、正常生成、已存在包，但没有断言 CLI `--help` 的 exit code/输出，留有回归盲点。
+
+---
+
+补充：
+- `scripts/new-block.ts` 的 kind 枚举与 name 校验规则、错误抛出语义和 dry-run 行为本身是自洽的。

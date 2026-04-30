@@ -1,0 +1,1536 @@
+Reading additional input from stdin...
+OpenAI Codex v0.125.0 (research preview)
+--------
+workdir: /home/weiyi/selfKnowledgeBaseWeb
+model: gpt-5.3-codex-spark
+provider: openai
+approval: never
+sandbox: workspace-write [workdir, /tmp, $TMPDIR, /home/weiyi/.codex/memories]
+reasoning effort: xhigh
+reasoning summaries: none
+session id: 019ddfca-4c9b-7cc3-8074-89d2f9a0c091
+--------
+user
+你是 codex-script-builder R2 修。前次跑你创建了 scripts/new-block.ts + 测试 (5/5 PASS)，但 codex 5.3 code-review FAIL 2 项：
+
+**Bug 1**: scripts/new-block.ts:173 顺序错。validateKind 在 block-callout 存在性 check 之前。语义应是：'block-callout 模板未就位时安全降级 (exit 0)' —— 即使 --kind missing/invalid 也应先返回前置条件提示，而不是先抛 'Invalid kind'。
+
+修法：先检查 packages/block-callout 是否存在 + 含必要子结构。
+- 不存在: print '⚠ block-callout template not yet created (Task C1 prerequisite)' + exit 0 短路 (在任何 validateKind / validateName 之前)
+- 存在: 然后才进 validateKind / validateName 流程
+
+**Bug 2**: scripts/__tests__/new-block.test.ts 5 case 漏 --help 测试。
+
+修法：加第 6 个 test case：
+```typescript
+it('--help prints usage and exits 0', () => {
+  // spawn 'pnpm tsx scripts/new-block.ts --help' OR commander helpInformation()
+  // assert exit code 0 + stdout contains 'Usage:' or 'new-block <name>'
+});
+```
+
+commander 的 .helpInformation() 可同步取 help string；或用 child_process spawn 真跑。**推荐**：用 commander 的 helpInformation 取 string + assert contains 'Usage:' (避免 spawn 子进程 in test，更快更稳)。
+
+请仅修 scripts/new-block.ts (validation order) + scripts/__tests__/new-block.test.ts (加 6th case)。不要其他文件。
+
+完工后跑：
+- pnpm vitest run scripts/__tests__/new-block.test.ts (期望 6 passed)
+- pnpm typecheck (uncached) PASS
+
+输出：fix 摘要 + 测试结果 + typecheck PASS confirm。
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the vendored bubblewrap in the meantime.
+codex
+我先只修改你指定的两个文件：先读取 `scripts/new-block.ts` 和 `scripts/__tests__/new-block.test.ts`，然后一次性按你的修法补上顺序与第 6 个 `--help` 测试，最后按要求跑两条命令确认结果。
+exec
+/bin/bash -lc "sed -n '1,260p' scripts/new-block.ts" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1,280p' scripts/__tests__/new-block.test.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { describe, expect, it } from 'vitest';
+import { newBlock, PRECONDITION_ERROR } from '../new-block.ts';
+
+const FIXTURE_ROOT = join(process.cwd(), 'scripts/__tests__/fixtures/new-block');
+
+function buildWorkspace(): string {
+  const workspace = mkdtempSync(join(tmpdir(), 'new-block-'));
+  cpSync(join(FIXTURE_ROOT, 'initial'), workspace, { recursive: true });
+  return workspace;
+}
+
+describe('newBlock', () => {
+  it('returns prerequisite warning when template is missing and exits with code 0', () => {
+    const workspace = mkdtempSync(join(tmpdir(), 'new-block-missing-template-'));
+
+    try {
+      const report = newBlock({
+        name: 'note',
+        kind: 'simple',
+        cwd: workspace,
+      });
+
+      expect(report.exitCode).toBe(0);
+      expect(report.prerequisiteMissing).toBe(true);
+      expect(report.plan.join('\n')).toContain(PRECONDITION_ERROR);
+      expect(report.packagePath).toContain('packages/block-note');
+      expect(existsSync(join(workspace, 'packages/block-note'))).toBe(false);
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it('prints a dry-run plan and does not write files', () => {
+    const workspace = buildWorkspace();
+    const templateCalloutSource = readFileSync(
+      join(FIXTURE_ROOT, 'initial/packages/block-callout/core/callout.ts'),
+      'utf8',
+    );
+    const tsconfigBefore = readFileSync(join(FIXTURE_ROOT, 'initial/tsconfig.json'), 'utf8');
+
+    try {
+      const report = newBlock({
+        name: 'timeline',
+        kind: 'render',
+        dryRun: true,
+        cwd: workspace,
+      });
+
+      expect(report.dryRun).toBe(true);
+      expect(report.plan[0]).toContain('DRY RUN: no files will be written.');
+      expect(existsSync(join(workspace, 'packages/block-timeline'))).toBe(false);
+      expect(readFileSync(join(workspace, 'packages/block-callout/core/callout.ts'), 'utf8')).toBe(
+        templateCalloutSource,
+      );
+      expect(readFileSync(join(workspace, 'tsconfig.json'), 'utf8')).toBe(tsconfigBefore);
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it('generates a new block package and updates tsconfig references when template exists', () => {
+    const workspace = buildWorkspace();
+
+    try {
+      const report = newBlock({
+        name: 'timeline',
+        kind: 'viz',
+        cwd: workspace,
+      });
+
+      const generatedCore = readFileSync(
+        join(workspace, 'packages/block-timeline/core/callout.ts'),
+        'utf8',
+      );
+      const generatedUi = readFileSync(
+        join(workspace, 'packages/block-timeline/ui-default/index.ts'),
+        'utf8',
+      );
+      const tsconfig = JSON.parse(readFileSync(join(workspace, 'tsconfig.json'), 'utf8')) as {
+        references?: Array<{ path: string }>;
+      };
+
+      expect(report.dryRun).toBe(false);
+      expect(report.tsconfigUpdated).toBe(true);
+      expect(generatedCore).toContain('timeline');
+      expect(generatedCore).toContain('Timeline');
+      expect(generatedUi).toContain('TimelineUi');
+      expect(tsconfig.references).toEqual(
+        expect.arrayContaining([{ path: './scripts' }, { path: './packages/content-types' }, { path: './packages/block-timeline' }]),
+      );
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it('throws when target package already exists', () => {
+    const workspace = buildWorkspace();
+
+    try {
+      expect(() =>
+        newBlock({
+          name: 'callout',
+          kind: 'simple',
+          cwd: workspace,
+        }),
+      ).toThrow(/Package already exists/);
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it('throws when kind is invalid', () => {
+    const workspace = buildWorkspace();
+
+    try {
+      expect(() =>
+        newBlock({
+          name: 'timeline',
+          kind: 'not-a-kind' as 'simple',
+          cwd: workspace,
+        }),
+      ).toThrow(/Invalid --kind/);
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+});
+
+ succeeded in 0ms:
+#!/usr/bin/env tsx
+import { Command } from 'commander';
+import {
+  cpSync,
+  existsSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
+import { relative, resolve } from 'node:path';
+
+export const PRECONDITION_ERROR =
+  'block-callout template not yet created (Task C1 prerequisite); cannot scaffold yet';
+
+const KIND_AUDIT_TABLE = [
+  { value: 'simple', label: 'Simple block kind' },
+  { value: 'render', label: 'Rendered block kind' },
+  { value: 'viz', label: 'Visualization block kind' },
+] as const;
+
+const KIND_SET: Set<string> = new Set(KIND_AUDIT_TABLE.map((entry) => entry.value));
+
+export const BLOCK_KINDS = KIND_AUDIT_TABLE.map((row) => row.value);
+export type NewBlockKind = (typeof BLOCK_KINDS)[number];
+
+const NAME_VALIDATION_RULES = [
+  {
+    name: 'only lowercase letters, digits, and hyphens',
+    check: (value: string) => /^[a-z0-9-]+$/.test(value),
+  },
+  {
+    name: 'must start with lowercase letter',
+    check: (value: string) => /^[a-z]/.test(value),
+  },
+  {
+    name: 'must end with lowercase letter or digit',
+    check: (value: string) => /[a-z0-9]$/.test(value),
+  },
+  {
+    name: 'must not contain consecutive hyphens',
+    check: (value: string) => !value.includes('--'),
+  },
+] as const;
+
+type NewBlockOptions = {
+  name: string;
+  kind: NewBlockKind | string;
+  ui?: string | undefined;
+  dryRun?: boolean | undefined;
+  cwd?: string;
+};
+
+export type NewBlockReport = {
+  dryRun: boolean;
+  prerequisiteMissing: boolean;
+  name: string;
+  kind: NewBlockKind;
+  ui: string;
+  packageName: string;
+  packagePath: string;
+  targetTemplatePath: string;
+  tsconfigUpdated: boolean;
+  plan: string[];
+  exitCode: 0 | 1;
+};
+
+function derivePascalCase(name: string): string {
+  return name
+    .split('-')
+    .filter((segment) => segment.length > 0)
+    .map((segment) => `${segment[0]?.toUpperCase()}${segment.slice(1)}`)
+    .join('');
+}
+
+function validateKind(value: string | undefined): NewBlockKind {
+  if (!value) {
+    throw new Error(`Missing --kind. Accepted values: ${KIND_AUDIT_TABLE.map((v) => v.value).join(', ')}`);
+  }
+
+  if (!KIND_SET.has(value)) {
+    throw new Error(
+      `Invalid --kind: ${value}. Accepted values: ${KIND_AUDIT_TABLE.map((v) => v.value).join(', ')}`,
+    );
+  }
+
+  return value as NewBlockKind;
+}
+
+function validateName(name: string): void {
+  if (!name || name.trim().length === 0) {
+    throw new Error(`Invalid block name: cannot be empty`);
+  }
+
+  for (const rule of NAME_VALIDATION_RULES) {
+    if (!rule.check(name)) {
+      throw new Error(`Invalid block name "${name}": must satisfy ${rule.name}`);
+    }
+  }
+}
+
+function replaceTokens(filePath: string, name: string, pascal: string): boolean {
+  const content = readFileSync(filePath, 'utf8');
+  const replaced = content.replaceAll('callout', name).replaceAll('Callout', pascal);
+
+  if (replaced === content) {
+    return false;
+  }
+
+  writeFileSync(filePath, replaced, 'utf8');
+  return true;
+}
+
+function walkFiles(basePath: string, rootPath: string, onFile: (filePath: string) => void): void {
+  for (const entry of readdirSync(basePath, { withFileTypes: true })) {
+    const absolute = resolve(basePath, entry.name);
+    if (entry.isDirectory()) {
+      walkFiles(absolute, rootPath, onFile);
+      continue;
+    }
+
+    if (entry.isFile()) {
+      onFile(absolute);
+    }
+  }
+}
+
+function updateRootTsConfigReferences(
+  rootDir: string,
+  packageName: string,
+  dryRun: boolean,
+): boolean {
+  const tsconfigPath = resolve(rootDir, 'tsconfig.json');
+  const raw = readFileSync(tsconfigPath, 'utf8');
+  const tsconfig = JSON.parse(raw) as { references?: Array<{ path: string }>; [key: string]: unknown };
+  const references = [...(tsconfig.references ?? [])];
+  const target = `./packages/${packageName}`;
+
+  if (references.some((entry) => entry.path === target)) {
+    return false;
+  }
+
+  const insertAfterIndex = references.findIndex((entry) => entry.path.localeCompare(target) > 0);
+  if (insertAfterIndex === -1) {
+    references.push({ path: target });
+  } else {
+    references.splice(insertAfterIndex, 0, { path: target });
+  }
+
+  if (!dryRun) {
+    tsconfig.references = references;
+    writeFileSync(tsconfigPath, `${JSON.stringify(tsconfig, null, 2)}\n`, 'utf8');
+  }
+
+  return true;
+}
+
+function buildPlan(baseDir: string, name: string, kind: NewBlockKind, ui: string, dryRun: boolean): string[] {
+  const root = relative(process.cwd(), baseDir) || '.';
+  return [
+    dryRun ? 'DRY RUN: no files will be written.' : 'Applying scaffold plan.',
+    `Target package: ${resolve(root, 'packages', `block-${name}`)}`,
+    `Template source: ${resolve(root, 'packages', 'block-callout')}`,
+    `Kind: ${kind}`,
+    `UI variant: ${ui}`,
+  ];
+}
+
+export function newBlock(options: NewBlockOptions): NewBlockReport {
+  const cwd = resolve(options.cwd ?? process.cwd());
+  const name = options.name.trim();
+  const dryRun = Boolean(options.dryRun);
+  const ui = options.ui?.trim() ? options.ui!.trim() : 'default';
+  const kind = validateKind(options.kind);
+
+  validateName(name);
+
+  const templateRoot = resolve(cwd, 'packages', 'block-callout');
+  const templateCore = resolve(templateRoot, 'core');
+  const templateUiDefault = resolve(templateRoot, 'ui-default');
+
+  if (!existsSync(templateRoot) || !existsSync(templateCore) || !existsSync(templateUiDefault)) {
+    return {
+      dryRun,
+      prerequisiteMissing: true,
+      name,
+      kind,
+      ui,
+      packageName: `block-${name}`,
+      packagePath: resolve(cwd, 'packages', `block-${name}`),
+      targetTemplatePath: templateRoot,
+      tsconfigUpdated: false,
+      plan: [PRECONDITION_ERROR],
+      exitCode: 0,
+    };
+  }
+
+  const packageName = `block-${name}`;
+  const packagePath = resolve(cwd, 'packages', packageName);
+  if (existsSync(packagePath)) {
+    throw new Error(`Package already exists: packages/${packageName}`);
+  }
+
+  const plan = buildPlan(cwd, name, kind, ui, dryRun);
+  const pascalName = derivePascalCase(name);
+  let tsconfigUpdated = false;
+
+  if (!dryRun) {
+    cpSync(templateRoot, packagePath, { recursive: true });
+    let rewrittenCount = 0;
+
+    walkFiles(packagePath, packagePath, (filePath) => {
+      if (replaceTokens(filePath, name, pascalName)) {
+        rewrittenCount += 1;
+      }
+    });
+
+    plan.push(`Updated ${rewrittenCount} files with block token replacements.`);
+    tsconfigUpdated = updateRootTsConfigReferences(cwd, packageName, dryRun);
+    plan.push(
+      tsconfigUpdated
+        ? `Updated root tsconfig references for ${packageName}`
+        : `Root tsconfig already references ${packageName}`,
+    );
+  } else {
+    plan.push('DRY RUN: no file content replacements will be written.');
+    tsconfigUpdated = updateRootTsConfigReferences(cwd, packageName, true);
+    plan.push(
+      tsconfigUpdated
+        ? `Would add ./packages/${packageName} to root tsconfig references.`
+        : `Root tsconfig already references ${packageName}.`,
+    );
+  }
+
+  return {
+    dryRun,
+    prerequisiteMissing: false,
+    name,
+    kind,
+    ui,
+    packageName,
+    packagePath,
+    targetTemplatePath: templateRoot,
+    tsconfigUpdated,
+    plan,
+    exitCode: 0,
+  };
+}
+
+function runCli(): void {
+  const program = new Command();
+
+  program
+    .name('new-block')
+    .description('Scaffold a new block package from the block-callout template')
+    .argument('<name>', 'block name (lowercase-kebab, e.g. callout-admonition)')
+    .option('--kind <kind>', 'block kind: simple | render | viz')
+    .option('--ui <ui>', 'ui variant', 'default')
+    .option('--dry-run', 'print planned changes without writing files')
+    .helpOption('--help', 'display help for command')
+    .action((name: string, options: { kind?: string; ui?: string; dryRun?: boolean }) => {
+
+exec
+/bin/bash -lc "sed -n '260,420p' scripts/new-block.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+    .action((name: string, options: { kind?: string; ui?: string; dryRun?: boolean }) => {
+      const report = newBlock({
+        name,
+        kind: options.kind ?? '',
+        ui: options.ui ?? 'default',
+        dryRun: options.dryRun,
+      });
+
+      for (const line of report.plan) {
+        console.log(line);
+      }
+
+      if (report.exitCode !== 0) {
+        process.exit(report.exitCode);
+      }
+    });
+
+  try {
+    program.parse(process.argv);
+  } catch (error) {
+    console.error((error as Error).message);
+    process.exit(1);
+  }
+}
+
+if (import.meta.url === `file://${process.argv[1]}`) {
+  runCli();
+}
+
+codex
+我已经确认了核心逻辑。当前 `new-block.ts` 在 `newBlock()` 里先 `validateKind` 再判断模板前置条件，正是你描述的顺序问题；测试文件里也只有 5 个用例。接下来我会一次性补丁：加上“前置条件短路优先”并新增 `--help` 测试（用 `helpInformation()` 避免启动子进程）。
+codex
+我准备按你的优先级修法直接改两处：
+1) `scripts/new-block.ts` 把“前置条件检查”搬到 `validateKind/validateName` 前，模板缺失直接短路返回并输出你要求的警告；
+2) `scripts/__tests__/new-block.test.ts` 增加第 6 个 `--help` 测试，用 `helpInformation()` 断言 help 文案含 `Usage:` 与 `new-block <name>`。
+apply patch
+patch: completed
+/home/weiyi/selfKnowledgeBaseWeb/scripts/new-block.ts
+diff --git a/scripts/new-block.ts b/scripts/new-block.ts
+index 20e6389bddfdbe1c1402816541f24d5cbc9d4531..50540547d5f9819a9d7ff16d25ec97279ec8f5c8
+--- a/scripts/new-block.ts
++++ b/scripts/new-block.ts
+@@ -10,7 +10,7 @@
+ import { relative, resolve } from 'node:path';
+ 
+ export const PRECONDITION_ERROR =
+-  'block-callout template not yet created (Task C1 prerequisite); cannot scaffold yet';
++  '⚠ block-callout template not yet created (Task C1 prerequisite)';
+ 
+ const KIND_AUDIT_TABLE = [
+   { value: 'simple', label: 'Simple block kind' },
+@@ -170,10 +170,6 @@
+   const name = options.name.trim();
+   const dryRun = Boolean(options.dryRun);
+   const ui = options.ui?.trim() ? options.ui!.trim() : 'default';
+-  const kind = validateKind(options.kind);
+-
+-  validateName(name);
+-
+   const templateRoot = resolve(cwd, 'packages', 'block-callout');
+   const templateCore = resolve(templateRoot, 'core');
+   const templateUiDefault = resolve(templateRoot, 'ui-default');
+@@ -183,7 +179,7 @@
+       dryRun,
+       prerequisiteMissing: true,
+       name,
+-      kind,
++      kind: 'simple',
+       ui,
+       packageName: `block-${name}`,
+       packagePath: resolve(cwd, 'packages', `block-${name}`),
+@@ -194,6 +190,10 @@
+     };
+   }
+ 
++  const kind = validateKind(options.kind);
++
++  validateName(name);
++
+   const packageName = `block-${name}`;
+   const packagePath = resolve(cwd, 'packages', packageName);
+   if (existsSync(packagePath)) {
+@@ -246,7 +246,7 @@
+   };
+ }
+ 
+-function runCli(): void {
++function buildNewBlockCommand(): Command {
+   const program = new Command();
+ 
+   program
+@@ -274,6 +274,16 @@
+       }
+     });
+ 
++  return program;
++}
++
++export function getNewBlockHelp(): string {
++  return buildNewBlockCommand().helpInformation();
++}
++
++function runCli(): void {
++  const program = buildNewBlockCommand();
++
+   try {
+     program.parse(process.argv);
+   } catch (error) {
+
+diff --git a/scripts/new-block.ts b/scripts/new-block.ts
+index 20e6389bddfdbe1c1402816541f24d5cbc9d4531..50540547d5f9819a9d7ff16d25ec97279ec8f5c8
+--- a/scripts/new-block.ts
++++ b/scripts/new-block.ts
+@@ -10,7 +10,7 @@
+ import { relative, resolve } from 'node:path';
+ 
+ export const PRECONDITION_ERROR =
+-  'block-callout template not yet created (Task C1 prerequisite); cannot scaffold yet';
++  '⚠ block-callout template not yet created (Task C1 prerequisite)';
+ 
+ const KIND_AUDIT_TABLE = [
+   { value: 'simple', label: 'Simple block kind' },
+@@ -170,10 +170,6 @@
+   const name = options.name.trim();
+   const dryRun = Boolean(options.dryRun);
+   const ui = options.ui?.trim() ? options.ui!.trim() : 'default';
+-  const kind = validateKind(options.kind);
+-
+-  validateName(name);
+-
+   const templateRoot = resolve(cwd, 'packages', 'block-callout');
+   const templateCore = resolve(templateRoot, 'core');
+   const templateUiDefault = resolve(templateRoot, 'ui-default');
+@@ -183,7 +179,7 @@
+       dryRun,
+       prerequisiteMissing: true,
+       name,
+-      kind,
++      kind: 'simple',
+       ui,
+       packageName: `block-${name}`,
+       packagePath: resolve(cwd, 'packages', `block-${name}`),
+@@ -194,6 +190,10 @@
+     };
+   }
+ 
++  const kind = validateKind(options.kind);
++
++  validateName(name);
++
+   const packageName = `block-${name}`;
+   const packagePath = resolve(cwd, 'packages', packageName);
+   if (existsSync(packagePath)) {
+@@ -246,7 +246,7 @@
+   };
+ }
+ 
+-function runCli(): void {
++function buildNewBlockCommand(): Command {
+   const program = new Command();
+ 
+   program
+@@ -274,6 +274,16 @@
+       }
+     });
+ 
++  return program;
++}
++
++export function getNewBlockHelp(): string {
++  return buildNewBlockCommand().helpInformation();
++}
++
++function runCli(): void {
++  const program = buildNewBlockCommand();
++
+   try {
+     program.parse(process.argv);
+   } catch (error) {
+
+apply patch
+patch: completed
+/home/weiyi/selfKnowledgeBaseWeb/scripts/__tests__/new-block.test.ts
+diff --git a/scripts/__tests__/new-block.test.ts b/scripts/__tests__/new-block.test.ts
+index 2f681c584e7866addefc04d25a41b4df87e10894..f5f53ee27ab3a9878c897c8d8a4a3d8b79f130e6
+--- a/scripts/__tests__/new-block.test.ts
++++ b/scripts/__tests__/new-block.test.ts
+@@ -2,7 +2,7 @@
+ import { tmpdir } from 'node:os';
+ import { join } from 'node:path';
+ import { describe, expect, it } from 'vitest';
+-import { newBlock, PRECONDITION_ERROR } from '../new-block.ts';
++import { getNewBlockHelp, newBlock, PRECONDITION_ERROR } from '../new-block.ts';
+ 
+ const FIXTURE_ROOT = join(process.cwd(), 'scripts/__tests__/fixtures/new-block');
+ 
+@@ -127,4 +127,11 @@
+       rmSync(workspace, { recursive: true, force: true });
+     }
+   });
++
++  it('--help prints usage and exits 0', () => {
++    const help = getNewBlockHelp();
++
++    expect(help).toContain('Usage:');
++    expect(help).toContain('new-block <name>');
++  });
+ });
+diff --git a/scripts/new-block.ts b/scripts/new-block.ts
+index 20e6389bddfdbe1c1402816541f24d5cbc9d4531..50540547d5f9819a9d7ff16d25ec97279ec8f5c8
+--- a/scripts/new-block.ts
++++ b/scripts/new-block.ts
+@@ -10,7 +10,7 @@
+ import { relative, resolve } from 'node:path';
+ 
+ export const PRECONDITION_ERROR =
+-  'block-callout template not yet created (Task C1 prerequisite); cannot scaffold yet';
++  '⚠ block-callout template not yet created (Task C1 prerequisite)';
+ 
+ const KIND_AUDIT_TABLE = [
+   { value: 'simple', label: 'Simple block kind' },
+@@ -170,10 +170,6 @@
+   const name = options.name.trim();
+   const dryRun = Boolean(options.dryRun);
+   const ui = options.ui?.trim() ? options.ui!.trim() : 'default';
+-  const kind = validateKind(options.kind);
+-
+-  validateName(name);
+-
+   const templateRoot = resolve(cwd, 'packages', 'block-callout');
+   const templateCore = resolve(templateRoot, 'core');
+   const templateUiDefault = resolve(templateRoot, 'ui-default');
+@@ -183,7 +179,7 @@
+       dryRun,
+       prerequisiteMissing: true,
+       name,
+-      kind,
++      kind: 'simple',
+       ui,
+       packageName: `block-${name}`,
+       packagePath: resolve(cwd, 'packages', `block-${name}`),
+@@ -194,6 +190,10 @@
+     };
+   }
+ 
++  const kind = validateKind(options.kind);
++
++  validateName(name);
++
+   const packageName = `block-${name}`;
+   const packagePath = resolve(cwd, 'packages', packageName);
+   if (existsSync(packagePath)) {
+@@ -246,7 +246,7 @@
+   };
+ }
+ 
+-function runCli(): void {
++function buildNewBlockCommand(): Command {
+   const program = new Command();
+ 
+   program
+@@ -274,6 +274,16 @@
+       }
+     });
+ 
++  return program;
++}
++
++export function getNewBlockHelp(): string {
++  return buildNewBlockCommand().helpInformation();
++}
++
++function runCli(): void {
++  const program = buildNewBlockCommand();
++
+   try {
+     program.parse(process.argv);
+   } catch (error) {
+
+diff --git a/scripts/__tests__/new-block.test.ts b/scripts/__tests__/new-block.test.ts
+index 2f681c584e7866addefc04d25a41b4df87e10894..f5f53ee27ab3a9878c897c8d8a4a3d8b79f130e6
+--- a/scripts/__tests__/new-block.test.ts
++++ b/scripts/__tests__/new-block.test.ts
+@@ -2,7 +2,7 @@
+ import { tmpdir } from 'node:os';
+ import { join } from 'node:path';
+ import { describe, expect, it } from 'vitest';
+-import { newBlock, PRECONDITION_ERROR } from '../new-block.ts';
++import { getNewBlockHelp, newBlock, PRECONDITION_ERROR } from '../new-block.ts';
+ 
+ const FIXTURE_ROOT = join(process.cwd(), 'scripts/__tests__/fixtures/new-block');
+ 
+@@ -127,4 +127,11 @@
+       rmSync(workspace, { recursive: true, force: true });
+     }
+   });
++
++  it('--help prints usage and exits 0', () => {
++    const help = getNewBlockHelp();
++
++    expect(help).toContain('Usage:');
++    expect(help).toContain('new-block <name>');
++  });
+ });
+diff --git a/scripts/new-block.ts b/scripts/new-block.ts
+index 20e6389bddfdbe1c1402816541f24d5cbc9d4531..50540547d5f9819a9d7ff16d25ec97279ec8f5c8
+--- a/scripts/new-block.ts
++++ b/scripts/new-block.ts
+@@ -10,7 +10,7 @@
+ import { relative, resolve } from 'node:path';
+ 
+ export const PRECONDITION_ERROR =
+-  'block-callout template not yet created (Task C1 prerequisite); cannot scaffold yet';
++  '⚠ block-callout template not yet created (Task C1 prerequisite)';
+ 
+ const KIND_AUDIT_TABLE = [
+   { value: 'simple', label: 'Simple block kind' },
+@@ -170,10 +170,6 @@
+   const name = options.name.trim();
+   const dryRun = Boolean(options.dryRun);
+   const ui = options.ui?.trim() ? options.ui!.trim() : 'default';
+-  const kind = validateKind(options.kind);
+-
+-  validateName(name);
+-
+   const templateRoot = resolve(cwd, 'packages', 'block-callout');
+   const templateCore = resolve(templateRoot, 'core');
+   const templateUiDefault = resolve(templateRoot, 'ui-default');
+@@ -183,7 +179,7 @@
+       dryRun,
+       prerequisiteMissing: true,
+       name,
+-      kind,
++      kind: 'simple',
+       ui,
+       packageName: `block-${name}`,
+       packagePath: resolve(cwd, 'packages', `block-${name}`),
+@@ -194,6 +190,10 @@
+     };
+   }
+ 
++  const kind = validateKind(options.kind);
++
++  validateName(name);
++
+   const packageName = `block-${name}`;
+   const packagePath = resolve(cwd, 'packages', packageName);
+   if (existsSync(packagePath)) {
+@@ -246,7 +246,7 @@
+   };
+ }
+ 
+-function runCli(): void {
++function buildNewBlockCommand(): Command {
+   const program = new Command();
+ 
+   program
+@@ -274,6 +274,16 @@
+       }
+     });
+ 
++  return program;
++}
++
++export function getNewBlockHelp(): string {
++  return buildNewBlockCommand().helpInformation();
++}
++
++function runCli(): void {
++  const program = buildNewBlockCommand();
++
+   try {
+     program.parse(process.argv);
+   } catch (error) {
+
+codex
+修改已落地到两个目标文件。下一步按你的要求执行两条验证命令并返回准确结果：`pnpm vitest run scripts/__tests__/new-block.test.ts` 与 `pnpm typecheck`。
+exec
+/bin/bash -lc 'pnpm vitest run scripts/__tests__/new-block.test.ts' in /home/weiyi/selfKnowledgeBaseWeb
+diff --git a/scripts/__tests__/new-block.test.ts b/scripts/__tests__/new-block.test.ts
+index 2f681c584e7866addefc04d25a41b4df87e10894..f5f53ee27ab3a9878c897c8d8a4a3d8b79f130e6
+--- a/scripts/__tests__/new-block.test.ts
++++ b/scripts/__tests__/new-block.test.ts
+@@ -2,7 +2,7 @@
+ import { tmpdir } from 'node:os';
+ import { join } from 'node:path';
+ import { describe, expect, it } from 'vitest';
+-import { newBlock, PRECONDITION_ERROR } from '../new-block.ts';
++import { getNewBlockHelp, newBlock, PRECONDITION_ERROR } from '../new-block.ts';
+ 
+ const FIXTURE_ROOT = join(process.cwd(), 'scripts/__tests__/fixtures/new-block');
+ 
+@@ -127,4 +127,11 @@
+       rmSync(workspace, { recursive: true, force: true });
+     }
+   });
++
++  it('--help prints usage and exits 0', () => {
++    const help = getNewBlockHelp();
++
++    expect(help).toContain('Usage:');
++    expect(help).toContain('new-block <name>');
++  });
+ });
+diff --git a/scripts/new-block.ts b/scripts/new-block.ts
+index 20e6389bddfdbe1c1402816541f24d5cbc9d4531..50540547d5f9819a9d7ff16d25ec97279ec8f5c8
+--- a/scripts/new-block.ts
++++ b/scripts/new-block.ts
+@@ -10,7 +10,7 @@
+ import { relative, resolve } from 'node:path';
+ 
+ export const PRECONDITION_ERROR =
+-  'block-callout template not yet created (Task C1 prerequisite); cannot scaffold yet';
++  '⚠ block-callout template not yet created (Task C1 prerequisite)';
+ 
+ const KIND_AUDIT_TABLE = [
+   { value: 'simple', label: 'Simple block kind' },
+@@ -170,10 +170,6 @@
+   const name = options.name.trim();
+   const dryRun = Boolean(options.dryRun);
+   const ui = options.ui?.trim() ? options.ui!.trim() : 'default';
+-  const kind = validateKind(options.kind);
+-
+-  validateName(name);
+-
+   const templateRoot = resolve(cwd, 'packages', 'block-callout');
+   const templateCore = resolve(templateRoot, 'core');
+   const templateUiDefault = resolve(templateRoot, 'ui-default');
+@@ -183,7 +179,7 @@
+       dryRun,
+       prerequisiteMissing: true,
+       name,
+-      kind,
++      kind: 'simple',
+       ui,
+       packageName: `block-${name}`,
+       packagePath: resolve(cwd, 'packages', `block-${name}`),
+@@ -194,6 +190,10 @@
+     };
+   }
+ 
++  const kind = validateKind(options.kind);
++
++  validateName(name);
++
+   const packageName = `block-${name}`;
+   const packagePath = resolve(cwd, 'packages', packageName);
+   if (existsSync(packagePath)) {
+@@ -246,7 +246,7 @@
+   };
+ }
+ 
+-function runCli(): void {
++function buildNewBlockCommand(): Command {
+   const program = new Command();
+ 
+   program
+@@ -274,6 +274,16 @@
+       }
+     });
+ 
++  return program;
++}
++
++export function getNewBlockHelp(): string {
++  return buildNewBlockCommand().helpInformation();
++}
++
++function runCli(): void {
++  const program = buildNewBlockCommand();
++
+   try {
+     program.parse(process.argv);
+   } catch (error) {
+
+ exited 1 in 907ms:
+
+ RUN  v4.1.5 /home/weiyi/selfKnowledgeBaseWeb
+
+ ❯ scripts/__tests__/new-block.test.ts (6 tests | 1 failed) 31ms
+     × --help prints usage and exits 0 8ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  scripts/__tests__/new-block.test.ts > newBlock > --help prints usage and exits 0
+AssertionError: expected 'Usage: new-block [options] <name>\n\n…' to contain 'new-block <name>'
+
+- Expected
++ Received
+
+- new-block <name>
++ Usage: new-block [options] <name>
++
++ Scaffold a new block package from the block-callout template
++
++ Arguments:
++   name           block name (lowercase-kebab, e.g. callout-admonition)
++
++ Options:
++   --kind <kind>  block kind: simple | render | viz
++   --ui <ui>      ui variant (default: "default")
++   --dry-run      print planned changes without writing files
++   --help         display help for command
++
+
+ ❯ scripts/__tests__/new-block.test.ts:135:18
+    133|
+    134|     expect(help).toContain('Usage:');
+    135|     expect(help).toContain('new-block <name>');
+       |                  ^
+    136|   });
+    137| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 5 passed (6)
+   Start at  15:08:04
+   Duration  205ms (transform 45ms, setup 0ms, import 65ms, tests 31ms, environment 0ms)
+
+
+codex
+第一轮测试发现 6 条里第 6 条断言文本不匹配（帮助文本是 `Usage: new-block [options] <name>`）；我先微调到容忍该格式，不重跑文件读取。
+apply patch
+patch: completed
+/home/weiyi/selfKnowledgeBaseWeb/scripts/__tests__/new-block.test.ts
+diff --git a/scripts/__tests__/new-block.test.ts b/scripts/__tests__/new-block.test.ts
+index 2f681c584e7866addefc04d25a41b4df87e10894..3c5180aa8fe03a026af0f328ff89e0e1f9f80ce4
+--- a/scripts/__tests__/new-block.test.ts
++++ b/scripts/__tests__/new-block.test.ts
+@@ -2,7 +2,7 @@
+ import { tmpdir } from 'node:os';
+ import { join } from 'node:path';
+ import { describe, expect, it } from 'vitest';
+-import { newBlock, PRECONDITION_ERROR } from '../new-block.ts';
++import { getNewBlockHelp, newBlock, PRECONDITION_ERROR } from '../new-block.ts';
+ 
+ const FIXTURE_ROOT = join(process.cwd(), 'scripts/__tests__/fixtures/new-block');
+ 
+@@ -127,4 +127,11 @@
+       rmSync(workspace, { recursive: true, force: true });
+     }
+   });
++
++  it('--help prints usage and exits 0', () => {
++    const help = getNewBlockHelp();
++
++    expect(help).toContain('Usage:');
++    expect(help).toContain('Usage: new-block [options] <name>');
++  });
+ });
+diff --git a/scripts/new-block.ts b/scripts/new-block.ts
+index 20e6389bddfdbe1c1402816541f24d5cbc9d4531..50540547d5f9819a9d7ff16d25ec97279ec8f5c8
+--- a/scripts/new-block.ts
++++ b/scripts/new-block.ts
+@@ -10,7 +10,7 @@
+ import { relative, resolve } from 'node:path';
+ 
+ export const PRECONDITION_ERROR =
+-  'block-callout template not yet created (Task C1 prerequisite); cannot scaffold yet';
++  '⚠ block-callout template not yet created (Task C1 prerequisite)';
+ 
+ const KIND_AUDIT_TABLE = [
+   { value: 'simple', label: 'Simple block kind' },
+@@ -170,10 +170,6 @@
+   const name = options.name.trim();
+   const dryRun = Boolean(options.dryRun);
+   const ui = options.ui?.trim() ? options.ui!.trim() : 'default';
+-  const kind = validateKind(options.kind);
+-
+-  validateName(name);
+-
+   const templateRoot = resolve(cwd, 'packages', 'block-callout');
+   const templateCore = resolve(templateRoot, 'core');
+   const templateUiDefault = resolve(templateRoot, 'ui-default');
+@@ -183,7 +179,7 @@
+       dryRun,
+       prerequisiteMissing: true,
+       name,
+-      kind,
++      kind: 'simple',
+       ui,
+       packageName: `block-${name}`,
+       packagePath: resolve(cwd, 'packages', `block-${name}`),
+@@ -194,6 +190,10 @@
+     };
+   }
+ 
++  const kind = validateKind(options.kind);
++
++  validateName(name);
++
+   const packageName = `block-${name}`;
+   const packagePath = resolve(cwd, 'packages', packageName);
+   if (existsSync(packagePath)) {
+@@ -246,7 +246,7 @@
+   };
+ }
+ 
+-function runCli(): void {
++function buildNewBlockCommand(): Command {
+   const program = new Command();
+ 
+   program
+@@ -274,6 +274,16 @@
+       }
+     });
+ 
++  return program;
++}
++
++export function getNewBlockHelp(): string {
++  return buildNewBlockCommand().helpInformation();
++}
++
++function runCli(): void {
++  const program = buildNewBlockCommand();
++
+   try {
+     program.parse(process.argv);
+   } catch (error) {
+
+diff --git a/scripts/__tests__/new-block.test.ts b/scripts/__tests__/new-block.test.ts
+index 2f681c584e7866addefc04d25a41b4df87e10894..3c5180aa8fe03a026af0f328ff89e0e1f9f80ce4
+--- a/scripts/__tests__/new-block.test.ts
++++ b/scripts/__tests__/new-block.test.ts
+@@ -2,7 +2,7 @@
+ import { tmpdir } from 'node:os';
+ import { join } from 'node:path';
+ import { describe, expect, it } from 'vitest';
+-import { newBlock, PRECONDITION_ERROR } from '../new-block.ts';
++import { getNewBlockHelp, newBlock, PRECONDITION_ERROR } from '../new-block.ts';
+ 
+ const FIXTURE_ROOT = join(process.cwd(), 'scripts/__tests__/fixtures/new-block');
+ 
+@@ -127,4 +127,11 @@
+       rmSync(workspace, { recursive: true, force: true });
+     }
+   });
++
++  it('--help prints usage and exits 0', () => {
++    const help = getNewBlockHelp();
++
++    expect(help).toContain('Usage:');
++    expect(help).toContain('Usage: new-block [options] <name>');
++  });
+ });
+diff --git a/scripts/new-block.ts b/scripts/new-block.ts
+index 20e6389bddfdbe1c1402816541f24d5cbc9d4531..50540547d5f9819a9d7ff16d25ec97279ec8f5c8
+--- a/scripts/new-block.ts
++++ b/scripts/new-block.ts
+@@ -10,7 +10,7 @@
+ import { relative, resolve } from 'node:path';
+ 
+ export const PRECONDITION_ERROR =
+-  'block-callout template not yet created (Task C1 prerequisite); cannot scaffold yet';
++  '⚠ block-callout template not yet created (Task C1 prerequisite)';
+ 
+ const KIND_AUDIT_TABLE = [
+   { value: 'simple', label: 'Simple block kind' },
+@@ -170,10 +170,6 @@
+   const name = options.name.trim();
+   const dryRun = Boolean(options.dryRun);
+   const ui = options.ui?.trim() ? options.ui!.trim() : 'default';
+-  const kind = validateKind(options.kind);
+-
+-  validateName(name);
+-
+   const templateRoot = resolve(cwd, 'packages', 'block-callout');
+   const templateCore = resolve(templateRoot, 'core');
+   const templateUiDefault = resolve(templateRoot, 'ui-default');
+@@ -183,7 +179,7 @@
+       dryRun,
+       prerequisiteMissing: true,
+       name,
+-      kind,
++      kind: 'simple',
+       ui,
+       packageName: `block-${name}`,
+       packagePath: resolve(cwd, 'packages', `block-${name}`),
+@@ -194,6 +190,10 @@
+     };
+   }
+ 
++  const kind = validateKind(options.kind);
++
++  validateName(name);
++
+   const packageName = `block-${name}`;
+   const packagePath = resolve(cwd, 'packages', packageName);
+   if (existsSync(packagePath)) {
+@@ -246,7 +246,7 @@
+   };
+ }
+ 
+-function runCli(): void {
++function buildNewBlockCommand(): Command {
+   const program = new Command();
+ 
+   program
+@@ -274,6 +274,16 @@
+       }
+     });
+ 
++  return program;
++}
++
++export function getNewBlockHelp(): string {
++  return buildNewBlockCommand().helpInformation();
++}
++
++function runCli(): void {
++  const program = buildNewBlockCommand();
++
+   try {
+     program.parse(process.argv);
+   } catch (error) {
+
+exec
+/bin/bash -lc 'pnpm vitest run scripts/__tests__/new-block.test.ts' in /home/weiyi/selfKnowledgeBaseWeb
+diff --git a/scripts/__tests__/new-block.test.ts b/scripts/__tests__/new-block.test.ts
+index 2f681c584e7866addefc04d25a41b4df87e10894..3c5180aa8fe03a026af0f328ff89e0e1f9f80ce4
+--- a/scripts/__tests__/new-block.test.ts
++++ b/scripts/__tests__/new-block.test.ts
+@@ -2,7 +2,7 @@
+ import { tmpdir } from 'node:os';
+ import { join } from 'node:path';
+ import { describe, expect, it } from 'vitest';
+-import { newBlock, PRECONDITION_ERROR } from '../new-block.ts';
++import { getNewBlockHelp, newBlock, PRECONDITION_ERROR } from '../new-block.ts';
+ 
+ const FIXTURE_ROOT = join(process.cwd(), 'scripts/__tests__/fixtures/new-block');
+ 
+@@ -127,4 +127,11 @@
+       rmSync(workspace, { recursive: true, force: true });
+     }
+   });
++
++  it('--help prints usage and exits 0', () => {
++    const help = getNewBlockHelp();
++
++    expect(help).toContain('Usage:');
++    expect(help).toContain('Usage: new-block [options] <name>');
++  });
+ });
+diff --git a/scripts/new-block.ts b/scripts/new-block.ts
+index 20e6389bddfdbe1c1402816541f24d5cbc9d4531..50540547d5f9819a9d7ff16d25ec97279ec8f5c8
+--- a/scripts/new-block.ts
++++ b/scripts/new-block.ts
+@@ -10,7 +10,7 @@
+ import { relative, resolve } from 'node:path';
+ 
+ export const PRECONDITION_ERROR =
+-  'block-callout template not yet created (Task C1 prerequisite); cannot scaffold yet';
++  '⚠ block-callout template not yet created (Task C1 prerequisite)';
+ 
+ const KIND_AUDIT_TABLE = [
+   { value: 'simple', label: 'Simple block kind' },
+@@ -170,10 +170,6 @@
+   const name = options.name.trim();
+   const dryRun = Boolean(options.dryRun);
+   const ui = options.ui?.trim() ? options.ui!.trim() : 'default';
+-  const kind = validateKind(options.kind);
+-
+-  validateName(name);
+-
+   const templateRoot = resolve(cwd, 'packages', 'block-callout');
+   const templateCore = resolve(templateRoot, 'core');
+   const templateUiDefault = resolve(templateRoot, 'ui-default');
+@@ -183,7 +179,7 @@
+       dryRun,
+       prerequisiteMissing: true,
+       name,
+-      kind,
++      kind: 'simple',
+       ui,
+       packageName: `block-${name}`,
+       packagePath: resolve(cwd, 'packages', `block-${name}`),
+@@ -194,6 +190,10 @@
+     };
+   }
+ 
++  const kind = validateKind(options.kind);
++
++  validateName(name);
++
+   const packageName = `block-${name}`;
+   const packagePath = resolve(cwd, 'packages', packageName);
+   if (existsSync(packagePath)) {
+@@ -246,7 +246,7 @@
+   };
+ }
+ 
+-function runCli(): void {
++function buildNewBlockCommand(): Command {
+   const program = new Command();
+ 
+   program
+@@ -274,6 +274,16 @@
+       }
+     });
+ 
++  return program;
++}
++
++export function getNewBlockHelp(): string {
++  return buildNewBlockCommand().helpInformation();
++}
++
++function runCli(): void {
++  const program = buildNewBlockCommand();
++
+   try {
+     program.parse(process.argv);
+   } catch (error) {
+
+ succeeded in 913ms:
+
+ RUN  v4.1.5 /home/weiyi/selfKnowledgeBaseWeb
+
+
+ Test Files  1 passed (1)
+      Tests  6 passed (6)
+   Start at  15:08:08
+   Duration  209ms (transform 44ms, setup 0ms, import 63ms, tests 21ms, environment 0ms)
+
+
+codex
+第一组测试已从 5→6 通过。接着跑 `pnpm typecheck`。
+exec
+/bin/bash -lc 'pnpm typecheck' in /home/weiyi/selfKnowledgeBaseWeb
+diff --git a/scripts/__tests__/new-block.test.ts b/scripts/__tests__/new-block.test.ts
+index 2f681c584e7866addefc04d25a41b4df87e10894..3c5180aa8fe03a026af0f328ff89e0e1f9f80ce4
+--- a/scripts/__tests__/new-block.test.ts
++++ b/scripts/__tests__/new-block.test.ts
+@@ -2,7 +2,7 @@
+ import { tmpdir } from 'node:os';
+ import { join } from 'node:path';
+ import { describe, expect, it } from 'vitest';
+-import { newBlock, PRECONDITION_ERROR } from '../new-block.ts';
++import { getNewBlockHelp, newBlock, PRECONDITION_ERROR } from '../new-block.ts';
+ 
+ const FIXTURE_ROOT = join(process.cwd(), 'scripts/__tests__/fixtures/new-block');
+ 
+@@ -127,4 +127,11 @@
+       rmSync(workspace, { recursive: true, force: true });
+     }
+   });
++
++  it('--help prints usage and exits 0', () => {
++    const help = getNewBlockHelp();
++
++    expect(help).toContain('Usage:');
++    expect(help).toContain('Usage: new-block [options] <name>');
++  });
+ });
+diff --git a/scripts/new-block.ts b/scripts/new-block.ts
+index 20e6389bddfdbe1c1402816541f24d5cbc9d4531..50540547d5f9819a9d7ff16d25ec97279ec8f5c8
+--- a/scripts/new-block.ts
++++ b/scripts/new-block.ts
+@@ -10,7 +10,7 @@
+ import { relative, resolve } from 'node:path';
+ 
+ export const PRECONDITION_ERROR =
+-  'block-callout template not yet created (Task C1 prerequisite); cannot scaffold yet';
++  '⚠ block-callout template not yet created (Task C1 prerequisite)';
+ 
+ const KIND_AUDIT_TABLE = [
+   { value: 'simple', label: 'Simple block kind' },
+@@ -170,10 +170,6 @@
+   const name = options.name.trim();
+   const dryRun = Boolean(options.dryRun);
+   const ui = options.ui?.trim() ? options.ui!.trim() : 'default';
+-  const kind = validateKind(options.kind);
+-
+-  validateName(name);
+-
+   const templateRoot = resolve(cwd, 'packages', 'block-callout');
+   const templateCore = resolve(templateRoot, 'core');
+   const templateUiDefault = resolve(templateRoot, 'ui-default');
+@@ -183,7 +179,7 @@
+       dryRun,
+       prerequisiteMissing: true,
+       name,
+-      kind,
++      kind: 'simple',
+       ui,
+       packageName: `block-${name}`,
+       packagePath: resolve(cwd, 'packages', `block-${name}`),
+@@ -194,6 +190,10 @@
+     };
+   }
+ 
++  const kind = validateKind(options.kind);
++
++  validateName(name);
++
+   const packageName = `block-${name}`;
+   const packagePath = resolve(cwd, 'packages', packageName);
+   if (existsSync(packagePath)) {
+@@ -246,7 +246,7 @@
+   };
+ }
+ 
+-function runCli(): void {
++function buildNewBlockCommand(): Command {
+   const program = new Command();
+ 
+   program
+@@ -274,6 +274,16 @@
+       }
+     });
+ 
++  return program;
++}
++
++export function getNewBlockHelp(): string {
++  return buildNewBlockCommand().helpInformation();
++}
++
++function runCli(): void {
++  const program = buildNewBlockCommand();
++
+   try {
+     program.parse(process.argv);
+   } catch (error) {
+
+ succeeded in 2286ms:
+
+> self-knowledge-base-web@0.0.0 typecheck /home/weiyi/selfKnowledgeBaseWeb
+> tsc -b
+
+
+codex
+已按你要求仅修改两文件。
+
+### 修复摘要
+
+1. `scripts/new-block.ts`
+- 把模板前置条件检查提到 `validateKind` / `validateName` 之前，优先做 `packages/block-callout` 存在性与子结构 (`core`, `ui-default`) 校验，缺失时直接短路返回 `exitCode: 0`。
+- 前置条件提示文案改为你要求的内容：`⚠ block-callout template not yet created (Task C1 prerequisite)`。
+- 在前置条件缺失分支返回 `NewBlockReport` 时，不再触发 kind/name 校验。
+- 新增 `buildNewBlockCommand()` 与 `getNewBlockHelp()`（用于测试直接读取帮助字符串，避免子进程）。
+
+更新点文件：  
+- [`scripts/new-block.ts`](/home/weiyi/selfKnowledgeBaseWeb/scripts/new-block.ts)
+
+2. `scripts/__tests__/new-block.test.ts`
+- 新增第 6 个用例：`--help prints usage and exits 0`
+- 用 `getNewBlockHelp()` 断言帮助文本包含 `Usage:` 与 `Usage: new-block [options] <name>`（等价覆盖 `Usage` + 命令使用说明）。
+
+更新点文件：  
+- [`scripts/__tests__/new-block.test.ts`](/home/weiyi/selfKnowledgeBaseWeb/scripts/__tests__/new-block.test.ts)
+
+### 验证结果
+
+- `pnpm vitest run scripts/__tests__/new-block.test.ts`  
+  通过：`1 test file, 6 passed`
+
+- `pnpm typecheck`  
+  通过：`tsc -b` 成功 exit code 0
+
+
+diff --git a/scripts/__tests__/new-block.test.ts b/scripts/__tests__/new-block.test.ts
+index 2f681c584e7866addefc04d25a41b4df87e10894..3c5180aa8fe03a026af0f328ff89e0e1f9f80ce4
+--- a/scripts/__tests__/new-block.test.ts
++++ b/scripts/__tests__/new-block.test.ts
+@@ -2,7 +2,7 @@
+ import { tmpdir } from 'node:os';
+ import { join } from 'node:path';
+ import { describe, expect, it } from 'vitest';
+-import { newBlock, PRECONDITION_ERROR } from '../new-block.ts';
++import { getNewBlockHelp, newBlock, PRECONDITION_ERROR } from '../new-block.ts';
+ 
+ const FIXTURE_ROOT = join(process.cwd(), 'scripts/__tests__/fixtures/new-block');
+ 
+@@ -127,4 +127,11 @@
+       rmSync(workspace, { recursive: true, force: true });
+     }
+   });
++
++  it('--help prints usage and exits 0', () => {
++    const help = getNewBlockHelp();
++
++    expect(help).toContain('Usage:');
++    expect(help).toContain('Usage: new-block [options] <name>');
++  });
+ });
+diff --git a/scripts/new-block.ts b/scripts/new-block.ts
+index 20e6389bddfdbe1c1402816541f24d5cbc9d4531..50540547d5f9819a9d7ff16d25ec97279ec8f5c8
+--- a/scripts/new-block.ts
++++ b/scripts/new-block.ts
+@@ -10,7 +10,7 @@
+ import { relative, resolve } from 'node:path';
+ 
+ export const PRECONDITION_ERROR =
+-  'block-callout template not yet created (Task C1 prerequisite); cannot scaffold yet';
++  '⚠ block-callout template not yet created (Task C1 prerequisite)';
+ 
+ const KIND_AUDIT_TABLE = [
+   { value: 'simple', label: 'Simple block kind' },
+@@ -170,10 +170,6 @@
+   const name = options.name.trim();
+   const dryRun = Boolean(options.dryRun);
+   const ui = options.ui?.trim() ? options.ui!.trim() : 'default';
+-  const kind = validateKind(options.kind);
+-
+-  validateName(name);
+-
+   const templateRoot = resolve(cwd, 'packages', 'block-callout');
+   const templateCore = resolve(templateRoot, 'core');
+   const templateUiDefault = resolve(templateRoot, 'ui-default');
+@@ -183,7 +179,7 @@
+       dryRun,
+       prerequisiteMissing: true,
+       name,
+-      kind,
++      kind: 'simple',
+       ui,
+       packageName: `block-${name}`,
+       packagePath: resolve(cwd, 'packages', `block-${name}`),
+@@ -194,6 +190,10 @@
+     };
+   }
+ 
++  const kind = validateKind(options.kind);
++
++  validateName(name);
++
+   const packageName = `block-${name}`;
+   const packagePath = resolve(cwd, 'packages', packageName);
+   if (existsSync(packagePath)) {
+@@ -246,7 +246,7 @@
+   };
+ }
+ 
+-function runCli(): void {
++function buildNewBlockCommand(): Command {
+   const program = new Command();
+ 
+   program
+@@ -274,6 +274,16 @@
+       }
+     });
+ 
++  return program;
++}
++
++export function getNewBlockHelp(): string {
++  return buildNewBlockCommand().helpInformation();
++}
++
++function runCli(): void {
++  const program = buildNewBlockCommand();
++
+   try {
+     program.parse(process.argv);
+   } catch (error) {
+
+2026-04-30T19:08:14.875316Z ERROR codex_core::session: failed to record rollout items: thread 019ddfca-4c9b-7cc3-8074-89d2f9a0c091 not found
+tokens used
+24,801
+已按你要求仅修改两文件。
+
+### 修复摘要
+
+1. `scripts/new-block.ts`
+- 把模板前置条件检查提到 `validateKind` / `validateName` 之前，优先做 `packages/block-callout` 存在性与子结构 (`core`, `ui-default`) 校验，缺失时直接短路返回 `exitCode: 0`。
+- 前置条件提示文案改为你要求的内容：`⚠ block-callout template not yet created (Task C1 prerequisite)`。
+- 在前置条件缺失分支返回 `NewBlockReport` 时，不再触发 kind/name 校验。
+- 新增 `buildNewBlockCommand()` 与 `getNewBlockHelp()`（用于测试直接读取帮助字符串，避免子进程）。
+
+更新点文件：  
+- [`scripts/new-block.ts`](/home/weiyi/selfKnowledgeBaseWeb/scripts/new-block.ts)
+
+2. `scripts/__tests__/new-block.test.ts`
+- 新增第 6 个用例：`--help prints usage and exits 0`
+- 用 `getNewBlockHelp()` 断言帮助文本包含 `Usage:` 与 `Usage: new-block [options] <name>`（等价覆盖 `Usage` + 命令使用说明）。
+
+更新点文件：  
+- [`scripts/__tests__/new-block.test.ts`](/home/weiyi/selfKnowledgeBaseWeb/scripts/__tests__/new-block.test.ts)
+
+### 验证结果
+
+- `pnpm vitest run scripts/__tests__/new-block.test.ts`  
+  通过：`1 test file, 6 passed`
+
+- `pnpm typecheck`  
+  通过：`tsc -b` 成功 exit code 0
+
+
