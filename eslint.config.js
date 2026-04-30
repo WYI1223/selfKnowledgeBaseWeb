@@ -40,6 +40,34 @@ export default tseslint.config(
     rules: { 'max-lines': 'off' },
   },
 
+  // apps/site overrides: disable type-aware unsafe-* rules.
+  //
+  // Astro's virtual modules (`astro:content`, `astro/loaders`) and the
+  // generated `.astro/types.d.ts` are only resolvable after `astro sync` /
+  // `astro check` / `astro build` has run. CI / fresh checkouts may lint
+  // before those run, so root eslint's projectService falls back to
+  // unresolved types and floods `no-unsafe-*` errors on otherwise-correct
+  // code. apps/site has its own `astro check && tsc --noEmit` gate (see
+  // `apps/site/package.json#scripts.typecheck`), so type safety is not lost.
+  {
+    files: ['apps/site/**/*.{ts,tsx}'],
+    rules: {
+      '@typescript-eslint/no-unsafe-call': 'off',
+      '@typescript-eslint/no-unsafe-member-access': 'off',
+      '@typescript-eslint/no-unsafe-assignment': 'off',
+      '@typescript-eslint/no-unsafe-argument': 'off',
+      '@typescript-eslint/no-unsafe-return': 'off',
+    },
+  },
+
+  // tailwind.config.ts + astro.config.mjs are build-tooling configuration;
+  // type-aware lint adds no value and routinely trips on Tailwind's preset
+  // typings + Astro integration types. Disable type-checked rules entirely.
+  {
+    files: ['apps/site/tailwind.config.ts', 'apps/site/astro.config.mjs'],
+    ...tseslint.configs.disableTypeChecked,
+  },
+
   {
     ignores: [
       '**/dist/**',
