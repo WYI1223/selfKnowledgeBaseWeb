@@ -1,0 +1,2884 @@
+Reading additional input from stdin...
+OpenAI Codex v0.125.0 (research preview)
+--------
+workdir: /home/weiyi/selfKnowledgeBaseWeb
+model: gpt-5.3-codex-spark
+provider: openai
+approval: never
+sandbox: workspace-write [workdir, /tmp, $TMPDIR, /home/weiyi/.codex/memories]
+reasoning effort: xhigh
+reasoning summaries: none
+session id: 019ddf54-832a-7ba0-8ef8-97893957ed29
+--------
+user
+你是 codex-script-builder 修 bug 第二轮。前次跑你创建了 scripts/refactor-move.ts + 测试，但测试 2/4 fail。
+
+测试失败案例 (vitest output):
+- Expected: import { util } from './shared/util';
+- Received: import { util } from './util';
+
+测试场景: util.ts 从 packages/feature/util.ts 移到 packages/feature/shared/util.ts。consumer.ts 内 'import { util } from "./util"' 应被你的 refactor-move CLI 更新为 'import { util } from "./shared/util"'。
+
+你的 bug: relative import 路径更新逻辑漏掉了'同源文件被移到子目录'这种 case。需要：
+- 当 from 与 to 是同 package / 同 dir 起点 → 计算 new relative path (即使 from 文件夹与 to 文件夹相同 prefix)
+- 用 path.relative() 计算 from-consumer-side 到 new file location 的相对路径
+
+请修 scripts/refactor-move.ts 让全部 4 测试通过：
+1. dry-run 模式 (现已 PASS)
+2. 正常移动 + 同步 import (FAIL，bug 在此)
+3. from 不存在抛错 (现已 PASS)
+4. to 已存在抛错 (FAIL?，需 re-verify)
+
+不要改任何其他文件 (package.json + 测试文件保持现状，仅修 scripts/refactor-move.ts 算法)。
+
+完工后跑 'pnpm vitest run scripts/__tests__/refactor-move.test.ts' 验证 4/4 PASS，输出测试结果。
+
+ADR-0006 8-point checklist 适用 item #1 (你新增字段 / 算法分支时要 audit comparator 与 serialization；这里相对路径计算也算 attr)。
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the vendored bubblewrap in the meantime.
+codex
+我先看一下 `scripts/refactor-move.ts` 的路径重写逻辑，确认当前 `path.relative` 的分支为何漏掉“同包同源目录移动到子目录”场景；然后只改这一个文件并按你要求跑单测。
+exec
+/bin/bash -lc "sed -n '1,280p' scripts/refactor-move.ts && echo '---' && sed -n '1,260p' scripts/__tests__/refactor-move.test.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 343ms:
+#!/usr/bin/env tsx
+import { Command } from 'commander';
+import { Project, type ExportDeclaration, type SourceFile } from 'ts-morph';
+import { existsSync, mkdirSync, renameSync } from 'node:fs';
+import { dirname, extname, relative, resolve, sep } from 'node:path';
+
+const SOURCE_GLOBS = ['packages/**/*.{ts,tsx}', 'apps/**/*.{ts,tsx}'];
+
+type RewriteRecord = {
+  filePath: string;
+  from: string;
+  to: string;
+  apply: () => void;
+};
+
+export type RefactorMoveReport = {
+  from: string;
+  to: string;
+  dryRun: boolean;
+  updates: Array<{ filePath: string; from: string; to: string }>;
+  plan: string[];
+};
+
+type RefactorMoveOptions = {
+  from: string;
+  to: string;
+  dryRun?: boolean;
+  cwd?: string;
+};
+
+const TS_IMPORT_EXT = /\.tsx?$/;
+
+function asPosix(filePath: string): string {
+  return filePath.split(sep).join('/');
+}
+
+function toDisplayPath(path: string, baseDir: string): string {
+  const rel = relative(baseDir, path);
+  return asPosix(rel === '' ? '.' : rel);
+}
+
+function candidatesForImport(sourceDir: string, moduleSpecifier: string): string[] {
+  const base = resolve(sourceDir, moduleSpecifier);
+  return [base, `${base}.ts`, `${base}.tsx`, resolve(base, 'index.ts'), resolve(base, 'index.tsx')];
+}
+
+function hasMatchingTarget(
+  sourceDir: string,
+  moduleSpecifier: string,
+  targetAbsolutePath: string,
+): boolean {
+  if (!moduleSpecifier.startsWith('.')) {
+    return false;
+  }
+  return candidatesForImport(sourceDir, moduleSpecifier).includes(targetAbsolutePath);
+}
+
+function nextSpecifier(sourceDir: string, targetAbsolutePath: string, oldSpecifier: string): string {
+  let next = asPosix(relative(sourceDir, targetAbsolutePath));
+  if (!next.startsWith('.')) {
+    next = `./${next}`;
+  }
+
+  const requestedExt = extname(oldSpecifier);
+  const keepExt = requestedExt === '.ts' || requestedExt === '.tsx';
+  if (keepExt) {
+    return `${next.replace(TS_IMPORT_EXT, '')}${requestedExt}`;
+  }
+  return next.replace(TS_IMPORT_EXT, '');
+}
+
+function appendImportUpdate(
+  sourceFile: SourceFile,
+  moduleSpecifier: string,
+  filePathForTarget: string,
+  updates: RewriteRecord[],
+): void {
+  const sourceDir = sourceFile.getDirectoryPath();
+  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
+    return;
+  }
+
+  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
+  if (newSpecifier === moduleSpecifier) {
+    return;
+  }
+
+  updates.push({
+    filePath: sourceFile.getFilePath(),
+    from: moduleSpecifier,
+    to: newSpecifier,
+    apply: () => sourceFile
+      .getImportDeclarations()
+      .filter((i) => i.getModuleSpecifierValue() === moduleSpecifier)
+      .forEach((i) => i.setModuleSpecifier(newSpecifier)),
+  });
+}
+
+function appendExportUpdate(
+  sourceFile: SourceFile,
+  exportDecl: ExportDeclaration,
+  filePathForTarget: string,
+  updates: RewriteRecord[],
+): void {
+  const moduleSpecifier = exportDecl.getModuleSpecifierValue();
+  if (!moduleSpecifier || !moduleSpecifier.startsWith('.')) {
+    return;
+  }
+
+  const sourceDir = sourceFile.getDirectoryPath();
+  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
+    return;
+  }
+
+  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
+  if (newSpecifier === moduleSpecifier) {
+    return;
+  }
+
+  updates.push({
+    filePath: sourceFile.getFilePath(),
+    from: moduleSpecifier,
+    to: newSpecifier,
+    apply: () => exportDecl.setModuleSpecifier(newSpecifier),
+  });
+}
+
+function buildReport(
+  fromPath: string,
+  toPath: string,
+  dryRun: boolean,
+  updates: RewriteRecord[],
+  cwd: string,
+): RefactorMoveReport {
+  const header = dryRun ? 'DRY RUN: no files will be written.' : 'Applied file move and import updates.';
+  const plan = [
+    header,
+    `Move: ${toDisplayPath(fromPath, cwd)} -> ${toDisplayPath(toPath, cwd)}`,
+    ...(updates.length === 0
+      ? ['No import specifiers to rewrite.']
+      : updates.map(
+          (update) =>
+            `Update ${toDisplayPath(update.filePath, cwd)}: "${update.from}" -> "${update.to}"`,
+        )),
+  ];
+  return {
+    from: fromPath,
+    to: toPath,
+    dryRun,
+    updates: updates.map((update) => ({
+      filePath: toDisplayPath(update.filePath, cwd),
+      from: update.from,
+      to: update.to,
+    })),
+    plan,
+  };
+}
+
+export function refactorMove(options: RefactorMoveOptions): RefactorMoveReport {
+  const cwd = resolve(options.cwd ?? process.cwd());
+  const from = resolve(cwd, options.from);
+  const to = resolve(cwd, options.to);
+  const dryRun = Boolean(options.dryRun);
+
+  if (!existsSync(from)) {
+    throw new Error(`Source file does not exist: ${options.from}`);
+  }
+  if (existsSync(to)) {
+    throw new Error(`Destination already exists: ${options.to}`);
+  }
+
+  const project = new Project({
+    skipAddingFilesFromTsConfig: true,
+    skipFileDependencyResolution: true,
+  });
+  project.addSourceFilesAtPaths(SOURCE_GLOBS.map((glob) => resolve(cwd, glob)));
+
+  const updates: RewriteRecord[] = [];
+  const seenImports = new Set<string>();
+
+  for (const sourceFile of project.getSourceFiles()) {
+    for (const importDecl of sourceFile.getImportDeclarations()) {
+      const moduleSpecifier = importDecl.getModuleSpecifierValue();
+      if (!moduleSpecifier) {
+        continue;
+      }
+      appendImportUpdate(sourceFile, moduleSpecifier, from, updates);
+    }
+
+    for (const exportDecl of sourceFile.getExportDeclarations()) {
+      appendExportUpdate(sourceFile, exportDecl, from, updates);
+    }
+  }
+
+  const uniqueUpdates = updates.filter((update) => {
+    const key = `${update.filePath}:${update.from}->${update.to}`;
+    if (seenImports.has(key)) return false;
+    seenImports.add(key);
+    return true;
+  });
+
+  if (!dryRun) {
+    mkdirSync(dirname(to), { recursive: true });
+    renameSync(from, to);
+
+    const touched = new Set<string>();
+    for (const update of uniqueUpdates) {
+      update.apply();
+      touched.add(update.filePath);
+    }
+
+    for (const sourceFile of project.getSourceFiles()) {
+      if (touched.has(sourceFile.getFilePath())) {
+        sourceFile.saveSync();
+      }
+    }
+  }
+
+  return buildReport(from, to, dryRun, uniqueUpdates, cwd);
+}
+
+function runCli(): void {
+  const program = new Command();
+  program
+    .name('refactor-move')
+    .description('Move a TypeScript file and update import paths under packages/* and apps/*')
+    .argument('<from>', 'source file path')
+    .argument('<to>', 'destination file path')
+    .option('--dry-run', 'print planned changes only')
+    .helpOption('--help', 'display help for command')
+    .action((from: string, to: string, options: { dryRun?: boolean }) => {
+      const report = refactorMove({ from, to, dryRun: options.dryRun });
+      for (const line of report.plan) {
+        console.log(line);
+      }
+    });
+
+  try {
+    program.parse(process.argv);
+  } catch (error) {
+    console.error((error as Error).message);
+    process.exit(1);
+  }
+}
+
+if (import.meta.url === `file://${process.argv[1]}`) {
+  runCli();
+}
+---
+import { cpSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { describe, expect, it } from 'vitest';
+import { refactorMove } from '../refactor-move.ts';
+
+const FIXTURE_ROOT = join(process.cwd(), 'scripts/__tests__/fixtures/refactor-move');
+
+function buildFixture(): string {
+  const workspace = mkdtempSync(join(tmpdir(), 'refactor-move-'));
+  cpSync(join(FIXTURE_ROOT, 'initial'), workspace, { recursive: true });
+  return workspace;
+}
+
+function readFixture(fixtureName: string, relativePath: string): string {
+  return readFileSync(join(FIXTURE_ROOT, fixtureName, relativePath), 'utf8');
+}
+
+describe('refactorMove', () => {
+  it('prints plan only in --dry-run mode and does not modify files', () => {
+    const workspace = buildFixture();
+    try {
+      const report = refactorMove({
+        from: 'packages/feature/util.ts',
+        to: 'packages/feature/shared/util.ts',
+        dryRun: true,
+        cwd: workspace,
+      });
+
+      expect(report.dryRun).toBe(true);
+      expect(report.plan.join('\n')).toContain('DRY RUN');
+      expect(report.updates).toHaveLength(2);
+      expect(readFileSync(join(workspace, 'packages/feature/util.ts'), 'utf8')).toBe(
+        readFixture('initial', 'packages/feature/util.ts'),
+      );
+      expect(readFileSync(join(workspace, 'packages/feature/consumer.ts'), 'utf8')).toBe(
+        readFixture('initial', 'packages/feature/consumer.ts'),
+      );
+      expect(readFileSync(join(workspace, 'apps/feature/app.ts'), 'utf8')).toBe(
+        readFixture('initial', 'apps/feature/app.ts'),
+      );
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it('moves file and rewrites matching import paths in packages and apps', () => {
+    const workspace = buildFixture();
+    try {
+      const report = refactorMove({
+        from: 'packages/feature/util.ts',
+        to: 'packages/feature/shared/util.ts',
+        cwd: workspace,
+      });
+
+      expect(report.dryRun).toBe(false);
+      expect(readFileSync(join(workspace, 'packages/feature/shared/util.ts'), 'utf8')).toBe(
+        readFixture('after', 'packages/feature/shared/util.ts'),
+      );
+      expect(readFileSync(join(workspace, 'packages/feature/consumer.ts'), 'utf8')).toBe(
+        readFixture('after', 'packages/feature/consumer.ts'),
+      );
+      expect(readFileSync(join(workspace, 'apps/feature/app.ts'), 'utf8')).toBe(
+        readFixture('after', 'apps/feature/app.ts'),
+      );
+      expect(() => readFileSync(join(workspace, 'packages/feature/util.ts'), 'utf8')).toThrow();
+
+      expect(report.updates).toEqual([
+        {
+          filePath: 'packages/feature/consumer.ts',
+          from: './util',
+          to: './shared/util',
+        },
+        {
+          filePath: 'apps/feature/app.ts',
+          from: '../../packages/feature/util.ts',
+          to: '../../packages/feature/shared/util.ts',
+        },
+      ]);
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it('throws when source file does not exist', () => {
+    const workspace = buildFixture();
+    try {
+      expect(() =>
+        refactorMove({
+          from: 'packages/feature/does-not-exist.ts',
+          to: 'packages/feature/shared/util.ts',
+          cwd: workspace,
+        }),
+      ).toThrow(/Source file does not exist/);
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it('throws when destination already exists', () => {
+    const workspace = buildFixture();
+    try {
+      expect(() =>
+        refactorMove({
+          from: 'packages/feature/consumer.ts',
+          to: 'packages/feature/util.ts',
+          cwd: workspace,
+        }),
+      ).toThrow(/Destination already exists/);
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+});
+
+codex
+我已经看到核心逻辑了。接下来再看一次这个失败 case 的 fixture 源文件内容，确认 `consumer.ts` 的原始 import 写法与 `app.ts` 的路径形态，避免把修复点放错。
+exec
+/bin/bash -lc "find scripts/__tests__/fixtures/refactor-move/initial -maxdepth 3 -type f -name '*.ts' -o -name '*.tsx' | sort && echo '---' && sed -n '1,200p' scripts/__tests__/fixtures/refactor-move/initial/packages/feature/consumer.ts && echo '---' && sed -n '1,200p' scripts/__tests__/fixtures/refactor-move/initial/apps/feature/app.ts && echo '---' && sed -n '1,200p' scripts/__tests__/fixtures/refactor-move/initial/packages/feature/util.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 318ms:
+scripts/__tests__/fixtures/refactor-move/initial/apps/feature/app.ts
+scripts/__tests__/fixtures/refactor-move/initial/packages/feature/consumer.ts
+scripts/__tests__/fixtures/refactor-move/initial/packages/feature/util.ts
+---
+import { util } from './util';
+
+export const useUtil = util;
+---
+import { util } from '../../packages/feature/util.ts';
+
+export const call = () => util();
+---
+export const util = () => 'util';
+
+codex
+我先快速验证当前实现实际是在哪一步漏掉了 `consumer.ts`，会直接打印一次 `report.updates` 和匹配过程，确保修改只动相对路径重写分支。
+exec
+/bin/bash -lc "node -e \"const { mkdtempSync, cpSync, rmSync } = require('node:fs'); const { tmpdir } = require('node:os'); const { join } = require('node:path'); const { refactorMove } = require('./scripts/refactor-move.ts'); const workspace = mkdtempSync(join(tmpdir(),'refactor-move-debug-')); cpSync(join(process.cwd(),'scripts/__tests__/fixtures/refactor-move/initial'), workspace, { recursive: true }); const report = refactorMove({ from: 'packages/feature/util.ts', to: 'packages/feature/shared/util.ts', dryRun: true, cwd: workspace }); console.log(report); rmSync(workspace, { recursive: true, force: true });\"" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 855ms:
+{
+  from: '/tmp/refactor-move-debug-xaUyii/packages/feature/util.ts',
+  to: '/tmp/refactor-move-debug-xaUyii/packages/feature/shared/util.ts',
+  dryRun: true,
+  updates: [],
+  plan: [
+    'DRY RUN: no files will be written.',
+    'Move: packages/feature/util.ts -> packages/feature/shared/util.ts',
+    'No import specifiers to rewrite.'
+  ]
+}
+
+exec
+/bin/bash -lc "node -e \"const { resolve } = require('node:path'); const from='/tmp/a'; const sourceDir='/tmp/a/packages/feature'; const moduleSpecifier='./util'; console.log(resolve(sourceDir,moduleSpecifier)); console.log(resolve(sourceDir,moduleSpecifier)+'.ts');\"" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 340ms:
+/tmp/a/packages/feature/util
+/tmp/a/packages/feature/util.ts
+
+codex
+我确认到 `updates` 是空列表，接着我会直接打印出 `consumer.ts` 的 `moduleSpecifier` 与候选解析结果，定位具体为什么匹配失败。
+exec
+/bin/bash -lc "node - <<'NODE'
+const { mkdtempSync, cpSync } = require('node:fs');
+const { tmpdir } = require('node:os');
+const { join, resolve } = require('node:path');
+const { Project } = require('ts-morph');
+const path = require('node:path');
+const TS_IMPORT_EXT = /\\.tsx?"'$/;
+function asPosix(filePath){ return filePath.split(require('"'node:path').sep).join('/'); }
+function candidatesForImport(sourceDir, moduleSpecifier){
+  const base = resolve(sourceDir, moduleSpecifier);
+  return [base, "'`${base}.ts`, `${base}.tsx`, resolve(base, '"'index.ts'), resolve(base, 'index.tsx')];
+}
+function hasMatchingTarget(sourceDir, moduleSpecifier, targetAbsolutePath){
+  if("'!moduleSpecifier.startsWith('"'.')) return false;
+  return candidatesForImport(sourceDir,moduleSpecifier).includes(targetAbsolutePath);
+}
+const cwd = mkdtempSync(require('node:os').tmpdir()+ '/refactor-move-debug2-');
+const { cpSync: c } = require('node:fs');
+c(join(process.cwd(),'scripts/__tests__/fixtures/refactor-move/initial'), cwd, { recursive: true });
+const from = resolve(cwd,'packages/feature/util.ts');
+const project = new Project({skipAddingFilesFromTsConfig:true, skipFileDependencyResolution:true});
+project.addSourceFilesAtPaths([resolve(cwd,'packages/**/*.{ts,tsx}'), resolve(cwd,'apps/**/*.{ts,tsx}')]);
+for (const sf of project.getSourceFiles()) {
+  const rel = path.relative(cwd, sf.getFilePath());
+  if(rel.endsWith('consumer.ts')) {
+    console.log('file', rel, 'dir', sf.getDirectoryPath());
+    for (const imp of sf.getImportDeclarations()) {
+      const ms = imp.getModuleSpecifierValue();
+      const sourceDir = sf.getDirectoryPath();
+      const cands = candidatesForImport(sourceDir, ms);
+      console.log('moduleSpecifier', ms);
+      console.log('from', from);
+      console.log('cands', cands);
+      console.log('has?', hasMatchingTarget(sourceDir, ms, from));
+      console.log('relative', asPosix(path.relative(sourceDir, from))); 
+      console.log('---');
+    }
+  }
+}
+NODE" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 703ms:
+file packages/feature/consumer.ts dir /tmp/refactor-move-debug2-E1rXmy/packages/feature
+moduleSpecifier ./util
+from /tmp/refactor-move-debug2-E1rXmy/packages/feature/util.ts
+cands [
+  '/tmp/refactor-move-debug2-E1rXmy/packages/feature/util',
+  '/tmp/refactor-move-debug2-E1rXmy/packages/feature/util.ts',
+  '/tmp/refactor-move-debug2-E1rXmy/packages/feature/util.tsx',
+  '/tmp/refactor-move-debug2-E1rXmy/packages/feature/util/index.ts',
+  '/tmp/refactor-move-debug2-E1rXmy/packages/feature/util/index.tsx'
+]
+has? true
+relative util.ts
+---
+
+codex
+我再快速确认一下：上一次的快照里 `from→to` 关系没被命中可能是环境/加载差异造成的假象，所以我先确认 `refactorMove` 的导出和实参在同一运行时下确实返回空更新。
+exec
+/bin/bash -lc "node - <<'NODE'
+const { mkdtempSync, cpSync, rmSync } = require('node:fs');
+const { tmpdir } = require('node:os');
+const { join, resolve } = require('node:path');
+const mod = require('./scripts/refactor-move.ts');
+console.log('keys', Object.keys(mod));
+console.log('cwd', process.cwd());
+const modulePath = require.resolve('./scripts/refactor-move.ts');
+console.log('modulePath', modulePath);
+const workspace = mkdtempSync(join(tmpdir(),'refactor-move-debug-'));
+cpSync(join(process.cwd(),'scripts/__tests__/fixtures/refactor-move/initial'), workspace, { recursive: true });
+try {
+  const report = mod.refactorMove({ from: 'packages/feature/util.ts', to: 'packages/feature/shared/util.ts', dryRun: true, cwd: workspace });
+  console.log('updates', report.updates.length, report.updates);
+  console.log('plan', report.plan.join('\\n'));
+} finally {
+  rmSync(workspace,{recursive:true,force:true});
+}
+NODE" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 788ms:
+keys [ 'refactorMove' ]
+cwd /home/weiyi/selfKnowledgeBaseWeb
+modulePath /home/weiyi/selfKnowledgeBaseWeb/scripts/refactor-move.ts
+updates 0 []
+plan DRY RUN: no files will be written.
+Move: packages/feature/util.ts -> packages/feature/shared/util.ts
+No import specifiers to rewrite.
+
+exec
+/bin/bash -lc "node - <<'NODE'
+const { mkdtempSync, cpSync, rmSync } = require('node:fs');
+const { tmpdir } = require('node:os');
+const { join, resolve } = require('node:path');
+const { Project } = require('ts-morph');
+const cwd = mkdtempSync(join(tmpdir(), 'refactor-move-debug3-'));
+cpSync(join(process.cwd(), 'scripts/__tests__/fixtures/refactor-move/initial'), cwd, { recursive: true });
+const from = resolve(cwd, 'packages/feature/util.ts');
+const to = resolve(cwd, 'packages/feature/shared/util.ts');
+const project = new Project({skipAddingFilesFromTsConfig:true, skipFileDependencyResolution:true});
+project.addSourceFilesAtPaths([resolve(cwd, 'packages/**/*.{ts,tsx}'), resolve(cwd, 'apps/**/*.{ts,tsx}')]);
+for (const sf of project.getSourceFiles()) {
+  for (const i of sf.getImportDeclarations()) {
+    console.log('import', sf.getFilePath(), '->', i.getModuleSpecifierValue());
+  }
+}
+for (const sf of project.getSourceFiles()) {
+  for (const ex of sf.getExportDeclarations()) {
+    if (ex.getModuleSpecifierValue()) console.log('export', sf.getFilePath(), '->', ex.getModuleSpecifierValue());
+  }
+}
+rmSync(cwd,{recursive:true,force:true});
+NODE" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 669ms:
+import /tmp/refactor-move-debug3-ZDcvOc/apps/feature/app.ts -> ../../packages/feature/util.ts
+import /tmp/refactor-move-debug3-ZDcvOc/packages/feature/consumer.ts -> ./util
+
+codex
+我先对照运行整个测试一遍，拿到你给的断言失败点之外的上下文（尤其是 `report.updates` 的实际 shape），这样改动不会引入额外偏差。
+exec
+/bin/bash -lc 'pnpm vitest run scripts/__tests__/refactor-move.test.ts' in /home/weiyi/selfKnowledgeBaseWeb
+ exited 1 in 1687ms:
+
+ RUN  v4.1.5 /home/weiyi/selfKnowledgeBaseWeb
+
+ ❯ scripts/__tests__/refactor-move.test.ts (4 tests | 2 failed) 86ms
+     × prints plan only in --dry-run mode and does not modify files 53ms
+     × moves file and rewrites matching import paths in packages and apps 27ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  scripts/__tests__/refactor-move.test.ts > refactorMove > prints plan only in --dry-run mode and does not modify files
+AssertionError: expected [] to have a length of 2 but got +0
+
+- Expected
++ Received
+
+- 2
++ 0
+
+ ❯ scripts/__tests__/refactor-move.test.ts:32:30
+     30|       expect(report.dryRun).toBe(true);
+     31|       expect(report.plan.join('\n')).toContain('DRY RUN');
+     32|       expect(report.updates).toHaveLength(2);
+       |                              ^
+     33|       expect(readFileSync(join(workspace, 'packages/feature/util.ts'),…
+     34|         readFixture('initial', 'packages/feature/util.ts'),
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  scripts/__tests__/refactor-move.test.ts > refactorMove > moves file and rewrites matching import paths in packages and apps
+AssertionError: expected 'import { util } from \'./util\';\n\ne…' to be 'import { util } from \'./shared/util\…' // Object.is equality
+
+- Expected
++ Received
+
+- import { util } from './shared/util';
++ import { util } from './util';
+
+  export const useUtil = util;
+
+
+ ❯ scripts/__tests__/refactor-move.test.ts:60:85
+     58|         readFixture('after', 'packages/feature/shared/util.ts'),
+     59|       );
+     60|       expect(readFileSync(join(workspace, 'packages/feature/consumer.t…
+       |                                                                                     ^
+     61|         readFixture('after', 'packages/feature/consumer.ts'),
+     62|       );
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 2 passed (4)
+   Start at  12:59:46
+   Duration  639ms (transform 71ms, setup 0ms, import 414ms, tests 86ms, environment 0ms)
+
+
+codex
+我先对仓库里是否已有“路径重写”相同实现做一次快速对比，避免重复造不一致的逻辑。
+exec
+/bin/bash -lc "rg -n \"candidatesForImport|hasMatchingTarget|nextSpecifier|refactorMove\\(\" -S ." in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 306ms:
+./scripts/refactor-move.ts:42:function candidatesForImport(sourceDir: string, moduleSpecifier: string): string[] {
+./scripts/refactor-move.ts:47:function hasMatchingTarget(
+./scripts/refactor-move.ts:55:  return candidatesForImport(sourceDir, moduleSpecifier).includes(targetAbsolutePath);
+./scripts/refactor-move.ts:58:function nextSpecifier(sourceDir: string, targetAbsolutePath: string, oldSpecifier: string): string {
+./scripts/refactor-move.ts:79:  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
+./scripts/refactor-move.ts:83:  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
+./scripts/refactor-move.ts:111:  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
+./scripts/refactor-move.ts:115:  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
+./scripts/refactor-move.ts:159:export function refactorMove(options: RefactorMoveOptions): RefactorMoveReport {
+./scripts/refactor-move.ts:232:      const report = refactorMove({ from, to, dryRun: options.dryRun });
+./scripts/__tests__/refactor-move.test.ts:23:      const report = refactorMove({
+./scripts/__tests__/refactor-move.test.ts:50:      const report = refactorMove({
+./scripts/__tests__/refactor-move.test.ts:89:        refactorMove({
+./scripts/__tests__/refactor-move.test.ts:104:        refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move-r2.txt:84:function candidatesForImport(sourceDir: string, moduleSpecifier: string): string[] {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move-r2.txt:89:function hasMatchingTarget(
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move-r2.txt:97:  return candidatesForImport(sourceDir, moduleSpecifier).includes(targetAbsolutePath);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move-r2.txt:100:function nextSpecifier(sourceDir: string, targetAbsolutePath: string, oldSpecifier: string): string {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move-r2.txt:121:  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move-r2.txt:125:  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move-r2.txt:153:  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move-r2.txt:157:  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move-r2.txt:201:export function refactorMove(options: RefactorMoveOptions): RefactorMoveReport {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move-r2.txt:274:      const report = refactorMove({ from, to, dryRun: options.dryRun });
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move-r2.txt:314:      const report = refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move-r2.txt:341:      const report = refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move-r2.txt:380:        refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move-r2.txt:395:        refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move-r2.txt:429:/bin/bash -lc "node -e \"const { mkdtempSync, cpSync, rmSync } = require('node:fs'); const { tmpdir } = require('node:os'); const { join } = require('node:path'); const { refactorMove } = require('./scripts/refactor-move.ts'); const workspace = mkdtempSync(join(tmpdir(),'refactor-move-debug-')); cpSync(join(process.cwd(),'scripts/__tests__/fixtures/refactor-move/initial'), workspace, { recursive: true }); const report = refactorMove({ from: 'packages/feature/util.ts', to: 'packages/feature/shared/util.ts', dryRun: true, cwd: workspace }); console.log(report); rmSync(workspace, { recursive: true, force: true });\"" in /home/weiyi/selfKnowledgeBaseWeb
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move-r2.txt:460:function candidatesForImport(sourceDir, moduleSpecifier){
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move-r2.txt:464:function hasMatchingTarget(sourceDir, moduleSpecifier, targetAbsolutePath){
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move-r2.txt:466:  return candidatesForImport(sourceDir,moduleSpecifier).includes(targetAbsolutePath);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move-r2.txt:481:      const cands = candidatesForImport(sourceDir, ms);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move-r2.txt:485:      console.log('has?', hasMatchingTarget(sourceDir, ms, from));
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move-r2.txt:522:  const report = mod.refactorMove({ from: 'packages/feature/util.ts', to: 'packages/feature/shared/util.ts', dryRun: true, cwd: workspace });
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move-r2.txt:631:/bin/bash -lc "rg -n \"candidatesForImport|hasMatchingTarget|nextSpecifier|refactorMove\\(\" -S ." in /home/weiyi/selfKnowledgeBaseWeb
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:803:+function candidatesForImport(sourceDir: string, moduleSpecifier: string): string[] {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:808:+function hasMatchingTarget(
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:816:+  return candidatesForImport(sourceDir, moduleSpecifier).includes(targetAbsolutePath);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:819:+function nextSpecifier(sourceDir: string, targetAbsolutePath: string, oldSpecifier: string): string {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:840:+  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:844:+  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:872:+  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:876:+  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:920:+export function refactorMove(options: RefactorMoveOptions): RefactorMoveReport {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:993:+      const report = refactorMove({ from, to, dryRun: options.dryRun });
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:1076:+function candidatesForImport(sourceDir: string, moduleSpecifier: string): string[] {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:1081:+function hasMatchingTarget(
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:1089:+  return candidatesForImport(sourceDir, moduleSpecifier).includes(targetAbsolutePath);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:1092:+function nextSpecifier(sourceDir: string, targetAbsolutePath: string, oldSpecifier: string): string {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:1113:+  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:1117:+  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:1145:+  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:1149:+  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:1193:+export function refactorMove(options: RefactorMoveOptions): RefactorMoveReport {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:1266:+      const report = refactorMove({ from, to, dryRun: options.dryRun });
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:1333:+      const report = refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:1360:+      const report = refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:1399:+        refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:1414:+        refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:1472:+function candidatesForImport(sourceDir: string, moduleSpecifier: string): string[] {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:1477:+function hasMatchingTarget(
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:1485:+  return candidatesForImport(sourceDir, moduleSpecifier).includes(targetAbsolutePath);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:1488:+function nextSpecifier(sourceDir: string, targetAbsolutePath: string, oldSpecifier: string): string {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:1509:+  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:1513:+  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:1541:+  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:1545:+  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:1589:+export function refactorMove(options: RefactorMoveOptions): RefactorMoveReport {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:1662:+      const report = refactorMove({ from, to, dryRun: options.dryRun });
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:1726:+      const report = refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:1753:+      const report = refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:1792:+        refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:1807:+        refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:1865:+function candidatesForImport(sourceDir: string, moduleSpecifier: string): string[] {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:1870:+function hasMatchingTarget(
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:1878:+  return candidatesForImport(sourceDir, moduleSpecifier).includes(targetAbsolutePath);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:1881:+function nextSpecifier(sourceDir: string, targetAbsolutePath: string, oldSpecifier: string): string {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:1902:+  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:1906:+  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:1934:+  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:1938:+  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:1982:+export function refactorMove(options: RefactorMoveOptions): RefactorMoveReport {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:2055:+      const report = refactorMove({ from, to, dryRun: options.dryRun });
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:2129:+      const report = refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:2156:+      const report = refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:2195:+        refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:2210:+        refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:2268:+function candidatesForImport(sourceDir: string, moduleSpecifier: string): string[] {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:2273:+function hasMatchingTarget(
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:2281:+  return candidatesForImport(sourceDir, moduleSpecifier).includes(targetAbsolutePath);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:2284:+function nextSpecifier(sourceDir: string, targetAbsolutePath: string, oldSpecifier: string): string {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:2305:+  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:2309:+  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:2337:+  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:2341:+  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:2385:+export function refactorMove(options: RefactorMoveOptions): RefactorMoveReport {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:2458:+      const report = refactorMove({ from, to, dryRun: options.dryRun });
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:2529:+      const report = refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:2556:+      const report = refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:2595:+        refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:2610:+        refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:2668:+function candidatesForImport(sourceDir: string, moduleSpecifier: string): string[] {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:2673:+function hasMatchingTarget(
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:2681:+  return candidatesForImport(sourceDir, moduleSpecifier).includes(targetAbsolutePath);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:2684:+function nextSpecifier(sourceDir: string, targetAbsolutePath: string, oldSpecifier: string): string {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:2705:+  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:2709:+  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:2737:+  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:2741:+  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:2785:+export function refactorMove(options: RefactorMoveOptions): RefactorMoveReport {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:2858:+      const report = refactorMove({ from, to, dryRun: options.dryRun });
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:2941:+      const report = refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:2968:+      const report = refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:3007:+        refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:3022:+        refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:3080:+function candidatesForImport(sourceDir: string, moduleSpecifier: string): string[] {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:3085:+function hasMatchingTarget(
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:3093:+  return candidatesForImport(sourceDir, moduleSpecifier).includes(targetAbsolutePath);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:3096:+function nextSpecifier(sourceDir: string, targetAbsolutePath: string, oldSpecifier: string): string {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:3117:+  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:3121:+  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:3149:+  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:3153:+  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:3197:+export function refactorMove(options: RefactorMoveOptions): RefactorMoveReport {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:3270:+      const report = refactorMove({ from, to, dryRun: options.dryRun });
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:3350:+      const report = refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:3377:+      const report = refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:3416:+        refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:3431:+        refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:3489:+function candidatesForImport(sourceDir: string, moduleSpecifier: string): string[] {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:3494:+function hasMatchingTarget(
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:3502:+  return candidatesForImport(sourceDir, moduleSpecifier).includes(targetAbsolutePath);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:3505:+function nextSpecifier(sourceDir: string, targetAbsolutePath: string, oldSpecifier: string): string {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:3526:+  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:3530:+  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:3558:+  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:3562:+  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:3606:+export function refactorMove(options: RefactorMoveOptions): RefactorMoveReport {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:3679:+      const report = refactorMove({ from, to, dryRun: options.dryRun });
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:3771:+      const report = refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:3798:+      const report = refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:3837:+        refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:3852:+        refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:3910:+function candidatesForImport(sourceDir: string, moduleSpecifier: string): string[] {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:3915:+function hasMatchingTarget(
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:3923:+  return candidatesForImport(sourceDir, moduleSpecifier).includes(targetAbsolutePath);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:3926:+function nextSpecifier(sourceDir: string, targetAbsolutePath: string, oldSpecifier: string): string {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:3947:+  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:3951:+  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:3979:+  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:3983:+  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:4027:+export function refactorMove(options: RefactorMoveOptions): RefactorMoveReport {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:4100:+      const report = refactorMove({ from, to, dryRun: options.dryRun });
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:4189:+      const report = refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:4216:+      const report = refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:4255:+        refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:4270:+        refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:4328:+function candidatesForImport(sourceDir: string, moduleSpecifier: string): string[] {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:4333:+function hasMatchingTarget(
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:4341:+  return candidatesForImport(sourceDir, moduleSpecifier).includes(targetAbsolutePath);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:4344:+function nextSpecifier(sourceDir: string, targetAbsolutePath: string, oldSpecifier: string): string {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:4365:+  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:4369:+  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:4397:+  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:4401:+  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:4445:+export function refactorMove(options: RefactorMoveOptions): RefactorMoveReport {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:4518:+      const report = refactorMove({ from, to, dryRun: options.dryRun });
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:4619:+      const report = refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:4646:+      const report = refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:4685:+        refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:4700:+        refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:4758:+function candidatesForImport(sourceDir: string, moduleSpecifier: string): string[] {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:4763:+function hasMatchingTarget(
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:4771:+  return candidatesForImport(sourceDir, moduleSpecifier).includes(targetAbsolutePath);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:4774:+function nextSpecifier(sourceDir: string, targetAbsolutePath: string, oldSpecifier: string): string {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:4795:+  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:4799:+  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:4827:+  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:4831:+  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:4875:+export function refactorMove(options: RefactorMoveOptions): RefactorMoveReport {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:4948:+      const report = refactorMove({ from, to, dryRun: options.dryRun });
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:5044:+      const report = refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:5071:+      const report = refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:5110:+        refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:5125:+        refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:5183:+function candidatesForImport(sourceDir: string, moduleSpecifier: string): string[] {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:5188:+function hasMatchingTarget(
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:5196:+  return candidatesForImport(sourceDir, moduleSpecifier).includes(targetAbsolutePath);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:5199:+function nextSpecifier(sourceDir: string, targetAbsolutePath: string, oldSpecifier: string): string {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:5220:+  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:5224:+  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:5252:+  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:5256:+  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:5300:+export function refactorMove(options: RefactorMoveOptions): RefactorMoveReport {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:5373:+      const report = refactorMove({ from, to, dryRun: options.dryRun });
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:5481:+      const report = refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:5508:+      const report = refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:5547:+        refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:5562:+        refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:5620:+function candidatesForImport(sourceDir: string, moduleSpecifier: string): string[] {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:5625:+function hasMatchingTarget(
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:5633:+  return candidatesForImport(sourceDir, moduleSpecifier).includes(targetAbsolutePath);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:5636:+function nextSpecifier(sourceDir: string, targetAbsolutePath: string, oldSpecifier: string): string {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:5657:+  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:5661:+  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:5689:+  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:5693:+  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:5737:+export function refactorMove(options: RefactorMoveOptions): RefactorMoveReport {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:5810:+      const report = refactorMove({ from, to, dryRun: options.dryRun });
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:5915:+      const report = refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:5942:+      const report = refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:5981:+        refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:5996:+        refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:6054:+function candidatesForImport(sourceDir: string, moduleSpecifier: string): string[] {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:6059:+function hasMatchingTarget(
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:6067:+  return candidatesForImport(sourceDir, moduleSpecifier).includes(targetAbsolutePath);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:6070:+function nextSpecifier(sourceDir: string, targetAbsolutePath: string, oldSpecifier: string): string {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:6091:+  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:6095:+  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:6123:+  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:6127:+  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:6171:+export function refactorMove(options: RefactorMoveOptions): RefactorMoveReport {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:6244:+      const report = refactorMove({ from, to, dryRun: options.dryRun });
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:6361:+      const report = refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:6388:+      const report = refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:6427:+        refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:6442:+        refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:6500:+function candidatesForImport(sourceDir: string, moduleSpecifier: string): string[] {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:6505:+function hasMatchingTarget(
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:6513:+  return candidatesForImport(sourceDir, moduleSpecifier).includes(targetAbsolutePath);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:6516:+function nextSpecifier(sourceDir: string, targetAbsolutePath: string, oldSpecifier: string): string {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:6537:+  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:6541:+  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:6569:+  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:6573:+  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:6617:+export function refactorMove(options: RefactorMoveOptions): RefactorMoveReport {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:6690:+      const report = refactorMove({ from, to, dryRun: options.dryRun });
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:6804:+      const report = refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:6831:+      const report = refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:6870:+        refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:6885:+        refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:6943:+function candidatesForImport(sourceDir: string, moduleSpecifier: string): string[] {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:6948:+function hasMatchingTarget(
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:6956:+  return candidatesForImport(sourceDir, moduleSpecifier).includes(targetAbsolutePath);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:6959:+function nextSpecifier(sourceDir: string, targetAbsolutePath: string, oldSpecifier: string): string {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:6980:+  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:6984:+  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:7012:+  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:7016:+  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:7060:+export function refactorMove(options: RefactorMoveOptions): RefactorMoveReport {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:7133:+      const report = refactorMove({ from, to, dryRun: options.dryRun });
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:7249:+      const report = refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:7276:+      const report = refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:7315:+        refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:7330:+        refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:7388:+function candidatesForImport(sourceDir: string, moduleSpecifier: string): string[] {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:7393:+function hasMatchingTarget(
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:7401:+  return candidatesForImport(sourceDir, moduleSpecifier).includes(targetAbsolutePath);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:7404:+function nextSpecifier(sourceDir: string, targetAbsolutePath: string, oldSpecifier: string): string {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:7425:+  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:7429:+  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:7457:+  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:7461:+  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:7505:+export function refactorMove(options: RefactorMoveOptions): RefactorMoveReport {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:7578:+      const report = refactorMove({ from, to, dryRun: options.dryRun });
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:7725:+      const report = refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:7752:+      const report = refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:7791:+        refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:7806:+        refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:7864:+function candidatesForImport(sourceDir: string, moduleSpecifier: string): string[] {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:7869:+function hasMatchingTarget(
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:7877:+  return candidatesForImport(sourceDir, moduleSpecifier).includes(targetAbsolutePath);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:7880:+function nextSpecifier(sourceDir: string, targetAbsolutePath: string, oldSpecifier: string): string {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:7901:+  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:7905:+  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:7933:+  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:7937:+  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:7981:+export function refactorMove(options: RefactorMoveOptions): RefactorMoveReport {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:8054:+      const report = refactorMove({ from, to, dryRun: options.dryRun });
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:8172:+      const report = refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:8199:+      const report = refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:8238:+        refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:8253:+        refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:8311:+function candidatesForImport(sourceDir: string, moduleSpecifier: string): string[] {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:8316:+function hasMatchingTarget(
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:8324:+  return candidatesForImport(sourceDir, moduleSpecifier).includes(targetAbsolutePath);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:8327:+function nextSpecifier(sourceDir: string, targetAbsolutePath: string, oldSpecifier: string): string {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:8348:+  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:8352:+  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:8380:+  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:8384:+  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:8428:+export function refactorMove(options: RefactorMoveOptions): RefactorMoveReport {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:8501:+      const report = refactorMove({ from, to, dryRun: options.dryRun });
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:8615:+      const report = refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:8642:+      const report = refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:8681:+        refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:8696:+        refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:8754:+function candidatesForImport(sourceDir: string, moduleSpecifier: string): string[] {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:8759:+function hasMatchingTarget(
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:8767:+  return candidatesForImport(sourceDir, moduleSpecifier).includes(targetAbsolutePath);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:8770:+function nextSpecifier(sourceDir: string, targetAbsolutePath: string, oldSpecifier: string): string {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:8791:+  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:8795:+  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:8823:+  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:8827:+  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:8871:+export function refactorMove(options: RefactorMoveOptions): RefactorMoveReport {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:8944:+      const report = refactorMove({ from, to, dryRun: options.dryRun });
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:9082:+      const report = refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:9109:+      const report = refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:9148:+        refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:9163:+        refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:9221:+function candidatesForImport(sourceDir: string, moduleSpecifier: string): string[] {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:9226:+function hasMatchingTarget(
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:9234:+  return candidatesForImport(sourceDir, moduleSpecifier).includes(targetAbsolutePath);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:9237:+function nextSpecifier(sourceDir: string, targetAbsolutePath: string, oldSpecifier: string): string {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:9258:+  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:9262:+  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:9290:+  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:9294:+  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:9338:+export function refactorMove(options: RefactorMoveOptions): RefactorMoveReport {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:9411:+      const report = refactorMove({ from, to, dryRun: options.dryRun });
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:9539:+      const report = refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:9566:+      const report = refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:9605:+        refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:9620:+        refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:9678:+function candidatesForImport(sourceDir: string, moduleSpecifier: string): string[] {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:9683:+function hasMatchingTarget(
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:9691:+  return candidatesForImport(sourceDir, moduleSpecifier).includes(targetAbsolutePath);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:9694:+function nextSpecifier(sourceDir: string, targetAbsolutePath: string, oldSpecifier: string): string {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:9715:+  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:9719:+  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:9747:+  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:9751:+  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:9795:+export function refactorMove(options: RefactorMoveOptions): RefactorMoveReport {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:9868:+      const report = refactorMove({ from, to, dryRun: options.dryRun });
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:9982:+      const report = refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:10009:+      const report = refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:10048:+        refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:10063:+        refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:10121:+function candidatesForImport(sourceDir: string, moduleSpecifier: string): string[] {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:10126:+function hasMatchingTarget(
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:10134:+  return candidatesForImport(sourceDir, moduleSpecifier).includes(targetAbsolutePath);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:10137:+function nextSpecifier(sourceDir: string, targetAbsolutePath: string, oldSpecifier: string): string {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:10158:+  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:10162:+  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:10190:+  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:10194:+  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:10238:+export function refactorMove(options: RefactorMoveOptions): RefactorMoveReport {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:10311:+      const report = refactorMove({ from, to, dryRun: options.dryRun });
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:10427:+      const report = refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:10454:+      const report = refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:10493:+        refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:10508:+        refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:10566:+function candidatesForImport(sourceDir: string, moduleSpecifier: string): string[] {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:10571:+function hasMatchingTarget(
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:10579:+  return candidatesForImport(sourceDir, moduleSpecifier).includes(targetAbsolutePath);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:10582:+function nextSpecifier(sourceDir: string, targetAbsolutePath: string, oldSpecifier: string): string {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:10603:+  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:10607:+  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:10635:+  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:10639:+  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:10683:+export function refactorMove(options: RefactorMoveOptions): RefactorMoveReport {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:10756:+      const report = refactorMove({ from, to, dryRun: options.dryRun });
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:10919:+      const report = refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:10946:+      const report = refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:10985:+        refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:11000:+        refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:11058:+function candidatesForImport(sourceDir: string, moduleSpecifier: string): string[] {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:11063:+function hasMatchingTarget(
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:11071:+  return candidatesForImport(sourceDir, moduleSpecifier).includes(targetAbsolutePath);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:11074:+function nextSpecifier(sourceDir: string, targetAbsolutePath: string, oldSpecifier: string): string {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:11095:+  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:11099:+  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:11127:+  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:11131:+  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:11175:+export function refactorMove(options: RefactorMoveOptions): RefactorMoveReport {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:11248:+      const report = refactorMove({ from, to, dryRun: options.dryRun });
+
+exec
+/bin/bash -lc "node - <<'NODE'
+const { mkdtempSync, cpSync, rmSync, readFileSync } = require('node:fs');
+const { tmpdir } = require('node:os');
+const { join, resolve, relative, extname, sep } = require('node:path');
+const { Project } = require('ts-morph');
+const TS_IMPORT_EXT = /\\.tsx?"'$/;
+function asPosix(filePath){return filePath.split(sep).join('"'/');}
+function candidatesForImport(sourceDir, moduleSpecifier){
+  const base = resolve(sourceDir, moduleSpecifier);
+  return [base, "'`${base}.ts`, `${base}.tsx`, resolve(base,'"'index.ts'), resolve(base,'index.tsx')];
+}
+function hasMatchingTarget(sourceDir,moduleSpecifier,target){if("'!moduleSpecifier.startsWith('"'.'))return false; return candidatesForImport(sourceDir,moduleSpecifier).includes(target);}
+function nextSpecifier(sourceDir,targetAbsolutePath,oldSpecifier){let next=asPosix(relative(sourceDir,targetAbsolutePath)); if("'!next.startsWith('"'.')) next = "'`./${next}`; const requestedExt = extname(oldSpecifier); const keepExt = requestedExt === '"'.ts' || requestedExt === '.tsx'; if(keepExt) return "'`${next.replace(TS_IMPORT_EXT,'"'')}"'${requestedExt}`; return next.replace(TS_IMPORT_EXT,'"'');}
+
+const cwd = mkdtempSync(join(tmpdir(),'refactor-move-copy-'));
+cpSync(join(process.cwd(),'scripts/__tests__/fixtures/refactor-move/initial'), cwd, { recursive: true });
+const from = resolve(cwd,'packages/feature/util.ts');
+const updates=[];
+const project = new Project({skipAddingFilesFromTsConfig:true, skipFileDependencyResolution:true});
+const globs = ['packages/**/*.{ts,tsx}','apps/**/*.{ts,tsx}'];
+project.addSourceFilesAtPaths(globs.map((g)=>resolve(cwd,g)));
+for (const sourceFile of project.getSourceFiles()) {
+  for (const importDecl of sourceFile.getImportDeclarations()) {
+    const moduleSpecifier = importDecl.getModuleSpecifierValue();
+    if ("'!moduleSpecifier) continue;
+    const sourceDir = sourceFile.getDirectoryPath();
+    if (!hasMatchingTarget(sourceDir,moduleSpecifier,from)) continue;
+    const newSpecifier = nextSpecifier(sourceDir, from, moduleSpecifier);
+    updates.push({filePath: sourceFile.getFilePath(), from: moduleSpecifier, to: newSpecifier});
+  }
+  for (const exportDecl of sourceFile.getExportDeclarations()) {
+    const moduleSpecifier = exportDecl.getModuleSpecifierValue();
+    if (!moduleSpecifier || !moduleSpecifier.startsWith('"'.')) continue;
+    const sourceDir = sourceFile.getDirectoryPath();
+    if ("'!hasMatchingTarget(sourceDir,moduleSpecifier,from)) continue;
+    const newSpecifier = nextSpecifier(sourceDir, from, moduleSpecifier);
+    updates.push({filePath: sourceFile.getFilePath(), from: moduleSpecifier, to: newSpecifier});
+  }
+}
+console.log('"'updates len',updates.length);
+console.log(updates);
+rmSync(cwd,{recursive:true,force:true});
+NODE" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 672ms:
+updates len 2
+[
+  {
+    filePath: '/tmp/refactor-move-copy-fNnkwd/apps/feature/app.ts',
+    from: '../../packages/feature/util.ts',
+    to: '../../packages/feature/util.ts'
+  },
+  {
+    filePath: '/tmp/refactor-move-copy-fNnkwd/packages/feature/consumer.ts',
+    from: './util',
+    to: './util'
+  }
+]
+
+codex
+已定位到根因：重写分支里用于计算新 import 的参数是 `from`（旧路径），所以 `newSpecifier` 永远落回原值，导致更新列表空。我要把 matcher 和重写分开，按旧路径匹配，但按新 `to` 路径计算 `path.relative`。
+apply patch
+patch: completed
+/home/weiyi/selfKnowledgeBaseWeb/scripts/refactor-move.ts
+diff --git a/scripts/refactor-move.ts b/scripts/refactor-move.ts
+index 82c95413c32d7e69f15e10c2a863db2bd815ed8a..cca9ffca6904acd1d50598cc2c4800cc44b95a9f
+--- a/scripts/refactor-move.ts
++++ b/scripts/refactor-move.ts
+@@ -72,15 +72,16 @@
+ function appendImportUpdate(
+   sourceFile: SourceFile,
+   moduleSpecifier: string,
+-  filePathForTarget: string,
++  oldFileAbsolutePath: string,
++  newFileAbsolutePath: string,
+   updates: RewriteRecord[],
+ ): void {
+   const sourceDir = sourceFile.getDirectoryPath();
+-  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
++  if (!hasMatchingTarget(sourceDir, moduleSpecifier, oldFileAbsolutePath)) {
+     return;
+   }
+ 
+-  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
++  const newSpecifier = nextSpecifier(sourceDir, newFileAbsolutePath, moduleSpecifier);
+   if (newSpecifier === moduleSpecifier) {
+     return;
+   }
+@@ -99,7 +100,8 @@
+ function appendExportUpdate(
+   sourceFile: SourceFile,
+   exportDecl: ExportDeclaration,
+-  filePathForTarget: string,
++  oldFileAbsolutePath: string,
++  newFileAbsolutePath: string,
+   updates: RewriteRecord[],
+ ): void {
+   const moduleSpecifier = exportDecl.getModuleSpecifierValue();
+@@ -108,11 +110,11 @@
+   }
+ 
+   const sourceDir = sourceFile.getDirectoryPath();
+-  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
++  if (!hasMatchingTarget(sourceDir, moduleSpecifier, oldFileAbsolutePath)) {
+     return;
+   }
+ 
+-  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
++  const newSpecifier = nextSpecifier(sourceDir, newFileAbsolutePath, moduleSpecifier);
+   if (newSpecifier === moduleSpecifier) {
+     return;
+   }
+@@ -184,11 +186,11 @@
+       if (!moduleSpecifier) {
+         continue;
+       }
+-      appendImportUpdate(sourceFile, moduleSpecifier, from, updates);
++      appendImportUpdate(sourceFile, moduleSpecifier, from, to, updates);
+     }
+ 
+     for (const exportDecl of sourceFile.getExportDeclarations()) {
+-      appendExportUpdate(sourceFile, exportDecl, from, updates);
++      appendExportUpdate(sourceFile, exportDecl, from, to, updates);
+     }
+   }
+ 
+
+diff --git a/scripts/refactor-move.ts b/scripts/refactor-move.ts
+index 82c95413c32d7e69f15e10c2a863db2bd815ed8a..cca9ffca6904acd1d50598cc2c4800cc44b95a9f
+--- a/scripts/refactor-move.ts
++++ b/scripts/refactor-move.ts
+@@ -72,15 +72,16 @@
+ function appendImportUpdate(
+   sourceFile: SourceFile,
+   moduleSpecifier: string,
+-  filePathForTarget: string,
++  oldFileAbsolutePath: string,
++  newFileAbsolutePath: string,
+   updates: RewriteRecord[],
+ ): void {
+   const sourceDir = sourceFile.getDirectoryPath();
+-  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
++  if (!hasMatchingTarget(sourceDir, moduleSpecifier, oldFileAbsolutePath)) {
+     return;
+   }
+ 
+-  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
++  const newSpecifier = nextSpecifier(sourceDir, newFileAbsolutePath, moduleSpecifier);
+   if (newSpecifier === moduleSpecifier) {
+     return;
+   }
+@@ -99,7 +100,8 @@
+ function appendExportUpdate(
+   sourceFile: SourceFile,
+   exportDecl: ExportDeclaration,
+-  filePathForTarget: string,
++  oldFileAbsolutePath: string,
++  newFileAbsolutePath: string,
+   updates: RewriteRecord[],
+ ): void {
+   const moduleSpecifier = exportDecl.getModuleSpecifierValue();
+@@ -108,11 +110,11 @@
+   }
+ 
+   const sourceDir = sourceFile.getDirectoryPath();
+-  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
++  if (!hasMatchingTarget(sourceDir, moduleSpecifier, oldFileAbsolutePath)) {
+     return;
+   }
+ 
+-  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
++  const newSpecifier = nextSpecifier(sourceDir, newFileAbsolutePath, moduleSpecifier);
+   if (newSpecifier === moduleSpecifier) {
+     return;
+   }
+@@ -184,11 +186,11 @@
+       if (!moduleSpecifier) {
+         continue;
+       }
+-      appendImportUpdate(sourceFile, moduleSpecifier, from, updates);
++      appendImportUpdate(sourceFile, moduleSpecifier, from, to, updates);
+     }
+ 
+     for (const exportDecl of sourceFile.getExportDeclarations()) {
+-      appendExportUpdate(sourceFile, exportDecl, from, updates);
++      appendExportUpdate(sourceFile, exportDecl, from, to, updates);
+     }
+   }
+ 
+
+codex
+我已完成逻辑修正：`from` 只负责匹配旧 import，`to` 专门用于计算新 `relative`。现在跑你指定的单测验证 4 项。
+exec
+/bin/bash -lc 'pnpm vitest run scripts/__tests__/refactor-move.test.ts' in /home/weiyi/selfKnowledgeBaseWeb
+diff --git a/scripts/refactor-move.ts b/scripts/refactor-move.ts
+index 82c95413c32d7e69f15e10c2a863db2bd815ed8a..cca9ffca6904acd1d50598cc2c4800cc44b95a9f
+--- a/scripts/refactor-move.ts
++++ b/scripts/refactor-move.ts
+@@ -72,15 +72,16 @@
+ function appendImportUpdate(
+   sourceFile: SourceFile,
+   moduleSpecifier: string,
+-  filePathForTarget: string,
++  oldFileAbsolutePath: string,
++  newFileAbsolutePath: string,
+   updates: RewriteRecord[],
+ ): void {
+   const sourceDir = sourceFile.getDirectoryPath();
+-  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
++  if (!hasMatchingTarget(sourceDir, moduleSpecifier, oldFileAbsolutePath)) {
+     return;
+   }
+ 
+-  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
++  const newSpecifier = nextSpecifier(sourceDir, newFileAbsolutePath, moduleSpecifier);
+   if (newSpecifier === moduleSpecifier) {
+     return;
+   }
+@@ -99,7 +100,8 @@
+ function appendExportUpdate(
+   sourceFile: SourceFile,
+   exportDecl: ExportDeclaration,
+-  filePathForTarget: string,
++  oldFileAbsolutePath: string,
++  newFileAbsolutePath: string,
+   updates: RewriteRecord[],
+ ): void {
+   const moduleSpecifier = exportDecl.getModuleSpecifierValue();
+@@ -108,11 +110,11 @@
+   }
+ 
+   const sourceDir = sourceFile.getDirectoryPath();
+-  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
++  if (!hasMatchingTarget(sourceDir, moduleSpecifier, oldFileAbsolutePath)) {
+     return;
+   }
+ 
+-  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
++  const newSpecifier = nextSpecifier(sourceDir, newFileAbsolutePath, moduleSpecifier);
+   if (newSpecifier === moduleSpecifier) {
+     return;
+   }
+@@ -184,11 +186,11 @@
+       if (!moduleSpecifier) {
+         continue;
+       }
+-      appendImportUpdate(sourceFile, moduleSpecifier, from, updates);
++      appendImportUpdate(sourceFile, moduleSpecifier, from, to, updates);
+     }
+ 
+     for (const exportDecl of sourceFile.getExportDeclarations()) {
+-      appendExportUpdate(sourceFile, exportDecl, from, updates);
++      appendExportUpdate(sourceFile, exportDecl, from, to, updates);
+     }
+   }
+ 
+
+ exited 1 in 2936ms:
+
+ RUN  v4.1.5 /home/weiyi/selfKnowledgeBaseWeb
+
+ ❯ scripts/__tests__/refactor-move.test.ts (4 tests | 1 failed) 147ms
+     × moves file and rewrites matching import paths in packages and apps 50ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  scripts/__tests__/refactor-move.test.ts > refactorMove > moves file and rewrites matching import paths in packages and apps
+AssertionError: expected [ { …(3) }, { …(3) } ] to deeply equal [ { …(3) }, { …(3) } ]
+
+- Expected
++ Received
+
+  [
+    {
+-     "filePath": "packages/feature/consumer.ts",
+-     "from": "./util",
+-     "to": "./shared/util",
+-   },
+-   {
+      "filePath": "apps/feature/app.ts",
+      "from": "../../packages/feature/util.ts",
+      "to": "../../packages/feature/shared/util.ts",
++   },
++   {
++     "filePath": "packages/feature/consumer.ts",
++     "from": "./util",
++     "to": "./shared/util",
+    },
+  ]
+
+ ❯ scripts/__tests__/refactor-move.test.ts:68:30
+     66|       expect(() => readFileSync(join(workspace, 'packages/feature/util…
+     67|
+     68|       expect(report.updates).toEqual([
+       |                              ^
+     69|         {
+     70|           filePath: 'packages/feature/consumer.ts',
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 3 passed (4)
+   Start at  13:00:09
+   Duration  1.12s (transform 107ms, setup 0ms, import 707ms, tests 147ms, environment 0ms)
+
+
+exec
+/bin/bash -lc "node - <<'NODE'
+const { mkdtempSync, cpSync, rmSync } = require('node:fs');
+const { tmpdir } = require('node:os');
+const { join, resolve } = require('node:path');
+const { Project } = require('ts-morph');
+const cwd = mkdtempSync(join(tmpdir(),'refactor-move-order-'));
+cpSync(join(process.cwd(),'scripts/__tests__/fixtures/refactor-move/initial'), cwd, { recursive: true });
+const project = new Project({ skipAddingFilesFromTsConfig: true, skipFileDependencyResolution: true});
+const globs = ['packages/**/*.{ts,tsx}','apps/**/*.{ts,tsx}'];
+const ordered=[];
+for (const glob of globs) {
+  const files = project.addSourceFilesAtPaths(resolve(cwd,glob));
+  ordered.push(...files.map((f)=>f.getFilePath().replace(cwd+'/', '')));
+}
+console.log('ordered', ordered);
+console.log('all', project.getSourceFiles().map((f)=>f.getFilePath().replace(cwd+'/', '')));
+rmSync(cwd,{recursive:true,force:true});
+NODE" in /home/weiyi/selfKnowledgeBaseWeb
+diff --git a/scripts/refactor-move.ts b/scripts/refactor-move.ts
+index 82c95413c32d7e69f15e10c2a863db2bd815ed8a..cca9ffca6904acd1d50598cc2c4800cc44b95a9f
+--- a/scripts/refactor-move.ts
++++ b/scripts/refactor-move.ts
+@@ -72,15 +72,16 @@
+ function appendImportUpdate(
+   sourceFile: SourceFile,
+   moduleSpecifier: string,
+-  filePathForTarget: string,
++  oldFileAbsolutePath: string,
++  newFileAbsolutePath: string,
+   updates: RewriteRecord[],
+ ): void {
+   const sourceDir = sourceFile.getDirectoryPath();
+-  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
++  if (!hasMatchingTarget(sourceDir, moduleSpecifier, oldFileAbsolutePath)) {
+     return;
+   }
+ 
+-  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
++  const newSpecifier = nextSpecifier(sourceDir, newFileAbsolutePath, moduleSpecifier);
+   if (newSpecifier === moduleSpecifier) {
+     return;
+   }
+@@ -99,7 +100,8 @@
+ function appendExportUpdate(
+   sourceFile: SourceFile,
+   exportDecl: ExportDeclaration,
+-  filePathForTarget: string,
++  oldFileAbsolutePath: string,
++  newFileAbsolutePath: string,
+   updates: RewriteRecord[],
+ ): void {
+   const moduleSpecifier = exportDecl.getModuleSpecifierValue();
+@@ -108,11 +110,11 @@
+   }
+ 
+   const sourceDir = sourceFile.getDirectoryPath();
+-  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
++  if (!hasMatchingTarget(sourceDir, moduleSpecifier, oldFileAbsolutePath)) {
+     return;
+   }
+ 
+-  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
++  const newSpecifier = nextSpecifier(sourceDir, newFileAbsolutePath, moduleSpecifier);
+   if (newSpecifier === moduleSpecifier) {
+     return;
+   }
+@@ -184,11 +186,11 @@
+       if (!moduleSpecifier) {
+         continue;
+       }
+-      appendImportUpdate(sourceFile, moduleSpecifier, from, updates);
++      appendImportUpdate(sourceFile, moduleSpecifier, from, to, updates);
+     }
+ 
+     for (const exportDecl of sourceFile.getExportDeclarations()) {
+-      appendExportUpdate(sourceFile, exportDecl, from, updates);
++      appendExportUpdate(sourceFile, exportDecl, from, to, updates);
+     }
+   }
+ 
+
+ succeeded in 480ms:
+ordered [
+  'packages/feature/consumer.ts',
+  'packages/feature/util.ts',
+  'apps/feature/app.ts'
+]
+all [
+  'packages/feature/consumer.ts',
+  'packages/feature/util.ts',
+  'apps/feature/app.ts'
+]
+
+codex
+我来确认下顺序问题的根因：我会复现 `refactor-move.ts` 的扫描循环（当前代码版本）来看看 `updates` 的收集顺序是否源于 `SourceFile` 遍历顺序。
+exec
+/bin/bash -lc "node - <<'NODE'
+const { mkdtempSync, cpSync, rmSync } = require('node:fs');
+const { tmpdir } = require('node:os');
+const { join, resolve, relative, extname, sep } = require('node:path');
+const { Project } = require('ts-morph');
+
+const TS_IMPORT_EXT = /\\.tsx?"'$/;
+function asPosix(p){return p.split(sep).join('"'/');}
+function candidatesForImport(sourceDir,moduleSpecifier){const base=resolve(sourceDir,moduleSpecifier); return [base, "'`${base}.ts`, `${base}.tsx`, resolve(base,'"'index.ts'), resolve(base,'index.tsx')];}
+function hasMatchingTarget(sourceDir,moduleSpecifier,targetAbsolutePath){ if("'!moduleSpecifier.startsWith('"'.')) return false; return candidatesForImport(sourceDir,moduleSpecifier).includes(targetAbsolutePath); }
+function nextSpecifier(sourceDir,targetAbsolutePath,oldSpecifier){ let next=asPosix(relative(sourceDir,targetAbsolutePath)); if("'!next.startsWith('"'.')) next="'`./${next}`; const requestedExt=extname(oldSpecifier); const keepExt=requestedExt === '"'.ts' || requestedExt === '.tsx'; return keepExt ? "'`${next.replace(TS_IMPORT_EXT,'"'')}"'${requestedExt}` : next.replace(TS_IMPORT_EXT,'"''); }
+
+const cwd = mkdtempSync(join(tmpdir(),'refactor-move-order2-'));
+cpSync(join(process.cwd(),'scripts/__tests__/fixtures/refactor-move/initial'), cwd, { recursive: true });
+const from = resolve(cwd,'packages/feature/util.ts');
+const to = resolve(cwd,'packages/feature/shared/util.ts');
+const project = new Project({ skipAddingFilesFromTsConfig:true, skipFileDependencyResolution:true });
+project.addSourceFilesAtPaths(['packages/**/*.{ts,tsx}','apps/**/*.{ts,tsx}'].map((g)=>resolve(cwd,g)));
+const updates=[];
+for (const sourceFile of project.getSourceFiles()) {
+  for (const importDecl of sourceFile.getImportDeclarations()) {
+    const ms = importDecl.getModuleSpecifierValue();
+    if ("'!ms) continue;
+    const sourceDir = sourceFile.getDirectoryPath();
+    if (!hasMatchingTarget(sourceDir, ms, from)) continue;
+    const newSpec = nextSpecifier(sourceDir, to, ms);
+    if (newSpec === ms) continue;
+    updates.push({ file: sourceFile.getFilePath(), from: ms, to: newSpec });
+  }
+}
+for (const sf of project.getSourceFiles()) {
+  console.log('"'sf', sf.getFilePath());
+}
+console.log('updates', updates);
+rmSync(cwd,{recursive:true,force:true});
+NODE" in /home/weiyi/selfKnowledgeBaseWeb
+diff --git a/scripts/refactor-move.ts b/scripts/refactor-move.ts
+index 82c95413c32d7e69f15e10c2a863db2bd815ed8a..cca9ffca6904acd1d50598cc2c4800cc44b95a9f
+--- a/scripts/refactor-move.ts
++++ b/scripts/refactor-move.ts
+@@ -72,15 +72,16 @@
+ function appendImportUpdate(
+   sourceFile: SourceFile,
+   moduleSpecifier: string,
+-  filePathForTarget: string,
++  oldFileAbsolutePath: string,
++  newFileAbsolutePath: string,
+   updates: RewriteRecord[],
+ ): void {
+   const sourceDir = sourceFile.getDirectoryPath();
+-  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
++  if (!hasMatchingTarget(sourceDir, moduleSpecifier, oldFileAbsolutePath)) {
+     return;
+   }
+ 
+-  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
++  const newSpecifier = nextSpecifier(sourceDir, newFileAbsolutePath, moduleSpecifier);
+   if (newSpecifier === moduleSpecifier) {
+     return;
+   }
+@@ -99,7 +100,8 @@
+ function appendExportUpdate(
+   sourceFile: SourceFile,
+   exportDecl: ExportDeclaration,
+-  filePathForTarget: string,
++  oldFileAbsolutePath: string,
++  newFileAbsolutePath: string,
+   updates: RewriteRecord[],
+ ): void {
+   const moduleSpecifier = exportDecl.getModuleSpecifierValue();
+@@ -108,11 +110,11 @@
+   }
+ 
+   const sourceDir = sourceFile.getDirectoryPath();
+-  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
++  if (!hasMatchingTarget(sourceDir, moduleSpecifier, oldFileAbsolutePath)) {
+     return;
+   }
+ 
+-  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
++  const newSpecifier = nextSpecifier(sourceDir, newFileAbsolutePath, moduleSpecifier);
+   if (newSpecifier === moduleSpecifier) {
+     return;
+   }
+@@ -184,11 +186,11 @@
+       if (!moduleSpecifier) {
+         continue;
+       }
+-      appendImportUpdate(sourceFile, moduleSpecifier, from, updates);
++      appendImportUpdate(sourceFile, moduleSpecifier, from, to, updates);
+     }
+ 
+     for (const exportDecl of sourceFile.getExportDeclarations()) {
+-      appendExportUpdate(sourceFile, exportDecl, from, updates);
++      appendExportUpdate(sourceFile, exportDecl, from, to, updates);
+     }
+   }
+ 
+
+ exited 1 in 311ms:
+node:internal/modules/cjs/loader:1386
+  throw err;
+  ^
+
+Error: Cannot find module 'ts-morph'
+Require stack:
+- /home/weiyi/selfKnowledgeBaseWeb/[stdin]
+    at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+    at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+    at Function._load (node:internal/modules/cjs/loader:1192:37)
+    at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+    at Module.require (node:internal/modules/cjs/loader:1463:12)
+    at require (node:internal/modules/helpers:147:16)
+    at [stdin]:4:21
+    at runScriptInThisContext (node:internal/vm:209:10) {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [ '/home/weiyi/selfKnowledgeBaseWeb/[stdin]' ]
+}
+
+Node.js v22.22.2
+
+exec
+/bin/bash -lc "pnpm exec node - <<'NODE'
+const { mkdtempSync, cpSync, rmSync, readFileSync } = require('node:fs');
+const { tmpdir } = require('node:os');
+const { join, resolve } = require('node:path');
+const { Project } = require('ts-morph');
+const cwd = mkdtempSync(join(tmpdir(),'refactor-order-'));
+cpSync(join(process.cwd(),'scripts/__tests__/fixtures/refactor-move/initial'), cwd, { recursive: true });
+const project = new Project({ skipAddingFilesFromTsConfig:true, skipFileDependencyResolution:true});
+const globs=['packages/**/*.{ts,tsx}','apps/**/*.{ts,tsx}'].map((g)=>resolve(cwd,g));
+project.addSourceFilesAtPaths(globs);
+console.log(project.getSourceFiles().map((sf)=>sf.getFilePath().replace(cwd+'/', '')));
+rmSync(cwd,{recursive:true,force:true});
+NODE" in /home/weiyi/selfKnowledgeBaseWeb
+diff --git a/scripts/refactor-move.ts b/scripts/refactor-move.ts
+index 82c95413c32d7e69f15e10c2a863db2bd815ed8a..cca9ffca6904acd1d50598cc2c4800cc44b95a9f
+--- a/scripts/refactor-move.ts
++++ b/scripts/refactor-move.ts
+@@ -72,15 +72,16 @@
+ function appendImportUpdate(
+   sourceFile: SourceFile,
+   moduleSpecifier: string,
+-  filePathForTarget: string,
++  oldFileAbsolutePath: string,
++  newFileAbsolutePath: string,
+   updates: RewriteRecord[],
+ ): void {
+   const sourceDir = sourceFile.getDirectoryPath();
+-  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
++  if (!hasMatchingTarget(sourceDir, moduleSpecifier, oldFileAbsolutePath)) {
+     return;
+   }
+ 
+-  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
++  const newSpecifier = nextSpecifier(sourceDir, newFileAbsolutePath, moduleSpecifier);
+   if (newSpecifier === moduleSpecifier) {
+     return;
+   }
+@@ -99,7 +100,8 @@
+ function appendExportUpdate(
+   sourceFile: SourceFile,
+   exportDecl: ExportDeclaration,
+-  filePathForTarget: string,
++  oldFileAbsolutePath: string,
++  newFileAbsolutePath: string,
+   updates: RewriteRecord[],
+ ): void {
+   const moduleSpecifier = exportDecl.getModuleSpecifierValue();
+@@ -108,11 +110,11 @@
+   }
+ 
+   const sourceDir = sourceFile.getDirectoryPath();
+-  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
++  if (!hasMatchingTarget(sourceDir, moduleSpecifier, oldFileAbsolutePath)) {
+     return;
+   }
+ 
+-  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
++  const newSpecifier = nextSpecifier(sourceDir, newFileAbsolutePath, moduleSpecifier);
+   if (newSpecifier === moduleSpecifier) {
+     return;
+   }
+@@ -184,11 +186,11 @@
+       if (!moduleSpecifier) {
+         continue;
+       }
+-      appendImportUpdate(sourceFile, moduleSpecifier, from, updates);
++      appendImportUpdate(sourceFile, moduleSpecifier, from, to, updates);
+     }
+ 
+     for (const exportDecl of sourceFile.getExportDeclarations()) {
+-      appendExportUpdate(sourceFile, exportDecl, from, updates);
++      appendExportUpdate(sourceFile, exportDecl, from, to, updates);
+     }
+   }
+ 
+
+ exited 1 in 615ms:
+node:internal/modules/cjs/loader:1386
+  throw err;
+  ^
+
+Error: Cannot find module 'ts-morph'
+Require stack:
+- /home/weiyi/selfKnowledgeBaseWeb/[stdin]
+    at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+    at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+    at Function._load (node:internal/modules/cjs/loader:1192:37)
+    at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+    at Module.require (node:internal/modules/cjs/loader:1463:12)
+    at require (node:internal/modules/helpers:147:16)
+    at [stdin]:4:21
+    at runScriptInThisContext (node:internal/vm:209:10) {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [ '/home/weiyi/selfKnowledgeBaseWeb/[stdin]' ]
+}
+
+Node.js v22.22.2
+
+codex
+除路径参数修完后，剩余是 `report.updates` 的顺序与测试快照不一致（实际是 `apps` 在前）。我会改为按 `SOURCE_GLOBS` 加载顺序扫描文件，保证更新记录顺序稳定可预期。
+apply patch
+patch: completed
+/home/weiyi/selfKnowledgeBaseWeb/scripts/refactor-move.ts
+diff --git a/scripts/refactor-move.ts b/scripts/refactor-move.ts
+index 82c95413c32d7e69f15e10c2a863db2bd815ed8a..c8b338bb601c070e5294ed29118051d97e2f87c3
+--- a/scripts/refactor-move.ts
++++ b/scripts/refactor-move.ts
+@@ -72,15 +72,16 @@
+ function appendImportUpdate(
+   sourceFile: SourceFile,
+   moduleSpecifier: string,
+-  filePathForTarget: string,
++  oldFileAbsolutePath: string,
++  newFileAbsolutePath: string,
+   updates: RewriteRecord[],
+ ): void {
+   const sourceDir = sourceFile.getDirectoryPath();
+-  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
++  if (!hasMatchingTarget(sourceDir, moduleSpecifier, oldFileAbsolutePath)) {
+     return;
+   }
+ 
+-  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
++  const newSpecifier = nextSpecifier(sourceDir, newFileAbsolutePath, moduleSpecifier);
+   if (newSpecifier === moduleSpecifier) {
+     return;
+   }
+@@ -99,7 +100,8 @@
+ function appendExportUpdate(
+   sourceFile: SourceFile,
+   exportDecl: ExportDeclaration,
+-  filePathForTarget: string,
++  oldFileAbsolutePath: string,
++  newFileAbsolutePath: string,
+   updates: RewriteRecord[],
+ ): void {
+   const moduleSpecifier = exportDecl.getModuleSpecifierValue();
+@@ -108,11 +110,11 @@
+   }
+ 
+   const sourceDir = sourceFile.getDirectoryPath();
+-  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
++  if (!hasMatchingTarget(sourceDir, moduleSpecifier, oldFileAbsolutePath)) {
+     return;
+   }
+ 
+-  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
++  const newSpecifier = nextSpecifier(sourceDir, newFileAbsolutePath, moduleSpecifier);
+   if (newSpecifier === moduleSpecifier) {
+     return;
+   }
+@@ -173,8 +175,21 @@
+     skipAddingFilesFromTsConfig: true,
+     skipFileDependencyResolution: true,
+   });
+-  project.addSourceFilesAtPaths(SOURCE_GLOBS.map((glob) => resolve(cwd, glob)));
++  const sourceFiles: SourceFile[] = [];
++  const seenFiles = new Set<string>();
+ 
++  for (const glob of SOURCE_GLOBS) {
++    const matchedFiles = project.addSourceFilesAtPaths(resolve(cwd, glob));
++    for (const sourceFile of matchedFiles) {
++      const filePath = sourceFile.getFilePath();
++      if (seenFiles.has(filePath)) {
++        continue;
++      }
++      sourceFiles.push(sourceFile);
++      seenFiles.add(filePath);
++    }
++  }
++
+   const updates: RewriteRecord[] = [];
+   const seenImports = new Set<string>();
+ 
+@@ -184,11 +199,11 @@
+       if (!moduleSpecifier) {
+         continue;
+       }
+-      appendImportUpdate(sourceFile, moduleSpecifier, from, updates);
++      appendImportUpdate(sourceFile, moduleSpecifier, from, to, updates);
+     }
+ 
+     for (const exportDecl of sourceFile.getExportDeclarations()) {
+-      appendExportUpdate(sourceFile, exportDecl, from, updates);
++      appendExportUpdate(sourceFile, exportDecl, from, to, updates);
+     }
+   }
+ 
+
+diff --git a/scripts/refactor-move.ts b/scripts/refactor-move.ts
+index 82c95413c32d7e69f15e10c2a863db2bd815ed8a..c8b338bb601c070e5294ed29118051d97e2f87c3
+--- a/scripts/refactor-move.ts
++++ b/scripts/refactor-move.ts
+@@ -72,15 +72,16 @@
+ function appendImportUpdate(
+   sourceFile: SourceFile,
+   moduleSpecifier: string,
+-  filePathForTarget: string,
++  oldFileAbsolutePath: string,
++  newFileAbsolutePath: string,
+   updates: RewriteRecord[],
+ ): void {
+   const sourceDir = sourceFile.getDirectoryPath();
+-  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
++  if (!hasMatchingTarget(sourceDir, moduleSpecifier, oldFileAbsolutePath)) {
+     return;
+   }
+ 
+-  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
++  const newSpecifier = nextSpecifier(sourceDir, newFileAbsolutePath, moduleSpecifier);
+   if (newSpecifier === moduleSpecifier) {
+     return;
+   }
+@@ -99,7 +100,8 @@
+ function appendExportUpdate(
+   sourceFile: SourceFile,
+   exportDecl: ExportDeclaration,
+-  filePathForTarget: string,
++  oldFileAbsolutePath: string,
++  newFileAbsolutePath: string,
+   updates: RewriteRecord[],
+ ): void {
+   const moduleSpecifier = exportDecl.getModuleSpecifierValue();
+@@ -108,11 +110,11 @@
+   }
+ 
+   const sourceDir = sourceFile.getDirectoryPath();
+-  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
++  if (!hasMatchingTarget(sourceDir, moduleSpecifier, oldFileAbsolutePath)) {
+     return;
+   }
+ 
+-  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
++  const newSpecifier = nextSpecifier(sourceDir, newFileAbsolutePath, moduleSpecifier);
+   if (newSpecifier === moduleSpecifier) {
+     return;
+   }
+@@ -173,8 +175,21 @@
+     skipAddingFilesFromTsConfig: true,
+     skipFileDependencyResolution: true,
+   });
+-  project.addSourceFilesAtPaths(SOURCE_GLOBS.map((glob) => resolve(cwd, glob)));
++  const sourceFiles: SourceFile[] = [];
++  const seenFiles = new Set<string>();
+ 
++  for (const glob of SOURCE_GLOBS) {
++    const matchedFiles = project.addSourceFilesAtPaths(resolve(cwd, glob));
++    for (const sourceFile of matchedFiles) {
++      const filePath = sourceFile.getFilePath();
++      if (seenFiles.has(filePath)) {
++        continue;
++      }
++      sourceFiles.push(sourceFile);
++      seenFiles.add(filePath);
++    }
++  }
++
+   const updates: RewriteRecord[] = [];
+   const seenImports = new Set<string>();
+ 
+@@ -184,11 +199,11 @@
+       if (!moduleSpecifier) {
+         continue;
+       }
+-      appendImportUpdate(sourceFile, moduleSpecifier, from, updates);
++      appendImportUpdate(sourceFile, moduleSpecifier, from, to, updates);
+     }
+ 
+     for (const exportDecl of sourceFile.getExportDeclarations()) {
+-      appendExportUpdate(sourceFile, exportDecl, from, updates);
++      appendExportUpdate(sourceFile, exportDecl, from, to, updates);
+     }
+   }
+ 
+
+codex
+排序改为按 `SOURCE_GLOBS` 顺序固定加载后再扫描，先跑一次同一条测试确认能否一次性通过。
+exec
+/bin/bash -lc 'pnpm vitest run scripts/__tests__/refactor-move.test.ts' in /home/weiyi/selfKnowledgeBaseWeb
+diff --git a/scripts/refactor-move.ts b/scripts/refactor-move.ts
+index 82c95413c32d7e69f15e10c2a863db2bd815ed8a..c8b338bb601c070e5294ed29118051d97e2f87c3
+--- a/scripts/refactor-move.ts
++++ b/scripts/refactor-move.ts
+@@ -72,15 +72,16 @@
+ function appendImportUpdate(
+   sourceFile: SourceFile,
+   moduleSpecifier: string,
+-  filePathForTarget: string,
++  oldFileAbsolutePath: string,
++  newFileAbsolutePath: string,
+   updates: RewriteRecord[],
+ ): void {
+   const sourceDir = sourceFile.getDirectoryPath();
+-  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
++  if (!hasMatchingTarget(sourceDir, moduleSpecifier, oldFileAbsolutePath)) {
+     return;
+   }
+ 
+-  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
++  const newSpecifier = nextSpecifier(sourceDir, newFileAbsolutePath, moduleSpecifier);
+   if (newSpecifier === moduleSpecifier) {
+     return;
+   }
+@@ -99,7 +100,8 @@
+ function appendExportUpdate(
+   sourceFile: SourceFile,
+   exportDecl: ExportDeclaration,
+-  filePathForTarget: string,
++  oldFileAbsolutePath: string,
++  newFileAbsolutePath: string,
+   updates: RewriteRecord[],
+ ): void {
+   const moduleSpecifier = exportDecl.getModuleSpecifierValue();
+@@ -108,11 +110,11 @@
+   }
+ 
+   const sourceDir = sourceFile.getDirectoryPath();
+-  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
++  if (!hasMatchingTarget(sourceDir, moduleSpecifier, oldFileAbsolutePath)) {
+     return;
+   }
+ 
+-  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
++  const newSpecifier = nextSpecifier(sourceDir, newFileAbsolutePath, moduleSpecifier);
+   if (newSpecifier === moduleSpecifier) {
+     return;
+   }
+@@ -173,8 +175,21 @@
+     skipAddingFilesFromTsConfig: true,
+     skipFileDependencyResolution: true,
+   });
+-  project.addSourceFilesAtPaths(SOURCE_GLOBS.map((glob) => resolve(cwd, glob)));
++  const sourceFiles: SourceFile[] = [];
++  const seenFiles = new Set<string>();
+ 
++  for (const glob of SOURCE_GLOBS) {
++    const matchedFiles = project.addSourceFilesAtPaths(resolve(cwd, glob));
++    for (const sourceFile of matchedFiles) {
++      const filePath = sourceFile.getFilePath();
++      if (seenFiles.has(filePath)) {
++        continue;
++      }
++      sourceFiles.push(sourceFile);
++      seenFiles.add(filePath);
++    }
++  }
++
+   const updates: RewriteRecord[] = [];
+   const seenImports = new Set<string>();
+ 
+@@ -184,11 +199,11 @@
+       if (!moduleSpecifier) {
+         continue;
+       }
+-      appendImportUpdate(sourceFile, moduleSpecifier, from, updates);
++      appendImportUpdate(sourceFile, moduleSpecifier, from, to, updates);
+     }
+ 
+     for (const exportDecl of sourceFile.getExportDeclarations()) {
+-      appendExportUpdate(sourceFile, exportDecl, from, updates);
++      appendExportUpdate(sourceFile, exportDecl, from, to, updates);
+     }
+   }
+ 
+
+ exited 1 in 1203ms:
+
+ RUN  v4.1.5 /home/weiyi/selfKnowledgeBaseWeb
+
+ ❯ scripts/__tests__/refactor-move.test.ts (0 test)
+
+⎯⎯⎯⎯⎯⎯ Failed Suites 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  scripts/__tests__/refactor-move.test.ts [ scripts/__tests__/refactor-move.test.ts ]
+Error: Cannot find package 'commander' imported from /home/weiyi/selfKnowledgeBaseWeb/scripts/refactor-move.ts
+ ❯ scripts/refactor-move.ts:2:1
+      1| #!/usr/bin/env tsx
+      2| import { Command } from 'commander';
+       | ^
+      3| import { Project, type ExportDeclaration, type SourceFile } from 'ts-m…
+      4| import { existsSync, mkdirSync, renameSync } from 'node:fs';
+ ❯ scripts/__tests__/refactor-move.test.ts:5:1
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  no tests
+   Start at  13:00:27
+   Duration  193ms (transform 47ms, setup 0ms, import 0ms, tests 0ms, environment 0ms)
+
+
+exec
+/bin/bash -lc 'pnpm vitest run scripts/__tests__/refactor-move.test.ts --runInBand' in /home/weiyi/selfKnowledgeBaseWeb
+diff --git a/scripts/refactor-move.ts b/scripts/refactor-move.ts
+index 82c95413c32d7e69f15e10c2a863db2bd815ed8a..c8b338bb601c070e5294ed29118051d97e2f87c3
+--- a/scripts/refactor-move.ts
++++ b/scripts/refactor-move.ts
+@@ -72,15 +72,16 @@
+ function appendImportUpdate(
+   sourceFile: SourceFile,
+   moduleSpecifier: string,
+-  filePathForTarget: string,
++  oldFileAbsolutePath: string,
++  newFileAbsolutePath: string,
+   updates: RewriteRecord[],
+ ): void {
+   const sourceDir = sourceFile.getDirectoryPath();
+-  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
++  if (!hasMatchingTarget(sourceDir, moduleSpecifier, oldFileAbsolutePath)) {
+     return;
+   }
+ 
+-  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
++  const newSpecifier = nextSpecifier(sourceDir, newFileAbsolutePath, moduleSpecifier);
+   if (newSpecifier === moduleSpecifier) {
+     return;
+   }
+@@ -99,7 +100,8 @@
+ function appendExportUpdate(
+   sourceFile: SourceFile,
+   exportDecl: ExportDeclaration,
+-  filePathForTarget: string,
++  oldFileAbsolutePath: string,
++  newFileAbsolutePath: string,
+   updates: RewriteRecord[],
+ ): void {
+   const moduleSpecifier = exportDecl.getModuleSpecifierValue();
+@@ -108,11 +110,11 @@
+   }
+ 
+   const sourceDir = sourceFile.getDirectoryPath();
+-  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
++  if (!hasMatchingTarget(sourceDir, moduleSpecifier, oldFileAbsolutePath)) {
+     return;
+   }
+ 
+-  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
++  const newSpecifier = nextSpecifier(sourceDir, newFileAbsolutePath, moduleSpecifier);
+   if (newSpecifier === moduleSpecifier) {
+     return;
+   }
+@@ -173,8 +175,21 @@
+     skipAddingFilesFromTsConfig: true,
+     skipFileDependencyResolution: true,
+   });
+-  project.addSourceFilesAtPaths(SOURCE_GLOBS.map((glob) => resolve(cwd, glob)));
++  const sourceFiles: SourceFile[] = [];
++  const seenFiles = new Set<string>();
+ 
++  for (const glob of SOURCE_GLOBS) {
++    const matchedFiles = project.addSourceFilesAtPaths(resolve(cwd, glob));
++    for (const sourceFile of matchedFiles) {
++      const filePath = sourceFile.getFilePath();
++      if (seenFiles.has(filePath)) {
++        continue;
++      }
++      sourceFiles.push(sourceFile);
++      seenFiles.add(filePath);
++    }
++  }
++
+   const updates: RewriteRecord[] = [];
+   const seenImports = new Set<string>();
+ 
+@@ -184,11 +199,11 @@
+       if (!moduleSpecifier) {
+         continue;
+       }
+-      appendImportUpdate(sourceFile, moduleSpecifier, from, updates);
++      appendImportUpdate(sourceFile, moduleSpecifier, from, to, updates);
+     }
+ 
+     for (const exportDecl of sourceFile.getExportDeclarations()) {
+-      appendExportUpdate(sourceFile, exportDecl, from, updates);
++      appendExportUpdate(sourceFile, exportDecl, from, to, updates);
+     }
+   }
+ 
+
+ exited 1 in 637ms:
+file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vitest@4.1.5_@types+node@22.19.17_happy-dom@15.11.7_vite@8.0.10_@types+node@22.19.17_esbuild@_njtu3hruheo7esciutan5fga5a/node_modules/vitest/dist/chunks/cac.DJJmV0dT.js:406
+          throw new CACError(`Unknown option \`${name.length > 1 ? `--${name}` : `-${name}`}\``);
+                ^
+
+CACError: Unknown option `--runInBand`
+    at Command.checkUnknownOptions (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vitest@4.1.5_@types+node@22.19.17_happy-dom@15.11.7_vite@8.0.10_@types+node@22.19.17_esbuild@_njtu3hruheo7esciutan5fga5a/node_modules/vitest/dist/chunks/cac.DJJmV0dT.js:406:17)
+    at CAC.runMatchedCommand (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vitest@4.1.5_@types+node@22.19.17_happy-dom@15.11.7_vite@8.0.10_@types+node@22.19.17_esbuild@_njtu3hruheo7esciutan5fga5a/node_modules/vitest/dist/chunks/cac.DJJmV0dT.js:606:13)
+    at CAC.parse (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vitest@4.1.5_@types+node@22.19.17_happy-dom@15.11.7_vite@8.0.10_@types+node@22.19.17_esbuild@_njtu3hruheo7esciutan5fga5a/node_modules/vitest/dist/chunks/cac.DJJmV0dT.js:547:12)
+    at file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vitest@4.1.5_@types+node@22.19.17_happy-dom@15.11.7_vite@8.0.10_@types+node@22.19.17_esbuild@_njtu3hruheo7esciutan5fga5a/node_modules/vitest/dist/cli.js:11:13
+    at ModuleJob.run (node:internal/modules/esm/module_job:343:25)
+    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:665:26)
+    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:117:5)
+
+Node.js v22.22.2
+
+exec
+/bin/bash -lc 'test -d node_modules/commander && echo yes || echo no; ls node_modules | head' in /home/weiyi/selfKnowledgeBaseWeb
+diff --git a/scripts/refactor-move.ts b/scripts/refactor-move.ts
+index 82c95413c32d7e69f15e10c2a863db2bd815ed8a..c8b338bb601c070e5294ed29118051d97e2f87c3
+--- a/scripts/refactor-move.ts
++++ b/scripts/refactor-move.ts
+@@ -72,15 +72,16 @@
+ function appendImportUpdate(
+   sourceFile: SourceFile,
+   moduleSpecifier: string,
+-  filePathForTarget: string,
++  oldFileAbsolutePath: string,
++  newFileAbsolutePath: string,
+   updates: RewriteRecord[],
+ ): void {
+   const sourceDir = sourceFile.getDirectoryPath();
+-  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
++  if (!hasMatchingTarget(sourceDir, moduleSpecifier, oldFileAbsolutePath)) {
+     return;
+   }
+ 
+-  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
++  const newSpecifier = nextSpecifier(sourceDir, newFileAbsolutePath, moduleSpecifier);
+   if (newSpecifier === moduleSpecifier) {
+     return;
+   }
+@@ -99,7 +100,8 @@
+ function appendExportUpdate(
+   sourceFile: SourceFile,
+   exportDecl: ExportDeclaration,
+-  filePathForTarget: string,
++  oldFileAbsolutePath: string,
++  newFileAbsolutePath: string,
+   updates: RewriteRecord[],
+ ): void {
+   const moduleSpecifier = exportDecl.getModuleSpecifierValue();
+@@ -108,11 +110,11 @@
+   }
+ 
+   const sourceDir = sourceFile.getDirectoryPath();
+-  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
++  if (!hasMatchingTarget(sourceDir, moduleSpecifier, oldFileAbsolutePath)) {
+     return;
+   }
+ 
+-  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
++  const newSpecifier = nextSpecifier(sourceDir, newFileAbsolutePath, moduleSpecifier);
+   if (newSpecifier === moduleSpecifier) {
+     return;
+   }
+@@ -173,8 +175,21 @@
+     skipAddingFilesFromTsConfig: true,
+     skipFileDependencyResolution: true,
+   });
+-  project.addSourceFilesAtPaths(SOURCE_GLOBS.map((glob) => resolve(cwd, glob)));
++  const sourceFiles: SourceFile[] = [];
++  const seenFiles = new Set<string>();
+ 
++  for (const glob of SOURCE_GLOBS) {
++    const matchedFiles = project.addSourceFilesAtPaths(resolve(cwd, glob));
++    for (const sourceFile of matchedFiles) {
++      const filePath = sourceFile.getFilePath();
++      if (seenFiles.has(filePath)) {
++        continue;
++      }
++      sourceFiles.push(sourceFile);
++      seenFiles.add(filePath);
++    }
++  }
++
+   const updates: RewriteRecord[] = [];
+   const seenImports = new Set<string>();
+ 
+@@ -184,11 +199,11 @@
+       if (!moduleSpecifier) {
+         continue;
+       }
+-      appendImportUpdate(sourceFile, moduleSpecifier, from, updates);
++      appendImportUpdate(sourceFile, moduleSpecifier, from, to, updates);
+     }
+ 
+     for (const exportDecl of sourceFile.getExportDeclarations()) {
+-      appendExportUpdate(sourceFile, exportDecl, from, updates);
++      appendExportUpdate(sourceFile, exportDecl, from, to, updates);
+     }
+   }
+ 
+
+ succeeded in 290ms:
+no
+@eslint
+@types
+eslint
+globals
+prettier
+tsx
+turbo
+typescript
+typescript-eslint
+vitest
+
+codex
+我刚才遇到一个环境抖动：`pnpm vitest` 第二次运行开始找不到 `commander`。我先确认一次该包的解析上下文（先前运行通过，但本次未通过依赖树），然后再决定是否切换为最小可复现的测试方式。
+exec
+/bin/bash -lc "cat package.json | sed -n '1,220p'" in /home/weiyi/selfKnowledgeBaseWeb
+diff --git a/scripts/refactor-move.ts b/scripts/refactor-move.ts
+index 82c95413c32d7e69f15e10c2a863db2bd815ed8a..c8b338bb601c070e5294ed29118051d97e2f87c3
+--- a/scripts/refactor-move.ts
++++ b/scripts/refactor-move.ts
+@@ -72,15 +72,16 @@
+ function appendImportUpdate(
+   sourceFile: SourceFile,
+   moduleSpecifier: string,
+-  filePathForTarget: string,
++  oldFileAbsolutePath: string,
++  newFileAbsolutePath: string,
+   updates: RewriteRecord[],
+ ): void {
+   const sourceDir = sourceFile.getDirectoryPath();
+-  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
++  if (!hasMatchingTarget(sourceDir, moduleSpecifier, oldFileAbsolutePath)) {
+     return;
+   }
+ 
+-  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
++  const newSpecifier = nextSpecifier(sourceDir, newFileAbsolutePath, moduleSpecifier);
+   if (newSpecifier === moduleSpecifier) {
+     return;
+   }
+@@ -99,7 +100,8 @@
+ function appendExportUpdate(
+   sourceFile: SourceFile,
+   exportDecl: ExportDeclaration,
+-  filePathForTarget: string,
++  oldFileAbsolutePath: string,
++  newFileAbsolutePath: string,
+   updates: RewriteRecord[],
+ ): void {
+   const moduleSpecifier = exportDecl.getModuleSpecifierValue();
+@@ -108,11 +110,11 @@
+   }
+ 
+   const sourceDir = sourceFile.getDirectoryPath();
+-  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
++  if (!hasMatchingTarget(sourceDir, moduleSpecifier, oldFileAbsolutePath)) {
+     return;
+   }
+ 
+-  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
++  const newSpecifier = nextSpecifier(sourceDir, newFileAbsolutePath, moduleSpecifier);
+   if (newSpecifier === moduleSpecifier) {
+     return;
+   }
+@@ -173,8 +175,21 @@
+     skipAddingFilesFromTsConfig: true,
+     skipFileDependencyResolution: true,
+   });
+-  project.addSourceFilesAtPaths(SOURCE_GLOBS.map((glob) => resolve(cwd, glob)));
++  const sourceFiles: SourceFile[] = [];
++  const seenFiles = new Set<string>();
+ 
++  for (const glob of SOURCE_GLOBS) {
++    const matchedFiles = project.addSourceFilesAtPaths(resolve(cwd, glob));
++    for (const sourceFile of matchedFiles) {
++      const filePath = sourceFile.getFilePath();
++      if (seenFiles.has(filePath)) {
++        continue;
++      }
++      sourceFiles.push(sourceFile);
++      seenFiles.add(filePath);
++    }
++  }
++
+   const updates: RewriteRecord[] = [];
+   const seenImports = new Set<string>();
+ 
+@@ -184,11 +199,11 @@
+       if (!moduleSpecifier) {
+         continue;
+       }
+-      appendImportUpdate(sourceFile, moduleSpecifier, from, updates);
++      appendImportUpdate(sourceFile, moduleSpecifier, from, to, updates);
+     }
+ 
+     for (const exportDecl of sourceFile.getExportDeclarations()) {
+-      appendExportUpdate(sourceFile, exportDecl, from, updates);
++      appendExportUpdate(sourceFile, exportDecl, from, to, updates);
+     }
+   }
+ 
+
+ succeeded in 212ms:
+{
+  "name": "self-knowledge-base-web",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "pnpm@9.12.0",
+  "type": "module",
+  "engines": {
+    "node": ">=22",
+    "pnpm": ">=9"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev --parallel",
+    "lint": "eslint .",
+    "lint:packages": "turbo run lint",
+    "typecheck": "tsc -b",
+    "typecheck:packages": "turbo run typecheck",
+    "test": "vitest run",
+    "test:packages": "turbo run test",
+    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm size-check && pnpm lint:packages && pnpm typecheck:packages && pnpm test:packages",
+    "check:affected": "turbo run lint typecheck test --filter=...[origin/main]",
+    "size-check": "node scripts/check-size-limits.mjs",
+    "link-check": "lychee --config .lychee.toml './**/*.md'",
+    "generate:configs": "tsx scripts/generate-configs.ts",
+    "format": "prettier --write \"**/*.{ts,tsx,js,mjs,cjs,json,md,yaml,yml}\""
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "@types/node": "^22.0.0",
+    "commander": "^11.1.0",
+    "eslint": "^9.0.0",
+    "globals": "^15.0.0",
+    "prettier": "^3.0.0",
+    "turbo": "^2.0.0",
+    "ts-morph": "^28.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "~5.6.0",
+    "typescript-eslint": "^8.0.0",
+    "vitest": "^4.1.5",
+    "yaml": "^2.8.3",
+    "zod": "^3.23.0"
+  }
+}
+
+exec
+/bin/bash -lc 'env | grep -i NODE_PATH || true' in /home/weiyi/selfKnowledgeBaseWeb
+diff --git a/scripts/refactor-move.ts b/scripts/refactor-move.ts
+index 82c95413c32d7e69f15e10c2a863db2bd815ed8a..c8b338bb601c070e5294ed29118051d97e2f87c3
+--- a/scripts/refactor-move.ts
++++ b/scripts/refactor-move.ts
+@@ -72,15 +72,16 @@
+ function appendImportUpdate(
+   sourceFile: SourceFile,
+   moduleSpecifier: string,
+-  filePathForTarget: string,
++  oldFileAbsolutePath: string,
++  newFileAbsolutePath: string,
+   updates: RewriteRecord[],
+ ): void {
+   const sourceDir = sourceFile.getDirectoryPath();
+-  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
++  if (!hasMatchingTarget(sourceDir, moduleSpecifier, oldFileAbsolutePath)) {
+     return;
+   }
+ 
+-  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
++  const newSpecifier = nextSpecifier(sourceDir, newFileAbsolutePath, moduleSpecifier);
+   if (newSpecifier === moduleSpecifier) {
+     return;
+   }
+@@ -99,7 +100,8 @@
+ function appendExportUpdate(
+   sourceFile: SourceFile,
+   exportDecl: ExportDeclaration,
+-  filePathForTarget: string,
++  oldFileAbsolutePath: string,
++  newFileAbsolutePath: string,
+   updates: RewriteRecord[],
+ ): void {
+   const moduleSpecifier = exportDecl.getModuleSpecifierValue();
+@@ -108,11 +110,11 @@
+   }
+ 
+   const sourceDir = sourceFile.getDirectoryPath();
+-  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
++  if (!hasMatchingTarget(sourceDir, moduleSpecifier, oldFileAbsolutePath)) {
+     return;
+   }
+ 
+-  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
++  const newSpecifier = nextSpecifier(sourceDir, newFileAbsolutePath, moduleSpecifier);
+   if (newSpecifier === moduleSpecifier) {
+     return;
+   }
+@@ -173,8 +175,21 @@
+     skipAddingFilesFromTsConfig: true,
+     skipFileDependencyResolution: true,
+   });
+-  project.addSourceFilesAtPaths(SOURCE_GLOBS.map((glob) => resolve(cwd, glob)));
++  const sourceFiles: SourceFile[] = [];
++  const seenFiles = new Set<string>();
+ 
++  for (const glob of SOURCE_GLOBS) {
++    const matchedFiles = project.addSourceFilesAtPaths(resolve(cwd, glob));
++    for (const sourceFile of matchedFiles) {
++      const filePath = sourceFile.getFilePath();
++      if (seenFiles.has(filePath)) {
++        continue;
++      }
++      sourceFiles.push(sourceFile);
++      seenFiles.add(filePath);
++    }
++  }
++
+   const updates: RewriteRecord[] = [];
+   const seenImports = new Set<string>();
+ 
+@@ -184,11 +199,11 @@
+       if (!moduleSpecifier) {
+         continue;
+       }
+-      appendImportUpdate(sourceFile, moduleSpecifier, from, updates);
++      appendImportUpdate(sourceFile, moduleSpecifier, from, to, updates);
+     }
+ 
+     for (const exportDecl of sourceFile.getExportDeclarations()) {
+-      appendExportUpdate(sourceFile, exportDecl, from, updates);
++      appendExportUpdate(sourceFile, exportDecl, from, to, updates);
+     }
+   }
+ 
+
+ succeeded in 270ms:
+exec
+/bin/bash -lc 'ls node_modules/.pnpm | head' in /home/weiyi/selfKnowledgeBaseWeb
+diff --git a/scripts/refactor-move.ts b/scripts/refactor-move.ts
+index 82c95413c32d7e69f15e10c2a863db2bd815ed8a..c8b338bb601c070e5294ed29118051d97e2f87c3
+--- a/scripts/refactor-move.ts
++++ b/scripts/refactor-move.ts
+@@ -72,15 +72,16 @@
+ function appendImportUpdate(
+   sourceFile: SourceFile,
+   moduleSpecifier: string,
+-  filePathForTarget: string,
++  oldFileAbsolutePath: string,
++  newFileAbsolutePath: string,
+   updates: RewriteRecord[],
+ ): void {
+   const sourceDir = sourceFile.getDirectoryPath();
+-  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
++  if (!hasMatchingTarget(sourceDir, moduleSpecifier, oldFileAbsolutePath)) {
+     return;
+   }
+ 
+-  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
++  const newSpecifier = nextSpecifier(sourceDir, newFileAbsolutePath, moduleSpecifier);
+   if (newSpecifier === moduleSpecifier) {
+     return;
+   }
+@@ -99,7 +100,8 @@
+ function appendExportUpdate(
+   sourceFile: SourceFile,
+   exportDecl: ExportDeclaration,
+-  filePathForTarget: string,
++  oldFileAbsolutePath: string,
++  newFileAbsolutePath: string,
+   updates: RewriteRecord[],
+ ): void {
+   const moduleSpecifier = exportDecl.getModuleSpecifierValue();
+@@ -108,11 +110,11 @@
+   }
+ 
+   const sourceDir = sourceFile.getDirectoryPath();
+-  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
++  if (!hasMatchingTarget(sourceDir, moduleSpecifier, oldFileAbsolutePath)) {
+     return;
+   }
+ 
+-  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
++  const newSpecifier = nextSpecifier(sourceDir, newFileAbsolutePath, moduleSpecifier);
+   if (newSpecifier === moduleSpecifier) {
+     return;
+   }
+@@ -173,8 +175,21 @@
+     skipAddingFilesFromTsConfig: true,
+     skipFileDependencyResolution: true,
+   });
+-  project.addSourceFilesAtPaths(SOURCE_GLOBS.map((glob) => resolve(cwd, glob)));
++  const sourceFiles: SourceFile[] = [];
++  const seenFiles = new Set<string>();
+ 
++  for (const glob of SOURCE_GLOBS) {
++    const matchedFiles = project.addSourceFilesAtPaths(resolve(cwd, glob));
++    for (const sourceFile of matchedFiles) {
++      const filePath = sourceFile.getFilePath();
++      if (seenFiles.has(filePath)) {
++        continue;
++      }
++      sourceFiles.push(sourceFile);
++      seenFiles.add(filePath);
++    }
++  }
++
+   const updates: RewriteRecord[] = [];
+   const seenImports = new Set<string>();
+ 
+@@ -184,11 +199,11 @@
+       if (!moduleSpecifier) {
+         continue;
+       }
+-      appendImportUpdate(sourceFile, moduleSpecifier, from, updates);
++      appendImportUpdate(sourceFile, moduleSpecifier, from, to, updates);
+     }
+ 
+     for (const exportDecl of sourceFile.getExportDeclarations()) {
+-      appendExportUpdate(sourceFile, exportDecl, from, updates);
++      appendExportUpdate(sourceFile, exportDecl, from, to, updates);
+     }
+   }
+ 
+
+ succeeded in 318ms:
+@alloc+quick-lru@5.2.0
+@astrojs+check@0.9.9_prettier@3.8.3_typescript@5.6.3
+@astrojs+compiler@2.13.1
+@astrojs+internal-helpers@0.7.6
+@astrojs+language-server@2.16.7_prettier@3.8.3_typescript@5.6.3
+@astrojs+markdown-remark@6.3.11
+@astrojs+mdx@4.3.14_astro@5.18.1_@types+node@22.19.17_jiti@1.21.7_lightningcss@1.32.0_rollup@_g3dtyjxgeofu47ck4qbo3onboq
+@astrojs+prism@3.3.0
+@astrojs+react@4.4.2_@types+node@22.19.17_@types+react-dom@18.3.7_@types+react@18.3.28__@type_rwmcf73wvfqeqvs6cqyujz7a7m
+@astrojs+tailwind@6.0.2_astro@5.18.1_@types+node@22.19.17_jiti@1.21.7_lightningcss@1.32.0_rol_eom6vjan74jedzsptpkwhlv7u4
+ls: write error: Broken pipe
+
+exec
+/bin/bash -lc "ls node_modules/.pnpm | grep '"'^commander@'"' || true" in /home/weiyi/selfKnowledgeBaseWeb
+diff --git a/scripts/refactor-move.ts b/scripts/refactor-move.ts
+index 82c95413c32d7e69f15e10c2a863db2bd815ed8a..c8b338bb601c070e5294ed29118051d97e2f87c3
+--- a/scripts/refactor-move.ts
++++ b/scripts/refactor-move.ts
+@@ -72,15 +72,16 @@
+ function appendImportUpdate(
+   sourceFile: SourceFile,
+   moduleSpecifier: string,
+-  filePathForTarget: string,
++  oldFileAbsolutePath: string,
++  newFileAbsolutePath: string,
+   updates: RewriteRecord[],
+ ): void {
+   const sourceDir = sourceFile.getDirectoryPath();
+-  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
++  if (!hasMatchingTarget(sourceDir, moduleSpecifier, oldFileAbsolutePath)) {
+     return;
+   }
+ 
+-  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
++  const newSpecifier = nextSpecifier(sourceDir, newFileAbsolutePath, moduleSpecifier);
+   if (newSpecifier === moduleSpecifier) {
+     return;
+   }
+@@ -99,7 +100,8 @@
+ function appendExportUpdate(
+   sourceFile: SourceFile,
+   exportDecl: ExportDeclaration,
+-  filePathForTarget: string,
++  oldFileAbsolutePath: string,
++  newFileAbsolutePath: string,
+   updates: RewriteRecord[],
+ ): void {
+   const moduleSpecifier = exportDecl.getModuleSpecifierValue();
+@@ -108,11 +110,11 @@
+   }
+ 
+   const sourceDir = sourceFile.getDirectoryPath();
+-  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
++  if (!hasMatchingTarget(sourceDir, moduleSpecifier, oldFileAbsolutePath)) {
+     return;
+   }
+ 
+-  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
++  const newSpecifier = nextSpecifier(sourceDir, newFileAbsolutePath, moduleSpecifier);
+   if (newSpecifier === moduleSpecifier) {
+     return;
+   }
+@@ -173,8 +175,21 @@
+     skipAddingFilesFromTsConfig: true,
+     skipFileDependencyResolution: true,
+   });
+-  project.addSourceFilesAtPaths(SOURCE_GLOBS.map((glob) => resolve(cwd, glob)));
++  const sourceFiles: SourceFile[] = [];
++  const seenFiles = new Set<string>();
+ 
++  for (const glob of SOURCE_GLOBS) {
++    const matchedFiles = project.addSourceFilesAtPaths(resolve(cwd, glob));
++    for (const sourceFile of matchedFiles) {
++      const filePath = sourceFile.getFilePath();
++      if (seenFiles.has(filePath)) {
++        continue;
++      }
++      sourceFiles.push(sourceFile);
++      seenFiles.add(filePath);
++    }
++  }
++
+   const updates: RewriteRecord[] = [];
+   const seenImports = new Set<string>();
+ 
+@@ -184,11 +199,11 @@
+       if (!moduleSpecifier) {
+         continue;
+       }
+-      appendImportUpdate(sourceFile, moduleSpecifier, from, updates);
++      appendImportUpdate(sourceFile, moduleSpecifier, from, to, updates);
+     }
+ 
+     for (const exportDecl of sourceFile.getExportDeclarations()) {
+-      appendExportUpdate(sourceFile, exportDecl, from, updates);
++      appendExportUpdate(sourceFile, exportDecl, from, to, updates);
+     }
+   }
+ 
+
+ succeeded in 307ms:
+commander@11.1.0
+commander@4.1.1
+
+exec
+/bin/bash -lc 'pnpm install --offline' in /home/weiyi/selfKnowledgeBaseWeb
+diff --git a/scripts/refactor-move.ts b/scripts/refactor-move.ts
+index 82c95413c32d7e69f15e10c2a863db2bd815ed8a..c8b338bb601c070e5294ed29118051d97e2f87c3
+--- a/scripts/refactor-move.ts
++++ b/scripts/refactor-move.ts
+@@ -72,15 +72,16 @@
+ function appendImportUpdate(
+   sourceFile: SourceFile,
+   moduleSpecifier: string,
+-  filePathForTarget: string,
++  oldFileAbsolutePath: string,
++  newFileAbsolutePath: string,
+   updates: RewriteRecord[],
+ ): void {
+   const sourceDir = sourceFile.getDirectoryPath();
+-  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
++  if (!hasMatchingTarget(sourceDir, moduleSpecifier, oldFileAbsolutePath)) {
+     return;
+   }
+ 
+-  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
++  const newSpecifier = nextSpecifier(sourceDir, newFileAbsolutePath, moduleSpecifier);
+   if (newSpecifier === moduleSpecifier) {
+     return;
+   }
+@@ -99,7 +100,8 @@
+ function appendExportUpdate(
+   sourceFile: SourceFile,
+   exportDecl: ExportDeclaration,
+-  filePathForTarget: string,
++  oldFileAbsolutePath: string,
++  newFileAbsolutePath: string,
+   updates: RewriteRecord[],
+ ): void {
+   const moduleSpecifier = exportDecl.getModuleSpecifierValue();
+@@ -108,11 +110,11 @@
+   }
+ 
+   const sourceDir = sourceFile.getDirectoryPath();
+-  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
++  if (!hasMatchingTarget(sourceDir, moduleSpecifier, oldFileAbsolutePath)) {
+     return;
+   }
+ 
+-  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
++  const newSpecifier = nextSpecifier(sourceDir, newFileAbsolutePath, moduleSpecifier);
+   if (newSpecifier === moduleSpecifier) {
+     return;
+   }
+@@ -173,8 +175,21 @@
+     skipAddingFilesFromTsConfig: true,
+     skipFileDependencyResolution: true,
+   });
+-  project.addSourceFilesAtPaths(SOURCE_GLOBS.map((glob) => resolve(cwd, glob)));
++  const sourceFiles: SourceFile[] = [];
++  const seenFiles = new Set<string>();
+ 
++  for (const glob of SOURCE_GLOBS) {
++    const matchedFiles = project.addSourceFilesAtPaths(resolve(cwd, glob));
++    for (const sourceFile of matchedFiles) {
++      const filePath = sourceFile.getFilePath();
++      if (seenFiles.has(filePath)) {
++        continue;
++      }
++      sourceFiles.push(sourceFile);
++      seenFiles.add(filePath);
++    }
++  }
++
+   const updates: RewriteRecord[] = [];
+   const seenImports = new Set<string>();
+ 
+@@ -184,11 +199,11 @@
+       if (!moduleSpecifier) {
+         continue;
+       }
+-      appendImportUpdate(sourceFile, moduleSpecifier, from, updates);
++      appendImportUpdate(sourceFile, moduleSpecifier, from, to, updates);
+     }
+ 
+     for (const exportDecl of sourceFile.getExportDeclarations()) {
+-      appendExportUpdate(sourceFile, exportDecl, from, updates);
++      appendExportUpdate(sourceFile, exportDecl, from, to, updates);
+     }
+   }
+ 
+
+ succeeded in 4006ms:
+Scope: all 10 workspace projects
+Progress: resolved 1, reused 0, downloaded 0, added 0
+Progress: resolved 709, reused 620, downloaded 0, added 0
+Packages: +3
++++
+Progress: resolved 843, reused 722, downloaded 0, added 0, done
+
+devDependencies:
++ commander 11.1.0 (14.0.3 is available)
++ ts-morph 28.0.0
+
+Done in 3.6s
+
+codex
+我补了当前环境里缺失的工作区依赖（离线 `pnpm install`）确保测试环境可用，接着再跑这 4 条用例确认。
+exec
+/bin/bash -lc 'pnpm vitest run scripts/__tests__/refactor-move.test.ts' in /home/weiyi/selfKnowledgeBaseWeb
+diff --git a/scripts/refactor-move.ts b/scripts/refactor-move.ts
+index 82c95413c32d7e69f15e10c2a863db2bd815ed8a..c8b338bb601c070e5294ed29118051d97e2f87c3
+--- a/scripts/refactor-move.ts
++++ b/scripts/refactor-move.ts
+@@ -72,15 +72,16 @@
+ function appendImportUpdate(
+   sourceFile: SourceFile,
+   moduleSpecifier: string,
+-  filePathForTarget: string,
++  oldFileAbsolutePath: string,
++  newFileAbsolutePath: string,
+   updates: RewriteRecord[],
+ ): void {
+   const sourceDir = sourceFile.getDirectoryPath();
+-  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
++  if (!hasMatchingTarget(sourceDir, moduleSpecifier, oldFileAbsolutePath)) {
+     return;
+   }
+ 
+-  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
++  const newSpecifier = nextSpecifier(sourceDir, newFileAbsolutePath, moduleSpecifier);
+   if (newSpecifier === moduleSpecifier) {
+     return;
+   }
+@@ -99,7 +100,8 @@
+ function appendExportUpdate(
+   sourceFile: SourceFile,
+   exportDecl: ExportDeclaration,
+-  filePathForTarget: string,
++  oldFileAbsolutePath: string,
++  newFileAbsolutePath: string,
+   updates: RewriteRecord[],
+ ): void {
+   const moduleSpecifier = exportDecl.getModuleSpecifierValue();
+@@ -108,11 +110,11 @@
+   }
+ 
+   const sourceDir = sourceFile.getDirectoryPath();
+-  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
++  if (!hasMatchingTarget(sourceDir, moduleSpecifier, oldFileAbsolutePath)) {
+     return;
+   }
+ 
+-  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
++  const newSpecifier = nextSpecifier(sourceDir, newFileAbsolutePath, moduleSpecifier);
+   if (newSpecifier === moduleSpecifier) {
+     return;
+   }
+@@ -173,8 +175,21 @@
+     skipAddingFilesFromTsConfig: true,
+     skipFileDependencyResolution: true,
+   });
+-  project.addSourceFilesAtPaths(SOURCE_GLOBS.map((glob) => resolve(cwd, glob)));
++  const sourceFiles: SourceFile[] = [];
++  const seenFiles = new Set<string>();
+ 
++  for (const glob of SOURCE_GLOBS) {
++    const matchedFiles = project.addSourceFilesAtPaths(resolve(cwd, glob));
++    for (const sourceFile of matchedFiles) {
++      const filePath = sourceFile.getFilePath();
++      if (seenFiles.has(filePath)) {
++        continue;
++      }
++      sourceFiles.push(sourceFile);
++      seenFiles.add(filePath);
++    }
++  }
++
+   const updates: RewriteRecord[] = [];
+   const seenImports = new Set<string>();
+ 
+@@ -184,11 +199,11 @@
+       if (!moduleSpecifier) {
+         continue;
+       }
+-      appendImportUpdate(sourceFile, moduleSpecifier, from, updates);
++      appendImportUpdate(sourceFile, moduleSpecifier, from, to, updates);
+     }
+ 
+     for (const exportDecl of sourceFile.getExportDeclarations()) {
+-      appendExportUpdate(sourceFile, exportDecl, from, updates);
++      appendExportUpdate(sourceFile, exportDecl, from, to, updates);
+     }
+   }
+ 
+
+ succeeded in 1620ms:
+
+ RUN  v4.1.5 /home/weiyi/selfKnowledgeBaseWeb
+
+
+ Test Files  1 passed (1)
+      Tests  4 passed (4)
+   Start at  13:00:54
+   Duration  621ms (transform 59ms, setup 0ms, import 386ms, tests 123ms, environment 0ms)
+
+
+codex
+已修复：`scripts/refactor-move.ts` 里重写 import 的分支现在把“匹配旧文件路径”和“重写到新文件路径”分开了。
+
+- 变更点（仅 `scripts/refactor-move.ts`）：
+  - 在 `appendImportUpdate` / `appendExportUpdate` 中新增 `oldFileAbsolutePath` 与 `newFileAbsolutePath` 两个参数：
+    - 用 `oldFileAbsolutePath` 做 `hasMatchingTarget(...)` 匹配（判断该 import/export 是否指向旧文件）。
+    - 用 `newFileAbsolutePath` 做 `nextSpecifier(...)` 计算（生成 `path.relative(...)` 的新路径）。
+  - 这样 `consumer.ts` 中 `./util` 能正确更新为 `./shared/util`（同包/同起点移动到子目录的场景）。
+  - 文件扫描改为按 `SOURCE_GLOBS` 顺序逐 glob 收集 `SourceFile`，并去重，保证更新顺序稳定可预期（满足测试的更新列表顺序）。
+
+- 相关文件：
+  - [scripts/refactor-move.ts](/home/weiyi/selfKnowledgeBaseWeb/scripts/refactor-move.ts)
+
+已按你要求执行验证：
+`pnpm vitest run scripts/__tests__/refactor-move.test.ts`
+
+结果：`4 passed (4)`。
+
+如果你要，我可以再继续把这次修复的逻辑压成一段简短的实现说明（便于你写 changelog/回归说明）。
+diff --git a/scripts/refactor-move.ts b/scripts/refactor-move.ts
+index 82c95413c32d7e69f15e10c2a863db2bd815ed8a..c8b338bb601c070e5294ed29118051d97e2f87c3
+--- a/scripts/refactor-move.ts
++++ b/scripts/refactor-move.ts
+@@ -72,15 +72,16 @@
+ function appendImportUpdate(
+   sourceFile: SourceFile,
+   moduleSpecifier: string,
+-  filePathForTarget: string,
++  oldFileAbsolutePath: string,
++  newFileAbsolutePath: string,
+   updates: RewriteRecord[],
+ ): void {
+   const sourceDir = sourceFile.getDirectoryPath();
+-  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
++  if (!hasMatchingTarget(sourceDir, moduleSpecifier, oldFileAbsolutePath)) {
+     return;
+   }
+ 
+-  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
++  const newSpecifier = nextSpecifier(sourceDir, newFileAbsolutePath, moduleSpecifier);
+   if (newSpecifier === moduleSpecifier) {
+     return;
+   }
+@@ -99,7 +100,8 @@
+ function appendExportUpdate(
+   sourceFile: SourceFile,
+   exportDecl: ExportDeclaration,
+-  filePathForTarget: string,
++  oldFileAbsolutePath: string,
++  newFileAbsolutePath: string,
+   updates: RewriteRecord[],
+ ): void {
+   const moduleSpecifier = exportDecl.getModuleSpecifierValue();
+@@ -108,11 +110,11 @@
+   }
+ 
+   const sourceDir = sourceFile.getDirectoryPath();
+-  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
++  if (!hasMatchingTarget(sourceDir, moduleSpecifier, oldFileAbsolutePath)) {
+     return;
+   }
+ 
+-  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
++  const newSpecifier = nextSpecifier(sourceDir, newFileAbsolutePath, moduleSpecifier);
+   if (newSpecifier === moduleSpecifier) {
+     return;
+   }
+@@ -173,8 +175,21 @@
+     skipAddingFilesFromTsConfig: true,
+     skipFileDependencyResolution: true,
+   });
+-  project.addSourceFilesAtPaths(SOURCE_GLOBS.map((glob) => resolve(cwd, glob)));
++  const sourceFiles: SourceFile[] = [];
++  const seenFiles = new Set<string>();
+ 
++  for (const glob of SOURCE_GLOBS) {
++    const matchedFiles = project.addSourceFilesAtPaths(resolve(cwd, glob));
++    for (const sourceFile of matchedFiles) {
++      const filePath = sourceFile.getFilePath();
++      if (seenFiles.has(filePath)) {
++        continue;
++      }
++      sourceFiles.push(sourceFile);
++      seenFiles.add(filePath);
++    }
++  }
++
+   const updates: RewriteRecord[] = [];
+   const seenImports = new Set<string>();
+ 
+@@ -184,11 +199,11 @@
+       if (!moduleSpecifier) {
+         continue;
+       }
+-      appendImportUpdate(sourceFile, moduleSpecifier, from, updates);
++      appendImportUpdate(sourceFile, moduleSpecifier, from, to, updates);
+     }
+ 
+     for (const exportDecl of sourceFile.getExportDeclarations()) {
+-      appendExportUpdate(sourceFile, exportDecl, from, updates);
++      appendExportUpdate(sourceFile, exportDecl, from, to, updates);
+     }
+   }
+ 
+
+2026-04-30T17:00:58.088672Z ERROR codex_core::session: failed to record rollout items: thread 019ddf54-832a-7ba0-8ef8-97893957ed29 not found
+tokens used
+81,400
+已修复：`scripts/refactor-move.ts` 里重写 import 的分支现在把“匹配旧文件路径”和“重写到新文件路径”分开了。
+
+- 变更点（仅 `scripts/refactor-move.ts`）：
+  - 在 `appendImportUpdate` / `appendExportUpdate` 中新增 `oldFileAbsolutePath` 与 `newFileAbsolutePath` 两个参数：
+    - 用 `oldFileAbsolutePath` 做 `hasMatchingTarget(...)` 匹配（判断该 import/export 是否指向旧文件）。
+    - 用 `newFileAbsolutePath` 做 `nextSpecifier(...)` 计算（生成 `path.relative(...)` 的新路径）。
+  - 这样 `consumer.ts` 中 `./util` 能正确更新为 `./shared/util`（同包/同起点移动到子目录的场景）。
+  - 文件扫描改为按 `SOURCE_GLOBS` 顺序逐 glob 收集 `SourceFile`，并去重，保证更新顺序稳定可预期（满足测试的更新列表顺序）。
+
+- 相关文件：
+  - [scripts/refactor-move.ts](/home/weiyi/selfKnowledgeBaseWeb/scripts/refactor-move.ts)
+
+已按你要求执行验证：
+`pnpm vitest run scripts/__tests__/refactor-move.test.ts`
+
+结果：`4 passed (4)`。
+
+如果你要，我可以再继续把这次修复的逻辑压成一段简短的实现说明（便于你写 changelog/回归说明）。
