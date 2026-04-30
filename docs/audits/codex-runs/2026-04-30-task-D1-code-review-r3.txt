@@ -1,0 +1,656 @@
+Reading prompt from stdin...
+OpenAI Codex v0.125.0 (research preview)
+--------
+workdir: /home/weiyi/selfKnowledgeBaseWeb
+model: gpt-5.3-codex-spark
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: xhigh
+reasoning summaries: none
+session id: 019de020-3621-7762-9ca0-62cc5e5c1e01
+--------
+user
+You are codex 5.3-spark code-reviewer. Final R3 audit of packages/block-math/ for Wave 2 Task #16 (D1).
+
+R2 verdict (FAIL on real issues per Claude pr-reviewer-d1 R2):
+- B1: extract renderMath into src/ui-default/render-math.ts (no replication between Math.tsx + Math.astro)
+- B2: package.json export `./ui-default/math.css` + add `@skb/design-tokens: workspace:*` dep + CONTRACT.md "三个 entry" → "四个 entry" + consumer-import obligation
+- B3: parse.ts boolean shorthand for `<Math display>` (mdast attr.value === null path)
+
+Verify:
+1. src/ui-default/render-math.ts exists; Math.tsx + Math.astro both import from './render-math'.
+2. ssr-render.test.ts exists with ≥4 corpus cases (inline / display / multiline / malformed).
+3. ui-default.test.ts exists asserting mathUiDefault.uiId === 'default' + EditorView/RenderView identity.
+4. package.json exports has 4 entries including math.css.
+5. package.json deps has @skb/design-tokens: workspace:*.
+6. CONTRACT.md says "四个 entry" + math.css bullet + consumer-import block.
+7. parse.ts handles attr.value === null (shorthand) + 'true' + 'false'; throws on other strings.
+8. Tests: 19/19 PASS expected (locally verified).
+
+Run pnpm --filter @skb/block-math test + typecheck + lint + build. Apply ADR-0006 8-point.
+
+Verdict: PASS or FAIL. If PASS, this is final D1 sign-off.
+
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the vendored bubblewrap in the meantime.
+codex
+I’ll audit the `block-math` package against your 8 checkpoints, then run `pnpm --filter @skb/block-math` for `test`, `typecheck`, `lint`, and `build`. I’ll report each verification as pass/fail with file evidence and a final PASS/FAIL sign-off.
+exec
+/bin/bash -lc "rg --files packages/block-math | rg \"render-math.ts|Math\\.tsx|Math\\.astro|parse\\.ts|ssr-render\\.test\\.ts|ui-default\\.test\\.ts|package\\.json"'$|CONTRACT'"\\.md"'$"' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+packages/block-math/CONTRACT.md
+packages/block-math/package.json
+packages/block-math/src/ui-default/Math.astro
+packages/block-math/src/ui-default/render-math.ts
+packages/block-math/src/ui-default/Math.tsx
+packages/block-math/src/__tests__/ui-default.test.ts
+packages/block-math/src/__tests__/ssr-render.test.ts
+packages/block-math/src/core/parse.ts
+
+exec
+/bin/bash -lc "sed -n '1,220p' packages/block-math/src/ui-default/Math.tsx" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1,220p' packages/block-math/src/ui-default/render-math.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+import type { BlockViewProps } from '@skb/block-foundation';
+import { mathCore } from '../core/core-definition';
+import { renderMath } from './render-math';
+
+/**
+ * MathView 接受 inferred props ({ expression, display }) — 与
+ * `mathCore.propsSchema` 的 ZodInfer 等价。函数式组件而非
+ * `ComponentType<BlockViewProps<typeof ...>>` 显式标注，避免 generic 变 invariant
+ * 在 BlockRegistry.registerUI 处与 ZodTypeAny widening 冲突（exactOptionalPropertyTypes 触发）。
+ *
+ * KaTeX 渲染走 `./render-math.ts` 单一权威，与 Math.astro SSR path 同源
+ * （ADR-0006 item #5 algorithm replication）。错误态由 KaTeX 渲染为
+ * `.katex-error` 红色块（math.css 绑 `--color-error` token）。
+ */
+export function MathView({
+  props,
+}: BlockViewProps<typeof mathCore.propsSchema>): JSX.Element {
+  const html = renderMath(props.expression, props.display);
+  const Tag = props.display ? 'div' : 'span';
+  return (
+    <Tag
+      data-block="math"
+      data-display={props.display ? 'true' : 'false'}
+      // KaTeX 输出受信（npm 包内部生成），无 user HTML 注入路径
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
+  );
+}
+
+export const MathEditorView = MathView;
+export const MathRenderView = MathView;
+
+ succeeded in 0ms:
+import katex from 'katex';
+
+/**
+ * Single authority for KaTeX rendering across this package (ADR-0006 item #5).
+ * Math.tsx (React/NodeView path) and Math.astro (SSR path) MUST both import
+ * `renderMath` from here — never inline `katex.renderToString` with their own
+ * options literal. The byte-equivalence between editor / SSR / NodeView output
+ * follows from this single import. ssr-render.test.ts exercises a corpus to
+ * detect drift if a future edit accidentally re-inlines the call.
+ *
+ * Options policy:
+ * - `displayMode`: caller-controlled (inline vs block).
+ * - `throwOnError: false`: KaTeX renders invalid LaTeX as `.katex-error` red box;
+ *   error-explicit (math.css binds `.katex-error` to `--color-error` token).
+ * - `output: 'html'`: HTML-only (no MathML); SSR + React DOM both consume HTML
+ *   string. Matches Math.astro's `set:html` path.
+ * - `strict: 'ignore'`: KaTeX warnings (deprecated commands, unicode chars) do
+ *   not throw; consistent with `throwOnError: false`.
+ */
+export const renderMath = (expression: string, display: boolean): string =>
+  katex.renderToString(expression, {
+    displayMode: display,
+    throwOnError: false,
+    output: 'html',
+    strict: 'ignore',
+  });
+
+exec
+/bin/bash -lc "sed -n '1,260p' packages/block-math/src/ui-default/Math.astro" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1,260p' packages/block-math/src/core/parse.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+---
+import { renderMath } from './render-math';
+
+interface Props {
+  expression: string;
+  display?: boolean;
+}
+
+const { expression, display = false } = Astro.props;
+
+// KaTeX 渲染走 `./render-math.ts` 单一权威，与 Math.tsx 同源
+// （ADR-0006 item #5 algorithm replication：authority = renderMath；不允许在
+// 此文件内 inline `katex.renderToString` + options literal）。
+const html = renderMath(expression, display);
+
+const Tag = display ? 'div' : 'span';
+---
+
+<Tag data-block="math" data-display={String(display)} set:html={html} />
+
+ succeeded in 0ms:
+import { mathCore } from './core-definition';
+import type { MathMdastJsxElement, MathTiptapNode } from './serialize';
+
+/**
+ * MDX 解析 stub。Wave 3 mdx-bridge 在 mdastBlockToTiptap 看到
+ * mdxJsxFlowElement{name:'Math'} 时按 mdxComponent 路由到本函数（RFC §5）。
+ *
+ * `display` 三种 MDX 形式 (mdast-util-mdx-jsx convention):
+ *   - `<Math display>` (boolean shorthand)        → attr.value === null  → true
+ *   - `<Math display="true">`                     → attr.value === "true" → true
+ *   - `<Math display="false">`                    → attr.value === "false"→ false
+ * 任何其他形式（数字 / 非 true/false 字符串）throw — 不静默 false。
+ *
+ * 其他 attr (如 expression) 一律期望 string；null shorthand 仅 display 适用。
+ */
+export function parseMath(node: MathMdastJsxElement): MathTiptapNode {
+  if (node.name !== mathCore.mdxComponent) {
+    throw new Error(
+      `parseMath: expected mdxComponent="${mathCore.mdxComponent}", got "${node.name}"`,
+    );
+  }
+  const rawProps: Record<string, string | boolean> = {};
+  for (const attr of node.attributes) {
+    if (attr.name === 'display') {
+      if (attr.value === null) {
+        rawProps[attr.name] = true;
+      } else if (attr.value === 'true' || attr.value === 'false') {
+        rawProps[attr.name] = attr.value === 'true';
+      } else {
+        throw new Error(
+          `parseMath: invalid display attribute value: ${JSON.stringify(attr.value)}`,
+        );
+      }
+    } else {
+      if (attr.value === null) {
+        throw new Error(
+          `parseMath: attribute "${attr.name}" must have a string value (got null shorthand; only "display" supports boolean shorthand)`,
+        );
+      }
+      rawProps[attr.name] = attr.value;
+    }
+  }
+  const validated = mathCore.propsSchema.parse(rawProps);
+  return {
+    type: 'math',
+    attrs: { expression: validated.expression, display: validated.display },
+  };
+}
+
+exec
+/bin/bash -lc "sed -n '1,260p' packages/block-math/src/__tests__/ssr-render.test.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+import { describe, expect, it } from 'vitest';
+import { renderMath } from '../ui-default/render-math';
+
+/**
+ * Byte-equality corpus for renderMath authority (ADR-0006 item #5).
+ *
+ * `renderMath` is the single import point for KaTeX in this package; both
+ * Math.tsx (React/NodeView path) and Math.astro (SSR path) call it. This
+ * suite exercises a representative input corpus to:
+ *   1. catch silent regressions if a future edit re-inlines `katex.renderToString`
+ *      with diverging options (drift detector for the algorithm-replication audit);
+ *   2. assert error-explicit behavior — invalid LaTeX must surface as
+ *      `.katex-error` in the output (spec D1 "red error box with the source
+ *      visible"; not silent fallback).
+ *
+ * KaTeX is the runtime authority — these tests do NOT pin the exact HTML byte
+ * shape (KaTeX patch versions can shift markup); they assert structural
+ * invariants (root class, displayMode discriminator, error-class presence)
+ * that any in-package option-divergence would break.
+ */
+describe('renderMath (KaTeX SSR authority)', () => {
+  it('renders inline expression with displayMode=false (no display block)', () => {
+    const html = renderMath('a^2 + b^2', false);
+    expect(html).toMatch(/class="katex"/);
+    expect(html).not.toMatch(/class="katex-display"/);
+  });
+
+  it('renders display expression with displayMode=true (wraps in katex-display)', () => {
+    const html = renderMath('\\sum_{i=0}^n x_i', true);
+    expect(html).toMatch(/class="katex-display"/);
+    expect(html).toMatch(/class="katex"/);
+  });
+
+  it('renders multiline displayed expression (multi-row aligned env)', () => {
+    const html = renderMath(
+      '\\begin{aligned} a &= 1 \\\\ b &= 2 \\end{aligned}',
+      true,
+    );
+    expect(html).toMatch(/class="katex-display"/);
+    // multi-line rendering produces multiple mord/mrel spans
+    expect(html).toMatch(/class="katex"/);
+    expect(html.length).toBeGreaterThan(100);
+  });
+
+  it('renders malformed LaTeX with errorColor inline + source visible (throwOnError=false invariant)', () => {
+    const html = renderMath('\\notARealCommand{x}', false);
+    // KaTeX with throwOnError=false renders unknown commands inline with
+    // errorColor (default #cc0000); source string is preserved verbatim so the
+    // user can see the offending expression (spec D1 "red error box with the
+    // source visible"). math.css uses [data-block='math'] [style*="cc0000"]
+    // upgrade selector to bind --color-error token + bordered box.
+    expect(html).toMatch(/class="katex"/);
+    expect(html).toMatch(/notARealCommand/);
+    expect(html).toMatch(/#cc0000/);
+  });
+
+  it('inline + display same expression produce different output (displayMode discriminator)', () => {
+    const expr = '\\frac{1}{2}';
+    const inlineHtml = renderMath(expr, false);
+    const displayHtml = renderMath(expr, true);
+    expect(inlineHtml).not.toBe(displayHtml);
+    expect(displayHtml).toMatch(/class="katex-display"/);
+    expect(inlineHtml).not.toMatch(/class="katex-display"/);
+  });
+});
+
+codex
+I’ve confirmed the core extraction and parser logic are present in the files checked. Next I’ll read `package.json`, `CONTRACT.md`, and `ui-default.test.ts` to verify exports, dependencies, and contract/docs obligations, then run the requested test/typecheck/lint/build sequence.
+exec
+/bin/bash -lc "sed -n '1,240p' packages/block-math/package.json" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1,260p' packages/block-math/CONTRACT.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+{
+  "name": "@skb/block-math",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./core": "./src/core/index.ts",
+    "./ui-default": "./src/ui-default/index.ts",
+    "./ui-default/math.css": "./src/ui-default/math.css"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@skb/block-foundation": "workspace:*",
+    "@skb/design-tokens": "workspace:*",
+    "katex": "^0.16.11",
+    "zod": "^3.23.0"
+  },
+  "peerDependencies": {
+    "react": "^18.3.0 || ^19.0.0"
+  },
+  "devDependencies": {
+    "@types/katex": "^0.16.7",
+    "@types/react": "^18.3.0",
+    "react": "^18.3.0",
+    "typescript": "~5.6.0",
+    "vitest": "^4.1.5"
+  }
+}
+
+ succeeded in 0ms:
+# @skb/block-math Contract
+
+KaTeX-backed math block (Wave 2 Track D1）。第一个 `render-block-eng` 包；
+hand-craft（不走 codex-block-generator），block-pdf (D2) 同 owner 独立 hand-craft。
+
+## Public surface
+
+四个 entry：
+
+- `.` (root barrel) — re-export `./core`
+- `./core` — headless 层
+  - `mathCore: BlockCoreDefinition<typeof propsSchema>` — name=`'math'` / kind=`'render'` / mdxComponent=`'Math'`
+  - `serializeMath(node) → mdxJsxFlowElement` — Tiptap → mdast (Wave 3 mdx-bridge routing 时启用)
+  - `parseMath(mdast) → TiptapNode` — mdast → Tiptap (同上)
+  - 类型: `MathTiptapNode` / `MathMdastJsxElement`
+- `./ui-default` — presentational 层
+  - `mathUiDefault: BlockUIDefinition<typeof mathCore.propsSchema>` — uiId=`'default'`
+  - `MathEditorView` / `MathRenderView` — `ComponentType<BlockViewProps<...>>`
+  - `renderMath(expression, display) → string` — KaTeX HTML 字符串生成器（**single authority** for editor + SSR + NodeView，定义在 `src/ui-default/render-math.ts`）
+  - `MATH_TOKENS: MathTokens` — design-token name witnesses（`@skb/design-tokens` 类型绑定）
+  - sibling: `Math.astro`（apps/site SSR 直接 import，亦走 `renderMath`）
+- `./ui-default/math.css` — 视觉规则单一来源（design-token-bound，error/fg color 走 `var(--color-*)`）
+
+### Consumer 使用方式
+
+`apps/site` / `editor-shell` 必须 `import '@skb/block-math/ui-default/math.css';`
+方能渲染 `.katex-error` 错误态样式以及 display/inline 间距 token。同时
+consumers 必须 `import 'katex/dist/katex.css';`（KaTeX 自身字体 + 内部布局；
+本包不重发包，避免重复加载）。
+
+`propsSchema` 形状（见 `src/core/core-definition.ts`）：
+
+```typescript
+z.object({
+  expression: z.string().min(1),
+  display: z.boolean().default(false),
+}).strict()
+```
+
+## Invariants
+
+继承自 [block-foundation/CONTRACT.md](../block-foundation/CONTRACT.md#invariants)：
+`Defensive copy` / `Schema strictness` / `Default UI lookup` / `Serialize / parse hook ownership`
+（即 `BlockRegistry.listCores()` / `listUIs(coreName)` defensive-copy 行为、
+`propsSchema` 必须 `.strict()`、同 `coreName` 多 UI 时 `getUI(coreName)` 取首注册 `uiId`、
+serialize/parse 由本包 `core/` own 不在 foundation 注册）。
+
+block-math 特定不变量：
+
+- **`coreName='math'` (kebab-case)** + **`mdxComponent='Math'` (PascalCase)**:
+  `mathCore.name`/`.mdxComponent` 字面值固定，与 BlockRegistry / mdx-bridge 路由 ([RFC §1](../block-foundation/RFC.md#1-core-side)) 一致
+- **Hook 命名 verb-as-prefix**: `serializeMath` / `parseMath` / `renderMath` ([RFC §5](../block-foundation/RFC.md#5-serialize--parse-hook-ownership-scope-clarification))
+- **`uiId='default'` reserved**: inherit foundation 的 `Default UI lookup` 不变量（首注册即 default）
+- **KaTeX 是 runtime authority** + **renderMath single authority**: `src/ui-default/render-math.ts`
+  唯一 wrap `katex.renderToString`（ADR-0006 item #5 algorithm replication —
+  authority = `katex` npm 包）。Math.tsx + Math.astro 都 import `./render-math`；
+  ssr-render.test.ts 4-row corpus 检测 inline 漂移
+- **Headless 自给**: `core/` 不 import React / Tiptap / KaTeX；仅依赖 `@skb/block-foundation` + `zod`（ADR-0003 D1）。`ui-default/` 才 import React + katex + design-tokens
+- **propsSchema single authority**: 仅在 `src/core/core-definition.ts` 定义；ui-default / serialize / parse / 测试均 import `mathCore.propsSchema`（ADR-0006 item #4）
+- **Self-validating serialize/parse**: `serializeMath` / `parseMath` 各自调 `propsSchema.parse`（parse 侧 display 先字符串 coerce → boolean）；契约偏离在 mdx-bridge 路由前 throw
+- **错误显式（不静默）**: KaTeX 配 `throwOnError: false` + `strict: 'ignore'`：
+  软错误内联 `color:#cc0000` 片段（source visible），硬错误 `.katex-error` class；
+  `math.css` 两条路径都 escalate 到 `--color-error` token 的 bordered box（spec D1 要求），不许 silent fallback
+
+## Wave 3 mdx-bridge 路由集成（pending）
+
+当前 `serializeMath` / `parseMath` 是 stub —— 暴露稳定签名，未被 mdx-bridge 消费。
+Wave 3 mdx-bridge routing table PR 会：
+
+1. 在 `mdx-bridge/parse.ts` 的 `mdastBlockToTiptap` 拦截 `mdxJsxFlowElement{name:'Math'}` →
+   `parseMath(node)` → 把返回 `MathTiptapNode` 嵌入 doc.content
+2. 在 `mdx-bridge/serialize.ts` 的 `tiptapToMdastBlock` 拦截 `type='math'` →
+   `serializeMath(node)` → 返回 `mdxJsxFlowElement` 进 mdast
+3. math block 无 children，递归不展开
+
+## Forward-compat consumers
+
+- **Z0 sample-blocks**: `<Math expression="\\int_0^1 x^2 dx" display />` 实例
+- **apps/site SSR**: import `@skb/block-math/ui-default/Math.astro`；consumer 同 PR 加 katex CSS import
+- **Wave 3 mdx-bridge integration**: 见上节
+- **Tiptap NodeView (editor-shell)**: 用 `MathEditorView`；NodeView wrapper 调 `renderMath` 直拿 HTML 字符串
+
+## Modifying this file
+
+`mathCore` 公共字段 (`name` / `kind` / `propsSchema` / `mdxComponent`) 与 `mathUiDefault`
+公共字段 (`coreName` / `uiId` / `EditorView` / `RenderView`) 变更需 ADR（与 block-foundation
+同 freeze 级别 —— 触发 mdx-bridge 路由 + sample-blocks 同步更新）。
+`serializeMath` / `parseMath` 签名变更需配 mdx-bridge routing PR；`renderMath` 签名变更
+同步 Math.astro + Math.tsx 调用点（authority = ui-default/render-math.ts；ssr-render.test.ts 防漂移）。
+
+## Related
+
+- [@skb/block-foundation CONTRACT](../block-foundation/CONTRACT.md) — `BlockCoreDefinition` / `BlockUIDefinition` 接口权威
+- [@skb/block-foundation RFC](../block-foundation/RFC.md) — registration walkthrough
+- [@skb/block-callout CONTRACT](../block-callout/CONTRACT.md) — sister-doc (Wave 2 simple-block template)
+- [ADR-0003 headless / presentational 分层](../../docs/decisions/ADR-0003-headless-presentational-split.md)
+- [ADR-0006 asymmetry audit checklist](../../docs/decisions/ADR-0006-asymmetry-audit-checklist.md) item #3 + #4 + #5
+- [ADR-0008 D1 dead-dep + D2 interface freeze](../../docs/decisions/ADR-0008-wave-2-entry-policies.md)
+- [Wave 2 plan §Task D1](../../docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md)
+
+exec
+/bin/bash -lc "sed -n '1,260p' packages/block-math/src/__tests__/ui-default.test.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+import { describe, expect, it } from 'vitest';
+import { mathCore } from '../core/core-definition';
+import {
+  mathUiDefault,
+  MathEditorView,
+  MathRenderView,
+  renderMath,
+} from '../ui-default';
+
+/**
+ * UI-default surface contract tests. Mirrors block-callout's ui-default.test.tsx
+ * shape contract (sister-doc invariant per ADR-0006 item #6) but stays in `.ts`
+ * because this package does not pull happy-dom / @testing-library/react —
+ * MathView is a pure HTML-string emitter; React-DOM rendering is exercised
+ * indirectly via ssr-render.test.ts (the underlying renderMath is the visual
+ * authority). When apps/site or editor-shell adds DOM-assertion tests they
+ * will live alongside in their own happy-dom-enabled vitest configs.
+ */
+describe('mathUiDefault registration shape', () => {
+  it('exposes the BlockUIDefinition shape with coreName + uiId="default"', () => {
+    expect(mathUiDefault.coreName).toBe(mathCore.name);
+    expect(mathUiDefault.coreName).toBe('math');
+    expect(mathUiDefault.uiId).toBe('default');
+  });
+
+  it('EditorView and RenderView identity matches Math.tsx exports', () => {
+    expect(mathUiDefault.EditorView).toBe(MathEditorView);
+    expect(mathUiDefault.RenderView).toBe(MathRenderView);
+  });
+
+  it('re-exports renderMath as the single authority callable from ./ui-default', () => {
+    // structural identity check — barrel must re-export from render-math.ts so
+    // consumers (Math.astro / future NodeView wrappers / sample-blocks) all
+    // hit the same authority
+    expect(typeof renderMath).toBe('function');
+    const html = renderMath('x', false);
+    expect(html).toMatch(/class="katex"/);
+  });
+});
+
+codex
+I’ve validated the key source and contract files now. Next I’m running the required four `pnpm --filter @skb/block-math` tasks in sequence and will return exact pass/fail per command plus a final D1 verdict.
+exec
+/bin/bash -lc 'pnpm --filter @skb/block-math test && pnpm --filter @skb/block-math typecheck && pnpm --filter @skb/block-math lint && pnpm --filter @skb/block-math build' in /home/weiyi/selfKnowledgeBaseWeb
+ exited 1 in 742ms:
+
+> @skb/block-math@0.0.0 test /home/weiyi/selfKnowledgeBaseWeb/packages/block-math
+> vitest run
+
+failed to load config from /home/weiyi/selfKnowledgeBaseWeb/packages/block-math/vitest.config.ts
+
+⎯⎯⎯⎯⎯⎯⎯ Startup Error ⎯⎯⎯⎯⎯⎯⎯⎯
+Error: EROFS: read-only file system, open '/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/node_modules/.vite-temp/vitest.config.ts.timestamp-1777581709314-029a0916441c6.mjs'
+    at async open (node:internal/fs/promises:639:25)
+    at async Object.writeFile (node:internal/fs/promises:1219:14)
+    at async loadConfigFromBundledFile (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:34769:3)
+    at async bundleAndLoadConfigFile (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:34632:17)
+    at async loadConfigFromFile (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:34599:42)
+    at async resolveConfig (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:34223:22)
+    at async _createServer (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:26029:65)
+    at async createViteServer (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vitest@4.1.5_@types+node@22.19.17_happy-dom@15.11.7_vite@8.0.10_@types+node@22.19.17_esbuild@_njtu3hruheo7esciutan5fga5a/node_modules/vitest/dist/chunks/cli-api.Cjt90eJu.js:8818:17)
+    at async createVitest (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vitest@4.1.5_@types+node@22.19.17_happy-dom@15.11.7_vite@8.0.10_@types+node@22.19.17_esbuild@_njtu3hruheo7esciutan5fga5a/node_modules/vitest/dist/chunks/cli-api.Cjt90eJu.js:14205:18)
+    at async prepareVitest (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vitest@4.1.5_@types+node@22.19.17_happy-dom@15.11.7_vite@8.0.10_@types+node@22.19.17_esbuild@_njtu3hruheo7esciutan5fga5a/node_modules/vitest/dist/chunks/cli-api.Cjt90eJu.js:14572:14) {
+  errno: -30,
+  code: 'EROFS',
+  syscall: 'open',
+  path: '/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/node_modules/.vite-temp/vitest.config.ts.timestamp-1777581709314-029a0916441c6.mjs'
+}
+
+
+
+/home/weiyi/selfKnowledgeBaseWeb/packages/block-math:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @skb/block-math@0.0.0 test: `vitest run`
+Exit status 1
+
+codex
+The test command is blocked by current sandbox filesystem limits (`EROFS` on Vitest temp file under `packages/block-math/node_modules/.vite-temp`). I’ll still run `typecheck`, `lint`, and `build` to complete the remaining mandated checks.
+exec
+/bin/bash -lc 'pnpm --filter @skb/block-math typecheck' in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc 'pnpm --filter @skb/block-math lint' in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc 'pnpm --filter @skb/block-math build' in /home/weiyi/selfKnowledgeBaseWeb
+ exited 2 in 2834ms:
+
+> @skb/block-math@0.0.0 typecheck /home/weiyi/selfKnowledgeBaseWeb/packages/block-math
+> tsc --noEmit
+
+error TS5033: Could not write file '/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/dist/tsconfig.tsbuildinfo': EROFS: read-only file system, open '/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/dist/tsconfig.tsbuildinfo'.
+src/core/core-definition.ts(13,3): error TS2322: Type '"render"' is not assignable to type 'BlockKind'.
+/home/weiyi/selfKnowledgeBaseWeb/packages/block-math:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @skb/block-math@0.0.0 typecheck: `tsc --noEmit`
+Exit status 2
+
+ exited 1 in 3342ms:
+
+> @skb/block-math@0.0.0 build /home/weiyi/selfKnowledgeBaseWeb/packages/block-math
+> tsc -b
+
+error TS5033: Could not write file '/home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation/dist/src/__tests__/registry.test.d.ts.map': EROFS: read-only file system, open '/home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation/dist/src/__tests__/registry.test.d.ts.map'.
+error TS5033: Could not write file '/home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation/dist/src/index.d.ts.map': EROFS: read-only file system, open '/home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation/dist/src/index.d.ts.map'.
+error TS5033: Could not write file '/home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation/dist/src/registry.d.ts': EROFS: read-only file system, open '/home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation/dist/src/registry.d.ts'.
+error TS5033: Could not write file '/home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation/dist/src/registry.d.ts.map': EROFS: read-only file system, open '/home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation/dist/src/registry.d.ts.map'.
+error TS5033: Could not write file '/home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation/dist/src/registry.js': EROFS: read-only file system, open '/home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation/dist/src/registry.js'.
+error TS5033: Could not write file '/home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation/dist/src/registry.js.map': EROFS: read-only file system, open '/home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation/dist/src/registry.js.map'.
+error TS5033: Could not write file '/home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation/dist/tsconfig.tsbuildinfo': EROFS: read-only file system, open '/home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation/dist/tsconfig.tsbuildinfo'.
+error TS5033: Could not write file '/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/dist/src/__tests__/core.test.d.ts.map': EROFS: read-only file system, open '/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/dist/src/__tests__/core.test.d.ts.map'.
+error TS5033: Could not write file '/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/dist/src/__tests__/registry-integration.test.d.ts.map': EROFS: read-only file system, open '/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/dist/src/__tests__/registry-integration.test.d.ts.map'.
+error TS5033: Could not write file '/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/dist/src/__tests__/ui-default.test.d.ts.map': EROFS: read-only file system, open '/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/dist/src/__tests__/ui-default.test.d.ts.map'.
+error TS5033: Could not write file '/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/dist/src/core/core-definition.d.ts.map': EROFS: read-only file system, open '/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/dist/src/core/core-definition.d.ts.map'.
+error TS5033: Could not write file '/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/dist/src/core/index.d.ts.map': EROFS: read-only file system, open '/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/dist/src/core/index.d.ts.map'.
+error TS5033: Could not write file '/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/dist/src/core/parse.d.ts': EROFS: read-only file system, open '/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/dist/src/core/parse.d.ts'.
+error TS5033: Could not write file '/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/dist/src/core/parse.d.ts.map': EROFS: read-only file system, open '/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/dist/src/core/parse.d.ts.map'.
+error TS5033: Could not write file '/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/dist/src/core/parse.js': EROFS: read-only file system, open '/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/dist/src/core/parse.js'.
+error TS5033: Could not write file '/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/dist/src/core/parse.js.map': EROFS: read-only file system, open '/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/dist/src/core/parse.js.map'.
+error TS5033: Could not write file '/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/dist/src/core/serialize.d.ts': EROFS: read-only file system, open '/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/dist/src/core/serialize.d.ts'.
+error TS5033: Could not write file '/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/dist/src/core/serialize.d.ts.map': EROFS: read-only file system, open '/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/dist/src/core/serialize.d.ts.map'.
+error TS5033: Could not write file '/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/dist/src/core/serialize.js': EROFS: read-only file system, open '/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/dist/src/core/serialize.js'.
+error TS5033: Could not write file '/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/dist/src/core/serialize.js.map': EROFS: read-only file system, open '/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/dist/src/core/serialize.js.map'.
+error TS5033: Could not write file '/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/dist/src/index.d.ts.map': EROFS: read-only file system, open '/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/dist/src/index.d.ts.map'.
+error TS5033: Could not write file '/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/dist/src/ui-default/Math.d.ts.map': EROFS: read-only file system, open '/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/dist/src/ui-default/Math.d.ts.map'.
+error TS5033: Could not write file '/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/dist/src/ui-default/index.d.ts.map': EROFS: read-only file system, open '/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/dist/src/ui-default/index.d.ts.map'.
+error TS5033: Could not write file '/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/dist/src/ui-default/math.ui.d.ts.map': EROFS: read-only file system, open '/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/dist/src/ui-default/math.ui.d.ts.map'.
+error TS5033: Could not write file '/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/dist/tsconfig.tsbuildinfo': EROFS: read-only file system, open '/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/dist/tsconfig.tsbuildinfo'.
+src/core/core-definition.ts(13,3): error TS2322: Type '"render"' is not assignable to type 'BlockKind'.
+/home/weiyi/selfKnowledgeBaseWeb/packages/block-math:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @skb/block-math@0.0.0 build: `tsc -b`
+Exit status 1
+
+ succeeded in 3922ms:
+
+> @skb/block-math@0.0.0 lint /home/weiyi/selfKnowledgeBaseWeb/packages/block-math
+> eslint .
+
+
+codex
+One additional required check is failing before completion: typecheck/build reported a `TS2322` in `src/core/core-definition.ts` for `kind: 'render'`, and I’m reading that file once to cite the exact line context in the audit result.
+exec
+/bin/bash -lc "nl -ba packages/block-math/src/core/core-definition.ts | sed -n '1,200p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 116ms:
+     1	import { defineCore, type BlockCoreDefinition } from '@skb/block-foundation';
+     2	import { z } from 'zod';
+     3	
+     4	const propsSchema = z
+     5	  .object({
+     6	    expression: z.string().min(1),
+     7	    display: z.boolean().default(false),
+     8	  })
+     9	  .strict();
+    10	
+    11	export const mathCore: BlockCoreDefinition<typeof propsSchema> = defineCore({
+    12	  name: 'math',
+    13	  kind: 'render',
+    14	  propsSchema,
+    15	  mdxComponent: 'Math',
+    16	});
+
+exec
+/bin/bash -lc "sed -n '1,220p' packages/block-math/src/ui-default/index.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+export { mathUiDefault } from './math.ui';
+export { MathEditorView, MathRenderView } from './Math';
+export { renderMath } from './render-math';
+export { MATH_TOKENS } from './math-tokens';
+export type { MathTokens } from './math-tokens';
+
+codex
+Verdict: **FAIL** (not final D1 sign-off)
+
+1. `src/ui-default/render-math.ts` exists and is the single KaTeX authority.
+   - [packages/block-math/src/ui-default/render-math.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/src/ui-default/render-math.ts)
+   - [Math.tsx](/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/src/ui-default/Math.tsx) imports `renderMath`.
+   - [Math.astro](/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/src/ui-default/Math.astro) imports `renderMath`.
+
+2. `ssr-render.test.ts` exists and includes required corpus cases (inline / display / multiline / malformed, plus one extra inline-vs-display comparison).
+   - [ssr-render.test.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/src/__tests__/ssr-render.test.ts)
+
+3. `ui-default.test.ts` exists and asserts `uiId === 'default'` plus view identity.
+   - [ui-default.test.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/src/__tests__/ui-default.test.ts)
+
+4. `package.json` has 4 exports including `./ui-default/math.css`.
+   - [package.json](/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/package.json)
+
+5. `package.json` has `@skb/design-tokens: workspace:*`.
+   - [package.json](/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/package.json)
+
+6. `CONTRACT.md` contains “四个 entry”, `math.css` entry, and consumer import obligation block.
+   - [CONTRACT.md](/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/CONTRACT.md)
+
+7. `parse.ts` handles:
+   - `display` shorthand (`attr.value === null` → true),
+   - `"true"` / `"false"`,
+   - and throws for other strings.
+   - [parse.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/src/core/parse.ts)
+
+8. Validation commands:
+
+- `pnpm --filter @skb/block-math test`  
+  - **FAIL**: `EROFS` writing `.vite-temp/vitest.config.ts.timestamp...`
+- `pnpm --filter @skb/block-math typecheck`  
+  - **FAIL**: `TS5033` (read-only write to `dist/tsconfig.tsbuildinfo`) **and** compile error:
+  - `TS2322: Type '"render"' is not assignable to type 'BlockKind'` at [packages/block-math/src/core/core-definition.ts:13](/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/src/core/core-definition.ts#L13)
+- `pnpm --filter @skb/block-math lint`  
+  - **PASS**
+- `pnpm --filter @skb/block-math build`  
+  - **FAIL**: `TS5033` read-only writes plus same `TS2322` error
+
+Blocking fail points: test/typecheck/build are not passing in this environment due both filesystem restrictions and a real TypeScript contract error (`kind: 'render'`). Therefore this is not a PASS audit.
+2026-04-30T20:42:02.209310Z ERROR codex_core::session: failed to record rollout items: thread 019de020-3621-7762-9ca0-62cc5e5c1e01 not found
+tokens used
+17,947
+Verdict: **FAIL** (not final D1 sign-off)
+
+1. `src/ui-default/render-math.ts` exists and is the single KaTeX authority.
+   - [packages/block-math/src/ui-default/render-math.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/src/ui-default/render-math.ts)
+   - [Math.tsx](/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/src/ui-default/Math.tsx) imports `renderMath`.
+   - [Math.astro](/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/src/ui-default/Math.astro) imports `renderMath`.
+
+2. `ssr-render.test.ts` exists and includes required corpus cases (inline / display / multiline / malformed, plus one extra inline-vs-display comparison).
+   - [ssr-render.test.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/src/__tests__/ssr-render.test.ts)
+
+3. `ui-default.test.ts` exists and asserts `uiId === 'default'` plus view identity.
+   - [ui-default.test.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/src/__tests__/ui-default.test.ts)
+
+4. `package.json` has 4 exports including `./ui-default/math.css`.
+   - [package.json](/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/package.json)
+
+5. `package.json` has `@skb/design-tokens: workspace:*`.
+   - [package.json](/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/package.json)
+
+6. `CONTRACT.md` contains “四个 entry”, `math.css` entry, and consumer import obligation block.
+   - [CONTRACT.md](/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/CONTRACT.md)
+
+7. `parse.ts` handles:
+   - `display` shorthand (`attr.value === null` → true),
+   - `"true"` / `"false"`,
+   - and throws for other strings.
+   - [parse.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/src/core/parse.ts)
+
+8. Validation commands:
+
+- `pnpm --filter @skb/block-math test`  
+  - **FAIL**: `EROFS` writing `.vite-temp/vitest.config.ts.timestamp...`
+- `pnpm --filter @skb/block-math typecheck`  
+  - **FAIL**: `TS5033` (read-only write to `dist/tsconfig.tsbuildinfo`) **and** compile error:
+  - `TS2322: Type '"render"' is not assignable to type 'BlockKind'` at [packages/block-math/src/core/core-definition.ts:13](/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/src/core/core-definition.ts#L13)
+- `pnpm --filter @skb/block-math lint`  
+  - **PASS**
+- `pnpm --filter @skb/block-math build`  
+  - **FAIL**: `TS5033` read-only writes plus same `TS2322` error
+
+Blocking fail points: test/typecheck/build are not passing in this environment due both filesystem restrictions and a real TypeScript contract error (`kind: 'render'`). Therefore this is not a PASS audit.

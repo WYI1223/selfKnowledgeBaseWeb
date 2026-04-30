@@ -1,7 +1,7 @@
 import type { ZodTypeAny, infer as ZodInfer } from 'zod';
 import type { ComponentType } from 'react';
 
-export type BlockKind = 'prose' | 'component';
+export type BlockKind = 'prose' | 'component' | 'render' | 'viz';
 
 /**
  * BlockCore：headless 层 —— 无 React 依赖，纯逻辑（props schema + MDX 序列化在

@@ -1,0 +1,210 @@
+# R3 Claude pr-reviewer verdict — Task D1 (block-math)
+
+**Reviewer**: pr-reviewer-d1-r3 (Claude Opus 4.7 1M ctx)
+**Team**: phase-1-wave-2
+**Date**: 2026-04-30
+**Round**: R3 (final)
+**Predecessor**: R2 verdict in 2026-04-30-task-D1-pr-reviewer.txt (REJECT, B1+B2+B3 fix list)
+
+## VERDICT: APPROVE
+
+All R2 blockers (B1 / B2 / B3) and the R1 self-corrected B0 are resolved. Local
+test sanity: `pnpm --filter @skb/block-math test` → 4 files / 19 tests PASS
+(core 6 / registry-integration 5 / ssr-render 5 / ui-default 3). Upstream
+regression check: `@skb/block-foundation` 9/9 PASS, `@skb/block-callout`
+15/15 PASS — `BlockKind` 2→4 widening is additive, no narrowing.
+
+## Spec match (plan §1037-1047)
+
+- `packages/block-math/{package.json, tsconfig.json, CONTRACT.md}` — present
+  (package.json:1-34, tsconfig.json, CONTRACT.md:1-99)
+- `src/core/{index,core-definition,serialize,parse}.ts` — present (index.ts:1-5,
+  core-definition.ts:1-16, serialize.ts:1-45, parse.ts:1-48)
+- `src/ui-default/` — hand-crafted: `Math.tsx` + `Math.astro` + `math.css`
+  + `index.ts` + `math.ui.ts` + `math-tokens.ts` + `render-math.ts`
+- `src/__tests__/{core,ui-default,ssr-render}.test.ts` — present + bonus
+  `registry-integration.test.ts` (matches sister callout pattern)
+- mathCore.kind = 'render' (per plan §66 "render block" + brief; B0 verified
+  at HEAD against `BlockKind = 'prose' | 'component' | 'render' | 'viz'`,
+  packages/block-foundation/src/registry.ts:4)
+- propsSchema = `z.object({expression: z.string().min(1), display: z.boolean().default(false)}).strict()`
+  (core-definition.ts:4-9) — orchestrator-sanctioned rename from plan §1043
+  `{tex, displayMode}`; brief explicitly carries `{expression, display}`
+- mdxComponent = 'Math' (PascalCase) + verb-as-prefix hooks
+  `serializeMath` / `parseMath` / `renderMath` (matches RFC §5)
+- 4 entries in package.json#exports: `.`, `./core`, `./ui-default`,
+  `./ui-default/math.css` (package.json:6-11)
+
+### Documentation drift (informational, not blocking)
+
+- **Plan §1043 vs implementation**: plan still says `{tex, displayMode}`;
+  implementation + CONTRACT + brief say `{expression, display}`. Wave 2
+  close ceremony (Z1) should reconcile plan text → ADR-0009 erratum.
+  Not a D1 blocker because brief explicitly authorized the prop names.
+- **Spec §160-162 children-bearing form**: `<Math display>\text{...}</Math>`
+  has the LaTeX expression as MDX **children** (between tags), but `parseMath`
+  only consumes `node.attributes` and would silently drop `children`. The
+  current expression-as-prop choice (`<Math expression="..." display />`)
+  matches CONTRACT.md §76 "Z0 sample-blocks" example. Reconcile in Wave 3
+  mdx-bridge integration / Z0 sample-blocks PR — D1 surface stable enough
+  to defer. Recommend an ADR-0009 erratum or a CONTRACT note explicitly
+  rejecting children-bearing form so future `mdx-bridge` integration knows
+  the routing intent.
+
+## Cross-file impact
+
+- **block-foundation/src/registry.ts:4** — `BlockKind` widened 2→4 additive
+  (`'prose' | 'component' | 'render' | 'viz'`). Existing consumers
+  (block-callout/src/core/core-definition.ts:13 `kind: 'component'`,
+  block-foundation/src/__tests__/registry.test.ts:13 `kind: 'component'`)
+  unaffected — narrowing string literals stay valid, widened union is purely
+  additive. Confirmed by 9/9 + 15/15 upstream test PASS.
+- **block-foundation/CONTRACT.md** + **RFC.md** — kind documentation
+  expanded with 4-way ownership map (Track C component / Track D render /
+  Track E viz). Sister-doc consistency (ADR-0006 item #6): both files now
+  agree, plus kind-error-message table (RFC.md:233) updated to reference
+  full 4-way union literal.
+- **block-math/CONTRACT.md** — sister-doc to block-callout/CONTRACT.md
+  (ADR-0006 item #6): four-entry surface, kind=render specific invariants,
+  consumer import obligation (math.css + katex/dist/katex.css), Wave 3
+  mdx-bridge pending section, Forward-compat consumers section, Modifying
+  this file section, Related links — pattern parity with sister.
+- **design-tokens dep** — listed under `dependencies` (not devDeps),
+  matching block-callout pattern (both `package.json:18-23` declare
+  `@skb/design-tokens: workspace:*` as runtime dep). ADR-0008 D1 dead-dep
+  policy satisfied via `math-tokens.ts:1` `import type { ColorTokenName }`
+  TS-source consumer (mirrors callout/variant-tokens.ts:1).
+- **tsconfig.json** — root references add `./packages/block-math` and
+  `./packages/editor-toolbar`. The editor-toolbar entry is a side effect
+  of the in-flight G1 task working-tree state and is NOT D1 scope; the
+  git-operator must include it in the D1 commit ONLY if editor-toolbar
+  package.json + tsconfig.json are also part of the same bundle (per
+  ADR-0006 item #8 sub-form C lockfile-as-generated-artifact discipline,
+  feedback memory `feedback_git_operator_explicit_stage.md`). Recommend
+  splitting tsconfig edit per task — D1 commit references only block-math;
+  editor-toolbar reference rides with G1 commit.
+- **pnpm-lock.yaml** — +148 lines covering both block-math (lines 196-225,
+  katex@0.16.45 + @types/katex@0.16.8) AND editor-toolbar package
+  importer entry. Same scope concern as tsconfig.json: lockfile is
+  derived-from-authority (`package.json`); the lockfile delta is correct
+  IF git-operator stages it AS A WHOLE in a single commit OR splits the
+  staging by `git restore` of the editor-toolbar lockfile section (very
+  fragile — pnpm-lock is a single YAML doc). Cleaner option: have D1 +
+  G1 ride the same lockfile commit, or sequence D1 commit first with
+  full lockfile, then G1 commit lands tsconfig + package.json edits with
+  no further lockfile change (idempotent `pnpm install` should produce
+  same lockfile already in git).
+
+## Architectural consistency (ADR-0003 + ADR-0006 + ADR-0008)
+
+- **KaTeX runtime authority**: only call site is `render-math.ts:21`
+  `katex.renderToString`; `Math.tsx:18` and `Math.astro:14` both
+  `import { renderMath } from './render-math'` — single authority
+  preserved. ssr-render.test.ts:21-65 (5 cases) is the drift detector.
+- **Headless purity** (ADR-0003 D1): `core/` only imports
+  `@skb/block-foundation` + `zod` (core-definition.ts:1-2,
+  parse.ts:1-2 imports `./core-definition` + `./serialize` types,
+  serialize.ts:1 imports `./core-definition`). No React / Tiptap /
+  KaTeX in core/ — verified by grep against
+  `import.*react|import.*katex|import.*tiptap` returning empty.
+- **propsSchema single authority** (ADR-0006 item #4): grep for
+  `z\.object\(.*expression` across `src/` returned empty —
+  schema only defined in core-definition.ts:4-9; ui-default + tests +
+  serialize/parse all reach it via `mathCore.propsSchema`.
+
+## Regression risk
+
+- **ADR-0008 D1 dead-dep**: every `dependencies` entry has TS-source
+  consumer:
+  - `@skb/block-foundation`: core-definition.ts:1, serialize.ts:1,
+    parse.ts:1, math.ui.ts:1, Math.tsx:1
+  - `@skb/design-tokens`: math-tokens.ts:1 (type-only `ColorTokenName`)
+  - `katex`: render-math.ts:1
+  - `zod`: core-definition.ts:2 + transitively via inferred schema
+- **File size limits** (CLAUDE.md hard rule §1): every file ≤ 65 lines,
+  total package src is 478 lines across 16 files. Well under 200-target
+  / 300-warn / 500-fail thresholds.
+- **Lockfile delta** scope: includes both block-math (D1) + editor-toolbar
+  (G1 in-flight) entries — flag for git-operator's explicit-file-list
+  stage protocol per memory `feedback_git_operator_explicit_stage.md`.
+
+## ADR-0006 8-point asymmetry audit
+
+1. **Field/attribute audit** — N/A. propsSchema has fixed 2 attrs
+   (`expression`, `display`), no later additions in this PR; both
+   attrs are exercised by serializeMath (line 41, both encoded as
+   string-form for round-trip stability) AND parseMath (line 25-42,
+   both decoded with display-shorthand-aware coercion).
+2. **Status code audit** — N/A. No HTTP layer.
+3. **Strictness audit** — PASS. propsSchema is `.strict()`
+   (core-definition.ts:9); single-level z.object so no nested
+   strictness pitfall.
+4. **Consumer schema audit** — PASS. `mathCore.propsSchema` is
+   referenced from ui-default (math.ui.ts:2 via mathCore.name only —
+   uiDefault.coreName, no schema duplication needed) + serialize.ts:35
+   `mathCore.propsSchema.parse(node.attrs)` + parse.ts:43
+   `mathCore.propsSchema.parse(rawProps)` + tests (core.test.ts:6/14/24
+   etc.; ui-default.test.ts:5). Zero inline z.object duplicates.
+5. **Algorithm replication audit** — PASS. KaTeX render call replicated
+   between Math.tsx (React/NodeView) and Math.astro (SSR); single
+   authority `render-math.ts` is the byte-equivalent factor; both
+   import it (Math.tsx:3, Math.astro:2). Drift detector =
+   ssr-render.test.ts 5-row corpus (inline / display / multiline /
+   error / inline-vs-display discriminator). Memory
+   `feedback_cross_package_consumer_pattern.md` "FOUC-style replicated
+   algorithms ship a regression test extracting the IIFE + comparing
+   byte-equivalent" applies in spirit — here the replicas import the
+   authority instead of inlining, and the corpus pins structural
+   invariants (`/class="katex"/` / `/class="katex-display"/` /
+   error-class presence) that any in-package option-divergence would
+   break.
+6. **Sister-doc audit** — PASS. block-math/CONTRACT.md sister to
+   block-callout/CONTRACT.md (4-entry public surface, similar
+   invariants ordering, identical "Wave 3 mdx-bridge 路由集成 (pending)" +
+   "Forward-compat consumers" + "Modifying this file" + "Related"
+   sections). block-foundation/CONTRACT.md + RFC.md updated coherently
+   (kind 4-way doc in both, same ownership map).
+7. **Exception-scope audit** — N/A for fresh package, no try/catch
+   replication. KaTeX `throwOnError: false` policy is consistently
+   declared in render-math.ts:23 + CONTRACT.md:62 + math.css:23-29
+   `.katex-error` selector contract.
+8. **Authority-document → generated audit** — PASS for D1's scope.
+   `pnpm install` regenerated `pnpm-lock.yaml`; the +148 lines lockfile
+   delta is in working tree (verified via `git diff --stat`). For the
+   eventual git commit, git-operator must `git add pnpm-lock.yaml`
+   explicitly per memory `feedback_git_operator_explicit_stage.md`
+   four-step protocol (reset HEAD → add explicit list → verify --cached
+   --stat → commit). No `package.json` authority text changes other
+   than block-math itself, so no downstream prompt regeneration needed.
+   `pnpm generate:configs` not triggered (no agent-contract.md edit in
+   this PR).
+
+## Closing comments
+
+WE-010 lesson honored: I read `BlockKind` at HEAD before evaluating B0
+(grep packages/block-foundation/src/registry.ts:4 returned 4-way union),
+not from R1's stale assumption.
+
+The package is the first `kind='render'` precedent and the second
+`block-*` package after callout. The sister-doc parity (CONTRACT.md
+ordering, hook-naming verb-as-prefix, design-tokens dep pattern,
+README-ish RFC referent) is strong enough that block-pdf (D2) and
+later viz blocks (E1/E2/E3) can hand-craft against this shape with
+confidence.
+
+Documentation drift (plan §1043 prop names + spec §160-162 children-
+bearing form) is non-blocking and belongs to Z1 (Wave 2 close ceremony)
+ADR-0009 erratum; flagged inline above.
+
+git-operator inheritance: block-math + block-foundation cross-package
+edits + tsconfig.json + pnpm-lock.yaml are all part of D1 commit;
+editor-toolbar tsconfig.json reference + lockfile sub-section belong
+to G1 (separate commit). Recommend git-operator either:
+  (a) sequence D1 commit first with full lockfile (which already
+      contains G1's editor-toolbar entry from working-tree pnpm install)
+      then G1 commit lands package.json + tsconfig.json edits with
+      idempotent lockfile re-run (no further lockfile delta), or
+  (b) explicit-file-list stage discipline strict to D1 paths only,
+      then surgical lockfile re-commit per G1 task.
+
+APPROVE — proceed to git-operator.

@@ -1,0 +1,325 @@
+# D1 pr-reviewer verdict (Claude pr-reviewer-d1, ADR-0007 D2 row 1)
+
+PR: Wave 2 Task D1 — packages/block-math/ (first hand-crafted render-block-eng package, KaTeX)
+Reviewer: pr-reviewer-d1 (Claude Opus 4.7 1M ctx)
+Predecessors:
+- code-reviewer (codex spark): VERDICT FAIL — cited (1) kind='component' vs claimed kind='render', (2) test run blocked by EROFS
+- pr-gate (codex 5.5): VERDICT FAIL — same cite as code-reviewer
+
+Local re-verification: pnpm --filter @skb/block-math {test,typecheck,lint,build} all green.
+- test: 2 files / 11 passed (matches expected 11/11)
+- typecheck/lint/build: all clean
+
+================================================================================
+VERDICT: REJECT — three real blockers (R2 correction below)
+================================================================================
+
+R1 of this review wrongly classified the kind='render' citation as a false
+positive. After team-lead pointed out my evidence was stale, re-verification
+showed the BlockKind union is 4-way (prose | component | render | viz), and
+block-math should be 'render'. Section 1 below has been rewritten to reflect
+this correction. Sections 2 and 3 (test files + sister-doc) remain as
+real blockers; they were independently identified.
+
+--------------------------------------------------------------------------------
+1. R2 CORRECTION — kind='render' IS the correct value (REAL DEFECT)
+--------------------------------------------------------------------------------
+
+Re-verification (sources read fresh at HEAD):
+
+a) packages/block-foundation/src/registry.ts:4 (CURRENT HEAD):
+       export type BlockKind = 'prose' | 'component' | 'render' | 'viz';
+   The union is 4-way, not binary. My R1 evidence ("kind: 'prose' |
+   'component'") was lifted from a stale code-review excerpt rather than
+   the live source.
+
+b) packages/block-foundation/RFC.md:50 (CURRENT HEAD):
+       "kind: 'prose' | 'component' | 'render' | 'viz' (4-way Wave 2 union;
+        Wave 1 was binary)"
+   Lines 51-56 explicitly assign 'render' to Track D render-block-eng
+   (block-math + block-pdf) and 'viz' to Track E viz-block-eng (block-jupyter
+   + block-nn-viz + block-agent-flow).
+
+c) RFC.md:233 error-table row updated to 4-way union too.
+
+d) Wave-2 plan §66-71 categorises Wave 2 blocks into 4 cluster types:
+   prose / simple component / render / viz. My R1 reading conflated "all
+   Wave 2 plan code samples use kind: 'component'" with "all Wave 2 blocks
+   must be 'component'" — but the §564 / §844 / §866 examples are all
+   block-callout (a genuine 'component' kind), not block-math. The plan
+   does NOT prescribe a kind value for block-math via code sample; the
+   cluster prose ("render block") + the foundation 4-way union together
+   imply kind: 'render'.
+
+Conclusion: codex code-reviewer + pr-gate were correct. mathCore.kind =
+'component' is a REAL DEFECT. The team-lead's brief was right; my R1
+overrule was wrong.
+
+Required fix:
+  packages/block-math/src/core/core-definition.ts:13
+       kind: 'component',                      → kind: 'render',
+  packages/block-math/CONTRACT.md:12 (sister-doc invariant section)
+       kind=`'component'`                      → kind=`'render'`
+  packages/block-math/src/__tests__/core.test.ts:43
+       expect(mathCore.kind).toBe('component') → toBe('render')
+
+Apology + lesson: I should have re-read registry.ts at HEAD before
+overruling codex. My R1 drew from a code-review excerpt rather than
+verifying live source. This is exactly the verification-rigor discipline
+that memory feedback_verification_fresh_state.md codifies — applied here it
+would have caught my error. Saving an updated memory entry on this lesson.
+
+--------------------------------------------------------------------------------
+2. REAL BLOCKER #1 — Missing ssr-render.test.ts / ui-default.test.tsx
+--------------------------------------------------------------------------------
+
+Wave-2 plan §1041 explicitly mandates three test files:
+    Create: packages/block-math/src/__tests__/{core,ui-default,ssr-render}.test.ts
+
+Filesystem reality (packages/block-math/src/__tests__/):
+    - core.test.ts                       (6 tests — propsSchema)
+    - registry-integration.test.ts       (5 tests — registry round-trip)
+    [MISSING] ui-default.test.tsx
+    [MISSING] ssr-render.test.ts
+
+Why this matters (ADR-0006 item #5 — algorithm replication audit):
+
+CONTRACT.md:51-52 claims:
+    "Math.tsx 与 Math.astro 共调同一函数，editor / SSR / NodeView byte-equivalent"
+
+Source reality:
+    - Math.tsx:13-19 wraps katex.renderToString in renderMath() with options
+      { displayMode, throwOnError: false, output: 'html', strict: 'ignore' }
+    - Math.astro:11-16 inlines katex.renderToString with the **same** option
+      object literal — but does NOT call renderMath. The wrapper function is
+      not shared; the option object is replicated.
+
+This is the canonical ADR-0006 #5 pattern: same algorithm + runtime constants
+replicated across two consumer files, no regression test enforcing byte-equivalence.
+If a future PR changes renderMath options (e.g. strict: 'warn', or trust mode
+configuration), Math.astro will silently drift. Wave-1 instance #6 (FOUC IIFE
+algorithm replication) is the exact precedent — orchestrator codified this as
+ADR-0006 item #5 specifically to prevent recurrence.
+
+The plan-mandated ssr-render.test.ts is the defensive regression test that
+makes byte-equivalence a CI invariant rather than a CONTRACT assertion. It is
+absent. The CONTRACT claim therefore has no enforcement.
+
+Required fix (one of):
+  (A) Add ssr-render.test.ts that renders the same {expression, display}
+      tuples through Math.tsx (renderToStaticMarkup) AND Math.astro container
+      (or directly through katex with the same options) and asserts the
+      KaTeX-emitted HTML is byte-equal. Plus a fixture corpus covering at
+      least: simple inline, display, multi-line, malformed (error path).
+  (B) Refactor Math.astro to import + call renderMath from Math.tsx (removing
+      the option-object replication entirely), making byte-equivalence a
+      single-authority guarantee at the source level rather than test level.
+
+  Option (B) is structurally stronger and tracks ADR-0006 item #5's preferred
+  resolution (eliminate replication where possible; test byte-equivalence
+  where unavoidable). Worth coordinating with the worker on whether
+  Astro frontmatter can call into a sibling .tsx export.
+
+  Either way, both files must be added to satisfy the plan §1041 AC.
+
+Also missing per plan §1041: ui-default.test.tsx — at minimum should assert
+that mathUiDefault.uiId === 'default' (already covered by registry-
+integration.test.ts:39 as a side effect, but the plan called for an
+independent file). This is lower-severity but still a plan-AC miss.
+
+--------------------------------------------------------------------------------
+3. REAL BLOCKER #2 — Sister-doc asymmetry (ADR-0006 item #6)
+--------------------------------------------------------------------------------
+
+CONTRACT sister-doc check (block-callout vs block-math):
+
+a) ENTRY COUNT
+   - block-callout/CONTRACT.md:8: "四个 entry"
+       package.json exports = '.', './core', './ui-default', './ui-default/callout.css'
+   - block-math/CONTRACT.md:8: "三个 entry"
+       package.json exports = '.', './core', './ui-default'
+       (math.css exists at src/ui-default/math.css but is NOT in the exports map)
+
+b) CONSUMER CSS-IMPORT CONTRACT
+   - block-callout/CONTRACT.md:26 explicitly tells consumers:
+       "消费方 (apps/site / editor-shell) 必须在启动时 import 一次：
+        import '@skb/block-callout/ui-default/callout.css';"
+   - block-math/CONTRACT.md only says "math.css（design-token-bound）" at
+     line 20. It does not document any consumer-side import path or
+     obligation. Apps/site SSR + editor-shell will not know they MUST import
+     '@skb/block-math/ui-default/math.css' to get the .katex-error styling
+     that CONTRACT.md:60 promises.
+
+c) DESIGN-TOKENS DEPENDENCY
+   - block-callout/package.json:19 declares "@skb/design-tokens": "workspace:*"
+     because callout.css uses --color-* tokens.
+   - block-math/package.json declares NO @skb/design-tokens dependency, yet
+     math.css uses var(--color-fg), var(--color-error), var(--space-*),
+     var(--radius-sm), var(--font-mono) — five token families.
+
+   This is a dead-dep INVERSE: the consumer-CSS depends on tokens, but the
+   package doesn't declare the dependency. ADR-0008 D1 Option-A grep would
+   not catch this (no JS-import to grep), but the structural promise is the
+   same — the package consumes a workspace package and must declare it.
+   Without the dep, apps/site does not get a transitive guarantee that
+   design-tokens is in the dependency graph; the CSS variables may resolve
+   to "undefined" (hot-reload churn risk + colour fallback).
+
+   The block-callout sister sets the precedent for this exact issue and
+   handles it correctly. block-math diverges silently.
+
+This trio of asymmetries is exactly ADR-0006 item #6 (one CONTRACT.md is
+updated; sister CONTRACT.md drifts). Wave-1 instance #5 had the same shape
+(agent-tools CONTRACT lagging behind editor-commands). render-block-eng
+inherited the callout template structure but did not propagate the post-C1+C2
+template refinements (CSS subpath export + design-tokens dep declaration +
+consumer-import contract).
+
+Required fix:
+  i.   Add "./ui-default/math.css": "./src/ui-default/math.css" to
+       packages/block-math/package.json#exports.
+  ii.  Add "@skb/design-tokens": "workspace:*" to packages/block-math/package.json#dependencies.
+  iii. Update CONTRACT.md:8 from "三个 entry" to "四个 entry" and add the
+       fourth bullet describing math.css.
+  iv.  Add consumer-import obligation to CONTRACT.md (mirror callout
+       CONTRACT:26): "消费方必须 import '@skb/block-math/ui-default/math.css'
+       一次" — including apps/site + editor-shell.
+  v.   pnpm install + commit refreshed pnpm-lock.yaml (lockfile-as-generated
+       artifact per ADR-0006 item #8 sub-form C; lesson from
+       feedback_git_operator_explicit_stage memory).
+
+--------------------------------------------------------------------------------
+4. CODEX'S "test EROFS" CITATION — recoverable in this environment
+--------------------------------------------------------------------------------
+
+Codex code-reviewer reported its sandbox could not write to .vite-temp.
+Re-running locally outside the codex sandbox:
+    $ pnpm --filter @skb/block-math test
+    Test Files  2 passed (2)
+         Tests  11 passed (11)
+
+11 tests PASS as the brief expected. This codex blocker is environmental,
+not a real defect — but it does mean codex did not actually verify the
+test count. Worker self-attestation + this orchestrator-side re-run is the
+authoritative signal.
+
+================================================================================
+ADR-0006 8-POINT ASYMMETRY-AUDIT (independent verification)
+================================================================================
+
+Item #1 — Field/attribute audit (after adding fields, audit comparator/serialize):
+  PASS. propsSchema has 2 fields (expression, display). serializeMath:25-33
+  handles both. parseMath:18-25 handles both with display string→bool coerce.
+  No comparator surface at this layer (no marksEqual analogue). Foundation
+  registry doesn't compare props. Both serialize+parse re-call propsSchema.parse
+  for self-validation.
+
+Item #2 — Status code audit:
+  N/A. No HTTP layer in block-math.
+
+Item #3 — Strictness audit (after .strict() at one level, audit nested objects):
+  PASS. propsSchema is single-level (expression, display), .strict() applied
+  (core-definition.ts:9). No nested ZodObject anywhere. Tests assert .strict
+  rejection of unknown keys (core.test.ts:35-39).
+
+Item #4 — Consumer schema audit (single-authority schema, no inline duplicates):
+  PASS. mathCore.propsSchema is the single authority. Consumer files:
+    - parse.ts:26 imports + calls propsSchema.parse — no inline z.object
+    - serialize.ts:26 imports + calls propsSchema.parse — no inline z.object
+    - math.ui.ts uses BlockViewProps<typeof mathCore.propsSchema> — type-only
+      reference, no schema redefinition
+    - Math.tsx uses BlockViewProps<typeof mathCore.propsSchema> — same
+    - Math.astro inlines its own Props interface (expression: string,
+      display?: boolean). This is a TYPE-LEVEL replication, not a Zod-schema
+      replication, but it is structurally equivalent and at risk of drift if
+      propsSchema changes (e.g. add 'macros' attribute → Math.astro's Props
+      interface won't gain it; SSR can pass through wrong-typed props
+      without validation). MINOR — flag for follow-up. Not a blocker for
+      this PR but worth tracking; acceptable to defer if a fixture-driven
+      AstroProps inferred from propsSchema would force importing zod into
+      Astro frontmatter (consider Wave 3).
+
+Item #5 — Algorithm + runtime-constants replication:
+  FAIL — see Blocker #1 above. Math.tsx renderMath options vs Math.astro
+  inline options. Authority should be one location; byte-equivalence test
+  required if replication unavoidable.
+
+Item #6 — Sister CONTRACT.md sync:
+  FAIL — see Blocker #2 above. Three drifts (entry count, CSS subpath
+  export, design-tokens dep + consumer-import obligation).
+
+Item #7 — try/catch scope (narrow vs wide on happy paths):
+  N/A. KaTeX's throwOnError: false handles internal errors itself; no
+  worker-authored try/catch surfaces. parseMath:14 throws on mdxComponent
+  mismatch (narrow throw, no scope difference vs serialize). PASS in spirit.
+
+Item #8 — Authority-doc generated/consumed surface sync:
+  PASS. agent-contract / ADRs / generated agents not touched by this PR.
+  Lockfile entry present (pnpm-lock.yaml:196 confirmed). Root tsconfig ref
+  present (tsconfig.json:13). package.json deps match imports (katex
+  declared, used in Math.tsx + Math.astro). BUT — see item #6: missing
+  @skb/design-tokens dep is structurally an item #8 lockfile-gen-consistency
+  miss too (CSS-side consumption of tokens without the workspace dep
+  declared); the cleaner classification is #6, but listed here for
+  completeness.
+
+8-point summary verdicts:
+  items 1: PASS, 2: N/A, 3: PASS, 4: PASS (with minor follow-up flag),
+  5: FAIL, 6: FAIL, 7: N/A, 8: PASS
+
+8th-class hunt (beyond the 8 items): none identified beyond the in-scope
+findings. The renderMath wrapper / Astro inline duplication is item #5
+proper, not a new class.
+
+================================================================================
+SUMMARY OF REQUIRED CHANGES (re-spawn render-block-eng with this list)
+================================================================================
+
+Must-fix (blockers):
+  [B0] (R2 added) Set mathCore.kind = 'render' (was 'component').
+       - core-definition.ts:13: `kind: 'render',`
+       - CONTRACT.md:12 sister-doc invariant section: kind value
+       - core.test.ts:43: `expect(mathCore.kind).toBe('render')`
+       - registry-integration tests need no change (don't assert kind)
+  [B1] Extract renderMath() into shared `src/ui-default/render-math.ts`;
+       both Math.tsx and Math.astro import. PLUS add ssr-render.test.ts
+       asserting byte-equal output for a fixture corpus (≥4 cases:
+       inline, display, multiline, malformed). The shared-module path
+       eliminates the option-object replication; the test then guards
+       the wrapper's invariants (KaTeX-version-bump regression net).
+  [B2] Add "./ui-default/math.css" to package.json#exports.
+  [B3] Add "@skb/design-tokens": "workspace:*" to package.json#dependencies.
+  [B4] Update CONTRACT.md:8 "三个 entry" → "四个 entry" + bullet for math.css.
+  [B5] Add consumer-import obligation block to CONTRACT.md (mirror callout
+       CONTRACT:26 wording).
+  [B6] pnpm install + stage regenerated pnpm-lock.yaml in same commit
+       (ADR-0006 item #8 sub-form C).
+  [B7] Add ui-default.test.tsx per plan §1041 (minimum: assert
+       mathUiDefault.uiId === 'default' + EditorView/RenderView identity).
+
+Should-fix (deferrable but worth flagging):
+  [S1] Math.astro Props interface inlines field shape — track as Wave 3
+       follow-up if fixed via type generation; or accept as documented
+       type-level twin (item #4 minor flag).
+
+R1-claimed-overruled (RETRACTED in R2):
+  [O1] (RETRACTED) Codex's "kind='render' required" cite is correct, not
+       a false positive. Foundation BlockKind union is 4-way at HEAD;
+       block-math is in Track D render-cluster per RFC.md:53-54. R1's
+       "binary union" evidence was stale. Reclassified as Blocker [B0].
+
+================================================================================
+FINAL VERDICT
+================================================================================
+
+REJECT — re-spawn render-block-eng with the [B0]..[B7] block.
+
+Once those land + a fresh review pass (R3):
+  - re-run code-reviewer; both [B0] kind and [B1]..[B7] should be clean
+  - re-run pr-gate (ADR-0007 D2 row 1; first hand-crafted render-block)
+  - if both clean, advance to git-operator
+  - git-operator MUST stage explicit file list including pnpm-lock.yaml
+    (per memory feedback_git_operator_explicit_stage)
+
+Reviewer: pr-reviewer-d1 (Claude)
+Date: 2026-04-30 (R1) + R2 correction same day

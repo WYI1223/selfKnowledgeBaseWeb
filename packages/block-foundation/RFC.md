@@ -47,9 +47,16 @@ Notes that map directly to `BlockCoreDefinition` fields in
 
 - `name`: kebab-case, globally unique. Used as the registry key — duplicate
   registration throws `Duplicate core name: <name>` at runtime.
-- `kind`: `'prose' | 'component'`. Wave 2 blocks are all `'component'`;
-  `'prose'` is reserved for behaviors covered by `proseExtensions` and is
-  closed to new entries (CONTRACT invariant: "Prose blocks 零自写代码").
+- `kind`: `'prose' | 'component' | 'render' | 'viz'` (4-way Wave 2 union; Wave 1
+  was binary `'prose' | 'component'` — additive expansion in Wave 2). Track C
+  simple-block-eng owns `'component'` (block-callout / block-code / block-image —
+  composable JSX with rich children); Track D render-block-eng owns `'render'`
+  (block-math / block-pdf — visual rendering of a pure declarative input via
+  external runtime authority like KaTeX or react-pdf); Track E viz-block-eng /
+  kernel consumer owns `'viz'` (block-jupyter / block-nn-viz / block-agent-flow —
+  interactive visualization with heavy runtime libs). `'prose'` is reserved for
+  behaviors covered by `proseExtensions` and is closed to new entries (CONTRACT
+  invariant: "Prose blocks 零自写代码").
 - `propsSchema`: must be a `z.object(...).strict()`; every nested
   `ZodObject` must independently call `.strict()`. See
   [`CONTRACT.md` § Invariants — Schema strictness](./CONTRACT.md#invariants)
@@ -223,7 +230,7 @@ should write tests asserting each one fires for their block where applicable.
 | `name` missing                        | `Property 'name' is missing in type ...`                           |
 | `name` not a `string`                 | `Type '<X>' is not assignable to type 'string'`                    |
 | `kind` missing                        | `Property 'kind' is missing in type ...`                           |
-| `kind` not `'prose' \| 'component'`   | `Type '"<X>"' is not assignable to type 'BlockKind'`               |
+| `kind` not `'prose' \| 'component' \| 'render' \| 'viz'` | `Type '"<X>"' is not assignable to type 'BlockKind'`    |
 | `propsSchema` missing                 | `Property 'propsSchema' is missing in type ...`                    |
 | `propsSchema` not a Zod schema        | `Type '<X>' is not assignable to type 'ZodTypeAny'`                |
 | `mdxComponent` missing                | `Property 'mdxComponent' is missing in type ...`                   |

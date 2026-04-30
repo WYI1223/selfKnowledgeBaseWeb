@@ -1,0 +1,1551 @@
+Reading prompt from stdin...
+OpenAI Codex v0.125.0 (research preview)
+--------
+workdir: /home/weiyi/selfKnowledgeBaseWeb
+model: gpt-5.3-codex-spark
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: xhigh
+reasoning summaries: none
+session id: 019de010-d4d6-77d3-a5e5-bb656666ebee
+--------
+user
+You are codex 5.3-spark code-reviewer. Re-review D1 R2 bundle for Wave 2 Task #16 (block-math).
+
+R1 verdict (FAIL): docs/audits/codex-runs/2026-04-30-task-D1-code-review.txt — [High] mathCore.kind = 'component' should be 'render'.
+
+R2 fix scope (expanded — touches 2 packages):
+1. packages/block-foundation/src/registry.ts:4 — BlockKind union extended `'prose' | 'component'` → `'prose' | 'component' | 'render' | 'viz'` (additive, Wave 1 invariant preserved).
+2. packages/block-foundation/CONTRACT.md — documents the 4-value union + Wave 2 extension rationale.
+3. packages/block-math/src/core/core-definition.ts — mathCore.kind: 'render' (was 'component').
+4. packages/block-math/CONTRACT.md — documents kind='render'.
+5. packages/block-math/src/__tests__/core.test.ts — test assertion updated to expect 'render'.
+
+Verify:
+1. BlockKind union includes 'prose', 'component', 'render', 'viz' (no removals).
+2. mathCore.kind === 'render' across all 3 sites (definition + CONTRACT + test).
+3. block-foundation/CONTRACT.md sister-doc-aligned (Wave 1 invariant preservation).
+4. pnpm --filter @skb/block-foundation test → 9/9 PASS (Wave 1 tests still PASS — additive only).
+5. pnpm --filter @skb/block-math test → 11/11 PASS.
+6. pnpm typecheck (full repo).
+7. ADR-0006 8-point asymmetry audit re-application (especially #6 sister-doc).
+
+Verdict: PASS or FAIL.
+
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the vendored bubblewrap in the meantime.
+codex
+Understood. I’ll validate the five touched files for the requested invariants, run the three requested package/test commands plus full typecheck, and then perform the ADR-0006 sister-doc asymmetry check before issuing a PASS/FAIL verdict with exact evidence.
+exec
+/bin/bash -lc "sed -n '1,260p' /home/weiyi/selfKnowledgeBaseWeb/packages/block-math/src/core/core-definition.ts" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1,260p' /home/weiyi/selfKnowledgeBaseWeb/packages/block-math/CONTRACT.md" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1,260p' /home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation/CONTRACT.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+import { defineCore, type BlockCoreDefinition } from '@skb/block-foundation';
+import { z } from 'zod';
+
+const propsSchema = z
+  .object({
+    expression: z.string().min(1),
+    display: z.boolean().default(false),
+  })
+  .strict();
+
+export const mathCore: BlockCoreDefinition<typeof propsSchema> = defineCore({
+  name: 'math',
+  kind: 'render',
+  propsSchema,
+  mdxComponent: 'Math',
+});
+
+ succeeded in 0ms:
+# @skb/block-math Contract
+
+KaTeX-backed math block (Wave 2 Track D1）。第一个 `render-block-eng` 包；
+hand-craft（不走 codex-block-generator），block-pdf (D2) 同 owner 独立 hand-craft。
+
+## Public surface
+
+三个 entry：
+
+- `.` (root barrel) — re-export `./core`
+- `./core` — headless 层
+  - `mathCore: BlockCoreDefinition<typeof propsSchema>` — name=`'math'` / kind=`'render'` / mdxComponent=`'Math'`
+  - `serializeMath(node) → mdxJsxFlowElement` — Tiptap → mdast (Wave 3 mdx-bridge routing 时启用)
+  - `parseMath(mdast) → TiptapNode` — mdast → Tiptap (同上)
+  - 类型: `MathTiptapNode` / `MathMdastJsxElement`
+- `./ui-default` — presentational 层
+  - `mathUiDefault: BlockUIDefinition<typeof mathCore.propsSchema>` — uiId=`'default'`
+  - `MathEditorView` / `MathRenderView` — `ComponentType<BlockViewProps<...>>`
+  - `renderMath(expression, display) → string` — KaTeX HTML 字符串生成器（authority for editor + renderer）
+  - sibling: `Math.astro`（apps/site SSR 直接 import）+ `math.css`（design-token-bound）
+
+`propsSchema` 形状（见 `src/core/core-definition.ts`）：
+
+```typescript
+z.object({
+  expression: z.string().min(1),
+  display: z.boolean().default(false),
+}).strict()
+```
+
+## Invariants
+
+继承自 [block-foundation/CONTRACT.md](../block-foundation/CONTRACT.md#invariants)：
+`Defensive copy` / `Schema strictness` / `Default UI lookup` / `Serialize / parse hook ownership`
+（即 `BlockRegistry.listCores()` / `listUIs(coreName)` defensive-copy 行为、
+`propsSchema` 必须 `.strict()`、同 `coreName` 多 UI 时 `getUI(coreName)` 取首注册 `uiId`、
+serialize/parse 由本包 `core/` own 不在 foundation 注册）。
+
+block-math 特定不变量：
+
+- **`coreName='math'` (kebab-case)**: `mathCore.name` 字面值固定，与 `BlockRegistry.registerCore`
+  注册键一致；与 `block-callout`/`block-code`/... 同 kebab-case 约定
+- **`mdxComponent='Math'` (PascalCase)**: 与 `<Math expression="..." display>` JSX 标签一致；
+  mdx-bridge 通过 `mdxJsxFlowElement.name` 字符串路由（[block-foundation RFC §1](../block-foundation/RFC.md#1-core-side)）
+- **Hook 命名 verb-as-prefix**: `serializeMath` / `parseMath` / `renderMath`
+  ([RFC §5](../block-foundation/RFC.md#5-serialize--parse-hook-ownership-scope-clarification))
+- **`uiId='default'` reserved**: 本包 inherit foundation 的 `Default UI lookup`
+  不变量（首注册即 default）
+- **KaTeX 是 runtime authority**: `renderMath` 仅 wrap `katex.renderToString`；
+  不在本包内 re-implement LaTeX→HTML（ADR-0006 item #5 algorithm replication —
+  authority = `katex` npm 包）。Math.tsx 与 Math.astro 共调同一函数，editor /
+  SSR / NodeView byte-equivalent
+- **Headless 自给**: `core/` 不 import React / Tiptap / KaTeX；仅依赖
+  `@skb/block-foundation` + `zod`（ADR-0003 D1）。`ui-default/` 才 import React + katex
+- **propsSchema single authority**: 仅在 `src/core/core-definition.ts` 定义；
+  ui-default / serialize / parse / 测试均 import `mathCore.propsSchema`，consumer 不得 inline 重复（ADR-0006 item #4）
+- **Self-validating serialize/parse**: `serializeMath` / `parseMath` 各自调
+  `propsSchema.parse`（parse 侧 display 先字符串 coerce → boolean）；契约偏离在 mdx-bridge 路由前 throw
+- **错误显式（不静默）**: KaTeX 配 `throwOnError: false` + `strict: 'ignore'`，
+  无效 LaTeX 渲染为 `.katex-error` 红色块（`math.css` 绑 `--color-error` token），不许 silent fallback
+
+## Wave 3 mdx-bridge 路由集成（pending）
+
+当前 `serializeMath` / `parseMath` 是 stub —— 暴露稳定签名，未被 mdx-bridge 消费。
+Wave 3 mdx-bridge routing table PR 会：
+
+1. 在 `mdx-bridge/parse.ts` 的 `mdastBlockToTiptap` 拦截 `mdxJsxFlowElement{name:'Math'}` →
+   `parseMath(node)` → 把返回 `MathTiptapNode` 嵌入 doc.content
+2. 在 `mdx-bridge/serialize.ts` 的 `tiptapToMdastBlock` 拦截 `type='math'` →
+   `serializeMath(node)` → 返回 `mdxJsxFlowElement` 进 mdast
+3. math block 无 children，递归不展开
+
+## Forward-compat consumers
+
+- **Wave 2 Track Z0 sample-blocks**: `<Math expression="\\int_0^1 x^2 dx" display />` 实例
+- **apps/site SSR**: 在 mdx page 直接 import `@skb/block-math/ui-default/Math.astro`；
+  consumer 同 PR 加 `@skb/block-math` + `@skb/design-tokens` deps、import `katex/dist/katex.css`
+- **Wave 3 mdx-bridge integration**: 见上节
+- **Tiptap NodeView (editor-shell)**: 用 `MathEditorView`；NodeView wrapper 调
+  `renderMath` 直接拿 HTML 字符串（无需 useEffect mount）
+
+## Modifying this file
+
+`mathCore` 公共字段 (`name` / `kind` / `propsSchema` / `mdxComponent`) 与
+`mathUiDefault` 公共字段 (`coreName` / `uiId` / `EditorView` / `RenderView`) 的字段或值
+变更需 ADR（与 block-foundation/CONTRACT.md 同 freeze 级别 —— 改 propsSchema 形状 /
+改 mdxComponent / 改 kind 都触发 mdx-bridge 路由 + sample-blocks 同步更新）。
+
+`serializeMath` / `parseMath` 签名变更需配 mdx-bridge routing PR 同步（强耦合）。
+`renderMath` 签名变更需同步 Math.astro + Math.tsx 双侧调用点（authority 在 ui-default/Math.tsx）。
+
+## Related
+
+- [@skb/block-foundation CONTRACT](../block-foundation/CONTRACT.md) — `BlockCoreDefinition` / `BlockUIDefinition` 接口权威
+- [@skb/block-foundation RFC](../block-foundation/RFC.md) — registration walkthrough
+- [@skb/block-callout CONTRACT](../block-callout/CONTRACT.md) — sister-doc (Wave 2 simple-block template)
+- [ADR-0003 headless / presentational 分层](../../docs/decisions/ADR-0003-headless-presentational-split.md)
+- [ADR-0006 asymmetry audit checklist](../../docs/decisions/ADR-0006-asymmetry-audit-checklist.md) item #3 + #4 + #5
+- [ADR-0008 D1 dead-dep + D2 interface freeze](../../docs/decisions/ADR-0008-wave-2-entry-policies.md)
+- [Wave 2 plan §Task D1](../../docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md)
+
+ succeeded in 0ms:
+# @skb/block-foundation Contract
+
+## Public surface
+
+- `BlockRegistry` class — 双层注册表（ADR-0003）
+  - `registerCore(core)` / `registerUI(ui)`
+  - `getCore(name)` / `listCores()`
+  - `getUI(coreName, uiId?)` / `listUIs(coreName)`
+- `defineCore(def)` / `defineUI(def)` factory helpers
+- `BlockCoreDefinition<T>` / `BlockUIDefinition<T>` / `BlockViewProps<T>` interfaces
+- `BlockKind = 'prose' | 'component' | 'render' | 'viz'` （四分类，Wave 2 由 2→4 additive 扩展）
+  - `'prose'` — Wave 1 default for headless prose blocks (无 MDX 组件，由 `proseExtensions` 提供 markdown 行为)
+  - `'component'` — Wave 1 for MDX-component blocks（block-callout / block-code / block-image — Track C simple-block-eng）
+  - `'render'` — **Wave 2 NEW** for hand-crafted render blocks consuming external runtime authority（block-math KaTeX / block-pdf react-pdf — Track D render-block-eng）
+  - `'viz'` — **Wave 2 NEW** for visualization blocks consuming heavy runtime libs（block-jupyter Pyodide / block-nn-viz TensorFlow.js / block-agent-flow React Flow — Track E viz-block-eng / kernel consumer）
+- `proseExtensions` — Tiptap 扩展数组，提供全部 markdown 行为
+
+## Invariants
+
+- `BlockKind` 四分不可破坏：新 block 必须明确归属 `prose` / `component` / `render` / `viz` 之一。Wave 1 仅 `prose` + `component` 二分；Wave 2 additive 扩展加 `render` + `viz`（由 `render-block-eng` 与 `viz-block-eng` 工种 own，与 agent-contract.md Tier 1 worker 分工一致）。kind 定义不可被进一步窄化（不允许把 `render` 重新归并入 `component`），扩展再加 kind 需 ADR
+- Prose blocks 零自写代码——任何看似需要新 prose block 的场景应通过组合 `proseExtensions` 内现有扩展或追加单条 Tiptap 扩展实现，不再加 prose-kind block
+- `BlockCoreDefinition.mdxComponent` 必须 PascalCase，且与 MDX 文件 import 中使用的名字一致
+- Core 与 UI 物理分离（ADR-0003）：core 不允许 import 任何 React/Tiptap 视觉 API；UI 必须 import core（不允许 inline 重复 schema）
+- 同 core 多 UI 时 `getUI(name)` 取首个注册：约定首个 uiId 为 `'default'`；adopter 在 register 顺序上需谨慎
+- **Defensive copy**：`listCores()` 与 `listUIs(coreName)` 每次返回 fresh array。Caller 修改返回值不影响 registry 内部 state。Implementation: `src/registry.ts:84` (`listCores`) + `src/registry.ts:96` (`listUIs`)；regression: `src/__tests__/registry.test.ts` "listCores returns a defensive copy" + "listUIs returns a defensive copy"
+- **Idempotent register**：`registerCore` 同 `name` 第二次调用 throws `Duplicate core name: <name>`；`registerUI` 同 `(coreName, uiId)` 第二次 throws `Duplicate UI registration: core=<coreName> uiId=<uiId>`。避免 silent override；实现见 `src/registry.ts:60-63` + `src/registry.ts:71-75`
+- **Schema strictness**：每个 `BlockCoreDefinition.propsSchema` 必须是 `z.object(...).strict()`；嵌套 `ZodObject` 同样必须 `.strict()`（[ADR-0006](../../docs/decisions/ADR-0006-asymmetry-audit-checklist.md) item #3 trip-hazard：`.strict()` 不传播）。当前类型仅约束到 `ZodTypeAny`（type-narrow 到 `ZodObject` 待 Wave 3）；Wave 2 行为约定 + reviewer + RFC.md §1 显式提醒。未 `.strict()` 不会 throw，但 `propsSchema.parse(input)` 会 silently strip unknown keys，引发 contract drift
+- **Serialize / parse hook ownership**：MDX serialize/parse 由各 `block-*` 包的 `core/` own（ADR-0003 D1+D2），不在 `block-foundation` 注册。`block-foundation` 仅 own `BlockCoreDefinition` 形状（含 `mdxComponent` 字符串）；`mdx-bridge` 通过 `mdxJsxFlowElement.name` 字符串路由到对应 block 的 export（命名约定 verb-as-prefix：`serialize<BlockName>` / `parse<BlockName>`，与 mdx-bridge 现有 `mdxToTiptap` / `tiptapToMdx` 同 style）。详见 RFC.md §"5. Serialize / parse hook ownership"
+
+## Forward-compat consumers (Wave 2+)
+
+Wave 2 中段当 `BlockRegistry` 开始用 `@skb/content-types` 的 schema 验证
+注册的 block props（如跨 block 共享的 frontmatter / metadata 形状），届时
+`@skb/content-types` 将被同 PR 加入 `package.json#dependencies` +
+`tsconfig.json#references`，并出现源码 `import { ... } from '@skb/content-types'`。
+
+当前 Wave 1 close 状态：源码无 content-types import，按
+[ADR-0008](../../docs/decisions/ADR-0008-wave-2-entry-policies.md) D1
+（dead-dep policy = tighten），dep 与 ref 均未声明；forward-compat 意图
+仅在本 prose 段表达，不在 package.json / tsconfig 占位。
+
+## How to register a new `block-*` package
+
+step-by-step walkthrough (core / ui-default / 测试样板 / 错误场景 / serialize-parse 归属)
+for the first real consumer 在 [RFC.md](./RFC.md) — 第一个 `block-*` PR
+(Task C1 / C2) 必须 reference 此 RFC；后续 `block-*` PR 沿用相同模式。
+RFC 是 consumer-facing 教程，CONTRACT.md 是 public API 形状 + 关键不变量
+的权威；二者补充而非重叠（[ADR-0008 D2](../../docs/decisions/ADR-0008-wave-2-entry-policies.md)）。
+
+## Modifying this file
+
+公共表面（`BlockCoreDefinition` / `BlockUIDefinition` / `BlockRegistry` / `BlockKind` / `BlockViewProps` / `defineCore` / `defineUI` / `proseExtensions`）的任何字段或方法增删改一律需 ADR — **包括添加 optional 字段、改 `proseExtensions` 数组（增删 Tiptap 扩展、顺序变更、`as const` shape 变化）**。spec §2.3 把 block-foundation 列为接口包，规则"改动需 ADR；全员同步"不区分 optional vs required。
+
+原因：optional 字段会传播到 mdx-bridge serialization + 8 个 Wave 2 block 的 core+ui 实现 + apps/site frontmatter schema；`proseExtensions` 改动直接影响 mdx-bridge round-trip fixtures + editor-shell parsing 行为；无 ADR 协调会引发漂移。
+
+## Related
+
+- 设计规格 §1.5 / §2.5（`../../docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md`）
+- ADR-0003 headless / presentational 分层（`../../docs/decisions/ADR-0003-headless-presentational-split.md`）
+- content-types 契约（`../content-types/CONTRACT.md`）
+- mdx-bridge 契约（`../mdx-bridge/CONTRACT.md`）
+- design-tokens 契约（`../design-tokens/CONTRACT.md`）
+
+exec
+/bin/bash -lc "sed -n '1,220p' /home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation/src/registry.ts" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1,260p' /home/weiyi/selfKnowledgeBaseWeb/packages/block-math/src/__tests__/core.test.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+import { describe, it, expect } from 'vitest';
+import { mathCore } from '../core/core-definition';
+
+describe('mathCore.propsSchema', () => {
+  it('accepts valid expression with display=true', () => {
+    expect(mathCore.propsSchema.parse({ expression: 'a^2 + b^2', display: true })).toEqual({
+      expression: 'a^2 + b^2',
+      display: true,
+    });
+  });
+
+  it('accepts valid expression with display=false (and default)', () => {
+    expect(mathCore.propsSchema.parse({ expression: 'x', display: false })).toEqual({
+      expression: 'x',
+      display: false,
+    });
+    expect(mathCore.propsSchema.parse({ expression: 'x' })).toEqual({
+      expression: 'x',
+      display: false,
+    });
+  });
+
+  it('rejects empty expression (z.string().min(1))', () => {
+    expect(() => mathCore.propsSchema.parse({ expression: '', display: false })).toThrow(
+      /too_small|String must contain at least|Invalid input/,
+    );
+  });
+
+  it('rejects non-string expression', () => {
+    expect(() =>
+      mathCore.propsSchema.parse({ expression: 42, display: false }),
+    ).toThrow(/invalid_type|Expected string/);
+  });
+
+  it('rejects unknown keys (.strict)', () => {
+    expect(() =>
+      mathCore.propsSchema.parse({ expression: 'x', display: false, extra: 'nope' }),
+    ).toThrow(/unrecognized_keys/);
+  });
+
+  it('exports correct shape (BlockCoreDefinition contract)', () => {
+    expect(mathCore.name).toBe('math');
+    expect(mathCore.kind).toBe('render');
+    expect(mathCore.mdxComponent).toBe('Math');
+  });
+});
+
+ succeeded in 0ms:
+import type { ZodTypeAny, infer as ZodInfer } from 'zod';
+import type { ComponentType } from 'react';
+
+export type BlockKind = 'prose' | 'component' | 'render' | 'viz';
+
+/**
+ * BlockCore：headless 层 —— 无 React 依赖，纯逻辑（props schema + MDX 序列化在
+ * mdx-bridge 处理）。Core 可被 Adopter 复用并配自定义 UI。
+ */
+export interface BlockCoreDefinition<TSchema extends ZodTypeAny = ZodTypeAny> {
+  /** kebab-case identifier，全局唯一 */
+  readonly name: string;
+  readonly kind: BlockKind;
+  readonly propsSchema: TSchema;
+  /** MDX 中实际使用的 PascalCase 组件名，例如 "Callout" / "JupyterBlock" */
+  readonly mdxComponent: string;
+}
+
+export interface BlockViewProps<TSchema extends ZodTypeAny> {
+  readonly props: ZodInfer<TSchema>;
+  readonly content?: string;
+  /** Wave 2 起追加 runtime context（kernel session / theme / etc.） */
+}
+
+/**
+ * BlockUI：presentational 层 —— React 组件，绑定到已注册的 core。
+ * 同一 core 可挂多个 UI（uiId 区分），Adopter 可写自己的 UI 替代 ui-default。
+ */
+export interface BlockUIDefinition<TSchema extends ZodTypeAny = ZodTypeAny> {
+  /** 必须指向已 registerCore 的 core */
+  readonly coreName: string;
+  /** UI 实现 id：'default' / 'minimal' / 用户自定义 */
+  readonly uiId: string;
+  readonly EditorView: ComponentType<BlockViewProps<TSchema>>;
+  readonly RenderView: ComponentType<BlockViewProps<TSchema>>;
+}
+
+export function defineCore<T extends ZodTypeAny>(
+  def: BlockCoreDefinition<T>,
+): BlockCoreDefinition<T> {
+  return def;
+}
+
+export function defineUI<T extends ZodTypeAny>(
+  def: BlockUIDefinition<T>,
+): BlockUIDefinition<T> {
+  return def;
+}
+
+/**
+ * BlockRegistry：双层注册表（ADR-0003）。
+ * registerCore：挂业务定义；registerUI：挂视觉实现。
+ * 同 core 多 UI 场景：getUI(name) 不带 uiId 时取首个注册的（约定为 'default'）。
+ */
+export class BlockRegistry {
+  readonly #cores = new Map<string, BlockCoreDefinition>();
+  readonly #uis = new Map<string, BlockUIDefinition[]>();
+
+  registerCore(core: BlockCoreDefinition): void {
+    if (this.#cores.has(core.name)) {
+      throw new Error(`Duplicate core name: ${core.name}`);
+    }
+    this.#cores.set(core.name, core);
+  }
+
+  registerUI(ui: BlockUIDefinition): void {
+    if (!this.#cores.has(ui.coreName)) {
+      throw new Error(`Unknown core for UI registration: ${ui.coreName}`);
+    }
+    const existing = this.#uis.get(ui.coreName) ?? [];
+    if (existing.some((u) => u.uiId === ui.uiId)) {
+      throw new Error(
+        `Duplicate UI registration: core=${ui.coreName} uiId=${ui.uiId}`,
+      );
+    }
+    existing.push(ui);
+    this.#uis.set(ui.coreName, existing);
+  }
+
+  getCore(name: string): BlockCoreDefinition | undefined {
+    return this.#cores.get(name);
+  }
+
+  listCores(): readonly BlockCoreDefinition[] {
+    return [...this.#cores.values()];
+  }
+
+  /** 不传 uiId 时返回首个（约定为 'default'）；传了精确匹配 */
+  getUI(coreName: string, uiId?: string): BlockUIDefinition | undefined {
+    const list = this.#uis.get(coreName);
+    if (!list || list.length === 0) return undefined;
+    if (uiId === undefined) return list[0];
+    return list.find((u) => u.uiId === uiId);
+  }
+
+  listUIs(coreName: string): readonly BlockUIDefinition[] {
+    return [...(this.#uis.get(coreName) ?? [])];
+  }
+}
+
+codex
+I’ve pulled the updated files; next I’m checking for repository-wide consistency (`mathCore.kind`, kind union) and then running the three verification commands plus typecheck and ADR checklist review.
+exec
+/bin/bash -lc "rg -n \"BlockKind\\s*=|kind:\\s*'render'|kind:\\s*'component'|kind:\\s*'prose'|kind:\\s*'viz'\" /home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation/src /home/weiyi/selfKnowledgeBaseWeb/packages/block-math/src /home/weiyi/selfKnowledgeBaseWeb/packages/block-math/CONTRACT.md /home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation/CONTRACT.md /home/weiyi/selfKnowledgeBaseWeb/packages -g \"*.ts\" -g \"*.md\"" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+/home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation/CONTRACT.md:11:- `BlockKind = 'prose' | 'component' | 'render' | 'viz'` （四分类，Wave 2 由 2→4 additive 扩展）
+/home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation/src/registry.ts:4:export type BlockKind = 'prose' | 'component' | 'render' | 'viz';
+/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/src/core/core-definition.ts:13:  kind: 'render',
+/home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation/src/__tests__/registry.test.ts:13:  kind: 'component',
+/home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation/RFC.md:39:  kind: 'component',
+/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/src/core/core-definition.ts:13:  kind: 'render',
+/home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation/src/registry.ts:4:export type BlockKind = 'prose' | 'component' | 'render' | 'viz';
+/home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation/src/__tests__/registry.test.ts:13:  kind: 'component',
+/home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation/CONTRACT.md:11:- `BlockKind = 'prose' | 'component' | 'render' | 'viz'` （四分类，Wave 2 由 2→4 additive 扩展）
+/home/weiyi/selfKnowledgeBaseWeb/packages/block-callout/src/core/core-definition.ts:13:  kind: 'component',
+
+exec
+/bin/bash -lc "rg -n \"mathCore\\.kind|kind\\s*==\\s*'render'|kind\\s*==\\s*'component'\" /home/weiyi/selfKnowledgeBaseWeb/packages/block-math /home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 105ms:
+/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/src/__tests__/core.test.ts:43:    expect(mathCore.kind).toBe('render');
+
+codex
+I confirmed the core/type edits are present in the expected files. I’ll now run the requested package tests and full typecheck to validate pass counts exactly.
+exec
+/bin/bash -lc 'cd /home/weiyi/selfKnowledgeBaseWeb && pnpm --filter @skb/block-foundation test' in /home/weiyi/selfKnowledgeBaseWeb
+ exited 1 in 730ms:
+
+> @skb/block-foundation@0.0.0 test /home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation
+> vitest run
+
+failed to load config from /home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation/vitest.config.ts
+
+⎯⎯⎯⎯⎯⎯⎯ Startup Error ⎯⎯⎯⎯⎯⎯⎯⎯
+Error: EROFS: read-only file system, open '/home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation/node_modules/.vite-temp/vitest.config.ts.timestamp-1777580701711-84ca7c5560a84.mjs'
+    at async open (node:internal/fs/promises:639:25)
+    at async Object.writeFile (node:internal/fs/promises:1219:14)
+    at async loadConfigFromBundledFile (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:34769:3)
+    at async bundleAndLoadConfigFile (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:34632:17)
+    at async loadConfigFromFile (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:34599:42)
+    at async resolveConfig (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:34223:22)
+    at async _createServer (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:26029:65)
+    at async createViteServer (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vitest@4.1.5_@types+node@22.19.17_happy-dom@15.11.7_vite@8.0.10_@types+node@22.19.17_esbuild@_njtu3hruheo7esciutan5fga5a/node_modules/vitest/dist/chunks/cli-api.Cjt90eJu.js:8818:17)
+    at async createVitest (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vitest@4.1.5_@types+node@22.19.17_happy-dom@15.11.7_vite@8.0.10_@types+node@22.19.17_esbuild@_njtu3hruheo7esciutan5fga5a/node_modules/vitest/dist/chunks/cli-api.Cjt90eJu.js:14205:18)
+    at async prepareVitest (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vitest@4.1.5_@types+node@22.19.17_happy-dom@15.11.7_vite@8.0.10_@types+node@22.19.17_esbuild@_njtu3hruheo7esciutan5fga5a/node_modules/vitest/dist/chunks/cli-api.Cjt90eJu.js:14572:14) {
+  errno: -30,
+  code: 'EROFS',
+  syscall: 'open',
+  path: '/home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation/node_modules/.vite-temp/vitest.config.ts.timestamp-1777580701711-84ca7c5560a84.mjs'
+}
+
+
+
+/home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @skb/block-foundation@0.0.0 test: `vitest run`
+Exit status 1
+
+codex
+`pnpm --filter @skb/block-foundation test` failed with an environment-level `EROFS` writing `.vite-temp`, so I’ll still run the other requested checks and report pass/fail status with the exact error context.
+exec
+/bin/bash -lc 'cd /home/weiyi/selfKnowledgeBaseWeb && pnpm --filter @skb/block-math test' in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc 'cd /home/weiyi/selfKnowledgeBaseWeb && pnpm typecheck' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 751ms:
+
+> self-knowledge-base-web@0.0.0 typecheck /home/weiyi/selfKnowledgeBaseWeb
+> tsc -b
+
+
+ exited 1 in 824ms:
+
+> @skb/block-math@0.0.0 test /home/weiyi/selfKnowledgeBaseWeb/packages/block-math
+> vitest run
+
+failed to load config from /home/weiyi/selfKnowledgeBaseWeb/packages/block-math/vitest.config.ts
+
+⎯⎯⎯⎯⎯⎯⎯ Startup Error ⎯⎯⎯⎯⎯⎯⎯⎯
+Error: EROFS: read-only file system, open '/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/node_modules/.vite-temp/vitest.config.ts.timestamp-1777580703897-981b658c89d96.mjs'
+    at async open (node:internal/fs/promises:639:25)
+    at async Object.writeFile (node:internal/fs/promises:1219:14)
+    at async loadConfigFromBundledFile (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:34769:3)
+    at async bundleAndLoadConfigFile (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:34632:17)
+    at async loadConfigFromFile (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:34599:42)
+    at async resolveConfig (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:34223:22)
+    at async _createServer (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:26029:65)
+    at async createViteServer (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vitest@4.1.5_@types+node@22.19.17_happy-dom@15.11.7_vite@8.0.10_@types+node@22.19.17_esbuild@_njtu3hruheo7esciutan5fga5a/node_modules/vitest/dist/chunks/cli-api.Cjt90eJu.js:8818:17)
+    at async createVitest (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vitest@4.1.5_@types+node@22.19.17_happy-dom@15.11.7_vite@8.0.10_@types+node@22.19.17_esbuild@_njtu3hruheo7esciutan5fga5a/node_modules/vitest/dist/chunks/cli-api.Cjt90eJu.js:14205:18)
+    at async prepareVitest (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vitest@4.1.5_@types+node@22.19.17_happy-dom@15.11.7_vite@8.0.10_@types+node@22.19.17_esbuild@_njtu3hruheo7esciutan5fga5a/node_modules/vitest/dist/chunks/cli-api.Cjt90eJu.js:14572:14) {
+  errno: -30,
+  code: 'EROFS',
+  syscall: 'open',
+  path: '/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/node_modules/.vite-temp/vitest.config.ts.timestamp-1777580703897-981b658c89d96.mjs'
+}
+
+
+
+/home/weiyi/selfKnowledgeBaseWeb/packages/block-math:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @skb/block-math@0.0.0 test: `vitest run`
+Exit status 1
+
+codex
+I confirmed typecheck passed; next I’m checking ADR-0006 (all 8 points, with emphasis on #6) for required sister-doc updates and whether this bundle re-applies that asymmetry audit.
+exec
+/bin/bash -lc "sed -n '1,260p' /home/weiyi/selfKnowledgeBaseWeb/docs/decisions/ADR-0006-asymmetry-audit-checklist.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+# ADR-0006: Cross-location asymmetry-audit checklist (process rule)
+
+| 字段 | 值                                    |
+| ---- | ------------------------------------- |
+| 状态 | accepted                              |
+| 日期 | 2026-04-30                            |
+| 作者 | orchestrator (Claude Opus 4.7 1M ctx) |
+| 触发 | Wave 1 codex 5.5 reviews caught 12 instances of the same meta-class across 6 tracks + 5 close-ceremony fix iterations (8 distinct items + 4 close-ceremony reinforcements of items #6 and #8) |
+| 替代 | 不替代任何 ADR；扩展 [ADR-0001](ADR-0001-stack-selection.md) §3.2 review chain |
+
+## Context
+
+Wave 1 implementation produced strong empirical evidence that **a single bug class** dominates the failure mode at line-level review:
+
+> **Cross-location asymmetry**: a value, schema, algorithm, or invariant exists in two or more places, and an edit to one location is not symmetrically applied to all peers, so behavior diverges silently.
+
+Across 6 tracks + 5 close-ceremony fix iterations, codex 5.5 (`pr-gate`) caught **12 instances** of this meta-class (8 distinct failure-mode items + 4 close-ceremony reinforcements of items #6 and #8). Every PR that lasted ≥ 2 review rounds hit at least one instance. The pattern is so consistent that linear "fix the cited blocker, ship v_n+1" iteration would not have caught the second-order asymmetry; codex specifically catches the symmetric counterpart that the worker missed.
+
+### Wave 1 empirical record (12 instances)
+
+| # | Track | Round | Asymmetry pair | Bug behavior |
+|---|---|---|---|---|
+| 1 | Track B (block-foundation + content-types) | R1 → fixed v3 | `listUIs` mutability vs `listCores` defensive copy | Caller mutation of return value polluted registry singleton |
+| 2 | Track D (apps/api) | R2 → fixed v4 | RFC 7235 `WWW-Authenticate` on framework-raised 401 vs custom `SkbError` 401 | 4 of 5 401 paths emitted spec-mandated header; the custom-error path silently dropped it |
+| 3 | Track F (editor-commands) | R3 → fixed v4 | `.strict()` on top-level Zod object vs nested `frontmatterSchema` | Top-level rejected unknown keys; nested still silently stripped them |
+| 4 | Track C (mdx-bridge) | R2 → fixed v4 | `marksEqual` link comparator: `href` only vs `href + title` | Same href, different titles silently merged into one link with the first title preserved |
+| 5 | Track F v5 | R3 → fixed v6 | One CONTRACT.md updated to reflect code; sister CONTRACT.md (`agent-tools`) had stale wording | Documentation-vs-code drift in the file the worker did not edit |
+| 6 | Track A | R1 → fixed v2 | FOUC inline IIFE saved-value algorithm + content schema | Truthy-coerce diverges from strict-whitelist for invalid / case-mismatched values; inline `z.object` redefinition diverges from `frontmatterSchema` authority |
+| 7 | Track A v2 | R2 → fixed v3 | FOUC inline IIFE try/catch scope | Wide try/catch in IIFE swallowed `matchMedia` exceptions while authority's narrow try/catch propagated; storage-throws scenarios produced light→dark hydration flash |
+| 8 | Wave 1 close bundle v1 | R1 → fixed v2 | ADR-0006 mandated reviewer-prompt updates vs actual `agent-contract.md` / generated `.claude/agents/*.md` / `docs/review-checklist.md` / `team-operations.md` content | The close-ceremony commit codified a process rule that mandates downstream behavior; consumer-side artifacts (reviewer prompts + runbook) had not been updated to embed the rule, so Wave 2 reviewers would not have seen it |
+| 9 | Wave 1 close bundle v2 | R2 → fixed v3 | ADR-0006:81 within-document drift "7 distinct instances" | Single bullet missed during the v1→v2 count sweep — sister-bullet variant of item #6 within a single document |
+| 10 | Wave 1 close bundle v3 | R3 → fixed v4 | ADR-0006:117 within-document drift "7 empirical instances + 18+ erratum candidates" (both numbers stale) | Second sister-bullet drift in the same file, a different bullet — proved per-citation fixes are themselves item #6 traps; comprehensive sweep at fix time is the robust pattern |
+| 11 | Wave 1 close bundle v4 (informational) | R4 (informational) → fixed v5 | structure baseline:66 "× 7 endpoints" while apps/api has 4 routes / 11 tests | Pre-existing content-accuracy drift in the structure baseline document (authored at v1) — content number mismatched real code; surfaced during the broader 11th-class hunt |
+| 12 | Wave 1 close bundle v5 | R2 (pr-gate) → fixed v6 | Regenerated `.claude/agents/code-reviewer.md` + `.claude/agents/pr-gate.md` + `docs/review-checklist.md` were not staged in the bundle commit — authority + generator code updated, but generator outputs remained at pre-update HEAD content | Sub-form of item #8: regenerating an artifact and `git add`'ing it are separate steps; a bundle that updates authority + generator without staging the regenerated outputs is silently stale. Motivated the "verify by clean second-run" step now part of item #8. |
+
+Codex's structured review consistently caught these with three patterns:
+
+1. After fixing one location, **codex audits all peer locations** (not just the cited site)
+2. After a value/schema acquires an attribute, **codex audits every comparator/serialization function** for that attribute
+3. After a "happy path" fix, **codex audits the exception path** for the same equivalence
+
+These three habits collectively define the process rule below.
+
+## Decision
+
+Adopt an **8-point asymmetry-audit checklist** as a mandatory part of `code-reviewer` (Codex 5.3-spark, default cheap) and `pr-gate` (Codex 5.5, deep) review prompts. Reviewers MUST work through every applicable item before declaring PASS.
+
+### The 8 items
+
+1. **Field/attribute audit**: After adding a field to a data shape (Zod schema, Pydantic model, TS interface, mdast attrs, etc.), audit every comparator / equality / serialization / canonicalization function that handles this shape. (Wave 1 evidence: instance #4 — `marksEqual` link branch missed `title` when serialize emitted it.)
+
+2. **Status code audit**: After adding a status code to one HTTP handler (or, generally, an exit/error code to one branch), audit every other handler emitting the same code. RFC-mandated headers (RFC 7235 `WWW-Authenticate` on 401, RFC 7231 `Allow` on 405) attach to **the status code itself**, not the framework code path that emitted it. (Wave 1 evidence: instance #2 — custom `SkbError` 401 path missed `WWW-Authenticate`.)
+
+3. **Strictness audit**: After adding `.strict()` (Zod) / `extra='forbid'` (Pydantic) at one level of an object schema, audit every nested object/sub-schema. The strictness setting **does not propagate**; nested objects must opt in independently. (Wave 1 evidence: instance #3 — top-level `.strict()` shipped while nested `frontmatterSchema` still silently stripped unknown keys.)
+
+4. **Consumer schema audit**: After defining a schema in a single-authority package (e.g. `@skb/content-types/frontmatterSchema`), audit every consumer for inline duplicates or inline redefinitions that should `import` instead. The "deferred swap" pattern — "I'll inline now and import later" — is a contract break that compounds over time. (Wave 1 evidence: instance #6 part 2 — apps/site/content.config.ts inlined `z.object(...)` rather than importing `frontmatterSchema`.)
+
+5. **Algorithm + runtime constant replication audit**: When an algorithm or runtime constant is replicated outside its authority (e.g. inline FOUC scripts, login challenge derivation, pre-hydration boot logic that cannot import from packages), audit every consumer-side replica for byte-equivalent reproduction. The replica must register a **regression test** that asserts equivalence against the authority across a representative input corpus. (Wave 1 evidence: instance #6 part 1 — FOUC IIFE truthy-coerce vs `getInitialTheme()` strict-whitelist; remediated with `apps/site/src/__tests__/fouc-script.test.ts` 16-row corpus.)
+
+6. **Sister-file documentation audit**: After updating one CONTRACT.md (or any document that describes a code surface), audit ALL related CONTRACT.md files in the package family for sister-file drift. Two CONTRACT.md files that describe two halves of the same contract must use **identical terminology** for the shared identifiers (function names, schema names, refine predicate names). (Wave 1 evidence: instance #5 — `editor-commands/CONTRACT.md` updated to cite `editBlockInputSchema` while `agent-tools/CONTRACT.md` still referred to the old shape.)
+
+7. **Exception-scope equivalence audit**: When replicating an algorithm + its exception handling across files, audit BOTH the happy-path semantics AND the `try/catch` scope between authority and replica. Narrow vs wide `try/catch` can produce divergent fall-through behavior even with identical happy-path logic. Specifically: when `localStorage` / `sessionStorage` / `IndexedDB` / `matchMedia` / any browser API in the algorithm path can throw, the `try/catch` MUST wrap ONLY the throwing call, with the fall-through branch (matchMedia / system default / DOM apply) running AFTER the catch handler — not inside it. (Wave 1 evidence: instance #7 — FOUC IIFE wide-scope try/catch swallowed matchMedia exceptions; remediated with narrow try/catch + 2 storage-throws regression tests.)
+
+8. **Authority-document → generated/consumed surface audit**: When updating an authority document (ADR, spec, `agent-contract.md`, runbook, CONVENTIONS) **OR a dependency authority (`package.json`)** that mandates behavior in downstream consumers, audit every consumer-side replica/generated artifact for synchronized update **AND staged-in-the-git-index in the same bundle**. Specifically: an ADR section that says "X file MUST be updated to do Y" requires the same commit to update X and provide a way to verify the synchronization. Generated artifacts (e.g. `docs/review-checklist.md` and `.claude/agents/*.md` derived from `agent-contract.md`; **`pnpm-lock.yaml` derived from `package.json`** — see sub-form C below) MUST be regenerated via the documented codegen step (`pnpm generate:configs` / `pnpm install`) AND **explicitly `git add`'d** so the git **index** (not just the working tree) contains the new content; runbooks (`docs/runbooks/team-operations.md`) MUST be cross-linked; Codex/Claude subagent prompt files MUST embed or reference the new rule.
+
+   **Operational sequence** (do not skip steps):
+   ```bash
+   # 1. Edit authority + generator code
+   # 2. Run codegen
+   pnpm generate:configs
+   # 3. Stage regenerated outputs (CRITICAL — see Pitfall below)
+   git add <regenerated/path/foo.md> <regenerated/path/bar.md>
+   # 4. Verify index reflects content (NOT just working tree):
+   git diff --cached --stat -- <regenerated paths>
+   #    → expects non-empty diff with the expected line counts
+   # 5. Verify idempotence: re-run codegen + confirm working tree matches index:
+   pnpm generate:configs
+   git status --short -- <regenerated paths>
+   #    → expects column-1 'M' (staged) + column-2 blank (working tree clean)
+   ```
+
+   **Pitfall (this is the load-bearing step)**: `git status --short` shows two columns: column 1 is index-vs-HEAD; column 2 is working-tree-vs-index. After running the generator without `git add`, you see `' M'` (space + M) — **working tree differs from index, but index still matches HEAD**. `git commit` only commits the index. Skipping `git add` means the regenerated content is in your working tree but NOT in the next commit. The bundle would land authority + generator-code changes WITHOUT the regenerated outputs, leaving consumers (Wave 2 reviewers reading `.claude/agents/*.md`) at pre-update content. Use `git diff --cached` (not `git status`) as the canonical staging-verification command — `--cached` shows index-vs-HEAD only, which is what `git commit` will produce.
+
+   **Pitfall extension — `pnpm-lock.yaml` is a generated artifact too (sub-form C below)**: when the authority is `package.json` (any dependency add / remove / version bump / `@types/*` shift), `pnpm install` regenerates `pnpm-lock.yaml` as a deterministic derived artifact. Skipping `git add pnpm-lock.yaml` produces the same class of failure as skipping `git add .claude/agents/*.md`: working tree has the synced lockfile but the **index** still holds HEAD's stale lockfile, so the bundle ships `package.json` ahead of its lockfile. CI runs `pnpm install --frozen-lockfile` from the bundled state, sees the stale lockfile disagreeing with the new `package.json`, and fails install. The same `git diff --cached --stat -- pnpm-lock.yaml` canonical verification applies. (Wave 1 erratum commit `e15ec36`; codified as sub-form C below.)
+
+   Generated-from-authority files carry their own header comment ("GENERATED FROM agent-contract.md — DO NOT EDIT BY HAND") OR YAML frontmatter declaring authority source — both forms are acceptable. `pnpm-lock.yaml` lacks an explicit header (the format is fixed by pnpm) but is implicitly declared by `pnpm install`'s contract — its authority is `package.json` + the workspace `pnpm-workspace.yaml`.
+
+   **Wave 1 evidence**: **instance #8** — ADR-0006 v1 commit codified reviewer-prompt mandates but did not update `agent-contract.md` / regenerate `.claude/agents/code-reviewer.md` / regenerate `.claude/agents/pr-gate.md` / cross-link `team-operations.md` / regenerate `docs/review-checklist.md`; pr-gate caught the dogfood failure during R1 review of the close-ceremony bundle, forcing a v2 fix. **instance #12 (sub-form A — pre-regeneration omission)** — v5 bundle updated authority files (`agent-contract.md`, generator code, `team-operations.md` cross-link) but had not run the generator at all post-edit; the 3 regenerated outputs were stale at HEAD content; pr-gate caught this during R2 review, forcing a v6 fix. **instance #12 (sub-form B — staging-vs-working-tree confusion)** — v6 bundle ran the generator (so working tree had new content) but did NOT `git add` the regenerated outputs; the git **index** still held HEAD blob hashes for the 3 generated files; orchestrator confused `git status --short` "M" prefix (working-tree-vs-index) with index-vs-HEAD; pr-gate caught this via `git ls-files --stage` blob-hash comparison during R3 review, forcing the v7 fix that explicitly stages with `git add` + verifies via `git diff --cached`. **instance #12 (sub-form C — lockfile is a generated-from-authority artifact)** — Wave 1 close ceremony commit `e15ec36` ("fix(deps): commit pnpm-lock.yaml for @tailwindcss/typography (lockfile drift)"): the design-tokens erratum (commit `fdc86a8`) added the `@tailwindcss/typography` dependency to `package.json` but did not stage the regenerated `pnpm-lock.yaml`; CI install used the pre-update lockfile, drifted against the new `package.json`, and failed `pnpm install --frozen-lockfile`. Resolution: commit `e15ec36` staged the lockfile separately. Lesson codified: when the authority is `package.json` (any dependency add / remove / version bump), `pnpm-lock.yaml` is the consumer-side generated artifact and must ride the same bundle — the class equivalence to `.claude/agents/*.md` regeneration is exact (deterministic derive + git-index staging required). The four sub-forms of the same item #8 class — pre-regeneration omission, post-regeneration commit-staging confusion, conceptually-correct-but-operationally-incomplete fix, AND lockfile-as-generated-artifact — together motivate the explicit operational sequence and `git diff --cached` canonical verification command codified above.
+
+### Wave 2 prep notes (forward-compatibility application)
+
+The 8 items have specific Wave 2 trip-hazards already identified by Wave 1's review record:
+
+- **Item #1 + Wave 2 attr-bearing marks**: when the first attr-bearing mark beyond `link` is added to mdx-bridge (e.g. `highlight: {color}`, `kbd: {style}`), the worker MUST simultaneously update `wrapMark` AND `marksEqual` AND add a fixture exercising attr-equality + attr-distinction. Default `return true` in `marksEqual` is a silent-drop trap for any attr-bearing mark. (See pr-gate Track C v4 R3 caveat.)
+
+- **Item #2 + Wave 2 new error categories**: when Wave 2+ adds new HTTP error categories (e.g. `auth-rate-limit`, `kernel-timeout`), each new `SkbError` subclass MUST emit the same RFC-mandated headers as framework-raised peers. Add a unit test asserting header presence per error type. (See `apps/api/CONVENTIONS.md` §5 Pitfall + Pitfall continued.)
+
+- **Item #5 + Wave 2 client-side replications**: when apps/site adds new client-side algorithm replications (theme variants beyond light/dark, locale negotiation pre-hydration, etc.), the worker MUST audit both saved-value semantics AND try/catch scope against authority. (See `packages/design-tokens/CONTRACT.md` Inverse-direction obligation invariant.)
+
+- **Item #7 + future inline scripts**: ANY future `<script is:inline>` block in the project that needs pre-hydration replication of a package algorithm MUST follow the FOUC template (narrow try/catch + corpus regression test).
+
+## Consequences
+
+### Positive
+
+- **Catch the failure mode proactively**: Wave 1 evidence shows reviewer-applied checklist would have caught all 12 instances on the first review round (including the close-ceremony dogfood instance #8 + the 4 fix-loop reinforcements), eliminating 12 round-trip cycles
+- **Reviewer prompt clarity**: code-reviewer + pr-gate codex profile prompts gain a concrete, enumerable checklist rather than the implicit "look for symmetric counterparts" expectation
+- **Worker self-audit**: workers gain a pre-PR checklist they can run before reporting `ready-for-review`, catching their own asymmetries (memory: `feedback_verification_fresh_state.md` showed the verification-rigor lesson; this checklist is the analogous rigor at code-design level)
+- **Empirical grounding**: 12 distinct instances spread across 6 tracks + 5 close-ceremony fix iterations make this rule data-driven, not a "best practice" speculation; instances #9-12 reinforce items #6 + #8 specifically through close-ceremony fix-loop evidence
+
+### Costs
+
+- **Review-round time**: applying 8-point audit at every review adds ~5-10 minutes per round of code-reviewer + pr-gate runtime. Acceptable trade-off given Wave 1 round-counts (Track F: 5 rounds; Track A: 3 rounds; Track C: 4 rounds; Track D: 4 rounds) — front-loading review thoroughness reduces total cycles
+- **Worker prompt overhead**: each spawn prompt now needs a reference to this ADR + the 8-point checklist. Marginal cost.
+- **False-positive risk**: items that don't apply (e.g. #2 "status code" doesn't apply to TS-only packages) need to be triaged and skipped. Reviewer profile prompts must explicitly say "skip items not applicable to this PR's scope" to avoid bloat.
+
+### Risks (mitigated)
+
+- **Risk**: workers might mechanically check items without thinking, producing false confidence. **Mitigation**: each item enumerates concrete failure modes from Wave 1, not abstract heuristics — easier to apply
+- **Risk**: this list might grow unbounded as Wave 2+ surfaces new asymmetry classes. **Mitigation**: ADR amendments are cheap; each new instance produces an ADR-0006 erratum capturing item #N+1. Wave 2 close ceremony reviews instances and adds items as needed.
+
+## Implementation
+
+### Reviewer prompt updates
+
+`code-reviewer` and `pr-gate` profile prompts MUST be updated to:
+
+1. State the 8-point checklist verbatim (or by reference to this ADR)
+2. Require the reviewer's verdict structure to include "asymmetry-audit applied: items {1..8} verdicts: ..."
+3. Explicitly mark FAIL if any applicable item is left un-audited
+
+`docs/runbooks/team-operations.md` §"角色与触发器" Tier 2 reviewer rows should cross-link to this ADR.
+
+### Worker pre-flight (template addition)
+
+Worker `ready-for-review` reports SHOULD include a brief asymmetry-audit summary: which of the 8 items applied, and the worker's self-audit verdict. Reviewers cross-check.
+
+### Wave 1 retroactive
+
+This ADR is **forward-applicable**. Wave 1 PRs that already shipped under earlier review without this checklist remain valid; the empirical instances they revealed are exactly what grounded this ADR. No retroactive re-review required.
+
+## Related
+
+- [ADR-0001](ADR-0001-stack-selection.md) §3.2 review chain — this ADR specifies what reviewers MUST do; ADR-0001 specifies who reviews
+- [ADR-0002](ADR-0002-wave-1-close.md) Wave 1 close — collects the 12 empirical instances + 22 erratum candidates
+- [ADR-0004](ADR-0004-agent-team-dispatch-model.md) team dispatch — orchestrator dispatches review chain per this checklist
+- [docs/runbooks/team-operations.md](../runbooks/team-operations.md) — operational reference for reviewers and workers
+- [packages/design-tokens/CONTRACT.md](../../packages/design-tokens/CONTRACT.md) Inverse-direction obligation — concrete application of items #5 + #7
+- [apps/api/CONVENTIONS.md](../../apps/api/CONVENTIONS.md) §5 Pitfalls — concrete application of item #2
+
+exec
+/bin/bash -lc 'rg -n "kind=|kind:`'"'render'"'`|kind.*render|kind.*component|BlockKind|mathCore.kind" /home/weiyi/selfKnowledgeBaseWeb/packages/block-math/CONTRACT.md /home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation/CONTRACT.md' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 135ms:
+/bin/bash: line 1: render: command not found
+/home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation/CONTRACT.md:11:- `BlockKind = 'prose' | 'component' | 'render' | 'viz'` （四分类，Wave 2 由 2→4 additive 扩展）
+/home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation/CONTRACT.md:20:- `BlockKind` 四分不可破坏：新 block 必须明确归属 `prose` / `component` / `render` / `viz` 之一。Wave 1 仅 `prose` + `component` 二分；Wave 2 additive 扩展加 `render` + `viz`（由 `render-block-eng` 与 `viz-block-eng` 工种 own，与 agent-contract.md Tier 1 worker 分工一致）。kind 定义不可被进一步窄化（不允许把 `render` 重新归并入 `component`），扩展再加 kind 需 ADR
+/home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation/CONTRACT.md:52:公共表面（`BlockCoreDefinition` / `BlockUIDefinition` / `BlockRegistry` / `BlockKind` / `BlockViewProps` / `defineCore` / `defineUI` / `proseExtensions`）的任何字段或方法增删改一律需 ADR — **包括添加 optional 字段、改 `proseExtensions` 数组（增删 Tiptap 扩展、顺序变更、`as const` shape 变化）**。spec §2.3 把 block-foundation 列为接口包，规则"改动需 ADR；全员同步"不区分 optional vs required。
+/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/CONTRACT.md:12:  - `mathCore: BlockCoreDefinition<typeof propsSchema>` — name=`'math'` / kind=`'render'` / mdxComponent=`'Math'`
+
+codex
+I found one shell quoting hiccup while searching docs, but the relevant `kind='render'` contract line is still present. I’m now checking the exact diff scope to ensure only the intended changes are in this bundle.
+exec
+/bin/bash -lc 'cd /home/weiyi/selfKnowledgeBaseWeb && git diff -- packages/block-foundation/src/registry.ts packages/block-foundation/CONTRACT.md packages/block-math/src/core/core-definition.ts packages/block-math/CONTRACT.md packages/block-math/src/__tests__/core.test.ts' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+diff --git a/packages/block-foundation/CONTRACT.md b/packages/block-foundation/CONTRACT.md
+index 29860ec..3098e5c 100644
+--- a/packages/block-foundation/CONTRACT.md
++++ b/packages/block-foundation/CONTRACT.md
+@@ -8,12 +8,16 @@
+   - `getUI(coreName, uiId?)` / `listUIs(coreName)`
+ - `defineCore(def)` / `defineUI(def)` factory helpers
+ - `BlockCoreDefinition<T>` / `BlockUIDefinition<T>` / `BlockViewProps<T>` interfaces
+-- `BlockKind = 'prose' | 'component'` （二分类，spec §1.5 关键不变量）
++- `BlockKind = 'prose' | 'component' | 'render' | 'viz'` （四分类，Wave 2 由 2→4 additive 扩展）
++  - `'prose'` — Wave 1 default for headless prose blocks (无 MDX 组件，由 `proseExtensions` 提供 markdown 行为)
++  - `'component'` — Wave 1 for MDX-component blocks（block-callout / block-code / block-image — Track C simple-block-eng）
++  - `'render'` — **Wave 2 NEW** for hand-crafted render blocks consuming external runtime authority（block-math KaTeX / block-pdf react-pdf — Track D render-block-eng）
++  - `'viz'` — **Wave 2 NEW** for visualization blocks consuming heavy runtime libs（block-jupyter Pyodide / block-nn-viz TensorFlow.js / block-agent-flow React Flow — Track E viz-block-eng / kernel consumer）
+ - `proseExtensions` — Tiptap 扩展数组，提供全部 markdown 行为
+ 
+ ## Invariants
+ 
+-- `BlockKind` 二分不可破坏：新 block 必须明确归属 `prose` 或 `component`
++- `BlockKind` 四分不可破坏：新 block 必须明确归属 `prose` / `component` / `render` / `viz` 之一。Wave 1 仅 `prose` + `component` 二分；Wave 2 additive 扩展加 `render` + `viz`（由 `render-block-eng` 与 `viz-block-eng` 工种 own，与 agent-contract.md Tier 1 worker 分工一致）。kind 定义不可被进一步窄化（不允许把 `render` 重新归并入 `component`），扩展再加 kind 需 ADR
+ - Prose blocks 零自写代码——任何看似需要新 prose block 的场景应通过组合 `proseExtensions` 内现有扩展或追加单条 Tiptap 扩展实现，不再加 prose-kind block
+ - `BlockCoreDefinition.mdxComponent` 必须 PascalCase，且与 MDX 文件 import 中使用的名字一致
+ - Core 与 UI 物理分离（ADR-0003）：core 不允许 import 任何 React/Tiptap 视觉 API；UI 必须 import core（不允许 inline 重复 schema）
+diff --git a/packages/block-foundation/src/registry.ts b/packages/block-foundation/src/registry.ts
+index 12920a8..36fe379 100644
+--- a/packages/block-foundation/src/registry.ts
++++ b/packages/block-foundation/src/registry.ts
+@@ -1,7 +1,7 @@
+ import type { ZodTypeAny, infer as ZodInfer } from 'zod';
+ import type { ComponentType } from 'react';
+ 
+-export type BlockKind = 'prose' | 'component';
++export type BlockKind = 'prose' | 'component' | 'render' | 'viz';
+ 
+ /**
+  * BlockCore：headless 层 —— 无 React 依赖，纯逻辑（props schema + MDX 序列化在
+
+exec
+/bin/bash -lc 'cd /home/weiyi/selfKnowledgeBaseWeb && git status --short packages/block-foundation/src/registry.ts packages/block-foundation/CONTRACT.md packages/block-math/src/core/core-definition.ts packages/block-math/CONTRACT.md packages/block-math/src/__tests__/core.test.ts' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+ M packages/block-foundation/CONTRACT.md
+ M packages/block-foundation/src/registry.ts
+?? packages/block-math/CONTRACT.md
+?? packages/block-math/src/__tests__/core.test.ts
+?? packages/block-math/src/core/core-definition.ts
+
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && rg -n \"BlockKind = 'prose' \\| 'component'\" docs packages | head -n 40" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:1135:export type BlockKind = 'prose' | 'component';
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:1280:- `BlockKind = 'prose' | 'component'` （二分类，spec §1.5 关键不变量）
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:1311:- BlockKind = 'prose' | 'component' (spec §1.5 invariant)
+packages/block-foundation/src/registry.ts:4:export type BlockKind = 'prose' | 'component' | 'render' | 'viz';
+docs/audits/codex-runs/2026-04-30-task-D1-pr-reviewer.txt:34:       export type BlockKind = 'prose' | 'component';
+packages/block-foundation/CONTRACT.md:11:- `BlockKind = 'prose' | 'component' | 'render' | 'viz'` （四分类，Wave 2 由 2→4 additive 扩展）
+docs/audits/codex-runs/2026-04-30-task-A2-code-review.txt:296:export type BlockKind = 'prose' | 'component';
+docs/audits/codex-runs/2026-04-30-task-A2-code-review.txt:404:- `BlockKind = 'prose' | 'component'` （二分类，spec §1.5 关键不变量）
+docs/audits/codex-runs/2026-04-30-task-G1-pr-gate.txt:498:    11	- `BlockKind = 'prose' | 'component'` （二分类，spec §1.5 关键不变量）
+docs/audits/codex-runs/2026-04-30-task-A2-pr-gate-r2.txt:318:- `BlockKind = 'prose' | 'component'` （二分类，spec §1.5 关键不变量）
+docs/audits/codex-runs/2026-04-30-task-A2-pr-gate-r2.txt:588:     4	export type BlockKind = 'prose' | 'component';
+docs/audits/codex-runs/2026-04-30-task-A2-pr-gate-r2.txt:1091:     4	export type BlockKind = 'prose' | 'component';
+docs/audits/codex-runs/2026-04-30-task-A2-pr-gate-r2.txt:1256:    11	- `BlockKind = 'prose' | 'component'` （二分类，spec §1.5 关键不变量）
+docs/audits/codex-runs/2026-04-30-task-A2-pr-gate-r2.txt:2234:packages/block-foundation/src/registry.ts:4:export type BlockKind = 'prose' | 'component';
+docs/audits/codex-runs/2026-04-30-task-C1-code-review-r2.txt:351:    11	- `BlockKind = 'prose' | 'component'` （二分类，spec §1.5 关键不变量）
+docs/audits/codex-runs/2026-04-30-task-C1-code-review-r2.txt:406:     4	export type BlockKind = 'prose' | 'component';
+docs/audits/codex-runs/2026-04-30-task-D1-code-review.txt:1566:4:export type BlockKind = 'prose' | 'component';
+docs/audits/codex-runs/2026-04-30-task-D1-code-review.txt:1603:     4	export type BlockKind = 'prose' | 'component';
+docs/audits/codex-runs/2026-04-30-task-A2-pr-gate.txt:219:     4	export type BlockKind = 'prose' | 'component';
+docs/audits/codex-runs/2026-04-30-task-A2-pr-gate.txt:562:    11	- `BlockKind = 'prose' | 'component'` （二分类，spec §1.5 关键不变量）
+docs/audits/codex-runs/2026-04-30-task-A2-pr-gate.txt:1520:packages/block-foundation/src/registry.ts:4:export type BlockKind = 'prose' | 'component';
+docs/audits/codex-runs/2026-04-30-task-A2-pr-gate.txt:1749:     4	export type BlockKind = 'prose' | 'component';
+docs/audits/codex-runs/2026-04-30-task-A2-pr-gate.txt:1857:    11	- `BlockKind = 'prose' | 'component'` （二分类，spec §1.5 关键不变量）
+docs/audits/codex-runs/2026-04-30-task-D1-code-review-r2.txt:176:- `BlockKind = 'prose' | 'component' | 'render' | 'viz'` （四分类，Wave 2 由 2→4 additive 扩展）
+docs/audits/codex-runs/2026-04-30-task-D1-code-review-r2.txt:285:export type BlockKind = 'prose' | 'component' | 'render' | 'viz';
+docs/audits/codex-runs/2026-04-30-task-D1-code-review-r2.txt:387:/home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation/CONTRACT.md:11:- `BlockKind = 'prose' | 'component' | 'render' | 'viz'` （四分类，Wave 2 由 2→4 additive 扩展）
+docs/audits/codex-runs/2026-04-30-task-D1-code-review-r2.txt:388:/home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation/src/registry.ts:4:export type BlockKind = 'prose' | 'component' | 'render' | 'viz';
+docs/audits/codex-runs/2026-04-30-task-D1-code-review-r2.txt:393:/home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation/src/registry.ts:4:export type BlockKind = 'prose' | 'component' | 'render' | 'viz';
+docs/audits/codex-runs/2026-04-30-task-D1-code-review-r2.txt:395:/home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation/CONTRACT.md:11:- `BlockKind = 'prose' | 'component' | 'render' | 'viz'` （四分类，Wave 2 由 2→4 additive 扩展）
+docs/audits/codex-runs/2026-04-30-task-D1-code-review-r2.txt:640:/home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation/CONTRACT.md:11:- `BlockKind = 'prose' | 'component' | 'render' | 'viz'` （四分类，Wave 2 由 2→4 additive 扩展）
+docs/audits/codex-runs/2026-04-30-task-D1-code-review-r2.txt:658:-- `BlockKind = 'prose' | 'component'` （二分类，spec §1.5 关键不变量）
+docs/audits/codex-runs/2026-04-30-task-D1-code-review-r2.txt:659:+- `BlockKind = 'prose' | 'component' | 'render' | 'viz'` （四分类，Wave 2 由 2→4 additive 扩展）
+docs/audits/codex-runs/2026-04-30-task-D1-code-review-r2.txt:681:-export type BlockKind = 'prose' | 'component';
+docs/audits/codex-runs/2026-04-30-task-D1-code-review-r2.txt:682:+export type BlockKind = 'prose' | 'component' | 'render' | 'viz';
+docs/audits/codex-runs/2026-04-30-task-C1-code-review.txt:388:     4	export type BlockKind = 'prose' | 'component';
+docs/audits/codex-runs/2026-04-30-task-C1-code-review.txt:495:    11	- `BlockKind = 'prose' | 'component'` （二分类，spec §1.5 关键不变量）
+docs/audits/codex-runs/2026-04-30-task-C1-pr-gate-r2.txt:885:    11	- `BlockKind = 'prose' | 'component'` （二分类，spec §1.5 关键不变量）
+docs/audits/codex-runs/2026-04-30-task-C1-pr-gate-r2.txt:1184:     4	export type BlockKind = 'prose' | 'component';
+docs/audits/codex-runs/2026-04-30-task-G1-code-review.txt:109:    11	- `BlockKind = 'prose' | 'component'` （二分类，spec §1.5 关键不变量）
+docs/audits/codex-runs/2026-04-30-task-D1-pr-gate.txt:1975:    11	- `BlockKind = 'prose' | 'component'` （二分类，spec §1.5 关键不变量）
+
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && rg -n \"mathCore|kind=\\\"'render'\\\"|kind:\\s*'render'|kind:\\s*'component'\" packages/block-math docs/superpowers/plans -g \"*\"" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:1056:  kind: 'component',
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:564:  kind: 'component',
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:866:  kind: 'component',
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:970:   - packages/block-code/ (kind: 'component', mdxComponent: 'Code', propsSchema:
+packages/block-math/CONTRACT.md:12:  - `mathCore: BlockCoreDefinition<typeof propsSchema>` — name=`'math'` / kind=`'render'` / mdxComponent=`'Math'`
+packages/block-math/CONTRACT.md:17:  - `mathUiDefault: BlockUIDefinition<typeof mathCore.propsSchema>` — uiId=`'default'`
+packages/block-math/CONTRACT.md:41:- **`coreName='math'` (kebab-case)**: `mathCore.name` 字面值固定，与 `BlockRegistry.registerCore`
+packages/block-math/CONTRACT.md:56:  ui-default / serialize / parse / 测试均 import `mathCore.propsSchema`，consumer 不得 inline 重复（ADR-0006 item #4）
+packages/block-math/CONTRACT.md:84:`mathCore` 公共字段 (`name` / `kind` / `propsSchema` / `mdxComponent`) 与
+packages/block-math/src/ui-default/math.ui.ts:2:import { mathCore } from '../core/core-definition';
+packages/block-math/src/ui-default/math.ui.ts:6: * 不显式 `BlockUIDefinition<typeof mathCore.propsSchema>` 标注 —— 让 defineUI
+packages/block-math/src/ui-default/math.ui.ts:14:  coreName: mathCore.name,
+packages/block-math/src/ui-default/Math.tsx:3:import { mathCore } from '../core/core-definition';
+packages/block-math/src/ui-default/Math.tsx:23: * `mathCore.propsSchema` 的 ZodInfer 等价。函数式组件而非
+packages/block-math/src/ui-default/Math.tsx:29:}: BlockViewProps<typeof mathCore.propsSchema>): JSX.Element {
+packages/block-math/dist/src/core/index.d.ts:1:export { mathCore } from './core-definition';
+packages/block-math/src/core/parse.ts:1:import { mathCore } from './core-definition';
+packages/block-math/src/core/parse.ts:13:  if (node.name !== mathCore.mdxComponent) {
+packages/block-math/src/core/parse.ts:15:      `parseMath: expected mdxComponent="${mathCore.mdxComponent}", got "${node.name}"`,
+packages/block-math/src/core/parse.ts:26:  const validated = mathCore.propsSchema.parse(rawProps);
+packages/block-math/dist/src/ui-default/math.ui.js:2:import { mathCore } from '../core/core-definition';
+packages/block-math/dist/src/ui-default/math.ui.js:5: * 不显式 `BlockUIDefinition<typeof mathCore.propsSchema>` 标注 —— 让 defineUI
+packages/block-math/dist/src/ui-default/math.ui.js:13:    coreName: mathCore.name,
+packages/block-math/src/core/index.ts:1:export { mathCore } from './core-definition';
+packages/block-math/dist/src/core/parse.js:1:import { mathCore } from './core-definition';
+packages/block-math/dist/src/core/parse.js:11:    if (node.name !== mathCore.mdxComponent) {
+packages/block-math/dist/src/core/parse.js:12:        throw new Error(`parseMath: expected mdxComponent="${mathCore.mdxComponent}", got "${node.name}"`);
+packages/block-math/dist/src/core/parse.js:23:    const validated = mathCore.propsSchema.parse(rawProps);
+packages/block-math/dist/src/ui-default/math.ui.d.ts:2: * 不显式 `BlockUIDefinition<typeof mathCore.propsSchema>` 标注 —— 让 defineUI
+packages/block-math/src/core/core-definition.ts:11:export const mathCore: BlockCoreDefinition<typeof propsSchema> = defineCore({
+packages/block-math/src/core/core-definition.ts:13:  kind: 'render',
+packages/block-math/dist/src/core/index.js:1:export { mathCore } from './core-definition';
+packages/block-math/dist/src/core/serialize.js:1:import { mathCore } from './core-definition';
+packages/block-math/dist/src/core/serialize.js:3:    const validated = mathCore.propsSchema.parse(node.attrs);
+packages/block-math/dist/src/core/serialize.js:6:        name: mathCore.mdxComponent,
+packages/block-math/src/core/serialize.ts:1:import { mathCore } from './core-definition';
+packages/block-math/src/core/serialize.ts:26:  const validated = mathCore.propsSchema.parse(node.attrs);
+packages/block-math/src/core/serialize.ts:29:    name: mathCore.mdxComponent,
+packages/block-math/dist/src/core/core-definition.d.ts:13:export declare const mathCore: BlockCoreDefinition<typeof propsSchema>;
+packages/block-math/dist/src/ui-default/Math.d.ts:2:import { mathCore } from '../core/core-definition';
+packages/block-math/dist/src/ui-default/Math.d.ts:14: * `mathCore.propsSchema` 的 ZodInfer 等价。函数式组件而非
+packages/block-math/dist/src/ui-default/Math.d.ts:18:export declare function MathView({ props, }: BlockViewProps<typeof mathCore.propsSchema>): JSX.Element;
+packages/block-math/dist/src/core/core-definition.js:9:export const mathCore = defineCore({
+packages/block-math/dist/src/core/core-definition.js:11:    kind: 'render',
+packages/block-math/dist/src/ui-default/Math.js:3:import { mathCore } from '../core/core-definition';
+packages/block-math/dist/src/ui-default/Math.js:20: * `mathCore.propsSchema` 的 ZodInfer 等价。函数式组件而非
+packages/block-math/src/__tests__/core.test.ts:2:import { mathCore } from '../core/core-definition';
+packages/block-math/src/__tests__/core.test.ts:4:describe('mathCore.propsSchema', () => {
+packages/block-math/src/__tests__/core.test.ts:6:    expect(mathCore.propsSchema.parse({ expression: 'a^2 + b^2', display: true })).toEqual({
+packages/block-math/src/__tests__/core.test.ts:13:    expect(mathCore.propsSchema.parse({ expression: 'x', display: false })).toEqual({
+packages/block-math/src/__tests__/core.test.ts:17:    expect(mathCore.propsSchema.parse({ expression: 'x' })).toEqual({
+packages/block-math/src/__tests__/core.test.ts:24:    expect(() => mathCore.propsSchema.parse({ expression: '', display: false })).toThrow(
+packages/block-math/src/__tests__/core.test.ts:31:      mathCore.propsSchema.parse({ expression: 42, display: false }),
+packages/block-math/src/__tests__/core.test.ts:37:      mathCore.propsSchema.parse({ expression: 'x', display: false, extra: 'nope' }),
+packages/block-math/src/__tests__/core.test.ts:42:    expect(mathCore.name).toBe('math');
+packages/block-math/src/__tests__/core.test.ts:43:    expect(mathCore.kind).toBe('render');
+packages/block-math/src/__tests__/core.test.ts:44:    expect(mathCore.mdxComponent).toBe('Math');
+packages/block-math/src/__tests__/registry-integration.test.ts:3:import { mathCore } from '../core/core-definition';
+packages/block-math/src/__tests__/registry-integration.test.ts:7: * mathUiDefault 类型为 BlockUIDefinition<typeof mathCore.propsSchema>
+packages/block-math/src/__tests__/registry-integration.test.ts:23:    reg.registerCore(mathCore);
+packages/block-math/src/__tests__/registry-integration.test.ts:24:    expect(reg.getCore('math')).toBe(mathCore);
+packages/block-math/src/__tests__/registry-integration.test.ts:29:    reg.registerCore(mathCore);
+packages/block-math/src/__tests__/registry-integration.test.ts:37:    reg.registerCore(mathCore);
+packages/block-math/dist/src/__tests__/registry-integration.test.js:3:import { mathCore } from '../core/core-definition';
+packages/block-math/dist/src/__tests__/registry-integration.test.js:6: * mathUiDefault 类型为 BlockUIDefinition<typeof mathCore.propsSchema>
+packages/block-math/dist/src/__tests__/registry-integration.test.js:21:        reg.registerCore(mathCore);
+packages/block-math/dist/src/__tests__/registry-integration.test.js:22:        expect(reg.getCore('math')).toBe(mathCore);
+packages/block-math/dist/src/__tests__/registry-integration.test.js:26:        reg.registerCore(mathCore);
+packages/block-math/dist/src/__tests__/registry-integration.test.js:33:        reg.registerCore(mathCore);
+packages/block-math/dist/src/__tests__/core.test.js:2:import { mathCore } from '../core/core-definition';
+packages/block-math/dist/src/__tests__/core.test.js:3:describe('mathCore.propsSchema', () => {
+packages/block-math/dist/src/__tests__/core.test.js:5:        expect(mathCore.propsSchema.parse({ expression: 'a^2 + b^2', display: true })).toEqual({
+packages/block-math/dist/src/__tests__/core.test.js:11:        expect(mathCore.propsSchema.parse({ expression: 'x', display: false })).toEqual({
+packages/block-math/dist/src/__tests__/core.test.js:15:        expect(mathCore.propsSchema.parse({ expression: 'x' })).toEqual({
+packages/block-math/dist/src/__tests__/core.test.js:21:        expect(() => mathCore.propsSchema.parse({ expression: '', display: false })).toThrow(/too_small|String must contain at least|Invalid input/);
+packages/block-math/dist/src/__tests__/core.test.js:24:        expect(() => mathCore.propsSchema.parse({ expression: 42, display: false })).toThrow(/invalid_type|Expected string/);
+packages/block-math/dist/src/__tests__/core.test.js:27:        expect(() => mathCore.propsSchema.parse({ expression: 'x', display: false, extra: 'nope' })).toThrow(/unrecognized_keys/);
+packages/block-math/dist/src/__tests__/core.test.js:30:        expect(mathCore.name).toBe('math');
+packages/block-math/dist/src/__tests__/core.test.js:31:        expect(mathCore.kind).toBe('render');
+packages/block-math/dist/src/__tests__/core.test.js:32:        expect(mathCore.mdxComponent).toBe('Math');
+
+exec
+/bin/bash -lc "sed -n '1,260p' /home/weiyi/selfKnowledgeBaseWeb/docs/audits/codex-runs/2026-04-30-task-D1-code-review-r2.txt" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+Reading prompt from stdin...
+OpenAI Codex v0.125.0 (research preview)
+--------
+workdir: /home/weiyi/selfKnowledgeBaseWeb
+model: gpt-5.3-codex-spark
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: xhigh
+reasoning summaries: none
+session id: 019de010-d4d6-77d3-a5e5-bb656666ebee
+--------
+user
+You are codex 5.3-spark code-reviewer. Re-review D1 R2 bundle for Wave 2 Task #16 (block-math).
+
+R1 verdict (FAIL): docs/audits/codex-runs/2026-04-30-task-D1-code-review.txt — [High] mathCore.kind = 'component' should be 'render'.
+
+R2 fix scope (expanded — touches 2 packages):
+1. packages/block-foundation/src/registry.ts:4 — BlockKind union extended `'prose' | 'component'` → `'prose' | 'component' | 'render' | 'viz'` (additive, Wave 1 invariant preserved).
+2. packages/block-foundation/CONTRACT.md — documents the 4-value union + Wave 2 extension rationale.
+3. packages/block-math/src/core/core-definition.ts — mathCore.kind: 'render' (was 'component').
+4. packages/block-math/CONTRACT.md — documents kind='render'.
+5. packages/block-math/src/__tests__/core.test.ts — test assertion updated to expect 'render'.
+
+Verify:
+1. BlockKind union includes 'prose', 'component', 'render', 'viz' (no removals).
+2. mathCore.kind === 'render' across all 3 sites (definition + CONTRACT + test).
+3. block-foundation/CONTRACT.md sister-doc-aligned (Wave 1 invariant preservation).
+4. pnpm --filter @skb/block-foundation test → 9/9 PASS (Wave 1 tests still PASS — additive only).
+5. pnpm --filter @skb/block-math test → 11/11 PASS.
+6. pnpm typecheck (full repo).
+7. ADR-0006 8-point asymmetry audit re-application (especially #6 sister-doc).
+
+Verdict: PASS or FAIL.
+
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the vendored bubblewrap in the meantime.
+codex
+Understood. I’ll validate the five touched files for the requested invariants, run the three requested package/test commands plus full typecheck, and then perform the ADR-0006 sister-doc asymmetry check before issuing a PASS/FAIL verdict with exact evidence.
+exec
+/bin/bash -lc "sed -n '1,260p' /home/weiyi/selfKnowledgeBaseWeb/packages/block-math/src/core/core-definition.ts" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1,260p' /home/weiyi/selfKnowledgeBaseWeb/packages/block-math/CONTRACT.md" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1,260p' /home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation/CONTRACT.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+import { defineCore, type BlockCoreDefinition } from '@skb/block-foundation';
+import { z } from 'zod';
+
+const propsSchema = z
+  .object({
+    expression: z.string().min(1),
+    display: z.boolean().default(false),
+  })
+  .strict();
+
+export const mathCore: BlockCoreDefinition<typeof propsSchema> = defineCore({
+  name: 'math',
+  kind: 'render',
+  propsSchema,
+  mdxComponent: 'Math',
+});
+
+ succeeded in 0ms:
+# @skb/block-math Contract
+
+KaTeX-backed math block (Wave 2 Track D1）。第一个 `render-block-eng` 包；
+hand-craft（不走 codex-block-generator），block-pdf (D2) 同 owner 独立 hand-craft。
+
+## Public surface
+
+三个 entry：
+
+- `.` (root barrel) — re-export `./core`
+- `./core` — headless 层
+  - `mathCore: BlockCoreDefinition<typeof propsSchema>` — name=`'math'` / kind=`'render'` / mdxComponent=`'Math'`
+  - `serializeMath(node) → mdxJsxFlowElement` — Tiptap → mdast (Wave 3 mdx-bridge routing 时启用)
+  - `parseMath(mdast) → TiptapNode` — mdast → Tiptap (同上)
+  - 类型: `MathTiptapNode` / `MathMdastJsxElement`
+- `./ui-default` — presentational 层
+  - `mathUiDefault: BlockUIDefinition<typeof mathCore.propsSchema>` — uiId=`'default'`
+  - `MathEditorView` / `MathRenderView` — `ComponentType<BlockViewProps<...>>`
+  - `renderMath(expression, display) → string` — KaTeX HTML 字符串生成器（authority for editor + renderer）
+  - sibling: `Math.astro`（apps/site SSR 直接 import）+ `math.css`（design-token-bound）
+
+`propsSchema` 形状（见 `src/core/core-definition.ts`）：
+
+```typescript
+z.object({
+  expression: z.string().min(1),
+  display: z.boolean().default(false),
+}).strict()
+```
+
+## Invariants
+
+继承自 [block-foundation/CONTRACT.md](../block-foundation/CONTRACT.md#invariants)：
+`Defensive copy` / `Schema strictness` / `Default UI lookup` / `Serialize / parse hook ownership`
+（即 `BlockRegistry.listCores()` / `listUIs(coreName)` defensive-copy 行为、
+`propsSchema` 必须 `.strict()`、同 `coreName` 多 UI 时 `getUI(coreName)` 取首注册 `uiId`、
+serialize/parse 由本包 `core/` own 不在 foundation 注册）。
+
+block-math 特定不变量：
+
+- **`coreName='math'` (kebab-case)**: `mathCore.name` 字面值固定，与 `BlockRegistry.registerCore`
+  注册键一致；与 `block-callout`/`block-code`/... 同 kebab-case 约定
+- **`mdxComponent='Math'` (PascalCase)**: 与 `<Math expression="..." display>` JSX 标签一致；
+  mdx-bridge 通过 `mdxJsxFlowElement.name` 字符串路由（[block-foundation RFC §1](../block-foundation/RFC.md#1-core-side)）
+- **Hook 命名 verb-as-prefix**: `serializeMath` / `parseMath` / `renderMath`
+  ([RFC §5](../block-foundation/RFC.md#5-serialize--parse-hook-ownership-scope-clarification))
+- **`uiId='default'` reserved**: 本包 inherit foundation 的 `Default UI lookup`
+  不变量（首注册即 default）
+- **KaTeX 是 runtime authority**: `renderMath` 仅 wrap `katex.renderToString`；
+  不在本包内 re-implement LaTeX→HTML（ADR-0006 item #5 algorithm replication —
+  authority = `katex` npm 包）。Math.tsx 与 Math.astro 共调同一函数，editor /
+  SSR / NodeView byte-equivalent
+- **Headless 自给**: `core/` 不 import React / Tiptap / KaTeX；仅依赖
+  `@skb/block-foundation` + `zod`（ADR-0003 D1）。`ui-default/` 才 import React + katex
+- **propsSchema single authority**: 仅在 `src/core/core-definition.ts` 定义；
+  ui-default / serialize / parse / 测试均 import `mathCore.propsSchema`，consumer 不得 inline 重复（ADR-0006 item #4）
+- **Self-validating serialize/parse**: `serializeMath` / `parseMath` 各自调
+  `propsSchema.parse`（parse 侧 display 先字符串 coerce → boolean）；契约偏离在 mdx-bridge 路由前 throw
+- **错误显式（不静默）**: KaTeX 配 `throwOnError: false` + `strict: 'ignore'`，
+  无效 LaTeX 渲染为 `.katex-error` 红色块（`math.css` 绑 `--color-error` token），不许 silent fallback
+
+## Wave 3 mdx-bridge 路由集成（pending）
+
+当前 `serializeMath` / `parseMath` 是 stub —— 暴露稳定签名，未被 mdx-bridge 消费。
+Wave 3 mdx-bridge routing table PR 会：
+
+1. 在 `mdx-bridge/parse.ts` 的 `mdastBlockToTiptap` 拦截 `mdxJsxFlowElement{name:'Math'}` →
+   `parseMath(node)` → 把返回 `MathTiptapNode` 嵌入 doc.content
+2. 在 `mdx-bridge/serialize.ts` 的 `tiptapToMdastBlock` 拦截 `type='math'` →
+   `serializeMath(node)` → 返回 `mdxJsxFlowElement` 进 mdast
+3. math block 无 children，递归不展开
+
+## Forward-compat consumers
+
+- **Wave 2 Track Z0 sample-blocks**: `<Math expression="\\int_0^1 x^2 dx" display />` 实例
+- **apps/site SSR**: 在 mdx page 直接 import `@skb/block-math/ui-default/Math.astro`；
+  consumer 同 PR 加 `@skb/block-math` + `@skb/design-tokens` deps、import `katex/dist/katex.css`
+- **Wave 3 mdx-bridge integration**: 见上节
+- **Tiptap NodeView (editor-shell)**: 用 `MathEditorView`；NodeView wrapper 调
+  `renderMath` 直接拿 HTML 字符串（无需 useEffect mount）
+
+## Modifying this file
+
+`mathCore` 公共字段 (`name` / `kind` / `propsSchema` / `mdxComponent`) 与
+`mathUiDefault` 公共字段 (`coreName` / `uiId` / `EditorView` / `RenderView`) 的字段或值
+变更需 ADR（与 block-foundation/CONTRACT.md 同 freeze 级别 —— 改 propsSchema 形状 /
+改 mdxComponent / 改 kind 都触发 mdx-bridge 路由 + sample-blocks 同步更新）。
+
+`serializeMath` / `parseMath` 签名变更需配 mdx-bridge routing PR 同步（强耦合）。
+`renderMath` 签名变更需同步 Math.astro + Math.tsx 双侧调用点（authority 在 ui-default/Math.tsx）。
+
+## Related
+
+- [@skb/block-foundation CONTRACT](../block-foundation/CONTRACT.md) — `BlockCoreDefinition` / `BlockUIDefinition` 接口权威
+- [@skb/block-foundation RFC](../block-foundation/RFC.md) — registration walkthrough
+- [@skb/block-callout CONTRACT](../block-callout/CONTRACT.md) — sister-doc (Wave 2 simple-block template)
+- [ADR-0003 headless / presentational 分层](../../docs/decisions/ADR-0003-headless-presentational-split.md)
+- [ADR-0006 asymmetry audit checklist](../../docs/decisions/ADR-0006-asymmetry-audit-checklist.md) item #3 + #4 + #5
+- [ADR-0008 D1 dead-dep + D2 interface freeze](../../docs/decisions/ADR-0008-wave-2-entry-policies.md)
+- [Wave 2 plan §Task D1](../../docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md)
+
+ succeeded in 0ms:
+# @skb/block-foundation Contract
+
+## Public surface
+
+- `BlockRegistry` class — 双层注册表（ADR-0003）
+  - `registerCore(core)` / `registerUI(ui)`
+  - `getCore(name)` / `listCores()`
+  - `getUI(coreName, uiId?)` / `listUIs(coreName)`
+- `defineCore(def)` / `defineUI(def)` factory helpers
+- `BlockCoreDefinition<T>` / `BlockUIDefinition<T>` / `BlockViewProps<T>` interfaces
+- `BlockKind = 'prose' | 'component' | 'render' | 'viz'` （四分类，Wave 2 由 2→4 additive 扩展）
+  - `'prose'` — Wave 1 default for headless prose blocks (无 MDX 组件，由 `proseExtensions` 提供 markdown 行为)
+  - `'component'` — Wave 1 for MDX-component blocks（block-callout / block-code / block-image — Track C simple-block-eng）
+  - `'render'` — **Wave 2 NEW** for hand-crafted render blocks consuming external runtime authority（block-math KaTeX / block-pdf react-pdf — Track D render-block-eng）
+  - `'viz'` — **Wave 2 NEW** for visualization blocks consuming heavy runtime libs（block-jupyter Pyodide / block-nn-viz TensorFlow.js / block-agent-flow React Flow — Track E viz-block-eng / kernel consumer）
+- `proseExtensions` — Tiptap 扩展数组，提供全部 markdown 行为
+
+## Invariants
+
+- `BlockKind` 四分不可破坏：新 block 必须明确归属 `prose` / `component` / `render` / `viz` 之一。Wave 1 仅 `prose` + `component` 二分；Wave 2 additive 扩展加 `render` + `viz`（由 `render-block-eng` 与 `viz-block-eng` 工种 own，与 agent-contract.md Tier 1 worker 分工一致）。kind 定义不可被进一步窄化（不允许把 `render` 重新归并入 `component`），扩展再加 kind 需 ADR
+- Prose blocks 零自写代码——任何看似需要新 prose block 的场景应通过组合 `proseExtensions` 内现有扩展或追加单条 Tiptap 扩展实现，不再加 prose-kind block
+- `BlockCoreDefinition.mdxComponent` 必须 PascalCase，且与 MDX 文件 import 中使用的名字一致
+- Core 与 UI 物理分离（ADR-0003）：core 不允许 import 任何 React/Tiptap 视觉 API；UI 必须 import core（不允许 inline 重复 schema）
+- 同 core 多 UI 时 `getUI(name)` 取首个注册：约定首个 uiId 为 `'default'`；adopter 在 register 顺序上需谨慎
+- **Defensive copy**：`listCores()` 与 `listUIs(coreName)` 每次返回 fresh array。Caller 修改返回值不影响 registry 内部 state。Implementation: `src/registry.ts:84` (`listCores`) + `src/registry.ts:96` (`listUIs`)；regression: `src/__tests__/registry.test.ts` "listCores returns a defensive copy" + "listUIs returns a defensive copy"
+- **Idempotent register**：`registerCore` 同 `name` 第二次调用 throws `Duplicate core name: <name>`；`registerUI` 同 `(coreName, uiId)` 第二次 throws `Duplicate UI registration: core=<coreName> uiId=<uiId>`。避免 silent override；实现见 `src/registry.ts:60-63` + `src/registry.ts:71-75`
+- **Schema strictness**：每个 `BlockCoreDefinition.propsSchema` 必须是 `z.object(...).strict()`；嵌套 `ZodObject` 同样必须 `.strict()`（[ADR-0006](../../docs/decisions/ADR-0006-asymmetry-audit-checklist.md) item #3 trip-hazard：`.strict()` 不传播）。当前类型仅约束到 `ZodTypeAny`（type-narrow 到 `ZodObject` 待 Wave 3）；Wave 2 行为约定 + reviewer + RFC.md §1 显式提醒。未 `.strict()` 不会 throw，但 `propsSchema.parse(input)` 会 silently strip unknown keys，引发 contract drift
+- **Serialize / parse hook ownership**：MDX serialize/parse 由各 `block-*` 包的 `core/` own（ADR-0003 D1+D2），不在 `block-foundation` 注册。`block-foundation` 仅 own `BlockCoreDefinition` 形状（含 `mdxComponent` 字符串）；`mdx-bridge` 通过 `mdxJsxFlowElement.name` 字符串路由到对应 block 的 export（命名约定 verb-as-prefix：`serialize<BlockName>` / `parse<BlockName>`，与 mdx-bridge 现有 `mdxToTiptap` / `tiptapToMdx` 同 style）。详见 RFC.md §"5. Serialize / parse hook ownership"
+
+## Forward-compat consumers (Wave 2+)
+
+Wave 2 中段当 `BlockRegistry` 开始用 `@skb/content-types` 的 schema 验证
+注册的 block props（如跨 block 共享的 frontmatter / metadata 形状），届时
+`@skb/content-types` 将被同 PR 加入 `package.json#dependencies` +
+`tsconfig.json#references`，并出现源码 `import { ... } from '@skb/content-types'`。
+
+当前 Wave 1 close 状态：源码无 content-types import，按
+[ADR-0008](../../docs/decisions/ADR-0008-wave-2-entry-policies.md) D1
+（dead-dep policy = tighten），dep 与 ref 均未声明；forward-compat 意图
+仅在本 prose 段表达，不在 package.json / tsconfig 占位。
+
+## How to register a new `block-*` package
+
+step-by-step walkthrough (core / ui-default / 测试样板 / 错误场景 / serialize-parse 归属)
+for the first real consumer 在 [RFC.md](./RFC.md) — 第一个 `block-*` PR
+(Task C1 / C2) 必须 reference 此 RFC；后续 `block-*` PR 沿用相同模式。
+RFC 是 consumer-facing 教程，CONTRACT.md 是 public API 形状 + 关键不变量
+的权威；二者补充而非重叠（[ADR-0008 D2](../../docs/decisions/ADR-0008-wave-2-entry-policies.md)）。
+
+## Modifying this file
+
+公共表面（`BlockCoreDefinition` / `BlockUIDefinition` / `BlockRegistry` / `BlockKind` / `BlockViewProps` / `defineCore` / `defineUI` / `proseExtensions`）的任何字段或方法增删改一律需 ADR — **包括添加 optional 字段、改 `proseExtensions` 数组（增删 Tiptap 扩展、顺序变更、`as const` shape 变化）**。spec §2.3 把 block-foundation 列为接口包，规则"改动需 ADR；全员同步"不区分 optional vs required。
+
+原因：optional 字段会传播到 mdx-bridge serialization + 8 个 Wave 2 block 的 core+ui 实现 + apps/site frontmatter schema；`proseExtensions` 改动直接影响 mdx-bridge round-trip fixtures + editor-shell parsing 行为；无 ADR 协调会引发漂移。
+
+## Related
+
+- 设计规格 §1.5 / §2.5（`../../docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md`）
+- ADR-0003 headless / presentational 分层（`../../docs/decisions/ADR-0003-headless-presentational-split.md`）
+- content-types 契约（`../content-types/CONTRACT.md`）
+- mdx-bridge 契约（`../mdx-bridge/CONTRACT.md`）
+- design-tokens 契约（`../design-tokens/CONTRACT.md`）
+
+exec
+/bin/bash -lc "sed -n '1,220p' /home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation/src/registry.ts" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1,260p' /home/weiyi/selfKnowledgeBaseWeb/packages/block-math/src/__tests__/core.test.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+import { describe, it, expect } from 'vitest';
+import { mathCore } from '../core/core-definition';
+
+describe('mathCore.propsSchema', () => {
+  it('accepts valid expression with display=true', () => {
+    expect(mathCore.propsSchema.parse({ expression: 'a^2 + b^2', display: true })).toEqual({
+      expression: 'a^2 + b^2',
+      display: true,
+    });
+  });
+
+  it('accepts valid expression with display=false (and default)', () => {
+    expect(mathCore.propsSchema.parse({ expression: 'x', display: false })).toEqual({
+      expression: 'x',
+      display: false,
+    });
+    expect(mathCore.propsSchema.parse({ expression: 'x' })).toEqual({
+      expression: 'x',
+      display: false,
+    });
+  });
+
+  it('rejects empty expression (z.string().min(1))', () => {
+    expect(() => mathCore.propsSchema.parse({ expression: '', display: false })).toThrow(
+      /too_small|String must contain at least|Invalid input/,
+    );
+  });
+
+exec
+/bin/bash -lc 'cd /home/weiyi/selfKnowledgeBaseWeb && rg -n "BlockKind|kind.*component|kind.*render|kind.*prose|kind.*viz" packages/*/CONTRACT.md' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+packages/block-math/CONTRACT.md:12:  - `mathCore: BlockCoreDefinition<typeof propsSchema>` — name=`'math'` / kind=`'render'` / mdxComponent=`'Math'`
+packages/block-foundation/CONTRACT.md:11:- `BlockKind = 'prose' | 'component' | 'render' | 'viz'` （四分类，Wave 2 由 2→4 additive 扩展）
+packages/block-foundation/CONTRACT.md:20:- `BlockKind` 四分不可破坏：新 block 必须明确归属 `prose` / `component` / `render` / `viz` 之一。Wave 1 仅 `prose` + `component` 二分；Wave 2 additive 扩展加 `render` + `viz`（由 `render-block-eng` 与 `viz-block-eng` 工种 own，与 agent-contract.md Tier 1 worker 分工一致）。kind 定义不可被进一步窄化（不允许把 `render` 重新归并入 `component`），扩展再加 kind 需 ADR
+packages/block-foundation/CONTRACT.md:52:公共表面（`BlockCoreDefinition` / `BlockUIDefinition` / `BlockRegistry` / `BlockKind` / `BlockViewProps` / `defineCore` / `defineUI` / `proseExtensions`）的任何字段或方法增删改一律需 ADR — **包括添加 optional 字段、改 `proseExtensions` 数组（增删 Tiptap 扩展、顺序变更、`as const` shape 变化）**。spec §2.3 把 block-foundation 列为接口包，规则"改动需 ADR；全员同步"不区分 optional vs required。
+packages/block-callout/CONTRACT.md:12:  - `calloutCore: BlockCoreDefinition<typeof propsSchema>` — name=`'callout'` / kind=`'component'` / mdxComponent=`'Callout'`
+
+codex
+I’m doing a final asymmetric-asymmetry sweep against other `CONTRACT.md` files in the block package family to validate item #6 and confirm no sister-doc drift was left behind.
+exec
+/bin/bash -lc "sed -n '1,120p' /home/weiyi/selfKnowledgeBaseWeb/packages/block-callout/CONTRACT.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+# @skb/block-callout Contract
+
+第一个真实 `BlockRegistry` 消费者（Wave 2 Track C1 template）。
+后续 `block-code` / `block-image` 等 simple block 包按本包结构 clone（codex-block-generator + scripts/new-block.ts）。
+
+## Public surface
+
+四个 entry：
+
+- `.` (root barrel) — re-export `./core` + `./ui-default`
+- `./core` — headless 层
+  - `calloutCore: BlockCoreDefinition<typeof propsSchema>` — name=`'callout'` / kind=`'component'` / mdxComponent=`'Callout'`
+  - `serializeCallout(node) → mdxJsxFlowElement` — Tiptap → mdast (Wave 3 mdx-bridge routing 时启用)
+  - `parseCallout(mdast) → TiptapNode` — mdast → Tiptap (同上)
+  - 类型: `CalloutTiptapNode` / `CalloutMdastJsxElement`
+- `./ui-default` — presentational 层（Wave 2 Track C2）
+  - `calloutUIDefault: BlockUIDefinition<typeof calloutCore.propsSchema>` — coreName=`'callout'` / uiId=`'default'`
+  - `CalloutEditorView` / `CalloutRenderView` — `ComponentType<BlockViewProps<typeof calloutCore.propsSchema>>`，DOM 形状字节级一致（共享 `CalloutBody` 原语）
+  - `CalloutBody` — 视觉单一权威 primitive，editor + render 双视图都嵌入
+  - `VARIANT_TOKENS` — `Record<Variant, { label, accentToken: ColorTokenName }>` 共享视觉元数据
+  - `VARIANT_ICONS` — `Record<Variant, ComponentType>`，4 个手画 SVG（无 emoji，per ui-ux-pro-max `no-emoji-icons` rule）
+  - 类型: `Variant` (`'note' | 'tip' | 'warning' | 'danger'`)
+- `./ui-default/callout.css` — 视觉规则单一来源
+  - 选择器契约: 所有变体规则锁定在 `[data-callout-variant="…"]` 上（CalloutBody 总是 emit）
+  - 颜色完全来自 `@skb/design-tokens` CSS 变量（`var(--color-X)` 形式），不允许硬编码 hex / rgb 字面值
+  - 消费方 (`apps/site` / `editor-shell`) 必须在启动时 import 一次：`import '@skb/block-callout/ui-default/callout.css';`
+
+`propsSchema` 形状（见 `src/core/core-definition.ts`）：
+
+```typescript
+z.object({
+  variant: z.enum(['note', 'tip', 'warning', 'danger']),
+  title: z.string().optional(),
+}).strict()
+```
+
+## Invariants
+
+继承自 [block-foundation/CONTRACT.md](../block-foundation/CONTRACT.md#invariants)：
+`Defensive copy` / `Schema strictness` / `Default UI lookup` / `Serialize / parse hook ownership`
+（即 `BlockRegistry.listCores()` / `listUIs(coreName)` defensive-copy 行为、
+`propsSchema` 必须 `.strict()`、同 `coreName` 多 UI 时 `getUI(coreName)` 取首注册 `uiId`、
+serialize/parse 由本包 `core/` own 不在 foundation 注册）。
+
+block-callout 特定不变量：
+
+- **`coreName='callout'` (kebab-case)**: `calloutCore.name` 字面值固定，与 `BlockRegistry.registerCore`
+  注册键一致；后续 `block-code` / `block-image` 同 `coreName` kebab-case 约定
+- **`mdxComponent='Callout'` (PascalCase)**: 与 `<Callout variant=...>` JSX 标签一致；
+  mdx-bridge 通过 `mdxJsxFlowElement.name` 字符串路由（[block-foundation RFC §1](../block-foundation/RFC.md#1-core-side)）
+- **Serialize / parse hook 命名**: `serializeCallout` / `parseCallout`，verb-as-prefix
+  约定（[RFC §5](../block-foundation/RFC.md#5-serialize--parse-hook-ownership-scope-clarification)）
+- **`uiId='default'` reserved**: `calloutUIDefault.uiId === 'default'`；本包 inherit
+  foundation 的 `Default UI lookup` 不变量（首注册即 default）
+- **EditorView / RenderView byte-equivalent DOM**: 两视图都通过 `CalloutBody` 原语
+  渲染，DOM tree / class 名 / `data-callout-variant` / `role` / `aria-label`
+  完全一致；唯一差异是 `content` 缺省时 EditorView 显示 `.skb-callout-empty` 占位、
+  RenderView 直接渲染空 children。任何分歧都触发 `ui-default.test.tsx` byte-equiv 用例 fail
+- **CSS = single visual authority**: 视觉规则只在 `ui-default/callout.css`，
+  React 组件不带 inline `style`（happy-dom 测试拒绝 `rgb(var())` 字面值，所以
+  variant 颜色只能走 CSS data-attribute 选择器路径）；任何变体颜色变更都改 callout.css
+  + design-tokens 任一处即可，不必 touch React 树
+- **No emoji in icons**: `VARIANT_ICONS` 全部为 hand-traced SVG (24×24 stroke 1.75)，
+  per ui-ux-pro-max `no-emoji-icons` rule + spec §3.5
+- **Headless 自给**: `core/` 不 import 任何 React / Tiptap UI 模块；仅依赖
+  `@skb/block-foundation` 类型 + `zod`（ADR-0003 D1）
+- **propsSchema single authority**: 仅在 `src/core/core-definition.ts` 定义，
+  ui-default / serialize / parse / 测试均 import `calloutCore.propsSchema`，
+  不允许在 consumer 处 inline 重复（ADR-0006 item #4）
+- **Self-validating serialize/parse**: `serializeCallout` 调 `propsSchema.parse(node.attrs)`；
+  `parseCallout` 调 `propsSchema.parse(rawProps)`。任何契约偏离在 mdx-bridge 路由前已 throw
+- **Registry integration**: `registerCore(calloutCore)` + `getCore('callout')` round-trip —
+  see [`src/__tests__/registry-integration.test.ts`](src/__tests__/registry-integration.test.ts)
+
+## Wave 3 mdx-bridge 路由集成（pending）
+
+当前 `serializeCallout` / `parseCallout` 是 stub —— 暴露稳定签名，未被 mdx-bridge 消费。
+Wave 3 mdx-bridge routing table PR 会：
+
+1. 在 `mdx-bridge/parse.ts` 的 `mdastBlockToTiptap` 拦截 `mdxJsxFlowElement{name:'Callout'}` →
+   `parseCallout(node)` → 把返回 `CalloutTiptapNode` 嵌入 doc.content
+2. 在 `mdx-bridge/serialize.ts` 的 `tiptapToMdastBlock` 拦截 `type='callout'` →
+   `serializeCallout(node)` → 返回 `mdxJsxFlowElement` 进 mdast
+3. children 递归走 mdx-bridge 现有 inline / block 处理
+
+集成完成后，`__tests__/fixtures/` 下三组 fixture 移交给 `packages/mdx-bridge/__tests__/fixtures/`
+（编号 10-12）配 RTT 测试（`mdx-doctor` 强制 byte-equivalent 双向）。
+
+## Forward-compat consumers
+
+- **Wave 3 mdx-bridge integration**: 见上节
+- **Wave 2 后续 block packages**: `block-code` / `block-image` / `block-math` 等按本包
+  结构 clone (codex-block-generator template source)；`scripts/new-block.ts` 模板
+  source = `packages/block-callout/`。clone 时 ADR-0008 D1 由模板带过：
+  `package.json#dependencies` 含 `@skb/design-tokens`（type-only `ColorTokenName` import
+  in `variant-tokens.ts` 满足 dead-dep grep），`tsconfig.json#references` 含
+  `../design-tokens`，`callout.css` 模板 mirror visual rules under
+  `[data-<block>-variant]` 选择器
+
+## Modifying this file
+
+`calloutCore` 公共字段 (`name` / `kind` / `propsSchema` / `mdxComponent`) 的字段或值变更需 ADR
+（与 block-foundation/CONTRACT.md 同 freeze 级别 —— 改 propsSchema 形状 / 改 mdxComponent /
+改 kind 都触发 mdx-bridge 路由 + ui-default + sample-blocks 同步更新）。
+
+`serializeCallout` / `parseCallout` 签名变更需配 mdx-bridge routing PR 同步（强耦合）。
+
+## Related
+
+- [@skb/block-foundation CONTRACT](../block-foundation/CONTRACT.md) — `BlockCoreDefinition` 接口权威
+- [@skb/block-foundation RFC](../block-foundation/RFC.md) — registration walkthrough（本包是 §1 + §3 + §5 唯一真 consumer）
+- [ADR-0003 headless / presentational 分层](../../docs/decisions/ADR-0003-headless-presentational-split.md)
+- [ADR-0006 asymmetry audit checklist](../../docs/decisions/ADR-0006-asymmetry-audit-checklist.md) item #3 + #4
+- [ADR-0008 D1 dead-dep + D2 interface freeze](../../docs/decisions/ADR-0008-wave-2-entry-policies.md)
+- [Wave 2 plan §Task C1](../../docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md)
+
+exec
+/bin/bash -lc 'cd /home/weiyi/selfKnowledgeBaseWeb && rg -n "--filter @skb/block-foundation test|--filter @skb/block-math test|9/9|11/11|PASS" docs/audits/codex-runs/2026-04-30-task-D1-code-review-r2.txt | head -n 40' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+rg: unrecognized flag --filter @skb/block-foundation test|--filter @skb/block-math test|9/9|11/11|PASS
+
+exec
+/bin/bash -lc 'cd /home/weiyi/selfKnowledgeBaseWeb && rg -n "block-foundation|block-math|9/9|11/11|9 passed|11 passed|PASS" docs/audits/codex-runs/2026-04-30-task-D1-code-review-r2.txt | head -n 80' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 105ms:
+14:You are codex 5.3-spark code-reviewer. Re-review D1 R2 bundle for Wave 2 Task #16 (block-math).
+19:1. packages/block-foundation/src/registry.ts:4 — BlockKind union extended `'prose' | 'component'` → `'prose' | 'component' | 'render' | 'viz'` (additive, Wave 1 invariant preserved).
+20:2. packages/block-foundation/CONTRACT.md — documents the 4-value union + Wave 2 extension rationale.
+21:3. packages/block-math/src/core/core-definition.ts — mathCore.kind: 'render' (was 'component').
+22:4. packages/block-math/CONTRACT.md — documents kind='render'.
+23:5. packages/block-math/src/__tests__/core.test.ts — test assertion updated to expect 'render'.
+28:3. block-foundation/CONTRACT.md sister-doc-aligned (Wave 1 invariant preservation).
+29:4. pnpm --filter @skb/block-foundation test → 9/9 PASS (Wave 1 tests still PASS — additive only).
+30:5. pnpm --filter @skb/block-math test → 11/11 PASS.
+34:Verdict: PASS or FAIL.
+38:Understood. I’ll validate the five touched files for the requested invariants, run the three requested package/test commands plus full typecheck, and then perform the ADR-0006 sister-doc asymmetry check before issuing a PASS/FAIL verdict with exact evidence.
+40:/bin/bash -lc "sed -n '1,260p' /home/weiyi/selfKnowledgeBaseWeb/packages/block-math/src/core/core-definition.ts" in /home/weiyi/selfKnowledgeBaseWeb
+42:/bin/bash -lc "sed -n '1,260p' /home/weiyi/selfKnowledgeBaseWeb/packages/block-math/CONTRACT.md" in /home/weiyi/selfKnowledgeBaseWeb
+44:/bin/bash -lc "sed -n '1,260p' /home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation/CONTRACT.md" in /home/weiyi/selfKnowledgeBaseWeb
+46:import { defineCore, type BlockCoreDefinition } from '@skb/block-foundation';
+64:# @skb/block-math Contract
+96:继承自 [block-foundation/CONTRACT.md](../block-foundation/CONTRACT.md#invariants)：
+102:block-math 特定不变量：
+107:  mdx-bridge 通过 `mdxJsxFlowElement.name` 字符串路由（[block-foundation RFC §1](../block-foundation/RFC.md#1-core-side)）
+109:  ([RFC §5](../block-foundation/RFC.md#5-serialize--parse-hook-ownership-scope-clarification))
+117:  `@skb/block-foundation` + `zod`（ADR-0003 D1）。`ui-default/` 才 import React + katex
+139:- **apps/site SSR**: 在 mdx page 直接 import `@skb/block-math/ui-default/Math.astro`；
+140:  consumer 同 PR 加 `@skb/block-math` + `@skb/design-tokens` deps、import `katex/dist/katex.css`
+149:变更需 ADR（与 block-foundation/CONTRACT.md 同 freeze 级别 —— 改 propsSchema 形状 /
+157:- [@skb/block-foundation CONTRACT](../block-foundation/CONTRACT.md) — `BlockCoreDefinition` / `BlockUIDefinition` 接口权威
+158:- [@skb/block-foundation RFC](../block-foundation/RFC.md) — registration walkthrough
+166:# @skb/block-foundation Contract
+179:  - `'render'` — **Wave 2 NEW** for hand-crafted render blocks consuming external runtime authority（block-math KaTeX / block-pdf react-pdf — Track D render-block-eng）
+193:- **Serialize / parse hook ownership**：MDX serialize/parse 由各 `block-*` 包的 `core/` own（ADR-0003 D1+D2），不在 `block-foundation` 注册。`block-foundation` 仅 own `BlockCoreDefinition` 形状（含 `mdxComponent` 字符串）；`mdx-bridge` 通过 `mdxJsxFlowElement.name` 字符串路由到对应 block 的 export（命名约定 verb-as-prefix：`serialize<BlockName>` / `parse<BlockName>`，与 mdx-bridge 现有 `mdxToTiptap` / `tiptapToMdx` 同 style）。详见 RFC.md §"5. Serialize / parse hook ownership"
+217:公共表面（`BlockCoreDefinition` / `BlockUIDefinition` / `BlockRegistry` / `BlockKind` / `BlockViewProps` / `defineCore` / `defineUI` / `proseExtensions`）的任何字段或方法增删改一律需 ADR — **包括添加 optional 字段、改 `proseExtensions` 数组（增删 Tiptap 扩展、顺序变更、`as const` shape 变化）**。spec §2.3 把 block-foundation 列为接口包，规则"改动需 ADR；全员同步"不区分 optional vs required。
+230:/bin/bash -lc "sed -n '1,220p' /home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation/src/registry.ts" in /home/weiyi/selfKnowledgeBaseWeb
+232:/bin/bash -lc "sed -n '1,260p' /home/weiyi/selfKnowledgeBaseWeb/packages/block-math/src/__tests__/core.test.ts" in /home/weiyi/selfKnowledgeBaseWeb
+385:/bin/bash -lc "rg -n \"BlockKind\\s*=|kind:\\s*'render'|kind:\\s*'component'|kind:\\s*'prose'|kind:\\s*'viz'\" /home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation/src /home/weiyi/selfKnowledgeBaseWeb/packages/block-math/src /home/weiyi/selfKnowledgeBaseWeb/packages/block-math/CONTRACT.md /home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation/CONTRACT.md /home/weiyi/selfKnowledgeBaseWeb/packages -g \"*.ts\" -g \"*.md\"" in /home/weiyi/selfKnowledgeBaseWeb
+387:/home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation/CONTRACT.md:11:- `BlockKind = 'prose' | 'component' | 'render' | 'viz'` （四分类，Wave 2 由 2→4 additive 扩展）
+388:/home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation/src/registry.ts:4:export type BlockKind = 'prose' | 'component' | 'render' | 'viz';
+389:/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/src/core/core-definition.ts:13:  kind: 'render',
+390:/home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation/src/__tests__/registry.test.ts:13:  kind: 'component',
+391:/home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation/RFC.md:39:  kind: 'component',
+392:/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/src/core/core-definition.ts:13:  kind: 'render',
+393:/home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation/src/registry.ts:4:export type BlockKind = 'prose' | 'component' | 'render' | 'viz';
+394:/home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation/src/__tests__/registry.test.ts:13:  kind: 'component',
+395:/home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation/CONTRACT.md:11:- `BlockKind = 'prose' | 'component' | 'render' | 'viz'` （四分类，Wave 2 由 2→4 additive 扩展）
+399:/bin/bash -lc "rg -n \"mathCore\\.kind|kind\\s*==\\s*'render'|kind\\s*==\\s*'component'\" /home/weiyi/selfKnowledgeBaseWeb/packages/block-math /home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation" in /home/weiyi/selfKnowledgeBaseWeb
+401:/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/src/__tests__/core.test.ts:43:    expect(mathCore.kind).toBe('render');
+406:/bin/bash -lc 'cd /home/weiyi/selfKnowledgeBaseWeb && pnpm --filter @skb/block-foundation test' in /home/weiyi/selfKnowledgeBaseWeb
+409:> @skb/block-foundation@0.0.0 test /home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation
+412:failed to load config from /home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation/vitest.config.ts
+415:Error: EROFS: read-only file system, open '/home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation/node_modules/.vite-temp/vitest.config.ts.timestamp-1777580701711-84ca7c5560a84.mjs'
+429:  path: '/home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation/node_modules/.vite-temp/vitest.config.ts.timestamp-1777580701711-84ca7c5560a84.mjs'
+434:/home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation:
+435: ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @skb/block-foundation@0.0.0 test: `vitest run`
+439:`pnpm --filter @skb/block-foundation test` failed with an environment-level `EROFS` writing `.vite-temp`, so I’ll still run the other requested checks and report pass/fail status with the exact error context.
+441:/bin/bash -lc 'cd /home/weiyi/selfKnowledgeBaseWeb && pnpm --filter @skb/block-math test' in /home/weiyi/selfKnowledgeBaseWeb
+452:> @skb/block-math@0.0.0 test /home/weiyi/selfKnowledgeBaseWeb/packages/block-math
+455:failed to load config from /home/weiyi/selfKnowledgeBaseWeb/packages/block-math/vitest.config.ts
+458:Error: EROFS: read-only file system, open '/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/node_modules/.vite-temp/vitest.config.ts.timestamp-1777580703897-981b658c89d96.mjs'
+472:  path: '/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/node_modules/.vite-temp/vitest.config.ts.timestamp-1777580703897-981b658c89d96.mjs'
+477:/home/weiyi/selfKnowledgeBaseWeb/packages/block-math:
+478: ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @skb/block-math@0.0.0 test: `vitest run`
+508:| 1 | Track B (block-foundation + content-types) | R1 → fixed v3 | `listUIs` mutability vs `listCores` defensive copy | Caller mutation of return value polluted registry singleton |
+531:Adopt an **8-point asymmetry-audit checklist** as a mandatory part of `code-reviewer` (Codex 5.3-spark, default cheap) and `pr-gate` (Codex 5.5, deep) review prompts. Reviewers MUST work through every applicable item before declaring PASS.
+637:/bin/bash -lc 'rg -n "kind=|kind:`'"'render'"'`|kind.*render|kind.*component|BlockKind|mathCore.kind" /home/weiyi/selfKnowledgeBaseWeb/packages/block-math/CONTRACT.md /home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation/CONTRACT.md' in /home/weiyi/selfKnowledgeBaseWeb
+640:/home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation/CONTRACT.md:11:- `BlockKind = 'prose' | 'component' | 'render' | 'viz'` （四分类，Wave 2 由 2→4 additive 扩展）
+641:/home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation/CONTRACT.md:20:- `BlockKind` 四分不可破坏：新 block 必须明确归属 `prose` / `component` / `render` / `viz` 之一。Wave 1 仅 `prose` + `component` 二分；Wave 2 additive 扩展加 `render` + `viz`（由 `render-block-eng` 与 `viz-block-eng` 工种 own，与 agent-contract.md Tier 1 worker 分工一致）。kind 定义不可被进一步窄化（不允许把 `render` 重新归并入 `component`），扩展再加 kind 需 ADR
+642:/home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation/CONTRACT.md:52:公共表面（`BlockCoreDefinition` / `BlockUIDefinition` / `BlockRegistry` / `BlockKind` / `BlockViewProps` / `defineCore` / `defineUI` / `proseExtensions`）的任何字段或方法增删改一律需 ADR — **包括添加 optional 字段、改 `proseExtensions` 数组（增删 Tiptap 扩展、顺序变更、`as const` shape 变化）**。spec §2.3 把 block-foundation 列为接口包，规则"改动需 ADR；全员同步"不区分 optional vs required。
+643:/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/CONTRACT.md:12:  - `mathCore: BlockCoreDefinition<typeof propsSchema>` — name=`'math'` / kind=`'render'` / mdxComponent=`'Math'`
+648:/bin/bash -lc 'cd /home/weiyi/selfKnowledgeBaseWeb && git diff -- packages/block-foundation/src/registry.ts packages/block-foundation/CONTRACT.md packages/block-math/src/core/core-definition.ts packages/block-math/CONTRACT.md packages/block-math/src/__tests__/core.test.ts' in /home/weiyi/selfKnowledgeBaseWeb
+650:diff --git a/packages/block-foundation/CONTRACT.md b/packages/block-foundation/CONTRACT.md
+652:--- a/packages/block-foundation/CONTRACT.md
+653:+++ b/packages/block-foundation/CONTRACT.md
+662:+  - `'render'` — **Wave 2 NEW** for hand-crafted render blocks consuming external runtime authority（block-math KaTeX / block-pdf react-pdf — Track D render-block-eng）
+673:diff --git a/packages/block-foundation/src/registry.ts b/packages/block-foundation/src/registry.ts
+675:--- a/packages/block-foundation/src/registry.ts
+676:+++ b/packages/block-foundation/src/registry.ts
+688:/bin/bash -lc 'cd /home/weiyi/selfKnowledgeBaseWeb && git status --short packages/block-foundation/src/registry.ts packages/block-foundation/CONTRACT.md packages/block-math/src/core/core-definition.ts packages/block-math/CONTRACT.md packages/block-math/src/__tests__/core.test.ts' in /home/weiyi/selfKnowledgeBaseWeb
+690: M packages/block-foundation/CONTRACT.md
+691: M packages/block-foundation/src/registry.ts
+692:?? packages/block-math/CONTRACT.md
+693:?? packages/block-math/src/__tests__/core.test.ts
+694:?? packages/block-math/src/core/core-definition.ts
+
+exec
+/bin/bash -lc 'cd /home/weiyi/selfKnowledgeBaseWeb && wc -l packages/block-foundation/src/__tests__/*.ts && wc -l packages/block-foundation/src/__tests__/*.test.ts packages/block-foundation/src/__tests__/*.test.tsx 2>/dev/null || true' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 111ms:
+101 packages/block-foundation/src/__tests__/registry.test.ts
+ 101 packages/block-foundation/src/__tests__/registry.test.ts
+ 101 total
+
+codex
+I can confirm doc and kind checks from source content. I’ll now do a non-invasive static count of test declarations to estimate expected pass counts, then finalize with explicit PASS/FAIL on the requested verification list.
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && rg -n \"\\bit\\(\" packages/block-foundation/src/__tests__/*.ts | wc -l && rg -n \"\\bdescribe\\(|\\bit\\(\" packages/block-math/src/__tests__/*.ts | wc -l && rg -n \"\\bit\\(\" packages/block-math/src/__tests__/*.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 102ms:
+exec
+/bin/bash -lc 'cd /home/weiyi/selfKnowledgeBaseWeb && echo "it=" $(rg -n "'"\\bit\\(\" packages/block-math/src/__tests__/*.ts | wc -l) && echo \"describe=\" "'$(rg -n "'"\\bdescribe\\(\" packages/block-math/src/__tests__/*.ts | wc -l)" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 155ms:
+it= 11
+describe= 2
+
+exec
+/bin/bash -lc 'cd /home/weiyi/selfKnowledgeBaseWeb && echo "it=" $(rg -n "'"\\bit\\(\" packages/block-foundation/src/__tests__/*.ts | wc -l) && echo \"describe=\" "'$(rg -n "'"\\bdescribe\\(\" packages/block-foundation/src/__tests__/*.ts | wc -l) && rg -n \"\\bit\\(\" packages/block-foundation/src/__tests__/*.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+it= 9
+describe= 2
+27:  it('registers and retrieves a core by name', () => {
+33:  it('throws on duplicate core name', () => {
+39:  it('lists all registered cores', () => {
+46:  it('listCores returns a defensive copy', () => {
+61:  it('registers a UI bound to an existing core', () => {
+68:  it('throws if registering UI for an unknown core', () => {
+73:  it('supports multiple UIs per core; getUI without uiId returns first registered', () => {
+84:  it('throws on duplicate (coreName, uiId) pair', () => {
+91:  it('listUIs returns a defensive copy', () => {
+
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && pnpm vitest --help | sed -n '1,140p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 456ms:
+vitest/4.1.5
+
+Usage:
+  $ vitest [...filters]
+
+Commands:
+  run [...filters]      
+  related [...filters]  
+  watch [...filters]    
+  dev [...filters]      
+  bench [...filters]    
+  init <project>        
+  list [...filters]     
+  [...filters]          
+  complete [shell]      
+
+For more info, run any command with the `--help` flag:
+  $ vitest run --help
+  $ vitest related --help
+  $ vitest watch --help
+  $ vitest dev --help
+  $ vitest bench --help
+  $ vitest init --help
+  $ vitest list --help
+  $ vitest --help
+  $ vitest complete --help
+  $ vitest --help --expand-help
+
+Options:
+  -v, --version                                              Display version number 
+  -r, --root <path>                                          Root path 
+  -c, --config <path>                                        Path to config file 
+  -u, --update [type]                                        Update snapshot (accepts boolean, "new", "all" or "none") 
+  -w, --watch                                                Enable watch mode 
+  -t, --testNamePattern <pattern>                            Run tests with full names matching the specified regexp pattern 
+  --dir <path>                                               Base directory to scan for the test files 
+  --ui                                                       Enable UI 
+  --open                                                     Open UI automatically (default: !process.env.CI) 
+  --api [port]                                               Specify server port. Note if the port is already being used, Vite will automatically try the next available port so this may not be the actual port the server ends up listening on. If true will be set to 51204. Use '--help --api' for more info. 
+  --silent [value]                                           Silent console output from tests. Use 'passed-only' to see logs from failing tests only. 
+  --hideSkippedTests                                         Hide logs for skipped tests 
+  --reporter <name>                                          Specify reporters (default, agent, minimal, blob, verbose, dot, json, tap, tap-flat, junit, tree, hanging-process, github-actions) 
+  --outputFile <filename/-s>                                 Write test results to a file when supporter reporter is also specified, use cac's dot notation for individual outputs of multiple reporters (example: --outputFile.tap=./tap.txt) 
+  --coverage                                                 Enable coverage report. Use '--help --coverage' for more info. 
+  --mode <name>                                              Override Vite mode (default: test or benchmark) 
+  --isolate                                                  Run every test file in isolation. To disable isolation, use --no-isolate (default: true) 
+  --globals                                                  Inject apis globally 
+  --dom                                                      Mock browser API with happy-dom 
+  --browser <name>                                           Run tests in the browser. Equivalent to --browser.enabled (default: false). Use '--help --browser' for more info. 
+  --pool <pool>                                              Specify pool, if not running in the browser (default: forks) 
+  --execArgv <option>                                        Pass additional arguments to node process when spawning worker_threads or child_process. 
+  --vmMemoryLimit <limit>                                    Memory limit for VM pools. If you see memory leaks, try to tinker this value. 
+  --fileParallelism                                          Should all test files run in parallel. Use --no-file-parallelism to disable (default: true) 
+  --maxWorkers <workers>                                     Maximum number or percentage of workers to run tests in 
+  --environment <name>                                       Specify runner environment, if not running in the browser (default: node) 
+  --passWithNoTests                                          Pass when no tests are found 
+  --logHeapUsage                                             Show the size of heap for each test when running in node 
+  --detectAsyncLeaks                                         Detect asynchronous resources leaking from the test file (default: false) 
+  --allowOnly                                                Allow tests and suites that are marked as only (default: !process.env.CI) 
+  --dangerouslyIgnoreUnhandledErrors                         Ignore any unhandled errors that occur 
+  --shard <shards>                                           Test suite shard to execute in a format of <index>/<count> 
+  --changed [since]                                          Run tests that are affected by the changed files (default: false) 
+  --sequence <options>                                       Options for how tests should be sorted. Use '--help --sequence' for more info. 
+  --inspect [[host:]port]                                    Enable Node.js inspector (default: 127.0.0.1:9229) 
+  --inspectBrk [[host:]port]                                 Enable Node.js inspector and break before the test starts 
+  --testTimeout <timeout>                                    Default timeout of a test in milliseconds (default: 5000). Use 0 to disable timeout completely. 
+  --hookTimeout <timeout>                                    Default hook timeout in milliseconds (default: 10000). Use 0 to disable timeout completely. 
+  --bail <number>                                            Stop test execution when given number of tests have failed (default: 0) 
+  --retry <times>                                            Retry the test specific number of times if it fails (default: 0). Use '--help --retry' for more info. 
+  --diff <path>                                              DiffOptions object or a path to a module which exports DiffOptions object. Use '--help --diff' for more info. 
+  --exclude <glob>                                           Additional file globs to be excluded from test 
+  --expandSnapshotDiff                                       Show full diff when snapshot fails 
+  --disableConsoleIntercept                                  Disable automatic interception of console logging (default: false) 
+  --typecheck                                                Enable typechecking alongside tests (default: false). Use '--help --typecheck' for more info. 
+  --project <name>                                           The name of the project to run if you are using Vitest workspace feature. This can be repeated for multiple projects: --project=1 --project=2. You can also filter projects using wildcards like --project=packages*, and exclude projects with --project=!pattern. 
+  --slowTestThreshold <threshold>                            Threshold in milliseconds for a test or suite to be considered slow (default: 300) 
+  --teardownTimeout <timeout>                                Default timeout of a teardown function in milliseconds (default: 10000) 
+  --cache                                                    Enable cache. Use '--help --cache' for more info. 
+  --maxConcurrency <number>                                  Maximum number of concurrent tests and suites during test file execution (default: 5) 
+  --expect                                                   Configuration options for expect() matches. Use '--help --expect' for more info. 
+  --printConsoleTrace                                        Always print console stack traces 
+  --includeTaskLocation                                      Collect test and suite locations in the location property 
+  --attachmentsDir <dir>                                     The directory where attachments from context.annotate are stored in (default: .vitest-attachments) 
+  --run                                                      Disable watch mode 
+  --no-color                                                 Removes colors from the console output (default: true)
+  --clearScreen                                              Clear terminal screen when re-running tests during watch mode (default: true) 
+  --configLoader <loader>                                    Use bundle to bundle the config with esbuild or runner (experimental) to process it on the fly. This is only available in vite version 6.1.0 and above. (default: bundle) 
+  --standalone                                               Start Vitest without running tests. Tests will be running only on change. If browser mode is enabled, the UI will be opened automatically. This option is ignored when CLI file filters are passed. (default: false) 
+  --mergeReports [path]                                      Path to a blob reports directory. If this options is used, Vitest won't run any tests, it will only report previously recorded tests 
+  --listTags [type]                                          List all available tags instead of running tests. --list-tags=json will output tags in JSON format, unless there are no tags. 
+  --clearCache                                               Delete all Vitest caches, including experimental.fsModuleCache, without running any tests. This will reduce the performance in the subsequent test run. 
+  --tagsFilter <expression>                                  Run only tests with the specified tags. You can use logical operators && (and), || (or) and ! (not) to create complex expressions, see https://vitest.dev/guide/test-tags#syntax for more information. 
+  --strictTags                                               Should Vitest throw an error if test has a tag that is not defined in the config. (default: true) 
+  --experimental <features>                                  Experimental features.. Use '--help --experimental' for more info. 
+  -h, --help                                                 Display this message 
+
+exec
+/bin/bash -lc 'cd /home/weiyi/selfKnowledgeBaseWeb && pnpm --filter @skb/block-foundation test -- --configLoader ts' in /home/weiyi/selfKnowledgeBaseWeb
+ exited 1 in 672ms:
+
+> @skb/block-foundation@0.0.0 test /home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation
+> vitest run "--configLoader" "ts"
+
+
+⎯⎯⎯⎯⎯⎯⎯ Startup Error ⎯⎯⎯⎯⎯⎯⎯⎯
+Error: Unsupported configLoader: ts. Accepted values are 'bundle', 'runner', and 'native'.
+    at loadConfigFromFile (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:34583:97)
+    at resolveConfig (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:34223:28)
+    at _createServer (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:26029:71)
+    at createServer$2 (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:26026:9)
+    at createViteServer (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vitest@4.1.5_@types+node@22.19.17_happy-dom@15.11.7_vite@8.0.10_@types+node@22.19.17_esbuild@_njtu3hruheo7esciutan5fga5a/node_modules/vitest/dist/chunks/cli-api.Cjt90eJu.js:8818:23)
+    at createVitest (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vitest@4.1.5_@types+node@22.19.17_happy-dom@15.11.7_vite@8.0.10_@types+node@22.19.17_esbuild@_njtu3hruheo7esciutan5fga5a/node_modules/vitest/dist/chunks/cli-api.Cjt90eJu.js:14205:24)
+    at async prepareVitest (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vitest@4.1.5_@types+node@22.19.17_happy-dom@15.11.7_vite@8.0.10_@types+node@22.19.17_esbuild@_njtu3hruheo7esciutan5fga5a/node_modules/vitest/dist/chunks/cli-api.Cjt90eJu.js:14572:14)
+    at async startVitest (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vitest@4.1.5_@types+node@22.19.17_happy-dom@15.11.7_vite@8.0.10_@types+node@22.19.17_esbuild@_njtu3hruheo7esciutan5fga5a/node_modules/vitest/dist/chunks/cli-api.Cjt90eJu.js:14515:14)
+    at async start (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vitest@4.1.5_@types+node@22.19.17_happy-dom@15.11.7_vite@8.0.10_@types+node@22.19.17_esbuild@_njtu3hruheo7esciutan5fga5a/node_modules/vitest/dist/chunks/cac.DJJmV0dT.js:2340:15)
+    at async CAC.run (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vitest@4.1.5_@types+node@22.19.17_happy-dom@15.11.7_vite@8.0.10_@types+node@22.19.17_esbuild@_njtu3hruheo7esciutan5fga5a/node_modules/vitest/dist/chunks/cac.DJJmV0dT.js:2318:2)
+
+
+
+/home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @skb/block-foundation@0.0.0 test: `vitest run "--configLoader" "ts"`
+Exit status 1
+
+exec
+/bin/bash -lc 'cd /home/weiyi/selfKnowledgeBaseWeb && pnpm --filter @skb/block-foundation test -- --configLoader native' in /home/weiyi/selfKnowledgeBaseWeb
+ exited 1 in 956ms:
+
+> @skb/block-foundation@0.0.0 test /home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation
+> vitest run "--configLoader" "native"
+
+
+ RUN  v4.1.5 /home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation
+
+ ❯ src/__tests__/registry.test.ts (0 test)
+
+⎯⎯⎯⎯⎯⎯ Failed Suites 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/__tests__/registry.test.ts [ src/__tests__/registry.test.ts ]
+Error: ENOENT: no such file or directory, mkdir '/tmp/gGGIB_00l0JYvStkxK2RW/ssr'
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  no tests
+   Start at  16:25:44
+   Duration  131ms (transform 0ms, setup 0ms, import 0ms, tests 0ms, environment 0ms)
+
+/home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @skb/block-foundation@0.0.0 test: `vitest run "--configLoader" "native"`
+Exit status 1
+
+codex
+FAIL
+
+Findings (in review order):
+
+1. `BlockKind` union is not narrowed; it is now additive (`'prose' | 'component' | 'render' | 'viz'`) in code.
+- Evidence: [packages/block-foundation/src/registry.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation/src/registry.ts)
+
+2. `mathCore.kind === 'render'` is consistent across the three required sites.
+- [packages/block-math/src/core/core-definition.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/src/core/core-definition.ts) (`kind: 'render'`)
+- [packages/block-math/CONTRACT.md](/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/CONTRACT.md) (documents `name='math' / kind='render' / mdxComponent='Math'`)
+- [packages/block-math/src/__tests__/core.test.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/src/__tests__/core.test.ts) (`expect(mathCore.kind).toBe('render')`)
+
+3. `block-foundation/CONTRACT.md` appears sister-doc aligned and explicitly preserves Wave 1 invariant style while documenting Wave 2 additive extension (no narrowing).
+- [packages/block-foundation/CONTRACT.md](/home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation/CONTRACT.md)
+
+4. `pnpm typecheck` passes (exit code 0).
+
+5. `pnpm --filter @skb/block-foundation test` and `pnpm --filter @skb/block-math test` did not execute; both failed before running assertions due read-only FS during Vitest config bootstrap (`.vite-temp` write) and `tmp`/`/tmp` write attempts also fail.
+- Foundation failure: EROFS on `/home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation/node_modules/.vite-temp/...`
+- Math failure: same path under `packages/block-math`
+
+6. ADR-0006 re-application was checked for item #6 (sister-doc drift): relevant `CONTRACT.md` docs in this family were reviewed for kind/contract terminology consistency (`block-foundation`, `block-math`, and sibling template-style `block-callout`); no active sister-doc regression surfaced in current CONTRACT set.
+
+Secondary static checks:
+- Expected suite sizes match requested intent by declaration count (foundation: 9 `it(...)` tests, math: 11 `it(...)` tests), but these were not executed in this environment.
+
+Requested PASS/FAIL: **FAIL** (code-level fixes pass, but required test-command verification could not be completed in this environment).
+2026-04-30T20:25:58.168509Z ERROR codex_core::session: failed to record rollout items: thread 019de010-d4d6-77d3-a5e5-bb656666ebee not found
+tokens used
+62,162
+FAIL
+
+Findings (in review order):
+
+1. `BlockKind` union is not narrowed; it is now additive (`'prose' | 'component' | 'render' | 'viz'`) in code.
+- Evidence: [packages/block-foundation/src/registry.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation/src/registry.ts)
+
+2. `mathCore.kind === 'render'` is consistent across the three required sites.
+- [packages/block-math/src/core/core-definition.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/src/core/core-definition.ts) (`kind: 'render'`)
+- [packages/block-math/CONTRACT.md](/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/CONTRACT.md) (documents `name='math' / kind='render' / mdxComponent='Math'`)
+- [packages/block-math/src/__tests__/core.test.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/block-math/src/__tests__/core.test.ts) (`expect(mathCore.kind).toBe('render')`)
+
+3. `block-foundation/CONTRACT.md` appears sister-doc aligned and explicitly preserves Wave 1 invariant style while documenting Wave 2 additive extension (no narrowing).
+- [packages/block-foundation/CONTRACT.md](/home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation/CONTRACT.md)
+
+4. `pnpm typecheck` passes (exit code 0).
+
+5. `pnpm --filter @skb/block-foundation test` and `pnpm --filter @skb/block-math test` did not execute; both failed before running assertions due read-only FS during Vitest config bootstrap (`.vite-temp` write) and `tmp`/`/tmp` write attempts also fail.
+- Foundation failure: EROFS on `/home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation/node_modules/.vite-temp/...`
+- Math failure: same path under `packages/block-math`
+
+6. ADR-0006 re-application was checked for item #6 (sister-doc drift): relevant `CONTRACT.md` docs in this family were reviewed for kind/contract terminology consistency (`block-foundation`, `block-math`, and sibling template-style `block-callout`); no active sister-doc regression surfaced in current CONTRACT set.
+
+Secondary static checks:
+- Expected suite sizes match requested intent by declaration count (foundation: 9 `it(...)` tests, math: 11 `it(...)` tests), but these were not executed in this environment.
+
+Requested PASS/FAIL: **FAIL** (code-level fixes pass, but required test-command verification could not be completed in this environment).
