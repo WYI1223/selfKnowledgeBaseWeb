@@ -1,0 +1,93 @@
+# Task E1 (block-jupyter) — Claude pr-reviewer verdict
+
+Date: 2026-04-30
+Reviewer: pr-reviewer-e1 (Claude Opus 4.7 1M ctx)
+Scope: ADR-0007 D2 row 1 (CONTRACT-level + new package + first kind='viz' precedent
+       + first @skb/kernel-pyodide consumer)
+
+## VERDICT: REJECT (procedural — bundle not on disk)
+
+## Critical finding (blocks merge)
+
+`packages/block-jupyter/` is NOT present in the working tree at /home/weiyi/selfKnowledgeBaseWeb.
+The git status snapshot at task start showed `?? packages/block-jupyter/` as untracked,
+but a `git status` taken during this review shows:
+  - Staged: docs/audits/codex-runs/2026-04-30-task-C3-* + packages/block-code/* (Track C3, NOT E1)
+  - Modified: pnpm-lock.yaml, tsconfig.json
+  - Untracked: NO packages/block-jupyter/ entry
+
+Filesystem check (`ls /home/weiyi/selfKnowledgeBaseWeb/packages/`) confirms only:
+  agent-tools, block-callout, block-code, block-foundation, block-math,
+  content-types, design-tokens, editor-commands, editor-toolbar,
+  kernel-adapter, kernel-pyodide, kernel-registry, mdx-bridge
+
+Missing: block-jupyter, block-image, block-pdf.
+
+`find /home/weiyi -type d -name block-jupyter` returns no results.
+No worktrees besides main; no stashes.
+
+The codex E1 audit logs (2026-04-30-task-E1-code-review.txt + -pr-gate.txt)
+were authored against a worktree where the directory existed; that worktree is gone.
+
+## Secondary finding (caused by primary)
+
+The currently staged tsconfig.json change adds 4 new project references:
+  ./packages/block-code, ./packages/block-image, ./packages/block-jupyter,
+  ./packages/block-pdf
+
+Of these only block-code exists on disk. If this commit lands as-is, `tsc -b`
+will fail at the root reference graph because block-image / block-jupyter /
+block-pdf paths do not resolve.
+
+The pnpm-lock.yaml diff likewise adds importer blocks for all four packages;
+`pnpm install --frozen-lockfile` will fail to materialize three of them.
+
+## Sister-package check
+
+block-code IS staged with full tree (CONTRACT.md / package.json / src/{core,...}
+/ tests / tsconfig / vitest.config). That is Wave 2 Task C3 work, not E1.
+The brief summary you provided ("Wave 2 Task #18 — block-jupyter by viz-block-eng,
+43/43 tests PASS") does not match the actual staged content (which is C3 / block-code).
+
+## Hypothesis
+
+Either (a) the wrong worktree got committed (E1 work never landed and someone
+staged C3 by mistake under the E1 task ID), or (b) the E1 worktree was destroyed
+between codex pr-gate run and this review (a commit got stomped, a worktree
+removal happened, or a wrong-branch reset occurred). Without the actual
+block-jupyter source on disk I cannot run the ADR-0006 8-point asymmetry audit
+or verify createKernelBridge's KernelEvent handling. The codex audits show
+favorable structural alignment at the time they ran, but those findings cannot
+be re-attested against current HEAD.
+
+## Required for re-review
+
+git-operator (or whoever holds the bundle) must restore packages/block-jupyter/
+to working tree (with its 15 src files + 4 tests + CONTRACT.md + package.json
++ tsconfig.json + vitest.config.ts) AND ensure tsconfig.json + pnpm-lock.yaml
+references resolve. Then re-run:
+
+  pnpm --filter @skb/block-jupyter test    (must report 43/43)
+  pnpm install --frozen-lockfile           (lockfile-disk consistency)
+  pnpm typecheck                           (root tsconfig refs resolve)
+
+Then send the bundle back for pr-reviewer with the `git diff` reflecting
+ONLY E1 scope (block-jupyter + lockfile importer for block-jupyter +
+tsconfig reference for block-jupyter). Reject the conflated tsconfig/lockfile
+additions for block-image and block-pdf — those are D2 / C4 scope and should
+not piggyback on E1.
+
+## Notes on what I *could* verify (against the bundle as referenced in codex
+audits, NOT a live-HEAD attestation)
+
+- BlockKind 4-way union exists in packages/block-foundation/src/registry.ts
+  ('prose' | 'component' | 'render' | 'viz') — kind='viz' authorization
+  per ADR-0009 holds.
+- KernelEvent 6-variant + KernelError abstract base + KernelStartupError /
+  KernelShutdownError / KernelInterruptError / KernelTimeoutError exist in
+  @skb/kernel-adapter authority.
+- KernelImportError exists in @skb/kernel-pyodide (sister-aligned subclass).
+- kernel-pyodide CONTRACT.md identifies block-jupyter as the named first
+  consumer; sister-doc binding is real.
+
+These authority types are intact; the consumer is the missing artifact.

@@ -1,0 +1,225 @@
+# Task E1 (block-jupyter) — Claude pr-reviewer r2 verdict (post-restore)
+
+Date: 2026-04-30
+Reviewer: pr-reviewer-e1 (Claude Opus 4.7 1M ctx)
+Round: r2 (post WE-011 workforce-contention move-aside; r1 REJECT was procedural,
+       caused by mid-flight git-operator-c3 worktree hold)
+
+Scope: ADR-0007 D2 row 1 — first kind='viz' block + first @skb/kernel-pyodide
+       consumer; CONTRACT-level + new package + cross-package consumer pattern
+       inheritance for E2/E3.
+
+Re-verify scope per team-lead instruction: block-jupyter only (not block-image /
+block-pdf which commit separately).
+
+## VERDICT: APPROVE
+
+## Live HEAD verification (post-restore)
+
+`ls /home/weiyi/selfKnowledgeBaseWeb/packages/block-jupyter/` returns:
+  CONTRACT.md, dist, node_modules, package.json, src, tsconfig.json,
+  vitest.config.ts
+
+`pnpm --filter @skb/block-jupyter test` →
+  Test Files  4 passed (4)
+  Tests       43 passed (43)
+  Duration    676ms
+
+## ADR-0006 8-point asymmetry audit (live HEAD attestation)
+
+### #1 Spec ↔ implementation
+- CONTRACT.md "Public surface" lists 5 entries; package.json `exports`
+  matches exactly: `.`, `./core`, `./ui-default`, `./ui-default/Jupyter.astro`,
+  `./ui-default/jupyter.css`. ✓
+- propsSchema shape in CONTRACT.md (code/runOnLoad/showLineNumbers/libraries)
+  matches src/core/core-definition.ts byte-for-byte (z.string + z.boolean.default(false)
+  + z.boolean.default(true) + z.array(z.string).default([])); top-level `.strict()`. ✓
+
+### #2 Authority ↔ duplicate
+- BlockCoreDefinition / BlockUIDefinition / defineCore / defineUI / BlockViewProps
+  are imported from @skb/block-foundation — no inline shims. ✓
+- KernelAdapter / KernelEvent / KernelSession are imported as types from
+  @skb/kernel-adapter — no inline reshape. ✓ (verified live HEAD type re-export
+  in adapter.ts: 6-variant KernelEvent matches kernel-bridge.ts switch arms)
+- KernelError class imported as value from @skb/kernel-adapter for
+  `instanceof` triage. ✓
+
+### #3 Schema authority single point
+- jupyterCore.propsSchema is the single source. All consumers
+  (serialize.ts:45, parse.ts:68, jupyter.ui.ts via jupyterCore.name binding,
+  tests via jupyterCore.propsSchema.parse) re-import from core-definition.ts
+  — no parallel z.object() definitions. ✓
+
+### #4 Consumer of single-authority schemas (CRITICAL — first kernel consumer)
+- Jupyter.tsx outputReducer switch on `event.type` covers all 6 KernelEvent
+  variants from kernel-adapter/src/adapter.ts:
+    stdout / stderr / display_data / execute_result / error / status
+  outputReducer handles 5 (stdout/stderr/execute_result/display_data/error);
+  status is intentionally not appended to output stream (drives KernelPhase
+  in kernel-bridge.ts:162-166 instead). ✓
+- kernel-bridge.ts:162 `event.type === 'status'` continue branch + 167
+  `event.type === 'error'` capture branch — exhaustive against the 6-variant
+  union. ✓
+- KernelError from authority used at kernel-bridge.ts:117 via `instanceof`
+  on abstract base (not subclass discrimination), in line with kernel-pyodide
+  CONTRACT § "Error classes" sister-aligned rule. ✓
+- BlockKind 4-way union 'prose' | 'component' | 'render' | 'viz' confirmed
+  live in packages/block-foundation/src/registry.ts:4 — kind='viz' authorized
+  by ADR-0009. ✓
+
+### #5 Algorithm replication
+- Pyodide loading is delegated to PyodideAdapter (kernel-pyodide is the
+  authority). Jupyter.tsx:99 instantiates `new PyodideAdapter(...)`; no
+  inline `loadPyodide()` wrapping. ✓
+- Per-block KernelBridge state machine is the consumer-side abstraction
+  (intentional new authority for E2/E3 inheritance, documented in
+  CONTRACT.md "kernel-pyodide consumer pattern" + bridge file header). ✓
+
+### #6 Sister-doc alignment
+- vs block-math/CONTRACT.md (peer hand-craft pattern):
+  - Same 5-entry public surface shape ✓
+  - Same "Modifying this file" scope (ADR for fields; consumer-pattern freeze
+    for createKernelBridge) ✓
+  - block-math is kind='render' / Jupyter is kind='viz' — both ADR-0009
+    additive ✓
+- vs kernel-pyodide/CONTRACT.md (runtime authority):
+  - kernel-pyodide CONTRACT § Error classes "Adapters MAY define their own
+    subclasses; sister-aligned with kernel-adapter" matches block-jupyter
+    invariant "KernelError 一次捕获" ✓
+  - 6 KernelEvent variants per kernel-pyodide CONTRACT § Event stream
+    align with outputReducer + bridge switch ✓
+- vs kernel-adapter/CONTRACT.md (interface authority):
+  - 6-variant KernelEvent + KernelError abstract base + 4 concrete subclasses
+    used correctly ✓
+
+### #7 Test coverage of invariants
+- core.test.ts 8 tests cover propsSchema shape + strictness + serialize/parse
+  round-trip + error paths
+- registry-integration.test.ts 6 tests cover registerCore/registerUI
+  identity + default lookup + ADR-0009 kind='viz' assertion
+- kernel-bridge.test.ts 13 tests cover state machine: idle→starting→ready,
+  idempotent start, kernelError on KernelStartupError, mid-start abort
+  (shutdown freshly-built session), event ordering, execError ename/evalue
+  capture, mid-stream abort cleanup, interrupt delegation, signal-driven
+  shutdown count exactly 1, interrupt-before-start no-op, sessionId
+  pass-through (per-block scoping witness)
+- ui-default.test.tsx 16 tests cover registration shape + JUPYTER_TOKENS
+  identity + line-number rendering + initial idle phase + Run button +
+  runOnLoad on mount + execError UI surfacing + output reset on re-run
+
+### #8 ADR-0008 D1 dead-dep policy
+- @skb/block-foundation: imported by 4 source files (core-definition.ts,
+  jupyter.ui.ts, Jupyter.tsx, parse.ts/serialize.ts via jupyterCore) ✓
+- @skb/design-tokens: imported by jupyter-tokens.ts (ColorTokenName type
+  binding); JUPYTER_TOKENS exported as compile-time witness ✓
+- @skb/kernel-adapter: imported by Jupyter.tsx + kernel-bridge.ts (types
+  + KernelError class) ✓
+- @skb/kernel-pyodide: imported by Jupyter.tsx (PyodideAdapter class) ✓
+- zod: imported by core-definition.ts ✓
+- All declared dependencies have ≥1 TS-source consumer. No dead deps.
+
+## Architectural consistency (sets pattern for E2/E3)
+
+### per-block isolated session ✓
+- Jupyter.tsx:108 sessionId = `jupyter-${cryptoRandomId()}` (UUID per
+  NodeView mount); kernel-bridge.ts:129 passes through to
+  `adapter.startSession(sessionId)` unmodified.
+- kernel-bridge.test.ts:399-413 explicitly witnesses this pattern.
+
+### AbortSignal cleanup ✓
+- Jupyter.tsx:104-121 useEffect creates new AbortController per mount;
+  cleanup function calls `controller.abort()`.
+- kernel-bridge.ts:114 registers dispose listener with `{ once: true }` —
+  shutdown fired exactly once.
+- kernel-bridge.ts:130-134 mid-startSession abort discards freshly-built
+  session via fire-and-forget `s.shutdown().catch(() => {})`.
+- kernel-bridge.test.ts:194-213 + 290-346 cover both mid-start and
+  mid-stream abort paths.
+
+### KernelError subclass triage per F R2 ✓
+- kernel-bridge.ts:117 extracts `err.kind` from abstract KernelError base
+  (subclasses set their own discriminant via `readonly kind = '...' as const`);
+  the bridge's `kernelError` phase carries `{kind, message}` without
+  importing concrete subclasses.
+- kernel-pyodide errors.ts emits KernelImportError with `kind: 'import'`;
+  kernel-adapter errors.ts emits startup/shutdown/interrupt/timeout with
+  matching discriminants. Bridge faithfully relays each.
+- Distinct branches at the consumer boundary: startup goes through
+  `reportKernelError` (kernel-bridge.ts:137-139); execute() throw at
+  kernel-bridge.ts:154-156; AsyncIterable throw at kernel-bridge.ts:172-174;
+  interrupt throw at kernel-bridge.ts:188-190.
+
+### KernelEvent 6-variant handling ✓
+All 6 variants reachable:
+- status: kernel-bridge.ts:162 continue (drives phase outside loop)
+- stdout / stderr: outputReducer Jupyter.tsx:39-46 + bridge passthrough
+- display_data / execute_result: outputReducer Jupyter.tsx:48-61 (formatMime
+  text/plain projection — Wave 3 image/png escalation noted as future work
+  in CONTRACT.md)
+- error: outputReducer Jupyter.tsx:62-71 + bridge captures ename/evalue
+  for execError phase (kernel-bridge.ts:167-169 + 177-178)
+
+## Regression risk
+
+- ADR-0008 D1: PASS (deps ↔ imports aligned, see audit #8 above)
+- File sizes (spec §3.6): max src 215 lines (Jupyter.tsx), max test 414
+  lines (kernel-bridge.test.ts). All ≤500 hard cap; src files all ≤300
+  ESLint warn threshold. ✓
+- No cross-package writes; mod scope is solely under packages/block-jupyter/
+  + tsconfig.json reference + pnpm-lock.yaml importer (per re-scope
+  instruction; block-image / block-pdf are out-of-bundle now).
+- ADR-0008 D2 freeze: jupyterCore + jupyterUiDefault public field shape
+  comply with foundation freeze (additive only, kind='viz' authorized
+  by ADR-0009).
+
+## Cross-file references kept in sync
+
+- block-jupyter/CONTRACT.md → cross-links kernel-pyodide, kernel-adapter,
+  block-foundation, block-math, ADR-0003, ADR-0006, ADR-0008, ADR-0009,
+  Wave 2 plan ✓
+- kernel-pyodide/CONTRACT.md identifies block-jupyter as named first
+  consumer (verified live HEAD line 49-50: "本包是 @skb/kernel-pyodide 的
+  第一个 consumer"). Sister-doc binding intact.
+- ADR-0009 D1 row table includes block-jupyter as kind='viz' canonical
+  example (verified live HEAD).
+
+## Notes / forward observations (non-blocking)
+
+1. CONTRACT.md "Forward-compat consumers" section flags Z1 close-ceremony
+   evaluation for whether `createKernelBridge` should migrate to
+   `@skb/block-foundation` or a new `kernel-bridge-react` package once
+   E2/E3 land. This is correctly deferred — Wave 2 owns E1 only.
+
+2. Wave 3 future-work items (matplotlib image rendering, real interrupt
+   via SharedArrayBuffer, micropip retry-with-fallback hint UI) are
+   correctly scoped out and called out in CONTRACT.md.
+
+3. jupyter.ui.ts comment notes a generic-widening cast around the optional
+   `adapter` prop on JupyterEditorView. Confirmed live HEAD: defineUI is
+   inferring a wide ZodTypeAny by NOT annotating `BlockUIDefinition<typeof
+   jupyterCore.propsSchema>` explicitly. block-math/ui-default/math.ui.ts
+   solves the same problem with an `as unknown as` widening cast — the
+   two approaches arrive at the same place via different generic levers.
+   Both compile; not a contract issue.
+
+## Conclusion
+
+Bundle is structurally sound, test-PASS at 43/43 live, ADR-0006 8-point audit
+clean against live HEAD, dead-dep policy satisfied, sister-doc cross-references
+intact, file sizes within hard caps, kind='viz' + KernelEvent 6-variant +
+KernelError-base triage all correct.
+
+The consumer pattern that E2 (block-nn-viz) and E3 (block-agent-flow) will
+inherit is well-codified: per-block isolated session via UUID sessionId,
+AbortSignal-driven cleanup with single-shot dispose, KernelError discriminant
+extraction at consumer boundary, KernelEvent exhaustive switch, runtime
+authority delegation to kernel-pyodide.
+
+**APPROVE — ready for git-operator pnpm check + commit.**
+
+Required scope at git-operator stage (per re-scope instruction):
+- packages/block-jupyter/* (15 src + 4 tests + meta files)
+- root tsconfig.json reference for ./packages/block-jupyter (only)
+- pnpm-lock.yaml importer for packages/block-jupyter (only)
+- DO NOT include block-image / block-pdf tsconfig refs / lockfile importers
+  in this commit (those are D2 / C4 scope and ride their own commits).
