@@ -1,0 +1,71 @@
+---
+import '../styles/global.css';
+import ThemeToggle from '../components/ThemeToggle.astro';
+
+interface Props {
+  title: string;
+}
+const { title } = Astro.props;
+---
+
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <title>{title}</title>
+    <script is:inline>
+      // FOUC bridge: runs before any island hydrates so first paint already
+      // matches the chosen theme. Reads STORAGE_KEY ('skb-theme') literally
+      // from @skb/design-tokens; renaming requires updating BOTH packages
+      // (apps/site cannot import the constant — load order forbids it).
+      // This script intentionally does NOT write localStorage (ADR-0003 D6:
+      // persistence is coupled to manual user action only).
+      //
+      // ALGORITHM MUST stay byte-equivalent with `getInitialTheme()` in
+      // packages/design-tokens/src/use-theme.ts in BOTH happy-path AND
+      // exception handling:
+      //   1. STRICT-whitelist saved value (only 'light' or 'dark' are
+      //      honored). A truthy-coerce check would diverge for invalid /
+      //      case-mismatched / legacy localStorage values.
+      //   2. The try/catch MUST wrap ONLY the localStorage.getItem call.
+      //      matchMedia + DOM apply MUST run AFTER the catch handler.
+      //      A wide-scope try/catch swallows the matchMedia path on
+      //      Safari Private Mode / iOS WebView / disabled-storage browsers,
+      //      causing a hydration flash when system pref is dark.
+      // Both rules are enforced by the regression test
+      // apps/site/src/__tests__/fouc-script.test.ts (saved-value corpus
+      // + storage-throws rows).
+      (function () {
+        var saved = null;
+        try {
+          saved = localStorage.getItem('skb-theme');
+        } catch (e) {
+          /* localStorage unavailable; saved stays null and we fall through to matchMedia */
+        }
+        var theme;
+        if (saved === 'light' || saved === 'dark') {
+          theme = saved;
+        } else {
+          theme = window.matchMedia('(prefers-color-scheme: dark)').matches
+            ? 'dark'
+            : 'light';
+        }
+        if (theme === 'dark') {
+          document.documentElement.setAttribute('data-theme', 'dark');
+        }
+      })();
+    </script>
+  </head>
+  <body class="bg-bg text-fg font-sans">
+    <header class="border-b border-border">
+      <nav class="mx-auto max-w-3xl flex items-center justify-between py-4 px-4">
+        <a href="/" class="font-bold">SelfKnowledgeBaseWeb</a>
+        <ThemeToggle />
+      </nav>
+    </header>
+    <main class="prose mx-auto max-w-3xl py-12 px-4">
+      <slot />
+    </main>
+  </body>
+</html>
