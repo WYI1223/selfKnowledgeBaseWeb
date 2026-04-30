@@ -41,6 +41,19 @@ export default tseslint.config(
   },
 
   {
-    ignores: ['**/dist/**', '**/.astro/**', '**/.turbo/**', '**/node_modules/**'],
+    ignores: [
+      '**/dist/**',
+      '**/.astro/**',
+      '**/.turbo/**',
+      '**/node_modules/**',
+      // Python virtualenv + tool caches under apps/api ship third-party JS
+      // (e.g. urllib3 emscripten worker) that fails our globals lint.
+      // .gitignore already excludes these from VCS; mirror that for ESLint.
+      '**/.venv/**',
+      '**/__pycache__/**',
+      '**/.pytest_cache/**',
+      '**/.mypy_cache/**',
+      '**/.ruff_cache/**',
+    ],
   },
 );
