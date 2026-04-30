@@ -112,9 +112,14 @@ class PageReadResponse(BaseModel):
   - 常用值：
     - `https://skb.local/errors/auth-failed`
     - `https://skb.local/errors/auth-token-expired`
+    - `https://skb.local/errors/auth-token-invalid`
+    - `https://skb.local/errors/auth-token-missing`
     - `https://skb.local/errors/page-not-found`
     - `https://skb.local/errors/path-traversal-blocked`
     - `https://skb.local/errors/validation-error`
+    - `https://skb.local/errors/not-found`
+    - `https://skb.local/errors/method-not-allowed`
+    - `https://skb.local/errors/http-error` (fallback for other framework HTTPException status codes)
     - `https://skb.local/errors/internal-error`
 - `title` — 人类可读简短分类（不暴露栈）
 - `detail` — 具体出错描述（业务级信息，不含敏感数据）
@@ -125,7 +130,11 @@ class PageReadResponse(BaseModel):
 - `instance` — 出错请求的 URL
 - `errors` — Pydantic validation 时的字段级错误数组（422 专用）
 
-实现：FastAPI 注册全局 exception handler 捕获 `HTTPException` + `RequestValidationError` + 自定义 `SkbError`，统一渲染成 Problem Details JSON。
+实现：FastAPI 注册全局 exception handler 捕获 `HTTPException` + `RequestValidationError` + 自定义 `SkbError` + bare `Exception`，统一渲染成 Problem Details JSON。
+
+> **Pitfall**: register the HTTPException handler against `starlette.exceptions.HTTPException`, **not** `fastapi.HTTPException`. The framework router raises 404 / 405 from the Starlette base class; registering only against the FastAPI subclass silently misses those. `fastapi.HTTPException` is a subclass of the Starlette one, so registering against the base catches both. Also remember to forward `exc.headers` into the JSONResponse so 401 keeps `WWW-Authenticate: Bearer` (RFC 7235 §3.1) and 405 keeps `Allow: ...` (RFC 7231 §7.4.1). And register a catch-all `Exception` handler too, otherwise unhandled bug-class exceptions return raw plain-text `Internal Server Error` instead of RFC 7807.
+
+> **Pitfall (continued)**: WWW-Authenticate / Allow / similar framework-mandated 4xx headers apply to **every** response path emitting that status code, not just the framework-raised path. Custom error handlers (e.g. `SkbError → skb_error_handler`) MUST emit the same mandated headers. Test EVERY 401 path (framework-raised AND custom-error-raised: `auth-failed`, `auth-token-invalid`, `auth-token-expired`, `auth-token-missing`) emits `WWW-Authenticate: Bearer`. Test EVERY 405 path emits `Allow: ...`. RFC 7235 §3.1 + RFC 7231 §7.4.1 are unconditional.
 
 ```python
 # app/errors.py 示例
