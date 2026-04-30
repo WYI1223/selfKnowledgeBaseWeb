@@ -1,0 +1,197 @@
+# C2 pr-reviewer verdict — block-callout/ui-default (Wave 2 Task #11)
+
+**Reviewer**: pr-reviewer-c2 (Claude Opus 4.7 1M ctx)
+**Date**: 2026-04-30
+**Branch**: main (working tree, unstaged)
+**Bundle**: ux-ui-lead C2 deliverable (first ui-default in repo, template for C5a/C5b/D/E clones)
+
+## Verdict: APPROVE WITH BLOCKERS — bundle is correct in C2 scope, but contains material out-of-scope changes git-operator MUST split before commit.
+
+The C2 implementation itself (block-callout ui-default + tests + CONTRACT updates) is high quality and ready. However, the working tree currently mixes C2 with non-C2 changes from D1/G1 in-progress workstreams. git-operator must stage **only the C2 file list** below; the cross-track changes belong to their own bundles.
+
+---
+
+## Section 1 — C2 in-scope changes (APPROVED, sanity 15/15 confirmed)
+
+### Files in C2 bundle (ux-ui-lead authority)
+
+- `packages/block-callout/src/ui-default/index.ts` (19 LOC)
+- `packages/block-callout/src/ui-default/CalloutBody.tsx` (44 LOC)
+- `packages/block-callout/src/ui-default/EditorView.tsx` (16 LOC)
+- `packages/block-callout/src/ui-default/RenderView.tsx` (11 LOC)
+- `packages/block-callout/src/ui-default/variant-tokens.ts` (30 LOC)
+- `packages/block-callout/src/ui-default/icons.tsx` (56 LOC)
+- `packages/block-callout/src/ui-default/callout.css` (128 LOC)
+- `packages/block-callout/src/__tests__/ui-default.test.tsx` (128 LOC)
+- `packages/block-callout/src/index.ts` (re-export added: `export * from './ui-default'`)
+- `packages/block-callout/package.json` (4 entries + design-tokens dep + react peer + happy-dom/testing-library devs)
+- `packages/block-callout/tsconfig.json` (jsx:react-jsx + design-tokens reference)
+- `packages/block-callout/vitest.config.ts` (`*.tsx` glob + happy-dom env)
+- `packages/block-callout/CONTRACT.md` (4-entry public surface + 4 new invariants)
+- `packages/design-tokens/CONTRACT.md` (NEW "block-*/ui-default consumer norms" §, 9 rules)
+- `pnpm-lock.yaml` (regen for new devDeps; per ADR-0006 sub-form C MUST ride bundle)
+
+### Test sanity
+
+`pnpm --filter @skb/block-callout test` → **15/15 passed** (3 test files: core.test.ts + registry-integration.test.ts + ui-default.test.tsx; 9 new tests in ui-default.test.tsx confirmed in scope per task brief).
+
+### Spec match (RFC §4 + plan §Task C2)
+
+1. **PASS** `BlockUIDefinition` shape — `coreName=calloutCore.name='callout'`, `uiId='default'`, `EditorView`/`RenderView` as `ComponentType<BlockViewProps<…>>`. Wired through `defineUI` factory (registry.ts:44).
+   - File: packages/block-callout/src/ui-default/index.ts:6-12
+
+2. **PASS** 4 variants (note/tip/warning/danger) with distinct accent token + tinted background:
+   - `note` → `--color-note`, no tint (surface-1)
+   - `tip` → `--color-success`, 6% tint
+   - `warning` → `--color-warn`, 8% tint (slightly higher per chroma compensation)
+   - `danger` → `--color-error`, 6% tint
+   - All tokens exist in both tokens.css + tokens-dark.css (light/dark parity verified line-by-line).
+   - Files: packages/block-callout/src/ui-default/callout.css:41-67, packages/block-callout/src/ui-default/variant-tokens.ts:23-28
+
+3. **PASS** A11y contract complete:
+   - `role="note"` + `aria-label="${VARIANT_TOKENS[v].label} callout"` + `tabindex="0"` (focusable for keyboard nav)
+   - `:focus-visible` uses `outline` (not box-shadow), survives `forced-colors` mode per design-tokens norm §`A11y on the variant container`
+   - Icons all `aria-hidden="true"` + `focusable="false"` — won't pollute screen reader output
+   - Reduced-motion gate around the only `transition` (callout.css:124-128)
+   - Files: packages/block-callout/src/ui-default/CalloutBody.tsx:30-33, packages/block-callout/src/ui-default/callout.css:119-128
+
+4. **PASS** EditorView / RenderView byte-equivalent DOM via shared `CalloutBody` primitive. Only divergence is empty-content placeholder (EditorView shows `.skb-callout-empty "No content"` span; RenderView renders `''`). This divergence is documented in the new CONTRACT invariant + asserted by test `omits the empty-placeholder span when content is undefined (passive SSR mode)` (ui-default.test.tsx:121-127) and the byte-equiv test (ui-default.test.tsx:95-119).
+
+5. **PASS** 9 design-tokens consumer norms in design-tokens/CONTRACT.md §`block-*/ui-default/ consumer norms`:
+   - No hardcoded color literals (callout.css verified `grep -E '#[0-9a-fA-F]{3,8}|\brgb\(\s*[0-9]'` → 0 matches)
+   - No inline `style=` for variant colors (verified `grep style= ui-default/*.tsx` → 0 matches)
+   - Type-only `@skb/design-tokens` import satisfies ADR-0008 D1 dead-dep grep (verified single import in variant-tokens.ts:2 — lexical `from '@skb/design-tokens'` present)
+   - Tailwind preset consumed at app-build (block emits utility-style class names like `skb-callout-icon` but resolves through `*.css`)
+   - Required CSS import path published: `package.json#exports['./ui-default/callout.css']` ✓
+   - No emoji in icons (4 hand-traced 24×24 SVGs at consistent stroke-width 1.75)
+   - A11y rules codified
+   - Light/dark parity (no theme branches in callout.css)
+   - Reduced-motion gate
+
+### ADR-0006 8-point asymmetry audit (applied in scope)
+
+| # | Item | Applies? | Verdict |
+|---|------|----------|---------|
+| 1 | Field/attribute audit | No (no schema field added — `propsSchema` unchanged from C1) | N/A |
+| 2 | Status code audit | No (TS-only package, no HTTP) | N/A |
+| 3 | Strictness audit | No (no Zod added) | N/A |
+| 4 | Consumer schema audit | **YES** | PASS — `Variant` derived from `z.infer<typeof calloutCore.propsSchema>['variant']` (variant-tokens.ts:5); no inline duplicate. Tests use `calloutCore` directly (ui-default.test.tsx:4) |
+| 5 | Algorithm replication audit | No (no inline algorithm replicated) | N/A |
+| 6 | Sister-file documentation audit | **YES** | PASS — block-callout/CONTRACT.md (4-entry surface + 8 invariants) and design-tokens/CONTRACT.md (9-rule consumer block) describe both halves of the contract using identical literal terminology: `data-callout-variant` / `'note' \| 'tip' \| 'warning' \| 'danger'` / `--color-note` etc. / `tabindex="0"` / `aria-label=` / `outline`-only focus / hand-traced SVG. Zero drift between the sisters. block-foundation/CONTRACT.md was NOT touched in C2 scope (correctly — see Section 2). |
+| 7 | Exception-scope equivalence audit | No (no try/catch in scope) | N/A |
+| 8 | Authority → generated artifact audit | **YES** | PASS — `pnpm-lock.yaml` regenerated and present in working tree alongside `package.json#dependencies` += `@skb/design-tokens` + new devDeps. Sub-form C lockfile-as-generated-artifact obligation satisfied. git-operator MUST verify `git diff --cached --stat -- pnpm-lock.yaml` is non-empty before commit per ADR-0006:74. |
+
+### Architectural consistency
+
+- **Headless purity preserved**: `src/core/` files unchanged from C1 (verified via `git status`); ui-default imports `calloutCore` from core but core has zero React/Tiptap imports (core-definition.ts:1-2 import only foundation types + zod).
+- **CSS as single visual authority**: `callout.css` is the only place variant colors / spacing / shadows / transitions live; React components only emit `data-callout-variant` + classNames. The happy-dom `var()` rejection insight from C1 review chain is now codified as design-tokens norm §`No inline style={{ … }} for variant colors`.
+- **Forward-compat for clones**: CONTRACT § `Forward-compat consumers` correctly anticipates ADR-0008 D1 inheritance for codex-clones (block-code/block-image will inherit type-only `ColorTokenName` import + design-tokens reference + dataset selector pattern).
+
+### Regression risk (low)
+
+- File sizes: max LOC = 128 (callout.css + ui-default.test.tsx); both well under 200 target / 300 ESLint warn / 500 hard fail.
+- ADR-0008 D1 dead-dep policy: `@skb/design-tokens` runtime dep + tsconfig reference + lexical `from '@skb/design-tokens'` in variant-tokens.ts:2 — structure-auditor monthly grep passes.
+- React peerDep: `^18.3.0 || ^19.0.0` — broad enough for editor-shell + Astro consumers without forcing alignment.
+- Public surface additions are purely additive (root barrel `export * from './ui-default'` + 3 new entries in `package.json#exports`); no rename / removal.
+- Empty-content asymmetry between EditorView (placeholder) and RenderView (passive) is intentional + tested + documented.
+
+---
+
+## Section 2 — OUT-OF-SCOPE changes mixed into working tree (BLOCKER for C2 commit)
+
+The unstaged working tree currently contains the following changes that are **NOT** part of Task C2 scope per Wave 2 plan §Task C2 (lines 900-955) and the C2 task brief:
+
+### 2.1 — block-foundation BlockKind 2→4 expansion (belongs to D1 / E1 bundles)
+
+- `packages/block-foundation/src/registry.ts`: `BlockKind = 'prose' | 'component'` → `'prose' | 'component' | 'render' | 'viz'`
+- `packages/block-foundation/CONTRACT.md`: kind enumeration updated to four-way + invariant rewrite
+- `packages/block-foundation/RFC.md`: kind documentation expanded to four-way + table row in §Compile-time errors
+
+**Why this is out-of-scope for C2**:
+- C2 plan §Task C2 lists files as `packages/block-callout/src/ui-default/*` + `packages/block-callout/src/__tests__/ui-default.test.tsx` + `packages/design-tokens/CONTRACT.md`. block-foundation files are **not** mentioned.
+- block-callout `core-definition.ts` already uses `kind: 'component'` (a Wave 1 valid kind); C2 ui-default does NOT exercise `'render'` or `'viz'` paths.
+- The 4-way expansion is logically motivated by D1 (block-math = `'render'`) and E1 (block-jupyter = `'viz'`), which are still **in_progress** (see TaskList #16 D1 / #21 G1) and not yet committed.
+- This is exactly the failure pattern ADR-0007 D2 row 1 (CONTRACT-level change) wants pr-gate + pr-reviewer to gate independently — bundling it under C2 obscures the review trail and would force re-review when D1 / E1 land.
+
+**Required action**: git-operator must NOT stage these three files in the C2 commit. They should be split into a separate D1 / E1 prerequisite bundle (e.g., `feat(block-foundation): BlockKind 2→4 additive expansion`) with its own ADR-0007 D2 row 1 review chain.
+
+### 2.2 — root tsconfig.json adds block-math + editor-toolbar references (D1 / G1 scope)
+
+- `tsconfig.json`: `+ { "path": "./packages/block-math" }` + `+ { "path": "./packages/editor-toolbar" }`
+
+These paths point at **untracked** package directories (`packages/block-math/` + `packages/editor-toolbar/` per `git status`). The C2 bundle adds neither dependency, so adding the references here mid-C2 is a cross-track contamination.
+
+**Required action**: git-operator must NOT stage `tsconfig.json` in the C2 commit. The two new path entries belong to their respective package bundles (D1 for block-math, G1 for editor-toolbar) where the package dirs themselves get committed.
+
+---
+
+## Section 3 — git-operator instructions (per memory `feedback_git_operator_explicit_stage.md`)
+
+Use the explicit-file-list 4-step protocol. **Do NOT run `git add -A` or `git add .`**:
+
+```bash
+# Step 1: reset HEAD (race-proof against concurrent stagers)
+git reset HEAD
+
+# Step 2: explicit list — C2 scope only
+git add \
+  packages/block-callout/src/ui-default/index.ts \
+  packages/block-callout/src/ui-default/CalloutBody.tsx \
+  packages/block-callout/src/ui-default/EditorView.tsx \
+  packages/block-callout/src/ui-default/RenderView.tsx \
+  packages/block-callout/src/ui-default/variant-tokens.ts \
+  packages/block-callout/src/ui-default/icons.tsx \
+  packages/block-callout/src/ui-default/callout.css \
+  packages/block-callout/src/__tests__/ui-default.test.tsx \
+  packages/block-callout/src/index.ts \
+  packages/block-callout/package.json \
+  packages/block-callout/tsconfig.json \
+  packages/block-callout/vitest.config.ts \
+  packages/block-callout/CONTRACT.md \
+  packages/design-tokens/CONTRACT.md \
+  pnpm-lock.yaml
+
+# Step 3: verify staging count + lockfile scope
+git diff --cached --stat
+# Expect: exactly 15 files staged
+# Verify pnpm-lock.yaml diff scoped to block-callout devDeps (testing-library/happy-dom/react/react-dom/@types/react)
+git diff --cached -- pnpm-lock.yaml | head -100
+
+# Step 4: commit
+```
+
+**Items NOT staged (must remain unstaged for separate D1/E1/G1 bundles)**:
+- `packages/block-foundation/CONTRACT.md`
+- `packages/block-foundation/RFC.md`
+- `packages/block-foundation/src/registry.ts`
+- `tsconfig.json`
+
+**Untracked dirs to leave alone**:
+- `packages/block-math/` (D1 bundle)
+- `packages/editor-toolbar/` (G1 bundle)
+
+---
+
+## Section 4 — Pre-commit verification
+
+Per memory `feedback_git_operator_ci_verification.md` + `feedback_verification_fresh_state.md`:
+
+1. After staging the 15 files, run uncached typecheck (turbo cache + vitest miss tsc errors):
+   ```bash
+   pnpm --filter @skb/block-callout typecheck --force
+   pnpm --filter @skb/design-tokens typecheck --force
+   pnpm --filter @skb/block-foundation typecheck --force  # touches it via package graph
+   ```
+2. Then `pnpm check --force` once for the affected scope.
+3. Confirm `git status --short -- pnpm-lock.yaml` shows column-1 `M` (staged) + column-2 blank.
+4. After push, verify CI conclusion via `gh run view --json conclusion` (NOT `gh run watch --exit-status`).
+
+---
+
+## Final verdict
+
+**APPROVE for C2 scope** (15-file bundle list above). All ADR-0006 applicable items pass; spec §3.1 / RFC §4 / Wave 2 plan §Task C2 fully met; sister-doc alignment between block-callout/CONTRACT.md and design-tokens/CONTRACT.md is clean; tests 15/15.
+
+**BLOCKER for git-operator**: do NOT include the 4 out-of-scope files (`packages/block-foundation/{CONTRACT.md,RFC.md,src/registry.ts}` + root `tsconfig.json`) in the C2 commit. They are D1/E1/G1 in-progress work bleeding into the working tree from concurrent track activity and require their own review chains.
+
+If the orchestrator's intent is in fact to bundle block-foundation BlockKind expansion together with C2 (e.g., as a "Wave 2 contract baseline" pre-bundle), this MUST be re-confirmed explicitly and re-routed through ADR-0007 D2 row 1 (+pr-gate +pr-reviewer) since block-foundation/CONTRACT.md change is exactly what row 1 was written for. Either way, the cross-track changes need an explicit decision, not silent inclusion.

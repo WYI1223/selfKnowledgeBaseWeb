@@ -5,14 +5,25 @@
 
 ## Public surface
 
-两个 entry：
+四个 entry：
 
-- `.` (root barrel) — re-export `./core`
+- `.` (root barrel) — re-export `./core` + `./ui-default`
 - `./core` — headless 层
   - `calloutCore: BlockCoreDefinition<typeof propsSchema>` — name=`'callout'` / kind=`'component'` / mdxComponent=`'Callout'`
   - `serializeCallout(node) → mdxJsxFlowElement` — Tiptap → mdast (Wave 3 mdx-bridge routing 时启用)
   - `parseCallout(mdast) → TiptapNode` — mdast → Tiptap (同上)
   - 类型: `CalloutTiptapNode` / `CalloutMdastJsxElement`
+- `./ui-default` — presentational 层（Wave 2 Track C2）
+  - `calloutUIDefault: BlockUIDefinition<typeof calloutCore.propsSchema>` — coreName=`'callout'` / uiId=`'default'`
+  - `CalloutEditorView` / `CalloutRenderView` — `ComponentType<BlockViewProps<typeof calloutCore.propsSchema>>`，DOM 形状字节级一致（共享 `CalloutBody` 原语）
+  - `CalloutBody` — 视觉单一权威 primitive，editor + render 双视图都嵌入
+  - `VARIANT_TOKENS` — `Record<Variant, { label, accentToken: ColorTokenName }>` 共享视觉元数据
+  - `VARIANT_ICONS` — `Record<Variant, ComponentType>`，4 个手画 SVG（无 emoji，per ui-ux-pro-max `no-emoji-icons` rule）
+  - 类型: `Variant` (`'note' | 'tip' | 'warning' | 'danger'`)
+- `./ui-default/callout.css` — 视觉规则单一来源
+  - 选择器契约: 所有变体规则锁定在 `[data-callout-variant="…"]` 上（CalloutBody 总是 emit）
+  - 颜色完全来自 `@skb/design-tokens` CSS 变量（`var(--color-X)` 形式），不允许硬编码 hex / rgb 字面值
+  - 消费方 (`apps/site` / `editor-shell`) 必须在启动时 import 一次：`import '@skb/block-callout/ui-default/callout.css';`
 
 `propsSchema` 形状（见 `src/core/core-definition.ts`）：
 
@@ -39,8 +50,18 @@ block-callout 特定不变量：
   mdx-bridge 通过 `mdxJsxFlowElement.name` 字符串路由（[block-foundation RFC §1](../block-foundation/RFC.md#1-core-side)）
 - **Serialize / parse hook 命名**: `serializeCallout` / `parseCallout`，verb-as-prefix
   约定（[RFC §5](../block-foundation/RFC.md#5-serialize--parse-hook-ownership-scope-clarification)）
-- **`uiId='default'` reserved**: Track C2 `registerUI` 注册时 `uiId='default'`；本包 inherit
+- **`uiId='default'` reserved**: `calloutUIDefault.uiId === 'default'`；本包 inherit
   foundation 的 `Default UI lookup` 不变量（首注册即 default）
+- **EditorView / RenderView byte-equivalent DOM**: 两视图都通过 `CalloutBody` 原语
+  渲染，DOM tree / class 名 / `data-callout-variant` / `role` / `aria-label`
+  完全一致；唯一差异是 `content` 缺省时 EditorView 显示 `.skb-callout-empty` 占位、
+  RenderView 直接渲染空 children。任何分歧都触发 `ui-default.test.tsx` byte-equiv 用例 fail
+- **CSS = single visual authority**: 视觉规则只在 `ui-default/callout.css`，
+  React 组件不带 inline `style`（happy-dom 测试拒绝 `rgb(var())` 字面值，所以
+  variant 颜色只能走 CSS data-attribute 选择器路径）；任何变体颜色变更都改 callout.css
+  + design-tokens 任一处即可，不必 touch React 树
+- **No emoji in icons**: `VARIANT_ICONS` 全部为 hand-traced SVG (24×24 stroke 1.75)，
+  per ui-ux-pro-max `no-emoji-icons` rule + spec §3.5
 - **Headless 自给**: `core/` 不 import 任何 React / Tiptap UI 模块；仅依赖
   `@skb/block-foundation` 类型 + `zod`（ADR-0003 D1）
 - **propsSchema single authority**: 仅在 `src/core/core-definition.ts` 定义，
@@ -67,13 +88,14 @@ Wave 3 mdx-bridge routing table PR 会：
 
 ## Forward-compat consumers
 
-- **Wave 2 Track C2 ui-default** (`ux-ui-lead`): 加 `./ui-default` 入口 + `EditorView` /
-  `RenderView` React 组件 + design-tokens 引用 + a11y 属性。届时
-  `package.json#dependencies` 加 `@skb/design-tokens` + `react`；`tsconfig.json#references`
-  加 `../design-tokens`（按 ADR-0008 D1 dead-dep policy：deps 必有 source import）
 - **Wave 3 mdx-bridge integration**: 见上节
-- **Wave 2 后续 block packages**: `block-code` / `block-image` 按本包结构 clone；
-  `scripts/new-block.ts` 模板 source = `packages/block-callout/`
+- **Wave 2 后续 block packages**: `block-code` / `block-image` / `block-math` 等按本包
+  结构 clone (codex-block-generator template source)；`scripts/new-block.ts` 模板
+  source = `packages/block-callout/`。clone 时 ADR-0008 D1 由模板带过：
+  `package.json#dependencies` 含 `@skb/design-tokens`（type-only `ColorTokenName` import
+  in `variant-tokens.ts` 满足 dead-dep grep），`tsconfig.json#references` 含
+  `../design-tokens`，`callout.css` 模板 mirror visual rules under
+  `[data-<block>-variant]` 选择器
 
 ## Modifying this file
 

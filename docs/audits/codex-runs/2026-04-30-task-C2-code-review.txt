@@ -1,0 +1,1469 @@
+Reading prompt from stdin...
+OpenAI Codex v0.125.0 (research preview)
+--------
+workdir: /home/weiyi/selfKnowledgeBaseWeb
+model: gpt-5.3-codex-spark
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: xhigh
+reasoning summaries: none
+session id: 019de014-4934-7fe0-8d87-ab63412d5d41
+--------
+user
+You are codex 5.3-spark code-reviewer. Audit C2 (packages/block-callout/src/ui-default/) for Wave 2 Task #11 (block-callout/ui-default by ux-ui-lead — FIRST ui-default in entire repo).
+
+This is the visual template that codex-block-generator will clone for C5a (block-code/ui-default) + C5b (block-image/ui-default), and visual reference for D1/D2/E1-E3 ui-defaults.
+
+Files in scope (per ux-ui-lead-c2 report):
+- src/ui-default/{index.ts, CalloutBody.tsx, EditorView.tsx, RenderView.tsx, variant-tokens.ts, icons.tsx, callout.css}
+- src/__tests__/ui-default.test.tsx (9 tests)
+- src/index.ts (re-export)
+- package.json (+@skb/design-tokens dep, react peerDep, +./ui-default exports)
+- tsconfig.json (+design-tokens reference, jsx: react-jsx)
+- vitest.config.ts (+happy-dom, .tsx)
+- CONTRACT.md (Public surface 4 entries + 4 new invariants)
+- design-tokens/CONTRACT.md (NEW "block-*/ui-default consumer norms" § for codex-clone inheritance)
+- pnpm-lock.yaml (regenerated)
+
+Verify:
+1. BlockUIDefinition shape: calloutUIDefault has core, uiId='default', EditorView, RenderView (per RFC §4).
+2. Headless dependence: ui-default imports from core (calloutCore, propsSchema), NOT vice versa.
+3. CSS as single visual authority: callout.css is the ONLY source of variant colors; no inline style for variants.
+4. Design-tokens via `rgb(var(--color-X))` — NO hardcoded hex/rgb literals.
+5. a11y: role="note", aria-label, tabindex=0, :focus-visible 2px outline (not box-shadow).
+6. Light + dark mode parity via token system.
+7. ADR-0008 D1 dead-dep: package.json deps match imports (design-tokens type-only OK per ADR-0008).
+8. CONTRACT.md sister-doc alignment with block-foundation/CONTRACT.md AND design-tokens/CONTRACT.md.
+9. Tests cover: registration shape, 4 variants distinct, title fallback, empty content, byte-equiv DOM, SVG glyph count, BlockRegistry round-trip.
+10. ADR-0006 8-point asymmetry audit application.
+
+Run:
+```
+cd /home/weiyi/selfKnowledgeBaseWeb
+pnpm --filter @skb/block-callout test       # expect 15/15 PASS
+pnpm --filter @skb/block-callout typecheck
+pnpm --filter @skb/block-callout lint
+pnpm --filter @skb/block-callout build
+pnpm --filter @skb/design-tokens test       # 19/19 PASS expected (cross-package check)
+```
+
+Verdict: PASS or FAIL with line-numbered issues.
+
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the vendored bubblewrap in the meantime.
+codex
+I’ll audit the `block-callout` C2 `ui-default` package against your 10 check items, then run the specified filtered package commands and report a PASS/FAIL verdict with line-numbered findings. I’ll focus on exact contract/surface/ADR checks and the test/runtime commands you listed.
+exec
+/bin/bash -lc 'nl -ba packages/block-callout/src/ui-default/CalloutBody.tsx' in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc 'nl -ba packages/block-callout/src/ui-default/index.ts' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	import type { ReactNode } from 'react';
+     2	import type { z } from 'zod';
+     3	import { calloutCore } from '../core/core-definition';
+     4	import { VARIANT_ICONS } from './icons';
+     5	import { VARIANT_TOKENS, type Variant } from './variant-tokens';
+     6	
+     7	type CalloutProps = z.infer<typeof calloutCore.propsSchema>;
+     8	
+     9	export interface CalloutBodyProps {
+    10	  readonly props: CalloutProps;
+    11	  readonly children: ReactNode;
+    12	}
+    13	
+    14	/**
+    15	 * Visual primitive shared by `CalloutEditorView` and `CalloutRenderView`. The
+    16	 * two views differ only in how they hand `children` in (Tiptap-managed inner
+    17	 * node vs. static SSR content); the DOM/class shape MUST match byte-for-byte
+    18	 * so the editor preview and the published page render identically.
+    19	 *
+    20	 * Visual rules live in `./callout.css` (gated on `data-callout-variant`).
+    21	 */
+    22	export function CalloutBody({ props, children }: CalloutBodyProps): ReactNode {
+    23	  const variant: Variant = props.variant;
+    24	  const tokens = VARIANT_TOKENS[variant];
+    25	  const Icon = VARIANT_ICONS[variant];
+    26	  const heading = props.title ?? tokens.label;
+    27	
+    28	  return (
+    29	    <aside
+    30	      role="note"
+    31	      aria-label={`${tokens.label} callout`}
+    32	      data-callout-variant={variant}
+    33	      tabIndex={0}
+    34	    >
+    35	      <span className="skb-callout-icon" aria-hidden="true">
+    36	        <Icon />
+    37	      </span>
+    38	      <div className="skb-callout-body">
+    39	        <strong className="skb-callout-title">{heading}</strong>
+    40	        <div className="skb-callout-content">{children}</div>
+    41	      </div>
+    42	    </aside>
+    43	  );
+    44	}
+
+ succeeded in 0ms:
+     1	import { defineUI, type BlockUIDefinition } from '@skb/block-foundation';
+     2	import { calloutCore } from '../core/core-definition';
+     3	import { CalloutEditorView } from './EditorView';
+     4	import { CalloutRenderView } from './RenderView';
+     5	
+     6	export const calloutUIDefault: BlockUIDefinition<typeof calloutCore.propsSchema> =
+     7	  defineUI({
+     8	    coreName: calloutCore.name,
+     9	    uiId: 'default',
+    10	    EditorView: CalloutEditorView,
+    11	    RenderView: CalloutRenderView,
+    12	  });
+    13	
+    14	export { CalloutEditorView } from './EditorView';
+    15	export { CalloutRenderView } from './RenderView';
+    16	export { CalloutBody } from './CalloutBody';
+    17	export { VARIANT_TOKENS } from './variant-tokens';
+    18	export { VARIANT_ICONS } from './icons';
+    19	export type { Variant } from './variant-tokens';
+
+exec
+/bin/bash -lc 'nl -ba packages/block-callout/src/ui-default/EditorView.tsx' in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc 'nl -ba packages/block-callout/src/ui-default/icons.tsx' in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc 'nl -ba packages/block-callout/src/ui-default/RenderView.tsx' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	import type { ComponentType, SVGProps } from 'react';
+     2	import type { Variant } from './variant-tokens';
+     3	
+     4	type IconProps = SVGProps<SVGSVGElement>;
+     5	
+     6	const baseProps: IconProps = {
+     7	  width: 20,
+     8	  height: 20,
+     9	  viewBox: '0 0 24 24',
+    10	  fill: 'none',
+    11	  stroke: 'currentColor',
+    12	  strokeWidth: 1.75,
+    13	  strokeLinecap: 'round',
+    14	  strokeLinejoin: 'round',
+    15	  'aria-hidden': true,
+    16	  focusable: false,
+    17	};
+    18	
+    19	const NoteIcon: ComponentType<IconProps> = (props) => (
+    20	  <svg {...baseProps} {...props}>
+    21	    <circle cx="12" cy="12" r="9" />
+    22	    <line x1="12" y1="8" x2="12" y2="12" />
+    23	    <line x1="12" y1="16" x2="12.01" y2="16" />
+    24	  </svg>
+    25	);
+    26	
+    27	const TipIcon: ComponentType<IconProps> = (props) => (
+    28	  <svg {...baseProps} {...props}>
+    29	    <path d="M9 18h6" />
+    30	    <path d="M10 22h4" />
+    31	    <path d="M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.2 1 2V18h6v-1.3c0-.8.4-1.5 1-2A7 7 0 0 0 12 2z" />
+    32	  </svg>
+    33	);
+    34	
+    35	const WarningIcon: ComponentType<IconProps> = (props) => (
+    36	  <svg {...baseProps} {...props}>
+    37	    <path d="M10.3 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+    38	    <line x1="12" y1="9" x2="12" y2="13" />
+    39	    <line x1="12" y1="17" x2="12.01" y2="17" />
+    40	  </svg>
+    41	);
+    42	
+    43	const DangerIcon: ComponentType<IconProps> = (props) => (
+    44	  <svg {...baseProps} {...props}>
+    45	    <circle cx="12" cy="12" r="9" />
+    46	    <line x1="15" y1="9" x2="9" y2="15" />
+    47	    <line x1="9" y1="9" x2="15" y2="15" />
+    48	  </svg>
+    49	);
+    50	
+    51	export const VARIANT_ICONS: Readonly<Record<Variant, ComponentType<IconProps>>> = {
+    52	  note: NoteIcon,
+    53	  tip: TipIcon,
+    54	  warning: WarningIcon,
+    55	  danger: DangerIcon,
+    56	};
+
+ succeeded in 0ms:
+     1	import type { ComponentType, ReactNode } from 'react';
+     2	import type { BlockViewProps } from '@skb/block-foundation';
+     3	import { calloutCore } from '../core/core-definition';
+     4	import { CalloutBody } from './CalloutBody';
+     5	
+     6	export const CalloutRenderView: ComponentType<
+     7	  BlockViewProps<typeof calloutCore.propsSchema>
+     8	> = ({ props, content }) => {
+     9	  const body: ReactNode = content ?? '';
+    10	  return <CalloutBody props={props}>{body}</CalloutBody>;
+    11	};
+
+exec
+/bin/bash -lc 'nl -ba packages/block-callout/src/ui-default/variant-tokens.ts' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	import type { z } from 'zod';
+     2	import type { ColorTokenName } from '@skb/design-tokens';
+     3	import { calloutCore } from '../core/core-definition';
+     4	
+     5	type Variant = z.infer<typeof calloutCore.propsSchema>['variant'];
+     6	
+     7	interface VariantSpec {
+     8	  readonly label: string;
+     9	  /** Design-token color name driving the accent bar + icon glyph. */
+    10	  readonly accentToken: ColorTokenName;
+    11	}
+    12	
+    13	/**
+    14	 * Variant → design-token mapping. The `ColorTokenName` constraint binds this
+    15	 * file to `@skb/design-tokens`'s public color token surface: renaming or
+    16	 * removing a color token here is a static type error.
+    17	 *
+    18	 * Visual styles for these variants live in `./callout.css` (selector
+    19	 * `[data-callout-variant="..."]`); this file is the single-source of variant
+    20	 * metadata consumed by both the React tree and any future style-introspection
+    21	 * tooling.
+    22	 */
+    23	export const VARIANT_TOKENS: Readonly<Record<Variant, VariantSpec>> = {
+    24	  note: { label: 'Note', accentToken: 'note' },
+    25	  tip: { label: 'Tip', accentToken: 'success' },
+    26	  warning: { label: 'Warning', accentToken: 'warn' },
+    27	  danger: { label: 'Danger', accentToken: 'error' },
+    28	};
+    29	
+    30	export type { Variant };
+
+exec
+/bin/bash -lc 'nl -ba packages/block-callout/src/ui-default/callout.css' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 113ms:
+     1	import type { ComponentType, ReactNode } from 'react';
+     2	import type { BlockViewProps } from '@skb/block-foundation';
+     3	import { calloutCore } from '../core/core-definition';
+     4	import { CalloutBody } from './CalloutBody';
+     5	
+     6	export const CalloutEditorView: ComponentType<
+     7	  BlockViewProps<typeof calloutCore.propsSchema>
+     8	> = ({ props, content }) => {
+     9	  const body: ReactNode =
+    10	    content === undefined || content === '' ? (
+    11	      <span className="skb-callout-empty">No content</span>
+    12	    ) : (
+    13	      content
+    14	    );
+    15	  return <CalloutBody props={props}>{body}</CalloutBody>;
+    16	};
+
+ succeeded in 106ms:
+     1	/*
+     2	 * @skb/block-callout — ui-default styles.
+     3	 *
+     4	 * Selector contract: every variant class is gated on `data-callout-variant`
+     5	 * which `CalloutBody` always emits. Color values resolve from the design-tokens
+     6	 * RGB-triple CSS vars (light + dark theme files own the values); this file owns
+     7	 * the variant → token mapping and the layout / a11y affordances.
+     8	 *
+     9	 * Consumers (apps/site / editor-shell) MUST import this file once at app boot:
+    10	 *   import '@skb/block-callout/ui-default/callout.css';
+    11	 */
+    12	
+    13	[data-callout-variant] {
+    14	  position: relative;
+    15	  display: flex;
+    16	  gap: var(--space-3);
+    17	  padding: var(--space-3) var(--space-4);
+    18	  padding-left: calc(var(--space-4) + 3px);
+    19	  border: 1px solid rgb(var(--color-border));
+    20	  border-radius: var(--radius-md);
+    21	  font-size: var(--text-base);
+    22	  line-height: var(--leading-base);
+    23	  color: rgb(var(--color-fg));
+    24	  background-color: rgb(var(--color-surface-1));
+    25	  overflow: hidden;
+    26	  isolation: isolate;
+    27	  box-shadow: var(--shadow-sm);
+    28	}
+    29	
+    30	/* 3px left accent bar, full height */
+    31	[data-callout-variant]::before {
+    32	  content: '';
+    33	  position: absolute;
+    34	  inset: 0 auto 0 0;
+    35	  width: 3px;
+    36	  background-color: rgb(var(--color-note));
+    37	  border-radius: 0;
+    38	}
+    39	
+    40	/* Variant accent + tint colors */
+    41	[data-callout-variant='note']::before {
+    42	  background-color: rgb(var(--color-note));
+    43	}
+    44	[data-callout-variant='note'] {
+    45	  background-color: rgb(var(--color-surface-1));
+    46	}
+    47	
+    48	[data-callout-variant='tip']::before {
+    49	  background-color: rgb(var(--color-success));
+    50	}
+    51	[data-callout-variant='tip'] {
+    52	  background-color: rgb(var(--color-success) / 0.06);
+    53	}
+    54	
+    55	[data-callout-variant='warning']::before {
+    56	  background-color: rgb(var(--color-warn));
+    57	}
+    58	[data-callout-variant='warning'] {
+    59	  background-color: rgb(var(--color-warn) / 0.08);
+    60	}
+    61	
+    62	[data-callout-variant='danger']::before {
+    63	  background-color: rgb(var(--color-error));
+    64	}
+    65	[data-callout-variant='danger'] {
+    66	  background-color: rgb(var(--color-error) / 0.06);
+    67	}
+    68	
+    69	/* Icon glyph wrap */
+    70	[data-callout-variant] > .skb-callout-icon {
+    71	  flex-shrink: 0;
+    72	  margin-top: 2px;
+    73	  display: inline-flex;
+    74	  align-items: center;
+    75	  justify-content: center;
+    76	  width: 1.25rem;
+    77	  height: 1.25rem;
+    78	}
+    79	[data-callout-variant='note'] > .skb-callout-icon {
+    80	  color: rgb(var(--color-note));
+    81	}
+    82	[data-callout-variant='tip'] > .skb-callout-icon {
+    83	  color: rgb(var(--color-success));
+    84	}
+    85	[data-callout-variant='warning'] > .skb-callout-icon {
+    86	  color: rgb(var(--color-warn));
+    87	}
+    88	[data-callout-variant='danger'] > .skb-callout-icon {
+    89	  color: rgb(var(--color-error));
+    90	}
+    91	
+    92	[data-callout-variant] > .skb-callout-body {
+    93	  flex: 1 1 0%;
+    94	  min-width: 0;
+    95	}
+    96	[data-callout-variant] .skb-callout-title {
+    97	  display: block;
+    98	  font-weight: 600;
+    99	  line-height: 1.25;
+   100	  color: rgb(var(--color-fg));
+   101	}
+   102	[data-callout-variant] .skb-callout-content {
+   103	  margin-top: var(--space-1);
+   104	  color: rgb(var(--color-fg) / 0.9);
+   105	}
+   106	[data-callout-variant] .skb-callout-content :where(p):first-child {
+   107	  margin-top: 0;
+   108	}
+   109	[data-callout-variant] .skb-callout-content :where(p):last-child {
+   110	  margin-bottom: 0;
+   111	}
+   112	
+   113	[data-callout-variant] .skb-callout-empty {
+   114	  color: rgb(var(--color-muted));
+   115	  font-style: italic;
+   116	}
+   117	
+   118	/* Focus ring lands on the aside itself when navigated by keyboard. */
+   119	[data-callout-variant]:focus-visible {
+   120	  outline: 2px solid rgb(var(--color-accent));
+   121	  outline-offset: 2px;
+   122	}
+   123	
+   124	@media (prefers-reduced-motion: no-preference) {
+   125	  [data-callout-variant] {
+   126	    transition: box-shadow var(--duration-fast) var(--ease-base);
+   127	  }
+   128	}
+
+codex
+I’ve got the main UI-default implementation loaded. Next I’m pulling the test/spec/config surface files and package metadata to verify contract shape, tests, dependency/declaration constraints, and cross-package contract alignment in one pass.
+exec
+/bin/bash -lc 'nl -ba packages/block-callout/src/__tests__/ui-default.test.tsx' in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc 'nl -ba packages/block-callout/src/index.ts' in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc 'nl -ba packages/block-callout/package.json' in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc 'nl -ba packages/block-callout/tsconfig.json' in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc 'nl -ba packages/block-callout/vitest.config.ts' in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc 'nl -ba packages/block-callout/CONTRACT.md' in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc 'nl -ba packages/design-tokens/CONTRACT.md' in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc 'nl -ba packages/block-foundation/CONTRACT.md' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 210ms:
+     1	import { describe, it, expect } from 'vitest';
+     2	import { render } from '@testing-library/react';
+     3	import { BlockRegistry, type BlockUIDefinition } from '@skb/block-foundation';
+     4	import { calloutCore } from '../core/core-definition';
+     5	import {
+     6	  calloutUIDefault,
+     7	  CalloutEditorView,
+     8	  CalloutRenderView,
+     9	  VARIANT_TOKENS,
+    10	} from '../ui-default';
+    11	import type { Variant } from '../ui-default';
+    12	
+    13	const VARIANTS: readonly Variant[] = ['note', 'tip', 'warning', 'danger'];
+    14	
+    15	describe('calloutUIDefault registration', () => {
+    16	  it('exposes the BlockUIDefinition shape with coreName + uiId="default"', () => {
+    17	    expect(calloutUIDefault.coreName).toBe('callout');
+    18	    expect(calloutUIDefault.uiId).toBe('default');
+    19	    expect(calloutUIDefault.EditorView).toBe(CalloutEditorView);
+    20	    expect(calloutUIDefault.RenderView).toBe(CalloutRenderView);
+    21	  });
+    22	
+    23	  it('round-trips through BlockRegistry (registerCore + registerUI)', () => {
+    24	    const reg = new BlockRegistry();
+    25	    reg.registerCore(calloutCore);
+    26	    reg.registerUI(calloutUIDefault as unknown as BlockUIDefinition);
+    27	    expect(reg.getUI('callout')).toBe(calloutUIDefault);
+    28	    expect(reg.getUI('callout', 'default')).toBe(calloutUIDefault);
+    29	  });
+    30	});
+    31	
+    32	describe('CalloutEditorView', () => {
+    33	  it('renders all 4 variants with distinct data-callout-variant + role/aria-label', () => {
+    34	    for (const variant of VARIANTS) {
+    35	      const { container, unmount } = render(
+    36	        <CalloutEditorView props={{ variant }} content="body" />,
+    37	      );
+    38	      const aside = container.querySelector('aside');
+    39	      expect(aside).not.toBeNull();
+    40	      expect(aside?.getAttribute('data-callout-variant')).toBe(variant);
+    41	      expect(aside?.getAttribute('role')).toBe('note');
+    42	      expect(aside?.getAttribute('aria-label')).toBe(
+    43	        `${VARIANT_TOKENS[variant].label} callout`,
+    44	      );
+    45	      // a11y: focusable for keyboard nav
+    46	      expect(aside?.getAttribute('tabindex')).toBe('0');
+    47	      unmount();
+    48	    }
+    49	  });
+    50	
+    51	  it('falls back to capitalized variant name when title is absent', () => {
+    52	    const { getByText, unmount } = render(
+    53	      <CalloutEditorView props={{ variant: 'tip' }} content="hello" />,
+    54	    );
+    55	    expect(getByText('Tip')).not.toBeNull();
+    56	    unmount();
+    57	  });
+    58	
+    59	  it('renders explicit title when provided', () => {
+    60	    const { getByText, unmount } = render(
+    61	      <CalloutEditorView
+    62	        props={{ variant: 'warning', title: 'Heads up!' }}
+    63	        content="careful"
+    64	      />,
+    65	    );
+    66	    expect(getByText('Heads up!')).not.toBeNull();
+    67	    unmount();
+    68	  });
+    69	
+    70	  it('shows empty placeholder when content is missing', () => {
+    71	    const { getByText, unmount } = render(
+    72	      <CalloutEditorView props={{ variant: 'note' }} />,
+    73	    );
+    74	    expect(getByText('No content')).not.toBeNull();
+    75	    unmount();
+    76	  });
+    77	
+    78	  it('emits a unique data-callout-variant per variant + a single icon glyph', () => {
+    79	    const seenVariants = new Set<string>();
+    80	    for (const variant of VARIANTS) {
+    81	      const { container, unmount } = render(
+    82	        <CalloutEditorView props={{ variant }} content="x" />,
+    83	      );
+    84	      const aside = container.querySelector('aside');
+    85	      seenVariants.add(aside?.getAttribute('data-callout-variant') ?? '');
+    86	      const svgs = aside?.querySelectorAll('svg') ?? [];
+    87	      expect(svgs.length).toBe(1);
+    88	      unmount();
+    89	    }
+    90	    expect(seenVariants.size).toBe(VARIANTS.length);
+    91	  });
+    92	});
+    93	
+    94	describe('CalloutRenderView', () => {
+    95	  it('renders DOM structure matching EditorView for the same props (byte-equivalent class shape)', () => {
+    96	    const props = { variant: 'danger', title: 'Stop' } as const;
+    97	    const editor = render(<CalloutEditorView props={props} content="body" />);
+    98	    const rendered = render(<CalloutRenderView props={props} content="body" />);
+    99	    const editorAside = editor.container.querySelector('aside');
+   100	    const renderAside = rendered.container.querySelector('aside');
+   101	    expect(editorAside?.getAttribute('data-callout-variant')).toBe(
+   102	      renderAside?.getAttribute('data-callout-variant'),
+   103	    );
+   104	    expect(editorAside?.getAttribute('role')).toBe(
+   105	      renderAside?.getAttribute('role'),
+   106	    );
+   107	    expect(editorAside?.getAttribute('aria-label')).toBe(
+   108	      renderAside?.getAttribute('aria-label'),
+   109	    );
+   110	    // shared body subtree shape: same icon SVG count + same title content
+   111	    expect(editorAside?.querySelectorAll('svg').length).toBe(
+   112	      renderAside?.querySelectorAll('svg').length,
+   113	    );
+   114	    expect(
+   115	      editorAside?.querySelector('.skb-callout-title')?.textContent,
+   116	    ).toBe(renderAside?.querySelector('.skb-callout-title')?.textContent);
+   117	    editor.unmount();
+   118	    rendered.unmount();
+   119	  });
+   120	
+   121	  it('omits the empty-placeholder span when content is undefined (passive SSR mode)', () => {
+   122	    const { queryByText, unmount } = render(
+   123	      <CalloutRenderView props={{ variant: 'note' }} />,
+   124	    );
+   125	    expect(queryByText('No content')).toBeNull();
+   126	    unmount();
+   127	  });
+   128	});
+
+ succeeded in 212ms:
+     1	export * from './core';
+     2	export * from './ui-default';
+
+ succeeded in 201ms:
+     1	{
+     2	  "extends": "../../tsconfig.base.json",
+     3	  "compilerOptions": {
+     4	    "rootDir": ".",
+     5	    "outDir": "dist",
+     6	    "jsx": "react-jsx"
+     7	  },
+     8	  "include": ["src/**/*", "vitest.config.ts"],
+     9	  "references": [
+    10	    { "path": "../block-foundation" },
+    11	    { "path": "../design-tokens" }
+    12	  ]
+    13	}
+
+ succeeded in 211ms:
+     1	{
+     2	  "name": "@skb/block-callout",
+     3	  "version": "0.0.0",
+     4	  "private": true,
+     5	  "type": "module",
+     6	  "exports": {
+     7	    ".": "./src/index.ts",
+     8	    "./core": "./src/core/index.ts",
+     9	    "./ui-default": "./src/ui-default/index.ts",
+    10	    "./ui-default/callout.css": "./src/ui-default/callout.css"
+    11	  },
+    12	  "scripts": {
+    13	    "build": "tsc -b",
+    14	    "lint": "eslint .",
+    15	    "typecheck": "tsc --noEmit",
+    16	    "test": "vitest run"
+    17	  },
+    18	  "dependencies": {
+    19	    "@skb/block-foundation": "workspace:*",
+    20	    "@skb/design-tokens": "workspace:*",
+    21	    "zod": "^3.23.0"
+    22	  },
+    23	  "peerDependencies": {
+    24	    "react": "^18.3.0 || ^19.0.0"
+    25	  },
+    26	  "devDependencies": {
+    27	    "@testing-library/react": "^16.0.0",
+    28	    "@types/react": "^18.3.0",
+    29	    "happy-dom": "^15.0.0",
+    30	    "react": "^18.3.0",
+    31	    "react-dom": "^18.3.0",
+    32	    "typescript": "~5.6.0",
+    33	    "vitest": "^4.1.5"
+    34	  }
+    35	}
+
+ succeeded in 172ms:
+     1	# @skb/design-tokens Contract
+     2	
+     3	## Public surface
+     4	
+     5	- `tokens.css` — `:root` light theme CSS variables (default)
+     6	- `tokens-dark.css` — `:root[data-theme="dark"]` overrides
+     7	- `tailwind-preset` — Tailwind 3.x preset (color / spacing / typography / radius / shadow / motion); ships with a `.d.cts` so consumers' tsconfig (strict, no `allowJs`) can `import preset from '@skb/design-tokens/tailwind-preset'` without `// @ts-ignore`
+     8	- `tokens` / `colorVars` / `spaceVars` — TS mirrors for CSS-in-JS / programmatic access
+     9	- `useTheme` — React hook returning `{ theme, setTheme, toggle }`
+    10	- `getInitialTheme` — pure derivation of the boot theme (localStorage > `prefers-color-scheme` > `'light'`)
+    11	- `applyThemeDOM(theme)` — DOM-only, idempotent. Sets / clears `data-theme="dark"` on `<html>`. **Does NOT touch localStorage.** Safe to call from inline FOUC scripts and on every effect tick.
+    12	- `STORAGE_KEY` — `'skb-theme'`; the localStorage key shared with the inline FOUC script
+    13	- `ThemeToggle` — default switch button component
+    14	- `themeNames` / `ThemeName` / `UseThemeResult` — type-level surface
+    15	
+    16	## Invariants (ADR-0003)
+    17	
+    18	- **CSS var names are stable**: consumers (apps/site, every block ui-default) depend on the literal var names; renaming is a contract break and requires an ADR.
+    19	- **Light + dark must share the same key set**: only values may differ. Adding a new var REQUIRES adding it to both files at the same time.
+    20	- **`STORAGE_KEY` is shared with apps/site BaseLayout**: the inline FOUC `<script>` reads `'skb-theme'` literally; any rename must update both packages in the same PR.
+    21	- **Tailwind preset is the single source of truth**: `apps/site` and every `block-*/ui-default/` MUST consume this preset. Hand-rolling `theme.colors` or hard-coding color / spacing / typography values is rejected by `pr-gate`.
+    22	- **Persistence is coupled to manual user action only** (ADR-0003 D6): `useTheme`'s mount effect calls `applyThemeDOM` only — it never writes localStorage. Persistence happens in `setTheme` / `toggle`. This preserves the property "system OS theme change is reflected on next visit unless the user has explicitly chosen a theme."
+    23	
+    24	## Inverse-direction obligation: replicas of pre-hydration algorithms
+    25	
+    26	Some algorithms in this package must be replicated in inline code that runs **before any module loads** (e.g. an Astro `<script is:inline>` in `<head>` that prevents FOUC), and therefore cannot import from `@skb/design-tokens`. Those replicas carry an inverse-direction obligation: the authority lives here, but the correctness contract binds every consumer that ships its own copy.
+    27	
+    28	**Currently in scope**: `getInitialTheme()` in `src/use-theme.ts` (the boot-theme derivation: localStorage → `prefers-color-scheme` → `'light'` default).
+    29	
+    30	Any consumer that replicates this algorithm in inline code MUST be byte-equivalent to the authority in BOTH happy-path AND exception handling:
+    31	
+    32	1. **Strict-whitelist saved value**: only `saved === 'light' || saved === 'dark'` honors the stored value; anything else falls through to `matchMedia('(prefers-color-scheme: dark)')`. A truthy-coerce check (e.g. `saved ? saved === 'dark' : ...`) diverges for invalid / case-mismatched / legacy localStorage values and produces a hydration flash on first paint.
+    33	2. **Narrow `try/catch` scope**: the `try/catch` MUST wrap ONLY the `localStorage.getItem` call. `matchMedia` + DOM apply MUST run AFTER the catch handler. A wide-scope `try/catch` swallows the `matchMedia` path on Safari Private Mode / iOS WebView with storage restrictions / browsers with localStorage disabled — producing light when system pref is dark, i.e. hydration flash.
+    34	3. **Hardcoded storage key literal**: replicas hardcode `'skb-theme'` (the value of `STORAGE_KEY` in `src/use-theme.ts`) because they cannot import the constant at FOUC-script time. Renaming `STORAGE_KEY` is a contract break that requires updating every replica in the same PR.
+    35	
+    36	**Required regression test**: every consumer with an inline replica MUST register a test that asserts byte-equivalence against the authority. Template: `apps/site/src/__tests__/fouc-script.test.ts` — extracts the IIFE from the consumer file, evaluates it via `new Function('localStorage', 'window', 'document', iife)` against parametrized fakes, compares output against `getInitialTheme()` for a 16-row saved-value × system-preference corpus + 2 storage-throws × system-preference rows + 1 truthy-coerce regression assertion (20 tests total). The two storage-throws rows are critical: the saved-value corpus alone passes under a wide-scope `try/catch`.
+    37	
+    38	**Failure mode reference**: Track A v1 review caught happy-path divergence (truthy-coerce); v2 fixed (1) but kept wide-scope `try/catch`; v3 fixed (2). Both v1 and v2 would have shipped visible hydration flash without pr-gate's catch.
+    39	
+    40	**Current consumers**: `apps/site` (Wave 1, `src/layouts/BaseLayout.astro`). Wave 2+ consumers (e.g. additional Astro apps, future open-source `apps/demo`) MUST follow this template.
+    41	
+    42	## Consumer rules
+    43	
+    44	- **Hydration**: `useTheme` and `ThemeToggle` MUST be used inside a client-only Astro island (`client:load` minimum). The hook reads `window.matchMedia` and `window.localStorage` at first render — passive SSR markup is fine, but island hydration directive must be `client:load` or stricter.
+    45	- **FOUC bridge** (apps/site responsibility): the BaseLayout `<script is:inline>` in `<head>` must read `localStorage.getItem('skb-theme')` literally, fall back to `matchMedia('(prefers-color-scheme: dark)').matches`, and set `data-theme="dark"` on `<html>` accordingly — **before** any React island hydrates. The inline script must NOT write localStorage. The detailed correctness obligation (algorithm + try/catch scope + literal sync + required regression test) is enumerated in the **Inverse-direction obligation** section above.
+    46	
+    47	### `block-*/ui-default/` consumer norms (Wave 2, anchored by `block-callout` C2)
+    48	
+    49	These norms apply to every `packages/block-*/src/ui-default/` consumer. The
+    50	first consumer (`@skb/block-callout/ui-default/`) is the canonical template;
+    51	codex-block-generator clones must preserve them.
+    52	
+    53	- **No hardcoded color literals**: every `color`, `background-color`, `border-color`
+    54	  in `*.css` MUST resolve via `rgb(var(--color-X))` or `rgb(var(--color-X) / <alpha>)`.
+    55	  No `#hex`, no named colors, no `rgb(<numeric-triple>)`. `pr-gate` greps for
+    56	  these in `packages/block-*/src/ui-default/*.css` and rejects.
+    57	- **No inline `style={{ … }}` for variant colors**: happy-dom (used by `vitest run`)
+    58	  rejects `rgb(var(--color-…))` in inline styles and silently drops the attribute,
+    59	  which would mask real visual regressions. Variant colors MUST live in `*.css`,
+    60	  selected by `[data-<block>-variant="…"]` on a stable container element. Inline
+    61	  `style` is allowed only for layout-time computed values (e.g., a known px width).
+    62	- **Type-only `@skb/design-tokens` import satisfies ADR-0008 D1**: `block-*/ui-default/`
+    63	  packages typically don't need `colorVars` / `tokens` at runtime (CSS does the var
+    64	  resolution). To keep `@skb/design-tokens` as a real `package.json#dependencies` entry
+    65	  (per ADR-0008 D1), import the `ColorTokenName` type to constrain the variant→token
+    66	  mapping (see `block-callout/src/ui-default/variant-tokens.ts`). The lexical
+    67	  `from '@skb/design-tokens'` in source is what the structure-auditor monthly grep
+    68	  detects; type-only imports under `verbatimModuleSyntax: true` count.
+    69	- **Tailwind preset is consumed at app-build, not block-build**: `block-*` packages
+    70	  don't compile Tailwind themselves; `apps/site` (and any future Astro/Next consumer)
+    71	  loads `@skb/design-tokens/tailwind-preset` and JIT-compiles the class names that
+    72	  `block-*/ui-default/` Components emit. Block packages MAY emit Tailwind utility
+    73	  classes (e.g., `mt-1`, `flex`) but those classes resolve correctly only when the
+    74	  consumer's Tailwind config extends from this preset. For visual rules that must
+    75	  work outside Tailwind (e.g., editor-shell standalone preview), put them in the
+    76	  block's own `*.css` file with explicit `var(--space-X)` references.
+    77	- **Required CSS import path**: each `block-*` package exposes its CSS via
+    78	  `package.json#exports['./ui-default/<block>.css']`. App entry MUST import each block's
+    79	  CSS once at boot (next to design-tokens' `tokens.css` + `tokens-dark.css`).
+    80	- **No emoji as icons**: `VARIANT_ICONS` (or equivalent) MUST be hand-traced SVGs at
+    81	  consistent stroke width (1.5–2px) and consistent viewBox (`24 24`). Mixing
+    82	  filled/outlined or different stroke widths violates ui-ux-pro-max
+    83	  `no-emoji-icons` + `stroke-consistency` + `icon-style-consistent` rules.
+    84	- **A11y on the variant container**: emit `role="note"` (or appropriate landmark),
+    85	  `aria-label="<Variant> <block>"`, `tabindex="0"` so the block participates in
+    86	  keyboard nav. `:focus-visible` styles in `*.css` MUST use `outline` (not
+    87	  `box-shadow` — `outline` survives `forced-colors` mode).
+    88	- **Light + dark parity**: any color expression MUST resolve correctly under both
+    89	  themes via the design-tokens var system. No theme-specific class branches in
+    90	  `block-*/ui-default/`; if a token doesn't exist in both themes, propose adding
+    91	  it to `tokens.css` + `tokens-dark.css` per "Modifying this file" below.
+    92	- **Reduced-motion**: any `transition` / `animation` MUST be wrapped in
+    93	  `@media (prefers-reduced-motion: no-preference) { … }` (see callout.css Wave 2 pattern).
+    94	
+    95	## Modifying this file
+    96	
+    97	- Adding a new var: non-breaking, but must update tokens.css + tokens-dark.css + tokens.ts + tailwind-preset.cjs in the same change.
+    98	- Renaming or repurposing an existing var (semantic redefinition): contract break — requires an ADR plus a notification to all consuming packages.
+    99	- Adding a new theme beyond light/dark (e.g. sepia, high-contrast): requires an ADR; `STORAGE_KEY` value type expands; downstream FOUC scripts must handle the new value.
+   100	- Renaming or removing any exported function/component: contract break — requires an ADR. (Pre-Wave-1 the only such rename was `applyTheme` → `applyThemeDOM` to enforce the persistence-coupled-to-manual-action invariant; package had no external consumers.)
+   101	
+   102	## Related
+   103	
+   104	- [ADR-0003 headless / presentational split](../../docs/decisions/ADR-0003-headless-presentational-split.md) — D6 (manual-only persistence)
+   105	- [Design spec §1.5 / §2.5 / §2.6](../../docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md)
+   106	- `../block-foundation/CONTRACT.md` — block UI registration depends on this preset
+   107	- `../../apps/site/CONTRACT.md` — FOUC inline script literal sync constraint
+
+ succeeded in 222ms:
+     1	import { defineConfig } from 'vitest/config';
+     2	
+     3	export default defineConfig({
+     4	  test: {
+     5	    include: ['src/**/*.test.{ts,tsx}'],
+     6	    environment: 'happy-dom',
+     7	    typecheck: { enabled: false },
+     8	  },
+     9	});
+
+ succeeded in 184ms:
+     1	# @skb/block-callout Contract
+     2	
+     3	第一个真实 `BlockRegistry` 消费者（Wave 2 Track C1 template）。
+     4	后续 `block-code` / `block-image` 等 simple block 包按本包结构 clone（codex-block-generator + scripts/new-block.ts）。
+     5	
+     6	## Public surface
+     7	
+     8	四个 entry：
+     9	
+    10	- `.` (root barrel) — re-export `./core` + `./ui-default`
+    11	- `./core` — headless 层
+    12	  - `calloutCore: BlockCoreDefinition<typeof propsSchema>` — name=`'callout'` / kind=`'component'` / mdxComponent=`'Callout'`
+    13	  - `serializeCallout(node) → mdxJsxFlowElement` — Tiptap → mdast (Wave 3 mdx-bridge routing 时启用)
+    14	  - `parseCallout(mdast) → TiptapNode` — mdast → Tiptap (同上)
+    15	  - 类型: `CalloutTiptapNode` / `CalloutMdastJsxElement`
+    16	- `./ui-default` — presentational 层（Wave 2 Track C2）
+    17	  - `calloutUIDefault: BlockUIDefinition<typeof calloutCore.propsSchema>` — coreName=`'callout'` / uiId=`'default'`
+    18	  - `CalloutEditorView` / `CalloutRenderView` — `ComponentType<BlockViewProps<typeof calloutCore.propsSchema>>`，DOM 形状字节级一致（共享 `CalloutBody` 原语）
+    19	  - `CalloutBody` — 视觉单一权威 primitive，editor + render 双视图都嵌入
+    20	  - `VARIANT_TOKENS` — `Record<Variant, { label, accentToken: ColorTokenName }>` 共享视觉元数据
+    21	  - `VARIANT_ICONS` — `Record<Variant, ComponentType>`，4 个手画 SVG（无 emoji，per ui-ux-pro-max `no-emoji-icons` rule）
+    22	  - 类型: `Variant` (`'note' | 'tip' | 'warning' | 'danger'`)
+    23	- `./ui-default/callout.css` — 视觉规则单一来源
+    24	  - 选择器契约: 所有变体规则锁定在 `[data-callout-variant="…"]` 上（CalloutBody 总是 emit）
+    25	  - 颜色完全来自 `@skb/design-tokens` CSS 变量（`var(--color-X)` 形式），不允许硬编码 hex / rgb 字面值
+    26	  - 消费方 (`apps/site` / `editor-shell`) 必须在启动时 import 一次：`import '@skb/block-callout/ui-default/callout.css';`
+    27	
+    28	`propsSchema` 形状（见 `src/core/core-definition.ts`）：
+    29	
+    30	```typescript
+    31	z.object({
+    32	  variant: z.enum(['note', 'tip', 'warning', 'danger']),
+    33	  title: z.string().optional(),
+    34	}).strict()
+    35	```
+    36	
+    37	## Invariants
+    38	
+    39	继承自 [block-foundation/CONTRACT.md](../block-foundation/CONTRACT.md#invariants)：
+    40	`Defensive copy` / `Schema strictness` / `Default UI lookup` / `Serialize / parse hook ownership`
+    41	（即 `BlockRegistry.listCores()` / `listUIs(coreName)` defensive-copy 行为、
+    42	`propsSchema` 必须 `.strict()`、同 `coreName` 多 UI 时 `getUI(coreName)` 取首注册 `uiId`、
+    43	serialize/parse 由本包 `core/` own 不在 foundation 注册）。
+    44	
+    45	block-callout 特定不变量：
+    46	
+    47	- **`coreName='callout'` (kebab-case)**: `calloutCore.name` 字面值固定，与 `BlockRegistry.registerCore`
+    48	  注册键一致；后续 `block-code` / `block-image` 同 `coreName` kebab-case 约定
+    49	- **`mdxComponent='Callout'` (PascalCase)**: 与 `<Callout variant=...>` JSX 标签一致；
+    50	  mdx-bridge 通过 `mdxJsxFlowElement.name` 字符串路由（[block-foundation RFC §1](../block-foundation/RFC.md#1-core-side)）
+    51	- **Serialize / parse hook 命名**: `serializeCallout` / `parseCallout`，verb-as-prefix
+    52	  约定（[RFC §5](../block-foundation/RFC.md#5-serialize--parse-hook-ownership-scope-clarification)）
+    53	- **`uiId='default'` reserved**: `calloutUIDefault.uiId === 'default'`；本包 inherit
+    54	  foundation 的 `Default UI lookup` 不变量（首注册即 default）
+    55	- **EditorView / RenderView byte-equivalent DOM**: 两视图都通过 `CalloutBody` 原语
+    56	  渲染，DOM tree / class 名 / `data-callout-variant` / `role` / `aria-label`
+    57	  完全一致；唯一差异是 `content` 缺省时 EditorView 显示 `.skb-callout-empty` 占位、
+    58	  RenderView 直接渲染空 children。任何分歧都触发 `ui-default.test.tsx` byte-equiv 用例 fail
+    59	- **CSS = single visual authority**: 视觉规则只在 `ui-default/callout.css`，
+    60	  React 组件不带 inline `style`（happy-dom 测试拒绝 `rgb(var())` 字面值，所以
+    61	  variant 颜色只能走 CSS data-attribute 选择器路径）；任何变体颜色变更都改 callout.css
+    62	  + design-tokens 任一处即可，不必 touch React 树
+    63	- **No emoji in icons**: `VARIANT_ICONS` 全部为 hand-traced SVG (24×24 stroke 1.75)，
+    64	  per ui-ux-pro-max `no-emoji-icons` rule + spec §3.5
+    65	- **Headless 自给**: `core/` 不 import 任何 React / Tiptap UI 模块；仅依赖
+    66	  `@skb/block-foundation` 类型 + `zod`（ADR-0003 D1）
+    67	- **propsSchema single authority**: 仅在 `src/core/core-definition.ts` 定义，
+    68	  ui-default / serialize / parse / 测试均 import `calloutCore.propsSchema`，
+    69	  不允许在 consumer 处 inline 重复（ADR-0006 item #4）
+    70	- **Self-validating serialize/parse**: `serializeCallout` 调 `propsSchema.parse(node.attrs)`；
+    71	  `parseCallout` 调 `propsSchema.parse(rawProps)`。任何契约偏离在 mdx-bridge 路由前已 throw
+    72	- **Registry integration**: `registerCore(calloutCore)` + `getCore('callout')` round-trip —
+    73	  see [`src/__tests__/registry-integration.test.ts`](src/__tests__/registry-integration.test.ts)
+    74	
+    75	## Wave 3 mdx-bridge 路由集成（pending）
+    76	
+    77	当前 `serializeCallout` / `parseCallout` 是 stub —— 暴露稳定签名，未被 mdx-bridge 消费。
+    78	Wave 3 mdx-bridge routing table PR 会：
+    79	
+    80	1. 在 `mdx-bridge/parse.ts` 的 `mdastBlockToTiptap` 拦截 `mdxJsxFlowElement{name:'Callout'}` →
+    81	   `parseCallout(node)` → 把返回 `CalloutTiptapNode` 嵌入 doc.content
+    82	2. 在 `mdx-bridge/serialize.ts` 的 `tiptapToMdastBlock` 拦截 `type='callout'` →
+    83	   `serializeCallout(node)` → 返回 `mdxJsxFlowElement` 进 mdast
+    84	3. children 递归走 mdx-bridge 现有 inline / block 处理
+    85	
+    86	集成完成后，`__tests__/fixtures/` 下三组 fixture 移交给 `packages/mdx-bridge/__tests__/fixtures/`
+    87	（编号 10-12）配 RTT 测试（`mdx-doctor` 强制 byte-equivalent 双向）。
+    88	
+    89	## Forward-compat consumers
+    90	
+    91	- **Wave 3 mdx-bridge integration**: 见上节
+    92	- **Wave 2 后续 block packages**: `block-code` / `block-image` / `block-math` 等按本包
+    93	  结构 clone (codex-block-generator template source)；`scripts/new-block.ts` 模板
+    94	  source = `packages/block-callout/`。clone 时 ADR-0008 D1 由模板带过：
+    95	  `package.json#dependencies` 含 `@skb/design-tokens`（type-only `ColorTokenName` import
+    96	  in `variant-tokens.ts` 满足 dead-dep grep），`tsconfig.json#references` 含
+    97	  `../design-tokens`，`callout.css` 模板 mirror visual rules under
+    98	  `[data-<block>-variant]` 选择器
+    99	
+   100	## Modifying this file
+   101	
+   102	`calloutCore` 公共字段 (`name` / `kind` / `propsSchema` / `mdxComponent`) 的字段或值变更需 ADR
+   103	（与 block-foundation/CONTRACT.md 同 freeze 级别 —— 改 propsSchema 形状 / 改 mdxComponent /
+   104	改 kind 都触发 mdx-bridge 路由 + ui-default + sample-blocks 同步更新）。
+   105	
+   106	`serializeCallout` / `parseCallout` 签名变更需配 mdx-bridge routing PR 同步（强耦合）。
+   107	
+   108	## Related
+   109	
+   110	- [@skb/block-foundation CONTRACT](../block-foundation/CONTRACT.md) — `BlockCoreDefinition` 接口权威
+   111	- [@skb/block-foundation RFC](../block-foundation/RFC.md) — registration walkthrough（本包是 §1 + §3 + §5 唯一真 consumer）
+   112	- [ADR-0003 headless / presentational 分层](../../docs/decisions/ADR-0003-headless-presentational-split.md)
+   113	- [ADR-0006 asymmetry audit checklist](../../docs/decisions/ADR-0006-asymmetry-audit-checklist.md) item #3 + #4
+   114	- [ADR-0008 D1 dead-dep + D2 interface freeze](../../docs/decisions/ADR-0008-wave-2-entry-policies.md)
+   115	- [Wave 2 plan §Task C1](../../docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md)
+
+ succeeded in 197ms:
+     1	# @skb/block-foundation Contract
+     2	
+     3	## Public surface
+     4	
+     5	- `BlockRegistry` class — 双层注册表（ADR-0003）
+     6	  - `registerCore(core)` / `registerUI(ui)`
+     7	  - `getCore(name)` / `listCores()`
+     8	  - `getUI(coreName, uiId?)` / `listUIs(coreName)`
+     9	- `defineCore(def)` / `defineUI(def)` factory helpers
+    10	- `BlockCoreDefinition<T>` / `BlockUIDefinition<T>` / `BlockViewProps<T>` interfaces
+    11	- `BlockKind = 'prose' | 'component' | 'render' | 'viz'` （四分类，Wave 2 由 2→4 additive 扩展）
+    12	  - `'prose'` — Wave 1 default for headless prose blocks (无 MDX 组件，由 `proseExtensions` 提供 markdown 行为)
+    13	  - `'component'` — Wave 1 for MDX-component blocks（block-callout / block-code / block-image — Track C simple-block-eng）
+    14	  - `'render'` — **Wave 2 NEW** for hand-crafted render blocks consuming external runtime authority（block-math KaTeX / block-pdf react-pdf — Track D render-block-eng）
+    15	  - `'viz'` — **Wave 2 NEW** for visualization blocks consuming heavy runtime libs（block-jupyter Pyodide / block-nn-viz TensorFlow.js / block-agent-flow React Flow — Track E viz-block-eng / kernel consumer）
+    16	- `proseExtensions` — Tiptap 扩展数组，提供全部 markdown 行为
+    17	
+    18	## Invariants
+    19	
+    20	- `BlockKind` 四分不可破坏：新 block 必须明确归属 `prose` / `component` / `render` / `viz` 之一。Wave 1 仅 `prose` + `component` 二分；Wave 2 additive 扩展加 `render` + `viz`（由 `render-block-eng` 与 `viz-block-eng` 工种 own，与 agent-contract.md Tier 1 worker 分工一致）。kind 定义不可被进一步窄化（不允许把 `render` 重新归并入 `component`），扩展再加 kind 需 ADR
+    21	- Prose blocks 零自写代码——任何看似需要新 prose block 的场景应通过组合 `proseExtensions` 内现有扩展或追加单条 Tiptap 扩展实现，不再加 prose-kind block
+    22	- `BlockCoreDefinition.mdxComponent` 必须 PascalCase，且与 MDX 文件 import 中使用的名字一致
+    23	- Core 与 UI 物理分离（ADR-0003）：core 不允许 import 任何 React/Tiptap 视觉 API；UI 必须 import core（不允许 inline 重复 schema）
+    24	- 同 core 多 UI 时 `getUI(name)` 取首个注册：约定首个 uiId 为 `'default'`；adopter 在 register 顺序上需谨慎
+    25	- **Defensive copy**：`listCores()` 与 `listUIs(coreName)` 每次返回 fresh array。Caller 修改返回值不影响 registry 内部 state。Implementation: `src/registry.ts:84` (`listCores`) + `src/registry.ts:96` (`listUIs`)；regression: `src/__tests__/registry.test.ts` "listCores returns a defensive copy" + "listUIs returns a defensive copy"
+    26	- **Idempotent register**：`registerCore` 同 `name` 第二次调用 throws `Duplicate core name: <name>`；`registerUI` 同 `(coreName, uiId)` 第二次 throws `Duplicate UI registration: core=<coreName> uiId=<uiId>`。避免 silent override；实现见 `src/registry.ts:60-63` + `src/registry.ts:71-75`
+    27	- **Schema strictness**：每个 `BlockCoreDefinition.propsSchema` 必须是 `z.object(...).strict()`；嵌套 `ZodObject` 同样必须 `.strict()`（[ADR-0006](../../docs/decisions/ADR-0006-asymmetry-audit-checklist.md) item #3 trip-hazard：`.strict()` 不传播）。当前类型仅约束到 `ZodTypeAny`（type-narrow 到 `ZodObject` 待 Wave 3）；Wave 2 行为约定 + reviewer + RFC.md §1 显式提醒。未 `.strict()` 不会 throw，但 `propsSchema.parse(input)` 会 silently strip unknown keys，引发 contract drift
+    28	- **Serialize / parse hook ownership**：MDX serialize/parse 由各 `block-*` 包的 `core/` own（ADR-0003 D1+D2），不在 `block-foundation` 注册。`block-foundation` 仅 own `BlockCoreDefinition` 形状（含 `mdxComponent` 字符串）；`mdx-bridge` 通过 `mdxJsxFlowElement.name` 字符串路由到对应 block 的 export（命名约定 verb-as-prefix：`serialize<BlockName>` / `parse<BlockName>`，与 mdx-bridge 现有 `mdxToTiptap` / `tiptapToMdx` 同 style）。详见 RFC.md §"5. Serialize / parse hook ownership"
+    29	
+    30	## Forward-compat consumers (Wave 2+)
+    31	
+    32	Wave 2 中段当 `BlockRegistry` 开始用 `@skb/content-types` 的 schema 验证
+    33	注册的 block props（如跨 block 共享的 frontmatter / metadata 形状），届时
+    34	`@skb/content-types` 将被同 PR 加入 `package.json#dependencies` +
+    35	`tsconfig.json#references`，并出现源码 `import { ... } from '@skb/content-types'`。
+    36	
+    37	当前 Wave 1 close 状态：源码无 content-types import，按
+    38	[ADR-0008](../../docs/decisions/ADR-0008-wave-2-entry-policies.md) D1
+    39	（dead-dep policy = tighten），dep 与 ref 均未声明；forward-compat 意图
+    40	仅在本 prose 段表达，不在 package.json / tsconfig 占位。
+    41	
+    42	## How to register a new `block-*` package
+    43	
+    44	step-by-step walkthrough (core / ui-default / 测试样板 / 错误场景 / serialize-parse 归属)
+    45	for the first real consumer 在 [RFC.md](./RFC.md) — 第一个 `block-*` PR
+    46	(Task C1 / C2) 必须 reference 此 RFC；后续 `block-*` PR 沿用相同模式。
+    47	RFC 是 consumer-facing 教程，CONTRACT.md 是 public API 形状 + 关键不变量
+    48	的权威；二者补充而非重叠（[ADR-0008 D2](../../docs/decisions/ADR-0008-wave-2-entry-policies.md)）。
+    49	
+    50	## Modifying this file
+    51	
+    52	公共表面（`BlockCoreDefinition` / `BlockUIDefinition` / `BlockRegistry` / `BlockKind` / `BlockViewProps` / `defineCore` / `defineUI` / `proseExtensions`）的任何字段或方法增删改一律需 ADR — **包括添加 optional 字段、改 `proseExtensions` 数组（增删 Tiptap 扩展、顺序变更、`as const` shape 变化）**。spec §2.3 把 block-foundation 列为接口包，规则"改动需 ADR；全员同步"不区分 optional vs required。
+    53	
+    54	原因：optional 字段会传播到 mdx-bridge serialization + 8 个 Wave 2 block 的 core+ui 实现 + apps/site frontmatter schema；`proseExtensions` 改动直接影响 mdx-bridge round-trip fixtures + editor-shell parsing 行为；无 ADR 协调会引发漂移。
+    55	
+    56	## Related
+    57	
+    58	- 设计规格 §1.5 / §2.5（`../../docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md`）
+    59	- ADR-0003 headless / presentational 分层（`../../docs/decisions/ADR-0003-headless-presentational-split.md`）
+    60	- content-types 契约（`../content-types/CONTRACT.md`）
+    61	- mdx-bridge 契约（`../mdx-bridge/CONTRACT.md`）
+    62	- design-tokens 契约（`../design-tokens/CONTRACT.md`）
+
+codex
+I’ve confirmed the ui-default source is internally consistent so far; I’ll now validate the core boundary and policy files (CONTRACT/ADR/ts references + token var parity) before executing the package test/type/lint/build commands you requested.
+exec
+/bin/bash -lc 'nl -ba docs/decisions/ADR-0006-asymmetry-audit-checklist.md' in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc 'nl -ba packages/block-callout/src/core/core-definition.ts' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	import type { BlockCoreDefinition } from '@skb/block-foundation';
+     2	import { z } from 'zod';
+     3	
+     4	const propsSchema = z
+     5	  .object({
+     6	    variant: z.enum(['note', 'tip', 'warning', 'danger']),
+     7	    title: z.string().optional(),
+     8	  })
+     9	  .strict();
+    10	
+    11	export const calloutCore: BlockCoreDefinition<typeof propsSchema> = {
+    12	  name: 'callout',
+    13	  kind: 'component',
+    14	  propsSchema,
+    15	  mdxComponent: 'Callout',
+    16	};
+
+ succeeded in 0ms:
+     1	# ADR-0006: Cross-location asymmetry-audit checklist (process rule)
+     2	
+     3	| 字段 | 值                                    |
+     4	| ---- | ------------------------------------- |
+     5	| 状态 | accepted                              |
+     6	| 日期 | 2026-04-30                            |
+     7	| 作者 | orchestrator (Claude Opus 4.7 1M ctx) |
+     8	| 触发 | Wave 1 codex 5.5 reviews caught 12 instances of the same meta-class across 6 tracks + 5 close-ceremony fix iterations (8 distinct items + 4 close-ceremony reinforcements of items #6 and #8) |
+     9	| 替代 | 不替代任何 ADR；扩展 [ADR-0001](ADR-0001-stack-selection.md) §3.2 review chain |
+    10	
+    11	## Context
+    12	
+    13	Wave 1 implementation produced strong empirical evidence that **a single bug class** dominates the failure mode at line-level review:
+    14	
+    15	> **Cross-location asymmetry**: a value, schema, algorithm, or invariant exists in two or more places, and an edit to one location is not symmetrically applied to all peers, so behavior diverges silently.
+    16	
+    17	Across 6 tracks + 5 close-ceremony fix iterations, codex 5.5 (`pr-gate`) caught **12 instances** of this meta-class (8 distinct failure-mode items + 4 close-ceremony reinforcements of items #6 and #8). Every PR that lasted ≥ 2 review rounds hit at least one instance. The pattern is so consistent that linear "fix the cited blocker, ship v_n+1" iteration would not have caught the second-order asymmetry; codex specifically catches the symmetric counterpart that the worker missed.
+    18	
+    19	### Wave 1 empirical record (12 instances)
+    20	
+    21	| # | Track | Round | Asymmetry pair | Bug behavior |
+    22	|---|---|---|---|---|
+    23	| 1 | Track B (block-foundation + content-types) | R1 → fixed v3 | `listUIs` mutability vs `listCores` defensive copy | Caller mutation of return value polluted registry singleton |
+    24	| 2 | Track D (apps/api) | R2 → fixed v4 | RFC 7235 `WWW-Authenticate` on framework-raised 401 vs custom `SkbError` 401 | 4 of 5 401 paths emitted spec-mandated header; the custom-error path silently dropped it |
+    25	| 3 | Track F (editor-commands) | R3 → fixed v4 | `.strict()` on top-level Zod object vs nested `frontmatterSchema` | Top-level rejected unknown keys; nested still silently stripped them |
+    26	| 4 | Track C (mdx-bridge) | R2 → fixed v4 | `marksEqual` link comparator: `href` only vs `href + title` | Same href, different titles silently merged into one link with the first title preserved |
+    27	| 5 | Track F v5 | R3 → fixed v6 | One CONTRACT.md updated to reflect code; sister CONTRACT.md (`agent-tools`) had stale wording | Documentation-vs-code drift in the file the worker did not edit |
+    28	| 6 | Track A | R1 → fixed v2 | FOUC inline IIFE saved-value algorithm + content schema | Truthy-coerce diverges from strict-whitelist for invalid / case-mismatched values; inline `z.object` redefinition diverges from `frontmatterSchema` authority |
+    29	| 7 | Track A v2 | R2 → fixed v3 | FOUC inline IIFE try/catch scope | Wide try/catch in IIFE swallowed `matchMedia` exceptions while authority's narrow try/catch propagated; storage-throws scenarios produced light→dark hydration flash |
+    30	| 8 | Wave 1 close bundle v1 | R1 → fixed v2 | ADR-0006 mandated reviewer-prompt updates vs actual `agent-contract.md` / generated `.claude/agents/*.md` / `docs/review-checklist.md` / `team-operations.md` content | The close-ceremony commit codified a process rule that mandates downstream behavior; consumer-side artifacts (reviewer prompts + runbook) had not been updated to embed the rule, so Wave 2 reviewers would not have seen it |
+    31	| 9 | Wave 1 close bundle v2 | R2 → fixed v3 | ADR-0006:81 within-document drift "7 distinct instances" | Single bullet missed during the v1→v2 count sweep — sister-bullet variant of item #6 within a single document |
+    32	| 10 | Wave 1 close bundle v3 | R3 → fixed v4 | ADR-0006:117 within-document drift "7 empirical instances + 18+ erratum candidates" (both numbers stale) | Second sister-bullet drift in the same file, a different bullet — proved per-citation fixes are themselves item #6 traps; comprehensive sweep at fix time is the robust pattern |
+    33	| 11 | Wave 1 close bundle v4 (informational) | R4 (informational) → fixed v5 | structure baseline:66 "× 7 endpoints" while apps/api has 4 routes / 11 tests | Pre-existing content-accuracy drift in the structure baseline document (authored at v1) — content number mismatched real code; surfaced during the broader 11th-class hunt |
+    34	| 12 | Wave 1 close bundle v5 | R2 (pr-gate) → fixed v6 | Regenerated `.claude/agents/code-reviewer.md` + `.claude/agents/pr-gate.md` + `docs/review-checklist.md` were not staged in the bundle commit — authority + generator code updated, but generator outputs remained at pre-update HEAD content | Sub-form of item #8: regenerating an artifact and `git add`'ing it are separate steps; a bundle that updates authority + generator without staging the regenerated outputs is silently stale. Motivated the "verify by clean second-run" step now part of item #8. |
+    35	
+    36	Codex's structured review consistently caught these with three patterns:
+    37	
+    38	1. After fixing one location, **codex audits all peer locations** (not just the cited site)
+    39	2. After a value/schema acquires an attribute, **codex audits every comparator/serialization function** for that attribute
+    40	3. After a "happy path" fix, **codex audits the exception path** for the same equivalence
+    41	
+    42	These three habits collectively define the process rule below.
+    43	
+    44	## Decision
+    45	
+    46	Adopt an **8-point asymmetry-audit checklist** as a mandatory part of `code-reviewer` (Codex 5.3-spark, default cheap) and `pr-gate` (Codex 5.5, deep) review prompts. Reviewers MUST work through every applicable item before declaring PASS.
+    47	
+    48	### The 8 items
+    49	
+    50	1. **Field/attribute audit**: After adding a field to a data shape (Zod schema, Pydantic model, TS interface, mdast attrs, etc.), audit every comparator / equality / serialization / canonicalization function that handles this shape. (Wave 1 evidence: instance #4 — `marksEqual` link branch missed `title` when serialize emitted it.)
+    51	
+    52	2. **Status code audit**: After adding a status code to one HTTP handler (or, generally, an exit/error code to one branch), audit every other handler emitting the same code. RFC-mandated headers (RFC 7235 `WWW-Authenticate` on 401, RFC 7231 `Allow` on 405) attach to **the status code itself**, not the framework code path that emitted it. (Wave 1 evidence: instance #2 — custom `SkbError` 401 path missed `WWW-Authenticate`.)
+    53	
+    54	3. **Strictness audit**: After adding `.strict()` (Zod) / `extra='forbid'` (Pydantic) at one level of an object schema, audit every nested object/sub-schema. The strictness setting **does not propagate**; nested objects must opt in independently. (Wave 1 evidence: instance #3 — top-level `.strict()` shipped while nested `frontmatterSchema` still silently stripped unknown keys.)
+    55	
+    56	4. **Consumer schema audit**: After defining a schema in a single-authority package (e.g. `@skb/content-types/frontmatterSchema`), audit every consumer for inline duplicates or inline redefinitions that should `import` instead. The "deferred swap" pattern — "I'll inline now and import later" — is a contract break that compounds over time. (Wave 1 evidence: instance #6 part 2 — apps/site/content.config.ts inlined `z.object(...)` rather than importing `frontmatterSchema`.)
+    57	
+    58	5. **Algorithm + runtime constant replication audit**: When an algorithm or runtime constant is replicated outside its authority (e.g. inline FOUC scripts, login challenge derivation, pre-hydration boot logic that cannot import from packages), audit every consumer-side replica for byte-equivalent reproduction. The replica must register a **regression test** that asserts equivalence against the authority across a representative input corpus. (Wave 1 evidence: instance #6 part 1 — FOUC IIFE truthy-coerce vs `getInitialTheme()` strict-whitelist; remediated with `apps/site/src/__tests__/fouc-script.test.ts` 16-row corpus.)
+    59	
+    60	6. **Sister-file documentation audit**: After updating one CONTRACT.md (or any document that describes a code surface), audit ALL related CONTRACT.md files in the package family for sister-file drift. Two CONTRACT.md files that describe two halves of the same contract must use **identical terminology** for the shared identifiers (function names, schema names, refine predicate names). (Wave 1 evidence: instance #5 — `editor-commands/CONTRACT.md` updated to cite `editBlockInputSchema` while `agent-tools/CONTRACT.md` still referred to the old shape.)
+    61	
+    62	7. **Exception-scope equivalence audit**: When replicating an algorithm + its exception handling across files, audit BOTH the happy-path semantics AND the `try/catch` scope between authority and replica. Narrow vs wide `try/catch` can produce divergent fall-through behavior even with identical happy-path logic. Specifically: when `localStorage` / `sessionStorage` / `IndexedDB` / `matchMedia` / any browser API in the algorithm path can throw, the `try/catch` MUST wrap ONLY the throwing call, with the fall-through branch (matchMedia / system default / DOM apply) running AFTER the catch handler — not inside it. (Wave 1 evidence: instance #7 — FOUC IIFE wide-scope try/catch swallowed matchMedia exceptions; remediated with narrow try/catch + 2 storage-throws regression tests.)
+    63	
+    64	8. **Authority-document → generated/consumed surface audit**: When updating an authority document (ADR, spec, `agent-contract.md`, runbook, CONVENTIONS) **OR a dependency authority (`package.json`)** that mandates behavior in downstream consumers, audit every consumer-side replica/generated artifact for synchronized update **AND staged-in-the-git-index in the same bundle**. Specifically: an ADR section that says "X file MUST be updated to do Y" requires the same commit to update X and provide a way to verify the synchronization. Generated artifacts (e.g. `docs/review-checklist.md` and `.claude/agents/*.md` derived from `agent-contract.md`; **`pnpm-lock.yaml` derived from `package.json`** — see sub-form C below) MUST be regenerated via the documented codegen step (`pnpm generate:configs` / `pnpm install`) AND **explicitly `git add`'d** so the git **index** (not just the working tree) contains the new content; runbooks (`docs/runbooks/team-operations.md`) MUST be cross-linked; Codex/Claude subagent prompt files MUST embed or reference the new rule.
+    65	
+    66	   **Operational sequence** (do not skip steps):
+    67	   ```bash
+    68	   # 1. Edit authority + generator code
+    69	   # 2. Run codegen
+    70	   pnpm generate:configs
+    71	   # 3. Stage regenerated outputs (CRITICAL — see Pitfall below)
+    72	   git add <regenerated/path/foo.md> <regenerated/path/bar.md>
+    73	   # 4. Verify index reflects content (NOT just working tree):
+    74	   git diff --cached --stat -- <regenerated paths>
+    75	   #    → expects non-empty diff with the expected line counts
+    76	   # 5. Verify idempotence: re-run codegen + confirm working tree matches index:
+    77	   pnpm generate:configs
+    78	   git status --short -- <regenerated paths>
+    79	   #    → expects column-1 'M' (staged) + column-2 blank (working tree clean)
+    80	   ```
+    81	
+    82	   **Pitfall (this is the load-bearing step)**: `git status --short` shows two columns: column 1 is index-vs-HEAD; column 2 is working-tree-vs-index. After running the generator without `git add`, you see `' M'` (space + M) — **working tree differs from index, but index still matches HEAD**. `git commit` only commits the index. Skipping `git add` means the regenerated content is in your working tree but NOT in the next commit. The bundle would land authority + generator-code changes WITHOUT the regenerated outputs, leaving consumers (Wave 2 reviewers reading `.claude/agents/*.md`) at pre-update content. Use `git diff --cached` (not `git status`) as the canonical staging-verification command — `--cached` shows index-vs-HEAD only, which is what `git commit` will produce.
+    83	
+    84	   **Pitfall extension — `pnpm-lock.yaml` is a generated artifact too (sub-form C below)**: when the authority is `package.json` (any dependency add / remove / version bump / `@types/*` shift), `pnpm install` regenerates `pnpm-lock.yaml` as a deterministic derived artifact. Skipping `git add pnpm-lock.yaml` produces the same class of failure as skipping `git add .claude/agents/*.md`: working tree has the synced lockfile but the **index** still holds HEAD's stale lockfile, so the bundle ships `package.json` ahead of its lockfile. CI runs `pnpm install --frozen-lockfile` from the bundled state, sees the stale lockfile disagreeing with the new `package.json`, and fails install. The same `git diff --cached --stat -- pnpm-lock.yaml` canonical verification applies. (Wave 1 erratum commit `e15ec36`; codified as sub-form C below.)
+    85	
+    86	   Generated-from-authority files carry their own header comment ("GENERATED FROM agent-contract.md — DO NOT EDIT BY HAND") OR YAML frontmatter declaring authority source — both forms are acceptable. `pnpm-lock.yaml` lacks an explicit header (the format is fixed by pnpm) but is implicitly declared by `pnpm install`'s contract — its authority is `package.json` + the workspace `pnpm-workspace.yaml`.
+    87	
+    88	   **Wave 1 evidence**: **instance #8** — ADR-0006 v1 commit codified reviewer-prompt mandates but did not update `agent-contract.md` / regenerate `.claude/agents/code-reviewer.md` / regenerate `.claude/agents/pr-gate.md` / cross-link `team-operations.md` / regenerate `docs/review-checklist.md`; pr-gate caught the dogfood failure during R1 review of the close-ceremony bundle, forcing a v2 fix. **instance #12 (sub-form A — pre-regeneration omission)** — v5 bundle updated authority files (`agent-contract.md`, generator code, `team-operations.md` cross-link) but had not run the generator at all post-edit; the 3 regenerated outputs were stale at HEAD content; pr-gate caught this during R2 review, forcing a v6 fix. **instance #12 (sub-form B — staging-vs-working-tree confusion)** — v6 bundle ran the generator (so working tree had new content) but did NOT `git add` the regenerated outputs; the git **index** still held HEAD blob hashes for the 3 generated files; orchestrator confused `git status --short` "M" prefix (working-tree-vs-index) with index-vs-HEAD; pr-gate caught this via `git ls-files --stage` blob-hash comparison during R3 review, forcing the v7 fix that explicitly stages with `git add` + verifies via `git diff --cached`. **instance #12 (sub-form C — lockfile is a generated-from-authority artifact)** — Wave 1 close ceremony commit `e15ec36` ("fix(deps): commit pnpm-lock.yaml for @tailwindcss/typography (lockfile drift)"): the design-tokens erratum (commit `fdc86a8`) added the `@tailwindcss/typography` dependency to `package.json` but did not stage the regenerated `pnpm-lock.yaml`; CI install used the pre-update lockfile, drifted against the new `package.json`, and failed `pnpm install --frozen-lockfile`. Resolution: commit `e15ec36` staged the lockfile separately. Lesson codified: when the authority is `package.json` (any dependency add / remove / version bump), `pnpm-lock.yaml` is the consumer-side generated artifact and must ride the same bundle — the class equivalence to `.claude/agents/*.md` regeneration is exact (deterministic derive + git-index staging required). The four sub-forms of the same item #8 class — pre-regeneration omission, post-regeneration commit-staging confusion, conceptually-correct-but-operationally-incomplete fix, AND lockfile-as-generated-artifact — together motivate the explicit operational sequence and `git diff --cached` canonical verification command codified above.
+    89	
+    90	### Wave 2 prep notes (forward-compatibility application)
+    91	
+    92	The 8 items have specific Wave 2 trip-hazards already identified by Wave 1's review record:
+    93	
+    94	- **Item #1 + Wave 2 attr-bearing marks**: when the first attr-bearing mark beyond `link` is added to mdx-bridge (e.g. `highlight: {color}`, `kbd: {style}`), the worker MUST simultaneously update `wrapMark` AND `marksEqual` AND add a fixture exercising attr-equality + attr-distinction. Default `return true` in `marksEqual` is a silent-drop trap for any attr-bearing mark. (See pr-gate Track C v4 R3 caveat.)
+    95	
+    96	- **Item #2 + Wave 2 new error categories**: when Wave 2+ adds new HTTP error categories (e.g. `auth-rate-limit`, `kernel-timeout`), each new `SkbError` subclass MUST emit the same RFC-mandated headers as framework-raised peers. Add a unit test asserting header presence per error type. (See `apps/api/CONVENTIONS.md` §5 Pitfall + Pitfall continued.)
+    97	
+    98	- **Item #5 + Wave 2 client-side replications**: when apps/site adds new client-side algorithm replications (theme variants beyond light/dark, locale negotiation pre-hydration, etc.), the worker MUST audit both saved-value semantics AND try/catch scope against authority. (See `packages/design-tokens/CONTRACT.md` Inverse-direction obligation invariant.)
+    99	
+   100	- **Item #7 + future inline scripts**: ANY future `<script is:inline>` block in the project that needs pre-hydration replication of a package algorithm MUST follow the FOUC template (narrow try/catch + corpus regression test).
+   101	
+   102	## Consequences
+   103	
+   104	### Positive
+   105	
+   106	- **Catch the failure mode proactively**: Wave 1 evidence shows reviewer-applied checklist would have caught all 12 instances on the first review round (including the close-ceremony dogfood instance #8 + the 4 fix-loop reinforcements), eliminating 12 round-trip cycles
+   107	- **Reviewer prompt clarity**: code-reviewer + pr-gate codex profile prompts gain a concrete, enumerable checklist rather than the implicit "look for symmetric counterparts" expectation
+   108	- **Worker self-audit**: workers gain a pre-PR checklist they can run before reporting `ready-for-review`, catching their own asymmetries (memory: `feedback_verification_fresh_state.md` showed the verification-rigor lesson; this checklist is the analogous rigor at code-design level)
+   109	- **Empirical grounding**: 12 distinct instances spread across 6 tracks + 5 close-ceremony fix iterations make this rule data-driven, not a "best practice" speculation; instances #9-12 reinforce items #6 + #8 specifically through close-ceremony fix-loop evidence
+   110	
+   111	### Costs
+   112	
+   113	- **Review-round time**: applying 8-point audit at every review adds ~5-10 minutes per round of code-reviewer + pr-gate runtime. Acceptable trade-off given Wave 1 round-counts (Track F: 5 rounds; Track A: 3 rounds; Track C: 4 rounds; Track D: 4 rounds) — front-loading review thoroughness reduces total cycles
+   114	- **Worker prompt overhead**: each spawn prompt now needs a reference to this ADR + the 8-point checklist. Marginal cost.
+   115	- **False-positive risk**: items that don't apply (e.g. #2 "status code" doesn't apply to TS-only packages) need to be triaged and skipped. Reviewer profile prompts must explicitly say "skip items not applicable to this PR's scope" to avoid bloat.
+   116	
+   117	### Risks (mitigated)
+   118	
+   119	- **Risk**: workers might mechanically check items without thinking, producing false confidence. **Mitigation**: each item enumerates concrete failure modes from Wave 1, not abstract heuristics — easier to apply
+   120	- **Risk**: this list might grow unbounded as Wave 2+ surfaces new asymmetry classes. **Mitigation**: ADR amendments are cheap; each new instance produces an ADR-0006 erratum capturing item #N+1. Wave 2 close ceremony reviews instances and adds items as needed.
+   121	
+   122	## Implementation
+   123	
+   124	### Reviewer prompt updates
+   125	
+   126	`code-reviewer` and `pr-gate` profile prompts MUST be updated to:
+   127	
+   128	1. State the 8-point checklist verbatim (or by reference to this ADR)
+   129	2. Require the reviewer's verdict structure to include "asymmetry-audit applied: items {1..8} verdicts: ..."
+   130	3. Explicitly mark FAIL if any applicable item is left un-audited
+   131	
+   132	`docs/runbooks/team-operations.md` §"角色与触发器" Tier 2 reviewer rows should cross-link to this ADR.
+   133	
+   134	### Worker pre-flight (template addition)
+   135	
+   136	Worker `ready-for-review` reports SHOULD include a brief asymmetry-audit summary: which of the 8 items applied, and the worker's self-audit verdict. Reviewers cross-check.
+   137	
+   138	### Wave 1 retroactive
+   139	
+   140	This ADR is **forward-applicable**. Wave 1 PRs that already shipped under earlier review without this checklist remain valid; the empirical instances they revealed are exactly what grounded this ADR. No retroactive re-review required.
+   141	
+   142	## Related
+   143	
+   144	- [ADR-0001](ADR-0001-stack-selection.md) §3.2 review chain — this ADR specifies what reviewers MUST do; ADR-0001 specifies who reviews
+   145	- [ADR-0002](ADR-0002-wave-1-close.md) Wave 1 close — collects the 12 empirical instances + 22 erratum candidates
+   146	- [ADR-0004](ADR-0004-agent-team-dispatch-model.md) team dispatch — orchestrator dispatches review chain per this checklist
+   147	- [docs/runbooks/team-operations.md](../runbooks/team-operations.md) — operational reference for reviewers and workers
+   148	- [packages/design-tokens/CONTRACT.md](../../packages/design-tokens/CONTRACT.md) Inverse-direction obligation — concrete application of items #5 + #7
+   149	- [apps/api/CONVENTIONS.md](../../apps/api/CONVENTIONS.md) §5 Pitfalls — concrete application of item #2
+
+exec
+/bin/bash -lc "rg -n \"style=\\{|style:\" packages/block-callout/src/ui-default -g \"*.tsx\"" in /home/weiyi/selfKnowledgeBaseWeb
+ exited 1 in 0ms:
+exec
+/bin/bash -lc 'rg -n "color-(note|success|warn|error|fg|muted|border|surface-1|accent)" packages/design-tokens/src/tokens.css packages/design-tokens/src/tokens-dark.css' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+packages/design-tokens/src/tokens-dark.css:12:  --color-fg: 243 244 246;
+packages/design-tokens/src/tokens-dark.css:13:  --color-surface-1: 31 41 55;
+packages/design-tokens/src/tokens-dark.css:15:  --color-border: 75 85 99;
+packages/design-tokens/src/tokens-dark.css:16:  --color-muted: 156 163 175;
+packages/design-tokens/src/tokens-dark.css:19:  --color-accent: 96 165 250;
+packages/design-tokens/src/tokens-dark.css:20:  --color-accent-fg: 17 24 39;
+packages/design-tokens/src/tokens-dark.css:24:  --color-warn: 250 204 21;
+packages/design-tokens/src/tokens-dark.css:25:  --color-note: 156 163 175;
+packages/design-tokens/src/tokens-dark.css:26:  --color-success: 74 222 128;
+packages/design-tokens/src/tokens-dark.css:27:  --color-error: 248 113 113;
+packages/design-tokens/src/tokens.css:14:  --color-fg: 17 24 39;
+packages/design-tokens/src/tokens.css:15:  --color-surface-1: 249 250 251;
+packages/design-tokens/src/tokens.css:17:  --color-border: 229 231 235;
+packages/design-tokens/src/tokens.css:18:  --color-muted: 107 114 128;
+packages/design-tokens/src/tokens.css:21:  --color-accent: 59 130 246;
+packages/design-tokens/src/tokens.css:22:  --color-accent-fg: 255 255 255;
+packages/design-tokens/src/tokens.css:26:  --color-warn: 234 179 8;
+packages/design-tokens/src/tokens.css:27:  --color-note: 107 114 128;
+packages/design-tokens/src/tokens.css:28:  --color-success: 34 197 94;
+packages/design-tokens/src/tokens.css:29:  --color-error: 239 68 68;
+
+exec
+/bin/bash -lc 'rg -n "@skb/design-tokens|import .*React|import .*react" packages/block-callout/src/ui-default packages/block-callout/src/core' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 129ms:
+packages/block-callout/src/ui-default/EditorView.tsx:1:import type { ComponentType, ReactNode } from 'react';
+packages/block-callout/src/ui-default/RenderView.tsx:1:import type { ComponentType, ReactNode } from 'react';
+packages/block-callout/src/ui-default/icons.tsx:1:import type { ComponentType, SVGProps } from 'react';
+packages/block-callout/src/ui-default/CalloutBody.tsx:1:import type { ReactNode } from 'react';
+packages/block-callout/src/ui-default/variant-tokens.ts:2:import type { ColorTokenName } from '@skb/design-tokens';
+packages/block-callout/src/ui-default/variant-tokens.ts:15: * file to `@skb/design-tokens`'s public color token surface: renaming or
+
+codex
+Next step is running the mandated verification commands in order. I’ll capture exact pass/fail counts and any warnings so the final verdict is fully evidence-based.
+exec
+/bin/bash -lc 'pnpm --filter @skb/block-callout test' in /home/weiyi/selfKnowledgeBaseWeb
+ exited 1 in 730ms:
+
+> @skb/block-callout@0.0.0 test /home/weiyi/selfKnowledgeBaseWeb/packages/block-callout
+> vitest run
+
+failed to load config from /home/weiyi/selfKnowledgeBaseWeb/packages/block-callout/vitest.config.ts
+
+⎯⎯⎯⎯⎯⎯⎯ Startup Error ⎯⎯⎯⎯⎯⎯⎯⎯
+Error: EROFS: read-only file system, open '/home/weiyi/selfKnowledgeBaseWeb/packages/block-callout/node_modules/.vite-temp/vitest.config.ts.timestamp-1777580931465-bcee4442da54e.mjs'
+    at async open (node:internal/fs/promises:639:25)
+    at async Object.writeFile (node:internal/fs/promises:1219:14)
+    at async loadConfigFromBundledFile (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:34769:3)
+    at async bundleAndLoadConfigFile (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:34632:17)
+    at async loadConfigFromFile (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:34599:42)
+    at async resolveConfig (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:34223:22)
+    at async _createServer (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:26029:65)
+    at async createViteServer (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vitest@4.1.5_@types+node@22.19.17_happy-dom@15.11.7_vite@8.0.10_@types+node@22.19.17_esbuild@_njtu3hruheo7esciutan5fga5a/node_modules/vitest/dist/chunks/cli-api.Cjt90eJu.js:8818:17)
+    at async createVitest (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vitest@4.1.5_@types+node@22.19.17_happy-dom@15.11.7_vite@8.0.10_@types+node@22.19.17_esbuild@_njtu3hruheo7esciutan5fga5a/node_modules/vitest/dist/chunks/cli-api.Cjt90eJu.js:14205:18)
+    at async prepareVitest (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vitest@4.1.5_@types+node@22.19.17_happy-dom@15.11.7_vite@8.0.10_@types+node@22.19.17_esbuild@_njtu3hruheo7esciutan5fga5a/node_modules/vitest/dist/chunks/cli-api.Cjt90eJu.js:14572:14) {
+  errno: -30,
+  code: 'EROFS',
+  syscall: 'open',
+  path: '/home/weiyi/selfKnowledgeBaseWeb/packages/block-callout/node_modules/.vite-temp/vitest.config.ts.timestamp-1777580931465-bcee4442da54e.mjs'
+}
+
+
+
+/home/weiyi/selfKnowledgeBaseWeb/packages/block-callout:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @skb/block-callout@0.0.0 test: `vitest run`
+Exit status 1
+
+exec
+/bin/bash -lc 'pnpm --filter @skb/block-callout typecheck' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 1749ms:
+
+> @skb/block-callout@0.0.0 typecheck /home/weiyi/selfKnowledgeBaseWeb/packages/block-callout
+> tsc --noEmit
+
+
+exec
+/bin/bash -lc 'pnpm --filter @skb/block-callout lint' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 3248ms:
+
+> @skb/block-callout@0.0.0 lint /home/weiyi/selfKnowledgeBaseWeb/packages/block-callout
+> eslint .
+
+
+exec
+/bin/bash -lc 'pnpm --filter @skb/block-callout build' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 616ms:
+
+> @skb/block-callout@0.0.0 build /home/weiyi/selfKnowledgeBaseWeb/packages/block-callout
+> tsc -b
+
+
+codex
+I’ve completed three of four package checks successfully; I’m running the cross-package `@skb/design-tokens` test command next to complete the requested verification matrix.
+exec
+/bin/bash -lc 'pnpm --filter @skb/design-tokens test' in /home/weiyi/selfKnowledgeBaseWeb
+ exited 1 in 761ms:
+
+> @skb/design-tokens@0.0.0 test /home/weiyi/selfKnowledgeBaseWeb/packages/design-tokens
+> vitest run
+
+failed to load config from /home/weiyi/selfKnowledgeBaseWeb/packages/design-tokens/vitest.config.ts
+
+⎯⎯⎯⎯⎯⎯⎯ Startup Error ⎯⎯⎯⎯⎯⎯⎯⎯
+Error: EROFS: read-only file system, open '/home/weiyi/selfKnowledgeBaseWeb/packages/design-tokens/node_modules/.vite-temp/vitest.config.ts.timestamp-1777580942851-7963be9250248.mjs'
+    at async open (node:internal/fs/promises:639:25)
+    at async Object.writeFile (node:internal/fs/promises:1219:14)
+    at async loadConfigFromBundledFile (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:34769:3)
+    at async bundleAndLoadConfigFile (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:34632:17)
+    at async loadConfigFromFile (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:34599:42)
+    at async resolveConfig (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:34223:22)
+    at async _createServer (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:26029:65)
+    at async createViteServer (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vitest@4.1.5_@types+node@22.19.17_happy-dom@15.11.7_vite@8.0.10_@types+node@22.19.17_esbuild@_njtu3hruheo7esciutan5fga5a/node_modules/vitest/dist/chunks/cli-api.Cjt90eJu.js:8818:17)
+    at async createVitest (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vitest@4.1.5_@types+node@22.19.17_happy-dom@15.11.7_vite@8.0.10_@types+node@22.19.17_esbuild@_njtu3hruheo7esciutan5fga5a/node_modules/vitest/dist/chunks/cli-api.Cjt90eJu.js:14205:18)
+    at async prepareVitest (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vitest@4.1.5_@types+node@22.19.17_happy-dom@15.11.7_vite@8.0.10_@types+node@22.19.17_esbuild@_njtu3hruheo7esciutan5fga5a/node_modules/vitest/dist/chunks/cli-api.Cjt90eJu.js:14572:14) {
+  errno: -30,
+  code: 'EROFS',
+  syscall: 'open',
+  path: '/home/weiyi/selfKnowledgeBaseWeb/packages/design-tokens/node_modules/.vite-temp/vitest.config.ts.timestamp-1777580942851-7963be9250248.mjs'
+}
+
+
+
+/home/weiyi/selfKnowledgeBaseWeb/packages/design-tokens:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @skb/design-tokens@0.0.0 test: `vitest run`
+Exit status 1
+
+exec
+/bin/bash -lc "rg -n \"\\\"@skb/(block-callout|design-tokens)\\\"|@skb/design-tokens|@skb/block-callout\" pnpm-lock.yaml" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+71:      '@skb/design-tokens':
+130:      '@skb/design-tokens':
+
+exec
+/bin/bash -lc "nl -ba pnpm-lock.yaml | sed -n '55,150p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+    55	        version: 3.25.76
+    56	
+    57	  apps/site:
+    58	    dependencies:
+    59	      '@astrojs/mdx':
+    60	        specifier: ^4.0.0
+    61	        version: 4.3.14(astro@5.18.1(@types/node@22.19.17)(jiti@1.21.7)(lightningcss@1.32.0)(rollup@4.60.2)(tsx@4.21.0)(typescript@5.6.3)(yaml@2.8.3))
+    62	      '@astrojs/react':
+    63	        specifier: ^4.0.0
+    64	        version: 4.4.2(@types/node@22.19.17)(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(jiti@1.21.7)(lightningcss@1.32.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(tsx@4.21.0)(yaml@2.8.3)
+    65	      '@astrojs/tailwind':
+    66	        specifier: ^6.0.0
+    67	        version: 6.0.2(astro@5.18.1(@types/node@22.19.17)(jiti@1.21.7)(lightningcss@1.32.0)(rollup@4.60.2)(tsx@4.21.0)(typescript@5.6.3)(yaml@2.8.3))(tailwindcss@3.4.19(tsx@4.21.0)(yaml@2.8.3))
+    68	      '@skb/content-types':
+    69	        specifier: workspace:*
+    70	        version: link:../../packages/content-types
+    71	      '@skb/design-tokens':
+    72	        specifier: workspace:*
+    73	        version: link:../../packages/design-tokens
+    74	      astro:
+    75	        specifier: ^5.0.0
+    76	        version: 5.18.1(@types/node@22.19.17)(jiti@1.21.7)(lightningcss@1.32.0)(rollup@4.60.2)(tsx@4.21.0)(typescript@5.6.3)(yaml@2.8.3)
+    77	      react:
+    78	        specifier: ^18.3.0
+    79	        version: 18.3.1
+    80	      react-dom:
+    81	        specifier: ^18.3.0
+    82	        version: 18.3.1(react@18.3.1)
+    83	      tailwindcss:
+    84	        specifier: ^3.4.0
+    85	        version: 3.4.19(tsx@4.21.0)(yaml@2.8.3)
+    86	    devDependencies:
+    87	      '@astrojs/check':
+    88	        specifier: ^0.9.0
+    89	        version: 0.9.9(prettier@3.8.3)(typescript@5.6.3)
+    90	      '@playwright/test':
+    91	        specifier: 1.49.0
+    92	        version: 1.49.0
+    93	      '@types/react':
+    94	        specifier: ^18.3.0
+    95	        version: 18.3.28
+    96	      '@types/react-dom':
+    97	        specifier: ^18.3.0
+    98	        version: 18.3.7(@types/react@18.3.28)
+    99	      happy-dom:
+   100	        specifier: ^15.0.0
+   101	        version: 15.11.7
+   102	      typescript:
+   103	        specifier: ~5.6.0
+   104	        version: 5.6.3
+   105	      vitest:
+   106	        specifier: ^4.1.5
+   107	        version: 4.1.5(@types/node@22.19.17)(happy-dom@15.11.7)(vite@6.4.2(@types/node@22.19.17)(jiti@1.21.7)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.8.3))
+   108	
+   109	  packages/agent-tools:
+   110	    dependencies:
+   111	      '@skb/editor-commands':
+   112	        specifier: workspace:*
+   113	        version: link:../editor-commands
+   114	      zod:
+   115	        specifier: ^3.23.0
+   116	        version: 3.25.76
+   117	    devDependencies:
+   118	      typescript:
+   119	        specifier: ~5.6.0
+   120	        version: 5.6.3
+   121	      vitest:
+   122	        specifier: ^4.1.5
+   123	        version: 4.1.5(@types/node@22.19.17)(happy-dom@15.11.7)(vite@8.0.10(@types/node@22.19.17)(esbuild@0.27.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.3))
+   124	
+   125	  packages/block-callout:
+   126	    dependencies:
+   127	      '@skb/block-foundation':
+   128	        specifier: workspace:*
+   129	        version: link:../block-foundation
+   130	      '@skb/design-tokens':
+   131	        specifier: workspace:*
+   132	        version: link:../design-tokens
+   133	      zod:
+   134	        specifier: ^3.23.0
+   135	        version: 3.25.76
+   136	    devDependencies:
+   137	      '@testing-library/react':
+   138	        specifier: ^16.0.0
+   139	        version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+   140	      '@types/react':
+   141	        specifier: ^18.3.0
+   142	        version: 18.3.28
+   143	      happy-dom:
+   144	        specifier: ^15.0.0
+   145	        version: 15.11.7
+   146	      react:
+   147	        specifier: ^18.3.0
+   148	        version: 18.3.1
+   149	      react-dom:
+   150	        specifier: ^18.3.0
+
+exec
+/bin/bash -lc 'pnpm --filter @skb/block-callout exec vitest run --config vitest.config.ts --cacheDir /tmp/vitest-block-callout' in /home/weiyi/selfKnowledgeBaseWeb
+ exited 1 in 433ms:
+file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vitest@4.1.5_@types+node@22.19.17_happy-dom@15.11.7_vite@8.0.10_@types+node@22.19.17_esbuild@_njtu3hruheo7esciutan5fga5a/node_modules/vitest/dist/chunks/cac.DJJmV0dT.js:406
+          throw new CACError(`Unknown option \`${name.length > 1 ? `--${name}` : `-${name}`}\``);
+                ^
+
+CACError: Unknown option `--cacheDir`
+    at Command.checkUnknownOptions (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vitest@4.1.5_@types+node@22.19.17_happy-dom@15.11.7_vite@8.0.10_@types+node@22.19.17_esbuild@_njtu3hruheo7esciutan5fga5a/node_modules/vitest/dist/chunks/cac.DJJmV0dT.js:406:17)
+    at CAC.runMatchedCommand (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vitest@4.1.5_@types+node@22.19.17_happy-dom@15.11.7_vite@8.0.10_@types+node@22.19.17_esbuild@_njtu3hruheo7esciutan5fga5a/node_modules/vitest/dist/chunks/cac.DJJmV0dT.js:606:13)
+    at CAC.parse (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vitest@4.1.5_@types+node@22.19.17_happy-dom@15.11.7_vite@8.0.10_@types+node@22.19.17_esbuild@_njtu3hruheo7esciutan5fga5a/node_modules/vitest/dist/chunks/cac.DJJmV0dT.js:547:12)
+    at file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vitest@4.1.5_@types+node@22.19.17_happy-dom@15.11.7_vite@8.0.10_@types+node@22.19.17_esbuild@_njtu3hruheo7esciutan5fga5a/node_modules/vitest/dist/cli.js:11:13
+    at ModuleJob.run (node:internal/modules/esm/module_job:343:25)
+    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:665:26)
+    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:117:5)
+
+Node.js v22.22.2
+undefined
+/home/weiyi/selfKnowledgeBaseWeb/packages/block-callout:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: vitest run --config vitest.config.ts --cacheDir /tmp/vitest-block-callout
+
+exec
+/bin/bash -lc "rg -n \"#[0-9a-fA-F]{3,}|rgb\\(["'^0-9 ]" packages/block-callout/src/ui-default/callout.css' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+19:  border: 1px solid rgb(var(--color-border));
+23:  color: rgb(var(--color-fg));
+24:  background-color: rgb(var(--color-surface-1));
+36:  background-color: rgb(var(--color-note));
+42:  background-color: rgb(var(--color-note));
+45:  background-color: rgb(var(--color-surface-1));
+49:  background-color: rgb(var(--color-success));
+52:  background-color: rgb(var(--color-success) / 0.06);
+56:  background-color: rgb(var(--color-warn));
+59:  background-color: rgb(var(--color-warn) / 0.08);
+63:  background-color: rgb(var(--color-error));
+66:  background-color: rgb(var(--color-error) / 0.06);
+80:  color: rgb(var(--color-note));
+83:  color: rgb(var(--color-success));
+86:  color: rgb(var(--color-warn));
+89:  color: rgb(var(--color-error));
+100:  color: rgb(var(--color-fg));
+104:  color: rgb(var(--color-fg) / 0.9);
+114:  color: rgb(var(--color-muted));
+120:  outline: 2px solid rgb(var(--color-accent));
+
+codex
+Verdict: **FAIL**  
+Reason: both requested Vitest matrix runs fail in this environment due read-only filesystem, so the required `15/15` and `19/19` pass counts could not be confirmed.
+
+### Code review of `packages/block-callout/src/ui-default/` (C2 scope)
+
+1. **PASS** `calloutUIDefault` shape is correct: `coreName`, `uiId='default'`, `EditorView`, `RenderView` are wired from core in the BlockUIDefinition.  
+   - [packages/block-callout/src/ui-default/index.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/block-callout/src/ui-default/index.ts:6)
+
+2. **PASS** Headless boundary is respected: ui-default imports from core (`calloutCore`, `propsSchema` via `calloutCore`) and core remains React-free.  
+   - [packages/block-callout/src/ui-default/CalloutBody.tsx](/home/weiyi/selfKnowledgeBaseWeb/packages/block-callout/src/ui-default/CalloutBody.tsx:3)  
+   - [packages/block-callout/src/ui-default/EditorView.tsx](/home/weiyi/selfKnowledgeBaseWeb/packages/block-callout/src/ui-default/EditorView.tsx:3)  
+   - [packages/block-callout/src/ui-default/RenderView.tsx](/home/weiyi/selfKnowledgeBaseWeb/packages/block-callout/src/ui-default/RenderView.tsx:3)  
+   - [packages/block-callout/src/core/core-definition.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/block-callout/src/core/core-definition.ts:1)
+
+3. **PASS** CSS is the variant visual source of truth; no variant inline styles in components.  
+   - [packages/block-callout/src/ui-default/callout.css](/home/weiyi/selfKnowledgeBaseWeb/packages/block-callout/src/ui-default/callout.css:13)  
+   - [packages/block-callout/src/ui-default/CalloutBody.tsx](/home/weiyi/selfKnowledgeBaseWeb/packages/block-callout/src/ui-default/CalloutBody.tsx:29)
+
+4. **PASS** Variant visuals use `rgb(var(--color-X))` only (no hardcoded hex / raw rgb literals).  
+   - [packages/block-callout/src/ui-default/callout.css](/home/weiyi/selfKnowledgeBaseWeb/packages/block-callout/src/ui-default/callout.css:19)
+
+5. **PASS** A11y contract present: `role="note"`, `aria-label`, `tabIndex=0`, and `:focus-visible` uses `outline`.  
+   - [packages/block-callout/src/ui-default/CalloutBody.tsx](/home/weiyi/selfKnowledgeBaseWeb/packages/block-callout/src/ui-default/CalloutBody.tsx:29)  
+   - [packages/block-callout/src/ui-default/callout.css](/home/weiyi/selfKnowledgeBaseWeb/packages/block-callout/src/ui-default/callout.css:119)
+
+6. **PASS** Light/dark parity via tokens is satisfied in component/CSS layer; token keys exist in both themes.  
+   - [packages/block-callout/src/ui-default/callout.css](/home/weiyi/selfKnowledgeBaseWeb/packages/block-callout/src/ui-default/callout.css:36)  
+   - [packages/design-tokens/src/tokens.css](/home/weiyi/selfKnowledgeBaseWeb/packages/design-tokens/src/tokens.css:24)  
+   - [packages/design-tokens/src/tokens-dark.css](/home/weiyi/selfKnowledgeBaseWeb/packages/design-tokens/src/tokens-dark.css:24)
+
+7. **PASS** ADR-0008 D1 dead-dep shape is consistent: runtime dependency + type-only design-tokens import pattern.  
+   - [packages/block-callout/package.json](/home/weiyi/selfKnowledgeBaseWeb/packages/block-callout/package.json:18)  
+   - [packages/block-callout/package.json](/home/weiyi/selfKnowledgeBaseWeb/packages/block-callout/package.json:23)  
+   - [packages/block-callout/src/ui-default/variant-tokens.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/block-callout/src/ui-default/variant-tokens.ts:2)
+
+8. **PASS** CONTRACT alignment appears coherent with sister docs (`block-foundation` + `design-tokens`), including registry/UI split, token norms, and consumer replication rules.  
+   - [packages/block-callout/CONTRACT.md](/home/weiyi/selfKnowledgeBaseWeb/packages/block-callout/CONTRACT.md:6)  
+   - [packages/block-foundation/CONTRACT.md](/home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation/CONTRACT.md:23)  
+   - [packages/design-tokens/CONTRACT.md](/home/weiyi/selfKnowledgeBaseWeb/packages/design-tokens/CONTRACT.md:47)
+
+9. **PASS** Test suite coverage includes all requested scenarios (registration shape, 4 distinct variants, title fallback, empty content, byte-equiv checks, SVG glyph count, BlockRegistry round-trip).  
+   - [packages/block-callout/src/__tests__/ui-default.test.tsx](/home/weiyi/selfKnowledgeBaseWeb/packages/block-callout/src/__tests__/ui-default.test.tsx:15)
+
+10. **PASS** ADR-0006 asymmetry audit appears applied from this scope (schema single-authority reuse, visual/contract docs co-updated, generated artifact updated lockfile present for package dependency changes).  
+   - [packages/block-callout/src/core/core-definition.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/block-callout/src/core/core-definition.ts:4)  
+   - [packages/block-callout/src/ui-default/CalloutBody.tsx](/home/weiyi/selfKnowledgeBaseWeb/packages/block-callout/src/ui-default/CalloutBody.tsx:23)  
+   - [packages/block-callout/CONTRACT.md](/home/weiyi/selfKnowledgeBaseWeb/packages/block-callout/CONTRACT.md:1)  
+   - [pnpm-lock.yaml](/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:125)
+
+### Command outcomes
+
+- `pnpm --filter @skb/block-callout test` **FAILED** (not code bug): Vite cannot write temp config into `.vite-temp` due `EROFS` read-only FS.  
+- `pnpm --filter @skb/block-callout typecheck` **PASS**  
+- `pnpm --filter @skb/block-callout lint` **PASS**  
+- `pnpm --filter @skb/block-callout build` **PASS**  
+- `pnpm --filter @skb/design-tokens test` **FAILED** (same `EROFS` reason)
+
+If you want, I can re-run the two Vitest commands in a writable workspace and return the final 15/15 + 19/19 status once the environment allows temp writes.
+2026-04-30T20:29:18.068887Z ERROR codex_core::session: failed to record rollout items: thread 019de014-4934-7fe0-8d87-ab63412d5d41 not found
+tokens used
+52,039
+Verdict: **FAIL**  
+Reason: both requested Vitest matrix runs fail in this environment due read-only filesystem, so the required `15/15` and `19/19` pass counts could not be confirmed.
+
+### Code review of `packages/block-callout/src/ui-default/` (C2 scope)
+
+1. **PASS** `calloutUIDefault` shape is correct: `coreName`, `uiId='default'`, `EditorView`, `RenderView` are wired from core in the BlockUIDefinition.  
+   - [packages/block-callout/src/ui-default/index.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/block-callout/src/ui-default/index.ts:6)
+
+2. **PASS** Headless boundary is respected: ui-default imports from core (`calloutCore`, `propsSchema` via `calloutCore`) and core remains React-free.  
+   - [packages/block-callout/src/ui-default/CalloutBody.tsx](/home/weiyi/selfKnowledgeBaseWeb/packages/block-callout/src/ui-default/CalloutBody.tsx:3)  
+   - [packages/block-callout/src/ui-default/EditorView.tsx](/home/weiyi/selfKnowledgeBaseWeb/packages/block-callout/src/ui-default/EditorView.tsx:3)  
+   - [packages/block-callout/src/ui-default/RenderView.tsx](/home/weiyi/selfKnowledgeBaseWeb/packages/block-callout/src/ui-default/RenderView.tsx:3)  
+   - [packages/block-callout/src/core/core-definition.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/block-callout/src/core/core-definition.ts:1)
+
+3. **PASS** CSS is the variant visual source of truth; no variant inline styles in components.  
+   - [packages/block-callout/src/ui-default/callout.css](/home/weiyi/selfKnowledgeBaseWeb/packages/block-callout/src/ui-default/callout.css:13)  
+   - [packages/block-callout/src/ui-default/CalloutBody.tsx](/home/weiyi/selfKnowledgeBaseWeb/packages/block-callout/src/ui-default/CalloutBody.tsx:29)
+
+4. **PASS** Variant visuals use `rgb(var(--color-X))` only (no hardcoded hex / raw rgb literals).  
+   - [packages/block-callout/src/ui-default/callout.css](/home/weiyi/selfKnowledgeBaseWeb/packages/block-callout/src/ui-default/callout.css:19)
+
+5. **PASS** A11y contract present: `role="note"`, `aria-label`, `tabIndex=0`, and `:focus-visible` uses `outline`.  
+   - [packages/block-callout/src/ui-default/CalloutBody.tsx](/home/weiyi/selfKnowledgeBaseWeb/packages/block-callout/src/ui-default/CalloutBody.tsx:29)  
+   - [packages/block-callout/src/ui-default/callout.css](/home/weiyi/selfKnowledgeBaseWeb/packages/block-callout/src/ui-default/callout.css:119)
+
+6. **PASS** Light/dark parity via tokens is satisfied in component/CSS layer; token keys exist in both themes.  
+   - [packages/block-callout/src/ui-default/callout.css](/home/weiyi/selfKnowledgeBaseWeb/packages/block-callout/src/ui-default/callout.css:36)  
+   - [packages/design-tokens/src/tokens.css](/home/weiyi/selfKnowledgeBaseWeb/packages/design-tokens/src/tokens.css:24)  
+   - [packages/design-tokens/src/tokens-dark.css](/home/weiyi/selfKnowledgeBaseWeb/packages/design-tokens/src/tokens-dark.css:24)
+
+7. **PASS** ADR-0008 D1 dead-dep shape is consistent: runtime dependency + type-only design-tokens import pattern.  
+   - [packages/block-callout/package.json](/home/weiyi/selfKnowledgeBaseWeb/packages/block-callout/package.json:18)  
+   - [packages/block-callout/package.json](/home/weiyi/selfKnowledgeBaseWeb/packages/block-callout/package.json:23)  
+   - [packages/block-callout/src/ui-default/variant-tokens.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/block-callout/src/ui-default/variant-tokens.ts:2)
+
+8. **PASS** CONTRACT alignment appears coherent with sister docs (`block-foundation` + `design-tokens`), including registry/UI split, token norms, and consumer replication rules.  
+   - [packages/block-callout/CONTRACT.md](/home/weiyi/selfKnowledgeBaseWeb/packages/block-callout/CONTRACT.md:6)  
+   - [packages/block-foundation/CONTRACT.md](/home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation/CONTRACT.md:23)  
+   - [packages/design-tokens/CONTRACT.md](/home/weiyi/selfKnowledgeBaseWeb/packages/design-tokens/CONTRACT.md:47)
+
+9. **PASS** Test suite coverage includes all requested scenarios (registration shape, 4 distinct variants, title fallback, empty content, byte-equiv checks, SVG glyph count, BlockRegistry round-trip).  
+   - [packages/block-callout/src/__tests__/ui-default.test.tsx](/home/weiyi/selfKnowledgeBaseWeb/packages/block-callout/src/__tests__/ui-default.test.tsx:15)
+
+10. **PASS** ADR-0006 asymmetry audit appears applied from this scope (schema single-authority reuse, visual/contract docs co-updated, generated artifact updated lockfile present for package dependency changes).  
+   - [packages/block-callout/src/core/core-definition.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/block-callout/src/core/core-definition.ts:4)  
+   - [packages/block-callout/src/ui-default/CalloutBody.tsx](/home/weiyi/selfKnowledgeBaseWeb/packages/block-callout/src/ui-default/CalloutBody.tsx:23)  
+   - [packages/block-callout/CONTRACT.md](/home/weiyi/selfKnowledgeBaseWeb/packages/block-callout/CONTRACT.md:1)  
+   - [pnpm-lock.yaml](/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:125)
+
+### Command outcomes
+
+- `pnpm --filter @skb/block-callout test` **FAILED** (not code bug): Vite cannot write temp config into `.vite-temp` due `EROFS` read-only FS.  
+- `pnpm --filter @skb/block-callout typecheck` **PASS**  
+- `pnpm --filter @skb/block-callout lint` **PASS**  
+- `pnpm --filter @skb/block-callout build` **PASS**  
+- `pnpm --filter @skb/design-tokens test` **FAILED** (same `EROFS` reason)
+
+If you want, I can re-run the two Vitest commands in a writable workspace and return the final 15/15 + 19/19 status once the environment allows temp writes.

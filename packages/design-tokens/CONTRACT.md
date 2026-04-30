@@ -44,6 +44,54 @@ Any consumer that replicates this algorithm in inline code MUST be byte-equivale
 - **Hydration**: `useTheme` and `ThemeToggle` MUST be used inside a client-only Astro island (`client:load` minimum). The hook reads `window.matchMedia` and `window.localStorage` at first render — passive SSR markup is fine, but island hydration directive must be `client:load` or stricter.
 - **FOUC bridge** (apps/site responsibility): the BaseLayout `<script is:inline>` in `<head>` must read `localStorage.getItem('skb-theme')` literally, fall back to `matchMedia('(prefers-color-scheme: dark)').matches`, and set `data-theme="dark"` on `<html>` accordingly — **before** any React island hydrates. The inline script must NOT write localStorage. The detailed correctness obligation (algorithm + try/catch scope + literal sync + required regression test) is enumerated in the **Inverse-direction obligation** section above.
 
+### `block-*/ui-default/` consumer norms (Wave 2, anchored by `block-callout` C2)
+
+These norms apply to every `packages/block-*/src/ui-default/` consumer. The
+first consumer (`@skb/block-callout/ui-default/`) is the canonical template;
+codex-block-generator clones must preserve them.
+
+- **No hardcoded color literals**: every `color`, `background-color`, `border-color`
+  in `*.css` MUST resolve via `rgb(var(--color-X))` or `rgb(var(--color-X) / <alpha>)`.
+  No `#hex`, no named colors, no `rgb(<numeric-triple>)`. `pr-gate` greps for
+  these in `packages/block-*/src/ui-default/*.css` and rejects.
+- **No inline `style={{ … }}` for variant colors**: happy-dom (used by `vitest run`)
+  rejects `rgb(var(--color-…))` in inline styles and silently drops the attribute,
+  which would mask real visual regressions. Variant colors MUST live in `*.css`,
+  selected by `[data-<block>-variant="…"]` on a stable container element. Inline
+  `style` is allowed only for layout-time computed values (e.g., a known px width).
+- **Type-only `@skb/design-tokens` import satisfies ADR-0008 D1**: `block-*/ui-default/`
+  packages typically don't need `colorVars` / `tokens` at runtime (CSS does the var
+  resolution). To keep `@skb/design-tokens` as a real `package.json#dependencies` entry
+  (per ADR-0008 D1), import the `ColorTokenName` type to constrain the variant→token
+  mapping (see `block-callout/src/ui-default/variant-tokens.ts`). The lexical
+  `from '@skb/design-tokens'` in source is what the structure-auditor monthly grep
+  detects; type-only imports under `verbatimModuleSyntax: true` count.
+- **Tailwind preset is consumed at app-build, not block-build**: `block-*` packages
+  don't compile Tailwind themselves; `apps/site` (and any future Astro/Next consumer)
+  loads `@skb/design-tokens/tailwind-preset` and JIT-compiles the class names that
+  `block-*/ui-default/` Components emit. Block packages MAY emit Tailwind utility
+  classes (e.g., `mt-1`, `flex`) but those classes resolve correctly only when the
+  consumer's Tailwind config extends from this preset. For visual rules that must
+  work outside Tailwind (e.g., editor-shell standalone preview), put them in the
+  block's own `*.css` file with explicit `var(--space-X)` references.
+- **Required CSS import path**: each `block-*` package exposes its CSS via
+  `package.json#exports['./ui-default/<block>.css']`. App entry MUST import each block's
+  CSS once at boot (next to design-tokens' `tokens.css` + `tokens-dark.css`).
+- **No emoji as icons**: `VARIANT_ICONS` (or equivalent) MUST be hand-traced SVGs at
+  consistent stroke width (1.5–2px) and consistent viewBox (`24 24`). Mixing
+  filled/outlined or different stroke widths violates ui-ux-pro-max
+  `no-emoji-icons` + `stroke-consistency` + `icon-style-consistent` rules.
+- **A11y on the variant container**: emit `role="note"` (or appropriate landmark),
+  `aria-label="<Variant> <block>"`, `tabindex="0"` so the block participates in
+  keyboard nav. `:focus-visible` styles in `*.css` MUST use `outline` (not
+  `box-shadow` — `outline` survives `forced-colors` mode).
+- **Light + dark parity**: any color expression MUST resolve correctly under both
+  themes via the design-tokens var system. No theme-specific class branches in
+  `block-*/ui-default/`; if a token doesn't exist in both themes, propose adding
+  it to `tokens.css` + `tokens-dark.css` per "Modifying this file" below.
+- **Reduced-motion**: any `transition` / `animation` MUST be wrapped in
+  `@media (prefers-reduced-motion: no-preference) { … }` (see callout.css Wave 2 pattern).
+
 ## Modifying this file
 
 - Adding a new var: non-breaking, but must update tokens.css + tokens-dark.css + tokens.ts + tailwind-preset.cjs in the same change.
