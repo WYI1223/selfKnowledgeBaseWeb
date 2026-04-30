@@ -10,6 +10,7 @@ every Claude session what the project is, the hard rules, the agent roster, and 
 - Spec: [docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md](docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md)
 - Active plan: [docs/plans/active.md](docs/plans/active.md)
 - Single source for agents: [agent-contract.md](agent-contract.md)
+- Codex tool invocations: [docs/runbooks/codex-tool-invocations.md](docs/runbooks/codex-tool-invocations.md)
 
 ## Hard rules
 
@@ -37,57 +38,70 @@ every Claude session what the project is, the hard rules, the agent roster, and 
 | `pnpm generate:configs` | Re-derive everything from `agent-contract.md`         |
 | `pnpm format`           | Prettier write across the repo                        |
 
-## Review workflow (spec §3.2)
+## Review workflow (spec §3.2 + ADR-0007 D2)
 
 ```
 worker (writes code)
    │
    ▼
-code-reviewer  (Codex 5.3-spark, line-level rigor, cheap default)
+[Bash] codex exec --profile code-reviewer  (Codex 5.3-spark, line-level rigor, cheap default)
    │
-   ├── if high-risk → pr-gate (Codex 5.5, deep scan)
+   ├── if high-risk → [Bash] codex exec --profile pr-gate  (Codex 5.5, deep scan)
    │
    ▼
-pr-reviewer    (Claude, spec match + regression + arch consistency)
+pr-reviewer    (Claude, selective per ADR-0007 D2; spec match + regression + arch consistency)
    │
    ▼
 git-operator   (Claude, only authorized git surface, runs `pnpm check` once more)
 ```
 
-High-risk triggers (force `pr-gate`): contract change, package add/remove, core arch
-touch, ADR-required PR, CI/deploy/auth/security touch.
+High-risk triggers (force `pr-gate` + Claude `pr-reviewer`): contract change, package add/remove,
+core arch touch, ADR-required PR, CI/deploy/auth/security touch, cross ≥3 packages,
+performance-auditor flagged. See [ADR-0007 D2](docs/decisions/ADR-0007-job-function-codex-heavy-execution.md).
 
-## Agent roster (27 agents)
+Codex tools (code-reviewer / pr-gate / plan-challenger / 5 scaffolders) are
+[orchestrator-direct Bash invocations](docs/runbooks/codex-tool-invocations.md) post ADR-0007 D5,
+not teammate spawns.
 
-| Tier            | Name                     | LLM                     | Role                                                |
-| --------------- | ------------------------ | ----------------------- | --------------------------------------------------- |
-| T0 Orchestrator | `orchestrator`           | claude                  | 整体规划 + dispatch 工种 + 维护 docs/plans/         |
-| T1 Worker       | `api-builder`            | claude                  | 写 apps/api FastAPI 后端                            |
-| T1 Worker       | `block-foundation-eng`   | claude                  | 维护 block-foundation 与 content-types 包           |
-| T1 Worker       | `codex-api-crud-builder` | codex (scaffolder)      | 写 apps/api 的 CRUD 端点骨架                        |
-| T1 Worker       | `codex-block-generator`  | codex (scaffolder)      | 在 block-callout 模板出来后，仿造其他 simple block  |
-| T1 Worker       | `codex-css-stylist`      | codex (scaffolder)      | 写 Tailwind 重复样式 / 设计 token                   |
-| T1 Worker       | `codex-script-builder`   | codex (scaffolder)      | 写 scripts/ 下的工具脚本                            |
-| T1 Worker       | `codex-test-scaffolder`  | codex (scaffolder)      | 为每个 package 生成 vitest 套件骨架                 |
-| T1 Worker       | `editor-eng`             | claude                  | 写 editor-commands 命令模式与 editor-shell          |
-| T1 Worker       | `editor-integrator`      | claude                  | 把 editor 子模块集成到 site                         |
-| T1 Worker       | `kernel-architect`       | claude                  | 设计 KernelAdapter 接口与 KernelRegistry            |
-| T1 Worker       | `kernel-pyodide-eng`     | claude                  | 实现 PyodideAdapter                                 |
-| T1 Worker       | `mdx-bridge-eng`         | claude                  | 维护 mdx-bridge 双向转换                            |
-| T1 Worker       | `render-block-eng`       | claude                  | 写 math / pdf 的 block 实现                         |
-| T1 Worker       | `simple-block-eng`       | claude                  | 写 simple block 模板（block-callout 等）            |
-| T1 Worker       | `viz-block-eng`          | claude                  | 写可视化 block 实现 (jupyter / nn-viz / agent-flow) |
-| T2 Process      | `code-reviewer`          | codex (code-reviewer)   | 行级严谨 review (默认廉价)                          |
-| T2 Process      | `git-operator`           | claude                  | 唯一 git 操作权                                     |
-| T2 Process      | `plan-challenger`        | codex (plan-challenger) | 在 plan lock 前挑战                                 |
-| T2 Process      | `pr-gate`                | codex (pr-gate)         | 高风险 PR 深度审查 (5.5)                            |
-| T2 Process      | `pr-reviewer`            | claude                  | 实现质量 + 降级风险 + 规格匹配 review               |
-| T2 Process      | `refactorer`             | claude                  | 唯一跨包重组权                                      |
-| T2 Process      | `researcher`             | claude                  | 唯一外网访问权                                      |
-| T3 Audit        | `link-checker`           | claude                  | markdown 链接检查                                   |
-| T3 Audit        | `mdx-doctor`             | claude                  | MDX round-trip 健康守护                             |
-| T3 Audit        | `performance-auditor`    | claude                  | 性能基线 + 回归侦测                                 |
-| T3 Audit        | `structure-auditor`      | claude                  | 月度结构审计                                        |
+## Claude teammates (20)
+
+| Tier            | Name                   | Role                                                       |
+| --------------- | ---------------------- | ---------------------------------------------------------- |
+| T0 Orchestrator | `orchestrator`         | 整体规划 + dispatch 工种 + 维护 docs/plans/                |
+| T1 Worker       | `api-builder`          | 写 apps/api FastAPI 后端                                   |
+| T1 Worker       | `block-foundation-eng` | 维护 block-foundation 与 content-types 包                  |
+| T1 Worker       | `editor-eng`           | 写 editor-commands 命令模式与 editor-shell                 |
+| T1 Worker       | `editor-integrator`    | 把 editor 子模块集成到 site                                |
+| T1 Worker       | `kernel-architect`     | 设计 KernelAdapter 接口与 KernelRegistry                   |
+| T1 Worker       | `kernel-pyodide-eng`   | 实现 PyodideAdapter                                        |
+| T1 Worker       | `mdx-bridge-eng`       | 维护 mdx-bridge 双向转换                                   |
+| T1 Worker       | `render-block-eng`     | 写 math / pdf 的 block 实现                                |
+| T1 Worker       | `simple-block-eng`     | 写 simple block 模板（block-callout 等）                   |
+| T1 Worker       | `ux-ui-lead`           | 视觉单一权威 — 横跨 ui-default + apps/site + editor 子模块 |
+| T1 Worker       | `viz-block-eng`        | 写可视化 block 实现 (jupyter / nn-viz / agent-flow)        |
+| T2 Process      | `git-operator`         | 唯一 git 操作权                                            |
+| T2 Process      | `pr-reviewer`          | 实现质量 + 降级风险 + 规格匹配 review                      |
+| T2 Process      | `refactorer`           | 唯一跨包重组权                                             |
+| T2 Process      | `researcher`           | 唯一外网访问权                                             |
+| T3 Audit        | `link-checker`         | markdown 链接检查                                          |
+| T3 Audit        | `mdx-doctor`           | MDX round-trip 健康守护                                    |
+| T3 Audit        | `performance-auditor`  | 性能基线 + 回归侦测                                        |
+| T3 Audit        | `structure-auditor`    | 月度结构审计                                               |
+
+## Codex tool patterns (8)
+
+orchestrator-direct Bash invocations (ADR-0007 D5). Full canonical bash + triggers + audit-log paths in [docs/runbooks/codex-tool-invocations.md](docs/runbooks/codex-tool-invocations.md).
+
+| Pattern                  | Profile           | Summary                                                                                            |
+| ------------------------ | ----------------- | -------------------------------------------------------------------------------------------------- |
+| `code-reviewer`          | `code-reviewer`   | 行级 review：类型 / lint / 契约同步 / 文件大小 / 风格 / 边界条件。                                 |
+| `plan-challenger`        | `plan-challenger` | lock 前挑战 orchestrator 的 wave / track plan：检查 task 大小、可测性、边界场景。                  |
+| `pr-gate`                | `pr-gate`         | 仅对**高风险 PR** 启用。深度审查：漏洞 / 隐性破坏 / 跨包影响。                                     |
+| `codex-api-crud-builder` | `scaffolder`      | 在 apps/api 按 RESTful 风格生成 CRUD 端点骨架（Pydantic schema + 路由），                          |
+| `codex-block-generator`  | `scaffolder`      | 在 simple-block-eng / ux-ui-lead / editor-eng 提交 template 后，按模板仿造其余 block / submodule。 |
+| `codex-css-stylist`      | `scaffolder`      | 写 packages/design-tokens / packages/ui 的 design tokens（颜色 / 间距 / 字体）+                    |
+| `codex-script-builder`   | `scaffolder`      | 写 scripts/refactor-move.ts / scripts/new-block.ts / scripts/extract-pdf-text.ts 等工具。          |
+| `codex-test-scaffolder`  | `scaffolder`      | 为每个 packages/<name> 生成 src/__tests__/ 下的 vitest 套件骨架，                                  |
 
 ## Footer
 

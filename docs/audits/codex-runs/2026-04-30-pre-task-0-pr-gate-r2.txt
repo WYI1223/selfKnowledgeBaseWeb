@@ -1,0 +1,263 @@
+PR-GATE R2 RE-REVIEW — Wave 2 Pre-Task 0 (post-fix)
+====================================================================
+Branch: main (HEAD = e15ec36, R2 changes staged)
+Reviewer: pr-gate (codex 5.5 teammate, last spawn pre-D5)
+Date: 2026-04-30
+Bundle: 27 files staged, +1040/-520
+
+VERDICT: PASS
+
+────────────────────────────────────────────────────────────────────
+R1 → R2 fix verification
+────────────────────────────────────────────────────────────────────
+
+B1 (ux-ui-lead self-contradiction) — RESOLVED
+   agent-contract.md:166-189 verified:
+     permissions: [read_repo, edit_ui_default, edit_apps_site]
+     forbidden:   [edit_block_core, edit_propsschema, edit_mdx_serialize,
+                   git_commit, dispatch_codex_tools]
+   The forbid list now explicitly bars dispatch_codex_tools, matching the
+   description body's "你不调 codex" + ADR-0007 D5's orchestrator-only-dispatch
+   rule. Stronger than my recommended "remove permission" — adding the
+   explicit forbid is a clearer authority signal.
+   Generated .claude/agents/ux-ui-lead.md:17-19 reflects the fix correctly:
+     **Permissions**: read_repo, edit_ui_default, edit_apps_site
+     **Forbidden**: edit_block_core, edit_propsschema, edit_mdx_serialize,
+                    git_commit, dispatch_codex_tools
+
+B2 (active.md:43 stale "17 teammates") — RESOLVED
+   docs/plans/active.md:43:
+     "spawn 20 teammates（T0:1 + T1:11（含 ux-ui-lead）+ T2:4 + T3:4；按需复用 T3 audit）"
+   Tier breakdown is correct (sums to 20) and matches the agent-contract.md
+   roster.
+
+B3 (spec §1280 stale "27 → 17") — RESOLVED
+   docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:1280:
+     "spec §3.1 agent 阵容 27 → 20 teammate + 8 tool pattern"
+   Note: rows §1267 + §1269 still cite "27 agent" but they are dated
+   2026-04-29 (a calendar day before this PR) and describe historical
+   ADR-0004 decisions; row §1280 (dated 2026-04-30, this PR) supersedes.
+   Acceptable as a changelog table.
+
+C1 (ADR-0007 self-numbers §138/§215/§374) — RESOLVED
+   §138: "20 teammate + 8 tool pattern = 28 项配置实体；T0:1 + T1:11 + T2:4 + T3:4，
+          T3 audit 按需复用"
+   §215: "spec §3.1（27 agent → 20 teammate + 8 tool）"
+   §374: "新 20 + 8 模型"
+   All three corrected. §138 now also includes the tier breakdown (sum check).
+
+C2 (within-tool_patterns dup misclassified message + missing test) — RESOLVED
+   types.ts split-Set logic verified for all 4 cases:
+
+   Case A — within-agents duplicate (foo, foo):
+     agentNames.has(foo)=false → add → ...next iter:
+     agentNames.has(foo)=true → emits "duplicate agent name: foo".
+     Test :88 passes. ✓
+
+   Case B — within-tool_patterns duplicate (bar, bar; agents=[foo]):
+     tp #1 bar: toolNames.has=false → add. agentNames.has(bar)=false → ok.
+     tp #2 bar: toolNames.has=true → emits "duplicate tool_pattern name: bar"
+       (DISTINCT new message, item-#2 RFC-7235-style sister-rule fix).
+     Test :96 passes (the new R2 test). ✓
+
+   Case C — cross-collision (agents=[foo], tool_patterns=[foo]):
+     agents iter foo: agentNames.has=false → add.
+     tp iter foo: toolNames.has=false → add. agentNames.has=true →
+       emits "name collision between agents and tool_patterns: foo".
+     Test :92 passes. ✓
+
+   Case D — valid (agents=[foo], tool_patterns=[bar]):
+     No emits. Schema parse succeeds.
+     Test :29 passes. ✓
+
+   Edge case I checked (NOT covered by tests, low concern):
+     Case E — name collides cross-array AND duplicates within tool_patterns
+              (agents=[foo], tool_patterns=[foo, foo]):
+     tp #1 foo: dup=no → add → cross=yes → emit "cross-collision: foo".
+     tp #2 foo: dup=yes → emit "duplicate tool_pattern: foo" → cross=yes
+                → emit "cross-collision: foo" (again).
+     Result: 3 issues for 1 yaml mistake. Loud, not silent. Acceptable;
+     adding a test would be defensive but not necessary.
+
+C3 (plan-challenger description first-line dangling colon) — RESOLVED
+   agent-contract.md:419-426 verified — first description line now reads:
+     "lock 前挑战 orchestrator 的 wave / track plan：检查 task 大小、可测性、边界场景。"
+   Self-contained, terminates with a period. The colon is now followed by
+   a clause + full stop, not a dangling fragment.
+   Verified in generated consumer surfaces:
+     CLAUDE.md:    | `plan-challenger` | `plan-challenger` | lock 前挑战 ... 边界场景。 |
+     AGENTS.md:    | `plan-challenger` | `plan-challenger` | orchestrator_publishes_plan | lock 前挑战 ... 边界场景。 |
+   Both render cleanly.
+
+
+────────────────────────────────────────────────────────────────────
+asymmetry-audit applied (independent re-verification on R2 diff)
+────────────────────────────────────────────────────────────────────
+
+item #1 (Field/attribute audit) — N/A
+   No data-shape field added. New `tool_patterns` is a sibling collection,
+   not a field-of-shape; renderers handled symmetrically.
+
+item #2 (Status code audit) — N/A
+   No HTTP work in this PR.
+
+item #3 (Strictness audit) — N/A
+   No `.strict()` introduced.
+
+item #4 (Consumer schema audit) — PASS
+   Single authority remains agent-contract.md `agents:` + `tool_patterns:`.
+   All 6 renderers (claude-md, agents-md, claude-agent, codex-profiles-toml,
+   review-checklist, codex-tool-runbook) consume from the shared types.ts
+   types. No inline duplicates.
+
+item #5 (Algorithm + runtime constant replication) — N/A this PR.
+
+item #6 (Sister-file documentation audit) — PASS (R2 fix scope verified)
+   Cross-checked numbers across all 4 modified authority surfaces:
+     - agent-contract.md metadata.total_teammates: 20  ✓
+     - agent-contract.md metadata.total_tool_patterns: 8  ✓
+     - ADR-0007 §138: 20 + 8 = 28 (T0:1 + T1:11 + T2:4 + T3:4)  ✓
+     - ADR-0007 §215: 27 → 20 + 8  ✓
+     - ADR-0007 §374: 20 + 8  ✓
+     - active.md:43: spawn 20 (T0:1 + T1:11 + T2:4 + T3:4)  ✓
+     - spec §1280: 27 → 20 + 8  ✓
+     - test :30-31: 20 + 8  ✓
+   All 8 authority surfaces are mutually consistent. Tier breakdown sums
+   verified (1 + 11 + 4 + 4 = 20).
+
+   Remaining 27-references in older docs (Phase 0 plan, Phase 1 Wave 1
+   plan, ADR-0001 §82/§149, ADR-0003 §190, ADR-0004 §13/§179, spec §1267/§1269)
+   are dated historical references describing prior state — ADR-0007 §215
+   explicitly defers spec §3.1 / ADR-0001 §3.1 to a separate PR. Deferral
+   accepted by R1 + R2 brief. Not in scope for this bundle.
+
+item #7 (Exception-scope equivalence) — N/A.
+
+item #8 (Authority → generated/consumed surface) — PASS
+   Authority artifacts in R2 bundle:
+     - agent-contract.md (THE contract; B1 + C3)
+     - ADR-0007 (D5 self-numbers C1)
+     - spec §1280 (changelog row B3)
+     - active.md (active plan B2)
+   Consumer artifacts generated correctly (verified by reading generated files):
+     - CLAUDE.md / AGENTS.md / .claude/agents/ux-ui-lead.md regenerated to
+       reflect B1 forbid-list change and C3 first-line summary.
+     - Idempotent (orchestrator confirmed: column-2 of git status --short
+       blank for staged generated files).
+     - test count assertions match (test:30-31 expects 20+8; matches contract).
+     - tmp/codex-profiles.toml unchanged (correct: profile config is static).
+     - .claude/settings.json unchanged (correct: not roster-dependent).
+     - docs/runbooks/team-operations.md cross-link to runbook present.
+     - docs/runbooks/codex-tool-invocations.md generated with all 8 patterns.
+     - docs/review-checklist.md unchanged from R1 generation; still accurate.
+   pnpm-lock.yaml: not part of bundle (no package.json edits) — D8 lockfile
+   rule correctly N/A.
+
+
+────────────────────────────────────────────────────────────────────
+8th-class hunt (independent, on R2 diff)
+────────────────────────────────────────────────────────────────────
+
+I re-hunted the four R2-touched authority surfaces (ADR-0007, active.md, spec,
+agent-contract.md) for any *new* asymmetry the R2 fix might have introduced:
+
+(a) ADR-0007 §138 R2 wording: "T3:4，T3 audit 按需复用".
+    The phrase "按需复用" (reuse on demand) appears in BOTH ADR-0007 §138 AND
+    active.md:43 — sister-doc symmetric. No drift.
+
+(b) Tier breakdown count vs. actual generated agent files:
+      T0 = orchestrator (1)
+      T1 = block-foundation-eng / simple-block-eng / render-block-eng /
+           viz-block-eng / mdx-bridge-eng / kernel-architect /
+           kernel-pyodide-eng / editor-eng / editor-integrator /
+           ux-ui-lead / api-builder = 11  ✓
+      T2 = pr-reviewer / git-operator / refactorer / researcher = 4  ✓
+      T3 = structure-auditor / performance-auditor / mdx-doctor /
+           link-checker = 4  ✓
+    Total 20  ✓
+    `ls .claude/agents/*.md | wc -l` = 20  ✓
+
+(c) The B1 fix added `dispatch_codex_tools` to ux-ui-lead.forbidden.
+    Cross-check: does this string `dispatch_codex_tools` appear elsewhere
+    that requires symmetric awareness?
+      orchestrator.permissions = [..., dispatch_codex_tools]  (the granter)
+      ux-ui-lead.forbidden    = [..., dispatch_codex_tools]  (the forbidder)
+    These are mirror-images of the same capability — semantically symmetric.
+    No other agent has dispatch_codex_* permissions → no other agent needs
+    to match this forbid. ✓
+
+(d) The C3 fix prepended a first-line summary to plan-challenger description.
+    Sister consumer-side: does any test assert specific description text
+    that would now drift?
+      Searched test file: only loose `expect(out).toContain(tp.name)` style
+      assertions, no string assertions on description text. ✓
+      Renderers split('\n')[0] take the new first line — verified clean cell
+      content above.
+
+(e) The C2 fix split `seen` into `agentNames` + `toolNames`. Sister concern:
+    are there any other places in types.ts (or other renderers) that infer
+    "global namespace of names" and would now be wrong?
+      Grep'd `seen` / `Set<string>` across scripts/render — no other
+      such uniqueness-checking site exists. ✓
+
+(f) New numeric "= 28 项配置实体" claim in ADR-0007 §138 — does any other doc
+    cite a total entity count that would conflict?
+      Grep `28 项|26 项|25 项|配置实体` across docs — only the one ADR-0007
+      reference. No drift. ✓
+
+(g) The R2 brief's specific question (a): does the new in-bundle scope
+    (3 docs added: ADR-0007, active.md, spec) introduce any new sister-doc
+    drift?
+      Reviewed each fix in isolation:
+      - active.md:43 added a Tier breakdown phrase that matches ADR-0007
+        §138 exactly ("T0:1 + T1:11 + T2:4 + T3:4"). Sister-symmetric.
+      - spec §1280 changed only the number "17 → 20"; no other terminology.
+      - ADR-0007 §138 / §215 / §374 — same.
+      No new asymmetry introduced. ✓
+
+(h) Brief's question (b): types.ts split-Set logic — covered in C2 above.
+    All 4 cases verified. Edge case E (collision + within-dup combo)
+    produces 3 loud errors for 1 yaml mistake — acceptable, no silent skip.
+
+8th-class hunt result: NO additional asymmetry found beyond cited fixes.
+The R2 bundle is internally consistent.
+
+
+────────────────────────────────────────────────────────────────────
+Other R2 verifications
+────────────────────────────────────────────────────────────────────
+
+- 26/26 tests pass (orchestrator confirmed) — +1 over R1 (case B coverage).
+- Type sig of within-tool_patterns dup error message verified: regex
+  `/duplicate tool_pattern name: bar/` matches the new R2 emit. ✓
+- Idempotence claim accepted (no nondeterminism in render path; orchestrator
+  re-ran generator with column-2 of git status --short blank).
+- Bundle file count 27 = R1's 24 + 3 new doc edits (ADR-0007, active.md,
+  spec). All 27 staged via explicit `git add` per ADR-0006 D8 v6/v7 protocol.
+
+
+────────────────────────────────────────────────────────────────────
+Verdict: PASS
+────────────────────────────────────────────────────────────────────
+
+All 3 BLOCKING + 3 CONCERN findings from R1 cleanly resolved. R2 fixes
+introduce no new asymmetries. Test coverage symmetrically extended for
+the new logic. Authority/consumer surface count is internally consistent
+across 8 distinct citation sites.
+
+NON-BLOCKING follow-ups (optional, future PRs):
+  F1. ADR-0001 §3.1 / §3.2 + spec §3.1 narrative text update — explicitly
+      deferred to separate PR per ADR-0007 §215 (small blast radius). R1
+      and R2 brief both accept this deferral.
+  F2. Optional: add test for edge case E (cross-collision AND within-dup).
+      Defensive only; current behaviour is loud-not-silent. Skip.
+  F3. Optional: add explicit paragraph to runbook stating "orchestrator
+      MUST pass description text + ADR-0006 8-point checklist as the
+      `<PROMPT>` arg to `codex exec`" (NEW finding #8 from R1). Convention
+      already implied by AGENTS.md examples; making it explicit would help
+      first-time orchestrator implementations. Future Wave 2 doc PR.
+
+This bundle is ready to hand off to pr-reviewer (Claude) for spec-match
++ cross-package-impact review, then git-operator.
+
+End of pr-gate R2 audit.

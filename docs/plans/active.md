@@ -40,7 +40,7 @@ A 完工 + 新 agent 阵容生效后，再起草 Wave 2 plan：
 4. 读 Wave 1 plan retrospective（review-round count, fixture growth, codex catch rate）
 5. 用 `superpowers:writing-plans` 起草 Wave 2 plan
 6. plan-challenger（**现在是 tool**，按 ADR-0007 D5）通过 `codex exec --profile plan-challenger < plan.md > challenge.txt` 挑战 → orchestrator 修订 → lock
-7. Pre-Task 0（**真正的** Wave 2 Task 0，agent-contract.md 已重构后）：TeamCreate `phase-1-wave-2` + spawn 17 teammates（含 ux-ui-lead）
+7. Pre-Task 0（**真正的** Wave 2 Task 0，agent-contract.md 已重构后）：TeamCreate `phase-1-wave-2` + spawn 20 teammates（T0:1 + T1:11（含 ux-ui-lead）+ T2:4 + T3:4；按需复用 T3 audit）
 
 ## Wave 1 完工归档（参考）
 

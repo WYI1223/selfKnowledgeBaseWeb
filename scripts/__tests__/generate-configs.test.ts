@@ -8,43 +8,91 @@ import {
   renderSettingsJson,
   renderCodexProfilesToml,
   renderReviewChecklist,
+  renderCodexToolRunbook,
   type Agent,
   type AgentContract,
 } from '../generate-configs.ts';
 
+const FIXTURE_VALID_MIN = `# Test\n\n## Schema\n\n\`\`\`yaml\nagents:\n  - name: <kebab-case>\n    tier: 0\n    llm: claude\n    role: example\n    permissions: []\ntool_patterns:\n  - name: <pattern-id>\n    profile: scaffolder\n    invocation: 'x'\n    triggered_by: []\n\`\`\`\n\n## Agents\n\n\`\`\`yaml\nmetadata:\n  version: 1\n  total_teammates: 1\n  total_tool_patterns: 1\nagents:\n  - name: foo\n    tier: 0\n    llm: claude\n    role: test\n    permissions: []\ntool_patterns:\n  - name: bar\n    profile: scaffolder\n    invocation: 'codex exec --profile scaffolder < /dev/null'\n    triggered_by: [some_trigger]\n\`\`\`\n`;
+
 describe('parseAgentContract', () => {
-  it('extracts agents from YAML fenced block (skips Schema example placeholder)', () => {
-    const md = `# Test\n\n## Schema\n\n\`\`\`yaml\nagents:\n  - name: <kebab-case>\n    tier: 0\n    llm: claude\n    role: example\n    permissions: []\n\`\`\`\n\n## Agents\n\n\`\`\`yaml\nmetadata:\n  version: 1\n  total_agents: 1\nagents:\n  - name: foo\n    tier: 0\n    llm: claude\n    role: test\n    permissions: []\n\`\`\`\n`;
-    const result = parseAgentContract(md);
+  it('extracts agents + tool_patterns from YAML fenced block (skips Schema example placeholder)', () => {
+    const result = parseAgentContract(FIXTURE_VALID_MIN);
     expect(result.agents).toHaveLength(1);
     expect(result.agents[0]?.name).toBe('foo');
+    expect(result.tool_patterns).toHaveLength(1);
+    expect(result.tool_patterns[0]?.name).toBe('bar');
   });
 
-  it('parses the real agent-contract.md (27 agents)', () => {
+  it('parses the real agent-contract.md (20 teammates + 8 tool_patterns)', () => {
     const real = readFileSync('agent-contract.md', 'utf8');
     const result = parseAgentContract(real);
-    expect(result.agents).toHaveLength(27);
+    expect(result.agents).toHaveLength(20);
+    expect(result.tool_patterns).toHaveLength(8);
     expect(result.agents.find((a) => a.name === 'orchestrator')?.tier).toBe(0);
-    expect(result.agents.find((a) => a.name === 'pr-gate')?.profile).toBe('pr-gate');
+    expect(result.agents.find((a) => a.name === 'ux-ui-lead')?.tier).toBe(1);
+    expect(result.tool_patterns.find((tp) => tp.name === 'pr-gate')?.profile).toBe('pr-gate');
+    expect(result.tool_patterns.find((tp) => tp.name === 'codex-block-generator')?.profile).toBe(
+      'scaffolder',
+    );
     expect(result.agents.find((a) => a.name === 'researcher')?.permissions).toContain('web_search');
     expect(result.agents.find((a) => a.name === 'git-operator')?.permissions).toContain(
       'git_commit',
     );
   });
 
+  it('moved 8 codex agents (5 scaffolder + 3 review) to tool_patterns; agents are pure Claude', () => {
+    const real = readFileSync('agent-contract.md', 'utf8');
+    const result = parseAgentContract(real);
+    for (const a of result.agents) {
+      expect(a.llm).toBe('claude');
+    }
+    const codexNames = [
+      'codex-block-generator',
+      'codex-test-scaffolder',
+      'codex-script-builder',
+      'codex-api-crud-builder',
+      'codex-css-stylist',
+      'code-reviewer',
+      'pr-gate',
+      'plan-challenger',
+    ];
+    for (const name of codexNames) {
+      expect(result.agents.find((a) => a.name === name)).toBeUndefined();
+      expect(result.tool_patterns.find((tp) => tp.name === name)).toBeDefined();
+    }
+  });
+
   it('rejects YAML blocks where any agent name uses placeholder syntax <...>', () => {
-    const md = `## Agents\n\n\`\`\`yaml\nmetadata:\n  version: 1\n  total_agents: 1\nagents:\n  - name: <kebab-case>\n    tier: 0\n    llm: claude\n    role: x\n    permissions: []\n\`\`\`\n`;
+    const md = `## Agents\n\n\`\`\`yaml\nmetadata:\n  version: 1\n  total_teammates: 1\n  total_tool_patterns: 0\nagents:\n  - name: <kebab-case>\n    tier: 0\n    llm: claude\n    role: x\n    permissions: []\ntool_patterns: []\n\`\`\`\n`;
     expect(() => parseAgentContract(md)).toThrow(/no.*authoritative.*yaml.*block/i);
   });
 
-  it('rejects contract where metadata.total_agents disagrees with agents.length', () => {
-    const md = `## Agents\n\n\`\`\`yaml\nmetadata:\n  version: 1\n  total_agents: 99\nagents:\n  - name: foo\n    tier: 0\n    llm: claude\n    role: x\n    permissions: []\n\`\`\`\n`;
-    expect(() => parseAgentContract(md)).toThrow(/total_agents.*equal.*agents\.length/);
+  it('rejects contract where metadata.total_teammates disagrees with agents.length', () => {
+    const md = `## Agents\n\n\`\`\`yaml\nmetadata:\n  version: 1\n  total_teammates: 99\n  total_tool_patterns: 0\nagents:\n  - name: foo\n    tier: 0\n    llm: claude\n    role: x\n    permissions: []\ntool_patterns: []\n\`\`\`\n`;
+    expect(() => parseAgentContract(md)).toThrow(/total_teammates.*equal.*agents\.length/);
+  });
+
+  it('rejects contract where metadata.total_tool_patterns disagrees with tool_patterns.length', () => {
+    const md = `## Agents\n\n\`\`\`yaml\nmetadata:\n  version: 1\n  total_teammates: 1\n  total_tool_patterns: 99\nagents:\n  - name: foo\n    tier: 0\n    llm: claude\n    role: x\n    permissions: []\ntool_patterns:\n  - name: bar\n    profile: scaffolder\n    invocation: 'x'\n    triggered_by: []\n\`\`\`\n`;
+    expect(() => parseAgentContract(md)).toThrow(
+      /total_tool_patterns.*equal.*tool_patterns\.length/,
+    );
   });
 
   it('rejects contract with duplicate agent names', () => {
-    const md = `## Agents\n\n\`\`\`yaml\nmetadata:\n  version: 1\n  total_agents: 2\nagents:\n  - name: foo\n    tier: 0\n    llm: claude\n    role: x\n    permissions: []\n  - name: foo\n    tier: 1\n    llm: claude\n    role: y\n    permissions: []\n\`\`\`\n`;
+    const md = `## Agents\n\n\`\`\`yaml\nmetadata:\n  version: 1\n  total_teammates: 2\n  total_tool_patterns: 0\nagents:\n  - name: foo\n    tier: 0\n    llm: claude\n    role: x\n    permissions: []\n  - name: foo\n    tier: 1\n    llm: claude\n    role: y\n    permissions: []\ntool_patterns: []\n\`\`\`\n`;
     expect(() => parseAgentContract(md)).toThrow(/duplicate agent name: foo/);
+  });
+
+  it('rejects name collision between agents and tool_patterns', () => {
+    const md = `## Agents\n\n\`\`\`yaml\nmetadata:\n  version: 1\n  total_teammates: 1\n  total_tool_patterns: 1\nagents:\n  - name: foo\n    tier: 0\n    llm: claude\n    role: x\n    permissions: []\ntool_patterns:\n  - name: foo\n    profile: scaffolder\n    invocation: 'x'\n    triggered_by: []\n\`\`\`\n`;
+    expect(() => parseAgentContract(md)).toThrow(/name collision.*foo/);
+  });
+
+  it('rejects duplicate names within tool_patterns (distinct from cross-collision message)', () => {
+    const md = `## Agents\n\n\`\`\`yaml\nmetadata:\n  version: 1\n  total_teammates: 1\n  total_tool_patterns: 2\nagents:\n  - name: foo\n    tier: 0\n    llm: claude\n    role: x\n    permissions: []\ntool_patterns:\n  - name: bar\n    profile: scaffolder\n    invocation: 'x'\n    triggered_by: []\n  - name: bar\n    profile: scaffolder\n    invocation: 'y'\n    triggered_by: []\n\`\`\`\n`;
+    expect(() => parseAgentContract(md)).toThrow(/duplicate tool_pattern name: bar/);
   });
 });
 
@@ -75,19 +123,6 @@ describe('renderClaudeAgent', () => {
     expect(out).toContain('Spec §3.1');
   });
 
-  it('includes profile field for codex agents', () => {
-    const codex: Agent = {
-      name: 'codex-x',
-      tier: 1,
-      llm: 'codex',
-      profile: 'scaffolder',
-      role: 'r',
-      permissions: ['read_repo'],
-    };
-    const out = renderClaudeAgent(codex);
-    expect(out).toContain('profile: scaffolder');
-  });
-
   it('emits description field in frontmatter (Claude Code dispatcher requirement)', () => {
     const agent: Agent = {
       name: 'foo-eng',
@@ -114,27 +149,53 @@ describe('renderClaudeAgent', () => {
 });
 
 describe('renderClaudeMd', () => {
-  it('contains generation banner, count, and all 27 agent names', () => {
+  it('contains generation banner, teammate count, and all teammate names', () => {
     const contract = realContract();
     const out = renderClaudeMd(contract);
     expect(out).toContain('GENERATED FROM agent-contract.md');
-    expect(out).toContain('27 agents');
+    expect(out).toContain('Claude teammates (20)');
     for (const agent of contract.agents) {
       expect(out).toContain(agent.name);
     }
   });
+
+  it('contains tool_patterns table with all 8 patterns linked to runbook', () => {
+    const contract = realContract();
+    const out = renderClaudeMd(contract);
+    expect(out).toContain('Codex tool patterns (8)');
+    expect(out).toContain('docs/runbooks/codex-tool-invocations.md');
+    for (const tp of contract.tool_patterns) {
+      expect(out).toContain(tp.name);
+    }
+  });
+
+  it('does NOT list codex agents in the teammate roster', () => {
+    const contract = realContract();
+    const out = renderClaudeMd(contract);
+    const teammateSection = out.split('## Claude teammates')[1]?.split('## Codex tool')[0] ?? '';
+    expect(teammateSection).not.toContain('| `code-reviewer` |');
+    expect(teammateSection).not.toContain('| `pr-gate` |');
+    expect(teammateSection).not.toContain('| `plan-challenger` |');
+  });
 });
 
 describe('renderAgentsMd', () => {
-  it('contains codex profile examples and all codex agent names', () => {
+  it('contains codex profile examples and all tool_pattern names', () => {
     const contract = realContract();
     const out = renderAgentsMd(contract);
     expect(out).toContain('GENERATED FROM agent-contract.md');
     expect(out).toContain('codex exec --profile');
-    const codexAgents = contract.agents.filter((a) => a.llm === 'codex');
-    for (const agent of codexAgents) {
-      expect(out).toContain(agent.name);
+    expect(out).toContain('< /dev/null');
+    for (const tp of contract.tool_patterns) {
+      expect(out).toContain(tp.name);
     }
+  });
+
+  it('lists tool_patterns count + cross-link to runbook', () => {
+    const contract = realContract();
+    const out = renderAgentsMd(contract);
+    expect(out).toContain('Tool patterns (8)');
+    expect(out).toContain('docs/runbooks/codex-tool-invocations.md');
   });
 });
 
@@ -176,7 +237,6 @@ describe('renderSettingsJson', () => {
     const parsed = JSON.parse(out) as ParsedSettings;
     const cmd = parsed.hooks.SessionStart[0]?.hooks[0]?.command ?? '';
     expect(cmd).toContain('[ -f docs/plans/active.md ]');
-    // Semicolon ensures tsc -b --dry runs unconditionally even if active.md absent.
     expect(cmd).toMatch(/;\s*pnpm tsc -b --dry/);
   });
 
@@ -199,8 +259,6 @@ describe('renderCodexProfilesToml', () => {
   });
 
   it('every profile sets approval_policy = "never" (orchestrator-driven)', () => {
-    // Spec §3.12 example shows scaffolder with "on-request"; we override per
-    // single-checkpoint principle — Claude orchestrator owns human-in-the-loop.
     const out = renderCodexProfilesToml();
     const profileSections = out.split(/\n\[profiles\./).slice(1);
     expect(profileSections).toHaveLength(4);
@@ -219,5 +277,30 @@ describe('renderReviewChecklist', () => {
     expect(out).toContain('## For pr-gate');
     expect(out).toContain('## For pr-reviewer');
     expect(out).toContain('spec §3.2');
+  });
+});
+
+describe('renderCodexToolRunbook', () => {
+  it('contains a section per tool_pattern with canonical bash + triggers', () => {
+    const contract = realContract();
+    const out = renderCodexToolRunbook(contract);
+    expect(out).toContain('GENERATED FROM agent-contract.md');
+    expect(out).toContain('codex exec --profile');
+    for (const tp of contract.tool_patterns) {
+      expect(out).toContain(`## \`${tp.name}\``);
+      expect(out).toContain(tp.invocation);
+      for (const trig of tp.triggered_by) {
+        expect(out).toContain(`\`${trig}\``);
+      }
+    }
+  });
+
+  it('cites ADR-0007 D5 + ADR-0006 + lockfile (commit e15ec36) reminder', () => {
+    const contract = realContract();
+    const out = renderCodexToolRunbook(contract);
+    expect(out).toContain('ADR-0007');
+    expect(out).toContain('ADR-0006');
+    expect(out).toContain('pnpm-lock.yaml');
+    expect(out).toContain('< /dev/null');
   });
 });

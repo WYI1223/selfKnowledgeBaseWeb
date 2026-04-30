@@ -2,10 +2,11 @@
 /**
  * Derives from agent-contract.md:
  *   - CLAUDE.md / AGENTS.md (root)
- *   - .claude/agents/<name>.md × 27
+ *   - .claude/agents/<name>.md × N (Claude teammates only post ADR-0007 D5)
  *   - .claude/settings.json
  *   - tmp/codex-profiles.toml (manual merge into ~/.codex/config.toml)
  *   - docs/review-checklist.md
+ *   - docs/runbooks/codex-tool-invocations.md (ADR-0007 D5 — codex tool patterns)
  *
  * Spec: docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md §3.13
  *
@@ -22,14 +23,16 @@ import { renderAgentsMd } from './render/agents-md.ts';
 import { renderSettingsJson } from './render/settings-json.ts';
 import { renderCodexProfilesToml } from './render/codex-profiles-toml.ts';
 import { renderReviewChecklist } from './render/review-checklist.ts';
+import { renderCodexToolRunbook } from './render/codex-tool-runbook.ts';
 
-export type { Agent, AgentContract } from './render/types.ts';
+export type { Agent, ToolPattern, AgentContract } from './render/types.ts';
 export { renderClaudeAgent } from './render/claude-agent.ts';
 export { renderClaudeMd } from './render/claude-md.ts';
 export { renderAgentsMd } from './render/agents-md.ts';
 export { renderSettingsJson } from './render/settings-json.ts';
 export { renderCodexProfilesToml } from './render/codex-profiles-toml.ts';
 export { renderReviewChecklist } from './render/review-checklist.ts';
+export { renderCodexToolRunbook } from './render/codex-tool-runbook.ts';
 
 const PLACEHOLDER_PATTERN = /<[^>]+>/;
 
@@ -56,10 +59,14 @@ export function parseAgentContract(markdown: string): AgentContract {
       Array.isArray(candidate.agents)
     ) {
       const agents = candidate.agents as Array<{ name?: unknown }>;
-      const hasPlaceholder = agents.some(
+      const tps =
+        'tool_patterns' in candidate && Array.isArray(candidate.tool_patterns)
+          ? (candidate.tool_patterns as Array<{ name?: unknown }>)
+          : [];
+      const namesWithPlaceholder = [...agents, ...tps].some(
         (a) => typeof a?.name === 'string' && PLACEHOLDER_PATTERN.test(a.name),
       );
-      if (!hasPlaceholder) {
+      if (!namesWithPlaceholder) {
         return ContractSchema.parse(candidate);
       }
     }
@@ -94,7 +101,12 @@ function main(): void {
   mkdirSync('docs', { recursive: true });
   writeFileSync('docs/review-checklist.md', renderReviewChecklist());
 
-  console.log(`Generated configs from agent-contract.md (${contract.agents.length} agents).`);
+  mkdirSync('docs/runbooks', { recursive: true });
+  writeFileSync('docs/runbooks/codex-tool-invocations.md', renderCodexToolRunbook(contract));
+
+  console.log(
+    `Generated configs from agent-contract.md (${contract.agents.length} teammates + ${contract.tool_patterns.length} tool_patterns).`,
+  );
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

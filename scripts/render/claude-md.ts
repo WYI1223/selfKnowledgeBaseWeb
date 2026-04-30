@@ -2,8 +2,10 @@
  * Renders the project-root CLAUDE.md (Claude Code entry point).
  *
  * Spec §3.1 + §3.2 (workflow) + §3.6 (file size limits) + §3.13 (single source).
+ * ADR-0007 D5: roster splits into Claude teammates (agents:) +
+ * codex tool_patterns (linked to docs/runbooks/codex-tool-invocations.md).
  */
-import type { Agent, AgentContract } from './types.ts';
+import type { Agent, AgentContract, ToolPattern } from './types.ts';
 import { tierName } from './types.ts';
 import { mdTable } from './md-table.ts';
 
@@ -19,6 +21,7 @@ every Claude session what the project is, the hard rules, the agent roster, and 
 - Spec: [docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md](docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md)
 - Active plan: [docs/plans/active.md](docs/plans/active.md)
 - Single source for agents: [agent-contract.md](agent-contract.md)
+- Codex tool invocations: [docs/runbooks/codex-tool-invocations.md](docs/runbooks/codex-tool-invocations.md)
 `;
 
 const HARD_RULES = `## Hard rules
@@ -51,44 +54,65 @@ const COMMANDS_TABLE = mdTable(
 
 const COMMANDS = `## Commands cheat-sheet\n\n${COMMANDS_TABLE}\n`;
 
-const WORKFLOW = `## Review workflow (spec §3.2)
+const WORKFLOW = `## Review workflow (spec §3.2 + ADR-0007 D2)
 
 \`\`\`
 worker (writes code)
    │
    ▼
-code-reviewer  (Codex 5.3-spark, line-level rigor, cheap default)
+[Bash] codex exec --profile code-reviewer  (Codex 5.3-spark, line-level rigor, cheap default)
    │
-   ├── if high-risk → pr-gate (Codex 5.5, deep scan)
+   ├── if high-risk → [Bash] codex exec --profile pr-gate  (Codex 5.5, deep scan)
    │
    ▼
-pr-reviewer    (Claude, spec match + regression + arch consistency)
+pr-reviewer    (Claude, selective per ADR-0007 D2; spec match + regression + arch consistency)
    │
    ▼
 git-operator   (Claude, only authorized git surface, runs \`pnpm check\` once more)
 \`\`\`
 
-High-risk triggers (force \`pr-gate\`): contract change, package add/remove, core arch
-touch, ADR-required PR, CI/deploy/auth/security touch.
+High-risk triggers (force \`pr-gate\` + Claude \`pr-reviewer\`): contract change, package add/remove,
+core arch touch, ADR-required PR, CI/deploy/auth/security touch, cross ≥3 packages,
+performance-auditor flagged. See [ADR-0007 D2](docs/decisions/ADR-0007-job-function-codex-heavy-execution.md).
+
+Codex tools (code-reviewer / pr-gate / plan-challenger / 5 scaffolders) are
+[orchestrator-direct Bash invocations](docs/runbooks/codex-tool-invocations.md) post ADR-0007 D5,
+not teammate spawns.
 `;
 
 function tierBadge(tier: Agent['tier']): string {
   return `T${tier} ${tierName(tier)}`;
 }
 
-function rosterTable(contract: AgentContract): string {
+function teammateRosterTable(contract: AgentContract): string {
   const rows = contract.agents
     .slice()
     .sort((a, b) => a.tier - b.tier || a.name.localeCompare(b.name))
     .map((a) => {
-      const llm = a.llm === 'codex' && a.profile ? `codex (${a.profile})` : a.llm;
       const role = a.role.replace(/\|/g, '\\|');
-      return [tierBadge(a.tier), `\`${a.name}\``, llm, role];
+      return [tierBadge(a.tier), `\`${a.name}\``, role];
     });
   return [
-    `## Agent roster (${contract.agents.length} agents)`,
+    `## Claude teammates (${contract.agents.length})`,
     '',
-    mdTable(['Tier', 'Name', 'LLM', 'Role'], rows),
+    mdTable(['Tier', 'Name', 'Role'], rows),
+  ].join('\n');
+}
+
+function toolPatternTable(contract: AgentContract): string {
+  const rows = contract.tool_patterns
+    .slice()
+    .sort((a, b) => a.profile.localeCompare(b.profile) || a.name.localeCompare(b.name))
+    .map((tp: ToolPattern) => {
+      const role = (tp.description ?? '').split('\n')[0]?.trim().replace(/\|/g, '\\|') ?? '';
+      return [`\`${tp.name}\``, `\`${tp.profile}\``, role];
+    });
+  return [
+    `## Codex tool patterns (${contract.tool_patterns.length})`,
+    '',
+    'orchestrator-direct Bash invocations (ADR-0007 D5). Full canonical bash + triggers + audit-log paths in [docs/runbooks/codex-tool-invocations.md](docs/runbooks/codex-tool-invocations.md).',
+    '',
+    mdTable(['Pattern', 'Profile', 'Summary'], rows),
   ].join('\n');
 }
 
@@ -99,5 +123,15 @@ on the next \`pnpm generate:configs\` run.
 `;
 
 export function renderClaudeMd(contract: AgentContract): string {
-  return [HEADER, HARD_RULES, COMMANDS, WORKFLOW, rosterTable(contract), '', FOOTER].join('\n');
+  return [
+    HEADER,
+    HARD_RULES,
+    COMMANDS,
+    WORKFLOW,
+    teammateRosterTable(contract),
+    '',
+    toolPatternTable(contract),
+    '',
+    FOOTER,
+  ].join('\n');
 }

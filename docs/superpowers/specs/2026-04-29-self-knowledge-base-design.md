@@ -1277,5 +1277,5 @@ PR / commit 数量随任务自然产生，不预设目标。Wave 内若实际工
 | 2026-04-30 | template + codex-clone 模式扩展到 core 与 editor 子模块（ADR-0007 D3） | Wave 1 ui-default 已经是这个模式；core 在 simple block 集群试点；editor 三子模块同模式 |
 | 2026-04-30 | ux-ui-lead spawn prompt 注入三个设计 skill（ADR-0007 D4） | frontend-design + ui-ux-pro-max + web-design-guidelines；视觉契约一次性灌入避免分阶段串行 |
 | 2026-04-30 | **codex agents 降级为 orchestrator-direct tools（ADR-0007 D5）** | Wave 1 codex wrapper 是纯 context 搬运；省 ~2-3 turn / PR；agent-contract.md 拆 agents:/tool_patterns: 两段 |
-| 2026-04-30 | spec §3.1 agent 阵容 27 → 17 teammate + 8 tool pattern | Wave 2 Pre-Task 0 按 ADR-0007 实施时同步 |
+| 2026-04-30 | spec §3.1 agent 阵容 27 → 20 teammate + 8 tool pattern | Wave 2 Pre-Task 0 按 ADR-0007 实施时同步 |
 | 2026-04-30 | spec §3.2 review 工作流改为"orchestrator 自检常规 PR + 选择性 escalate" | ADR-0007 D2 + D5 联动；Wave 2 Pre-Task 0 实施时同步文字 |

@@ -47,10 +47,10 @@
 
 Claude Code agent team 支持两种协作模式，**本项目（SelfKnowledgeBaseWeb）锁定 orchestrator-managed**：
 
-| 模式 | 工作流 | 适合场景 |
-|---|---|---|
-| **self-managed** | workers 自动从 TaskList 找 unblocked task 并 `TaskUpdate(owner=self)` 自我分配；orchestrator 只做战略指引 | 任务相互独立 / 无 review-gate 依赖 / 资源充裕可并发 |
-| **orchestrator-managed** ★ | workers 等 orchestrator `SendMessage` 显式分配；TaskList 是状态板而非工单池 | 跨 track review-gate 依赖 / 高风险 PR 需 escalate / 配额紧 |
+| 模式                       | 工作流                                                                                                    | 适合场景                                                   |
+| -------------------------- | --------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| **self-managed**           | workers 自动从 TaskList 找 unblocked task 并 `TaskUpdate(owner=self)` 自我分配；orchestrator 只做战略指引 | 任务相互独立 / 无 review-gate 依赖 / 资源充裕可并发        |
+| **orchestrator-managed** ★ | workers 等 orchestrator `SendMessage` 显式分配；TaskList 是状态板而非工单池                               | 跨 track review-gate 依赖 / 高风险 PR 需 escalate / 配额紧 |
 
 锁定 orchestrator-managed 的理由：
 
@@ -86,46 +86,68 @@ Claude Code agent team 支持两种协作模式，**本项目（SelfKnowledgeBas
 
 ### Tier 2：reviewer / process
 
-| 角色 | 触发 | 行为 |
-|---|---|---|
-| `code-reviewer` | orchestrator SendMessage 通知 PR ready | 读 git diff，调 `codex exec --profile code-reviewer`；输出 PASS / FAIL + 具体问题。**强制 [ADR-0006](../decisions/ADR-0006-asymmetry-audit-checklist.md) 8-point asymmetry-audit checklist**（每条可适用项目都要在 verdict 里给结论） |
-| `pr-gate` | code-reviewer pass 后，orchestrator 判断高风险触发 | 调 `codex exec --profile pr-gate`（5.5）；输出 PASS / FAIL。**强制 [ADR-0006](../decisions/ADR-0006-asymmetry-audit-checklist.md) 8-point asymmetry-audit checklist + 8th-class hunt**（独立验证 R1 结论 + 主动 hunt cited-fix 之外的对称性缺口） |
-| `pr-reviewer` | code-reviewer (+pr-gate if applicable) pass 后 | 读 spec / plan / diff；输出 APPROVE / REJECT + 跨文件影响分析 |
-| `git-operator` | pr-reviewer APPROVE 后 | 执行 `git add` / `git commit` / `git push`；不修改代码内容 |
-| `refactorer` | structure-auditor 标记或 manual 触发 | 唯一被授权跨包代码移动；每次产 ADR |
-| `researcher` | 任意 teammate SendMessage 求助 | 调研 → 写到 `docs/research/<topic>-YYYY-MM-DD.md` → 报告 |
+> **ADR-0007 D5 注**：`code-reviewer` / `pr-gate` / `plan-challenger` 在本 ADR 实施 PR 完工后**降级为 tool patterns**（orchestrator 直接 Bash 调 `codex exec --profile X < /dev/null`），不再以 teammate 形式 spawn。canonical bash + 触发条件 + audit 落盘见 [`docs/runbooks/codex-tool-invocations.md`](codex-tool-invocations.md)。本表保留它们为操作语义参考（行为不变；只是 invocation pattern 从 SendMessage→teammate 变为 Bash→tool）。
+>
+> **Claude `pr-reviewer` 改为选择性触发**（ADR-0007 D2 8 条触发列表）；普通 PR 由 orchestrator 扫 codex 5.3-spark 输出 + diff 自检，不再每 PR 都调 Claude pr-reviewer。
+
+| 角色                                    | 触发                                                                 | 行为                                                                                                                                                                                                                                                                                                         |
+| --------------------------------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `code-reviewer` (tool)                  | orchestrator 触发，PR ready                                          | 读 git diff；orchestrator Bash 调 `codex exec --profile code-reviewer < /dev/null`；输出 PASS / FAIL + 具体问题；stdout 落盘到 `docs/audits/codex-runs/`。**强制 [ADR-0006](../decisions/ADR-0006-asymmetry-audit-checklist.md) 8-point asymmetry-audit checklist**（每条可适用项目都要在 verdict 里给结论） |
+| `pr-gate` (tool)                        | code-reviewer pass 后，orchestrator 判断高风险触发（ADR-0007 D2 表） | orchestrator Bash 调 `codex exec --profile pr-gate < /dev/null`（5.5）；输出 PASS / FAIL。**强制 [ADR-0006](../decisions/ADR-0006-asymmetry-audit-checklist.md) 8-point asymmetry-audit checklist + 8th-class hunt**（独立验证 R1 结论 + 主动 hunt cited-fix 之外的对称性缺口）                              |
+| `pr-reviewer` (Claude teammate, 选择性) | code-reviewer (+pr-gate if applicable) pass + ADR-0007 D2 触发命中   | 读 spec / plan / diff；输出 APPROVE / REJECT + 跨文件影响分析                                                                                                                                                                                                                                                |
+| `git-operator`                          | pr-reviewer APPROVE 后（或常规 PR 中 orchestrator 自检 PASS 后）     | 执行 `git add` / `git commit` / `git push`；不修改代码内容                                                                                                                                                                                                                                                   |
+| `refactorer`                            | structure-auditor 标记或 manual 触发                                 | 唯一被授权跨包代码移动；每次产 ADR                                                                                                                                                                                                                                                                           |
+| `researcher`                            | 任意 teammate SendMessage 求助                                       | 调研 → 写到 `docs/research/<topic>-YYYY-MM-DD.md` → 报告                                                                                                                                                                                                                                                     |
 
 ### Tier 3：audit
 
-| 角色 | 触发 | 行为 |
-|---|---|---|
-| `structure-auditor` | 每月 / Wave close（如 Task Z）/ orchestrator 手动 | 全仓扫描 god-file / 契约漂移 / 孤儿包 → `docs/audits/structure-YYYY-MM.md` |
-| `performance-auditor` | 每周 / 每 N PR / 部署后 | Lighthouse / size-limit / Astro analyze → `docs/audits/perf-YYYY-MM-DD.md` |
-| `mdx-doctor` | PR 触碰 mdx-bridge 或 block-* 时 | 跑全部 RTT fixture；FAIL 阻断所有 block PR |
-| `link-checker` | CI 每次 push（不在 team 内手动触发） | lychee 扫 markdown 短链 |
+| 角色                  | 触发                                              | 行为                                                                       |
+| --------------------- | ------------------------------------------------- | -------------------------------------------------------------------------- |
+| `structure-auditor`   | 每月 / Wave close（如 Task Z）/ orchestrator 手动 | 全仓扫描 god-file / 契约漂移 / 孤儿包 → `docs/audits/structure-YYYY-MM.md` |
+| `performance-auditor` | 每周 / 每 N PR / 部署后                           | Lighthouse / size-limit / Astro analyze → `docs/audits/perf-YYYY-MM-DD.md` |
+| `mdx-doctor`          | PR 触碰 mdx-bridge 或 block-\* 时                 | 跑全部 RTT fixture；FAIL 阻断所有 block PR                                 |
+| `link-checker`        | CI 每次 push（不在 team 内手动触发）              | lychee 扫 markdown 短链                                                    |
 
 ## review 链消息格式约定
 
 **worker → orchestrator：完工通知**
+
 ```json
-{ "to": "orchestrator", "summary": "<task> ready", "message": "Track <X> implementation done. Files: ... Tests: pass. CONTRACT.md updated. Ready for review." }
+{
+  "to": "orchestrator",
+  "summary": "<task> ready",
+  "message": "Track <X> implementation done. Files: ... Tests: pass. CONTRACT.md updated. Ready for review."
+}
 ```
 
 **orchestrator → code-reviewer：派 review**
+
 ```json
-{ "to": "code-reviewer", "summary": "review track <X>", "message": "Please review PR for Track <X> (commits <hash..hash>). High-risk triggers: <list> (escalate to pr-gate after PASS)." }
+{
+  "to": "code-reviewer",
+  "summary": "review track <X>",
+  "message": "Please review PR for Track <X> (commits <hash..hash>). High-risk triggers: <list> (escalate to pr-gate after PASS)."
+}
 ```
 
 **reviewer → orchestrator：review 结果**
+
 ```json
-{ "to": "orchestrator", "summary": "track <X> code-review PASS",
-  "message": "PASS. Notes: <optional concerns>. (Or FAIL with specific issue list.)" }
+{
+  "to": "orchestrator",
+  "summary": "track <X> code-review PASS",
+  "message": "PASS. Notes: <optional concerns>. (Or FAIL with specific issue list.)"
+}
 ```
 
 **orchestrator → git-operator：放行 commit**
+
 ```json
-{ "to": "git-operator", "summary": "commit track <X>",
-  "message": "All reviews PASS for Track <X>. Commit <branch>. Reviewers: code-reviewer (5.3), [pr-gate (5.5),] pr-reviewer." }
+{
+  "to": "git-operator",
+  "summary": "commit track <X>",
+  "message": "All reviews PASS for Track <X>. Commit <branch>. Reviewers: code-reviewer (5.3), [pr-gate (5.5),] pr-reviewer."
+}
 ```
 
 ## 高风险 PR escalate 触发条件
@@ -141,6 +163,7 @@ orchestrator 在派 review 时如果检测到以下任一，**追加 pr-gate 5.5
 ## Fast lane（豁免）
 
 PR 同时满足：
+
 - diff < 20 行
 - 仅 .md / .toml / 配置文件
 - 不动 CONTRACT.md / schema
@@ -150,20 +173,25 @@ orchestrator 可走 **fast lane**：仅 code-reviewer (5.3-spark) → git-operat
 ## shutdown 协议
 
 Wave / Phase 完工时 orchestrator 会发：
+
 ```json
 { "to": "<your-name>", "message": { "type": "shutdown_request", "reason": "<wave> complete" } }
 ```
 
 你回复：
+
 ```json
-{ "to": "orchestrator", "message": { "type": "shutdown_response", "request_id": "<echoed>", "approve": true } }
+{
+  "to": "orchestrator",
+  "message": { "type": "shutdown_response", "request_id": "<echoed>", "approve": true }
+}
 ```
 
 approve 后你的进程会被终止；不要主动发 `shutdown_request`（除非你被指定为 team-lead 且确认 wave 完工）。
 
-## Codex CLI 调用规范（如果你的角色用 codex）
+## Codex CLI 调用规范（orchestrator 调用 tool patterns 时遵守）
 
-如果你是 `code-reviewer` / `pr-gate` / `plan-challenger` / `codex-*-eng` 之一，你通过 Bash 调 codex。**必须遵守**：
+**ADR-0007 D5 起**，原 `code-reviewer` / `pr-gate` / `plan-challenger` / `codex-*-eng` teammate 全部降级为 tool patterns —— 由 **orchestrator** 直接 Bash 调用，不再 spawn 为 teammate。orchestrator 调用时**必须遵守**：
 
 - **stdin 必须重定向**：`codex exec --profile <name> "<prompt>" < /dev/null` —— 否则 codex 在 team 环境下可能等待非交互输入卡住（Phase 0 实测发现）
 - **profile 已配 `approval_policy = "never"`**：非交互运行，不要试图绕过
@@ -191,6 +219,9 @@ approve 后你的进程会被终止；不要主动发 `shutdown_request`（除�
 ## Related
 
 - [ADR-0004 团队 dispatch 决策](../decisions/ADR-0004-agent-team-dispatch-model.md)
+- [ADR-0007 职能化分工 + Codex-heavy 执行 + teammate/tool 切分](../decisions/ADR-0007-job-function-codex-heavy-execution.md)
+- [ADR-0006 cross-location asymmetry-audit checklist](../decisions/ADR-0006-asymmetry-audit-checklist.md)
+- [docs/runbooks/codex-tool-invocations.md](codex-tool-invocations.md) — codex tool patterns canonical bash + 触发条件 + audit 落盘
 - [设计规格 §3.1 / §3.2](../superpowers/specs/2026-04-29-self-knowledge-base-design.md)
 - [agent-contract.md](../../agent-contract.md)
 - [Phase 1 Wave 1 plan](../superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md)

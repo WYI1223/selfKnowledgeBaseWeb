@@ -1,0 +1,195 @@
+Wave 2 Pre-Task 0 — Claude pr-reviewer audit
+=============================================
+Date: 2026-04-30
+Reviewer: Claude pr-reviewer (Tier 2 process; spec match + regression risk + cross-file impact + arch consistency)
+Branch: main HEAD = e15ec36
+Bundle: 27 files staged, +1040 / -520
+Triggers: contract change + ADR-required + spec touch (3 high-risk triggers)
+R1 chain: code-reviewer (codex 5.3-spark) PASS → pr-gate (codex 5.5) FAIL → R2 fixes (B1-B3 + C1-C3) → pr-gate R2 PASS
+
+VERDICT: APPROVE
+
+================================================================
+SPEC MATCH (vs ADR-0007 §"Wave 2 Pre-Task 0 实施指南" 7-step guide)
+================================================================
+
+Step 1 (agent-contract.md adds ux-ui-lead): PASS
+  - Verified at agent-contract.md:165-188.
+  - tier=1, llm=claude, role="视觉单一权威".
+  - permissions: [read_repo, edit_ui_default, edit_apps_site] — note B1 R2 fix applied: `dispatch_codex_css_stylist` REMOVED from permissions.
+  - forbidden: [edit_block_core, edit_propsschema, edit_mdx_serialize, git_commit, dispatch_codex_tools] — note B1 R2 fix applied: `dispatch_codex_tools` ADDED as explicit forbid.
+  - description aligns with ADR-0007 D2 ui-default ownership and ADR-0003 D2-D6 headless/presentational split.
+  - Self-imposed "你**不**调 codex" enforces the orchestrator-centralized dispatch principle (consistent with ADR-0004 D8 orchestrator-managed mode).
+
+Step 2 (agent-contract.md schema split agents:/tool_patterns:): PASS
+  - Schema example at agent-contract.md:22-39 (illustrative) + actual data at lines 56+ (agents) / 295+ (tool_patterns).
+  - 8 codex configurations migrated: 5 scaffolder (codex-block-generator/test-scaffolder/script-builder/api-crud-builder/css-stylist) + 3 review/process (code-reviewer/pr-gate/plan-challenger).
+  - tool_patterns each carry: name, profile, invocation (canonical bash with `< /dev/null` per memory feedback_codex_stdin), triggered_by[], output_handling (audit-log path), description.
+  - C3 R2 fix verified: plan-challenger description at line 419-427 leads with self-contained one-line summary "lock 前挑战 orchestrator 的 wave / track plan：检查 task 大小、可测性、边界场景。" before elaboration.
+
+Step 3 (scripts/render/types.ts ToolPatternSchema + dual-count): PASS
+  - ToolPatternSchema at types.ts:21-28 (name/profile-enum/invocation/triggered_by/output_handling?/description?).
+  - ContractSchema.metadata renamed total_agents → total_teammates + new total_tool_patterns (lines 32-36).
+  - Two `superRefine` count assertions (lines 40-54) emit distinct messages.
+  - C2 R2 fix verified: per-array Sets (`agentNames` line 55, `toolNames` line 66) with three distinct error messages — `duplicate agent name` / `duplicate tool_pattern name` / `name collision between agents and tool_patterns`.
+  - Type exports at lines 86-88 (`Agent`, `ToolPattern`, `AgentContract`).
+
+Step 4 (renderer rewrites + new codex-tool-runbook.ts): PASS
+  - claude-agent.ts: filter `llm === 'claude'` — 8 codex .md files removed from .claude/agents/ output. Verified by `git diff --cached --stat`: 8 deletions (code-reviewer/pr-gate/plan-challenger + 5 codex-*) + 1 addition (ux-ui-lead).
+  - codex-profiles-toml.ts: now reads from tool_patterns block (verified by `pnpm test` 26/26 PASS, including profile-section + approval_policy=never tests at lines 250-271).
+  - claude-md.ts / agents-md.ts: split Teammates table (20 entries) + Tool patterns table (8 entries with runbook cross-links). Verified by tests at lines 151-201.
+  - NEW codex-tool-runbook.ts (101 lines) at scripts/render/codex-tool-runbook.ts: header (lineage + universal Bash invariants + ADR-0006 D8 reminder) + per-pattern sections (sorted by profile then name) + footer.
+  - generate-configs.ts orchestrator updated: import + export + writeFileSync at lines 26, 35, 105. Type export at line 28 includes `ToolPattern`.
+
+Step 5 (.claude/settings.json permissions): PASS
+  - settings.json itself NOT in staged diff (no permission change needed; the 8 deleted .md files don't have per-file permissions).
+  - Only settings-json.ts renderer change is a Prettier reformat (verified by `git diff --cached -- scripts/render/settings-json.ts`: collapses multiline `hooks: [...]` array literal to single line; output is byte-identical post-render — round-trip test at line 243 confirms).
+
+Step 6 (pnpm generate:configs + ADR-0006 D8 staging): PASS
+  - 27 files staged. Authority + generator code + generated outputs all in same bundle.
+  - Generated outputs: 20 .claude/agents/*.md (sorted by name), CLAUDE.md, AGENTS.md, docs/runbooks/codex-tool-invocations.md.
+  - 8 deletions explicit via `git rm`. 1 addition (ux-ui-lead.md). Confirmed by `git status --short`.
+  - Idempotent: orchestrator confirmed `pnpm generate:configs` re-run produces zero diff (CI agent-contract-check.yml will pass).
+  - pnpm-lock.yaml NOT in bundle (no dependency change) — correct application of ADR-0006 D8 sub-form.
+
+Step 7 (tests + commit + push): PARTIAL — tests confirmed; commit deferred to git-operator.
+  - Test suite expanded 16 → 26 (verified by `grep -nE "^\s*(it|describe)\(" scripts/__tests__/generate-configs.test.ts`):
+    - Phase 0 baseline: 16 tests (parseAgentContract + 5 renderers).
+    - +10 new: ToolPatternSchema branches (rejects: total_teammates mismatch, total_tool_patterns mismatch, dup agent, dup tool_pattern, agent/tool_pattern name collision); renderClaudeMd lists tool_patterns; renderClaudeMd does NOT list codex agents; renderAgentsMd contains tool_pattern cross-link; renderCodexToolRunbook x2 (per-section structure + lockfile/ADR citations).
+    - C2 R2 fix has dedicated test at line 93: "rejects duplicate names within tool_patterns (distinct from cross-collision message)".
+  - All 14 turbo tasks pass (orchestrator confirmed `pnpm check` clean).
+  - pnpm typecheck clean (tsc -b).
+  - Commit + push are git-operator's responsibility post this APPROVE.
+
+================================================================
+SPEC §3.1 / §3.2 DEFERRAL
+================================================================
+
+ACCEPT.
+
+Verified deferral state:
+  - spec §3.1 narrative at line 554 still reads "Agent 阵容（27 个，多 LLM 协同）" — UNCHANGED.
+  - Only the 2026-04-30 changelog row at line 1280 was edited: "27 → 17 teammate" → "27 → 20 teammate".
+  - ADR-0007 §215 explicitly defers with concrete to-do: "改 §3.1 节标题与 diagram；agent 列表加 ux-ui-lead；codex 8 个移到新 'Tool patterns' 段".
+
+Rationale for accepting:
+  1. **Authority-vs-history separation**: Post-ADR-0007 D5, the YAML in agent-contract.md IS the authority. Spec §3.1 is descriptive prose. Bundling a prose rewrite with the authority transition mixes two review concerns (does the YAML/code restructure work? vs does the prose accurately describe it?).
+  2. **Smaller blast radius**: The current 27-file bundle already touches 1040+/520− lines across 5 categorical surfaces (authority/generator/outputs/docs/decisions). Adding a multi-section spec rewrite of §3.1 + §3.2 + diagram updates would inflate the bundle and slow R2 fix iteration loops (already 3 review rounds).
+  3. **Audit-trail consistency**: The changelog row update keeps the spec's audit log current; readers hitting the stale §3.1 narrative can follow the changelog forward to the deferred PR.
+  4. **Reviewer chain capacity**: pr-gate's R2 PASS report is calibrated against this bundle scope. Expanding scope post-PASS would require re-review.
+
+Risk acknowledged:
+  - Until the deferred PR lands, anyone reading §3.1 narrative finds an outdated "27 agents" story. Mitigation: the changelog row + ADR-0007 are both authoritative pointers to the new model.
+  - This deferral creates a "must follow up" obligation. Recommend the orchestrator track this as a follow-up PR before Wave 2 actual work tasks begin (ADR-0007 §371 requires "Wave 2 Pre-Task 0 必须先于 Wave 2 实际工作 task" — this PR satisfies that, but the deferred spec rewrite should land in the same Wave 2 prep window).
+
+================================================================
+CROSS-FILE IMPACT
+================================================================
+
+PASS — no live consumer breaks.
+
+Inventory of potentially affected surfaces:
+
+(a) 8 .claude/agents/*.md deletions (path consumers)
+  - Searched for path references to deleted .md files.
+  - Live references: ZERO.
+  - Dead/historical references: 2 (ADR-0006 instance log line 34/86 documenting prior incidents; ADR-0007 §329-336 documenting the staging command for THIS PR).
+  - Both are descriptive history, not consumers. Safe.
+
+(b) total_agents → total_teammates field rename
+  - Searched: 4 hits.
+  - 1 in ADR-0007 §295 (instructional describing the rename — historical narrative).
+  - 3 in docs/superpowers/plans/2026-04-29-phase-0-scaffolding.md (frozen archived plan; no longer load-bearing).
+  - No live YAML consumer (CI workflow doesn't reference field name internally — just runs generate:configs + checks for drift).
+  - Safe.
+
+(c) New ToolPattern type export
+  - Importers: 4 files, all within scripts/ (codex-tool-runbook.ts, claude-md.ts, agents-md.ts, generate-configs.ts test).
+  - No external package or app references it (yet).
+  - Safe.
+
+(d) renderCodexToolRunbook export from generate-configs.ts
+  - Single external importer: scripts/__tests__/generate-configs.test.ts.
+  - Other potential importers: NONE found.
+  - Safe.
+
+(e) CI workflow .github/workflows/agent-contract-check.yml
+  - Verified content: runs `pnpm generate:configs` then `git status --porcelain` drift check.
+  - Has zero internal references to schema field names.
+  - Will continue to function: orchestrator confirmed re-run idempotent.
+  - Safe.
+
+(f) docs/plans/active.md teammate count
+  - B2 R2 fix verified at line 43: "spawn 17 teammates" → "spawn 20 teammates（T0:1 + T1:11（含 ux-ui-lead）+ T2:4 + T3:4；按需复用 T3 audit）".
+  - Tier breakdown adds up: 1+11+4+4=20. ✓
+
+================================================================
+ARCHITECTURAL CONSISTENCY
+================================================================
+
+PASS.
+
+ADR-0001 §3.1/§3.2 review chain baseline: this PR's review chain (code-reviewer R1 → pr-gate R1 → R2 fix → pr-gate R2 → pr-reviewer → git-operator) instantiates the canonical chain correctly. ✓
+
+ADR-0003 D2-D6 headless/presentational split: not directly modified, but ux-ui-lead's role description reinforces the boundary — "你**不**改 core 层（propsSchema / MDX serialize 是 domain 工种的活）". ✓
+
+ADR-0004 D5/D7/D8: D5 codex-team transition is precisely what this PR implements. D7 "one-shot dispatch" mental model is preserved (now expressed as Bash invocation rather than SendMessage→teammate; semantically equivalent — explicitly noted at agent-contract.md:426-427 plan-challenger description). D8 orchestrator-managed mode unchanged: orchestrator is still the only human-in-the-loop interface (memory feedback_orchestrator_owns_approval). ✓
+
+ADR-0006 D8 asymmetry-audit + bundle staging: verified by R1+R2; orchestrator staged authority + generator + outputs in same bundle; lockfile not affected; pnpm-lock.yaml NOT in bundle (correct, no dep change). ✓
+
+ADR-0007 D1-D5: this PR IS the implementation. D1 (ux-ui-lead created), D2 (review-chain selectivity codified in tool_patterns triggers), D3 (D5 transition; D3 pilot strategy unchanged), D4 (ux-ui-lead permissions match), D5 (8 codex agents demoted; canonical bash + audit-trail in runbook). ✓
+
+================================================================
+REGRESSION RISK
+================================================================
+
+PASS — no functional regression detected.
+
+Wave 1 functionality scope: 7 high-risk PRs (G/E/B/D/F/C/A) live in packages/. This PR touches NONE of packages/. Wave 1 outputs intact.
+
+Test suite: 16 → 26 tests, +10 net gain. New tests cover NEW branches. Pre-existing tests structurally preserved:
+  - "rejects YAML blocks where any agent name uses placeholder syntax" still present (line 66) — confirmed survives the schema split because tool_patterns are also scanned for placeholders in parseAgentContract (generate-configs.ts:62-65).
+  - All 5 renderer tests still present and exercise updated render output.
+  - Test fixture (real agent-contract.md) is the source-of-truth; no hand-crafted parallel fixture risks divergence.
+
+`pnpm check` 14/14 turbo tasks pass (orchestrator confirmed locally). CI agent-contract-check.yml will continue to pass (idempotent regeneration verified).
+
+================================================================
+ADR-0006 D8 LOCKFILE LESSON CITATION
+================================================================
+
+PASS.
+
+Cited in TWO places (orchestrator confirmed at least one — actually two):
+  1. docs/runbooks/codex-tool-invocations.md §"ADR-0006 D8 reminder" (lines 32-46): "When invocation outputs become inputs to a commit (e.g. scaffolder writes new files), the orchestrator MUST stage `pnpm-lock.yaml` along with package.json edits in the same bundle (commit `e15ec36` extension to D8: lockfile is generated-from-authority artifact)." — this is rendered FROM codex-tool-runbook.ts:41-45 (HEADER constant).
+  2. agent-contract.md:389 inlined into code-reviewer profile description: "...generated/consumed surface（`.claude/agents/*`、`docs/review-checklist.md`、`team-operations.md`、`docs/runbooks/codex-tool-invocations.md`、Codex profiles、**pnpm-lock.yaml**）是否在同一 commit 里同步（commit `e15ec36` 教训：lockfile 也属 generated-from-authority artifact）。"
+
+Note: ADR-0006-asymmetry-audit-checklist.md itself does NOT yet have the lockfile sub-form codified — only instances #8 and #12 are documented. This is acceptable for THIS PR's scope (the lockfile lesson is captured in the runbook + agent-contract.md; future ADR-0006 revision can fold it formally as a sub-form). Not a blocker.
+
+================================================================
+ISSUES (none — APPROVE)
+================================================================
+
+No blockers. Three observations (non-blocking, future-PR scope):
+
+  1. Spec §3.1 / §3.2 narrative deferral creates an obligation to land the deferred rewrite before Wave 2 actual work begins (ADR-0007 §371 ordering constraint).
+  2. ADR-0006-asymmetry-audit-checklist.md does not yet codify the lockfile sub-form formally; consider folding into the next ADR-0006 revision.
+  3. The 8 `< /dev/null` invocations in tool_patterns are correct per memory feedback_codex_stdin, but no automated check enforces this. Future hardening could add a regex test in generate-configs.test.ts asserting every `tool_pattern.invocation` contains `< /dev/null`.
+
+================================================================
+HIGHER-LEVEL OBSERVATION
+================================================================
+
+This PR is the "ADR-0006 D8 standard exam" (per ADR-0007 §367). It successfully demonstrates:
+  - Authority document edit (agent-contract.md)
+  - Generator code edit (5 renderers + 1 new + types.ts + orchestrator)
+  - Generated outputs regeneration (20 .claude/agents/ + CLAUDE.md + AGENTS.md + new runbook)
+  - All in same staged bundle
+  - Idempotent re-generation verified
+  - Lockfile (where applicable) NOT in bundle (no dep change)
+  - Tests rewritten to cover new schema branches in same bundle
+  - Cross-link surfaces (team-operations.md, ADR-0007 self-numbers, plan, spec changelog) all updated in same bundle
+
+This is the dogfood evidence that ADR-0006 D8 + the staging protocol works at scale (27 files, 1040+/520− lines).
+
+VERDICT: APPROVE

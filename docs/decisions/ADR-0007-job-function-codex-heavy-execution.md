@@ -135,7 +135,7 @@ ux-ui-lead 在 spawn 时 prompt 注入**全部三个 skill 内容**：
 
 **变更**：8 个 codex 角色（`code-reviewer` / `pr-gate` / `plan-challenger` / `codex-block-generator` / `codex-test-scaffolder` / `codex-script-builder` / `codex-api-crud-builder` / `codex-css-stylist`）从 team teammate 模型移除，改为 orchestrator + 工种 lead 通过 Bash 直接调 `codex exec --profile X < /dev/null` 的 **invocation pattern**（不是 agent，不在 team config，不消耗 Claude teammate 槽位）。
 
-**新的 agent 阵容（共 17 teammate + 8 tool pattern = 25 项配置实体）**：
+**新的 agent 阵容（共 20 teammate + 8 tool pattern = 28 项配置实体；T0:1 + T1:11 + T2:4 + T3:4，T3 audit 按需复用）**：
 
 ```
 TIER 0: Orchestrator (Claude, 1)
@@ -212,7 +212,7 @@ Wave 1 同等 PR 需要 ~7 Claude teammate turn（worker spawn / code-reviewer t
 
 | 文档 | 改动 |
 |---|---|
-| spec §3.1（27 agent → 17 teammate + 8 tool） | 改 §3.1 节标题与 diagram；agent 列表加 ux-ui-lead；codex 8 个移到新"Tool patterns"段 |
+| spec §3.1（27 agent → 20 teammate + 8 tool） | 改 §3.1 节标题与 diagram；agent 列表加 ux-ui-lead；codex 8 个移到新"Tool patterns"段 |
 | spec §3.2（review 工作流） | 改为：默认 codex 5.3-spark + orchestrator 自检；高风险条件触发 pr-gate / Claude pr-reviewer |
 | ADR-0001 §3.1 / §3.2（review 模型） | ADR-0007 显式扩展，不替代；ADR-0001 仍是基础架构源 |
 | ADR-0003 D2-D6 | ux-ui-lead 是 D2 / D3 落地的执行者；不破坏 ADR-0003 决策 |
@@ -371,7 +371,7 @@ ADR-0007 D2 触发条件命中：修改 spec / agent-contract.md / 触发新 ADR
 - ADR-0007 实施（Wave 2 Pre-Task 0）必须先于 Wave 2 实际工作 task
 - Wave 2 plan **必须** dispatch ux-ui-lead 处理 ui-default + apps/site + editor 子模块视觉
 - Wave 2 plan **必须**按 D3 试点策略安排 simple block core 试点（callout template / code+image clone）
-- Wave 2 plan 章节标题反映新 17 + 8 模型（不再写"27 agent"）
+- Wave 2 plan 章节标题反映新 20 + 8 模型（不再写"27 agent"）
 
 ## Related
 

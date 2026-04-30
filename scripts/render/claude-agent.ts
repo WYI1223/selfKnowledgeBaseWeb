@@ -1,5 +1,9 @@
 /**
  * Renders one .claude/agents/<name>.md file from an Agent record.
+ *
+ * ADR-0007 D5: only Claude teammates produce .claude/agents/<name>.md.
+ * Codex tool_patterns are documented in docs/runbooks/codex-tool-invocations.md
+ * by render/codex-tool-runbook.ts.
  */
 import type { Agent } from './types.ts';
 import { tierName } from './types.ts';
@@ -22,7 +26,6 @@ export function renderClaudeAgent(agent: Agent): string {
     `tier: ${agent.tier} (${tierName(agent.tier)})`,
     `llm: ${agent.llm}`,
   ];
-  if (agent.profile) lines.push(`profile: ${agent.profile}`);
   lines.push(`role: ${agent.role}`);
   if (agent.triggers && agent.triggers.length) {
     lines.push('triggers:');

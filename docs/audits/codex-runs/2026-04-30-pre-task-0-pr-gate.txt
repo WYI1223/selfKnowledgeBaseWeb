@@ -1,0 +1,440 @@
+PR-GATE DEEP REVIEW — Wave 2 Pre-Task 0 (ADR-0007 implementation)
+====================================================================
+Branch: main (HEAD = e15ec36, changes staged)
+Reviewer: pr-gate (codex 5.5 teammate, last spawn pre-D5)
+Date: 2026-04-30
+Bundle: 24 files staged, +1017/-512
+
+VERDICT: FAIL  (one blocking inconsistency + several CONCERNs that should
+                 be resolved in-bundle per ADR-0006 D8 dogfood principle)
+
+────────────────────────────────────────────────────────────────────
+asymmetry-audit applied (ADR-0006 8-point checklist; independent verdicts)
+────────────────────────────────────────────────────────────────────
+
+item #1 (Field/attribute audit) — N/A
+   No new field added to a comparable data shape; ContractSchema gained a
+   sibling object (tool_patterns) not a field-of-shape. Comparators / tests
+   updated symmetrically. No drift.
+
+item #2 (Status code audit) — N/A
+   No HTTP status work in this PR.
+
+item #3 (Strictness audit) — N/A
+   No `.strict()` / `extra='forbid'` introduced. AgentSchema remains permissive
+   (no .strict()), ToolPatternSchema same posture. No asymmetry.
+
+item #4 (Consumer schema audit) — PASS (independently re-verified)
+   The single-authority is `agent-contract.md` `agents:` + `tool_patterns:`.
+   Consumers (renderClaudeAgent, renderClaudeMd, renderAgentsMd,
+   renderCodexProfilesToml, renderReviewChecklist, renderCodexToolRunbook)
+   all import the shared types. No inline ad-hoc duplicates of the YAML shape
+   in renderers. R1 finding confirmed.
+
+item #5 (Algorithm + runtime constant replication) — N/A for THIS PR
+   No FOUC/inline script algorithm replication touched. Existing FOUC test
+   still in place per Wave 1.
+
+item #6 (Sister-file documentation audit) — CONCERN (matches R1 i3, escalated
+   to BLOCKING for one item below)
+   Several authority surfaces still cite stale roster numbers:
+
+   1. ADR-0007 §138: "新的 agent 阵容（共 17 teammate + 8 tool pattern = 25 项配置实体）"
+      Actual: 20 teammate + 8 tool pattern = 28 entities.
+      Wrong by -3 (forgot T0:1 + T3:4 = 5 audit/orchestrator teammates? actually
+      ADR text §148-152 enumerates them correctly:
+        T0(1)+T1(11)+T2(4)+T3(4)=20 — body is right; only the §138 summary line is wrong.)
+
+   2. ADR-0007 §215 spec-impact table: "spec §3.1（27 agent → 17 teammate + 8 tool）"
+      Same -3 error in the second clause.
+
+   3. ADR-0007 §374 retro section: "Wave 2 plan 章节标题反映新 17 + 8 模型"
+      Same -3.
+
+   4. spec §1280 changelog row: "spec §3.1 agent 阵容 27 → 17 teammate + 8 tool pattern"
+      Same -3 in the same authority surface that ADR-0007 explicitly flagged
+      for Wave 2 Pre-Task 0 update (the row is dated 2026-04-30, which is THIS
+      bundle's date — i.e. it was self-attesting to "this PR will fix it" and
+      shipped wrong).
+
+   5. docs/plans/active.md:43: "Pre-Task 0 ... + spawn 17 teammates（含 ux-ui-lead）"
+      Same -3. THIS file IS the active plan authority and is read by every
+      teammate spawn; shipping with "17 teammates" guidance while the contract
+      defines 20 is exactly the kind of authority/consumer asymmetry ADR-0006
+      D8 was written to prevent.
+
+   R1 (code-reviewer) marked these "deferred to a follow-up PR; smaller blast
+   radius". I (pr-gate) disagree on items #4 and #5 specifically:
+     - spec §1280 is a same-day changelog row dated this PR's date — leaving
+       it stale is a self-contradiction inside one bundle.
+     - active.md:43 is read by every teammate spawn; shipping it stale means
+       the very next Wave 2 Pre-Task 0 spawn (the DOWNSTREAM consumer of this
+       PR) will be told to spawn "17 teammates", forcing a separate corrective
+       PR before Wave 2 can start.
+
+   This is a **textbook item #6 + item #8 cross-form**: authority changed
+   (agent-contract.md → 20 teammates) but two consumer surfaces (active.md,
+   spec §1280) ship stale numbers in the SAME commit. ADR-0006 D8 explicitly
+   lists "spec §3.1, ADR-0001 §3.1, runbooks" as consumer-side surfaces that
+   must update in-bundle. Splitting into a follow-up PR violates the
+   single-bundle-correction principle this ADR sequence is built on.
+
+   ADR-0007 §138 / §215 / §374 are about the ADR's own self-description; they
+   can be argued as historical record (the ADR was written when 17 was the
+   plan; the implementation grew to 20 after counting Tier 3) — defensible to
+   defer those. But active.md and spec §1280 cannot be defended.
+
+   Recommendation: in-bundle fix
+     - active.md:43: 17 → 20.
+     - spec §1280: "27 → 17 teammate + 8 tool pattern" → "27 → 20 teammate + 8 tool pattern".
+     - ADR-0007 §138 / §215 / §374: same-bundle one-line corrigenda preferred
+       (1 line each); not worth a separate PR cycle. R1's "split" recommendation
+       maximises the very drift surface ADR-0006 D8 minimises.
+
+item #7 (Exception-scope equivalence) — N/A
+   No try/catch replication. parseAgentContract has one wide try/catch
+   around parseYaml that legitimately swallows parse errors of pseudo-YAML
+   schema-example blocks; intentional. Acceptable.
+
+item #8 (Authority → generated/consumed surface) — CONCERN
+
+   Authority artifacts in this PR:
+     - agent-contract.md (THE contract)
+     - ADR-0007 (D5 decision)
+     - ADR-0006 D8 (lockfile reminder, already in agent-contract.md and runbook)
+
+   Consumer artifacts updated correctly:
+     - CLAUDE.md / AGENTS.md / .claude/agents/*.md (10 generated, 8 deleted, 1
+       new ux-ui-lead) — present and idempotent (verified by R1 + my read of
+       generate-configs.ts:88-110).
+     - docs/runbooks/codex-tool-invocations.md (new) — generated.
+     - docs/runbooks/team-operations.md — manually updated with cross-link
+       and ADR-0007 D5 inline note. Verified.
+     - tmp/codex-profiles.toml — unchanged content; profile sections are
+       static (correctly so, per codex-profiles-toml.ts:7-10 comment).
+     - .claude/settings.json — unchanged (no agent-list dependency by design).
+     - docs/review-checklist.md — checked; review-checklist.ts text remains
+       accurate post-restructure.
+
+   Consumer artifacts NOT updated (item #8 violations within this bundle):
+     - docs/plans/active.md:43 — see item #6 above (BLOCKING).
+     - docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md §1280
+       — see item #6 above (BLOCKING; same-day changelog row).
+     - ADR-0007 §138 / §215 / §374 self-numbers — deferrable but recommended
+       in-bundle (CONCERN, non-blocking individually).
+
+   pnpm-lock.yaml: not part of this bundle (no package.json edits) — no D8
+   lockfile-staging concern. Verified clean.
+
+   The runbook renderer correctly cites "commit e15ec36" lockfile lesson at
+   codex-tool-runbook.ts:41-45 and the test asserts it (test:293-300). Good.
+
+
+────────────────────────────────────────────────────────────────────
+8th-class hunt (beyond R1's cited fixes)
+────────────────────────────────────────────────────────────────────
+
+NEW finding #1 — INTERNAL CONTRADICTION inside `ux-ui-lead` definition
+   File: agent-contract.md:165-189 (and rendered .claude/agents/ux-ui-lead.md:17-38)
+
+   The agent declares:
+     permissions: [read_repo, edit_ui_default, edit_apps_site,
+                   dispatch_codex_css_stylist]
+   while the description body explicitly says:
+     "你**不**调 codex（dispatch 由 orchestrator 集中调度；你 SendMessage
+      orchestrator 请求 codex-block-generator clone）。"
+
+   These are mutually exclusive: the permission list **grants** codex dispatch
+   capability; the description forbids using it. ADR-0007 D5 (the very ADR
+   this PR implements) finalises the decision that **all codex tool patterns
+   are orchestrator-only invocations** — `dispatch_codex_*` permissions on
+   any non-orchestrator agent are obsolete by D5's own logic.
+
+   The bug originates in ADR-0007 §235 D1 sketch (which was drafted before D5
+   was finalised in the same ADR); the sketch retained `dispatch_codex_css_stylist`
+   on ux-ui-lead. D5 invalidates that, but the implementation copied the §235
+   sketch verbatim into agent-contract.md without reconciling against D5.
+
+   Impact:
+     - Asymmetry visible in TWO consumer surfaces (agent-contract.md + the
+       generated .claude/agents/ux-ui-lead.md frontmatter+body).
+     - When ux-ui-lead spawns and reads its own .md, it gets contradictory
+       guidance — same-prompt asymmetry that future teammates will need to
+       litigate.
+     - This is a **new instance of item #8** (authority document = ADR-0007 D5
+       decision; consumer = agent-contract.md ux-ui-lead block; consumer
+       fails to honour authority's final decision while honouring its
+       earlier sketch).
+
+   Fix: remove `dispatch_codex_css_stylist` from ux-ui-lead permissions in
+   agent-contract.md:169 (and let `pnpm generate:configs` regenerate the
+   .claude/agents/ux-ui-lead.md). orchestrator retains `dispatch_codex_tools`
+   (agent-contract.md:62) which already covers the css-stylist tool.
+
+   This is the kind of asymmetry pr-gate is paid to find. R1 missed it.
+
+NEW finding #2 — Misleading error message + missing test for within-tool_patterns duplicate
+   File: scripts/render/types.ts:55-75
+
+   The superRefine duplicate check uses a single `seen` Set across both arrays:
+
+     for (const a of contract.agents) {
+       if (seen.has(a.name)) ctx.addIssue({message: `duplicate agent name: ${a.name}`, ...});
+       seen.add(a.name);
+     }
+     for (const tp of contract.tool_patterns) {
+       if (seen.has(tp.name)) ctx.addIssue({message: `name collision between agents and tool_patterns: ${tp.name}`, ...});
+       seen.add(tp.name);
+     }
+
+   Cases:
+     (a) duplicate within agents → "duplicate agent name: X"  ✓ (test :83-86)
+     (b) cross-collision (agent X + tool_pattern X) → "name collision between
+         agents and tool_patterns: X"  ✓ (test :88-91)
+     (c) duplicate WITHIN tool_patterns (e.g. two scaffolders both named
+         codex-block-generator) → mistakenly reported as "name collision
+         between agents and tool_patterns: codex-block-generator" because
+         the SECOND occurrence sees the first one in `seen` (which is the
+         shared-across-arrays Set). The error text is **wrong** for this
+         case. NO TEST covers it.
+
+   This is item-#1 / item-#3 cross-form (added new collection (tool_patterns),
+   collision-detection logic was extended but the fan-out of cases was not
+   tested symmetrically with the existing case).
+
+   Impact: low severity (validation still fails loudly, just with a misleading
+   message), but it is exactly the kind of "added the new branch, didn't
+   audit symmetry" asymmetry the audit-checklist exists to catch.
+
+   Fix options:
+     (i) accumulate names per-array first, then a final cross-check; emit
+         distinct error messages per case ("duplicate tool_pattern name: X" vs
+         "name collision between agents and tool_patterns: X"). Add 1 test.
+     (ii) keep one Set but record per-name source-array, then differentiate
+          in the message.
+   Add a test for case (c).
+
+NEW finding #3 — Schema example block first-line description ends with full-width colon
+   File: agent-contract.md:419-426 plan-challenger description first line:
+     "orchestrator 写完 wave / track plan 后，**lock 前**通过此 invocation 挑战："
+
+   This first line becomes the `Summary` cell in the CLAUDE.md tool_patterns
+   table (claude-md.ts:107 splits description on \n and takes [0]). The
+   rendered cell reads (from CLAUDE.md generated table):
+     | `plan-challenger` | `plan-challenger` | orchestrator 写完 wave / track plan 后，**lock 前**通过此 invocation 挑战： |
+
+   The trailing "：" is dangling mid-clause. R1 (i1) flagged "cosmetic, acceptable".
+
+   pr-gate verdict: this is a recurrence of an architecturally-fixable issue.
+   The renderer assumes the first description line is a self-contained summary;
+   the contract author wrote a multi-line description where line 1 is a
+   sentence fragment ending with a colon-introducer. Two ways to fix:
+
+   (a) **Author-side** (preferred, fastest): re-split the description so line
+       1 is a self-contained summary, e.g.
+         description: |
+           lock 前挑战 orchestrator 的 wave / track plan：检查 task 大小、可测性、边界场景。
+           1. 每个 task 是否 PR-sized （1-2 commit 内可完成）？
+           ...
+       (one-line edit; matches the convention every other tool_pattern
+       description follows).
+
+   (b) **Renderer-side**: claude-md.ts:107 + agents-md.ts:78 could trim trailing
+       full-width colon-and-space-equivalents. Heavier and Chinese-locale-fragile.
+
+   Recommended: (a). One-line edit. Doing this now keeps R1's "cosmetic"
+   judgment honest at the SOURCE rather than freezing the asymmetry into
+   shipped CLAUDE.md / AGENTS.md.
+
+NEW finding #4 — Permissions field in deleted vs. surviving agents — symmetry check
+   I checked whether moving codex agents to tool_patterns dropped any
+   permissions/forbidden information that other consumers still rely on.
+
+   Pre-PR: codex agents (e.g. code-reviewer, pr-gate, plan-challenger) had
+   `permissions: [read_repo, read_diff, read_specs]` etc.
+   Post-PR: tool_patterns has no `permissions` field at all (ToolPatternSchema:
+   types.ts:21-28 — name/profile/invocation/triggered_by/output_handling/
+   description only).
+
+   This is the **right design** (codex tools run in their TOML sandbox, not in
+   a Claude permission system) — but I want to flag for the orchestrator that
+   one piece of metadata is genuinely lost: the per-codex-agent forbidden list
+   (e.g. "edit_code" for review profiles). That information now lives only
+   implicitly in the codex profile sandbox_mode = "read-only". For
+   `scaffolder` profile (workspace-write) there is no equivalent of the
+   former "no git mutating commands" forbidden list expressed at the
+   tool_pattern level — only in AGENTS.md prose at lines 28-42.
+
+   Verdict: not a bug; the prose in AGENTS.md "Permission boundaries" section
+   carries the boundary clearly enough. Just flagging the metadata loss as
+   intended-and-acceptable per ADR-0007 D5.
+
+NEW finding #5 — Test coverage for parser placeholder-skip branch
+   The new `tool_patterns` placeholder check at generate-configs.ts:66-68:
+     const namesWithPlaceholder = [...agents, ...tps].some(
+       (a) => typeof a?.name === 'string' && PLACEHOLDER_PATTERN.test(a.name),
+     );
+
+   Test FIXTURE_VALID_MIN (test:16) exercises the path where the schema-example
+   block has BOTH `<kebab-case>` agent name AND `<pattern-id>` tool_pattern
+   name. Covered.
+
+   Hypothetical: schema-example block where `agents` has placeholder but
+   `tool_patterns` is real-looking. The `.some()` call would return true on
+   the agent placeholder and skip the whole block. Correct behaviour
+   (a block with mixed real+placeholder is malformed anyway). No bug.
+
+   Hypothetical reverse: agents real, tool_patterns placeholder. Same
+   result: skip. Correct.
+
+   Hypothetical: a YAML block has `agents:` but no `tool_patterns:` field.
+   The code at generate-configs.ts:62-65 falls back to `tps = []`, no
+   placeholders → tries to parse. ContractSchema requires `tool_patterns`
+   (z.array(...).min(0)), so YAML with no tool_patterns key fails Zod
+   "Required" validation, throws. Loud failure. Correct.
+
+   No test for this last case. Low severity (Zod's own error suffices), but
+   adding a one-line test asserting "rejects yaml block missing tool_patterns
+   field" would close the matrix.
+
+NEW finding #6 — `pr-reviewer` role line first-pass
+   No issue found. Description first line is "你做高层 review：实现是否符合 spec ..."
+   which renders fine in any table cell that uses .split('\n')[0].
+
+NEW finding #7 — Idempotence claim
+   Generator output verified (per orchestrator's pre-flight `pnpm generate:configs`
+   re-run idempotent). I did NOT independently re-run the generator (read-only
+   sandbox), but I did inspect every renderer's output structure against
+   sorted iteration (claude-md.ts:103-106 sort, codex-tool-runbook.ts:97-99
+   sort, generate-configs.ts:81 sort) — all deterministic. No Date.now() or
+   Math.random() in render path. R1 idempotence verdict confirmed analytically.
+
+NEW finding #8 — orchestrator → codex prompt-injection contract
+   (Pre-Task 0 deep-scan area #5 from the brief.)
+
+   Question raised: when orchestrator runs
+     codex exec --profile code-reviewer < /dev/null
+   post-D5, where does the ADR-0006 8-point checklist text enter the codex
+   prompt?
+
+   Investigation:
+     - tmp/codex-profiles.toml: no prompt prose; only model/sandbox/approval.
+     - docs/runbooks/codex-tool-invocations.md: human-facing reference; not
+       a runtime-loaded prompt source.
+     - .codex (per top-level git status untracked): may contain custom
+       runtime config, not part of this PR.
+
+   Conclusion: the prompt prose MUST be passed as the second positional
+   arg to `codex exec --profile X "<PROMPT>" < /dev/null` (per AGENTS.md:60-64
+   examples). The orchestrator is responsible for assembling the prompt
+   (including the 8-point checklist + diff context) per invocation.
+
+   This is the same situation as **pre-D5**: even when code-reviewer was a
+   teammate, its `.claude/agents/code-reviewer.md` body was a description for
+   humans/orchestrator, not a prompt auto-injected into codex. The teammate
+   wrapper Claude turn was what assembled the codex prompt.
+
+   Post-D5, the orchestrator-direct path simply removes the wrapper Claude
+   turn — orchestrator must now assemble the prompt directly. No new gap
+   introduced; the responsibility merely moves from "wrapper teammate's first
+   turn" to "orchestrator's Bash invocation".
+
+   docs/runbooks/codex-tool-invocations.md (new) is the orchestrator's
+   reference for what to include. The §"ADR-0006 D8 reminder" + per-pattern
+   description sections collectively serve as the prompt-template library.
+   This is acceptable; no contract gap.
+
+   Recommendation (NON-BLOCKING for this PR; future-Wave 2 work):
+   add a short paragraph to the runbook (or to team-operations.md §"Codex
+   CLI 调用规范") explicitly stating: "orchestrator MUST pass the per-pattern
+   description text + ADR-0006 8-point checklist to `codex exec` as the
+   prompt argument; codex profile config carries no prompt prose." This is
+   already implied but not explicit. Could be in a follow-up PR — does not
+   block this one.
+
+
+────────────────────────────────────────────────────────────────────
+Specific deep-scan attention areas (response to brief)
+────────────────────────────────────────────────────────────────────
+
+(1) ADR-0007 §138 count discrepancy reconciliation
+    Decision: in-bundle correction preferred (not split PR). Two consumer
+    surfaces (active.md:43 + spec §1280) cite the wrong number AND those are
+    runtime-load-bearing. ADR-0007 §138/§215/§374 self-numbers are also
+    off-by-3 and trivially correctable in the same bundle. The cost of three
+    one-line edits is dwarfed by the cost of leaving "17 teammates" in
+    active.md until next PR (any teammate spawn between PRs reads the wrong
+    number). R1's "separate PR" recommendation increases drift surface; pr-gate
+    overrides that recommendation per ADR-0006 D8 single-bundle principle.
+
+(2) YAML block parsing robustness
+    All scenarios verified above (see NEW finding #5). Schema-example block
+    correctly skipped via placeholder detection. Authoritative block correctly
+    parsed. Hypothetical malformed block (no tool_patterns) loudly rejected by
+    Zod. PASS.
+
+(3) superRefine name-collision check
+    Within-agents duplicate: tested + works.
+    Cross-collision: tested + works.
+    Within-tool_patterns duplicate: NOT tested + emits misleading error
+      message (see NEW finding #2). CONCERN — non-blocking but should be
+      fixed in-bundle (one test + one message tweak; <10 lines).
+
+(4) i1 dangling-colon cosmetic check
+    Recommended fix (a): edit plan-challenger description first line to be
+      self-contained. See NEW finding #3. CONCERN — non-blocking but
+      preferred to ship clean.
+
+(5) Authority-prompt sync for cross-references
+    See NEW finding #8. No contract gap; orchestrator-injection is the
+    convention pre- and post-D5. PASS for this PR.
+
+(6) 8th-class hunt
+    Items reported above as NEW findings #1-#5. Most consequential is
+    NEW finding #1 (ux-ui-lead permission/description self-contradiction) —
+    BLOCKING — and the #6 cluster of stale roster numbers in active.md +
+    spec §1280 — BLOCKING.
+
+
+────────────────────────────────────────────────────────────────────
+Summary verdict: FAIL
+────────────────────────────────────────────────────────────────────
+
+BLOCKING (must fix before commit):
+  B1. NEW finding #1 — ux-ui-lead.permissions contains
+      `dispatch_codex_css_stylist` but description forbids codex dispatch and
+      ADR-0007 D5 vests all codex dispatch in orchestrator only.
+      Fix: remove `dispatch_codex_css_stylist` from agent-contract.md:169;
+      regenerate via `pnpm generate:configs`.
+
+  B2. item #6/#8 cross — docs/plans/active.md:43 ships "spawn 17 teammates";
+      actual is 20.
+      Fix: 17 → 20.
+
+  B3. item #6/#8 cross — spec §1280 changelog row dated 2026-04-30 ships
+      "27 → 17 teammate + 8 tool pattern".
+      Fix: 17 → 20.
+
+CONCERN (recommend fix in-bundle; not blocking individually):
+  C1. ADR-0007 §138 / §215 / §374 self-numbers (17 → 20). Three one-line edits.
+  C2. NEW finding #2 — within-tool_patterns duplicate detection emits
+      "name collision between agents and tool_patterns" message; misleading.
+      Add per-array seen Sets + distinct message + 1 test.
+  C3. NEW finding #3 — plan-challenger description first line ends with
+      dangling "：" rendering badly in CLAUDE.md/AGENTS.md table cell. Reword
+      to a self-contained one-line summary.
+
+ACKNOWLEDGEMENT:
+  - All R1 (code-reviewer) findings re-verified independently.
+  - Idempotence claim accepted analytically (no nondeterminism in render path).
+  - Test suite 25/25 passing (per orchestrator's local verification).
+  - pnpm-lock.yaml not part of bundle (no package.json edits) — D8 lockfile
+    rule N/A this PR.
+
+If the orchestrator chooses to ship as-is and treat B2/B3 as immediate
+follow-up: the next PR title MUST acknowledge the asymmetry as a known
+ADR-0006 D8 instance #13 (or whatever the next ordinal is) so the lesson
+is captured. That said, all three blocking fixes are <5 lines total —
+in-bundle correction is the cheaper path.
+
+End of pr-gate audit.

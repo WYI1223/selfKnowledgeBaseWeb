@@ -29,9 +29,7 @@ export function renderSettingsJson(): string {
       PostToolUse: [
         {
           matcher: 'Edit|Write',
-          hooks: [
-            { type: 'command', command: 'node scripts/hooks/post-edit.mjs' },
-          ],
+          hooks: [{ type: 'command', command: 'node scripts/hooks/post-edit.mjs' }],
         },
       ],
       SessionStart: [
