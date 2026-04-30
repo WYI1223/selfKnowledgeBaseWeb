@@ -1,0 +1,272 @@
+================================================================
+G1 R2 Claude pr-reviewer verdict — Wave 2 Task #21 (editor-toolbar template)
+================================================================
+Date:      2026-04-30
+Reviewer:  pr-reviewer-g1-r2 (Claude Opus 4.7 1M ctx)
+Trigger:   ADR-0007 D2 row 1 (CONTRACT-level + first editor-* template)
+           — R1 pr-gate FAIL with 3 P1 issues, R2 fix scope by editor-eng-g1
+Authority: live HEAD packages/editor-toolbar/* + sister packages
+           (block-foundation/src/prose.ts, editor-commands/src/commands.ts)
+
+----------------------------------------------------------------
+VERDICT: APPROVE
+----------------------------------------------------------------
+
+All 3 R1 pr-gate P1 blockers resolved, all 8 ADR-0006 audit items pass
+(or are N/A), spec match confirmed live, regression risk negligible.
+Local test run reproduces 14/14 PASS.
+
+----------------------------------------------------------------
+1. R1 P1 issue resolution (3/3)
+----------------------------------------------------------------
+
+[P1-A] runDefaultCommand explicit dispatcher (no dynamic chain access)
+  RESOLVED. dispatch.ts:15-42 is a pure switch statement keyed on the
+  command-name literal. Every case calls a concrete Tiptap chain method
+  with explicit args (e.g. {level: 1|2|3}). default branch returns false
+  without invoking the chain (line 39-40).
+  Identical pattern in isDefaultCommandActive (line 44-69). No
+  chain[name]() dynamic property access remains anywhere in the package.
+
+[P1-B] Heading buttons map to toggleHeading({level: N}) per Tiptap spec
+  RESOLVED. dispatch.ts:30,32,34 calls focused.toggleHeading({level: 1|2|3}).run()
+  for the three heading button-IDs. Test toolbar-dispatch.test.ts:37-54
+  asserts the chain receives 'toggleHeading' (not 'toggleHeading1') with
+  args [{level: 1}], [{level: 2}], [{level: 3}] respectively. Bug class
+  (silent no-op via dynamic chain['toggleHeading1']()) is no longer
+  reachable.
+
+[P1-C] toolbar-dispatch test verifies chain dispatch via mock
+  RESOLVED. toolbar-dispatch.test.ts ships 9 tests:
+    - 7 dispatch tests (toggleBold; heading levels 1/2/3; bulletList
+      + orderedList; italic/strike/code; unknown-cmd fail-safe;
+      every defaultToolbarConfig button id is dispatch-routable)
+    - 2 isActive tests (correct mark/heading-level args; unknown-cmd
+      no-query fail-safe)
+  Combined with 5 toolbar-config tests = 14 total. The
+  "every default button id is dispatch-routable" test (line 85-92)
+  is the load-bearing item: it auto-catches drift between
+  defaultToolbarConfig.buttons and the runDefaultCommand switch.
+
+----------------------------------------------------------------
+2. Spec match (live HEAD authority)
+----------------------------------------------------------------
+
+[OK] 9-button default = strict subset of block-foundation prose extensions.
+     Authority: packages/block-foundation/src/prose.ts:14-20 exports
+       proseExtensions = [StarterKit, TaskList, TaskItem.configure({nested:true}),
+                          Typography, Markdown]
+     StarterKit ships Bold/Italic/Strike/Code marks + Heading + BulletList
+     + OrderedList nodes. All 9 button commands map to StarterKit-exposed
+     ChainedCommands methods. Underline + Link are NOT in any of the 5
+     listed extensions → excluding them from defaultToolbarConfig is
+     correct (their inclusion would have produced silent no-op).
+
+[OK] toolbar-config.test.ts:30-45 hard-pins the 9-button order and
+     asserts ['underline', 'link'] absence — the test serves as a
+     compile-time tripwire for accidental re-introduction without the
+     prerequisite Wave 3 prose-extension PR.
+
+[OK] buildEditBlockInput (command-bindings.ts:15-21) imports
+     editBlockInputSchema from @skb/editor-commands and delegates parse
+     directly. No inline z.object redefinition. Cross-package authority
+     preserved per ADR-0006 #4 + memory cross_package_consumer_pattern.
+     Authority surface confirmed live: editor-commands/src/commands.ts
+     exports editBlockInputSchema (line 29-31, composes editBlockBase
+     +.refine(editBlockHasChange)).
+
+[OK] Wave 3 future-work block (CONTRACT.md:60-78) documents the exact
+     cross-package PR sequence to enable underline + link.
+
+----------------------------------------------------------------
+3. Cross-file impact
+----------------------------------------------------------------
+
+[OK] editor-toolbar/CONTRACT.md ↔ editor-commands/CONTRACT.md sister
+     aligned. Both reference editBlockInputSchema by identical name.
+     editor-toolbar/CONTRACT.md:108 explicitly records the freeze coupling
+     ("buildEditBlockInput 签名变更需配 editor-commands 同步 PR").
+
+[OK] Root tsconfig.json:15 has { "path": "./packages/editor-toolbar" }
+     reference. tsconfig.json:14 also references editor-commands.
+     References complete.
+
+[OK] pnpm-lock.yaml lines 287-309 contain the editor-toolbar importer
+     entry — workspace dep on @skb/editor-commands resolved as
+     link:../editor-commands; zod, @tiptap/core, @tiptap/react, @types/react,
+     react, typescript pinned. Lockfile is in sync per ADR-0006 #8 sub-form C.
+
+[OK] editor-toolbar/tsconfig.json:8 has references[]: [{path:"../editor-commands"}].
+     project graph complete.
+
+----------------------------------------------------------------
+4. Architectural consistency (ADR-0003 D1 headless/UI separation)
+----------------------------------------------------------------
+
+[OK] core/ has zero React/Tiptap imports.
+     Verified: grep 'react|@tiptap' against src/core/*.ts returned 0 hits.
+     core/ depends only on @skb/editor-commands + zod (CONTRACT.md:32-33
+     invariant honored).
+
+[OK] All Tiptap+React imports isolated to ui-default/:
+       Toolbar.tsx:2-3 imports type { Editor } from '@tiptap/core' +
+                       BubbleMenu from '@tiptap/react'
+       dispatch.ts:1   imports type-only from '@tiptap/core'
+     ui-default/index.ts re-exports the three React/Tiptap-touching
+     surfaces (EditorToolbar, TOOLBAR_ICONS, runDefaultCommand,
+     isDefaultCommandActive). package.json exports[]:
+       '.':           ./src/index.ts          (core barrel, headless)
+       './core':      ./src/core/index.ts     (headless explicit)
+       './ui-default':./src/ui-default/index.ts (presentation)
+     Three-entry split matches CONTRACT.md:6-29.
+
+[OK] Template uniformity for G2/G3 codex-clones. Directory structure
+     core/{toolbar-config.ts, command-bindings.ts, index.ts} +
+     ui-default/{Toolbar.tsx, dispatch.ts, icons/, toolbar.css, index.ts} +
+     __tests__/{config.test.ts, dispatch.test.ts}
+     replicable per CONTRACT.md:80-99 cloning guide. Dispatch-test
+     pattern (Proxy-mock chain + "every default button dispatch-routable"
+     guard) is generalizable.
+
+----------------------------------------------------------------
+5. Regression risk
+----------------------------------------------------------------
+
+[OK] ADR-0008 D1 dead-dep policy compliance:
+     package.json#dependencies: @skb/editor-commands + zod.
+       @skb/editor-commands imported at command-bindings.ts:1. PASS.
+       zod imported at toolbar-config.ts:1. PASS.
+     package.json#peerDependencies + #devDependencies:
+       @tiptap/core (used at dispatch.ts:1, Toolbar.tsx:2),
+       @tiptap/react (used at Toolbar.tsx:3),
+       react (peer required for JSX in icons/ + Toolbar.tsx),
+       @types/react (devDep, types only).
+     No @tiptap/extension-underline / extension-link listed
+     (consistent with the no-underline-no-link decision and the
+     prose.ts authority).
+     No dead deps detected.
+
+[OK] File sizes (Hard rule §1: 200 line target / 300 ESLint warn / 500 hard fail):
+     largest source file is toolbar-dispatch.test.ts at 118 lines.
+     CONTRACT.md is 117 lines. All under target. No size-check risk.
+
+[OK] Build/test signals:
+     `pnpm --filter @skb/editor-toolbar test` → 2 files, 14/14 PASS,
+       330ms. Reproduced from clean repo state.
+     editor-eng-g1 reports typecheck/lint/build clean.
+
+[OK] No silent no-op risk: dispatch.ts default branch + isActive default
+     branch both return false rather than throw, with the
+     "every default button dispatch-routable" test as the drift sentinel.
+
+----------------------------------------------------------------
+6. ADR-0006 8-point asymmetry audit
+----------------------------------------------------------------
+
+[#1 Field/attribute audit]
+   N/A — no comparator/equality/serialization function added or
+   modified in this PR.
+
+[#2 Status code audit]
+   N/A — package is editor UI only; no HTTP handlers.
+
+[#3 Strictness audit]
+   PASS. toolbar-config.ts:11 toolbarButtonSchema.strict();
+         toolbar-config.ts:17 toolbarConfigSchema.strict().
+   Both top-level objects + the only nested shape (button) are
+   .strict()-marked. No nested z.object lacking .strict() exists.
+   toolbar-config.test.ts:17-23 actively asserts .strict() rejects
+   unknown keys.
+
+[#4 Consumer schema audit]
+   PASS. command-bindings.ts:1 imports editBlockInputSchema from
+   @skb/editor-commands; buildEditBlockInput at line 15-21 delegates
+   .parse directly. No inline z.object redefinition.
+   toolbar-config.test.ts:54-63 asserts the cross-package authority
+   path (slug regex + at-least-one-of refine both fire through
+   the imported schema).
+
+[#5 Algorithm + runtime constant replication audit]
+   PASS. The dispatcher switch in dispatch.ts is a single
+   non-replicated source for command-name → chain-method mapping.
+   The defaultToolbarConfig.buttons[].command literals and the
+   switch case literals are two locations of the same set of
+   identifiers — the "every defaultToolbarConfig button id is
+   dispatch-routable" regression test (toolbar-dispatch.test.ts:85-92)
+   asserts byte-equivalent coverage. Drift detection corpus = the
+   defaultToolbarConfig itself; corpus is exhaustive over the
+   default surface.
+
+[#6 Sister-file documentation audit]
+   PASS. editor-toolbar/CONTRACT.md and editor-commands/CONTRACT.md
+   use identical identifier "editBlockInputSchema" (verified live).
+   editor-toolbar/CONTRACT.md:108 records the freeze-level coupling
+   in prose. No drift between sister CONTRACTs.
+
+[#7 Exception-scope equivalence audit]
+   N/A — no try/catch in this package.
+
+[#8 Authority-document → generated/consumed surface audit]
+   PASS. Authority changes (new package) reflected in:
+     - root tsconfig.json:15  (project reference added)
+     - pnpm-lock.yaml:287+    (importer entry added)
+     - editor-toolbar/tsconfig.json:8 (per-package reference to
+       editor-commands authority)
+     - CONTRACT.md cross-links to editor-commands/CONTRACT.md +
+       ADR-0003 + ADR-0006 + ADR-0008 + Wave 2 plan §G1.
+   No staged-vs-working-tree drift expected for this PR (single
+   package authoring; no codegen authority touched).
+
+----------------------------------------------------------------
+7. Non-blocking observations (FYI for editor-eng / scribe)
+----------------------------------------------------------------
+
+(A) CONTRACT.md:73 says "restore the Underline + LinkIcon SVG entries
+    to TOOLBAR_ICONS" — at current HEAD those icons do not exist in
+    icons/index.tsx (9 icons, no Underline/LinkIcon). Phrasing should
+    be "add" not "restore" since the v1 ship has no such entries.
+    Cosmetic; does not affect correctness or downstream behavior.
+
+(B) team-lead message refers to the dispatch test as
+    "toolbar-dispatch.test.tsx" — actual filename is .test.ts (no JSX
+    inside the file). vitest.config.ts:5 globs 'src/**/*.test.ts',
+    matches correctly. Pure naming nit at message level; no PR change
+    required.
+
+(C) CONTRACT.md:45 cites the test path as
+    "__tests__/toolbar-dispatch.test.ts" (relative). Actual is
+    src/__tests__/toolbar-dispatch.test.ts. Relative-from-package
+    interpretation is conventional and unambiguous. Pure-prose nit.
+
+None of (A)/(B)/(C) blocks merge. Recommend (A) is folded into the
+next CONTRACT.md edit pass (e.g. G2 clone or Wave 3 enable-PR).
+
+----------------------------------------------------------------
+8. Sanity verification
+----------------------------------------------------------------
+
+  $ pnpm --filter @skb/editor-toolbar test
+  RUN  v4.1.5
+  Test Files  2 passed (2)
+       Tests  14 passed (14)
+  Duration    330ms
+
+  $ wc -l (all source + test + CONTRACT)
+  → 654 total, all individual files <120 lines, hard rule §1 OK.
+
+  $ grep '@tiptap|react' packages/editor-toolbar/src/core/
+  → 0 hits  (ADR-0003 D1 headless invariant OK)
+
+  $ grep 'editor-toolbar' pnpm-lock.yaml
+  → line 287 importer entry  (ADR-0006 #8 sub-form C OK)
+
+----------------------------------------------------------------
+RECOMMENDATION TO ORCHESTRATOR
+----------------------------------------------------------------
+
+APPROVE. G1 editor-toolbar template is ready for git-operator commit
++ pnpm check final pass. The 9-button + explicit-switch + dispatch-test
+template is the right shape for G2 (editor-slash-menu) and G3
+(editor-drag-handle) codex-block-generator clones.
+
+================================================================

@@ -1,0 +1,148 @@
+Task G1 — pr-reviewer (Claude Opus 4.7) — VERDICT: APPROVE
+=============================================================
+Bundle: packages/editor-toolbar/  (Wave 2 Track G1 template)
+Date:   2026-04-30
+Scope:  ADR-0007 D2 row 1 (CONTRACT-level + new package + template-first)
+Local:  pnpm --filter @skb/editor-toolbar test  → 5/5 PASS
+        pnpm --filter @skb/editor-toolbar typecheck → clean
+        pnpm --filter @skb/editor-toolbar lint → clean
+
+-------------------------------------------------------------
+1. Spec match (ADR-0003 D1+D2 layering)
+-------------------------------------------------------------
+PASS.
+- core/ headless: src/core/command-bindings.ts:1 imports only `@skb/editor-commands`;
+  src/core/toolbar-config.ts:1 imports only `zod`. Zero React/Tiptap leakage.
+- ui-default/ React+Tiptap consumer: src/ui-default/Toolbar.tsx:1-3 imports
+  `react` (type), `@tiptap/core` (type Editor), `@tiptap/react` (BubbleMenu) —
+  matches ADR-0003 D2 split.
+- BubbleMenu API: signature matches @tiptap/react's `BubbleMenuProps`
+  (`editor: Editor | null`, `className`, `children`); verified against
+  node_modules/@tiptap/react/dist/BubbleMenu.d.ts.
+
+-------------------------------------------------------------
+2. Schema authority + strictness (ADR-0006 #3 + #4)
+-------------------------------------------------------------
+PASS.
+- toolbar-config.ts:11 toolbarButtonSchema = .strict(); :17 toolbarConfigSchema = .strict().
+- toolbar-config.ts:15 buttons array uses .min(1) — guards against empty surface.
+- command-bindings.ts:19-21 buildEditBlockInput delegates to
+  editBlockInputSchema.parse({...}) — does NOT re-define refine logic
+  inline. Cross-package authority preserved (memory feedback_cross_package_consumer_pattern).
+- Test src/__tests__/toolbar-config.test.ts:56-65 verifies upstream throw paths
+  propagate (`/at least one of props or content/` + slug regex via 'Foo' uppercase).
+
+-------------------------------------------------------------
+3. Cross-file impact / sync
+-------------------------------------------------------------
+PASS.
+- Root tsconfig.json:15 → { "path": "./packages/editor-toolbar" } present.
+- Package tsconfig.json:8 → references `../editor-commands` (matches actual import).
+- pnpm-lock.yaml:284 → packages/editor-toolbar importer entry present with
+  `@skb/editor-commands: link:../editor-commands`, zod, all 6 devDeps + peerDep
+  resolutions for @tiptap/core, @tiptap/react, @types/react, react.
+- CONTRACT.md cross-refs valid: editor-commands/CONTRACT.md already names
+  `editBlockInputSchema` as a public, ADR-protected export — sister-doc
+  terminology aligned (ADR-0006 #6).
+
+-------------------------------------------------------------
+4. Architectural consistency
+-------------------------------------------------------------
+PASS.
+- Naming: package `@skb/editor-toolbar` kebab-case; component `Toolbar.tsx`
+  PascalCase; exported as `EditorToolbar` (consumer-facing, namespaced).
+- A11y (Toolbar.tsx):
+  - :25 role="toolbar" + aria-label="Text formatting"
+  - :50-51 aria-label (interpolates shortcut at :42-44) + aria-pressed
+  - icons/index.tsx:14 baseProps include 'aria-hidden': true + focusable:false
+- Design tokens: toolbar.css uses var(--skb-color-{surface-1,border,fg,
+  surface-2,accent,accent-soft}, hex-fallback). Fallback is intentional per
+  CONTRACT.md:38-40 (independent test usability before site wires
+  @skb/design-tokens).
+
+-------------------------------------------------------------
+5. ADR-0008 D1 dead-dep audit
+-------------------------------------------------------------
+PASS. Every declared dep is used:
+- dependencies:
+  - "@skb/editor-commands" → core/command-bindings.ts:1 ✓
+  - "zod"                  → core/toolbar-config.ts:1 ✓
+- peerDependencies:
+  - "@tiptap/core"  → ui-default/Toolbar.tsx:2 ✓
+  - "@tiptap/react" → ui-default/Toolbar.tsx:3 ✓
+  - "react"         → ui-default/Toolbar.tsx:1 + ui-default/icons/index.tsx:1 ✓
+- devDependencies provide test/build resolutions (typescript, vitest, @types/react,
+  duplicate react/@tiptap for non-host environments). No dead dep.
+
+-------------------------------------------------------------
+6. File-size limits (spec §3.6)
+-------------------------------------------------------------
+PASS. Max line count: src/ui-default/icons/index.tsx = 112.
+   26 src/core/command-bindings.ts
+   13 src/core/index.ts
+   36 src/core/toolbar-config.ts
+   86 src/ui-default/Toolbar.tsx
+  112 src/ui-default/icons/index.tsx
+   66 src/__tests__/toolbar-config.test.ts
+All <200 target, well under 500 hard fail.
+
+-------------------------------------------------------------
+7. ADR-0006 8-point asymmetry audit
+-------------------------------------------------------------
+#1 field/attribute (algorithm + comparator):
+   PASS. Toolbar.tsx:71-86 isCommandActive map mirrors button.command list.
+   CONTRACT.md:32-35 explicitly documents the obligation; G2/G3 clones must
+   replicate.
+#2 N/A (no fixture set)
+#3 strictness:
+   PASS. Both schemas .strict() (see §2 above).
+#4 consumer schema:
+   PASS. editBlockInputSchema imported, not redefined (see §2 above).
+#5 N/A (no enum/union)
+#6 sister-doc:
+   PASS. editor-toolbar/CONTRACT.md:65 + :69 link to editor-commands/CONTRACT.md;
+   modify-this-file clauses mention "editor-commands/CONTRACT.md 同 freeze 级别"
+   and "buildEditBlockInput 签名变更需配 editor-commands 同步 PR".
+#7 N/A (no parser/serializer pair)
+#8 lockfile + tsconfig refs:
+   PASS. Root tsconfig and pnpm-lock both contain editor-toolbar entries
+   (verified via grep).
+
+-------------------------------------------------------------
+8. Template-first integrity (G2/G3 clone basis)
+-------------------------------------------------------------
+PASS.
+- Directory shape: src/{core/{*-config.ts, command-bindings.ts, index.ts},
+  ui-default/{*.tsx, *.css, icons/}, __tests__/*.test.ts} — clean, replicable.
+- CONTRACT.md:42-56 documents G2/G3 mapping: rename schema (toolbarConfig →
+  slashMenuConfig / dragHandleConfig); swap consumer schema (editBlockInputSchema
+  → insertBlockInput / moveBlockInput); preserve test count (4+ cases) and
+  layering invariants. Codex-block-generator has a sufficient seed.
+- 5/5 tests cover: strict-key reject, min(1) reject, default-config surface
+  presence, cross-fn agreement (findButton/listCommands/defaultCommandBindings),
+  and cross-package authority delegation. Provides full coverage skeleton for
+  clones to mirror.
+
+-------------------------------------------------------------
+9. Minor observations (non-blocking)
+-------------------------------------------------------------
+- command-bindings.ts:23-26 defaultCommandBindings is computed from
+  defaultToolbarConfig (not from a runtime config). This is intentional and
+  documented (CONTRACT.md:18 — "default" prefix conveys scope); UI runs
+  commands via button.command at Toolbar.tsx:49, so the static map is used
+  only for inspection / tests. No drift risk.
+- Toolbar.tsx:62-68 runCommand casts chain to indexed Record. The cast plus
+  typeof guard is intentional per CONTRACT.md:32-35 ("Tiptap 命令名字符串单向耦合").
+  Compile-time string→Tiptap-method correspondence is acknowledged as runtime
+  coupling.
+
+-------------------------------------------------------------
+VERDICT
+-------------------------------------------------------------
+APPROVE.
+
+All ADR-0007 D2 row-1 high-risk gates clear: contract surface explicit,
+new-package scaffolding self-consistent, template integrity preserved for G2/G3
+codex-clones. No regressions introduced. Recommend git-operator proceed with
+commit + push, then unblock G2 (codex-block-generator) using this bundle as
+template source.

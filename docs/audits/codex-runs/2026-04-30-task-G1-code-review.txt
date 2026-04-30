@@ -1,0 +1,1160 @@
+Reading prompt from stdin...
+OpenAI Codex v0.125.0 (research preview)
+--------
+workdir: /home/weiyi/selfKnowledgeBaseWeb
+model: gpt-5.3-codex-spark
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: xhigh
+reasoning summaries: none
+session id: 019de00a-d78f-7cc2-a103-dfc90afe292a
+--------
+user
+You are codex 5.3-spark code-reviewer. Audit `packages/editor-toolbar/` for Wave 2 Task #21 (G1: editor-toolbar template by editor-eng).
+
+This is the TEMPLATE for editor-* sub-modules — codex-block-generator will clone for G2 (editor-slash-menu) + G3 (editor-drag-handle).
+
+Verify:
+1. Headless / UI separation per ADR-0003: core/ has zero React/Tiptap imports; ui-default/ does.
+2. propsSchema (or toolbarConfig schema) is z.object(...).strict() at top level + nested children also .strict() if any.
+3. Cross-file: editor-commands single authority used (editBlockInputSchema imported, NOT redefined).
+4. Sister-doc CONTRACT.md aligned with editor-commands/CONTRACT.md (Wave 1) and block-foundation/CONTRACT.md.
+5. Tests cover config validation + at minimum 4 cases.
+6. ADR-0008 D1 dead-dep: package.json deps match actual imports.
+7. File sizes ≤200 target / 500 hard fail.
+
+Run:
+```
+pnpm --filter @skb/editor-toolbar test
+pnpm --filter @skb/editor-toolbar typecheck
+pnpm --filter @skb/editor-toolbar lint
+pnpm --filter @skb/editor-toolbar build
+```
+
+Apply ADR-0006 8-point asymmetry audit. Verdict: PASS or FAIL with line-numbered issues.
+
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the vendored bubblewrap in the meantime.
+codex
+I’ll review `packages/editor-toolbar` against the ADR checks and contract alignment, then run the four package commands you requested. I’ll start by mapping the module files and then inspect only the needed files once to produce a numbered pass/fail audit with exact line references.
+exec
+/bin/bash -lc 'cd /home/weiyi/selfKnowledgeBaseWeb && rg --files packages/editor-toolbar' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 102ms:
+packages/editor-toolbar/tsconfig.json
+packages/editor-toolbar/vitest.config.ts
+packages/editor-toolbar/package.json
+packages/editor-toolbar/CONTRACT.md
+packages/editor-toolbar/src/index.ts
+packages/editor-toolbar/src/ui-default/index.ts
+packages/editor-toolbar/src/ui-default/icons/index.tsx
+packages/editor-toolbar/src/ui-default/Toolbar.tsx
+packages/editor-toolbar/src/ui-default/toolbar.css
+packages/editor-toolbar/src/__tests__/toolbar-config.test.ts
+packages/editor-toolbar/src/core/index.ts
+packages/editor-toolbar/src/core/toolbar-config.ts
+packages/editor-toolbar/src/core/command-bindings.ts
+
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && printf '=== editor-commands/CONTRACT.md\\n' && nl -ba packages/editor-commands/CONTRACT.md && printf '\\n=== block-foundation/CONTRACT.md\\n' && nl -ba packages/block-foundation/CONTRACT.md && printf '\\n=== editor-commands src/schema/index.ts\\n' && nl -ba packages/editor-commands/src/schema/index.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ exited 1 in 0ms:
+=== editor-commands/CONTRACT.md
+     1	# @skb/editor-commands Contract
+     2	
+     3	## Public surface
+     4	
+     5	- `commandSchemas` — 7 个 Zod 命令 schema（discriminated by `type` literal）：
+     6	  - `create_page` / `delete_page`
+     7	  - `insert_block` / `edit_block` / `delete_block` / `move_block`
+     8	  - `update_frontmatter`
+     9	- `parseCommand(input)` — 校验任意 unknown 输入并返回 discriminated `Command`
+    10	- `slugSchema` — `[a-z0-9-]+` 正则；用于全部 `pageSlug` 字段，防止 path traversal / 大小写混乱（apps/api/CONVENTIONS.md §1）
+    11	- `editBlockInputSchema` — Zod schema for `edit_block` agent tool input. Composes `editBlockBase.omit({ type: true }).refine(at-least-one-of-props-or-content)`. Exported for cross-package consumption by `@skb/agent-tools` (single source of truth for the refine logic; both `parseCommand` 路径与 `toolSchemas.edit_block.input` 共用此 schema 与 predicate)。重命名 / 删除需 ADR。
+    12	- `editBlockHasChange(v)` — predicate paired with `editBlockInputSchema`；同时被 `commandSchemas.edit_block` 与 `editBlockInputSchema` 的 `.refine()` 复用，保证二者无 drift。
+    13	- `Command` / `CommandType` / `ParseCommandResult` 类型工具
+    14	
+    15	每个 schema 是 Zod，可同时验证 UI 操作产生的命令与 agent 工具调用产生的命令。
+    16	
+    17	## Invariants（spec §2.6 关键不变量）
+    18	
+    19	- **所有编辑器变更必须经此层** —— UI 操作 / agent 工具 / 脚本批改皆同
+    20	- 命令是不可变数据；执行器（Wave 3 editor-shell + apps/api）才有副作用
+    21	- 命令字段一律 camelCase（含 `pageSlug`，全部 7 命令统一）；type 字段值一律 snake_case
+    22	- **FROZEN：所有 object schema 用 `.strict()`，未知字段一律 reject**（防止 agent 误传、防止字段名漂移）
+    23	- **Frontmatter schema authority**：从 `@skb/content-types` 导入 `frontmatterSchema`，但本包消费时一律加 `.strict()` 防止 agent typo 被静默 strip（R3 erratum）。`create_page.frontmatter` 用 `frontmatterSchema.strict()`；`update_frontmatter.patch` 用 `frontmatterSchema.strict().partial()`。不重新定义结构。
+    24	- **Slug schema authority**：`slugSchema` 在本包定义并导出（regex `/^[a-z0-9-]+$/`），`@skb/agent-tools` 复用同一 schema 供 `read_page` 等 tool 输入校验，与 apps/api/CONVENTIONS.md §1 slug 约束对齐。
+    25	
+    26	## Modifying this file
+    27	
+    28	`commandSchemas` / `parseCommand` / `slugSchema` / `editBlockInputSchema` / `editBlockHasChange` 的任何字段或方法增删改一律需 ADR — **包括添加新命令、添加 optional 字段、放宽 `.strict()`**。spec §2.3 把接口包归为"改动需 ADR；全员同步"；spec §2.6 把 editor-commands 列为 Phase 1 必建的命令模式 surface（agent integration 基石）。
+    29	
+    30	原因：editor-commands 是 agent-tools 的源头（mutating tools 1:1 wrap commandSchemas via `.omit({type:true})`；edit_block 路径走 `editBlockInputSchema` 共享 predicate）；通过 agent-tools 接到 Phase 2b apps/api dispatch；任何 schema 变化都要协调 4+ 个层（editor-shell / agent-tools / apps/api / agent prompt 模板）。
+    31	
+    32	## Related
+    33	
+    34	- [设计规格 §2.6](../../docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md)
+    35	- [content-types/CONTRACT.md](../content-types/CONTRACT.md) — frontmatter 权威源
+    36	- [agent-tools/CONTRACT.md](../agent-tools/CONTRACT.md)
+
+=== block-foundation/CONTRACT.md
+     1	# @skb/block-foundation Contract
+     2	
+     3	## Public surface
+     4	
+     5	- `BlockRegistry` class — 双层注册表（ADR-0003）
+     6	  - `registerCore(core)` / `registerUI(ui)`
+     7	  - `getCore(name)` / `listCores()`
+     8	  - `getUI(coreName, uiId?)` / `listUIs(coreName)`
+     9	- `defineCore(def)` / `defineUI(def)` factory helpers
+    10	- `BlockCoreDefinition<T>` / `BlockUIDefinition<T>` / `BlockViewProps<T>` interfaces
+    11	- `BlockKind = 'prose' | 'component'` （二分类，spec §1.5 关键不变量）
+    12	- `proseExtensions` — Tiptap 扩展数组，提供全部 markdown 行为
+    13	
+    14	## Invariants
+    15	
+    16	- `BlockKind` 二分不可破坏：新 block 必须明确归属 `prose` 或 `component`
+    17	- Prose blocks 零自写代码——任何看似需要新 prose block 的场景应通过组合 `proseExtensions` 内现有扩展或追加单条 Tiptap 扩展实现，不再加 prose-kind block
+    18	- `BlockCoreDefinition.mdxComponent` 必须 PascalCase，且与 MDX 文件 import 中使用的名字一致
+    19	- Core 与 UI 物理分离（ADR-0003）：core 不允许 import 任何 React/Tiptap 视觉 API；UI 必须 import core（不允许 inline 重复 schema）
+    20	- 同 core 多 UI 时 `getUI(name)` 取首个注册：约定首个 uiId 为 `'default'`；adopter 在 register 顺序上需谨慎
+    21	- **Defensive copy**：`listCores()` 与 `listUIs(coreName)` 每次返回 fresh array。Caller 修改返回值不影响 registry 内部 state。Implementation: `src/registry.ts:84` (`listCores`) + `src/registry.ts:96` (`listUIs`)；regression: `src/__tests__/registry.test.ts` "listCores returns a defensive copy" + "listUIs returns a defensive copy"
+    22	- **Idempotent register**：`registerCore` 同 `name` 第二次调用 throws `Duplicate core name: <name>`；`registerUI` 同 `(coreName, uiId)` 第二次 throws `Duplicate UI registration: core=<coreName> uiId=<uiId>`。避免 silent override；实现见 `src/registry.ts:60-63` + `src/registry.ts:71-75`
+    23	- **Schema strictness**：每个 `BlockCoreDefinition.propsSchema` 必须是 `z.object(...).strict()`；嵌套 `ZodObject` 同样必须 `.strict()`（[ADR-0006](../../docs/decisions/ADR-0006-asymmetry-audit-checklist.md) item #3 trip-hazard：`.strict()` 不传播）。当前类型仅约束到 `ZodTypeAny`（type-narrow 到 `ZodObject` 待 Wave 3）；Wave 2 行为约定 + reviewer + RFC.md §1 显式提醒。未 `.strict()` 不会 throw，但 `propsSchema.parse(input)` 会 silently strip unknown keys，引发 contract drift
+    24	- **Serialize / parse hook ownership**：MDX serialize/parse 由各 `block-*` 包的 `core/` own（ADR-0003 D1+D2），不在 `block-foundation` 注册。`block-foundation` 仅 own `BlockCoreDefinition` 形状（含 `mdxComponent` 字符串）；`mdx-bridge` 通过 `mdxJsxFlowElement.name` 字符串路由到对应 block 的 export（命名约定 verb-as-prefix：`serialize<BlockName>` / `parse<BlockName>`，与 mdx-bridge 现有 `mdxToTiptap` / `tiptapToMdx` 同 style）。详见 RFC.md §"5. Serialize / parse hook ownership"
+    25	
+    26	## Forward-compat consumers (Wave 2+)
+    27	
+    28	Wave 2 中段当 `BlockRegistry` 开始用 `@skb/content-types` 的 schema 验证
+    29	注册的 block props（如跨 block 共享的 frontmatter / metadata 形状），届时
+    30	`@skb/content-types` 将被同 PR 加入 `package.json#dependencies` +
+    31	`tsconfig.json#references`，并出现源码 `import { ... } from '@skb/content-types'`。
+    32	
+    33	当前 Wave 1 close 状态：源码无 content-types import，按
+    34	[ADR-0008](../../docs/decisions/ADR-0008-wave-2-entry-policies.md) D1
+    35	（dead-dep policy = tighten），dep 与 ref 均未声明；forward-compat 意图
+    36	仅在本 prose 段表达，不在 package.json / tsconfig 占位。
+    37	
+    38	## How to register a new `block-*` package
+    39	
+    40	step-by-step walkthrough (core / ui-default / 测试样板 / 错误场景 / serialize-parse 归属)
+    41	for the first real consumer 在 [RFC.md](./RFC.md) — 第一个 `block-*` PR
+    42	(Task C1 / C2) 必须 reference 此 RFC；后续 `block-*` PR 沿用相同模式。
+    43	RFC 是 consumer-facing 教程，CONTRACT.md 是 public API 形状 + 关键不变量
+    44	的权威；二者补充而非重叠（[ADR-0008 D2](../../docs/decisions/ADR-0008-wave-2-entry-policies.md)）。
+    45	
+    46	## Modifying this file
+    47	
+    48	公共表面（`BlockCoreDefinition` / `BlockUIDefinition` / `BlockRegistry` / `BlockKind` / `BlockViewProps` / `defineCore` / `defineUI` / `proseExtensions`）的任何字段或方法增删改一律需 ADR — **包括添加 optional 字段、改 `proseExtensions` 数组（增删 Tiptap 扩展、顺序变更、`as const` shape 变化）**。spec §2.3 把 block-foundation 列为接口包，规则"改动需 ADR；全员同步"不区分 optional vs required。
+    49	
+    50	原因：optional 字段会传播到 mdx-bridge serialization + 8 个 Wave 2 block 的 core+ui 实现 + apps/site frontmatter schema；`proseExtensions` 改动直接影响 mdx-bridge round-trip fixtures + editor-shell parsing 行为；无 ADR 协调会引发漂移。
+    51	
+    52	## Related
+    53	
+    54	- 设计规格 §1.5 / §2.5（`../../docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md`）
+    55	- ADR-0003 headless / presentational 分层（`../../docs/decisions/ADR-0003-headless-presentational-split.md`）
+    56	- content-types 契约（`../content-types/CONTRACT.md`）
+    57	- mdx-bridge 契约（`../mdx-bridge/CONTRACT.md`）
+    58	- design-tokens 契约（`../design-tokens/CONTRACT.md`）
+
+=== editor-commands src/schema/index.ts
+nl: packages/editor-commands/src/schema/index.ts: No such file or directory
+
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && printf '=== package.json\\n' && nl -ba packages/editor-toolbar/package.json && printf '\\n=== src/core/index.ts\\n' && nl -ba packages/editor-toolbar/src/core/index.ts && printf '\\n=== src/core/toolbar-config.ts\\n' && nl -ba packages/editor-toolbar/src/core/toolbar-config.ts && printf '\\n=== src/core/command-bindings.ts\\n' && nl -ba packages/editor-toolbar/src/core/command-bindings.ts && printf '\\n=== src/index.ts\\n' && nl -ba packages/editor-toolbar/src/index.ts && printf '\\n=== src/ui-default/index.ts\\n' && nl -ba packages/editor-toolbar/src/ui-default/index.ts && printf '\\n=== src/ui-default/Toolbar.tsx\\n' && nl -ba packages/editor-toolbar/src/ui-default/Toolbar.tsx && printf '\\n=== src/ui-default/icons/index.tsx\\n' && nl -ba packages/editor-toolbar/src/ui-default/icons/index.tsx && printf '\\n=== src/__tests__/toolbar-config.test.ts\\n' && nl -ba packages/editor-toolbar/src/__tests__/toolbar-config.test.ts && printf '\\n=== src/ui-default/toolbar.css\\n' && nl -ba packages/editor-toolbar/src/ui-default/toolbar.css && printf '\\n=== CONTRACT.md\\n' && nl -ba packages/editor-toolbar/CONTRACT.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+=== package.json
+     1	{
+     2	  "name": "@skb/editor-toolbar",
+     3	  "version": "0.0.0",
+     4	  "private": true,
+     5	  "type": "module",
+     6	  "exports": {
+     7	    ".": "./src/index.ts",
+     8	    "./core": "./src/core/index.ts",
+     9	    "./ui-default": "./src/ui-default/index.ts"
+    10	  },
+    11	  "scripts": {
+    12	    "build": "tsc -b",
+    13	    "lint": "eslint .",
+    14	    "typecheck": "tsc --noEmit",
+    15	    "test": "vitest run"
+    16	  },
+    17	  "dependencies": {
+    18	    "@skb/editor-commands": "workspace:*",
+    19	    "zod": "^3.23.0"
+    20	  },
+    21	  "peerDependencies": {
+    22	    "@tiptap/core": "^2.6.0",
+    23	    "@tiptap/react": "^2.6.0",
+    24	    "react": "^18.3.0 || ^19.0.0"
+    25	  },
+    26	  "devDependencies": {
+    27	    "@tiptap/core": "^2.6.0",
+    28	    "@tiptap/react": "^2.6.0",
+    29	    "@types/react": "^18.3.0",
+    30	    "react": "^18.3.0",
+    31	    "typescript": "~5.6.0",
+    32	    "vitest": "^4.1.5"
+    33	  }
+    34	}
+
+=== src/core/index.ts
+     1	export {
+     2	  toolbarButtonSchema,
+     3	  toolbarConfigSchema,
+     4	  defaultToolbarConfig,
+     5	} from './toolbar-config';
+     6	export type { ToolbarButton, ToolbarConfig } from './toolbar-config';
+     7	
+     8	export {
+     9	  findButton,
+    10	  listCommands,
+    11	  buildEditBlockInput,
+    12	  defaultCommandBindings,
+    13	} from './command-bindings';
+
+=== src/core/toolbar-config.ts
+     1	import { z } from 'zod';
+     2	
+     3	export const toolbarButtonSchema = z
+     4	  .object({
+     5	    id: z.string().min(1),
+     6	    command: z.string().min(1),
+     7	    icon: z.string().min(1),
+     8	    label: z.string().min(1),
+     9	    shortcut: z.string().optional(),
+    10	  })
+    11	  .strict();
+    12	
+    13	export const toolbarConfigSchema = z
+    14	  .object({
+    15	    buttons: z.array(toolbarButtonSchema).min(1),
+    16	  })
+    17	  .strict();
+    18	
+    19	export type ToolbarButton = z.infer<typeof toolbarButtonSchema>;
+    20	export type ToolbarConfig = z.infer<typeof toolbarConfigSchema>;
+    21	
+    22	export const defaultToolbarConfig: ToolbarConfig = toolbarConfigSchema.parse({
+    23	  buttons: [
+    24	    { id: 'bold', command: 'toggleBold', icon: 'bold', label: 'Bold', shortcut: 'Mod-b' },
+    25	    { id: 'italic', command: 'toggleItalic', icon: 'italic', label: 'Italic', shortcut: 'Mod-i' },
+    26	    { id: 'underline', command: 'toggleUnderline', icon: 'underline', label: 'Underline', shortcut: 'Mod-u' },
+    27	    { id: 'strike', command: 'toggleStrike', icon: 'strike', label: 'Strikethrough' },
+    28	    { id: 'h1', command: 'toggleHeading1', icon: 'h1', label: 'Heading 1' },
+    29	    { id: 'h2', command: 'toggleHeading2', icon: 'h2', label: 'Heading 2' },
+    30	    { id: 'h3', command: 'toggleHeading3', icon: 'h3', label: 'Heading 3' },
+    31	    { id: 'bulletList', command: 'toggleBulletList', icon: 'bullet-list', label: 'Bulleted list' },
+    32	    { id: 'orderedList', command: 'toggleOrderedList', icon: 'ordered-list', label: 'Numbered list' },
+    33	    { id: 'link', command: 'setLink', icon: 'link', label: 'Insert link', shortcut: 'Mod-k' },
+    34	    { id: 'code', command: 'toggleCode', icon: 'code', label: 'Inline code' },
+    35	  ],
+    36	});
+
+=== src/core/command-bindings.ts
+     1	import { editBlockInputSchema } from '@skb/editor-commands';
+     2	import { defaultToolbarConfig, type ToolbarButton, type ToolbarConfig } from './toolbar-config';
+     3	
+     4	export function findButton(
+     5	  config: ToolbarConfig,
+     6	  buttonId: string,
+     7	): ToolbarButton | undefined {
+     8	  return config.buttons.find((b) => b.id === buttonId);
+     9	}
+    10	
+    11	export function listCommands(config: ToolbarConfig): readonly string[] {
+    12	  return config.buttons.map((b) => b.command);
+    13	}
+    14	
+    15	export function buildEditBlockInput(
+    16	  pageSlug: string,
+    17	  blockId: string,
+    18	  draft: { props?: Record<string, unknown>; content?: string },
+    19	): ReturnType<typeof editBlockInputSchema.parse> {
+    20	  return editBlockInputSchema.parse({ pageSlug, blockId, ...draft });
+    21	}
+    22	
+    23	export const defaultCommandBindings: Readonly<Record<string, string>> =
+    24	  Object.freeze(
+    25	    Object.fromEntries(defaultToolbarConfig.buttons.map((b) => [b.id, b.command])),
+    26	  );
+
+=== src/index.ts
+     1	export * from './core';
+
+=== src/ui-default/index.ts
+     1	export { EditorToolbar } from './Toolbar';
+     2	export type { EditorToolbarProps } from './Toolbar';
+     3	export { TOOLBAR_ICONS } from './icons';
+
+=== src/ui-default/Toolbar.tsx
+     1	import type { ReactNode } from 'react';
+     2	import type { Editor } from '@tiptap/core';
+     3	import { BubbleMenu } from '@tiptap/react';
+     4	import {
+     5	  defaultToolbarConfig,
+     6	  type ToolbarButton,
+     7	  type ToolbarConfig,
+     8	} from '../core/toolbar-config';
+     9	import { TOOLBAR_ICONS } from './icons';
+    10	import './toolbar.css';
+    11	
+    12	export interface EditorToolbarProps {
+    13	  readonly editor: Editor | null;
+    14	  readonly config?: ToolbarConfig;
+    15	}
+    16	
+    17	export function EditorToolbar({
+    18	  editor,
+    19	  config = defaultToolbarConfig,
+    20	}: EditorToolbarProps): ReactNode {
+    21	  if (!editor) return null;
+    22	
+    23	  return (
+    24	    <BubbleMenu editor={editor} className="skb-editor-toolbar">
+    25	      <div role="toolbar" aria-label="Text formatting" className="skb-editor-toolbar__row">
+    26	        {config.buttons.map((b) => (
+    27	          <ToolbarButtonView key={b.id} button={b} editor={editor} />
+    28	        ))}
+    29	      </div>
+    30	    </BubbleMenu>
+    31	  );
+    32	}
+    33	
+    34	interface ToolbarButtonViewProps {
+    35	  readonly button: ToolbarButton;
+    36	  readonly editor: Editor;
+    37	}
+    38	
+    39	function ToolbarButtonView({ button, editor }: ToolbarButtonViewProps): ReactNode {
+    40	  const Icon = TOOLBAR_ICONS[button.icon];
+    41	  const isActive = isCommandActive(editor, button.command);
+    42	  const ariaLabel = button.shortcut
+    43	    ? `${button.label} (${button.shortcut})`
+    44	    : button.label;
+    45	
+    46	  return (
+    47	    <button
+    48	      type="button"
+    49	      onClick={() => runCommand(editor, button.command)}
+    50	      aria-label={ariaLabel}
+    51	      aria-pressed={isActive}
+    52	      data-command={button.command}
+    53	      className="skb-editor-toolbar__button"
+    54	      data-active={isActive ? 'true' : 'false'}
+    55	    >
+    56	      {Icon ? <Icon /> : <span>{button.label[0]}</span>}
+    57	    </button>
+    58	  );
+    59	}
+    60	
+    61	function runCommand(editor: Editor, command: string): void {
+    62	  const chain = editor.chain().focus() as unknown as Record<
+    63	    string,
+    64	    (() => { run: () => void }) | undefined
+    65	  >;
+    66	  const fn = chain[command];
+    67	  if (typeof fn !== 'function') return;
+    68	  fn().run();
+    69	}
+    70	
+    71	function isCommandActive(editor: Editor, command: string): boolean {
+    72	  const map: Record<string, () => boolean> = {
+    73	    toggleBold: () => editor.isActive('bold'),
+    74	    toggleItalic: () => editor.isActive('italic'),
+    75	    toggleUnderline: () => editor.isActive('underline'),
+    76	    toggleStrike: () => editor.isActive('strike'),
+    77	    toggleHeading1: () => editor.isActive('heading', { level: 1 }),
+    78	    toggleHeading2: () => editor.isActive('heading', { level: 2 }),
+    79	    toggleHeading3: () => editor.isActive('heading', { level: 3 }),
+    80	    toggleBulletList: () => editor.isActive('bulletList'),
+    81	    toggleOrderedList: () => editor.isActive('orderedList'),
+    82	    setLink: () => editor.isActive('link'),
+    83	    toggleCode: () => editor.isActive('code'),
+    84	  };
+    85	  return map[command]?.() ?? false;
+    86	}
+
+=== src/ui-default/icons/index.tsx
+     1	import type { ComponentType, SVGProps } from 'react';
+     2	
+     3	type IconProps = SVGProps<SVGSVGElement>;
+     4	
+     5	const baseProps: IconProps = {
+     6	  width: 16,
+     7	  height: 16,
+     8	  viewBox: '0 0 24 24',
+     9	  fill: 'none',
+    10	  stroke: 'currentColor',
+    11	  strokeWidth: 1.75,
+    12	  strokeLinecap: 'round',
+    13	  strokeLinejoin: 'round',
+    14	  'aria-hidden': true,
+    15	  focusable: false,
+    16	};
+    17	
+    18	const Bold: ComponentType<IconProps> = (props) => (
+    19	  <svg {...baseProps} {...props}>
+    20	    <path d="M7 5h6a3.5 3.5 0 0 1 0 7H7zM7 12h7a3.5 3.5 0 0 1 0 7H7z" />
+    21	  </svg>
+    22	);
+    23	
+    24	const Italic: ComponentType<IconProps> = (props) => (
+    25	  <svg {...baseProps} {...props}>
+    26	    <line x1="14" y1="5" x2="19" y2="5" />
+    27	    <line x1="5" y1="19" x2="10" y2="19" />
+    28	    <line x1="15" y1="5" x2="9" y2="19" />
+    29	  </svg>
+    30	);
+    31	
+    32	const Underline: ComponentType<IconProps> = (props) => (
+    33	  <svg {...baseProps} {...props}>
+    34	    <path d="M6 4v8a6 6 0 0 0 12 0V4" />
+    35	    <line x1="4" y1="21" x2="20" y2="21" />
+    36	  </svg>
+    37	);
+    38	
+    39	const Strike: ComponentType<IconProps> = (props) => (
+    40	  <svg {...baseProps} {...props}>
+    41	    <line x1="4" y1="12" x2="20" y2="12" />
+    42	    <path d="M16 6a4 4 0 0 0-4-2c-2.5 0-4 1.5-4 3.5 0 1.5 1 2.5 3 3.5" />
+    43	    <path d="M8 18a4 4 0 0 0 4 2c2.5 0 4-1.5 4-3.5 0-1.5-1-2.5-3-3.5" />
+    44	  </svg>
+    45	);
+    46	
+    47	const H1: ComponentType<IconProps> = (props) => (
+    48	  <svg {...baseProps} {...props}>
+    49	    <path d="M4 6v12M12 6v12M4 12h8M16 9l3-2v11" />
+    50	  </svg>
+    51	);
+    52	
+    53	const H2: ComponentType<IconProps> = (props) => (
+    54	  <svg {...baseProps} {...props}>
+    55	    <path d="M4 6v12M11 6v12M4 12h7M14 10a3 3 0 0 1 6 0c0 3-6 5-6 8h6" />
+    56	  </svg>
+    57	);
+    58	
+    59	const H3: ComponentType<IconProps> = (props) => (
+    60	  <svg {...baseProps} {...props}>
+    61	    <path d="M4 6v12M11 6v12M4 12h7M14 8h6l-3 4a3 3 0 1 1-3 3" />
+    62	  </svg>
+    63	);
+    64	
+    65	const BulletList: ComponentType<IconProps> = (props) => (
+    66	  <svg {...baseProps} {...props}>
+    67	    <line x1="9" y1="6" x2="20" y2="6" />
+    68	    <line x1="9" y1="12" x2="20" y2="12" />
+    69	    <line x1="9" y1="18" x2="20" y2="18" />
+    70	    <circle cx="5" cy="6" r="1" fill="currentColor" />
+    71	    <circle cx="5" cy="12" r="1" fill="currentColor" />
+    72	    <circle cx="5" cy="18" r="1" fill="currentColor" />
+    73	  </svg>
+    74	);
+    75	
+    76	const OrderedList: ComponentType<IconProps> = (props) => (
+    77	  <svg {...baseProps} {...props}>
+    78	    <line x1="10" y1="6" x2="20" y2="6" />
+    79	    <line x1="10" y1="12" x2="20" y2="12" />
+    80	    <line x1="10" y1="18" x2="20" y2="18" />
+    81	    <path d="M4 6h2v0M4 4l2-1v3M4 11h2l-2 2h2M4 17h2v1H4v1h2v1H4" />
+    82	  </svg>
+    83	);
+    84	
+    85	const LinkIcon: ComponentType<IconProps> = (props) => (
+    86	  <svg {...baseProps} {...props}>
+    87	    <path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1" />
+    88	    <path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1" />
+    89	  </svg>
+    90	);
+    91	
+    92	const Code: ComponentType<IconProps> = (props) => (
+    93	  <svg {...baseProps} {...props}>
+    94	    <polyline points="16 18 22 12 16 6" />
+    95	    <polyline points="8 6 2 12 8 18" />
+    96	  </svg>
+    97	);
+    98	
+    99	export const TOOLBAR_ICONS: Readonly<Record<string, ComponentType<IconProps>>> =
+   100	  Object.freeze({
+   101	    bold: Bold,
+   102	    italic: Italic,
+   103	    underline: Underline,
+   104	    strike: Strike,
+   105	    h1: H1,
+   106	    h2: H2,
+   107	    h3: H3,
+   108	    'bullet-list': BulletList,
+   109	    'ordered-list': OrderedList,
+   110	    link: LinkIcon,
+   111	    code: Code,
+   112	  });
+
+=== src/__tests__/toolbar-config.test.ts
+     1	import { describe, it, expect } from 'vitest';
+     2	import {
+     3	  toolbarConfigSchema,
+     4	  defaultToolbarConfig,
+     5	  findButton,
+     6	  listCommands,
+     7	  buildEditBlockInput,
+     8	  defaultCommandBindings,
+     9	} from '../core';
+    10	
+    11	describe('toolbarConfigSchema', () => {
+    12	  it('accepts a valid config and rejects unknown keys (.strict)', () => {
+    13	    const ok = toolbarConfigSchema.safeParse({
+    14	      buttons: [{ id: 'bold', command: 'toggleBold', icon: 'bold', label: 'Bold' }],
+    15	    });
+    16	    expect(ok.success).toBe(true);
+    17	
+    18	    const bad = toolbarConfigSchema.safeParse({
+    19	      buttons: [{ id: 'bold', command: 'toggleBold', icon: 'bold', label: 'Bold' }],
+    20	      extra: 'x',
+    21	    });
+    22	    expect(bad.success).toBe(false);
+    23	  });
+    24	
+    25	  it('rejects empty buttons array (min(1))', () => {
+    26	    const r = toolbarConfigSchema.safeParse({ buttons: [] });
+    27	    expect(r.success).toBe(false);
+    28	  });
+    29	
+    30	  it('defaultToolbarConfig.buttons covers all required surfaces', () => {
+    31	    const ids = defaultToolbarConfig.buttons.map((b) => b.id);
+    32	    for (const required of [
+    33	      'bold',
+    34	      'italic',
+    35	      'underline',
+    36	      'strike',
+    37	      'h1',
+    38	      'h2',
+    39	      'h3',
+    40	      'bulletList',
+    41	      'orderedList',
+    42	      'link',
+    43	      'code',
+    44	    ]) {
+    45	      expect(ids).toContain(required);
+    46	    }
+    47	  });
+    48	
+    49	  it('findButton + listCommands + defaultCommandBindings agree', () => {
+    50	    expect(findButton(defaultToolbarConfig, 'bold')?.command).toBe('toggleBold');
+    51	    expect(findButton(defaultToolbarConfig, 'nonsense')).toBeUndefined();
+    52	    expect(listCommands(defaultToolbarConfig)).toContain('toggleBold');
+    53	    expect(defaultCommandBindings.bold).toBe('toggleBold');
+    54	  });
+    55	
+    56	  it('buildEditBlockInput delegates to editBlockInputSchema (cross-package authority)', () => {
+    57	    const ok = buildEditBlockInput('foo', 'b1', { content: 'updated' });
+    58	    expect(ok).toEqual({ pageSlug: 'foo', blockId: 'b1', content: 'updated' });
+    59	
+    60	    expect(() => buildEditBlockInput('foo', 'b1', {})).toThrow(
+    61	      /at least one of props or content/,
+    62	    );
+    63	
+    64	    expect(() => buildEditBlockInput('Foo', 'b1', { content: 'x' })).toThrow();
+    65	  });
+    66	});
+
+=== src/ui-default/toolbar.css
+     1	.skb-editor-toolbar {
+     2	  display: inline-flex;
+     3	  align-items: center;
+     4	  padding: 4px;
+     5	  border-radius: 8px;
+     6	  background: var(--skb-color-surface-1, #ffffff);
+     7	  border: 1px solid var(--skb-color-border, rgba(0, 0, 0, 0.08));
+     8	  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+     9	  color: var(--skb-color-fg, #1a1a1a);
+    10	  font-size: 14px;
+    11	  z-index: 50;
+    12	}
+    13	
+    14	.skb-editor-toolbar__row {
+    15	  display: inline-flex;
+    16	  align-items: center;
+    17	  gap: 2px;
+    18	}
+    19	
+    20	.skb-editor-toolbar__button {
+    21	  display: inline-flex;
+    22	  align-items: center;
+    23	  justify-content: center;
+    24	  width: 28px;
+    25	  height: 28px;
+    26	  padding: 0;
+    27	  border: none;
+    28	  background: transparent;
+    29	  border-radius: 4px;
+    30	  color: inherit;
+    31	  cursor: pointer;
+    32	  transition: background-color 120ms ease, color 120ms ease;
+    33	}
+    34	
+    35	.skb-editor-toolbar__button:hover {
+    36	  background: var(--skb-color-surface-2, rgba(0, 0, 0, 0.04));
+    37	}
+    38	
+    39	.skb-editor-toolbar__button:focus-visible {
+    40	  outline: 2px solid var(--skb-color-accent, #3b82f6);
+    41	  outline-offset: 1px;
+    42	}
+    43	
+    44	.skb-editor-toolbar__button[data-active='true'] {
+    45	  background: var(--skb-color-accent-soft, rgba(59, 130, 246, 0.15));
+    46	  color: var(--skb-color-accent, #3b82f6);
+    47	}
+    48	
+    49	.skb-editor-toolbar__button[disabled] {
+    50	  opacity: 0.4;
+    51	  cursor: not-allowed;
+    52	}
+
+=== CONTRACT.md
+     1	# @skb/editor-toolbar Contract
+     2	
+     3	第一个 editor-* sub-module（Wave 2 Track G1 template）。
+     4	后续 `editor-slash-menu` / `editor-drag-handle` 按本包结构 clone（codex-block-generator）。
+     5	
+     6	## Public surface
+     7	
+     8	三个 entry：
+     9	
+    10	- `.` (root barrel) — re-export `./core`
+    11	- `./core` — headless 层（无 React / Tiptap import）
+    12	  - `toolbarConfigSchema` / `toolbarButtonSchema` — Zod `.strict()`
+    13	  - `defaultToolbarConfig` — 11 按钮（bold / italic / underline / strike / h1-h3 / bullet / ordered / link / code）
+    14	  - `findButton(config, id)` / `listCommands(config)` — config 查询工具
+    15	  - `buildEditBlockInput(pageSlug, blockId, draft)` — 调 `editBlockInputSchema.parse`，
+    16	    把 toolbar 触发的 selection 改动收敛为 Wave 1 命令模式入参（spec §2.6）
+    17	  - `defaultCommandBindings` — `Record<buttonId, tiptapChainCommand>` frozen
+    18	  - 类型：`ToolbarButton` / `ToolbarConfig`
+    19	- `./ui-default` — React + Tiptap 消费者
+    20	  - `EditorToolbar` — `BubbleMenu` 浮动工具条；接 `editor: Editor | null` + 可选 `config`
+    21	  - `TOOLBAR_ICONS` — SVG 图标 frozen Record；按 `button.icon` key 查表
+    22	
+    23	## Invariants
+    24	
+    25	- **Headless 自给**: `core/` 不 import React / Tiptap；仅依赖 `@skb/editor-commands` + `zod`
+    26	  （ADR-0003 D1）
+    27	- **Schema strictness**: `toolbarConfigSchema` / `toolbarButtonSchema` 一律 `.strict()`，
+    28	  unknown key 直接 reject（ADR-0006 item #3）
+    29	- **Cross-package consumer = structural identity**: `buildEditBlockInput` 复用
+    30	  `@skb/editor-commands` 的 `editBlockInputSchema`，不 inline 重复 refine 逻辑
+    31	  （ADR-0006 item #4 + memory `cross_package_consumer_pattern`）
+    32	- **Tiptap 命令名字符串单向耦合**: `ToolbarButton.command` 字面值（如 `'toggleBold'`）
+    33	  必须存在于 Tiptap chain API；UI 层 `runCommand` 通过动态查表执行，
+    34	  不在编译期校验。新增按钮命令时同步加 `Toolbar.tsx#isCommandActive` 分支
+    35	  （ADR-0006 item #1：算法 + 比较器配套）
+    36	- **A11y**: 工具条 `role="toolbar"` + `aria-label`；按钮 `aria-pressed` + `aria-label`
+    37	  含可选 `shortcut`；图标 `aria-hidden`
+    38	- **CSS 变量绑定 design-tokens**: `toolbar.css` 用 `var(--skb-color-*)`；
+    39	  consumer 应用 `@skb/design-tokens`（Wave 2 后续 site 集成时引入；本包 CSS 写
+    40	  fallback hex 让独立测试可用）
+    41	
+    42	## G2 / G3 codex-clone 指引
+    43	
+    44	`codex-block-generator`（[runbook](../../docs/runbooks/codex-tool-invocations.md#codex-block-generator)）
+    45	以本包为 source 模板生成姐妹 sub-module：
+    46	
+    47	1. **G2 `editor-slash-menu`**: 改 `toolbarConfig` → `slashMenuConfig`（`items: SlashMenuItem[]`，
+    48	   每项 `command` 改成 `insert_block` 的 `blockType` + `props`）；改 `buildEditBlockInput`
+    49	   → `buildInsertBlockInput`，复用 `commandSchemas.insert_block`；UI 改成下拉列表（可
+    50	   保留 BubbleMenu 浮动定位）
+    51	2. **G3 `editor-drag-handle`**: 改 `toolbarConfig` → `dragHandleConfig`（仅 1-2 个动作：
+    52	   move-up / move-down / drag-start）；UI 改成 block 左侧拖拽 handle；`buildMoveBlockInput`
+    53	   复用 `commandSchemas.move_block`
+    54	3. **保持目录结构同形**: `core/{*-config.ts, command-bindings.ts, index.ts}` +
+    55	   `ui-default/{*.tsx, *.css, icons/}` + `__tests__/*.test.ts`（4+ 用例覆盖
+    56	   schema validation + cross-package authority delegation）
+    57	
+    58	## Modifying this file
+    59	
+    60	`toolbarConfigSchema` / `toolbarButtonSchema` / `EditorToolbar` props / `defaultToolbarConfig`
+    61	按钮列表的字段或值变更需 ADR — 与 `editor-commands/CONTRACT.md` 同 freeze 级别
+    62	（toolbar 是 editor-commands 的第一类 UI 触发源，schema 漂移会让 agent / UI 命令路径不一致，
+    63	spec §2.6）。
+    64	
+    65	`buildEditBlockInput` 签名变更需配 `editor-commands` 同步 PR（强耦合于 `editBlockInputSchema`）。
+    66	
+    67	## Related
+    68	
+    69	- [@skb/editor-commands CONTRACT](../editor-commands/CONTRACT.md) — `editBlockInputSchema` 权威源
+    70	- [设计规格 §2.6](../../docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md) — 命令模式 surface
+    71	- [ADR-0003 headless / presentational 分层](../../docs/decisions/ADR-0003-headless-presentational-split.md)
+    72	- [ADR-0006 asymmetry audit checklist](../../docs/decisions/ADR-0006-asymmetry-audit-checklist.md) item #1 + #3 + #4 + #6
+    73	- [ADR-0008 D1 dead-dep policy](../../docs/decisions/ADR-0008-wave-2-entry-policies.md)
+    74	- [Wave 2 plan §Task G1](../../docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md)
+
+codex
+I’ve finished the first pass and found one missing path read; next I’ll verify the actual `editBlockInputSchema` declaration location, package `tsconfig`, and file lengths, then run the requested `test/typecheck/lint/build` commands for `@skb/editor-toolbar` to complete the audit verdict.
+exec
+/bin/bash -lc 'cd /home/weiyi/selfKnowledgeBaseWeb && rg -n "editBlockInputSchema|editBlockBase|commandSchemas" packages/editor-commands/src' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 132ms:
+packages/editor-commands/src/__tests__/commands.test.ts:2:import { commandSchemas, parseCommand, slugSchema } from '../commands';
+packages/editor-commands/src/__tests__/commands.test.ts:22:    expect(Object.keys(commandSchemas).sort()).toEqual([
+packages/editor-commands/src/commands.ts:12:const editBlockBase = z
+packages/editor-commands/src/commands.ts:29:export const editBlockInputSchema = editBlockBase
+packages/editor-commands/src/commands.ts:35:export const commandSchemas = {
+packages/editor-commands/src/commands.ts:59:  edit_block: editBlockBase.refine(editBlockHasChange, {
+packages/editor-commands/src/commands.ts:86:export type CommandType = keyof typeof commandSchemas;
+packages/editor-commands/src/commands.ts:87:export type Command = z.infer<(typeof commandSchemas)[CommandType]>;
+packages/editor-commands/src/commands.ts:108:  const schema = (commandSchemas as Record<string, z.ZodType>)[type];
+
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && printf '=== editor-toolbar tsconfig\\n' && nl -ba packages/editor-toolbar/tsconfig.json && printf '\\n=== editor-toolbar package file sizes\\n' && wc -l packages/editor-toolbar/src/core/index.ts packages/editor-toolbar/src/core/toolbar-config.ts packages/editor-toolbar/src/core/command-bindings.ts packages/editor-toolbar/src/index.ts packages/editor-toolbar/src/ui-default/index.ts packages/editor-toolbar/src/ui-default/Toolbar.tsx packages/editor-toolbar/src/ui-default/icons/index.tsx packages/editor-toolbar/src/__tests__/toolbar-config.test.ts packages/editor-toolbar/src/ui-default/toolbar.css" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+=== editor-toolbar tsconfig
+     1	{
+     2	  "extends": "../../tsconfig.base.json",
+     3	  "compilerOptions": {
+     4	    "rootDir": ".",
+     5	    "outDir": "dist"
+     6	  },
+     7	  "include": ["src/**/*", "vitest.config.ts"],
+     8	  "references": [{ "path": "../editor-commands" }]
+     9	}
+
+=== editor-toolbar package file sizes
+   13 packages/editor-toolbar/src/core/index.ts
+   36 packages/editor-toolbar/src/core/toolbar-config.ts
+   26 packages/editor-toolbar/src/core/command-bindings.ts
+    1 packages/editor-toolbar/src/index.ts
+    3 packages/editor-toolbar/src/ui-default/index.ts
+   86 packages/editor-toolbar/src/ui-default/Toolbar.tsx
+  112 packages/editor-toolbar/src/ui-default/icons/index.tsx
+   66 packages/editor-toolbar/src/__tests__/toolbar-config.test.ts
+   52 packages/editor-toolbar/src/ui-default/toolbar.css
+  395 total
+
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && printf '=== editor-commands/src/commands.ts\\n' && nl -ba packages/editor-commands/src/commands.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+=== editor-commands/src/commands.ts
+     1	import { z } from 'zod';
+     2	import { frontmatterSchema } from '@skb/content-types';
+     3	
+     4	export const slugSchema = z
+     5	  .string()
+     6	  .regex(/^[a-z0-9-]+$/, 'slug must match [a-z0-9-]+');
+     7	
+     8	const positionSchema = z.number().int().nonnegative();
+     9	const blockTypeSchema = z.string().min(1);
+    10	const blockIdSchema = z.string().min(1);
+    11	
+    12	const editBlockBase = z
+    13	  .object({
+    14	    type: z.literal('edit_block'),
+    15	    pageSlug: slugSchema,
+    16	    blockId: blockIdSchema,
+    17	    props: z.record(z.string(), z.unknown()).optional(),
+    18	    content: z.string().optional(),
+    19	  })
+    20	  .strict();
+    21	
+    22	export function editBlockHasChange(v: {
+    23	  props?: Record<string, unknown> | undefined;
+    24	  content?: string | undefined;
+    25	}): boolean {
+    26	  return v.props !== undefined || v.content !== undefined;
+    27	}
+    28	
+    29	export const editBlockInputSchema = editBlockBase
+    30	  .omit({ type: true })
+    31	  .refine(editBlockHasChange, {
+    32	    message: 'edit_block requires at least one of props or content',
+    33	  });
+    34	
+    35	export const commandSchemas = {
+    36	  create_page: z
+    37	    .object({
+    38	      type: z.literal('create_page'),
+    39	      pageSlug: slugSchema,
+    40	      frontmatter: frontmatterSchema.strict(),
+    41	    })
+    42	    .strict(),
+    43	  delete_page: z
+    44	    .object({
+    45	      type: z.literal('delete_page'),
+    46	      pageSlug: slugSchema,
+    47	    })
+    48	    .strict(),
+    49	  insert_block: z
+    50	    .object({
+    51	      type: z.literal('insert_block'),
+    52	      pageSlug: slugSchema,
+    53	      position: positionSchema,
+    54	      blockType: blockTypeSchema,
+    55	      props: z.record(z.string(), z.unknown()).default({}),
+    56	      content: z.string().default(''),
+    57	    })
+    58	    .strict(),
+    59	  edit_block: editBlockBase.refine(editBlockHasChange, {
+    60	    message: 'edit_block requires at least one of props or content',
+    61	  }),
+    62	  delete_block: z
+    63	    .object({
+    64	      type: z.literal('delete_block'),
+    65	      pageSlug: slugSchema,
+    66	      blockId: blockIdSchema,
+    67	    })
+    68	    .strict(),
+    69	  move_block: z
+    70	    .object({
+    71	      type: z.literal('move_block'),
+    72	      pageSlug: slugSchema,
+    73	      blockId: blockIdSchema,
+    74	      newPosition: positionSchema,
+    75	    })
+    76	    .strict(),
+    77	  update_frontmatter: z
+    78	    .object({
+    79	      type: z.literal('update_frontmatter'),
+    80	      pageSlug: slugSchema,
+    81	      patch: frontmatterSchema.strict().partial(),
+    82	    })
+    83	    .strict(),
+    84	} as const;
+    85	
+    86	export type CommandType = keyof typeof commandSchemas;
+    87	export type Command = z.infer<(typeof commandSchemas)[CommandType]>;
+    88	
+    89	export type ParseCommandResult =
+    90	  | { success: true; data: Command }
+    91	  | { success: false; error: z.ZodError };
+    92	
+    93	export function parseCommand(input: unknown): ParseCommandResult {
+    94	  if (
+    95	    typeof input !== 'object' ||
+    96	    input === null ||
+    97	    !('type' in input) ||
+    98	    typeof (input as Record<string, unknown>).type !== 'string'
+    99	  ) {
+   100	    return {
+   101	      success: false,
+   102	      error: new z.ZodError([
+   103	        { code: 'custom', message: 'missing type', path: [] },
+   104	      ]),
+   105	    };
+   106	  }
+   107	  const type = (input as Record<string, unknown>).type as string;
+   108	  const schema = (commandSchemas as Record<string, z.ZodType>)[type];
+   109	  if (!schema) {
+   110	    return {
+   111	      success: false,
+   112	      error: new z.ZodError([
+   113	        { code: 'custom', message: `unknown command: ${type}`, path: [] },
+   114	      ]),
+   115	    };
+   116	  }
+   117	  const r = schema.safeParse(input);
+   118	  if (r.success) return { success: true, data: r.data as Command };
+   119	  return { success: false, error: r.error };
+   120	}
+
+exec
+/bin/bash -lc 'cd /home/weiyi/selfKnowledgeBaseWeb && pnpm --filter @skb/editor-toolbar test && pnpm --filter @skb/editor-toolbar typecheck && pnpm --filter @skb/editor-toolbar lint && pnpm --filter @skb/editor-toolbar build' in /home/weiyi/selfKnowledgeBaseWeb
+ exited 1 in 721ms:
+
+> @skb/editor-toolbar@0.0.0 test /home/weiyi/selfKnowledgeBaseWeb/packages/editor-toolbar
+> vitest run
+
+failed to load config from /home/weiyi/selfKnowledgeBaseWeb/packages/editor-toolbar/vitest.config.ts
+
+⎯⎯⎯⎯⎯⎯⎯ Startup Error ⎯⎯⎯⎯⎯⎯⎯⎯
+Error: EROFS: read-only file system, open '/home/weiyi/selfKnowledgeBaseWeb/packages/editor-toolbar/node_modules/.vite-temp/vitest.config.ts.timestamp-1777580314101-1d762319af1cf.mjs'
+    at async open (node:internal/fs/promises:639:25)
+    at async Object.writeFile (node:internal/fs/promises:1219:14)
+    at async loadConfigFromBundledFile (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:34769:3)
+    at async bundleAndLoadConfigFile (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:34632:17)
+    at async loadConfigFromFile (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:34599:42)
+    at async resolveConfig (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:34223:22)
+    at async _createServer (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:26029:65)
+    at async createViteServer (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vitest@4.1.5_@types+node@22.19.17_happy-dom@15.11.7_vite@8.0.10_@types+node@22.19.17_esbuild@_njtu3hruheo7esciutan5fga5a/node_modules/vitest/dist/chunks/cli-api.Cjt90eJu.js:8818:17)
+    at async createVitest (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vitest@4.1.5_@types+node@22.19.17_happy-dom@15.11.7_vite@8.0.10_@types+node@22.19.17_esbuild@_njtu3hruheo7esciutan5fga5a/node_modules/vitest/dist/chunks/cli-api.Cjt90eJu.js:14205:18)
+    at async prepareVitest (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vitest@4.1.5_@types+node@22.19.17_happy-dom@15.11.7_vite@8.0.10_@types+node@22.19.17_esbuild@_njtu3hruheo7esciutan5fga5a/node_modules/vitest/dist/chunks/cli-api.Cjt90eJu.js:14572:14) {
+  errno: -30,
+  code: 'EROFS',
+  syscall: 'open',
+  path: '/home/weiyi/selfKnowledgeBaseWeb/packages/editor-toolbar/node_modules/.vite-temp/vitest.config.ts.timestamp-1777580314101-1d762319af1cf.mjs'
+}
+
+
+
+/home/weiyi/selfKnowledgeBaseWeb/packages/editor-toolbar:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @skb/editor-toolbar@0.0.0 test: `vitest run`
+Exit status 1
+
+codex
+I captured command and config evidence; test execution is currently blocked by environment FS permissions (`EROFS` writing `.vite-temp` under `node_modules`). I’ll still run the remaining `typecheck`, `lint`, and `build` commands to complete the requested audit matrix.
+exec
+/bin/bash -lc 'cd /home/weiyi/selfKnowledgeBaseWeb && pnpm --filter @skb/editor-toolbar typecheck' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 1724ms:
+
+> @skb/editor-toolbar@0.0.0 typecheck /home/weiyi/selfKnowledgeBaseWeb/packages/editor-toolbar
+> tsc --noEmit
+
+
+exec
+/bin/bash -lc 'cd /home/weiyi/selfKnowledgeBaseWeb && pnpm --filter @skb/editor-toolbar lint' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 3212ms:
+
+> @skb/editor-toolbar@0.0.0 lint /home/weiyi/selfKnowledgeBaseWeb/packages/editor-toolbar
+> eslint .
+
+
+exec
+/bin/bash -lc 'cd /home/weiyi/selfKnowledgeBaseWeb && pnpm --filter @skb/editor-toolbar build' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 640ms:
+
+> @skb/editor-toolbar@0.0.0 build /home/weiyi/selfKnowledgeBaseWeb/packages/editor-toolbar
+> tsc -b
+
+
+codex
+I’ve confirmed most checks by inspection and command output. I’ll quickly verify the exact ADR-0006 8-point item wording so I can produce the required mapping with precise verdicts for each point.
+exec
+/bin/bash -lc 'cd /home/weiyi/selfKnowledgeBaseWeb && nl -ba docs/decisions/ADR-0006-asymmetry-audit-checklist.md' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	# ADR-0006: Cross-location asymmetry-audit checklist (process rule)
+     2	
+     3	| 字段 | 值                                    |
+     4	| ---- | ------------------------------------- |
+     5	| 状态 | accepted                              |
+     6	| 日期 | 2026-04-30                            |
+     7	| 作者 | orchestrator (Claude Opus 4.7 1M ctx) |
+     8	| 触发 | Wave 1 codex 5.5 reviews caught 12 instances of the same meta-class across 6 tracks + 5 close-ceremony fix iterations (8 distinct items + 4 close-ceremony reinforcements of items #6 and #8) |
+     9	| 替代 | 不替代任何 ADR；扩展 [ADR-0001](ADR-0001-stack-selection.md) §3.2 review chain |
+    10	
+    11	## Context
+    12	
+    13	Wave 1 implementation produced strong empirical evidence that **a single bug class** dominates the failure mode at line-level review:
+    14	
+    15	> **Cross-location asymmetry**: a value, schema, algorithm, or invariant exists in two or more places, and an edit to one location is not symmetrically applied to all peers, so behavior diverges silently.
+    16	
+    17	Across 6 tracks + 5 close-ceremony fix iterations, codex 5.5 (`pr-gate`) caught **12 instances** of this meta-class (8 distinct failure-mode items + 4 close-ceremony reinforcements of items #6 and #8). Every PR that lasted ≥ 2 review rounds hit at least one instance. The pattern is so consistent that linear "fix the cited blocker, ship v_n+1" iteration would not have caught the second-order asymmetry; codex specifically catches the symmetric counterpart that the worker missed.
+    18	
+    19	### Wave 1 empirical record (12 instances)
+    20	
+    21	| # | Track | Round | Asymmetry pair | Bug behavior |
+    22	|---|---|---|---|---|
+    23	| 1 | Track B (block-foundation + content-types) | R1 → fixed v3 | `listUIs` mutability vs `listCores` defensive copy | Caller mutation of return value polluted registry singleton |
+    24	| 2 | Track D (apps/api) | R2 → fixed v4 | RFC 7235 `WWW-Authenticate` on framework-raised 401 vs custom `SkbError` 401 | 4 of 5 401 paths emitted spec-mandated header; the custom-error path silently dropped it |
+    25	| 3 | Track F (editor-commands) | R3 → fixed v4 | `.strict()` on top-level Zod object vs nested `frontmatterSchema` | Top-level rejected unknown keys; nested still silently stripped them |
+    26	| 4 | Track C (mdx-bridge) | R2 → fixed v4 | `marksEqual` link comparator: `href` only vs `href + title` | Same href, different titles silently merged into one link with the first title preserved |
+    27	| 5 | Track F v5 | R3 → fixed v6 | One CONTRACT.md updated to reflect code; sister CONTRACT.md (`agent-tools`) had stale wording | Documentation-vs-code drift in the file the worker did not edit |
+    28	| 6 | Track A | R1 → fixed v2 | FOUC inline IIFE saved-value algorithm + content schema | Truthy-coerce diverges from strict-whitelist for invalid / case-mismatched values; inline `z.object` redefinition diverges from `frontmatterSchema` authority |
+    29	| 7 | Track A v2 | R2 → fixed v3 | FOUC inline IIFE try/catch scope | Wide try/catch in IIFE swallowed `matchMedia` exceptions while authority's narrow try/catch propagated; storage-throws scenarios produced light→dark hydration flash |
+    30	| 8 | Wave 1 close bundle v1 | R1 → fixed v2 | ADR-0006 mandated reviewer-prompt updates vs actual `agent-contract.md` / generated `.claude/agents/*.md` / `docs/review-checklist.md` / `team-operations.md` content | The close-ceremony commit codified a process rule that mandates downstream behavior; consumer-side artifacts (reviewer prompts + runbook) had not been updated to embed the rule, so Wave 2 reviewers would not have seen it |
+    31	| 9 | Wave 1 close bundle v2 | R2 → fixed v3 | ADR-0006:81 within-document drift "7 distinct instances" | Single bullet missed during the v1→v2 count sweep — sister-bullet variant of item #6 within a single document |
+    32	| 10 | Wave 1 close bundle v3 | R3 → fixed v4 | ADR-0006:117 within-document drift "7 empirical instances + 18+ erratum candidates" (both numbers stale) | Second sister-bullet drift in the same file, a different bullet — proved per-citation fixes are themselves item #6 traps; comprehensive sweep at fix time is the robust pattern |
+    33	| 11 | Wave 1 close bundle v4 (informational) | R4 (informational) → fixed v5 | structure baseline:66 "× 7 endpoints" while apps/api has 4 routes / 11 tests | Pre-existing content-accuracy drift in the structure baseline document (authored at v1) — content number mismatched real code; surfaced during the broader 11th-class hunt |
+    34	| 12 | Wave 1 close bundle v5 | R2 (pr-gate) → fixed v6 | Regenerated `.claude/agents/code-reviewer.md` + `.claude/agents/pr-gate.md` + `docs/review-checklist.md` were not staged in the bundle commit — authority + generator code updated, but generator outputs remained at pre-update HEAD content | Sub-form of item #8: regenerating an artifact and `git add`'ing it are separate steps; a bundle that updates authority + generator without staging the regenerated outputs is silently stale. Motivated the "verify by clean second-run" step now part of item #8. |
+    35	
+    36	Codex's structured review consistently caught these with three patterns:
+    37	
+    38	1. After fixing one location, **codex audits all peer locations** (not just the cited site)
+    39	2. After a value/schema acquires an attribute, **codex audits every comparator/serialization function** for that attribute
+    40	3. After a "happy path" fix, **codex audits the exception path** for the same equivalence
+    41	
+    42	These three habits collectively define the process rule below.
+    43	
+    44	## Decision
+    45	
+    46	Adopt an **8-point asymmetry-audit checklist** as a mandatory part of `code-reviewer` (Codex 5.3-spark, default cheap) and `pr-gate` (Codex 5.5, deep) review prompts. Reviewers MUST work through every applicable item before declaring PASS.
+    47	
+    48	### The 8 items
+    49	
+    50	1. **Field/attribute audit**: After adding a field to a data shape (Zod schema, Pydantic model, TS interface, mdast attrs, etc.), audit every comparator / equality / serialization / canonicalization function that handles this shape. (Wave 1 evidence: instance #4 — `marksEqual` link branch missed `title` when serialize emitted it.)
+    51	
+    52	2. **Status code audit**: After adding a status code to one HTTP handler (or, generally, an exit/error code to one branch), audit every other handler emitting the same code. RFC-mandated headers (RFC 7235 `WWW-Authenticate` on 401, RFC 7231 `Allow` on 405) attach to **the status code itself**, not the framework code path that emitted it. (Wave 1 evidence: instance #2 — custom `SkbError` 401 path missed `WWW-Authenticate`.)
+    53	
+    54	3. **Strictness audit**: After adding `.strict()` (Zod) / `extra='forbid'` (Pydantic) at one level of an object schema, audit every nested object/sub-schema. The strictness setting **does not propagate**; nested objects must opt in independently. (Wave 1 evidence: instance #3 — top-level `.strict()` shipped while nested `frontmatterSchema` still silently stripped unknown keys.)
+    55	
+    56	4. **Consumer schema audit**: After defining a schema in a single-authority package (e.g. `@skb/content-types/frontmatterSchema`), audit every consumer for inline duplicates or inline redefinitions that should `import` instead. The "deferred swap" pattern — "I'll inline now and import later" — is a contract break that compounds over time. (Wave 1 evidence: instance #6 part 2 — apps/site/content.config.ts inlined `z.object(...)` rather than importing `frontmatterSchema`.)
+    57	
+    58	5. **Algorithm + runtime constant replication audit**: When an algorithm or runtime constant is replicated outside its authority (e.g. inline FOUC scripts, login challenge derivation, pre-hydration boot logic that cannot import from packages), audit every consumer-side replica for byte-equivalent reproduction. The replica must register a **regression test** that asserts equivalence against the authority across a representative input corpus. (Wave 1 evidence: instance #6 part 1 — FOUC IIFE truthy-coerce vs `getInitialTheme()` strict-whitelist; remediated with `apps/site/src/__tests__/fouc-script.test.ts` 16-row corpus.)
+    59	
+    60	6. **Sister-file documentation audit**: After updating one CONTRACT.md (or any document that describes a code surface), audit ALL related CONTRACT.md files in the package family for sister-file drift. Two CONTRACT.md files that describe two halves of the same contract must use **identical terminology** for the shared identifiers (function names, schema names, refine predicate names). (Wave 1 evidence: instance #5 — `editor-commands/CONTRACT.md` updated to cite `editBlockInputSchema` while `agent-tools/CONTRACT.md` still referred to the old shape.)
+    61	
+    62	7. **Exception-scope equivalence audit**: When replicating an algorithm + its exception handling across files, audit BOTH the happy-path semantics AND the `try/catch` scope between authority and replica. Narrow vs wide `try/catch` can produce divergent fall-through behavior even with identical happy-path logic. Specifically: when `localStorage` / `sessionStorage` / `IndexedDB` / `matchMedia` / any browser API in the algorithm path can throw, the `try/catch` MUST wrap ONLY the throwing call, with the fall-through branch (matchMedia / system default / DOM apply) running AFTER the catch handler — not inside it. (Wave 1 evidence: instance #7 — FOUC IIFE wide-scope try/catch swallowed matchMedia exceptions; remediated with narrow try/catch + 2 storage-throws regression tests.)
+    63	
+    64	8. **Authority-document → generated/consumed surface audit**: When updating an authority document (ADR, spec, `agent-contract.md`, runbook, CONVENTIONS) **OR a dependency authority (`package.json`)** that mandates behavior in downstream consumers, audit every consumer-side replica/generated artifact for synchronized update **AND staged-in-the-git-index in the same bundle**. Specifically: an ADR section that says "X file MUST be updated to do Y" requires the same commit to update X and provide a way to verify the synchronization. Generated artifacts (e.g. `docs/review-checklist.md` and `.claude/agents/*.md` derived from `agent-contract.md`; **`pnpm-lock.yaml` derived from `package.json`** — see sub-form C below) MUST be regenerated via the documented codegen step (`pnpm generate:configs` / `pnpm install`) AND **explicitly `git add`'d** so the git **index** (not just the working tree) contains the new content; runbooks (`docs/runbooks/team-operations.md`) MUST be cross-linked; Codex/Claude subagent prompt files MUST embed or reference the new rule.
+    65	
+    66	   **Operational sequence** (do not skip steps):
+    67	   ```bash
+    68	   # 1. Edit authority + generator code
+    69	   # 2. Run codegen
+    70	   pnpm generate:configs
+    71	   # 3. Stage regenerated outputs (CRITICAL — see Pitfall below)
+    72	   git add <regenerated/path/foo.md> <regenerated/path/bar.md>
+    73	   # 4. Verify index reflects content (NOT just working tree):
+    74	   git diff --cached --stat -- <regenerated paths>
+    75	   #    → expects non-empty diff with the expected line counts
+    76	   # 5. Verify idempotence: re-run codegen + confirm working tree matches index:
+    77	   pnpm generate:configs
+    78	   git status --short -- <regenerated paths>
+    79	   #    → expects column-1 'M' (staged) + column-2 blank (working tree clean)
+    80	   ```
+    81	
+    82	   **Pitfall (this is the load-bearing step)**: `git status --short` shows two columns: column 1 is index-vs-HEAD; column 2 is working-tree-vs-index. After running the generator without `git add`, you see `' M'` (space + M) — **working tree differs from index, but index still matches HEAD**. `git commit` only commits the index. Skipping `git add` means the regenerated content is in your working tree but NOT in the next commit. The bundle would land authority + generator-code changes WITHOUT the regenerated outputs, leaving consumers (Wave 2 reviewers reading `.claude/agents/*.md`) at pre-update content. Use `git diff --cached` (not `git status`) as the canonical staging-verification command — `--cached` shows index-vs-HEAD only, which is what `git commit` will produce.
+    83	
+    84	   **Pitfall extension — `pnpm-lock.yaml` is a generated artifact too (sub-form C below)**: when the authority is `package.json` (any dependency add / remove / version bump / `@types/*` shift), `pnpm install` regenerates `pnpm-lock.yaml` as a deterministic derived artifact. Skipping `git add pnpm-lock.yaml` produces the same class of failure as skipping `git add .claude/agents/*.md`: working tree has the synced lockfile but the **index** still holds HEAD's stale lockfile, so the bundle ships `package.json` ahead of its lockfile. CI runs `pnpm install --frozen-lockfile` from the bundled state, sees the stale lockfile disagreeing with the new `package.json`, and fails install. The same `git diff --cached --stat -- pnpm-lock.yaml` canonical verification applies. (Wave 1 erratum commit `e15ec36`; codified as sub-form C below.)
+    85	
+    86	   Generated-from-authority files carry their own header comment ("GENERATED FROM agent-contract.md — DO NOT EDIT BY HAND") OR YAML frontmatter declaring authority source — both forms are acceptable. `pnpm-lock.yaml` lacks an explicit header (the format is fixed by pnpm) but is implicitly declared by `pnpm install`'s contract — its authority is `package.json` + the workspace `pnpm-workspace.yaml`.
+    87	
+    88	   **Wave 1 evidence**: **instance #8** — ADR-0006 v1 commit codified reviewer-prompt mandates but did not update `agent-contract.md` / regenerate `.claude/agents/code-reviewer.md` / regenerate `.claude/agents/pr-gate.md` / cross-link `team-operations.md` / regenerate `docs/review-checklist.md`; pr-gate caught the dogfood failure during R1 review of the close-ceremony bundle, forcing a v2 fix. **instance #12 (sub-form A — pre-regeneration omission)** — v5 bundle updated authority files (`agent-contract.md`, generator code, `team-operations.md` cross-link) but had not run the generator at all post-edit; the 3 regenerated outputs were stale at HEAD content; pr-gate caught this during R2 review, forcing a v6 fix. **instance #12 (sub-form B — staging-vs-working-tree confusion)** — v6 bundle ran the generator (so working tree had new content) but did NOT `git add` the regenerated outputs; the git **index** still held HEAD blob hashes for the 3 generated files; orchestrator confused `git status --short` "M" prefix (working-tree-vs-index) with index-vs-HEAD; pr-gate caught this via `git ls-files --stage` blob-hash comparison during R3 review, forcing the v7 fix that explicitly stages with `git add` + verifies via `git diff --cached`. **instance #12 (sub-form C — lockfile is a generated-from-authority artifact)** — Wave 1 close ceremony commit `e15ec36` ("fix(deps): commit pnpm-lock.yaml for @tailwindcss/typography (lockfile drift)"): the design-tokens erratum (commit `fdc86a8`) added the `@tailwindcss/typography` dependency to `package.json` but did not stage the regenerated `pnpm-lock.yaml`; CI install used the pre-update lockfile, drifted against the new `package.json`, and failed `pnpm install --frozen-lockfile`. Resolution: commit `e15ec36` staged the lockfile separately. Lesson codified: when the authority is `package.json` (any dependency add / remove / version bump), `pnpm-lock.yaml` is the consumer-side generated artifact and must ride the same bundle — the class equivalence to `.claude/agents/*.md` regeneration is exact (deterministic derive + git-index staging required). The four sub-forms of the same item #8 class — pre-regeneration omission, post-regeneration commit-staging confusion, conceptually-correct-but-operationally-incomplete fix, AND lockfile-as-generated-artifact — together motivate the explicit operational sequence and `git diff --cached` canonical verification command codified above.
+    89	
+    90	### Wave 2 prep notes (forward-compatibility application)
+    91	
+    92	The 8 items have specific Wave 2 trip-hazards already identified by Wave 1's review record:
+    93	
+    94	- **Item #1 + Wave 2 attr-bearing marks**: when the first attr-bearing mark beyond `link` is added to mdx-bridge (e.g. `highlight: {color}`, `kbd: {style}`), the worker MUST simultaneously update `wrapMark` AND `marksEqual` AND add a fixture exercising attr-equality + attr-distinction. Default `return true` in `marksEqual` is a silent-drop trap for any attr-bearing mark. (See pr-gate Track C v4 R3 caveat.)
+    95	
+    96	- **Item #2 + Wave 2 new error categories**: when Wave 2+ adds new HTTP error categories (e.g. `auth-rate-limit`, `kernel-timeout`), each new `SkbError` subclass MUST emit the same RFC-mandated headers as framework-raised peers. Add a unit test asserting header presence per error type. (See `apps/api/CONVENTIONS.md` §5 Pitfall + Pitfall continued.)
+    97	
+    98	- **Item #5 + Wave 2 client-side replications**: when apps/site adds new client-side algorithm replications (theme variants beyond light/dark, locale negotiation pre-hydration, etc.), the worker MUST audit both saved-value semantics AND try/catch scope against authority. (See `packages/design-tokens/CONTRACT.md` Inverse-direction obligation invariant.)
+    99	
+   100	- **Item #7 + future inline scripts**: ANY future `<script is:inline>` block in the project that needs pre-hydration replication of a package algorithm MUST follow the FOUC template (narrow try/catch + corpus regression test).
+   101	
+   102	## Consequences
+   103	
+   104	### Positive
+   105	
+   106	- **Catch the failure mode proactively**: Wave 1 evidence shows reviewer-applied checklist would have caught all 12 instances on the first review round (including the close-ceremony dogfood instance #8 + the 4 fix-loop reinforcements), eliminating 12 round-trip cycles
+   107	- **Reviewer prompt clarity**: code-reviewer + pr-gate codex profile prompts gain a concrete, enumerable checklist rather than the implicit "look for symmetric counterparts" expectation
+   108	- **Worker self-audit**: workers gain a pre-PR checklist they can run before reporting `ready-for-review`, catching their own asymmetries (memory: `feedback_verification_fresh_state.md` showed the verification-rigor lesson; this checklist is the analogous rigor at code-design level)
+   109	- **Empirical grounding**: 12 distinct instances spread across 6 tracks + 5 close-ceremony fix iterations make this rule data-driven, not a "best practice" speculation; instances #9-12 reinforce items #6 + #8 specifically through close-ceremony fix-loop evidence
+   110	
+   111	### Costs
+   112	
+   113	- **Review-round time**: applying 8-point audit at every review adds ~5-10 minutes per round of code-reviewer + pr-gate runtime. Acceptable trade-off given Wave 1 round-counts (Track F: 5 rounds; Track A: 3 rounds; Track C: 4 rounds; Track D: 4 rounds) — front-loading review thoroughness reduces total cycles
+   114	- **Worker prompt overhead**: each spawn prompt now needs a reference to this ADR + the 8-point checklist. Marginal cost.
+   115	- **False-positive risk**: items that don't apply (e.g. #2 "status code" doesn't apply to TS-only packages) need to be triaged and skipped. Reviewer profile prompts must explicitly say "skip items not applicable to this PR's scope" to avoid bloat.
+   116	
+   117	### Risks (mitigated)
+   118	
+   119	- **Risk**: workers might mechanically check items without thinking, producing false confidence. **Mitigation**: each item enumerates concrete failure modes from Wave 1, not abstract heuristics — easier to apply
+   120	- **Risk**: this list might grow unbounded as Wave 2+ surfaces new asymmetry classes. **Mitigation**: ADR amendments are cheap; each new instance produces an ADR-0006 erratum capturing item #N+1. Wave 2 close ceremony reviews instances and adds items as needed.
+   121	
+   122	## Implementation
+   123	
+   124	### Reviewer prompt updates
+   125	
+   126	`code-reviewer` and `pr-gate` profile prompts MUST be updated to:
+   127	
+   128	1. State the 8-point checklist verbatim (or by reference to this ADR)
+   129	2. Require the reviewer's verdict structure to include "asymmetry-audit applied: items {1..8} verdicts: ..."
+   130	3. Explicitly mark FAIL if any applicable item is left un-audited
+   131	
+   132	`docs/runbooks/team-operations.md` §"角色与触发器" Tier 2 reviewer rows should cross-link to this ADR.
+   133	
+   134	### Worker pre-flight (template addition)
+   135	
+   136	Worker `ready-for-review` reports SHOULD include a brief asymmetry-audit summary: which of the 8 items applied, and the worker's self-audit verdict. Reviewers cross-check.
+   137	
+   138	### Wave 1 retroactive
+   139	
+   140	This ADR is **forward-applicable**. Wave 1 PRs that already shipped under earlier review without this checklist remain valid; the empirical instances they revealed are exactly what grounded this ADR. No retroactive re-review required.
+   141	
+   142	## Related
+   143	
+   144	- [ADR-0001](ADR-0001-stack-selection.md) §3.2 review chain — this ADR specifies what reviewers MUST do; ADR-0001 specifies who reviews
+   145	- [ADR-0002](ADR-0002-wave-1-close.md) Wave 1 close — collects the 12 empirical instances + 22 erratum candidates
+   146	- [ADR-0004](ADR-0004-agent-team-dispatch-model.md) team dispatch — orchestrator dispatches review chain per this checklist
+   147	- [docs/runbooks/team-operations.md](../runbooks/team-operations.md) — operational reference for reviewers and workers
+   148	- [packages/design-tokens/CONTRACT.md](../../packages/design-tokens/CONTRACT.md) Inverse-direction obligation — concrete application of items #5 + #7
+   149	- [apps/api/CONVENTIONS.md](../../apps/api/CONVENTIONS.md) §5 Pitfalls — concrete application of item #2
+
+codex
+**Verdict: FAIL**
+
+1. **Findings (line-numbered, code-level)**
+   - No code-level violations found.  
+   - Cross-check target checks passed with the following evidence:
+     - Headless split enforced: `core` has no React/Tiptap imports, while `ui-default` has them.
+       - Pass lines: [packages/editor-toolbar/src/core/index.ts:1-13](packages/editor-toolbar/src/core/index.ts), [packages/editor-toolbar/src/core/command-bindings.ts:1-2](packages/editor-toolbar/src/core/command-bindings.ts), [packages/editor-toolbar/src/ui-default/Toolbar.tsx:1-3](packages/editor-toolbar/src/ui-default/Toolbar.tsx)
+     - Strict schemas at top level and child schema strict:
+       - Pass lines: [packages/editor-toolbar/src/core/toolbar-config.ts:3-17](packages/editor-toolbar/src/core/toolbar-config.ts)
+     - Single-authority command schema usage (`editBlockInputSchema` imported, not redefined):
+       - Pass lines: [packages/editor-toolbar/src/core/command-bindings.ts:1-20](packages/editor-toolbar/src/core/command-bindings.ts), [packages/editor-toolbar/src/__tests__/toolbar-config.test.ts:56-65](packages/editor-toolbar/src/__tests__/toolbar-config.test.ts)
+     - Contract alignment checks:
+       - `editor-toolbar` CONTRACT mirrors required editor-commands/block-foundation invariants (schema strictness, no headless React/Tiptap imports, `buildEditBlockInput` authority sharing).
+       - Pass lines: [packages/editor-toolbar/CONTRACT.md:25-31](packages/editor-toolbar/CONTRACT.md), [packages/editor-commands/CONTRACT.md:5-13](packages/editor-commands/CONTRACT.md), [packages/editor-toolbar/CONTRACT.md:42-56](packages/editor-toolbar/CONTRACT.md), [packages/block-foundation/CONTRACT.md:14-20](packages/block-foundation/CONTRACT.md)
+     - Tests include validation-focused coverage + ≥4 cases:
+       - 5 test cases in one file.  
+       - Pass lines: [packages/editor-toolbar/src/__tests__/toolbar-config.test.ts:11-66](packages/editor-toolbar/src/__tests__/toolbar-config.test.ts)
+     - ADR-0008 dep policy checks:
+       - `package.json` runtime imports match declared deps/peers used by package code; no dead imports detected.
+       - Pass lines: [packages/editor-toolbar/package.json:17-33](packages/editor-toolbar/package.json)
+     - File sizes within limits (all ≤200 lines, far below 500 hard cap):
+       - Pass via `wc -l`:
+         - `core/index.ts:13`, `core/toolbar-config.ts:36`, `core/command-bindings.ts:26`, `index.ts:1`, `ui-default/index.ts:3`, `Toolbar.tsx:86`, `icons/index.tsx:112`, `__tests__/toolbar-config.test.ts:66`, `toolbar.css:52`
+
+2. **Command audit results**
+   - `pnpm --filter @skb/editor-toolbar test` **FAILED** due environment FS policy (not package logic):
+     - Error: `EROFS: read-only file system, open '/home/weiyi/selfKnowledgeBaseWeb/packages/editor-toolbar/node_modules/.vite-temp/...'
+   - `pnpm --filter @skb/editor-toolbar typecheck` **PASS**
+   - `pnpm --filter @skb/editor-toolbar lint` **PASS**
+   - `pnpm --filter @skb/editor-toolbar build` **PASS**
+
+3. **ADR-0006 8-point asymmetry audit (applicability + result)**
+   - 1) PASS
+   - 2) N/A (no status-code handling in this package)
+   - 3) PASS
+   - 4) PASS
+   - 5) N/A (no replicated runtime algorithm with required replica parity pattern)
+   - 6) PASS (sister CONTRACT terminology/contractual surface remains aligned)
+   - 7) N/A (no exception-wrapper replica pattern present)
+   - 8) N/A (no authority/doc or package dependency-change artifact drift introduced in this package snapshot)
+
+4. **Why PASS/FAIL is `FAIL`**
+   - Fails the requested verification matrix because `test` command is blocked by read-only sandbox FS (`node_modules/.vite-temp` write).  
+   - Recommend rerunning on a writable workspace to close the loop.
+2026-04-30T20:18:51.475392Z ERROR codex_core::session: failed to record rollout items: thread 019de00a-d78f-7cc2-a103-dfc90afe292a not found
+tokens used
+35,360
+**Verdict: FAIL**
+
+1. **Findings (line-numbered, code-level)**
+   - No code-level violations found.  
+   - Cross-check target checks passed with the following evidence:
+     - Headless split enforced: `core` has no React/Tiptap imports, while `ui-default` has them.
+       - Pass lines: [packages/editor-toolbar/src/core/index.ts:1-13](packages/editor-toolbar/src/core/index.ts), [packages/editor-toolbar/src/core/command-bindings.ts:1-2](packages/editor-toolbar/src/core/command-bindings.ts), [packages/editor-toolbar/src/ui-default/Toolbar.tsx:1-3](packages/editor-toolbar/src/ui-default/Toolbar.tsx)
+     - Strict schemas at top level and child schema strict:
+       - Pass lines: [packages/editor-toolbar/src/core/toolbar-config.ts:3-17](packages/editor-toolbar/src/core/toolbar-config.ts)
+     - Single-authority command schema usage (`editBlockInputSchema` imported, not redefined):
+       - Pass lines: [packages/editor-toolbar/src/core/command-bindings.ts:1-20](packages/editor-toolbar/src/core/command-bindings.ts), [packages/editor-toolbar/src/__tests__/toolbar-config.test.ts:56-65](packages/editor-toolbar/src/__tests__/toolbar-config.test.ts)
+     - Contract alignment checks:
+       - `editor-toolbar` CONTRACT mirrors required editor-commands/block-foundation invariants (schema strictness, no headless React/Tiptap imports, `buildEditBlockInput` authority sharing).
+       - Pass lines: [packages/editor-toolbar/CONTRACT.md:25-31](packages/editor-toolbar/CONTRACT.md), [packages/editor-commands/CONTRACT.md:5-13](packages/editor-commands/CONTRACT.md), [packages/editor-toolbar/CONTRACT.md:42-56](packages/editor-toolbar/CONTRACT.md), [packages/block-foundation/CONTRACT.md:14-20](packages/block-foundation/CONTRACT.md)
+     - Tests include validation-focused coverage + ≥4 cases:
+       - 5 test cases in one file.  
+       - Pass lines: [packages/editor-toolbar/src/__tests__/toolbar-config.test.ts:11-66](packages/editor-toolbar/src/__tests__/toolbar-config.test.ts)
+     - ADR-0008 dep policy checks:
+       - `package.json` runtime imports match declared deps/peers used by package code; no dead imports detected.
+       - Pass lines: [packages/editor-toolbar/package.json:17-33](packages/editor-toolbar/package.json)
+     - File sizes within limits (all ≤200 lines, far below 500 hard cap):
+       - Pass via `wc -l`:
+         - `core/index.ts:13`, `core/toolbar-config.ts:36`, `core/command-bindings.ts:26`, `index.ts:1`, `ui-default/index.ts:3`, `Toolbar.tsx:86`, `icons/index.tsx:112`, `__tests__/toolbar-config.test.ts:66`, `toolbar.css:52`
+
+2. **Command audit results**
+   - `pnpm --filter @skb/editor-toolbar test` **FAILED** due environment FS policy (not package logic):
+     - Error: `EROFS: read-only file system, open '/home/weiyi/selfKnowledgeBaseWeb/packages/editor-toolbar/node_modules/.vite-temp/...'
+   - `pnpm --filter @skb/editor-toolbar typecheck` **PASS**
+   - `pnpm --filter @skb/editor-toolbar lint` **PASS**
+   - `pnpm --filter @skb/editor-toolbar build` **PASS**
+
+3. **ADR-0006 8-point asymmetry audit (applicability + result)**
+   - 1) PASS
+   - 2) N/A (no status-code handling in this package)
+   - 3) PASS
+   - 4) PASS
+   - 5) N/A (no replicated runtime algorithm with required replica parity pattern)
+   - 6) PASS (sister CONTRACT terminology/contractual surface remains aligned)
+   - 7) N/A (no exception-wrapper replica pattern present)
+   - 8) N/A (no authority/doc or package dependency-change artifact drift introduced in this package snapshot)
+
+4. **Why PASS/FAIL is `FAIL`**
+   - Fails the requested verification matrix because `test` command is blocked by read-only sandbox FS (`node_modules/.vite-temp` write).  
+   - Recommend rerunning on a writable workspace to close the loop.
