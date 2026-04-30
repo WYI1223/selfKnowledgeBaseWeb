@@ -244,7 +244,7 @@ function runCli(): void {
     .option('--dry-run', 'print planned changes only')
     .helpOption('--help', 'display help for command')
     .action((from: string, to: string, options: { dryRun?: boolean }) => {
-      const report = refactorMove({ from, to, dryRun: options.dryRun });
+      const report = refactorMove({ from, to, dryRun: options.dryRun ?? false });
       for (const line of report.plan) {
         console.log(line);
       }
