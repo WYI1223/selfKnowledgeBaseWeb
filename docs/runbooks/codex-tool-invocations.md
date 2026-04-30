@@ -59,7 +59,7 @@ stdout 落盘到 docs/audits/codex-runs/<date>-<task>-code-review.txt（audit �
 
 行级 review：类型 / lint / 契约同步 / 文件大小 / 风格 / 边界条件。
 gpt-5.3-codex-spark（廉价默认）。**绝不修改代码**。
-高风险 PR 会自动 escalate 给 pr-gate（ADR-0007 D2 表）。
+高风险 PR 按 ADR-0007 D2 表条件 escalate（rows 1/2/4/8 → +pr-gate +pr-reviewer；rows 3/5/6/7 → 仅 +pr-reviewer，不跑 pr-gate）。
 
 **强制：ADR-0006 8-point asymmetry-audit checklist**（见 `docs/decisions/ADR-0006-asymmetry-audit-checklist.md`）必须按可适用项目逐条审查，verdict 结构应包含
 `asymmetry-audit applied: items {1..8} verdicts: ...`。8 项概要：
@@ -116,7 +116,6 @@ codex exec --profile pr-gate < /dev/null
 
 - `contract_change`
 - `package_add_remove`
-- `core_arch_touch`
 - `adr_required`
 - `ci_or_deploy_or_auth_or_security_touch`
 
@@ -127,9 +126,11 @@ stdout 落盘到 docs/audits/codex-runs/<date>-<task>-pr-gate.txt。
 
 **Description**:
 
-仅对**高风险 PR** 启用。深度审查：漏洞 / 隐性破坏 / 跨包影响。
+仅对**高风险 PR 中需 pr-gate 的那 4 类**启用。深度审查：漏洞 / 隐性破坏 / 跨包影响。
 gpt-5.5（贵但严谨）。**绝不修改代码**。
-触发条件由 orchestrator 在 review 阶段判断（spec §3.2 + ADR-0007 D2 表 8 行）。
+触发条件由 orchestrator 在 review 阶段判断（ADR-0007 D2 表 8 行）：
+rows 1/2/4/8（CONTRACT 变化 / 新增删除包 / 新 ADR / CI-auth-security）→ 启用；
+rows 3/5/6/7（spec/ADR 文档 / 删除重命名包 / 跨 3+包 / perf-auditor 标记）→ 跳过 pr-gate，直入 pr-reviewer。
 
 **强制：ADR-0006 8-point asymmetry-audit checklist**（见 `docs/decisions/ADR-0006-asymmetry-audit-checklist.md`）— 你是这项规则的主要执行者，必须独立验证所有可适用项目（不仅依赖 code-reviewer 的 R1 结论），并主动 hunt 8th-class beyond the cited fix。verdict 结构应包含
 `asymmetry-audit applied: items {1..8} verdicts: ...` 与（如适用）`8th-class hunt: <findings>`。8 项即 code-reviewer profile 中的 8 项；本 profile 在所有项上都比 code-reviewer 更严苛。

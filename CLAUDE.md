@@ -46,7 +46,7 @@ worker (writes code)
    ▼
 [Bash] codex exec --profile code-reviewer  (Codex 5.3-spark, line-level rigor, cheap default)
    │
-   ├── if high-risk → [Bash] codex exec --profile pr-gate  (Codex 5.5, deep scan)
+   ├── if high-risk (D2 rows 1/2/4/8) → [Bash] codex exec --profile pr-gate  (Codex 5.5, deep scan)
    │
    ▼
 pr-reviewer    (Claude, selective per ADR-0007 D2; spec match + regression + arch consistency)
@@ -55,9 +55,11 @@ pr-reviewer    (Claude, selective per ADR-0007 D2; spec match + regression + arc
 git-operator   (Claude, only authorized git surface, runs `pnpm check` once more)
 ```
 
-High-risk triggers (force `pr-gate` + Claude `pr-reviewer`): contract change, package add/remove,
-core arch touch, ADR-required PR, CI/deploy/auth/security touch, cross ≥3 packages,
-performance-auditor flagged. See [ADR-0007 D2](docs/decisions/ADR-0007-job-function-codex-heavy-execution.md).
+High-risk triggers per ADR-0007 D2 (4 rows +pr-gate +pr-reviewer, 4 rows +pr-reviewer only):
+- **+pr-gate +pr-reviewer** (D2 rows 1/2/4/8): contract change, package add/remove, new ADR required, CI/deploy/auth/security touch.
+- **+pr-reviewer only, skip pr-gate** (D2 rows 3/5/6/7): spec/agent-contract/ADR edit, delete/rename package, cross ≥3 packages, performance-auditor flagged.
+
+See [ADR-0007 D2](docs/decisions/ADR-0007-job-function-codex-heavy-execution.md).
 
 Codex tools (code-reviewer / pr-gate / plan-challenger / 5 scaffolders) are
 [orchestrator-direct Bash invocations](docs/runbooks/codex-tool-invocations.md) post ADR-0007 D5,
@@ -96,7 +98,7 @@ orchestrator-direct Bash invocations (ADR-0007 D5). Full canonical bash + trigge
 | ------------------------ | ----------------- | -------------------------------------------------------------------------------------------------- |
 | `code-reviewer`          | `code-reviewer`   | 行级 review：类型 / lint / 契约同步 / 文件大小 / 风格 / 边界条件。                                 |
 | `plan-challenger`        | `plan-challenger` | lock 前挑战 orchestrator 的 wave / track plan：检查 task 大小、可测性、边界场景。                  |
-| `pr-gate`                | `pr-gate`         | 仅对**高风险 PR** 启用。深度审查：漏洞 / 隐性破坏 / 跨包影响。                                     |
+| `pr-gate`                | `pr-gate`         | 仅对**高风险 PR 中需 pr-gate 的那 4 类**启用。深度审查：漏洞 / 隐性破坏 / 跨包影响。               |
 | `codex-api-crud-builder` | `scaffolder`      | 在 apps/api 按 RESTful 风格生成 CRUD 端点骨架（Pydantic schema + 路由），                          |
 | `codex-block-generator`  | `scaffolder`      | 在 simple-block-eng / ux-ui-lead / editor-eng 提交 template 后，按模板仿造其余 block / submodule。 |
 | `codex-css-stylist`      | `scaffolder`      | 写 packages/design-tokens / packages/ui 的 design tokens（颜色 / 间距 / 字体）+                    |

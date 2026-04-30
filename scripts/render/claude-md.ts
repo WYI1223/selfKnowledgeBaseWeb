@@ -62,7 +62,7 @@ worker (writes code)
    ▼
 [Bash] codex exec --profile code-reviewer  (Codex 5.3-spark, line-level rigor, cheap default)
    │
-   ├── if high-risk → [Bash] codex exec --profile pr-gate  (Codex 5.5, deep scan)
+   ├── if high-risk (D2 rows 1/2/4/8) → [Bash] codex exec --profile pr-gate  (Codex 5.5, deep scan)
    │
    ▼
 pr-reviewer    (Claude, selective per ADR-0007 D2; spec match + regression + arch consistency)
@@ -71,9 +71,11 @@ pr-reviewer    (Claude, selective per ADR-0007 D2; spec match + regression + arc
 git-operator   (Claude, only authorized git surface, runs \`pnpm check\` once more)
 \`\`\`
 
-High-risk triggers (force \`pr-gate\` + Claude \`pr-reviewer\`): contract change, package add/remove,
-core arch touch, ADR-required PR, CI/deploy/auth/security touch, cross ≥3 packages,
-performance-auditor flagged. See [ADR-0007 D2](docs/decisions/ADR-0007-job-function-codex-heavy-execution.md).
+High-risk triggers per ADR-0007 D2 (4 rows +pr-gate +pr-reviewer, 4 rows +pr-reviewer only):
+- **+pr-gate +pr-reviewer** (D2 rows 1/2/4/8): contract change, package add/remove, new ADR required, CI/deploy/auth/security touch.
+- **+pr-reviewer only, skip pr-gate** (D2 rows 3/5/6/7): spec/agent-contract/ADR edit, delete/rename package, cross ≥3 packages, performance-auditor flagged.
+
+See [ADR-0007 D2](docs/decisions/ADR-0007-job-function-codex-heavy-execution.md).
 
 Codex tools (code-reviewer / pr-gate / plan-challenger / 5 scaffolders) are
 [orchestrator-direct Bash invocations](docs/runbooks/codex-tool-invocations.md) post ADR-0007 D5,

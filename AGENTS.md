@@ -57,7 +57,7 @@ see `feedback_codex_stdin` memory.
 | ------------------------ | ----------------- | -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
 | `code-reviewer`          | `code-reviewer`   | worker_marks_ready_for_review                                        | 行级 review：类型 / lint / 契约同步 / 文件大小 / 风格 / 边界条件。                                 |
 | `plan-challenger`        | `plan-challenger` | orchestrator_publishes_plan                                          | lock 前挑战 orchestrator 的 wave / track plan：检查 task 大小、可测性、边界场景。                  |
-| `pr-gate`                | `pr-gate`         | contract_change, package_add_remove                                  | 仅对**高风险 PR** 启用。深度审查：漏洞 / 隐性破坏 / 跨包影响。                                     |
+| `pr-gate`                | `pr-gate`         | contract_change, package_add_remove                                  | 仅对**高风险 PR 中需 pr-gate 的那 4 类**启用。深度审查：漏洞 / 隐性破坏 / 跨包影响。               |
 | `codex-api-crud-builder` | `scaffolder`      | new_resource_endpoint_requested                                      | 在 apps/api 按 RESTful 风格生成 CRUD 端点骨架（Pydantic schema + 路由），                          |
 | `codex-block-generator`  | `scaffolder`      | simple_block_template_committed, editor_submodule_template_committed | 在 simple-block-eng / ux-ui-lead / editor-eng 提交 template 后，按模板仿造其余 block / submodule。 |
 | `codex-css-stylist`      | `scaffolder`      | design_token_requested, tailwind_class_combo_requested               | 写 packages/design-tokens / packages/ui 的 design tokens（颜色 / 间距 / 字体）+                    |

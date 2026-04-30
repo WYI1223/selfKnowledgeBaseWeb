@@ -691,11 +691,10 @@ Worker 完工
 │   2. 新增 / 删除 package                                  │
 │   3. 修改 spec / agent-contract.md / 任何 ADR             │
 │   4. 触发新 ADR 创建                                       │
-│   5. 触碰 CI workflow / deploy / auth / security          │
+│   5. 删除 / 重命名 package                                │
 │   6. 跨 ≥ 3 个 package 的 PR                              │
 │   7. performance-auditor 标记的 PR                        │
-│   8. 触碰核心架构包：kernel-adapter / mdx-bridge /        │
-│      editor-commands / block-foundation                   │
+│   8. 修改 CI workflow / deploy / auth / security          │
 └──────────────────────────────────────────────────────────┘
    │                              │
    │ 否（普通 PR）                 │ 是（高风险 PR）
@@ -706,9 +705,10 @@ Worker 完工
    │              │  ── 深度审查：漏洞 / 隐性破坏 / 8th- │
    │              │     class hunt / 跨包影响             │
    │              │  ── 输出: PASS / FAIL + 推理 → log    │
-   │              │  注：spec / ADR-only 类高风险（仅触  │
-   │              │     发条件 #3 #4）可仅 Claude pr-    │
-   │              │     reviewer，不必跑 pr-gate          │
+   │              │  注：D2 rows 3/5/6/7（spec/ADR、删  │
+   │              │     除重命名包、跨 3+包、perf-auditor │
+   │              │     标记）跳过 pr-gate，直入 Step 3；│
+   │              │  rows 1/2/4/8 → 按此框走 Step 2.5   │
    │              └──────────────────────────────────────┘
    │                              │
    │                              ├─── FAIL → 退 worker 修复

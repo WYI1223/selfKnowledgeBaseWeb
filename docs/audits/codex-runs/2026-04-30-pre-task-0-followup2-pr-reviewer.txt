@@ -1,0 +1,164 @@
+Wave 2 Pre-Task 0 follow-up² bundle R2 — Claude pr-reviewer audit
+=================================================================
+Date: 2026-04-30
+Reviewer: pr-reviewer (Claude sonnet-4-6)
+Branch: main HEAD post-R2
+Bundle: 6 files staged, +34/-28 (R1+R2 cumulative)
+Triggers: ADR-0007 D2 row 3 (修改 spec / agent-contract.md) → +Claude pr-reviewer; no pr-gate (D2 row 3 carve-out; dogfood)
+R1 chain: codex 5.3-spark code-reviewer R1 FAIL on item #6 (triggered_by 含 core_arch_touch) → R2 fix → codex R2 PASS → Claude pr-reviewer (this) APPROVE
+
+VERDICT: APPROVE (with non-blocking observations)
+
+================================================================
+SPEC MATCH
+================================================================
+
+Canonical authority = ADR-0007 D2 table (8 rows). Verified all 6 sister points independently:
+
+Point 1 — spec §3.2 Step 2 8-bullet list vs ADR-0007 D2 table (line-by-line)
+ADR-0007 D2 8 rows:
+  1. 修改任何 */CONTRACT.md → +pr-gate +pr-reviewer
+  2. 新增/删除 package → +pr-gate +pr-reviewer
+  3. 修改 spec/agent-contract.md/任何 ADR → +pr-reviewer (no pr-gate)
+  4. 触发新 ADR 创建 → +pr-gate +pr-reviewer
+  5. 删除/重命名 package → +pr-reviewer
+  6. 跨 ≥3 个 package → +pr-reviewer
+  7. performance-auditor 标记 → +pr-reviewer
+  8. 修改 CI workflow/deploy/auth/security → +pr-gate +pr-reviewer
+
+Spec §3.2 Step 2 box (lines 690-697) lists 8 items in identical D2 order with semantically equivalent wording. PASS.
+
+Point 2 — spec §3.2 Step 2.5 inline note 4-vs-4 split (lines 708-711)
+"D2 rows 3/5/6/7 跳过 pr-gate，直入 Step 3；rows 1/2/4/8 → 按此框走 Step 2.5"
+PASS. 4-vs-4 split correctly stated.
+
+Point 3 — agent-contract.md code-reviewer description (line 378)
+"高风险 PR 按 ADR-0007 D2 表条件 escalate（rows 1/2/4/8 → +pr-gate +pr-reviewer；rows 3/5/6/7 → 仅 +pr-reviewer，不跑 pr-gate）"
+PASS. Explicit row numbers; resolves prior OBS-2.
+
+Point 4 — agent-contract.md pr-gate description (lines 403-408)
+"仅对高风险 PR 中需 pr-gate 的那 4 类启用... rows 1/2/4/8 → 启用；rows 3/5/6/7 → 跳过 pr-gate，直入 pr-reviewer"
+PASS. 4-vs-4 distinction; consistent with §3.2.
+
+Point 5 — agent-contract.md pr-gate.triggered_by list (lines 395-398)
+- contract_change                            # ADR-0007 D2 row 1
+- package_add_remove                         # ADR-0007 D2 row 2
+- adr_required                               # ADR-0007 D2 row 4
+- ci_or_deploy_or_auth_or_security_touch     # ADR-0007 D2 row 8
+PASS. R2 fix removed core_arch_touch (5→4 rows). Inline annotations match D2 row numbering.
+
+Point 6 — CLAUDE.md WORKFLOW segment (from claude-md.ts:57-83)
+"if high-risk (D2 rows 1/2/4/8) → pr-gate"
+"+pr-gate +pr-reviewer (D2 rows 1/2/4/8): contract change, package add/remove, new ADR required, CI/deploy/auth/security touch."
+"+pr-reviewer only, skip pr-gate (D2 rows 3/5/6/7): spec/agent-contract/ADR edit, delete/rename package, cross ≥3 packages, performance-auditor flagged."
+PASS. Explicit row numbers; stale text removed.
+
+Point 7 — docs/runbooks/codex-tool-invocations.md pr-gate section (lines 117-133)
+Triggered by list: 4 items (contract_change / package_add_remove / adr_required / ci_or_deploy_or_auth_or_security_touch)
+Description: "rows 1/2/4/8 → 启用；rows 3/5/6/7 → 跳过 pr-gate，直入 pr-reviewer"
+PASS. Regen'd from agent-contract.md correctly.
+
+All 6 sister points: ALIGNED. 4-vs-4 split consistent across all locations.
+
+================================================================
+CROSS-FILE IMPACT
+================================================================
+
+YAML inline comment rendering: comments stripped by YAML parser; not present in any generated output. Verified by inspection of runbook.
+
+Symmetric annotation question: other 7 tool_patterns (5 scaffolders + code-reviewer + plan-challenger) lack `# ADR-0007 D2 row N` annotations. CORRECT — D2 row numbers apply only to pr-gate trigger conditions; other tool_patterns have orthogonal trigger semantics (simple_block_template_committed, orchestrator_publishes_plan, etc.).
+
+R2 diff scope vs generated outputs:
+- triggered_by 5→4 rows → runbook Triggered by 5→4 (CONSISTENT)
+- description text update → runbook description + CLAUDE.md/AGENTS.md table cell line 1 (CONSISTENT)
+- All non-changed artifacts (.claude/agents/*, docs/review-checklist.md, tmp/codex-profiles.toml, .claude/settings.json, pnpm-lock.yaml) correctly absent
+
+================================================================
+ARCHITECTURAL CONSISTENCY
+================================================================
+
+ADR-0007 D2 as canonical: spec §3.2 now strictly mirrors D2 (8 rows, identical content, identical row order). Old core_arch_touch removed; D2 row 5 (删除/重命名 package) included.
+
+Inter-ADR coherence: ADR-0001/ADR-0004/ADR-0006/ADR-0007 all consistent. No conflict introduced.
+
+Inline comment pattern (`# ADR-0007 D2 row N`): NET POSITIVE. Pros — machine-optional human-auditable sister anchor; makes future pr-reviewer's job easier; self-documenting R2 diff. Cons — maintenance risk if D2 reordered (bounded — only 4 entries, D2 is settled).
+
+================================================================
+REGRESSION RISK
+================================================================
+
+NONE. Bundle is documentation + regen + 1 hardcoded string change in generator (claude-md.ts WORKFLOW constant).
+
+- typecheck: N/A (no TS production type changes)
+- test (27/27): regex test for `< /dev/null` continues to pass (no invocation strings changed)
+- lint / build / size-check / link-check: N/A or trivial
+- ADR-0006 D8 staging: 6 files staged; idempotency verified by worker
+
+================================================================
+ADR-0006 8-POINT INDEPENDENT SELF-AUDIT
+================================================================
+
+Item 1 (Field/attribute): N/A. No schema field added.
+Item 2 (Status code): N/A.
+Item 3 (Strict schema): N/A.
+Item 4 (Single-authority schema): N/A. triggered_by is operational config, not Zod schema.
+Item 5 (Algorithm replication): N/A.
+Item 6 (Sister-doc): PASS. 6 sister points independently verified (see SPEC MATCH). R1 FAIL cleanly resolved. No new drift.
+Item 7 (try/catch): N/A.
+Item 8 (Authority → consumer): PASS. Authority changes (agent-contract.md triggered_by + description × 2 + claude-md.ts WORKFLOW) → regen'd consumers (runbook + CLAUDE.md + AGENTS.md). Idempotency verified. Unaffected surfaces correctly absent.
+
+================================================================
+R1→R2 FIX VERIFICATION
+================================================================
+
+R1 codex FAIL: item #6 — agent-contract.md pr-gate.triggered_by contained core_arch_touch (5 items vs D2's 4).
+
+R2 fix:
+1. agent-contract.md triggered_by: 5→4 rows. core_arch_touch removed. Inline `# ADR-0007 D2 row N` annotations on each of 4 entries. VERIFIED.
+2. docs/runbooks/codex-tool-invocations.md: Triggered by list regen to 4 entries. VERIFIED.
+3. agent-contract.md pr-gate description: precision update with explicit row numbers. VERIFIED.
+
+R2 fix is clean. No new asymmetry. Inline comments are YAML-comment-only (no consumer impact).
+
+Residual core_arch_touch occurrences in repo: only historical snapshots (Phase 0 plan:813, spec §3.13 example YAML) which user explicitly classified as out-of-scope.
+
+================================================================
+ON DEFERRED ITEMS
+================================================================
+
+Worker R2 listed 3 deferred items; my judgment:
+
+1. spec §3.13:1047 (generator config example YAML containing core_arch_touch): CORRECTLY DEFERRED.
+   §3.13 is configuration example showing pre-R2 schema; not active operational source. Operational authority is agent-contract.md (now correct). Stale example is descriptively inaccurate but operationally inert.
+
+2. Phase 0 plan:813 (frozen historical snapshot): CORRECTLY DEFERRED.
+   Phase 0 plan documents pre-Wave 2 state; archived record.
+
+3. D2 table row 2 / row 5 "delete package" overlap wart: CORRECTLY SCOPED OUT.
+   Wart in canonical D2 itself; user explicitly excluded D2 modification.
+
+================================================================
+ISSUES (non-blocking observations)
+================================================================
+
+OBS-1: D2 row 2 / row 5 "delete package" overlap wart now visible in spec §3.2.
+   Row 2 ("新增/删除 package") → pr-gate; Row 5 ("删除/重命名 package") → skip pr-gate. Conflicting outcomes for "delete package". Not introduced by this bundle (existed in D2). Future clarification: "row 2 = add/remove from workspace; row 5 = rename existing package directory".
+
+OBS-2: team-operations.md ~line 155 region describes pr-gate trigger list in prose but does not enumerate 4 conditions with row numbers. Pre-existing staleness, not in R1+R2 fix scope.
+
+OBS-3: `# ADR-0007 D2 row N` annotation pattern has no formal convention document. If D2 amended (e.g., row 9 added), future contributors must know to mirror annotation. Convention exists only by example.
+   Suggestion: 1-line comment in agent-contract.md `tool_patterns:` schema block explaining annotation requirement.
+
+================================================================
+HIGHER-LEVEL OBSERVATION
+================================================================
+
+This R1+R2 bundle closes the OBS-1 and OBS-2 deferrals from `2026-04-30-pre-task-0-followup-pr-reviewer.txt`. The review chain operates correctly for D2 row 3 PRs:
+- codex R1 (spark) caught the operational drift (triggered_by) that prior pr-reviewer scoped as non-blocking; in-bundle correction proved necessary.
+- R2 fix minimal and precise (5→4 + annotations + description precision).
+- codex R2 (spark) confirmed inline comments don't propagate (legitimate 8th-class hunt — required examining YAML parser behavior).
+- D2 row 3 carve-out (spec/ADR PR skips pr-gate) self-dogfooded — this very PR ran code-reviewer + pr-reviewer without pr-gate.
+
+The 6 sister points are now fully aligned. The 4-vs-4 framing is consistently documented from canonical ADR-0007 D2 down through agent-contract.md → spec §3.2 → claude-md.ts WORKFLOW → regen'd consumers (runbook, CLAUDE.md, AGENTS.md).
+
+VERDICT: APPROVE
