@@ -1,0 +1,86 @@
+---
+/**
+ * SSR rendering for `kind='viz'` agent-flow block.
+ *
+ * Astro is a pre-render path; React Flow needs a DOM and runs CLIENT-SIDE
+ * only (the canvas is interactive — pan/zoom/drag are not meaningful in
+ * static HTML). The SSR HTML is a static SVG snapshot built from the
+ * descriptor returned by `flow-layout.ts` — the SAME authority the React
+ * NodeView consumes (ADR-0006 #5 algorithm replication boundary; sister-doc
+ * with @skb/block-nn-viz E2 R2 fix). No SVG geometry constants or
+ * topology-validation rules live in this file.
+ *
+ * The editor / NodeView hydrates against this placeholder via
+ * `AgentFlowView` in `AgentFlow.tsx`. Static markup matches
+ * `[data-block="agent-flow"]` so agent-flow.css applies identically pre-
+ * and post-hydration.
+ */
+
+import type { AgentFlowEdge, AgentFlowNode } from '../core/serialize';
+import { computeFlowLayout } from './flow-layout';
+
+interface Props {
+  nodes: AgentFlowNode[];
+  edges: AgentFlowEdge[];
+}
+
+const { nodes = [], edges = [] } = Astro.props;
+const descriptor = computeFlowLayout(nodes, edges);
+---
+
+{descriptor.kind === 'errored' ? (
+  <div data-block="agent-flow" data-phase="errored">
+    <div class="skb-agent-flow-error" role="alert">{descriptor.message}</div>
+  </div>
+) : (
+  <div data-block="agent-flow" data-phase="idle">
+    <svg
+      class="skb-agent-flow-svg"
+      viewBox={`0 0 ${descriptor.svg.width} ${descriptor.svg.height}`}
+      width={descriptor.svg.width}
+      height={descriptor.svg.height}
+      role="img"
+      aria-label={descriptor.svg.ariaLabel}
+    >
+      {descriptor.edges.map((e) => {
+        const s = descriptor.nodes.find((n) => n.id === e.source);
+        const t = descriptor.nodes.find((n) => n.id === e.target);
+        if (!s || !t) return null;
+        const sx = s.position.x + descriptor.svg.offsetX + descriptor.svg.nodeWidth;
+        const sy = s.position.y + descriptor.svg.offsetY + descriptor.svg.nodeHeight / 2;
+        const tx = t.position.x + descriptor.svg.offsetX;
+        const ty = t.position.y + descriptor.svg.offsetY + descriptor.svg.nodeHeight / 2;
+        return (
+          <line
+            x1={sx}
+            y1={sy}
+            x2={tx}
+            y2={ty}
+            class="skb-agent-flow-edge"
+            stroke-width="1.5"
+          />
+        );
+      })}
+      {descriptor.nodes.map((n) => (
+        <g class={`skb-agent-flow-node skb-agent-flow-node-${n.type}`}>
+          <rect
+            x={n.position.x + descriptor.svg.offsetX}
+            y={n.position.y + descriptor.svg.offsetY}
+            width={descriptor.svg.nodeWidth}
+            height={descriptor.svg.nodeHeight}
+            rx="6"
+            ry="6"
+          />
+          <text
+            x={n.position.x + descriptor.svg.offsetX + descriptor.svg.nodeWidth / 2}
+            y={n.position.y + descriptor.svg.offsetY + descriptor.svg.nodeHeight / 2}
+            text-anchor="middle"
+            dominant-baseline="middle"
+          >
+            {n.type}: {n.label}
+          </text>
+        </g>
+      ))}
+    </svg>
+  </div>
+)}

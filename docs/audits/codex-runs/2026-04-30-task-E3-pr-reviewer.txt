@@ -1,0 +1,74 @@
+# E3 block-agent-flow — Claude pr-reviewer verdict
+
+**Reviewer**: pr-reviewer-e3 (Claude Opus 4.7 1M ctx)
+**Date**: 2026-04-30
+**Branch**: phase-1-wave-2 (uncommitted; awaiting git-operator handoff)
+**Bundle**: packages/block-agent-flow/ (Wave 2 Task #20, third kind='viz' block after E1+E2)
+
+---
+
+## Verdict
+
+**APPROVE**
+
+Local tests: **45/45 PASS** (`pnpm --filter @skb/block-agent-flow test` — verified live in this session).
+
+The Codex pr-gate "BLOCKER" on test execution is an environment artifact (EROFS on
+Codex sandbox `.vite-temp`); the actual workspace runs all 45 tests cleanly.
+
+---
+
+## ADR-0007 D2 row 1 mandated checks
+
+| # | Check | Verdict | Evidence |
+|---|---|---|---|
+| 1 | `agentFlowCore` kind='viz' + `.strict()` propagation at every level | PASS | `core-definition.ts:11/24/26/38/43` — root + `nodes[i]` + `edges[i]` + `position` all `.strict()`. ADR-0006 #3 trip-hazard explicitly addressed in JSDoc lines 4-9. Tests `core.test.ts:50,66,76` lock unknown-key reject at every level. |
+| 2 | 5-entry public surface (mirror E1 shape) | PASS | `package.json:6-12` exports `.` / `./core` / `./ui-default` / `./ui-default/AgentFlow.astro` / `./ui-default/agent-flow.css` — byte-equivalent shape to E1 (`block-jupyter/package.json` exports `.` / `./core` / `./ui-default` / `./ui-default/Jupyter.astro` / `./ui-default/jupyter.css`) and E2 (`block-nn-viz`). |
+| 3 | Hooks verb-as-prefix | PASS | `core/index.ts` exports `serializeAgentFlow` / `parseAgentFlow` (verb-as-prefix); `ui-default/index.ts:8` exports `createFlowBridge` (verb-as-prefix). Matches E1 `serializeJupyter`/`parseJupyter`/`createKernelBridge` and E2 `serializeNnViz`/`parseNnViz`/`createTfjsBridge`/`computeTopology`. |
+| 4 | flow-bridge mirror E1 kernel-bridge + E2 tfjs-bridge pattern | PASS | `flow-bridge.ts:35-43` defines a `FlowPhase` discriminated union (idle/mounted/laidout/errored) — direct analog of `KernelPhase` (idle/starting/ready/running/finished/execError/kernelError). `createFlowBridge` follows the same closure-with-disposed-flag shape as `createKernelBridge`. AbortSignal cleanup at `flow-bridge.ts:154-160`; mount idempotence at `:170-171`; per-block isolation by per-mount instantiation in `AgentFlow.tsx:76-89`. |
+| 5 | CONTRACT.md sister-doc with E1 + E2 + D1 | PASS | `CONTRACT.md:131-138` references all three sister docs (block-jupyter / block-nn-viz / block-math). Terminology is identical to E1/E2 for shared identifiers (`5-entry`, `verb-as-prefix`, `kind='viz'`, `nested .strict()`, `propsSchema single authority`, `Headless 自给`). No drift detected. |
+
+---
+
+## ADR-0006 8-point asymmetry audit
+
+| # | Item | Verdict | Notes |
+|---|---|---|---|
+| 1 | Field/attribute audit | N/A | No new attr-bearing fields added to mdx-bridge marks; `serialize`/`parse` are stubs ahead of Wave 3 routing. Round-trip test `core.test.ts:233-249` locks identity for all current fields. |
+| 2 | Status code audit | N/A | TS-only package; no HTTP handlers. |
+| 3 | Strictness audit | **PASS** | All four ZodObject levels carry explicit `.strict()`. Tests at 4 distinct levels (root + nodes + edges + position) lock the trip-hazard. JSDoc at `core-definition.ts:4-9` cites ADR-0006 #3 verbatim. |
+| 4 | Consumer schema audit | PASS | `propsSchema` is defined exactly once in `core-definition.ts:10-43`. CONTRACT.md re-presents schema for documentation only — explicitly cross-referenced as derived (`见 src/core/core-definition.ts`). No inline duplicates in the package. apps/site is not yet a consumer (Z0 pending), so no consumer-side replication risk yet. |
+| 5 | Algorithm + runtime constant replication audit | **PASS (with rationale)** | E2 R2 lesson: `computeTopology` had to be extracted because `NnViz.tsx` + `NnViz.astro` both drew SVG and shared layout/structural decisions. **In E3 this condition does NOT apply in the same form**: `AgentFlow.tsx` delegates rendering to React Flow lib (no SVG layout authority on React side); `AgentFlow.astro` draws a static SVG snapshot using **node positions already computed** by `computeBfsLayout` (in `flow-bridge.ts`). The *layout algorithm* IS extracted (`computeBfsLayout`) and is the single authority — both paths consume `position` from the same source. The Astro-only SVG geometry constants (`NODE_W=140`, `NODE_H=40`, `PAD=20`) are not replicated on the React side because React Flow handles its own DOM. No drift surface. The bridge also exports `computeBfsLayout` for test inspection (`flow-bridge.test.ts:179-228` 5-row corpus locks linear chain / siblings / cycle / unknown-source). |
+| 6 | Sister-file documentation audit | PASS | E1 + E2 + D1 CONTRACT.md cross-linked at `CONTRACT.md:131-138`. Shared identifiers consistent across siblings. E2's CONTRACT.md ("Forward-compat consumers" §) explicitly forecasts E3's `createFlowBridge` pattern at line 123-124 — bidirectional alignment confirmed. |
+| 7 | Exception-scope equivalence audit | PASS | No inline IIFE / pre-hydration scripts. `flow-bridge.ts:178-184` wraps `computeBfsLayout` call in narrow try/catch around the throw site only; fall-through (`return` from errored path) is outside the catch. |
+| 8 | Authority-document → generated/consumed surface audit | PASS | No authority document edits; `package.json` adds `reactflow ^11.11.4` as workspace dep — `pnpm-lock.yaml` is staged with the bundle (Codex pr-gate verified `lock-file importer entry exists`). Per memory `feedback_git_operator_explicit_stage.md`: git-operator must verify `pnpm-lock.yaml` ride is intact pre-commit; this is a git-operator pre-commit step, not a worker step. |
+
+---
+
+## Cross-bundle observations
+
+- **WE-010 live HEAD check**: `BlockKind` at `block-foundation/registry.ts:4` includes `'viz'` — confirmed live, not paraphrased. Authority types match.
+- **File size**: largest source file `flow-bridge.ts` = 195 lines (under 200 target); largest test = 250 lines. All within limits.
+- **Headless purity (ADR-0003 D1)**: `core/*.ts` imports only `@skb/block-foundation` + `zod`. No React / reactflow / dom-aware code in headless layer.
+- **uiId='default' invariant**: `agent-flow.ui.ts:15` + tests at `registry-integration.test.ts:33` + `ui-default.test.tsx:64`.
+- **Error escalation**: `data-phase='errored'` + `--color-error` token + `role="alert"` panel — matches block-jupyter `kernelError` and block-nn-viz `httpError|loadError|unknownError` escalation patterns.
+- **Forward-compat pending**: Z0 sample-blocks will instantiate `<AgentFlow>` to verify cross-package wiring; J task (mdx-bridge attr-bearing mark expansion) will exercise the JSON-string→expression-attr migration; both pending tasks correctly forecasted in CONTRACT.md "Wave 3 work" §.
+
+---
+
+## Blockers / nits
+
+**Blockers**: none.
+
+**Nits (non-blocking, optional follow-up)**:
+
+- `flow-bridge.test.ts:40` declares `const laid: ReadonlyArray<readonly AgentFlowNode[]> = []` then uses it only via `laid.length` to "quiet eslint". This is dead code — the test would read clearer if removed; but it does not affect correctness.
+- `AgentFlow.tsx:90` deps array `[props.nodes, props.edges]` will tear down + re-mount the bridge whenever the parent passes new array references — even if shape unchanged. For interactive editing this is the desired behavior (any prop change resets layout). For static MDX render this is still fine because props are stable. No action needed for Wave 2; flag for Wave 3 awareness if NodeView begins memoizing props upstream.
+
+These do not block APPROVE.
+
+---
+
+## Final
+
+APPROVE. Hand to git-operator for ADR-0007 D2 row 1 commit (single-package PR; high-risk per row 1 because new `reactflow` dep + new `kind='viz'` package, but pre-gate authority ran clean).
