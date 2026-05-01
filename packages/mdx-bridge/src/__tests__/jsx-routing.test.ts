@@ -14,11 +14,11 @@ const calloutCore: BlockCoreDefinition = {
   name: 'callout',
   kind: 'component',
   propsSchema: {} as BlockCoreDefinition['propsSchema'],
-  mdxComponent: 'Callout',
+  mdxComponent: 'TestCallout',
 };
 
 const calloutDispatch: JsxDispatchEntry = {
-  mdxComponent: 'Callout',
+  mdxComponent: 'TestCallout',
   blockType: 'callout',
   parse: parseCallout,
   serialize: serializeCallout,
@@ -31,7 +31,7 @@ function registryWithCallout(): BlockRegistry {
 }
 
 function ensureCalloutDispatch(): void {
-  if (getJsxDispatch('Callout') === undefined) {
+  if (getJsxDispatch('TestCallout') === undefined) {
     registerJsxDispatch(calloutDispatch);
   }
 }
@@ -46,7 +46,7 @@ function parseCallout(node: Parameters<JsxDispatchEntry['parse']>[0]): TiptapNod
 }
 
 function parseCalloutChild(node: Parameters<JsxDispatchEntry['parse']>[0]['children'][number]) {
-  if (node.type === 'mdxJsxFlowElement' && node.name === 'Callout') {
+  if (node.type === 'mdxJsxFlowElement' && node.name === 'TestCallout') {
     return [parseCallout(node)];
   }
   if (node.type === 'paragraph') {
@@ -81,7 +81,7 @@ function serializeCallout(node: TiptapNode): ReturnType<JsxDispatchEntry['serial
   if (node._mdast?.type === 'mdxJsxFlowElement') return node._mdast;
   return {
     type: 'mdxJsxFlowElement',
-    name: 'Callout',
+    name: 'TestCallout',
     attributes:
       typeof node.attrs?.['type'] === 'string'
         ? [{ type: 'mdxJsxAttribute', name: 'type', value: node.attrs['type'] }]
@@ -111,7 +111,7 @@ function serializeCalloutChild(
 describe('mdxJsxFlowElement routing', () => {
   it('TC1 round-trips a registered Callout', () => {
     ensureCalloutDispatch();
-    const source = '<Callout type="info">\n  hello\n</Callout>';
+    const source = '<TestCallout type="info">\n  hello\n</TestCallout>';
     const blockRegistry = registryWithCallout();
 
     const restored = tiptapToMdx(mdxToTiptap(source, { blockRegistry }), { blockRegistry });
@@ -129,7 +129,7 @@ describe('mdxJsxFlowElement routing', () => {
   });
 
   it('TC3 preserves the missing-registry fail-loud branch', () => {
-    expect(() => mdxToTiptap('<Callout>\n  x\n</Callout>')).toThrowError(
+    expect(() => mdxToTiptap('<TestCallout>\n  x\n</TestCallout>')).toThrowError(
       /^mdx-bridge: unsupported block type "mdxJsxFlowElement"\./,
     );
     expect(() =>
@@ -148,7 +148,7 @@ describe('mdxJsxFlowElement routing', () => {
 
   it('TC5 round-trips nested Callout blocks', () => {
     ensureCalloutDispatch();
-    const source = '<Callout>\n  <Callout type="warn">\n    inner\n  </Callout>\n</Callout>';
+    const source = '<TestCallout>\n  <TestCallout type="warn">\n    inner\n  </TestCallout>\n</TestCallout>';
     const blockRegistry = registryWithCallout();
 
     const restored = tiptapToMdx(mdxToTiptap(source, { blockRegistry }), { blockRegistry });
@@ -162,13 +162,13 @@ describe('mdxJsxFlowElement routing', () => {
     const regB = registryWithCallout();
     const emptyRegistry = new BlockRegistry();
 
-    const docA = mdxToTiptap('<Callout type="info">\n  A\n</Callout>', { blockRegistry: regA });
-    const docB = mdxToTiptap('<Callout type="warn">\n  B\n</Callout>', { blockRegistry: regB });
+    const docA = mdxToTiptap('<TestCallout type="info">\n  A\n</TestCallout>', { blockRegistry: regA });
+    const docB = mdxToTiptap('<TestCallout type="warn">\n  B\n</TestCallout>', { blockRegistry: regB });
 
     expect(docA.content[0]?.type).toBe('callout');
     expect(docB.content[0]?.attrs?.['type']).toBe('warn');
     expect(() =>
-      mdxToTiptap('<Callout>\n  C\n</Callout>', { blockRegistry: emptyRegistry }),
-    ).toThrowError(/^mdx-bridge: unsupported block type "Callout"\./);
+      mdxToTiptap('<TestCallout>\n  C\n</TestCallout>', { blockRegistry: emptyRegistry }),
+    ).toThrowError(/^mdx-bridge: unsupported block type "TestCallout"\./);
   });
 });
