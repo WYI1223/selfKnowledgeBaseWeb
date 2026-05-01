@@ -29,6 +29,19 @@
   `Code`, `Image`, `Math`, `Pdf`, `Jupyter`, `NnViz`, and `AgentFlow`.
   Values must be the corresponding block package `*RenderView` exports,
   never `*EditorView`, because apps/site is a read-only static renderer.
+- **Chunking strategy / heavy-block taxonomy**: `src/components.ts` keeps the
+  5 light blocks (`Callout`, `Code`, `Image`, `Math`, `Pdf`) eager-imported
+  because their default render surfaces are small and shared by common prose
+  routes. The 3 heavy blocks (`Jupyter` with Pyodide at roughly 10 MB,
+  `NnViz` with TF.js at roughly 3 MB, and `AgentFlow` with React Flow at
+  roughly 500 KB) must stay behind per-call-site
+  `await import('@skb/block-*/ui-default')` boundaries in `components.ts`.
+  `astro.config.mjs` pins those heavy imports with Rollup `manualChunks`
+  names (`block-jupyter`, `block-nn-viz`, `block-agent-flow`) for stable
+  debug and regression-test filenames; the hint is not the correctness layer.
+  `src/__tests__/lazy-chunking.test.ts` is the locking bundle-grep
+  regression: prose-only route chunks must not contain `pyodide`,
+  `tensorflow`, or `reactflow`, and the 3 heavy chunks must remain distinct.
 
 ## Modifying this file
 
