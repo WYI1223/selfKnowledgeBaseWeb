@@ -1,22 +1,27 @@
 # @skb/block-code Contract
 
-C3 scope：`packages/block-code/core`（Wave 2 Track C3）。`block-code` 先上核心层，不包含 `ui-default`。
+C5a scope：`packages/block-code/ui-default`（Wave 2 Track C5a）基于 `packages/block-callout` 模板交付代码块可视化层。
 
 ## Public surface
 
-两个 entry：
+四个 entry：
 
-- `.`（root barrel） — re-export `./core`
+- `.`（root barrel） — re-export `./core` + `./ui-default`
 - `./core` — headless 层
   - `codeCore: BlockCoreDefinition<typeof propsSchema>` — name=`'code'` / kind=`'component'` / mdxComponent=`'Code'`
   - `serializeCode(node) → mdxJsxFlowElement` — Tiptap → mdast（Wave 3 mdx-bridge routing 时启用）
   - `parseCode(mdast) → TiptapNode` — mdast → Tiptap（同上）
   - 类型: `CodeTiptapNode` / `CodeMdastJsxElement`
+- `./ui-default` — presentational 层（Wave C5a）
+  - `codeUIDefault: BlockUIDefinition<typeof codeCore.propsSchema>` — coreName=`'code'` / uiId=`'default'`
+  - `CodeEditorView` / `CodeRenderView` — `ComponentType<BlockViewProps<typeof codeCore.propsSchema>>`，DOM 形状字节级一致（共享 `CodeBody` 原语）
+  - `CodeBody` — 视觉单一权威 primitive，editor + render 双视图都嵌入
+- `./ui-default/code.css` — 视觉规则单一来源，按 `[data-code-language]` + 设计令牌渲染
 
 `propsSchema` 形状（见 `src/core/core-definition.ts`）：
 
 ```typescript
-const propsSchema = z.object({
+z.object({
   language: z.string().min(1),
   code: z.string(),
   showLineNumbers: z.boolean().default(true),
@@ -28,7 +33,7 @@ const propsSchema = z.object({
 继承自 [block-foundation/CONTRACT.md](../block-foundation/CONTRACT.md#invariants)：
 `Defensive copy` / `Schema strictness` / `Default UI lookup` / `Serialize / parse hook ownership`
 
-block-code 特定不变量：
+block-code 通用不变量：
 
 - **`coreName='code'` (kebab-case)**: `codeCore.name` 字面值固定，与 `BlockRegistry.registerCore` 注册键一致；后续 `block-image` 采用 `coreName` kebab-case 约定。
 - **`mdxComponent='Code'` (PascalCase)**: 与 `<Code ...>` JSX 标签一致；mdx-bridge 通过 `mdxJsxFlowElement.name` 字符串路由。
@@ -36,6 +41,15 @@ block-code 特定不变量：
 - **`propsSchema single authority`**: 仅在 `src/core/core-definition.ts` 定义，`serializeCode` / `parseCode` / 测试 import `codeCore.propsSchema`。
 - **Self-validating serialize/parse**: `serializeCode` 调 `codeCore.propsSchema.parse(node.attrs)`；`parseCode` 调 `codeCore.propsSchema.parse(rawProps)`；若不满足约束必须 fail。
 - **Registry integration**: `registerCore(codeCore)` + `getCore('code')` round-trip。
+
+block-code ui-default 特定不变量：
+
+- **共享 DOM 原语**: `CodeEditorView` 与 `CodeRenderView` 均只透传 `code` props 到 `CodeBody`，因此结构必须一致（差异仅在外部宿主交互层）。
+- **`data-code-language` + `data-language`**: `CodeBody` 总是 emit `data-code-language`（容器）和 `data-language`（`<pre>/<code>`）。
+- **行号行为锁定**: `showLineNumbers=true` 时，`<pre>` 必含 `.skb-code-line-numbers` class 并逐行渲染 `.skb-code-line` + `.skb-code-lineno`；反之不渲染行号节点。
+- **语言标签展示**: 语言名（`props.language`）必须显示在可见 label 区域。
+- **CSS 单一视觉来源**: 所有视觉规则集中在 `./ui-default/code.css`，React 组件不带 `style` inline。
+- **Wave 3 语法高亮延期**: 现阶段仅渲染纯文本 `<pre><code>`；高亮能力（`shiki` / `prism`）移至 Wave 3。
 
 ## Wave 3 mdx-bridge 路由集成（pending）
 
@@ -45,5 +59,5 @@ block-code 特定不变量：
 
 ## Forward-compat
 
-- `block-code` 的 `ui-default` 由 Wave C5a 或后续 PR 补齐。
-- `src/ui-default/**`、`@skb/design-tokens` 依赖与 `./ui-default` 导出不应在 C3 合入。
+- `Wave 3 mdx-bridge integration`（见上节）。
+- `Wave 3 syntax highlighting`：将当前 `CodeBody` 的纯文本 `<code>` 升级到 `shiki`/`prism`，新增 token-class 映射与主题绑定；当前迭代仅记录为未来工作。

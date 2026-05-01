@@ -1,0 +1,4724 @@
+Reading prompt from stdin...
+OpenAI Codex v0.125.0 (research preview)
+--------
+workdir: /home/weiyi/selfKnowledgeBaseWeb
+model: gpt-5.3-codex-spark
+provider: openai
+approval: never
+sandbox: workspace-write [workdir, /tmp, $TMPDIR, /home/weiyi/.codex/memories]
+reasoning effort: xhigh
+reasoning summaries: none
+session id: 019de1b1-36d4-7122-bf9e-fff4afc11fb5
+--------
+user
+You are codex-block-generator (scaffolder profile). Generate `packages/block-image/src/ui-default/` by cloning packages/block-callout/src/ui-default/ template (committed at `6125a36`), swapping callout-specific identifiers for image-specific ones.
+
+C5b scope: block-image/ui-default ONLY (block-image/core was shipped in C4 at `d041d47`).
+
+## Identifier swaps
+
+| from | to |
+|------|-----|
+| `callout` | `image` |
+| `Callout` | `Image` |
+| `calloutCore` | `imageCore` |
+| `calloutUIDefault` | `imageUIDefault` |
+| `CalloutBody` | `ImageBody` |
+| `callout.css` | `image.css` |
+| `data-callout-variant` | `data-image-loading` (or similar — image has no variants, use loading state attr instead) |
+| @skb/block-callout | @skb/block-image |
+
+## Schema (from C4 at packages/block-image/src/core/core-definition.ts)
+
+```typescript
+{
+  src: z.string().min(1),
+  alt: z.string(),
+  width?: z.number().int().positive(),
+  height?: z.number().int().positive()
+}
+```
+
+The ui-default renders `<figure><img src={src} alt={alt} width={width} height={height}><figcaption>{alt}</figcaption></figure>` with native loading="lazy".
+
+For Wave 2: simple semantic <figure>+<img>. Wave 3 future: image gallery / lightbox / blurhash placeholder. Document in CONTRACT.
+
+## Steps
+
+1. Read packages/block-callout/src/ui-default/* (template) + packages/block-image/src/core/* (current C4 state)
+2. Create `packages/block-image/src/ui-default/` files:
+   - `index.ts`
+   - `ImageBody.tsx` (semantic <figure>+<img>+<figcaption>)
+   - `EditorView.tsx`
+   - `RenderView.tsx`
+   - `image.css` (design-token-bound, mirror callout pattern)
+3. Create `packages/block-image/src/__tests__/ui-default.test.tsx` (mirror callout 9 cases adapted: required alt + width/height optional + responsive img)
+4. Update package.json#exports to 4 entries
+5. Update package.json#dependencies += @skb/design-tokens; devDeps += testing-library/happy-dom/react-dom/types
+6. Update tsconfig.json + vitest.config.ts
+7. Update CONTRACT.md "四个 entry" + ui-default invariants
+8. Run pnpm install
+9. Verify: pnpm --filter @skb/block-image test 6+9=15 PASS, typecheck/lint/build clean
+
+## Constraints
+
+- Do not commit.
+- Concurrent: viz-block-eng-e2, C5a/G2/G3 codex scaffolders.
+- File size ≤200/500.
+
+Concise summary ≤200 words.
+
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the vendored bubblewrap in the meantime.
+codex
+I’ll mirror the committed `block-callout` `ui-default` implementation into `block-image`, apply the identifier mapping plus image schema shape, then update package metadata/tests/contract. I’ll read each required file once, apply all edits in one patch pass, and then run install + the requested checks.
+exec
+/bin/bash -lc "ls packages/block-callout/src/ui-default && echo '---' && ls packages/block-image/src/core" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+CalloutBody.tsx
+EditorView.tsx
+RenderView.tsx
+callout.css
+icons.tsx
+index.ts
+variant-tokens.ts
+---
+core-definition.ts
+index.ts
+parse.ts
+serialize.ts
+
+exec
+/bin/bash -lc "sed -n '1,220p' packages/block-callout/src/ui-default/index.ts" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1,260p' packages/block-callout/src/ui-default/CalloutBody.tsx" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1,240p' packages/block-callout/src/ui-default/EditorView.tsx" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1,260p' packages/block-callout/src/ui-default/RenderView.tsx" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1,260p' packages/block-callout/src/ui-default/callout.css" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1,260p' packages/block-callout/src/ui-default/icons.tsx" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1,240p' packages/block-callout/src/ui-default/variant-tokens.ts" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1,260p' packages/block-image/src/core/core-definition.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 111ms:
+import { defineUI, type BlockUIDefinition } from '@skb/block-foundation';
+import { calloutCore } from '../core/core-definition';
+import { CalloutEditorView } from './EditorView';
+import { CalloutRenderView } from './RenderView';
+
+export const calloutUIDefault: BlockUIDefinition<typeof calloutCore.propsSchema> =
+  defineUI({
+    coreName: calloutCore.name,
+    uiId: 'default',
+    EditorView: CalloutEditorView,
+    RenderView: CalloutRenderView,
+  });
+
+export { CalloutEditorView } from './EditorView';
+export { CalloutRenderView } from './RenderView';
+export { CalloutBody } from './CalloutBody';
+export { VARIANT_TOKENS } from './variant-tokens';
+export { VARIANT_ICONS } from './icons';
+export type { Variant } from './variant-tokens';
+
+ succeeded in 109ms:
+import type { ReactNode } from 'react';
+import type { z } from 'zod';
+import { calloutCore } from '../core/core-definition';
+import { VARIANT_ICONS } from './icons';
+import { VARIANT_TOKENS, type Variant } from './variant-tokens';
+
+type CalloutProps = z.infer<typeof calloutCore.propsSchema>;
+
+export interface CalloutBodyProps {
+  readonly props: CalloutProps;
+  readonly children: ReactNode;
+}
+
+/**
+ * Visual primitive shared by `CalloutEditorView` and `CalloutRenderView`. The
+ * two views differ only in how they hand `children` in (Tiptap-managed inner
+ * node vs. static SSR content); the DOM/class shape MUST match byte-for-byte
+ * so the editor preview and the published page render identically.
+ *
+ * Visual rules live in `./callout.css` (gated on `data-callout-variant`).
+ */
+export function CalloutBody({ props, children }: CalloutBodyProps): ReactNode {
+  const variant: Variant = props.variant;
+  const tokens = VARIANT_TOKENS[variant];
+  const Icon = VARIANT_ICONS[variant];
+  const heading = props.title ?? tokens.label;
+
+  return (
+    <aside
+      role="note"
+      aria-label={`${tokens.label} callout`}
+      data-callout-variant={variant}
+      tabIndex={0}
+    >
+      <span className="skb-callout-icon" aria-hidden="true">
+        <Icon />
+      </span>
+      <div className="skb-callout-body">
+        <strong className="skb-callout-title">{heading}</strong>
+        <div className="skb-callout-content">{children}</div>
+      </div>
+    </aside>
+  );
+}
+
+ succeeded in 117ms:
+import type { ComponentType, ReactNode } from 'react';
+import type { BlockViewProps } from '@skb/block-foundation';
+import { calloutCore } from '../core/core-definition';
+import { CalloutBody } from './CalloutBody';
+
+export const CalloutEditorView: ComponentType<
+  BlockViewProps<typeof calloutCore.propsSchema>
+> = ({ props, content }) => {
+  const body: ReactNode =
+    content === undefined || content === '' ? (
+      <span className="skb-callout-empty">No content</span>
+    ) : (
+      content
+    );
+  return <CalloutBody props={props}>{body}</CalloutBody>;
+};
+
+ succeeded in 110ms:
+/*
+ * @skb/block-callout — ui-default styles.
+ *
+ * Selector contract: every variant class is gated on `data-callout-variant`
+ * which `CalloutBody` always emits. Color values resolve from the design-tokens
+ * RGB-triple CSS vars (light + dark theme files own the values); this file owns
+ * the variant → token mapping and the layout / a11y affordances.
+ *
+ * Consumers (apps/site / editor-shell) MUST import this file once at app boot:
+ *   import '@skb/block-callout/ui-default/callout.css';
+ */
+
+[data-callout-variant] {
+  position: relative;
+  display: flex;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  padding-left: calc(var(--space-4) + 3px);
+  border: 1px solid rgb(var(--color-border));
+  border-radius: var(--radius-md);
+  font-size: var(--text-base);
+  line-height: var(--leading-base);
+  color: rgb(var(--color-fg));
+  background-color: rgb(var(--color-surface-1));
+  overflow: hidden;
+  isolation: isolate;
+  box-shadow: var(--shadow-sm);
+}
+
+/* 3px left accent bar, full height */
+[data-callout-variant]::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background-color: rgb(var(--color-note));
+  border-radius: 0;
+}
+
+/* Variant accent + tint colors */
+[data-callout-variant='note']::before {
+  background-color: rgb(var(--color-note));
+}
+[data-callout-variant='note'] {
+  background-color: rgb(var(--color-surface-1));
+}
+
+[data-callout-variant='tip']::before {
+  background-color: rgb(var(--color-success));
+}
+[data-callout-variant='tip'] {
+  background-color: rgb(var(--color-success) / 0.06);
+}
+
+[data-callout-variant='warning']::before {
+  background-color: rgb(var(--color-warn));
+}
+[data-callout-variant='warning'] {
+  background-color: rgb(var(--color-warn) / 0.08);
+}
+
+[data-callout-variant='danger']::before {
+  background-color: rgb(var(--color-error));
+}
+[data-callout-variant='danger'] {
+  background-color: rgb(var(--color-error) / 0.06);
+}
+
+/* Icon glyph wrap */
+[data-callout-variant] > .skb-callout-icon {
+  flex-shrink: 0;
+  margin-top: 2px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+}
+[data-callout-variant='note'] > .skb-callout-icon {
+  color: rgb(var(--color-note));
+}
+[data-callout-variant='tip'] > .skb-callout-icon {
+  color: rgb(var(--color-success));
+}
+[data-callout-variant='warning'] > .skb-callout-icon {
+  color: rgb(var(--color-warn));
+}
+[data-callout-variant='danger'] > .skb-callout-icon {
+  color: rgb(var(--color-error));
+}
+
+[data-callout-variant] > .skb-callout-body {
+  flex: 1 1 0%;
+  min-width: 0;
+}
+[data-callout-variant] .skb-callout-title {
+  display: block;
+  font-weight: 600;
+  line-height: 1.25;
+  color: rgb(var(--color-fg));
+}
+[data-callout-variant] .skb-callout-content {
+  margin-top: var(--space-1);
+  color: rgb(var(--color-fg) / 0.9);
+}
+[data-callout-variant] .skb-callout-content :where(p):first-child {
+  margin-top: 0;
+}
+[data-callout-variant] .skb-callout-content :where(p):last-child {
+  margin-bottom: 0;
+}
+
+[data-callout-variant] .skb-callout-empty {
+  color: rgb(var(--color-muted));
+  font-style: italic;
+}
+
+/* Focus ring lands on the aside itself when navigated by keyboard. */
+[data-callout-variant]:focus-visible {
+  outline: 2px solid rgb(var(--color-accent));
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  [data-callout-variant] {
+    transition: box-shadow var(--duration-fast) var(--ease-base);
+  }
+}
+
+ succeeded in 120ms:
+import type { ComponentType, ReactNode } from 'react';
+import type { BlockViewProps } from '@skb/block-foundation';
+import { calloutCore } from '../core/core-definition';
+import { CalloutBody } from './CalloutBody';
+
+export const CalloutRenderView: ComponentType<
+  BlockViewProps<typeof calloutCore.propsSchema>
+> = ({ props, content }) => {
+  const body: ReactNode = content ?? '';
+  return <CalloutBody props={props}>{body}</CalloutBody>;
+};
+
+ succeeded in 145ms:
+import type { ComponentType, SVGProps } from 'react';
+import type { Variant } from './variant-tokens';
+
+type IconProps = SVGProps<SVGSVGElement>;
+
+const baseProps: IconProps = {
+  width: 20,
+  height: 20,
+  viewBox: '0 0 24 24',
+  fill: 'none',
+  stroke: 'currentColor',
+  strokeWidth: 1.75,
+  strokeLinecap: 'round',
+  strokeLinejoin: 'round',
+  'aria-hidden': true,
+  focusable: false,
+};
+
+const NoteIcon: ComponentType<IconProps> = (props) => (
+  <svg {...baseProps} {...props}>
+    <circle cx="12" cy="12" r="9" />
+    <line x1="12" y1="8" x2="12" y2="12" />
+    <line x1="12" y1="16" x2="12.01" y2="16" />
+  </svg>
+);
+
+const TipIcon: ComponentType<IconProps> = (props) => (
+  <svg {...baseProps} {...props}>
+    <path d="M9 18h6" />
+    <path d="M10 22h4" />
+    <path d="M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.2 1 2V18h6v-1.3c0-.8.4-1.5 1-2A7 7 0 0 0 12 2z" />
+  </svg>
+);
+
+const WarningIcon: ComponentType<IconProps> = (props) => (
+  <svg {...baseProps} {...props}>
+    <path d="M10.3 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+    <line x1="12" y1="9" x2="12" y2="13" />
+    <line x1="12" y1="17" x2="12.01" y2="17" />
+  </svg>
+);
+
+const DangerIcon: ComponentType<IconProps> = (props) => (
+  <svg {...baseProps} {...props}>
+    <circle cx="12" cy="12" r="9" />
+    <line x1="15" y1="9" x2="9" y2="15" />
+    <line x1="9" y1="9" x2="15" y2="15" />
+  </svg>
+);
+
+export const VARIANT_ICONS: Readonly<Record<Variant, ComponentType<IconProps>>> = {
+  note: NoteIcon,
+  tip: TipIcon,
+  warning: WarningIcon,
+  danger: DangerIcon,
+};
+
+ succeeded in 150ms:
+import type { z } from 'zod';
+import type { ColorTokenName } from '@skb/design-tokens';
+import { calloutCore } from '../core/core-definition';
+
+type Variant = z.infer<typeof calloutCore.propsSchema>['variant'];
+
+interface VariantSpec {
+  readonly label: string;
+  /** Design-token color name driving the accent bar + icon glyph. */
+  readonly accentToken: ColorTokenName;
+}
+
+/**
+ * Variant → design-token mapping. The `ColorTokenName` constraint binds this
+ * file to `@skb/design-tokens`'s public color token surface: renaming or
+ * removing a color token here is a static type error.
+ *
+ * Visual styles for these variants live in `./callout.css` (selector
+ * `[data-callout-variant="..."]`); this file is the single-source of variant
+ * metadata consumed by both the React tree and any future style-introspection
+ * tooling.
+ */
+export const VARIANT_TOKENS: Readonly<Record<Variant, VariantSpec>> = {
+  note: { label: 'Note', accentToken: 'note' },
+  tip: { label: 'Tip', accentToken: 'success' },
+  warning: { label: 'Warning', accentToken: 'warn' },
+  danger: { label: 'Danger', accentToken: 'error' },
+};
+
+export type { Variant };
+
+ succeeded in 154ms:
+import type { BlockCoreDefinition } from '@skb/block-foundation';
+import { z } from 'zod';
+
+const propsSchema = z
+  .object({
+    src: z.string().min(1),
+    alt: z.string(),
+    width: z.number().int().positive().optional(),
+    height: z.number().int().positive().optional(),
+  })
+  .strict();
+
+export const imageCore: BlockCoreDefinition<typeof propsSchema> = {
+  name: 'image',
+  kind: 'component',
+  propsSchema,
+  mdxComponent: 'Image',
+};
+
+codex
+I’ve captured the callout template and the image core schema. Next I’ll read the current `block-image` package config/tests/interfaces so the new UI-default is wired consistently with existing monorepo conventions.
+exec
+/bin/bash -lc "sed -n '1,260p' packages/block-image/package.json" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1,260p' packages/block-image/tsconfig.json" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1,260p' packages/block-image/vitest.config.ts" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1,260p' packages/block-image/tsconfig.paths.json" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1,260p' packages/block-image/src/__tests__/ui-default.test.tsx" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1,260p' packages/block-image/CONTRACT.md" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1,260p' package.json" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1,260p' tsconfig.json" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1,260p' vitest.config.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 190ms:
+{
+  "name": "@skb/block-image",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./core": "./src/core/index.ts"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@skb/block-foundation": "workspace:*",
+    "zod": "^3.23.0"
+  },
+  "peerDependencies": {
+    "react": "^18.3.0 || ^19.0.0"
+  },
+  "devDependencies": {
+    "@testing-library/react": "^16.0.0",
+    "@types/react": "^18.3.0",
+    "happy-dom": "^15.0.0",
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0",
+    "typescript": "~5.6.0",
+    "vitest": "^4.1.5"
+  }
+}
+
+ succeeded in 180ms:
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "dist",
+    "jsx": "react-jsx"
+  },
+  "include": ["src/**/*", "vitest.config.ts"],
+  "references": [
+    { "path": "../block-foundation" }
+  ]
+}
+
+ succeeded in 185ms:
+import { defineConfig } from 'vitest/config';
+
+export default defineConfig({
+  test: {
+    include: ['src/**/*.test.{ts,tsx}'],
+    environment: 'happy-dom',
+    typecheck: { enabled: false },
+  },
+});
+
+ exited 2 in 218ms:
+sed: can't read packages/block-image/tsconfig.paths.json: No such file or directory
+
+ exited 2 in 218ms:
+sed: can't read packages/block-image/src/__tests__/ui-default.test.tsx: No such file or directory
+
+ succeeded in 219ms:
+# @skb/block-image Contract
+
+第一个真实 `BlockRegistry` 消费者（Wave 2 Track C1 template）。
+后续 `block-code` / `block-image` 等 simple block 包按本包结构 clone（codex-block-generator + scripts/new-block.ts）。
+
+## Public surface
+
+两个 entry：
+
+- `.` (root barrel) — re-export `./core`
+- `./core` — headless 层
+  - `imageCore: BlockCoreDefinition<typeof propsSchema>` — name=`'image'` / kind=`'component'` / mdxComponent=`'Image'`
+  - `serializeImage(node) → mdxJsxFlowElement` — Tiptap → mdast
+  - `parseImage(mdast) → TiptapNode` — mdast → Tiptap
+  - 类型: `ImageTiptapNode` / `ImageMdastJsxElement`
+
+`propsSchema` 形状（见 `src/core/core-definition.ts`）:
+
+```typescript
+const propsSchema = z.object({
+  src: z.string().min(1),
+  alt: z.string(),
+  width: z.number().int().positive().optional(),
+  height: z.number().int().positive().optional(),
+}).strict();
+```
+
+## Invariants
+
+继承自 [block-foundation/CONTRACT.md](../block-foundation/CONTRACT.md#invariants)：
+`Defensive copy` / `Schema strictness` / `Default UI lookup` / `Serialize / parse hook ownership`
+
+- **`coreName='image'` (kebab-case)**: `imageCore.name` 与 `BlockRegistry.registerCore` 注册键一致。
+- **`mdxComponent='Image'` (PascalCase)**: 与 `<Image .../>` JSX 标签一致。
+- **Serialize / parse hook 命名**: `serializeImage` / `parseImage`。
+- **Headless 自给**: `core/` 不 import 任何 React / Tiptap UI 模块；仅依赖 `@skb/block-foundation` + `zod`。
+- **Self-validating serialize/parse**: `serializeImage` 调 `propsSchema.parse(node.attrs)`；`parseImage` 调 `propsSchema.parse(rawProps)`。
+
+## Wave 3 mdx-bridge 路由集成（pending）
+
+当前 `serializeImage` / `parseImage` 为稳定签名实现，等待 `mdx-bridge` routing PR 对接。
+
+## Modifying this file
+
+`imageCore` 公共字段 (`name` / `kind` / `propsSchema` / `mdxComponent`) 及
+`serializeImage` / `parseImage` 签名修改需配套 mdx-bridge routing PR。
+
+## Related
+
+- [@skb/block-foundation CONTRACT](../block-foundation/CONTRACT.md)
+- [@skb/block-foundation RFC](../block-foundation/RFC.md)
+- [ADR-0003 headless / presentational 分层](../../docs/decisions/ADR-0003-headless-presentational-split.md)
+- [ADR-0006 asymmetry audit checklist](../../docs/decisions/ADR-0006-asymmetry-audit-checklist.md)
+- [ADR-0008 D1 dead-dep + D2 interface freeze](../../docs/decisions/ADR-0008-wave-2-entry-policies.md)
+- [Wave 2 plan §Task C1](../../docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md)
+
+ succeeded in 216ms:
+{
+  "name": "self-knowledge-base-web",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "pnpm@9.12.0",
+  "type": "module",
+  "engines": {
+    "node": ">=22",
+    "pnpm": ">=9"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev --parallel",
+    "lint": "eslint .",
+    "lint:packages": "turbo run lint",
+    "typecheck": "tsc -b",
+    "typecheck:packages": "turbo run typecheck",
+    "test": "vitest run",
+    "test:packages": "turbo run test",
+    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm size-check && pnpm lint:packages && pnpm typecheck:packages && pnpm test:packages",
+    "check:affected": "turbo run lint typecheck test --filter=...[origin/main]",
+    "size-check": "node scripts/check-size-limits.mjs",
+    "link-check": "lychee --config .lychee.toml './**/*.md'",
+    "generate:configs": "tsx scripts/generate-configs.ts",
+    "format": "prettier --write \"**/*.{ts,tsx,js,mjs,cjs,json,md,yaml,yml}\""
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "@types/node": "^22.0.0",
+    "commander": "^11.1.0",
+    "eslint": "^9.0.0",
+    "globals": "^15.0.0",
+    "pdfjs-dist": "^4.7.0",
+    "prettier": "^3.0.0",
+    "turbo": "^2.0.0",
+    "ts-morph": "^28.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "~5.6.0",
+    "typescript-eslint": "^8.0.0",
+    "vitest": "^4.1.5",
+    "yaml": "^2.8.3",
+    "zod": "^3.23.0"
+  }
+}
+
+ succeeded in 228ms:
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "composite": false,
+    "noEmit": true
+  },
+  "include": [],
+  "references": [
+    { "path": "./scripts" },
+    { "path": "./packages/content-types" },
+    { "path": "./packages/block-callout" },
+    { "path": "./packages/block-code" },
+    { "path": "./packages/block-foundation" },
+    { "path": "./packages/block-image" },
+    { "path": "./packages/block-jupyter" },
+    { "path": "./packages/block-math" },
+    { "path": "./packages/block-pdf" },
+    { "path": "./packages/editor-commands" },
+    { "path": "./packages/editor-toolbar" },
+    { "path": "./packages/agent-tools" },
+    { "path": "./packages/design-tokens" },
+    { "path": "./packages/kernel-adapter" },
+    { "path": "./packages/kernel-pyodide" },
+    { "path": "./packages/kernel-registry" },
+    { "path": "./packages/mdx-bridge" }
+  ]
+}
+
+ succeeded in 202ms:
+import { defineConfig } from 'vitest/config';
+
+export default defineConfig({
+  test: {
+    include: ['scripts/__tests__/**/*.test.ts'],
+    passWithNoTests: false,
+  },
+});
+
+exec
+/bin/bash -lc "sed -n '1,260p' packages/block-callout/vitest.config.ts" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1,260p' packages/block-callout/src/index.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+export * from './core';
+export * from './ui-default';
+
+exec
+/bin/bash -lc "sed -n '1,240p' packages/block-callout/package.json" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+{
+  "name": "@skb/block-callout",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./core": "./src/core/index.ts",
+    "./ui-default": "./src/ui-default/index.ts",
+    "./ui-default/callout.css": "./src/ui-default/callout.css"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@skb/block-foundation": "workspace:*",
+    "@skb/design-tokens": "workspace:*",
+    "zod": "^3.23.0"
+  },
+  "peerDependencies": {
+    "react": "^18.3.0 || ^19.0.0"
+  },
+  "devDependencies": {
+    "@testing-library/react": "^16.0.0",
+    "@types/react": "^18.3.0",
+    "happy-dom": "^15.0.0",
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0",
+    "typescript": "~5.6.0",
+    "vitest": "^4.1.5"
+  }
+}
+
+exec
+/bin/bash -lc "sed -n '1,260p' packages/block-callout/tsconfig.json" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1,320p' packages/block-callout/src/__tests__/ui-default.test.tsx" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 104ms:
+import { defineConfig } from 'vitest/config';
+
+export default defineConfig({
+  test: {
+    include: ['src/**/*.test.{ts,tsx}'],
+    environment: 'happy-dom',
+    typecheck: { enabled: false },
+  },
+});
+
+ succeeded in 107ms:
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "dist",
+    "jsx": "react-jsx"
+  },
+  "include": ["src/**/*", "vitest.config.ts"],
+  "references": [
+    { "path": "../block-foundation" },
+    { "path": "../design-tokens" }
+  ]
+}
+
+ succeeded in 102ms:
+import { describe, it, expect } from 'vitest';
+import { render } from '@testing-library/react';
+import { BlockRegistry, type BlockUIDefinition } from '@skb/block-foundation';
+import { calloutCore } from '../core/core-definition';
+import {
+  calloutUIDefault,
+  CalloutEditorView,
+  CalloutRenderView,
+  VARIANT_TOKENS,
+} from '../ui-default';
+import type { Variant } from '../ui-default';
+
+const VARIANTS: readonly Variant[] = ['note', 'tip', 'warning', 'danger'];
+
+describe('calloutUIDefault registration', () => {
+  it('exposes the BlockUIDefinition shape with coreName + uiId="default"', () => {
+    expect(calloutUIDefault.coreName).toBe('callout');
+    expect(calloutUIDefault.uiId).toBe('default');
+    expect(calloutUIDefault.EditorView).toBe(CalloutEditorView);
+    expect(calloutUIDefault.RenderView).toBe(CalloutRenderView);
+  });
+
+  it('round-trips through BlockRegistry (registerCore + registerUI)', () => {
+    const reg = new BlockRegistry();
+    reg.registerCore(calloutCore);
+    reg.registerUI(calloutUIDefault as unknown as BlockUIDefinition);
+    expect(reg.getUI('callout')).toBe(calloutUIDefault);
+    expect(reg.getUI('callout', 'default')).toBe(calloutUIDefault);
+  });
+});
+
+describe('CalloutEditorView', () => {
+  it('renders all 4 variants with distinct data-callout-variant + role/aria-label', () => {
+    for (const variant of VARIANTS) {
+      const { container, unmount } = render(
+        <CalloutEditorView props={{ variant }} content="body" />,
+      );
+      const aside = container.querySelector('aside');
+      expect(aside).not.toBeNull();
+      expect(aside?.getAttribute('data-callout-variant')).toBe(variant);
+      expect(aside?.getAttribute('role')).toBe('note');
+      expect(aside?.getAttribute('aria-label')).toBe(
+        `${VARIANT_TOKENS[variant].label} callout`,
+      );
+      // a11y: focusable for keyboard nav
+      expect(aside?.getAttribute('tabindex')).toBe('0');
+      unmount();
+    }
+  });
+
+  it('falls back to capitalized variant name when title is absent', () => {
+    const { getByText, unmount } = render(
+      <CalloutEditorView props={{ variant: 'tip' }} content="hello" />,
+    );
+    expect(getByText('Tip')).not.toBeNull();
+    unmount();
+  });
+
+  it('renders explicit title when provided', () => {
+    const { getByText, unmount } = render(
+      <CalloutEditorView
+        props={{ variant: 'warning', title: 'Heads up!' }}
+        content="careful"
+      />,
+    );
+    expect(getByText('Heads up!')).not.toBeNull();
+    unmount();
+  });
+
+  it('shows empty placeholder when content is missing', () => {
+    const { getByText, unmount } = render(
+      <CalloutEditorView props={{ variant: 'note' }} />,
+    );
+    expect(getByText('No content')).not.toBeNull();
+    unmount();
+  });
+
+  it('emits a unique data-callout-variant per variant + a single icon glyph', () => {
+    const seenVariants = new Set<string>();
+    for (const variant of VARIANTS) {
+      const { container, unmount } = render(
+        <CalloutEditorView props={{ variant }} content="x" />,
+      );
+      const aside = container.querySelector('aside');
+      seenVariants.add(aside?.getAttribute('data-callout-variant') ?? '');
+      const svgs = aside?.querySelectorAll('svg') ?? [];
+      expect(svgs.length).toBe(1);
+      unmount();
+    }
+    expect(seenVariants.size).toBe(VARIANTS.length);
+  });
+});
+
+describe('CalloutRenderView', () => {
+  it('renders DOM structure matching EditorView for the same props (byte-equivalent class shape)', () => {
+    const props = { variant: 'danger', title: 'Stop' } as const;
+    const editor = render(<CalloutEditorView props={props} content="body" />);
+    const rendered = render(<CalloutRenderView props={props} content="body" />);
+    const editorAside = editor.container.querySelector('aside');
+    const renderAside = rendered.container.querySelector('aside');
+    expect(editorAside?.getAttribute('data-callout-variant')).toBe(
+      renderAside?.getAttribute('data-callout-variant'),
+    );
+    expect(editorAside?.getAttribute('role')).toBe(
+      renderAside?.getAttribute('role'),
+    );
+    expect(editorAside?.getAttribute('aria-label')).toBe(
+      renderAside?.getAttribute('aria-label'),
+    );
+    // shared body subtree shape: same icon SVG count + same title content
+    expect(editorAside?.querySelectorAll('svg').length).toBe(
+      renderAside?.querySelectorAll('svg').length,
+    );
+    expect(
+      editorAside?.querySelector('.skb-callout-title')?.textContent,
+    ).toBe(renderAside?.querySelector('.skb-callout-title')?.textContent);
+    editor.unmount();
+    rendered.unmount();
+  });
+
+  it('omits the empty-placeholder span when content is undefined (passive SSR mode)', () => {
+    const { queryByText, unmount } = render(
+      <CalloutRenderView props={{ variant: 'note' }} />,
+    );
+    expect(queryByText('No content')).toBeNull();
+    unmount();
+  });
+});
+
+exec
+/bin/bash -lc "ls -R packages/block-image/src 2>/dev/null | sed -n '1,200p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+packages/block-image/src:
+__tests__
+core
+index.ts
+
+packages/block-image/src/__tests__:
+core.test.ts
+registry-integration.test.ts
+ui-default.test.tsx.disabled
+
+packages/block-image/src/core:
+core-definition.ts
+index.ts
+parse.ts
+serialize.ts
+
+codex
+I found `block-image` already has headless tests and a disabled UI-default test stub, so I’ll inspect those next and then replace the disabled stub with the active image tests.
+exec
+/bin/bash -lc "sed -n '1,240p' packages/block-image/src/index.ts" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1,260p' packages/block-image/src/core/index.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+export * from './core';
+
+ succeeded in 0ms:
+export { imageCore } from './core-definition';
+export { serializeImage } from './serialize';
+export { parseImage } from './parse';
+export type { ImageTiptapNode, ImageMdastJsxElement } from './serialize';
+
+exec
+/bin/bash -lc "sed -n '1,260p' packages/block-image/src/__tests__/core.test.ts" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1,260p' packages/block-image/src/__tests__/registry-integration.test.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+import { describe, expect, it } from 'vitest';
+import { BlockRegistry } from '@skb/block-foundation';
+import { imageCore } from '../core/core-definition';
+
+describe('block-image registry integration', () => {
+  it('registerCore + getCore round-trip preserves identity', () => {
+    const reg = new BlockRegistry();
+    reg.registerCore(imageCore);
+    expect(reg.getCore('image')).toBe(imageCore);
+  });
+
+  it('getCore returns undefined for unknown name', () => {
+    const reg = new BlockRegistry();
+    expect(reg.getCore('unknown-block')).toBeUndefined();
+  });
+});
+
+exec
+/bin/bash -lc "sed -n '1,260p' packages/block-image/src/__tests__/ui-default.test.tsx.disabled" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+import { describe, it, expect } from 'vitest';
+import { render } from '@testing-library/react';
+import { BlockRegistry, type BlockUIDefinition } from '@skb/block-foundation';
+import { imageCore } from '../core/core-definition';
+import {
+  imageUIDefault,
+  ImageEditorView,
+  ImageRenderView,
+  VARIANT_TOKENS,
+} from '../ui-default';
+import type { Variant } from '../ui-default';
+
+const VARIANTS: readonly Variant[] = ['note', 'tip', 'warning', 'danger'];
+
+describe('imageUIDefault registration', () => {
+  it('exposes the BlockUIDefinition shape with coreName + uiId="default"', () => {
+    expect(imageUIDefault.coreName).toBe('image');
+    expect(imageUIDefault.uiId).toBe('default');
+    expect(imageUIDefault.EditorView).toBe(ImageEditorView);
+    expect(imageUIDefault.RenderView).toBe(ImageRenderView);
+  });
+
+  it('round-trips through BlockRegistry (registerCore + registerUI)', () => {
+    const reg = new BlockRegistry();
+    reg.registerCore(imageCore);
+    reg.registerUI(imageUIDefault as unknown as BlockUIDefinition);
+    expect(reg.getUI('image')).toBe(imageUIDefault);
+    expect(reg.getUI('image', 'default')).toBe(imageUIDefault);
+  });
+});
+
+describe('ImageEditorView', () => {
+  it('renders all 4 variants with distinct data-image-variant + role/aria-label', () => {
+    for (const variant of VARIANTS) {
+      const { container, unmount } = render(
+        <ImageEditorView props={{ variant }} content="body" />,
+      );
+      const aside = container.querySelector('aside');
+      expect(aside).not.toBeNull();
+      expect(aside?.getAttribute('data-image-variant')).toBe(variant);
+      expect(aside?.getAttribute('role')).toBe('note');
+      expect(aside?.getAttribute('aria-label')).toBe(
+        `${VARIANT_TOKENS[variant].label} image`,
+      );
+      // a11y: focusable for keyboard nav
+      expect(aside?.getAttribute('tabindex')).toBe('0');
+      unmount();
+    }
+  });
+
+  it('falls back to capitalized variant name when title is absent', () => {
+    const { getByText, unmount } = render(
+      <ImageEditorView props={{ variant: 'tip' }} content="hello" />,
+    );
+    expect(getByText('Tip')).not.toBeNull();
+    unmount();
+  });
+
+  it('renders explicit title when provided', () => {
+    const { getByText, unmount } = render(
+      <ImageEditorView
+        props={{ variant: 'warning', title: 'Heads up!' }}
+        content="careful"
+      />,
+    );
+    expect(getByText('Heads up!')).not.toBeNull();
+    unmount();
+  });
+
+  it('shows empty placeholder when content is missing', () => {
+    const { getByText, unmount } = render(
+      <ImageEditorView props={{ variant: 'note' }} />,
+    );
+    expect(getByText('No content')).not.toBeNull();
+    unmount();
+  });
+
+  it('emits a unique data-image-variant per variant + a single icon glyph', () => {
+    const seenVariants = new Set<string>();
+    for (const variant of VARIANTS) {
+      const { container, unmount } = render(
+        <ImageEditorView props={{ variant }} content="x" />,
+      );
+      const aside = container.querySelector('aside');
+      seenVariants.add(aside?.getAttribute('data-image-variant') ?? '');
+      const svgs = aside?.querySelectorAll('svg') ?? [];
+      expect(svgs.length).toBe(1);
+      unmount();
+    }
+    expect(seenVariants.size).toBe(VARIANTS.length);
+  });
+});
+
+describe('ImageRenderView', () => {
+  it('renders DOM structure matching EditorView for the same props (byte-equivalent class shape)', () => {
+    const props = { variant: 'danger', title: 'Stop' } as const;
+    const editor = render(<ImageEditorView props={props} content="body" />);
+    const rendered = render(<ImageRenderView props={props} content="body" />);
+    const editorAside = editor.container.querySelector('aside');
+    const renderAside = rendered.container.querySelector('aside');
+    expect(editorAside?.getAttribute('data-image-variant')).toBe(
+      renderAside?.getAttribute('data-image-variant'),
+    );
+    expect(editorAside?.getAttribute('role')).toBe(
+      renderAside?.getAttribute('role'),
+    );
+    expect(editorAside?.getAttribute('aria-label')).toBe(
+      renderAside?.getAttribute('aria-label'),
+    );
+    // shared body subtree shape: same icon SVG count + same title content
+    expect(editorAside?.querySelectorAll('svg').length).toBe(
+      renderAside?.querySelectorAll('svg').length,
+    );
+    expect(
+      editorAside?.querySelector('.skb-image-title')?.textContent,
+    ).toBe(renderAside?.querySelector('.skb-image-title')?.textContent);
+    editor.unmount();
+    rendered.unmount();
+  });
+
+  it('omits the empty-placeholder span when content is undefined (passive SSR mode)', () => {
+    const { queryByText, unmount } = render(
+      <ImageRenderView props={{ variant: 'note' }} />,
+    );
+    expect(queryByText('No content')).toBeNull();
+    unmount();
+  });
+});
+
+ succeeded in 101ms:
+import { describe, it, expect } from 'vitest';
+import { imageCore } from '../core/core-definition';
+
+describe('imageCore.propsSchema', () => {
+  it('accepts src + alt', () => {
+    expect(imageCore.propsSchema.parse({ src: '/path/img.png', alt: 'logo' })).toEqual({
+      src: '/path/img.png',
+      alt: 'logo',
+    });
+  });
+
+  it('accepts optional dimensions', () => {
+    expect(
+      imageCore.propsSchema.parse({
+        src: '/path/img.png',
+        alt: '',
+        width: 320,
+        height: 240,
+      }),
+    ).toEqual({
+      src: '/path/img.png',
+      alt: '',
+      width: 320,
+      height: 240,
+    });
+  });
+
+  it('rejects negative dimensions and empty src', () => {
+    expect(() => imageCore.propsSchema.parse({ src: '', alt: 'logo' })).toThrow(
+      /too_small|min/,
+    );
+    expect(() =>
+      imageCore.propsSchema.parse({ src: '/path/img.png', alt: 'logo', width: 0 }),
+    ).toThrow(/too_small|not_positive/);
+  });
+
+  it('exports correct shape (BlockCoreDefinition contract)', () => {
+    expect(imageCore.name).toBe('image');
+    expect(imageCore.kind).toBe('component');
+    expect(imageCore.mdxComponent).toBe('Image');
+  });
+});
+
+apply patch
+patch: completed
+/home/weiyi/selfKnowledgeBaseWeb/packages/block-image/package.json
+diff --git a/packages/block-image/package.json b/packages/block-image/package.json
+index adc4e6b02e6c500806cb76a3a130c58918a3841b..28318cd3649266846164f0cb70564dc65986f59a
+--- a/packages/block-image/package.json
++++ b/packages/block-image/package.json
+@@ -5,7 +5,9 @@
+   "type": "module",
+   "exports": {
+     ".": "./src/index.ts",
+-    "./core": "./src/core/index.ts"
++    "./core": "./src/core/index.ts",
++    "./ui-default": "./src/ui-default/index.ts",
++    "./ui-default/image.css": "./src/ui-default/image.css"
+   },
+   "scripts": {
+     "build": "tsc -b",
+@@ -15,6 +17,7 @@
+   },
+   "dependencies": {
+     "@skb/block-foundation": "workspace:*",
++    "@skb/design-tokens": "workspace:*",
+     "zod": "^3.23.0"
+   },
+   "peerDependencies": {
+@@ -22,6 +25,7 @@
+   },
+   "devDependencies": {
+     "@testing-library/react": "^16.0.0",
++    "@types/react-dom": "^18.3.0",
+     "@types/react": "^18.3.0",
+     "happy-dom": "^15.0.0",
+     "react": "^18.3.0",
+
+diff --git a/packages/block-image/package.json b/packages/block-image/package.json
+index adc4e6b02e6c500806cb76a3a130c58918a3841b..28318cd3649266846164f0cb70564dc65986f59a
+--- a/packages/block-image/package.json
++++ b/packages/block-image/package.json
+@@ -5,7 +5,9 @@
+   "type": "module",
+   "exports": {
+     ".": "./src/index.ts",
+-    "./core": "./src/core/index.ts"
++    "./core": "./src/core/index.ts",
++    "./ui-default": "./src/ui-default/index.ts",
++    "./ui-default/image.css": "./src/ui-default/image.css"
+   },
+   "scripts": {
+     "build": "tsc -b",
+@@ -15,6 +17,7 @@
+   },
+   "dependencies": {
+     "@skb/block-foundation": "workspace:*",
++    "@skb/design-tokens": "workspace:*",
+     "zod": "^3.23.0"
+   },
+   "peerDependencies": {
+@@ -22,6 +25,7 @@
+   },
+   "devDependencies": {
+     "@testing-library/react": "^16.0.0",
++    "@types/react-dom": "^18.3.0",
+     "@types/react": "^18.3.0",
+     "happy-dom": "^15.0.0",
+     "react": "^18.3.0",
+
+codex
+I’m now applying the UI-default scaffold files and test contract updates in a single patch, keeping the existing API shape and using the image schema (`src/alt/width/height`) with lazy loading + responsive defaults.
+apply patch
+patch: completed
+/home/weiyi/selfKnowledgeBaseWeb/packages/block-image/src/index.ts
+diff --git a/packages/block-image/package.json b/packages/block-image/package.json
+index adc4e6b02e6c500806cb76a3a130c58918a3841b..28318cd3649266846164f0cb70564dc65986f59a
+--- a/packages/block-image/package.json
++++ b/packages/block-image/package.json
+@@ -5,7 +5,9 @@
+   "type": "module",
+   "exports": {
+     ".": "./src/index.ts",
+-    "./core": "./src/core/index.ts"
++    "./core": "./src/core/index.ts",
++    "./ui-default": "./src/ui-default/index.ts",
++    "./ui-default/image.css": "./src/ui-default/image.css"
+   },
+   "scripts": {
+     "build": "tsc -b",
+@@ -15,6 +17,7 @@
+   },
+   "dependencies": {
+     "@skb/block-foundation": "workspace:*",
++    "@skb/design-tokens": "workspace:*",
+     "zod": "^3.23.0"
+   },
+   "peerDependencies": {
+@@ -22,6 +25,7 @@
+   },
+   "devDependencies": {
+     "@testing-library/react": "^16.0.0",
++    "@types/react-dom": "^18.3.0",
+     "@types/react": "^18.3.0",
+     "happy-dom": "^15.0.0",
+     "react": "^18.3.0",
+diff --git a/packages/block-image/src/index.ts b/packages/block-image/src/index.ts
+index 4b0e041376276d8a80667f283051c4ef5294a440..ec660ceea15131c3d4aca60642e32a5ec613598d
+--- a/packages/block-image/src/index.ts
++++ b/packages/block-image/src/index.ts
+@@ -1 +1,2 @@
+ export * from './core';
++export * from './ui-default';
+
+diff --git a/packages/block-image/package.json b/packages/block-image/package.json
+index adc4e6b02e6c500806cb76a3a130c58918a3841b..28318cd3649266846164f0cb70564dc65986f59a
+--- a/packages/block-image/package.json
++++ b/packages/block-image/package.json
+@@ -5,7 +5,9 @@
+   "type": "module",
+   "exports": {
+     ".": "./src/index.ts",
+-    "./core": "./src/core/index.ts"
++    "./core": "./src/core/index.ts",
++    "./ui-default": "./src/ui-default/index.ts",
++    "./ui-default/image.css": "./src/ui-default/image.css"
+   },
+   "scripts": {
+     "build": "tsc -b",
+@@ -15,6 +17,7 @@
+   },
+   "dependencies": {
+     "@skb/block-foundation": "workspace:*",
++    "@skb/design-tokens": "workspace:*",
+     "zod": "^3.23.0"
+   },
+   "peerDependencies": {
+@@ -22,6 +25,7 @@
+   },
+   "devDependencies": {
+     "@testing-library/react": "^16.0.0",
++    "@types/react-dom": "^18.3.0",
+     "@types/react": "^18.3.0",
+     "happy-dom": "^15.0.0",
+     "react": "^18.3.0",
+diff --git a/packages/block-image/src/index.ts b/packages/block-image/src/index.ts
+index 4b0e041376276d8a80667f283051c4ef5294a440..ec660ceea15131c3d4aca60642e32a5ec613598d
+--- a/packages/block-image/src/index.ts
++++ b/packages/block-image/src/index.ts
+@@ -1 +1,2 @@
+ export * from './core';
++export * from './ui-default';
+
+2026-05-01T04:00:05.901631Z ERROR codex_core::tools::router: error=exec_command failed for `/bin/bash -lc 'rm -f /home/weiyi/selfKnowledgeBaseWeb/packages/block-image/src/__tests__/ui-default.test.tsx.disabled'`: CreateProcess { message: "Rejected(\"`/bin/bash -lc 'rm -f /home/weiyi/selfKnowledgeBaseWeb/packages/block-image/src/__tests__/ui-default.test.tsx.disabled'` rejected: blocked by policy\")" }
+exec
+/bin/bash -lc "cat > /home/weiyi/selfKnowledgeBaseWeb/packages/block-image/src/ui-default/ImageBody.tsx <<'EOF'
+import type { ReactNode } from 'react';
+import type { z } from 'zod';
+import { imageCore } from '../core/core-definition';
+
+type ImageProps = z.infer<typeof imageCore.propsSchema>;
+
+export interface ImageBodyProps {
+  readonly props: ImageProps;
+}
+
+export function ImageBody({ props }: ImageBodyProps): ReactNode {
+  const { src, alt, width, height } = props;
+
+  return (
+    <figure data-image-loading=\"lazy\" className=\"skb-image\" role=\"figure\">
+      <img
+        src={src}
+        alt={alt}
+        width={width}
+        height={height}
+        loading=\"lazy\"
+        className=\"skb-image-media\"
+      />
+      <figcaption className=\"skb-image-caption\">{alt}</figcaption>
+    </figure>
+  );
+}
+EOF" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "cat > /home/weiyi/selfKnowledgeBaseWeb/packages/block-image/src/ui-default/index.ts <<'EOF'
+import { defineUI, type BlockUIDefinition } from '@skb/block-foundation';
+import { imageCore } from '../core/core-definition';
+import { ImageEditorView } from './EditorView';
+import { ImageRenderView } from './RenderView';
+
+export const imageUIDefault: BlockUIDefinition<typeof imageCore.propsSchema> =
+  defineUI({
+    coreName: imageCore.name,
+    uiId: 'default',
+    EditorView: ImageEditorView,
+    RenderView: ImageRenderView,
+  });
+
+export { ImageEditorView } from './EditorView';
+export { ImageRenderView } from './RenderView';
+export { ImageBody } from './ImageBody';
+EOF" in /home/weiyi/selfKnowledgeBaseWeb
+ exited 1 in 0ms:
+/bin/bash: line 1: /home/weiyi/selfKnowledgeBaseWeb/packages/block-image/src/ui-default/index.ts: No such file or directory
+
+exec
+/bin/bash -lc "cat > /home/weiyi/selfKnowledgeBaseWeb/packages/block-image/src/ui-default/EditorView.tsx <<'EOF'
+import type { ComponentType } from 'react';
+import type { BlockViewProps } from '@skb/block-foundation';
+import { imageCore } from '../core/core-definition';
+import { ImageBody } from './ImageBody';
+
+export const ImageEditorView: ComponentType<
+  BlockViewProps<typeof imageCore.propsSchema>
+> = ({ props }) => <ImageBody props={props} />;
+EOF" in /home/weiyi/selfKnowledgeBaseWeb
+ exited 1 in 0ms:
+/bin/bash: line 1: /home/weiyi/selfKnowledgeBaseWeb/packages/block-image/src/ui-default/EditorView.tsx: No such file or directory
+
+exec
+/bin/bash -lc "cat > /home/weiyi/selfKnowledgeBaseWeb/packages/block-image/src/ui-default/image.css <<'EOF'
+/*
+ * @skb/block-image — ui-default styles.
+ *
+ * Selector contract: the style surface is gated on "'`data-image-loading` so the DOM
+ * stays explicit and future-loading-state transitions can reuse this template.
+ *
+ * Consumers (apps/site + editor-shell) MUST import this file once at app boot:
+ *   import '"'@skb/block-image/ui-default/image.css';
+ */
+
+[data-image-loading] {
+  margin: 0;
+  display: grid;
+  gap: var(--space-1);
+  max-width: 100%;
+  width: min(100%, fit-content);
+  color: rgb(var(--color-fg));
+}
+
+[data-image-loading] .skb-image-media {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  border-radius: var(--radius-sm);
+}
+
+[data-image-loading] .skb-image-caption {
+  margin: 0;
+  text-align: center;
+  color: rgb(var(--color-muted));
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
+}
+EOF" in /home/weiyi/selfKnowledgeBaseWeb
+ exited 1 in 0ms:
+/bin/bash: line 1: /home/weiyi/selfKnowledgeBaseWeb/packages/block-image/src/ui-default/image.css: No such file or directory
+
+exec
+/bin/bash -lc "cat > /home/weiyi/selfKnowledgeBaseWeb/packages/block-image/src/ui-default/RenderView.tsx <<'EOF'
+import type { ComponentType } from 'react';
+import type { BlockViewProps } from '@skb/block-foundation';
+import { imageCore } from '../core/core-definition';
+import { ImageBody } from './ImageBody';
+
+export const ImageRenderView: ComponentType<
+  BlockViewProps<typeof imageCore.propsSchema>
+> = ({ props }) => <ImageBody props={props} />;
+EOF" in /home/weiyi/selfKnowledgeBaseWeb
+ exited 1 in 0ms:
+/bin/bash: line 1: /home/weiyi/selfKnowledgeBaseWeb/packages/block-image/src/ui-default/RenderView.tsx: No such file or directory
+
+exec
+/bin/bash -lc "cat > /home/weiyi/selfKnowledgeBaseWeb/packages/block-image/src/__tests__/ui-default.test.tsx <<'EOF'
+import { describe, it, expect } from 'vitest';
+import { render } from '@testing-library/react';
+import { BlockRegistry, type BlockUIDefinition } from '@skb/block-foundation';
+import { imageCore } from '../core/core-definition';
+import {
+  imageUIDefault,
+  ImageEditorView,
+  ImageRenderView,
+} from '../ui-default';
+
+const baseProps = {
+  src: 'https://example.test/hero.jpg',
+  alt: 'hero image',
+};
+
+describe('imageUIDefault registration', () => {
+  it('exposes the BlockUIDefinition shape with coreName + uiId=\"default\"', () => {
+    expect(imageUIDefault.coreName).toBe('image');
+    expect(imageUIDefault.uiId).toBe('default');
+    expect(imageUIDefault.EditorView).toBe(ImageEditorView);
+    expect(imageUIDefault.RenderView).toBe(ImageRenderView);
+  });
+
+  it('round-trips through BlockRegistry (registerCore + registerUI)', () => {
+    const reg = new BlockRegistry();
+    reg.registerCore(imageCore);
+    reg.registerUI(imageUIDefault as unknown as BlockUIDefinition);
+    expect(reg.getUI('image')).toBe(imageUIDefault);
+    expect(reg.getUI('image', 'default')).toBe(imageUIDefault);
+  });
+});
+
+describe('ImageEditorView', () => {
+  it('renders required src + alt into the native img and figcaption', () => {
+    const { container, unmount } = render(<ImageEditorView props={baseProps} />);
+    const figure = container.querySelector('figure');
+    const image = container.querySelector('img');
+    const caption = container.querySelector('figcaption');
+
+    expect(figure).not.toBeNull();
+    expect(image).not.toBeNull();
+    expect(image?.getAttribute('src')).toBe(baseProps.src);
+    expect(image?.getAttribute('alt')).toBe(baseProps.alt);
+    expect(caption?.textContent).toBe(baseProps.alt);
+    unmount();
+  });
+
+  it('marks the figure with loading-state attr for future loading variants', () => {
+    const { container, unmount } = render(<ImageEditorView props={baseProps} />);
+    const figure = container.querySelector('figure');
+    expect(figure?.getAttribute('data-image-loading')).toBe('lazy');
+    unmount();
+  });
+
+  it('always sets img loading=\"lazy\"', () => {
+    const { container, unmount } = render(<ImageEditorView props={baseProps} />);
+    const image = container.querySelector('img');
+    expect(image?.getAttribute('loading')).toBe('lazy');
+    unmount();
+  });
+
+  it('passes width when provided', () => {
+    const { container, unmount } = render(
+      <ImageEditorView props={{ ...baseProps, width: 640 }} />,
+    );
+    const image = container.querySelector('img');
+    expect(image?.getAttribute('width')).toBe('640');
+    unmount();
+  });
+
+  it('passes height when provided', () => {
+    const { container, unmount } = render(
+      <ImageEditorView props={{ ...baseProps, height: 360 }} />,
+    );
+    const image = container.querySelector('img');
+    expect(image?.getAttribute('height')).toBe('360');
+    unmount();
+  });
+
+  it('keeps image responsive when width/height are omitted', () => {
+    const { container, unmount } = render(<ImageEditorView props={baseProps} />);
+    const image = container.querySelector('img');
+    expect(image?.hasAttribute('width')).toBe(false);
+    expect(image?.hasAttribute('height')).toBe(false);
+    unmount();
+  });
+});
+
+describe('ImageRenderView', () => {
+  it('renders semantic figure/image/figcaption matching EditorView for same props', () => {
+    const props = {
+      ...baseProps,
+      width: 320,
+      height: 240,
+    };
+    const editor = render(<ImageEditorView props={props} />);
+    const rendered = render(<ImageRenderView props={props} />);
+
+    const editorFigure = editor.container.querySelector('figure');
+    const renderFigure = rendered.container.querySelector('figure');
+    const editorImage = editorFigure?.querySelector('img');
+    const renderImage = renderFigure?.querySelector('img');
+
+    expect(editorFigure?.getAttribute('data-image-loading')).toBe(
+      renderFigure?.getAttribute('data-image-loading'),
+    );
+    expect(editorImage?.outerHTML).toBe(renderImage?.outerHTML);
+    expect(editorFigure?.querySelector('figcaption')?.textContent).toBe(
+      renderFigure?.querySelector('figcaption')?.textContent,
+    );
+
+    editor.unmount();
+    rendered.unmount();
+  });
+});
+EOF" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+diff --git a/packages/block-image/package.json b/packages/block-image/package.json
+index adc4e6b02e6c500806cb76a3a130c58918a3841b..28318cd3649266846164f0cb70564dc65986f59a
+--- a/packages/block-image/package.json
++++ b/packages/block-image/package.json
+@@ -5,7 +5,9 @@
+   "type": "module",
+   "exports": {
+     ".": "./src/index.ts",
+-    "./core": "./src/core/index.ts"
++    "./core": "./src/core/index.ts",
++    "./ui-default": "./src/ui-default/index.ts",
++    "./ui-default/image.css": "./src/ui-default/image.css"
+   },
+   "scripts": {
+     "build": "tsc -b",
+@@ -15,6 +17,7 @@
+   },
+   "dependencies": {
+     "@skb/block-foundation": "workspace:*",
++    "@skb/design-tokens": "workspace:*",
+     "zod": "^3.23.0"
+   },
+   "peerDependencies": {
+@@ -22,6 +25,7 @@
+   },
+   "devDependencies": {
+     "@testing-library/react": "^16.0.0",
++    "@types/react-dom": "^18.3.0",
+     "@types/react": "^18.3.0",
+     "happy-dom": "^15.0.0",
+     "react": "^18.3.0",
+diff --git a/packages/block-image/src/index.ts b/packages/block-image/src/index.ts
+index 4b0e041376276d8a80667f283051c4ef5294a440..ec660ceea15131c3d4aca60642e32a5ec613598d
+--- a/packages/block-image/src/index.ts
++++ b/packages/block-image/src/index.ts
+@@ -1 +1,2 @@
+ export * from './core';
++export * from './ui-default';
+
+ exited 1 in 102ms:
+/bin/bash: line 1: /home/weiyi/selfKnowledgeBaseWeb/packages/block-image/src/ui-default/ImageBody.tsx: No such file or directory
+
+exec
+/bin/bash -lc 'ls packages/block-image/src/ui-default 2>/dev/null || true && ls packages/block-image/src/__tests__' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+core.test.ts
+registry-integration.test.ts
+ui-default.test.tsx
+ui-default.test.tsx.disabled
+
+diff --git a/packages/block-image/package.json b/packages/block-image/package.json
+index adc4e6b02e6c500806cb76a3a130c58918a3841b..28318cd3649266846164f0cb70564dc65986f59a
+--- a/packages/block-image/package.json
++++ b/packages/block-image/package.json
+@@ -5,7 +5,9 @@
+   "type": "module",
+   "exports": {
+     ".": "./src/index.ts",
+-    "./core": "./src/core/index.ts"
++    "./core": "./src/core/index.ts",
++    "./ui-default": "./src/ui-default/index.ts",
++    "./ui-default/image.css": "./src/ui-default/image.css"
+   },
+   "scripts": {
+     "build": "tsc -b",
+@@ -15,6 +17,7 @@
+   },
+   "dependencies": {
+     "@skb/block-foundation": "workspace:*",
++    "@skb/design-tokens": "workspace:*",
+     "zod": "^3.23.0"
+   },
+   "peerDependencies": {
+@@ -22,6 +25,7 @@
+   },
+   "devDependencies": {
+     "@testing-library/react": "^16.0.0",
++    "@types/react-dom": "^18.3.0",
+     "@types/react": "^18.3.0",
+     "happy-dom": "^15.0.0",
+     "react": "^18.3.0",
+diff --git a/packages/block-image/src/index.ts b/packages/block-image/src/index.ts
+index 4b0e041376276d8a80667f283051c4ef5294a440..ec660ceea15131c3d4aca60642e32a5ec613598d
+--- a/packages/block-image/src/index.ts
++++ b/packages/block-image/src/index.ts
+@@ -1 +1,2 @@
+ export * from './core';
++export * from './ui-default';
+
+codex
+The only successful write so far is the new test file. I’ll now create the missing `src/ui-default/` files in one pass and then remove the stale `.disabled` test stub.
+exec
+/bin/bash -lc "mkdir -p packages/block-image/src/ui-default && cat > packages/block-image/src/ui-default/index.ts <<'EOF'
+import { defineUI, type BlockUIDefinition } from '@skb/block-foundation';
+import { imageCore } from '../core/core-definition';
+import { ImageEditorView } from './EditorView';
+import { ImageRenderView } from './RenderView';
+
+export const imageUIDefault: BlockUIDefinition<typeof imageCore.propsSchema> =
+  defineUI({
+    coreName: imageCore.name,
+    uiId: 'default',
+    EditorView: ImageEditorView,
+    RenderView: ImageRenderView,
+  });
+
+export { ImageEditorView } from './EditorView';
+export { ImageRenderView } from './RenderView';
+export { ImageBody } from './ImageBody';
+EOF
+
+cat > packages/block-image/src/ui-default/ImageBody.tsx <<'EOF'
+import type { ReactNode } from 'react';
+import type { z } from 'zod';
+import { imageCore } from '../core/core-definition';
+
+type ImageProps = z.infer<typeof imageCore.propsSchema>;
+
+export interface ImageBodyProps {
+  readonly props: ImageProps;
+}
+
+export function ImageBody({ props }: ImageBodyProps): ReactNode {
+  const { src, alt, width, height } = props;
+
+  return (
+    <figure data-image-loading=\"lazy\" className=\"skb-image\" role=\"figure\">
+      <img
+        src={src}
+        alt={alt}
+        width={width}
+        height={height}
+        loading=\"lazy\"
+        className=\"skb-image-media\"
+      />
+      <figcaption className=\"skb-image-caption\">{alt}</figcaption>
+    </figure>
+  );
+}
+EOF
+
+cat > packages/block-image/src/ui-default/EditorView.tsx <<'EOF'
+import type { ComponentType } from 'react';
+import type { BlockViewProps } from '@skb/block-foundation';
+import { imageCore } from '../core/core-definition';
+import { ImageBody } from './ImageBody';
+
+export const ImageEditorView: ComponentType<
+  BlockViewProps<typeof imageCore.propsSchema>
+> = ({ props }) => <ImageBody props={props} />;
+EOF
+
+cat > packages/block-image/src/ui-default/RenderView.tsx <<'EOF'
+import type { ComponentType } from 'react';
+import type { BlockViewProps } from '@skb/block-foundation';
+import { imageCore } from '../core/core-definition';
+import { ImageBody } from './ImageBody';
+
+export const ImageRenderView: ComponentType<
+  BlockViewProps<typeof imageCore.propsSchema>
+> = ({ props }) => <ImageBody props={props} />;
+EOF
+
+cat > packages/block-image/src/ui-default/image.css <<'EOF'
+/*
+ * @skb/block-image — ui-default styles.
+ *
+ * Selector contract: the style surface is gated on "'`data-image-loading` so the DOM
+ * stays explicit and future-loading-state transitions can reuse this template.
+ *
+ * Consumers (apps/site + editor-shell) MUST import this file once at app boot:
+ *   import '"'@skb/block-image/ui-default/image.css';
+ */
+
+[data-image-loading] {
+  margin: 0;
+  display: grid;
+  gap: var(--space-1);
+  max-width: 100%;
+  width: min(100%, fit-content);
+  color: rgb(var(--color-fg));
+}
+
+[data-image-loading] .skb-image-media {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  border-radius: var(--radius-sm);
+}
+
+[data-image-loading] .skb-image-caption {
+  margin: 0;
+  text-align: center;
+  color: rgb(var(--color-muted));
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
+}
+EOF" in /home/weiyi/selfKnowledgeBaseWeb
+diff --git a/packages/block-image/package.json b/packages/block-image/package.json
+index adc4e6b02e6c500806cb76a3a130c58918a3841b..28318cd3649266846164f0cb70564dc65986f59a
+--- a/packages/block-image/package.json
++++ b/packages/block-image/package.json
+@@ -5,7 +5,9 @@
+   "type": "module",
+   "exports": {
+     ".": "./src/index.ts",
+-    "./core": "./src/core/index.ts"
++    "./core": "./src/core/index.ts",
++    "./ui-default": "./src/ui-default/index.ts",
++    "./ui-default/image.css": "./src/ui-default/image.css"
+   },
+   "scripts": {
+     "build": "tsc -b",
+@@ -15,6 +17,7 @@
+   },
+   "dependencies": {
+     "@skb/block-foundation": "workspace:*",
++    "@skb/design-tokens": "workspace:*",
+     "zod": "^3.23.0"
+   },
+   "peerDependencies": {
+@@ -22,6 +25,7 @@
+   },
+   "devDependencies": {
+     "@testing-library/react": "^16.0.0",
++    "@types/react-dom": "^18.3.0",
+     "@types/react": "^18.3.0",
+     "happy-dom": "^15.0.0",
+     "react": "^18.3.0",
+diff --git a/packages/block-image/src/index.ts b/packages/block-image/src/index.ts
+index 4b0e041376276d8a80667f283051c4ef5294a440..ec660ceea15131c3d4aca60642e32a5ec613598d
+--- a/packages/block-image/src/index.ts
++++ b/packages/block-image/src/index.ts
+@@ -1 +1,2 @@
+ export * from './core';
++export * from './ui-default';
+
+ succeeded in 142ms:
+apply patch
+patch: completed
+/home/weiyi/selfKnowledgeBaseWeb/packages/block-image/src/__tests__/ui-default.test.tsx.disabled
+diff --git a/packages/block-image/package.json b/packages/block-image/package.json
+index adc4e6b02e6c500806cb76a3a130c58918a3841b..28318cd3649266846164f0cb70564dc65986f59a
+--- a/packages/block-image/package.json
++++ b/packages/block-image/package.json
+@@ -5,7 +5,9 @@
+   "type": "module",
+   "exports": {
+     ".": "./src/index.ts",
+-    "./core": "./src/core/index.ts"
++    "./core": "./src/core/index.ts",
++    "./ui-default": "./src/ui-default/index.ts",
++    "./ui-default/image.css": "./src/ui-default/image.css"
+   },
+   "scripts": {
+     "build": "tsc -b",
+@@ -15,6 +17,7 @@
+   },
+   "dependencies": {
+     "@skb/block-foundation": "workspace:*",
++    "@skb/design-tokens": "workspace:*",
+     "zod": "^3.23.0"
+   },
+   "peerDependencies": {
+@@ -22,6 +25,7 @@
+   },
+   "devDependencies": {
+     "@testing-library/react": "^16.0.0",
++    "@types/react-dom": "^18.3.0",
+     "@types/react": "^18.3.0",
+     "happy-dom": "^15.0.0",
+     "react": "^18.3.0",
+diff --git a/packages/block-image/src/__tests__/ui-default.test.tsx.disabled b/packages/block-image/src/__tests__/ui-default.test.tsx.disabled
+deleted file mode 100644
+index c6a607ff74121f7d06b7069e820ad1430b5a2404..0000000000000000000000000000000000000000
+--- a/packages/block-image/src/__tests__/ui-default.test.tsx.disabled
++++ /dev/null
+@@ -1,128 +0,0 @@
+-import { describe, it, expect } from 'vitest';
+-import { render } from '@testing-library/react';
+-import { BlockRegistry, type BlockUIDefinition } from '@skb/block-foundation';
+-import { imageCore } from '../core/core-definition';
+-import {
+-  imageUIDefault,
+-  ImageEditorView,
+-  ImageRenderView,
+-  VARIANT_TOKENS,
+-} from '../ui-default';
+-import type { Variant } from '../ui-default';
+-
+-const VARIANTS: readonly Variant[] = ['note', 'tip', 'warning', 'danger'];
+-
+-describe('imageUIDefault registration', () => {
+-  it('exposes the BlockUIDefinition shape with coreName + uiId="default"', () => {
+-    expect(imageUIDefault.coreName).toBe('image');
+-    expect(imageUIDefault.uiId).toBe('default');
+-    expect(imageUIDefault.EditorView).toBe(ImageEditorView);
+-    expect(imageUIDefault.RenderView).toBe(ImageRenderView);
+-  });
+-
+-  it('round-trips through BlockRegistry (registerCore + registerUI)', () => {
+-    const reg = new BlockRegistry();
+-    reg.registerCore(imageCore);
+-    reg.registerUI(imageUIDefault as unknown as BlockUIDefinition);
+-    expect(reg.getUI('image')).toBe(imageUIDefault);
+-    expect(reg.getUI('image', 'default')).toBe(imageUIDefault);
+-  });
+-});
+-
+-describe('ImageEditorView', () => {
+-  it('renders all 4 variants with distinct data-image-variant + role/aria-label', () => {
+-    for (const variant of VARIANTS) {
+-      const { container, unmount } = render(
+-        <ImageEditorView props={{ variant }} content="body" />,
+-      );
+-      const aside = container.querySelector('aside');
+-      expect(aside).not.toBeNull();
+-      expect(aside?.getAttribute('data-image-variant')).toBe(variant);
+-      expect(aside?.getAttribute('role')).toBe('note');
+-      expect(aside?.getAttribute('aria-label')).toBe(
+-        `${VARIANT_TOKENS[variant].label} image`,
+-      );
+-      // a11y: focusable for keyboard nav
+-      expect(aside?.getAttribute('tabindex')).toBe('0');
+-      unmount();
+-    }
+-  });
+-
+-  it('falls back to capitalized variant name when title is absent', () => {
+-    const { getByText, unmount } = render(
+-      <ImageEditorView props={{ variant: 'tip' }} content="hello" />,
+-    );
+-    expect(getByText('Tip')).not.toBeNull();
+-    unmount();
+-  });
+-
+-  it('renders explicit title when provided', () => {
+-    const { getByText, unmount } = render(
+-      <ImageEditorView
+-        props={{ variant: 'warning', title: 'Heads up!' }}
+-        content="careful"
+-      />,
+-    );
+-    expect(getByText('Heads up!')).not.toBeNull();
+-    unmount();
+-  });
+-
+-  it('shows empty placeholder when content is missing', () => {
+-    const { getByText, unmount } = render(
+-      <ImageEditorView props={{ variant: 'note' }} />,
+-    );
+-    expect(getByText('No content')).not.toBeNull();
+-    unmount();
+-  });
+-
+-  it('emits a unique data-image-variant per variant + a single icon glyph', () => {
+-    const seenVariants = new Set<string>();
+-    for (const variant of VARIANTS) {
+-      const { container, unmount } = render(
+-        <ImageEditorView props={{ variant }} content="x" />,
+-      );
+-      const aside = container.querySelector('aside');
+-      seenVariants.add(aside?.getAttribute('data-image-variant') ?? '');
+-      const svgs = aside?.querySelectorAll('svg') ?? [];
+-      expect(svgs.length).toBe(1);
+-      unmount();
+-    }
+-    expect(seenVariants.size).toBe(VARIANTS.length);
+-  });
+-});
+-
+-describe('ImageRenderView', () => {
+-  it('renders DOM structure matching EditorView for the same props (byte-equivalent class shape)', () => {
+-    const props = { variant: 'danger', title: 'Stop' } as const;
+-    const editor = render(<ImageEditorView props={props} content="body" />);
+-    const rendered = render(<ImageRenderView props={props} content="body" />);
+-    const editorAside = editor.container.querySelector('aside');
+-    const renderAside = rendered.container.querySelector('aside');
+-    expect(editorAside?.getAttribute('data-image-variant')).toBe(
+-      renderAside?.getAttribute('data-image-variant'),
+-    );
+-    expect(editorAside?.getAttribute('role')).toBe(
+-      renderAside?.getAttribute('role'),
+-    );
+-    expect(editorAside?.getAttribute('aria-label')).toBe(
+-      renderAside?.getAttribute('aria-label'),
+-    );
+-    // shared body subtree shape: same icon SVG count + same title content
+-    expect(editorAside?.querySelectorAll('svg').length).toBe(
+-      renderAside?.querySelectorAll('svg').length,
+-    );
+-    expect(
+-      editorAside?.querySelector('.skb-image-title')?.textContent,
+-    ).toBe(renderAside?.querySelector('.skb-image-title')?.textContent);
+-    editor.unmount();
+-    rendered.unmount();
+-  });
+-
+-  it('omits the empty-placeholder span when content is undefined (passive SSR mode)', () => {
+-    const { queryByText, unmount } = render(
+-      <ImageRenderView props={{ variant: 'note' }} />,
+-    );
+-    expect(queryByText('No content')).toBeNull();
+-    unmount();
+-  });
+-});
+diff --git a/packages/block-image/src/index.ts b/packages/block-image/src/index.ts
+index 4b0e041376276d8a80667f283051c4ef5294a440..ec660ceea15131c3d4aca60642e32a5ec613598d
+--- a/packages/block-image/src/index.ts
++++ b/packages/block-image/src/index.ts
+@@ -1 +1,2 @@
+ export * from './core';
++export * from './ui-default';
+
+diff --git a/packages/block-image/package.json b/packages/block-image/package.json
+index adc4e6b02e6c500806cb76a3a130c58918a3841b..28318cd3649266846164f0cb70564dc65986f59a
+--- a/packages/block-image/package.json
++++ b/packages/block-image/package.json
+@@ -5,7 +5,9 @@
+   "type": "module",
+   "exports": {
+     ".": "./src/index.ts",
+-    "./core": "./src/core/index.ts"
++    "./core": "./src/core/index.ts",
++    "./ui-default": "./src/ui-default/index.ts",
++    "./ui-default/image.css": "./src/ui-default/image.css"
+   },
+   "scripts": {
+     "build": "tsc -b",
+@@ -15,6 +17,7 @@
+   },
+   "dependencies": {
+     "@skb/block-foundation": "workspace:*",
++    "@skb/design-tokens": "workspace:*",
+     "zod": "^3.23.0"
+   },
+   "peerDependencies": {
+@@ -22,6 +25,7 @@
+   },
+   "devDependencies": {
+     "@testing-library/react": "^16.0.0",
++    "@types/react-dom": "^18.3.0",
+     "@types/react": "^18.3.0",
+     "happy-dom": "^15.0.0",
+     "react": "^18.3.0",
+diff --git a/packages/block-image/src/__tests__/ui-default.test.tsx.disabled b/packages/block-image/src/__tests__/ui-default.test.tsx.disabled
+deleted file mode 100644
+index c6a607ff74121f7d06b7069e820ad1430b5a2404..0000000000000000000000000000000000000000
+--- a/packages/block-image/src/__tests__/ui-default.test.tsx.disabled
++++ /dev/null
+@@ -1,128 +0,0 @@
+-import { describe, it, expect } from 'vitest';
+-import { render } from '@testing-library/react';
+-import { BlockRegistry, type BlockUIDefinition } from '@skb/block-foundation';
+-import { imageCore } from '../core/core-definition';
+-import {
+-  imageUIDefault,
+-  ImageEditorView,
+-  ImageRenderView,
+-  VARIANT_TOKENS,
+-} from '../ui-default';
+-import type { Variant } from '../ui-default';
+-
+-const VARIANTS: readonly Variant[] = ['note', 'tip', 'warning', 'danger'];
+-
+-describe('imageUIDefault registration', () => {
+-  it('exposes the BlockUIDefinition shape with coreName + uiId="default"', () => {
+-    expect(imageUIDefault.coreName).toBe('image');
+-    expect(imageUIDefault.uiId).toBe('default');
+-    expect(imageUIDefault.EditorView).toBe(ImageEditorView);
+-    expect(imageUIDefault.RenderView).toBe(ImageRenderView);
+-  });
+-
+-  it('round-trips through BlockRegistry (registerCore + registerUI)', () => {
+-    const reg = new BlockRegistry();
+-    reg.registerCore(imageCore);
+-    reg.registerUI(imageUIDefault as unknown as BlockUIDefinition);
+-    expect(reg.getUI('image')).toBe(imageUIDefault);
+-    expect(reg.getUI('image', 'default')).toBe(imageUIDefault);
+-  });
+-});
+-
+-describe('ImageEditorView', () => {
+-  it('renders all 4 variants with distinct data-image-variant + role/aria-label', () => {
+-    for (const variant of VARIANTS) {
+-      const { container, unmount } = render(
+-        <ImageEditorView props={{ variant }} content="body" />,
+-      );
+-      const aside = container.querySelector('aside');
+-      expect(aside).not.toBeNull();
+-      expect(aside?.getAttribute('data-image-variant')).toBe(variant);
+-      expect(aside?.getAttribute('role')).toBe('note');
+-      expect(aside?.getAttribute('aria-label')).toBe(
+-        `${VARIANT_TOKENS[variant].label} image`,
+-      );
+-      // a11y: focusable for keyboard nav
+-      expect(aside?.getAttribute('tabindex')).toBe('0');
+-      unmount();
+-    }
+-  });
+-
+-  it('falls back to capitalized variant name when title is absent', () => {
+-    const { getByText, unmount } = render(
+-      <ImageEditorView props={{ variant: 'tip' }} content="hello" />,
+-    );
+-    expect(getByText('Tip')).not.toBeNull();
+-    unmount();
+-  });
+-
+-  it('renders explicit title when provided', () => {
+-    const { getByText, unmount } = render(
+-      <ImageEditorView
+-        props={{ variant: 'warning', title: 'Heads up!' }}
+-        content="careful"
+-      />,
+-    );
+-    expect(getByText('Heads up!')).not.toBeNull();
+-    unmount();
+-  });
+-
+-  it('shows empty placeholder when content is missing', () => {
+-    const { getByText, unmount } = render(
+-      <ImageEditorView props={{ variant: 'note' }} />,
+-    );
+-    expect(getByText('No content')).not.toBeNull();
+-    unmount();
+-  });
+-
+-  it('emits a unique data-image-variant per variant + a single icon glyph', () => {
+-    const seenVariants = new Set<string>();
+-    for (const variant of VARIANTS) {
+-      const { container, unmount } = render(
+-        <ImageEditorView props={{ variant }} content="x" />,
+-      );
+-      const aside = container.querySelector('aside');
+-      seenVariants.add(aside?.getAttribute('data-image-variant') ?? '');
+-      const svgs = aside?.querySelectorAll('svg') ?? [];
+-      expect(svgs.length).toBe(1);
+-      unmount();
+-    }
+-    expect(seenVariants.size).toBe(VARIANTS.length);
+-  });
+-});
+-
+-describe('ImageRenderView', () => {
+-  it('renders DOM structure matching EditorView for the same props (byte-equivalent class shape)', () => {
+-    const props = { variant: 'danger', title: 'Stop' } as const;
+-    const editor = render(<ImageEditorView props={props} content="body" />);
+-    const rendered = render(<ImageRenderView props={props} content="body" />);
+-    const editorAside = editor.container.querySelector('aside');
+-    const renderAside = rendered.container.querySelector('aside');
+-    expect(editorAside?.getAttribute('data-image-variant')).toBe(
+-      renderAside?.getAttribute('data-image-variant'),
+-    );
+-    expect(editorAside?.getAttribute('role')).toBe(
+-      renderAside?.getAttribute('role'),
+-    );
+-    expect(editorAside?.getAttribute('aria-label')).toBe(
+-      renderAside?.getAttribute('aria-label'),
+-    );
+-    // shared body subtree shape: same icon SVG count + same title content
+-    expect(editorAside?.querySelectorAll('svg').length).toBe(
+-      renderAside?.querySelectorAll('svg').length,
+-    );
+-    expect(
+-      editorAside?.querySelector('.skb-image-title')?.textContent,
+-    ).toBe(renderAside?.querySelector('.skb-image-title')?.textContent);
+-    editor.unmount();
+-    rendered.unmount();
+-  });
+-
+-  it('omits the empty-placeholder span when content is undefined (passive SSR mode)', () => {
+-    const { queryByText, unmount } = render(
+-      <ImageRenderView props={{ variant: 'note' }} />,
+-    );
+-    expect(queryByText('No content')).toBeNull();
+-    unmount();
+-  });
+-});
+diff --git a/packages/block-image/src/index.ts b/packages/block-image/src/index.ts
+index 4b0e041376276d8a80667f283051c4ef5294a440..ec660ceea15131c3d4aca60642e32a5ec613598d
+--- a/packages/block-image/src/index.ts
++++ b/packages/block-image/src/index.ts
+@@ -1 +1,2 @@
+ export * from './core';
++export * from './ui-default';
+
+apply patch
+patch: completed
+/home/weiyi/selfKnowledgeBaseWeb/packages/block-image/tsconfig.json
+diff --git a/packages/block-image/package.json b/packages/block-image/package.json
+index adc4e6b02e6c500806cb76a3a130c58918a3841b..28318cd3649266846164f0cb70564dc65986f59a
+--- a/packages/block-image/package.json
++++ b/packages/block-image/package.json
+@@ -5,7 +5,9 @@
+   "type": "module",
+   "exports": {
+     ".": "./src/index.ts",
+-    "./core": "./src/core/index.ts"
++    "./core": "./src/core/index.ts",
++    "./ui-default": "./src/ui-default/index.ts",
++    "./ui-default/image.css": "./src/ui-default/image.css"
+   },
+   "scripts": {
+     "build": "tsc -b",
+@@ -15,6 +17,7 @@
+   },
+   "dependencies": {
+     "@skb/block-foundation": "workspace:*",
++    "@skb/design-tokens": "workspace:*",
+     "zod": "^3.23.0"
+   },
+   "peerDependencies": {
+@@ -22,6 +25,7 @@
+   },
+   "devDependencies": {
+     "@testing-library/react": "^16.0.0",
++    "@types/react-dom": "^18.3.0",
+     "@types/react": "^18.3.0",
+     "happy-dom": "^15.0.0",
+     "react": "^18.3.0",
+diff --git a/packages/block-image/src/__tests__/ui-default.test.tsx.disabled b/packages/block-image/src/__tests__/ui-default.test.tsx.disabled
+deleted file mode 100644
+index c6a607ff74121f7d06b7069e820ad1430b5a2404..0000000000000000000000000000000000000000
+--- a/packages/block-image/src/__tests__/ui-default.test.tsx.disabled
++++ /dev/null
+@@ -1,128 +0,0 @@
+-import { describe, it, expect } from 'vitest';
+-import { render } from '@testing-library/react';
+-import { BlockRegistry, type BlockUIDefinition } from '@skb/block-foundation';
+-import { imageCore } from '../core/core-definition';
+-import {
+-  imageUIDefault,
+-  ImageEditorView,
+-  ImageRenderView,
+-  VARIANT_TOKENS,
+-} from '../ui-default';
+-import type { Variant } from '../ui-default';
+-
+-const VARIANTS: readonly Variant[] = ['note', 'tip', 'warning', 'danger'];
+-
+-describe('imageUIDefault registration', () => {
+-  it('exposes the BlockUIDefinition shape with coreName + uiId="default"', () => {
+-    expect(imageUIDefault.coreName).toBe('image');
+-    expect(imageUIDefault.uiId).toBe('default');
+-    expect(imageUIDefault.EditorView).toBe(ImageEditorView);
+-    expect(imageUIDefault.RenderView).toBe(ImageRenderView);
+-  });
+-
+-  it('round-trips through BlockRegistry (registerCore + registerUI)', () => {
+-    const reg = new BlockRegistry();
+-    reg.registerCore(imageCore);
+-    reg.registerUI(imageUIDefault as unknown as BlockUIDefinition);
+-    expect(reg.getUI('image')).toBe(imageUIDefault);
+-    expect(reg.getUI('image', 'default')).toBe(imageUIDefault);
+-  });
+-});
+-
+-describe('ImageEditorView', () => {
+-  it('renders all 4 variants with distinct data-image-variant + role/aria-label', () => {
+-    for (const variant of VARIANTS) {
+-      const { container, unmount } = render(
+-        <ImageEditorView props={{ variant }} content="body" />,
+-      );
+-      const aside = container.querySelector('aside');
+-      expect(aside).not.toBeNull();
+-      expect(aside?.getAttribute('data-image-variant')).toBe(variant);
+-      expect(aside?.getAttribute('role')).toBe('note');
+-      expect(aside?.getAttribute('aria-label')).toBe(
+-        `${VARIANT_TOKENS[variant].label} image`,
+-      );
+-      // a11y: focusable for keyboard nav
+-      expect(aside?.getAttribute('tabindex')).toBe('0');
+-      unmount();
+-    }
+-  });
+-
+-  it('falls back to capitalized variant name when title is absent', () => {
+-    const { getByText, unmount } = render(
+-      <ImageEditorView props={{ variant: 'tip' }} content="hello" />,
+-    );
+-    expect(getByText('Tip')).not.toBeNull();
+-    unmount();
+-  });
+-
+-  it('renders explicit title when provided', () => {
+-    const { getByText, unmount } = render(
+-      <ImageEditorView
+-        props={{ variant: 'warning', title: 'Heads up!' }}
+-        content="careful"
+-      />,
+-    );
+-    expect(getByText('Heads up!')).not.toBeNull();
+-    unmount();
+-  });
+-
+-  it('shows empty placeholder when content is missing', () => {
+-    const { getByText, unmount } = render(
+-      <ImageEditorView props={{ variant: 'note' }} />,
+-    );
+-    expect(getByText('No content')).not.toBeNull();
+-    unmount();
+-  });
+-
+-  it('emits a unique data-image-variant per variant + a single icon glyph', () => {
+-    const seenVariants = new Set<string>();
+-    for (const variant of VARIANTS) {
+-      const { container, unmount } = render(
+-        <ImageEditorView props={{ variant }} content="x" />,
+-      );
+-      const aside = container.querySelector('aside');
+-      seenVariants.add(aside?.getAttribute('data-image-variant') ?? '');
+-      const svgs = aside?.querySelectorAll('svg') ?? [];
+-      expect(svgs.length).toBe(1);
+-      unmount();
+-    }
+-    expect(seenVariants.size).toBe(VARIANTS.length);
+-  });
+-});
+-
+-describe('ImageRenderView', () => {
+-  it('renders DOM structure matching EditorView for the same props (byte-equivalent class shape)', () => {
+-    const props = { variant: 'danger', title: 'Stop' } as const;
+-    const editor = render(<ImageEditorView props={props} content="body" />);
+-    const rendered = render(<ImageRenderView props={props} content="body" />);
+-    const editorAside = editor.container.querySelector('aside');
+-    const renderAside = rendered.container.querySelector('aside');
+-    expect(editorAside?.getAttribute('data-image-variant')).toBe(
+-      renderAside?.getAttribute('data-image-variant'),
+-    );
+-    expect(editorAside?.getAttribute('role')).toBe(
+-      renderAside?.getAttribute('role'),
+-    );
+-    expect(editorAside?.getAttribute('aria-label')).toBe(
+-      renderAside?.getAttribute('aria-label'),
+-    );
+-    // shared body subtree shape: same icon SVG count + same title content
+-    expect(editorAside?.querySelectorAll('svg').length).toBe(
+-      renderAside?.querySelectorAll('svg').length,
+-    );
+-    expect(
+-      editorAside?.querySelector('.skb-image-title')?.textContent,
+-    ).toBe(renderAside?.querySelector('.skb-image-title')?.textContent);
+-    editor.unmount();
+-    rendered.unmount();
+-  });
+-
+-  it('omits the empty-placeholder span when content is undefined (passive SSR mode)', () => {
+-    const { queryByText, unmount } = render(
+-      <ImageRenderView props={{ variant: 'note' }} />,
+-    );
+-    expect(queryByText('No content')).toBeNull();
+-    unmount();
+-  });
+-});
+diff --git a/packages/block-image/src/index.ts b/packages/block-image/src/index.ts
+index 4b0e041376276d8a80667f283051c4ef5294a440..ec660ceea15131c3d4aca60642e32a5ec613598d
+--- a/packages/block-image/src/index.ts
++++ b/packages/block-image/src/index.ts
+@@ -1 +1,2 @@
+ export * from './core';
++export * from './ui-default';
+diff --git a/packages/block-image/tsconfig.json b/packages/block-image/tsconfig.json
+index 080da760f9a4c64a2295b648f21062a0b9910466..b2e68f98773261250fca2f3e0da44f8f45ab3882
+--- a/packages/block-image/tsconfig.json
++++ b/packages/block-image/tsconfig.json
+@@ -7,6 +7,7 @@
+   },
+   "include": ["src/**/*", "vitest.config.ts"],
+   "references": [
+-    { "path": "../block-foundation" }
++    { "path": "../block-foundation" },
++    { "path": "../design-tokens" }
+   ]
+ }
+
+diff --git a/packages/block-image/package.json b/packages/block-image/package.json
+index adc4e6b02e6c500806cb76a3a130c58918a3841b..28318cd3649266846164f0cb70564dc65986f59a
+--- a/packages/block-image/package.json
++++ b/packages/block-image/package.json
+@@ -5,7 +5,9 @@
+   "type": "module",
+   "exports": {
+     ".": "./src/index.ts",
+-    "./core": "./src/core/index.ts"
++    "./core": "./src/core/index.ts",
++    "./ui-default": "./src/ui-default/index.ts",
++    "./ui-default/image.css": "./src/ui-default/image.css"
+   },
+   "scripts": {
+     "build": "tsc -b",
+@@ -15,6 +17,7 @@
+   },
+   "dependencies": {
+     "@skb/block-foundation": "workspace:*",
++    "@skb/design-tokens": "workspace:*",
+     "zod": "^3.23.0"
+   },
+   "peerDependencies": {
+@@ -22,6 +25,7 @@
+   },
+   "devDependencies": {
+     "@testing-library/react": "^16.0.0",
++    "@types/react-dom": "^18.3.0",
+     "@types/react": "^18.3.0",
+     "happy-dom": "^15.0.0",
+     "react": "^18.3.0",
+diff --git a/packages/block-image/src/__tests__/ui-default.test.tsx.disabled b/packages/block-image/src/__tests__/ui-default.test.tsx.disabled
+deleted file mode 100644
+index c6a607ff74121f7d06b7069e820ad1430b5a2404..0000000000000000000000000000000000000000
+--- a/packages/block-image/src/__tests__/ui-default.test.tsx.disabled
++++ /dev/null
+@@ -1,128 +0,0 @@
+-import { describe, it, expect } from 'vitest';
+-import { render } from '@testing-library/react';
+-import { BlockRegistry, type BlockUIDefinition } from '@skb/block-foundation';
+-import { imageCore } from '../core/core-definition';
+-import {
+-  imageUIDefault,
+-  ImageEditorView,
+-  ImageRenderView,
+-  VARIANT_TOKENS,
+-} from '../ui-default';
+-import type { Variant } from '../ui-default';
+-
+-const VARIANTS: readonly Variant[] = ['note', 'tip', 'warning', 'danger'];
+-
+-describe('imageUIDefault registration', () => {
+-  it('exposes the BlockUIDefinition shape with coreName + uiId="default"', () => {
+-    expect(imageUIDefault.coreName).toBe('image');
+-    expect(imageUIDefault.uiId).toBe('default');
+-    expect(imageUIDefault.EditorView).toBe(ImageEditorView);
+-    expect(imageUIDefault.RenderView).toBe(ImageRenderView);
+-  });
+-
+-  it('round-trips through BlockRegistry (registerCore + registerUI)', () => {
+-    const reg = new BlockRegistry();
+-    reg.registerCore(imageCore);
+-    reg.registerUI(imageUIDefault as unknown as BlockUIDefinition);
+-    expect(reg.getUI('image')).toBe(imageUIDefault);
+-    expect(reg.getUI('image', 'default')).toBe(imageUIDefault);
+-  });
+-});
+-
+-describe('ImageEditorView', () => {
+-  it('renders all 4 variants with distinct data-image-variant + role/aria-label', () => {
+-    for (const variant of VARIANTS) {
+-      const { container, unmount } = render(
+-        <ImageEditorView props={{ variant }} content="body" />,
+-      );
+-      const aside = container.querySelector('aside');
+-      expect(aside).not.toBeNull();
+-      expect(aside?.getAttribute('data-image-variant')).toBe(variant);
+-      expect(aside?.getAttribute('role')).toBe('note');
+-      expect(aside?.getAttribute('aria-label')).toBe(
+-        `${VARIANT_TOKENS[variant].label} image`,
+-      );
+-      // a11y: focusable for keyboard nav
+-      expect(aside?.getAttribute('tabindex')).toBe('0');
+-      unmount();
+-    }
+-  });
+-
+-  it('falls back to capitalized variant name when title is absent', () => {
+-    const { getByText, unmount } = render(
+-      <ImageEditorView props={{ variant: 'tip' }} content="hello" />,
+-    );
+-    expect(getByText('Tip')).not.toBeNull();
+-    unmount();
+-  });
+-
+-  it('renders explicit title when provided', () => {
+-    const { getByText, unmount } = render(
+-      <ImageEditorView
+-        props={{ variant: 'warning', title: 'Heads up!' }}
+-        content="careful"
+-      />,
+-    );
+-    expect(getByText('Heads up!')).not.toBeNull();
+-    unmount();
+-  });
+-
+-  it('shows empty placeholder when content is missing', () => {
+-    const { getByText, unmount } = render(
+-      <ImageEditorView props={{ variant: 'note' }} />,
+-    );
+-    expect(getByText('No content')).not.toBeNull();
+-    unmount();
+-  });
+-
+-  it('emits a unique data-image-variant per variant + a single icon glyph', () => {
+-    const seenVariants = new Set<string>();
+-    for (const variant of VARIANTS) {
+-      const { container, unmount } = render(
+-        <ImageEditorView props={{ variant }} content="x" />,
+-      );
+-      const aside = container.querySelector('aside');
+-      seenVariants.add(aside?.getAttribute('data-image-variant') ?? '');
+-      const svgs = aside?.querySelectorAll('svg') ?? [];
+-      expect(svgs.length).toBe(1);
+-      unmount();
+-    }
+-    expect(seenVariants.size).toBe(VARIANTS.length);
+-  });
+-});
+-
+-describe('ImageRenderView', () => {
+-  it('renders DOM structure matching EditorView for the same props (byte-equivalent class shape)', () => {
+-    const props = { variant: 'danger', title: 'Stop' } as const;
+-    const editor = render(<ImageEditorView props={props} content="body" />);
+-    const rendered = render(<ImageRenderView props={props} content="body" />);
+-    const editorAside = editor.container.querySelector('aside');
+-    const renderAside = rendered.container.querySelector('aside');
+-    expect(editorAside?.getAttribute('data-image-variant')).toBe(
+-      renderAside?.getAttribute('data-image-variant'),
+-    );
+-    expect(editorAside?.getAttribute('role')).toBe(
+-      renderAside?.getAttribute('role'),
+-    );
+-    expect(editorAside?.getAttribute('aria-label')).toBe(
+-      renderAside?.getAttribute('aria-label'),
+-    );
+-    // shared body subtree shape: same icon SVG count + same title content
+-    expect(editorAside?.querySelectorAll('svg').length).toBe(
+-      renderAside?.querySelectorAll('svg').length,
+-    );
+-    expect(
+-      editorAside?.querySelector('.skb-image-title')?.textContent,
+-    ).toBe(renderAside?.querySelector('.skb-image-title')?.textContent);
+-    editor.unmount();
+-    rendered.unmount();
+-  });
+-
+-  it('omits the empty-placeholder span when content is undefined (passive SSR mode)', () => {
+-    const { queryByText, unmount } = render(
+-      <ImageRenderView props={{ variant: 'note' }} />,
+-    );
+-    expect(queryByText('No content')).toBeNull();
+-    unmount();
+-  });
+-});
+diff --git a/packages/block-image/src/index.ts b/packages/block-image/src/index.ts
+index 4b0e041376276d8a80667f283051c4ef5294a440..ec660ceea15131c3d4aca60642e32a5ec613598d
+--- a/packages/block-image/src/index.ts
++++ b/packages/block-image/src/index.ts
+@@ -1 +1,2 @@
+ export * from './core';
++export * from './ui-default';
+diff --git a/packages/block-image/tsconfig.json b/packages/block-image/tsconfig.json
+index 080da760f9a4c64a2295b648f21062a0b9910466..b2e68f98773261250fca2f3e0da44f8f45ab3882
+--- a/packages/block-image/tsconfig.json
++++ b/packages/block-image/tsconfig.json
+@@ -7,6 +7,7 @@
+   },
+   "include": ["src/**/*", "vitest.config.ts"],
+   "references": [
+-    { "path": "../block-foundation" }
++    { "path": "../block-foundation" },
++    { "path": "../design-tokens" }
+   ]
+ }
+
+codex
+I’ve finished the core scaffolding and package wiring; next I’m updating test configuration and `CONTRACT.md` wording for the new four-entry UI-default surface and Wave 2/3 notes.
+apply patch
+patch: completed
+/home/weiyi/selfKnowledgeBaseWeb/packages/block-image/vitest.config.ts
+diff --git a/packages/block-image/package.json b/packages/block-image/package.json
+index adc4e6b02e6c500806cb76a3a130c58918a3841b..28318cd3649266846164f0cb70564dc65986f59a
+--- a/packages/block-image/package.json
++++ b/packages/block-image/package.json
+@@ -5,7 +5,9 @@
+   "type": "module",
+   "exports": {
+     ".": "./src/index.ts",
+-    "./core": "./src/core/index.ts"
++    "./core": "./src/core/index.ts",
++    "./ui-default": "./src/ui-default/index.ts",
++    "./ui-default/image.css": "./src/ui-default/image.css"
+   },
+   "scripts": {
+     "build": "tsc -b",
+@@ -15,6 +17,7 @@
+   },
+   "dependencies": {
+     "@skb/block-foundation": "workspace:*",
++    "@skb/design-tokens": "workspace:*",
+     "zod": "^3.23.0"
+   },
+   "peerDependencies": {
+@@ -22,6 +25,7 @@
+   },
+   "devDependencies": {
+     "@testing-library/react": "^16.0.0",
++    "@types/react-dom": "^18.3.0",
+     "@types/react": "^18.3.0",
+     "happy-dom": "^15.0.0",
+     "react": "^18.3.0",
+diff --git a/packages/block-image/src/__tests__/ui-default.test.tsx.disabled b/packages/block-image/src/__tests__/ui-default.test.tsx.disabled
+deleted file mode 100644
+index c6a607ff74121f7d06b7069e820ad1430b5a2404..0000000000000000000000000000000000000000
+--- a/packages/block-image/src/__tests__/ui-default.test.tsx.disabled
++++ /dev/null
+@@ -1,128 +0,0 @@
+-import { describe, it, expect } from 'vitest';
+-import { render } from '@testing-library/react';
+-import { BlockRegistry, type BlockUIDefinition } from '@skb/block-foundation';
+-import { imageCore } from '../core/core-definition';
+-import {
+-  imageUIDefault,
+-  ImageEditorView,
+-  ImageRenderView,
+-  VARIANT_TOKENS,
+-} from '../ui-default';
+-import type { Variant } from '../ui-default';
+-
+-const VARIANTS: readonly Variant[] = ['note', 'tip', 'warning', 'danger'];
+-
+-describe('imageUIDefault registration', () => {
+-  it('exposes the BlockUIDefinition shape with coreName + uiId="default"', () => {
+-    expect(imageUIDefault.coreName).toBe('image');
+-    expect(imageUIDefault.uiId).toBe('default');
+-    expect(imageUIDefault.EditorView).toBe(ImageEditorView);
+-    expect(imageUIDefault.RenderView).toBe(ImageRenderView);
+-  });
+-
+-  it('round-trips through BlockRegistry (registerCore + registerUI)', () => {
+-    const reg = new BlockRegistry();
+-    reg.registerCore(imageCore);
+-    reg.registerUI(imageUIDefault as unknown as BlockUIDefinition);
+-    expect(reg.getUI('image')).toBe(imageUIDefault);
+-    expect(reg.getUI('image', 'default')).toBe(imageUIDefault);
+-  });
+-});
+-
+-describe('ImageEditorView', () => {
+-  it('renders all 4 variants with distinct data-image-variant + role/aria-label', () => {
+-    for (const variant of VARIANTS) {
+-      const { container, unmount } = render(
+-        <ImageEditorView props={{ variant }} content="body" />,
+-      );
+-      const aside = container.querySelector('aside');
+-      expect(aside).not.toBeNull();
+-      expect(aside?.getAttribute('data-image-variant')).toBe(variant);
+-      expect(aside?.getAttribute('role')).toBe('note');
+-      expect(aside?.getAttribute('aria-label')).toBe(
+-        `${VARIANT_TOKENS[variant].label} image`,
+-      );
+-      // a11y: focusable for keyboard nav
+-      expect(aside?.getAttribute('tabindex')).toBe('0');
+-      unmount();
+-    }
+-  });
+-
+-  it('falls back to capitalized variant name when title is absent', () => {
+-    const { getByText, unmount } = render(
+-      <ImageEditorView props={{ variant: 'tip' }} content="hello" />,
+-    );
+-    expect(getByText('Tip')).not.toBeNull();
+-    unmount();
+-  });
+-
+-  it('renders explicit title when provided', () => {
+-    const { getByText, unmount } = render(
+-      <ImageEditorView
+-        props={{ variant: 'warning', title: 'Heads up!' }}
+-        content="careful"
+-      />,
+-    );
+-    expect(getByText('Heads up!')).not.toBeNull();
+-    unmount();
+-  });
+-
+-  it('shows empty placeholder when content is missing', () => {
+-    const { getByText, unmount } = render(
+-      <ImageEditorView props={{ variant: 'note' }} />,
+-    );
+-    expect(getByText('No content')).not.toBeNull();
+-    unmount();
+-  });
+-
+-  it('emits a unique data-image-variant per variant + a single icon glyph', () => {
+-    const seenVariants = new Set<string>();
+-    for (const variant of VARIANTS) {
+-      const { container, unmount } = render(
+-        <ImageEditorView props={{ variant }} content="x" />,
+-      );
+-      const aside = container.querySelector('aside');
+-      seenVariants.add(aside?.getAttribute('data-image-variant') ?? '');
+-      const svgs = aside?.querySelectorAll('svg') ?? [];
+-      expect(svgs.length).toBe(1);
+-      unmount();
+-    }
+-    expect(seenVariants.size).toBe(VARIANTS.length);
+-  });
+-});
+-
+-describe('ImageRenderView', () => {
+-  it('renders DOM structure matching EditorView for the same props (byte-equivalent class shape)', () => {
+-    const props = { variant: 'danger', title: 'Stop' } as const;
+-    const editor = render(<ImageEditorView props={props} content="body" />);
+-    const rendered = render(<ImageRenderView props={props} content="body" />);
+-    const editorAside = editor.container.querySelector('aside');
+-    const renderAside = rendered.container.querySelector('aside');
+-    expect(editorAside?.getAttribute('data-image-variant')).toBe(
+-      renderAside?.getAttribute('data-image-variant'),
+-    );
+-    expect(editorAside?.getAttribute('role')).toBe(
+-      renderAside?.getAttribute('role'),
+-    );
+-    expect(editorAside?.getAttribute('aria-label')).toBe(
+-      renderAside?.getAttribute('aria-label'),
+-    );
+-    // shared body subtree shape: same icon SVG count + same title content
+-    expect(editorAside?.querySelectorAll('svg').length).toBe(
+-      renderAside?.querySelectorAll('svg').length,
+-    );
+-    expect(
+-      editorAside?.querySelector('.skb-image-title')?.textContent,
+-    ).toBe(renderAside?.querySelector('.skb-image-title')?.textContent);
+-    editor.unmount();
+-    rendered.unmount();
+-  });
+-
+-  it('omits the empty-placeholder span when content is undefined (passive SSR mode)', () => {
+-    const { queryByText, unmount } = render(
+-      <ImageRenderView props={{ variant: 'note' }} />,
+-    );
+-    expect(queryByText('No content')).toBeNull();
+-    unmount();
+-  });
+-});
+diff --git a/packages/block-image/src/index.ts b/packages/block-image/src/index.ts
+index 4b0e041376276d8a80667f283051c4ef5294a440..ec660ceea15131c3d4aca60642e32a5ec613598d
+--- a/packages/block-image/src/index.ts
++++ b/packages/block-image/src/index.ts
+@@ -1 +1,2 @@
+ export * from './core';
++export * from './ui-default';
+diff --git a/packages/block-image/tsconfig.json b/packages/block-image/tsconfig.json
+index 080da760f9a4c64a2295b648f21062a0b9910466..b2e68f98773261250fca2f3e0da44f8f45ab3882
+--- a/packages/block-image/tsconfig.json
++++ b/packages/block-image/tsconfig.json
+@@ -7,6 +7,7 @@
+   },
+   "include": ["src/**/*", "vitest.config.ts"],
+   "references": [
+-    { "path": "../block-foundation" }
++    { "path": "../block-foundation" },
++    { "path": "../design-tokens" }
+   ]
+ }
+diff --git a/packages/block-image/vitest.config.ts b/packages/block-image/vitest.config.ts
+index 06d247df76bf91aed41a0129c201387f578d1e38..3d31e22e3196521c53c32ce24a1189d0cde23bb4
+--- a/packages/block-image/vitest.config.ts
++++ b/packages/block-image/vitest.config.ts
+@@ -4,6 +4,7 @@
+   test: {
+     include: ['src/**/*.test.{ts,tsx}'],
+     environment: 'happy-dom',
++    passWithNoTests: false,
+     typecheck: { enabled: false },
+   },
+ });
+
+diff --git a/packages/block-image/package.json b/packages/block-image/package.json
+index adc4e6b02e6c500806cb76a3a130c58918a3841b..28318cd3649266846164f0cb70564dc65986f59a
+--- a/packages/block-image/package.json
++++ b/packages/block-image/package.json
+@@ -5,7 +5,9 @@
+   "type": "module",
+   "exports": {
+     ".": "./src/index.ts",
+-    "./core": "./src/core/index.ts"
++    "./core": "./src/core/index.ts",
++    "./ui-default": "./src/ui-default/index.ts",
++    "./ui-default/image.css": "./src/ui-default/image.css"
+   },
+   "scripts": {
+     "build": "tsc -b",
+@@ -15,6 +17,7 @@
+   },
+   "dependencies": {
+     "@skb/block-foundation": "workspace:*",
++    "@skb/design-tokens": "workspace:*",
+     "zod": "^3.23.0"
+   },
+   "peerDependencies": {
+@@ -22,6 +25,7 @@
+   },
+   "devDependencies": {
+     "@testing-library/react": "^16.0.0",
++    "@types/react-dom": "^18.3.0",
+     "@types/react": "^18.3.0",
+     "happy-dom": "^15.0.0",
+     "react": "^18.3.0",
+diff --git a/packages/block-image/src/__tests__/ui-default.test.tsx.disabled b/packages/block-image/src/__tests__/ui-default.test.tsx.disabled
+deleted file mode 100644
+index c6a607ff74121f7d06b7069e820ad1430b5a2404..0000000000000000000000000000000000000000
+--- a/packages/block-image/src/__tests__/ui-default.test.tsx.disabled
++++ /dev/null
+@@ -1,128 +0,0 @@
+-import { describe, it, expect } from 'vitest';
+-import { render } from '@testing-library/react';
+-import { BlockRegistry, type BlockUIDefinition } from '@skb/block-foundation';
+-import { imageCore } from '../core/core-definition';
+-import {
+-  imageUIDefault,
+-  ImageEditorView,
+-  ImageRenderView,
+-  VARIANT_TOKENS,
+-} from '../ui-default';
+-import type { Variant } from '../ui-default';
+-
+-const VARIANTS: readonly Variant[] = ['note', 'tip', 'warning', 'danger'];
+-
+-describe('imageUIDefault registration', () => {
+-  it('exposes the BlockUIDefinition shape with coreName + uiId="default"', () => {
+-    expect(imageUIDefault.coreName).toBe('image');
+-    expect(imageUIDefault.uiId).toBe('default');
+-    expect(imageUIDefault.EditorView).toBe(ImageEditorView);
+-    expect(imageUIDefault.RenderView).toBe(ImageRenderView);
+-  });
+-
+-  it('round-trips through BlockRegistry (registerCore + registerUI)', () => {
+-    const reg = new BlockRegistry();
+-    reg.registerCore(imageCore);
+-    reg.registerUI(imageUIDefault as unknown as BlockUIDefinition);
+-    expect(reg.getUI('image')).toBe(imageUIDefault);
+-    expect(reg.getUI('image', 'default')).toBe(imageUIDefault);
+-  });
+-});
+-
+-describe('ImageEditorView', () => {
+-  it('renders all 4 variants with distinct data-image-variant + role/aria-label', () => {
+-    for (const variant of VARIANTS) {
+-      const { container, unmount } = render(
+-        <ImageEditorView props={{ variant }} content="body" />,
+-      );
+-      const aside = container.querySelector('aside');
+-      expect(aside).not.toBeNull();
+-      expect(aside?.getAttribute('data-image-variant')).toBe(variant);
+-      expect(aside?.getAttribute('role')).toBe('note');
+-      expect(aside?.getAttribute('aria-label')).toBe(
+-        `${VARIANT_TOKENS[variant].label} image`,
+-      );
+-      // a11y: focusable for keyboard nav
+-      expect(aside?.getAttribute('tabindex')).toBe('0');
+-      unmount();
+-    }
+-  });
+-
+-  it('falls back to capitalized variant name when title is absent', () => {
+-    const { getByText, unmount } = render(
+-      <ImageEditorView props={{ variant: 'tip' }} content="hello" />,
+-    );
+-    expect(getByText('Tip')).not.toBeNull();
+-    unmount();
+-  });
+-
+-  it('renders explicit title when provided', () => {
+-    const { getByText, unmount } = render(
+-      <ImageEditorView
+-        props={{ variant: 'warning', title: 'Heads up!' }}
+-        content="careful"
+-      />,
+-    );
+-    expect(getByText('Heads up!')).not.toBeNull();
+-    unmount();
+-  });
+-
+-  it('shows empty placeholder when content is missing', () => {
+-    const { getByText, unmount } = render(
+-      <ImageEditorView props={{ variant: 'note' }} />,
+-    );
+-    expect(getByText('No content')).not.toBeNull();
+-    unmount();
+-  });
+-
+-  it('emits a unique data-image-variant per variant + a single icon glyph', () => {
+-    const seenVariants = new Set<string>();
+-    for (const variant of VARIANTS) {
+-      const { container, unmount } = render(
+-        <ImageEditorView props={{ variant }} content="x" />,
+-      );
+-      const aside = container.querySelector('aside');
+-      seenVariants.add(aside?.getAttribute('data-image-variant') ?? '');
+-      const svgs = aside?.querySelectorAll('svg') ?? [];
+-      expect(svgs.length).toBe(1);
+-      unmount();
+-    }
+-    expect(seenVariants.size).toBe(VARIANTS.length);
+-  });
+-});
+-
+-describe('ImageRenderView', () => {
+-  it('renders DOM structure matching EditorView for the same props (byte-equivalent class shape)', () => {
+-    const props = { variant: 'danger', title: 'Stop' } as const;
+-    const editor = render(<ImageEditorView props={props} content="body" />);
+-    const rendered = render(<ImageRenderView props={props} content="body" />);
+-    const editorAside = editor.container.querySelector('aside');
+-    const renderAside = rendered.container.querySelector('aside');
+-    expect(editorAside?.getAttribute('data-image-variant')).toBe(
+-      renderAside?.getAttribute('data-image-variant'),
+-    );
+-    expect(editorAside?.getAttribute('role')).toBe(
+-      renderAside?.getAttribute('role'),
+-    );
+-    expect(editorAside?.getAttribute('aria-label')).toBe(
+-      renderAside?.getAttribute('aria-label'),
+-    );
+-    // shared body subtree shape: same icon SVG count + same title content
+-    expect(editorAside?.querySelectorAll('svg').length).toBe(
+-      renderAside?.querySelectorAll('svg').length,
+-    );
+-    expect(
+-      editorAside?.querySelector('.skb-image-title')?.textContent,
+-    ).toBe(renderAside?.querySelector('.skb-image-title')?.textContent);
+-    editor.unmount();
+-    rendered.unmount();
+-  });
+-
+-  it('omits the empty-placeholder span when content is undefined (passive SSR mode)', () => {
+-    const { queryByText, unmount } = render(
+-      <ImageRenderView props={{ variant: 'note' }} />,
+-    );
+-    expect(queryByText('No content')).toBeNull();
+-    unmount();
+-  });
+-});
+diff --git a/packages/block-image/src/index.ts b/packages/block-image/src/index.ts
+index 4b0e041376276d8a80667f283051c4ef5294a440..ec660ceea15131c3d4aca60642e32a5ec613598d
+--- a/packages/block-image/src/index.ts
++++ b/packages/block-image/src/index.ts
+@@ -1 +1,2 @@
+ export * from './core';
++export * from './ui-default';
+diff --git a/packages/block-image/tsconfig.json b/packages/block-image/tsconfig.json
+index 080da760f9a4c64a2295b648f21062a0b9910466..b2e68f98773261250fca2f3e0da44f8f45ab3882
+--- a/packages/block-image/tsconfig.json
++++ b/packages/block-image/tsconfig.json
+@@ -7,6 +7,7 @@
+   },
+   "include": ["src/**/*", "vitest.config.ts"],
+   "references": [
+-    { "path": "../block-foundation" }
++    { "path": "../block-foundation" },
++    { "path": "../design-tokens" }
+   ]
+ }
+diff --git a/packages/block-image/vitest.config.ts b/packages/block-image/vitest.config.ts
+index 06d247df76bf91aed41a0129c201387f578d1e38..3d31e22e3196521c53c32ce24a1189d0cde23bb4
+--- a/packages/block-image/vitest.config.ts
++++ b/packages/block-image/vitest.config.ts
+@@ -4,6 +4,7 @@
+   test: {
+     include: ['src/**/*.test.{ts,tsx}'],
+     environment: 'happy-dom',
++    passWithNoTests: false,
+     typecheck: { enabled: false },
+   },
+ });
+
+apply patch
+patch: completed
+/home/weiyi/selfKnowledgeBaseWeb/packages/block-image/CONTRACT.md
+diff --git a/packages/block-image/CONTRACT.md b/packages/block-image/CONTRACT.md
+index cf02c749a3dec4867c3765083068cf5b4057e992..68c7ae2c46b61b33dcf7cbb14b598a4bfd1d47db
+--- a/packages/block-image/CONTRACT.md
++++ b/packages/block-image/CONTRACT.md
+@@ -5,14 +5,19 @@
+ 
+ ## Public surface
+ 
+-两个 entry：
++四个 entry：
+ 
+-- `.` (root barrel) — re-export `./core`
++- `.` (root barrel) — re-export `./core` 与 `./ui-default`
+ - `./core` — headless 层
+   - `imageCore: BlockCoreDefinition<typeof propsSchema>` — name=`'image'` / kind=`'component'` / mdxComponent=`'Image'`
+   - `serializeImage(node) → mdxJsxFlowElement` — Tiptap → mdast
+   - `parseImage(mdast) → TiptapNode` — mdast → Tiptap
+   - 类型: `ImageTiptapNode` / `ImageMdastJsxElement`
++- `./ui-default` — UI 定义与渲染入口
++  - `imageUIDefault: BlockUIDefinition<typeof imageCore.propsSchema>` — default UI id = `'default'`
++  - `ImageEditorView(props)` / `ImageRenderView(props)` — 同步的图像语义渲染层
++  - `ImageBody(props)` — 输出 `<figure><img ...><figcaption>{alt}</figcaption></figure>`，固定 `loading="lazy"`
++- `./ui-default/image.css` — 样式入口（design-token 变量约束）
+ 
+ `propsSchema` 形状（见 `src/core/core-definition.ts`）:
+ 
+@@ -35,6 +40,19 @@
+ - **Serialize / parse hook 命名**: `serializeImage` / `parseImage`。
+ - **Headless 自给**: `core/` 不 import 任何 React / Tiptap UI 模块；仅依赖 `@skb/block-foundation` + `zod`。
+ - **Self-validating serialize/parse**: `serializeImage` 调 `propsSchema.parse(node.attrs)`；`parseImage` 调 `propsSchema.parse(rawProps)`。
++- **`imageUIDefault` 契约**: `uiId='default'` 且 `coreName='image'`，使用 `defineUI` 且可通过 `BlockRegistry.registerUI` 注入。
++- **语义 DOM 契约**: `ImageBody` 必须输出 `figure` 根节点并包含：
++  - `<img src, alt, loading="lazy", width?, height?>`
++  - `<figcaption>{alt}</figcaption>`
++  - `data-image-loading` 根属性用于 loading-state 挂钩（目前固定 lazy，为未来变体预留）
++- **图像尺寸契约**: `width`/`height` 在 props 缺省时不应硬编码 `img` 属性；当设置时保持数值透传（用于编辑与 SSR 形状一致性）。
++
++## Wave 2 / Wave 3 约束
++
++- Wave 2 scope（本次 C5b）:
++  - 简单语义图像区块：`<figure>` + `<img>` + `<figcaption>`
++- Wave 3 预留（invariant 兼容）:
++  - 图库 / lightbox / blurhash 预览路径；当前 `data-image-loading` 作为语义扩展锚点可承接下一态态变体
+ 
+ ## Wave 3 mdx-bridge 路由集成（pending）
+ 
+diff --git a/packages/block-image/package.json b/packages/block-image/package.json
+index adc4e6b02e6c500806cb76a3a130c58918a3841b..28318cd3649266846164f0cb70564dc65986f59a
+--- a/packages/block-image/package.json
++++ b/packages/block-image/package.json
+@@ -5,7 +5,9 @@
+   "type": "module",
+   "exports": {
+     ".": "./src/index.ts",
+-    "./core": "./src/core/index.ts"
++    "./core": "./src/core/index.ts",
++    "./ui-default": "./src/ui-default/index.ts",
++    "./ui-default/image.css": "./src/ui-default/image.css"
+   },
+   "scripts": {
+     "build": "tsc -b",
+@@ -15,6 +17,7 @@
+   },
+   "dependencies": {
+     "@skb/block-foundation": "workspace:*",
++    "@skb/design-tokens": "workspace:*",
+     "zod": "^3.23.0"
+   },
+   "peerDependencies": {
+@@ -22,6 +25,7 @@
+   },
+   "devDependencies": {
+     "@testing-library/react": "^16.0.0",
++    "@types/react-dom": "^18.3.0",
+     "@types/react": "^18.3.0",
+     "happy-dom": "^15.0.0",
+     "react": "^18.3.0",
+diff --git a/packages/block-image/src/__tests__/ui-default.test.tsx.disabled b/packages/block-image/src/__tests__/ui-default.test.tsx.disabled
+deleted file mode 100644
+index c6a607ff74121f7d06b7069e820ad1430b5a2404..0000000000000000000000000000000000000000
+--- a/packages/block-image/src/__tests__/ui-default.test.tsx.disabled
++++ /dev/null
+@@ -1,128 +0,0 @@
+-import { describe, it, expect } from 'vitest';
+-import { render } from '@testing-library/react';
+-import { BlockRegistry, type BlockUIDefinition } from '@skb/block-foundation';
+-import { imageCore } from '../core/core-definition';
+-import {
+-  imageUIDefault,
+-  ImageEditorView,
+-  ImageRenderView,
+-  VARIANT_TOKENS,
+-} from '../ui-default';
+-import type { Variant } from '../ui-default';
+-
+-const VARIANTS: readonly Variant[] = ['note', 'tip', 'warning', 'danger'];
+-
+-describe('imageUIDefault registration', () => {
+-  it('exposes the BlockUIDefinition shape with coreName + uiId="default"', () => {
+-    expect(imageUIDefault.coreName).toBe('image');
+-    expect(imageUIDefault.uiId).toBe('default');
+-    expect(imageUIDefault.EditorView).toBe(ImageEditorView);
+-    expect(imageUIDefault.RenderView).toBe(ImageRenderView);
+-  });
+-
+-  it('round-trips through BlockRegistry (registerCore + registerUI)', () => {
+-    const reg = new BlockRegistry();
+-    reg.registerCore(imageCore);
+-    reg.registerUI(imageUIDefault as unknown as BlockUIDefinition);
+-    expect(reg.getUI('image')).toBe(imageUIDefault);
+-    expect(reg.getUI('image', 'default')).toBe(imageUIDefault);
+-  });
+-});
+-
+-describe('ImageEditorView', () => {
+-  it('renders all 4 variants with distinct data-image-variant + role/aria-label', () => {
+-    for (const variant of VARIANTS) {
+-      const { container, unmount } = render(
+-        <ImageEditorView props={{ variant }} content="body" />,
+-      );
+-      const aside = container.querySelector('aside');
+-      expect(aside).not.toBeNull();
+-      expect(aside?.getAttribute('data-image-variant')).toBe(variant);
+-      expect(aside?.getAttribute('role')).toBe('note');
+-      expect(aside?.getAttribute('aria-label')).toBe(
+-        `${VARIANT_TOKENS[variant].label} image`,
+-      );
+-      // a11y: focusable for keyboard nav
+-      expect(aside?.getAttribute('tabindex')).toBe('0');
+-      unmount();
+-    }
+-  });
+-
+-  it('falls back to capitalized variant name when title is absent', () => {
+-    const { getByText, unmount } = render(
+-      <ImageEditorView props={{ variant: 'tip' }} content="hello" />,
+-    );
+-    expect(getByText('Tip')).not.toBeNull();
+-    unmount();
+-  });
+-
+-  it('renders explicit title when provided', () => {
+-    const { getByText, unmount } = render(
+-      <ImageEditorView
+-        props={{ variant: 'warning', title: 'Heads up!' }}
+-        content="careful"
+-      />,
+-    );
+-    expect(getByText('Heads up!')).not.toBeNull();
+-    unmount();
+-  });
+-
+-  it('shows empty placeholder when content is missing', () => {
+-    const { getByText, unmount } = render(
+-      <ImageEditorView props={{ variant: 'note' }} />,
+-    );
+-    expect(getByText('No content')).not.toBeNull();
+-    unmount();
+-  });
+-
+-  it('emits a unique data-image-variant per variant + a single icon glyph', () => {
+-    const seenVariants = new Set<string>();
+-    for (const variant of VARIANTS) {
+-      const { container, unmount } = render(
+-        <ImageEditorView props={{ variant }} content="x" />,
+-      );
+-      const aside = container.querySelector('aside');
+-      seenVariants.add(aside?.getAttribute('data-image-variant') ?? '');
+-      const svgs = aside?.querySelectorAll('svg') ?? [];
+-      expect(svgs.length).toBe(1);
+-      unmount();
+-    }
+-    expect(seenVariants.size).toBe(VARIANTS.length);
+-  });
+-});
+-
+-describe('ImageRenderView', () => {
+-  it('renders DOM structure matching EditorView for the same props (byte-equivalent class shape)', () => {
+-    const props = { variant: 'danger', title: 'Stop' } as const;
+-    const editor = render(<ImageEditorView props={props} content="body" />);
+-    const rendered = render(<ImageRenderView props={props} content="body" />);
+-    const editorAside = editor.container.querySelector('aside');
+-    const renderAside = rendered.container.querySelector('aside');
+-    expect(editorAside?.getAttribute('data-image-variant')).toBe(
+-      renderAside?.getAttribute('data-image-variant'),
+-    );
+-    expect(editorAside?.getAttribute('role')).toBe(
+-      renderAside?.getAttribute('role'),
+-    );
+-    expect(editorAside?.getAttribute('aria-label')).toBe(
+-      renderAside?.getAttribute('aria-label'),
+-    );
+-    // shared body subtree shape: same icon SVG count + same title content
+-    expect(editorAside?.querySelectorAll('svg').length).toBe(
+-      renderAside?.querySelectorAll('svg').length,
+-    );
+-    expect(
+-      editorAside?.querySelector('.skb-image-title')?.textContent,
+-    ).toBe(renderAside?.querySelector('.skb-image-title')?.textContent);
+-    editor.unmount();
+-    rendered.unmount();
+-  });
+-
+-  it('omits the empty-placeholder span when content is undefined (passive SSR mode)', () => {
+-    const { queryByText, unmount } = render(
+-      <ImageRenderView props={{ variant: 'note' }} />,
+-    );
+-    expect(queryByText('No content')).toBeNull();
+-    unmount();
+-  });
+-});
+diff --git a/packages/block-image/src/index.ts b/packages/block-image/src/index.ts
+index 4b0e041376276d8a80667f283051c4ef5294a440..ec660ceea15131c3d4aca60642e32a5ec613598d
+--- a/packages/block-image/src/index.ts
++++ b/packages/block-image/src/index.ts
+@@ -1 +1,2 @@
+ export * from './core';
++export * from './ui-default';
+diff --git a/packages/block-image/tsconfig.json b/packages/block-image/tsconfig.json
+index 080da760f9a4c64a2295b648f21062a0b9910466..b2e68f98773261250fca2f3e0da44f8f45ab3882
+--- a/packages/block-image/tsconfig.json
++++ b/packages/block-image/tsconfig.json
+@@ -7,6 +7,7 @@
+   },
+   "include": ["src/**/*", "vitest.config.ts"],
+   "references": [
+-    { "path": "../block-foundation" }
++    { "path": "../block-foundation" },
++    { "path": "../design-tokens" }
+   ]
+ }
+diff --git a/packages/block-image/vitest.config.ts b/packages/block-image/vitest.config.ts
+index 06d247df76bf91aed41a0129c201387f578d1e38..3d31e22e3196521c53c32ce24a1189d0cde23bb4
+--- a/packages/block-image/vitest.config.ts
++++ b/packages/block-image/vitest.config.ts
+@@ -4,6 +4,7 @@
+   test: {
+     include: ['src/**/*.test.{ts,tsx}'],
+     environment: 'happy-dom',
++    passWithNoTests: false,
+     typecheck: { enabled: false },
+   },
+ });
+
+diff --git a/packages/block-image/CONTRACT.md b/packages/block-image/CONTRACT.md
+index cf02c749a3dec4867c3765083068cf5b4057e992..68c7ae2c46b61b33dcf7cbb14b598a4bfd1d47db
+--- a/packages/block-image/CONTRACT.md
++++ b/packages/block-image/CONTRACT.md
+@@ -5,14 +5,19 @@
+ 
+ ## Public surface
+ 
+-两个 entry：
++四个 entry：
+ 
+-- `.` (root barrel) — re-export `./core`
++- `.` (root barrel) — re-export `./core` 与 `./ui-default`
+ - `./core` — headless 层
+   - `imageCore: BlockCoreDefinition<typeof propsSchema>` — name=`'image'` / kind=`'component'` / mdxComponent=`'Image'`
+   - `serializeImage(node) → mdxJsxFlowElement` — Tiptap → mdast
+   - `parseImage(mdast) → TiptapNode` — mdast → Tiptap
+   - 类型: `ImageTiptapNode` / `ImageMdastJsxElement`
++- `./ui-default` — UI 定义与渲染入口
++  - `imageUIDefault: BlockUIDefinition<typeof imageCore.propsSchema>` — default UI id = `'default'`
++  - `ImageEditorView(props)` / `ImageRenderView(props)` — 同步的图像语义渲染层
++  - `ImageBody(props)` — 输出 `<figure><img ...><figcaption>{alt}</figcaption></figure>`，固定 `loading="lazy"`
++- `./ui-default/image.css` — 样式入口（design-token 变量约束）
+ 
+ `propsSchema` 形状（见 `src/core/core-definition.ts`）:
+ 
+@@ -35,6 +40,19 @@
+ - **Serialize / parse hook 命名**: `serializeImage` / `parseImage`。
+ - **Headless 自给**: `core/` 不 import 任何 React / Tiptap UI 模块；仅依赖 `@skb/block-foundation` + `zod`。
+ - **Self-validating serialize/parse**: `serializeImage` 调 `propsSchema.parse(node.attrs)`；`parseImage` 调 `propsSchema.parse(rawProps)`。
++- **`imageUIDefault` 契约**: `uiId='default'` 且 `coreName='image'`，使用 `defineUI` 且可通过 `BlockRegistry.registerUI` 注入。
++- **语义 DOM 契约**: `ImageBody` 必须输出 `figure` 根节点并包含：
++  - `<img src, alt, loading="lazy", width?, height?>`
++  - `<figcaption>{alt}</figcaption>`
++  - `data-image-loading` 根属性用于 loading-state 挂钩（目前固定 lazy，为未来变体预留）
++- **图像尺寸契约**: `width`/`height` 在 props 缺省时不应硬编码 `img` 属性；当设置时保持数值透传（用于编辑与 SSR 形状一致性）。
++
++## Wave 2 / Wave 3 约束
++
++- Wave 2 scope（本次 C5b）:
++  - 简单语义图像区块：`<figure>` + `<img>` + `<figcaption>`
++- Wave 3 预留（invariant 兼容）:
++  - 图库 / lightbox / blurhash 预览路径；当前 `data-image-loading` 作为语义扩展锚点可承接下一态态变体
+ 
+ ## Wave 3 mdx-bridge 路由集成（pending）
+ 
+diff --git a/packages/block-image/package.json b/packages/block-image/package.json
+index adc4e6b02e6c500806cb76a3a130c58918a3841b..28318cd3649266846164f0cb70564dc65986f59a
+--- a/packages/block-image/package.json
++++ b/packages/block-image/package.json
+@@ -5,7 +5,9 @@
+   "type": "module",
+   "exports": {
+     ".": "./src/index.ts",
+-    "./core": "./src/core/index.ts"
++    "./core": "./src/core/index.ts",
++    "./ui-default": "./src/ui-default/index.ts",
++    "./ui-default/image.css": "./src/ui-default/image.css"
+   },
+   "scripts": {
+     "build": "tsc -b",
+@@ -15,6 +17,7 @@
+   },
+   "dependencies": {
+     "@skb/block-foundation": "workspace:*",
++    "@skb/design-tokens": "workspace:*",
+     "zod": "^3.23.0"
+   },
+   "peerDependencies": {
+@@ -22,6 +25,7 @@
+   },
+   "devDependencies": {
+     "@testing-library/react": "^16.0.0",
++    "@types/react-dom": "^18.3.0",
+     "@types/react": "^18.3.0",
+     "happy-dom": "^15.0.0",
+     "react": "^18.3.0",
+diff --git a/packages/block-image/src/__tests__/ui-default.test.tsx.disabled b/packages/block-image/src/__tests__/ui-default.test.tsx.disabled
+deleted file mode 100644
+index c6a607ff74121f7d06b7069e820ad1430b5a2404..0000000000000000000000000000000000000000
+--- a/packages/block-image/src/__tests__/ui-default.test.tsx.disabled
++++ /dev/null
+@@ -1,128 +0,0 @@
+-import { describe, it, expect } from 'vitest';
+-import { render } from '@testing-library/react';
+-import { BlockRegistry, type BlockUIDefinition } from '@skb/block-foundation';
+-import { imageCore } from '../core/core-definition';
+-import {
+-  imageUIDefault,
+-  ImageEditorView,
+-  ImageRenderView,
+-  VARIANT_TOKENS,
+-} from '../ui-default';
+-import type { Variant } from '../ui-default';
+-
+-const VARIANTS: readonly Variant[] = ['note', 'tip', 'warning', 'danger'];
+-
+-describe('imageUIDefault registration', () => {
+-  it('exposes the BlockUIDefinition shape with coreName + uiId="default"', () => {
+-    expect(imageUIDefault.coreName).toBe('image');
+-    expect(imageUIDefault.uiId).toBe('default');
+-    expect(imageUIDefault.EditorView).toBe(ImageEditorView);
+-    expect(imageUIDefault.RenderView).toBe(ImageRenderView);
+-  });
+-
+-  it('round-trips through BlockRegistry (registerCore + registerUI)', () => {
+-    const reg = new BlockRegistry();
+-    reg.registerCore(imageCore);
+-    reg.registerUI(imageUIDefault as unknown as BlockUIDefinition);
+-    expect(reg.getUI('image')).toBe(imageUIDefault);
+-    expect(reg.getUI('image', 'default')).toBe(imageUIDefault);
+-  });
+-});
+-
+-describe('ImageEditorView', () => {
+-  it('renders all 4 variants with distinct data-image-variant + role/aria-label', () => {
+-    for (const variant of VARIANTS) {
+-      const { container, unmount } = render(
+-        <ImageEditorView props={{ variant }} content="body" />,
+-      );
+-      const aside = container.querySelector('aside');
+-      expect(aside).not.toBeNull();
+-      expect(aside?.getAttribute('data-image-variant')).toBe(variant);
+-      expect(aside?.getAttribute('role')).toBe('note');
+-      expect(aside?.getAttribute('aria-label')).toBe(
+-        `${VARIANT_TOKENS[variant].label} image`,
+-      );
+-      // a11y: focusable for keyboard nav
+-      expect(aside?.getAttribute('tabindex')).toBe('0');
+-      unmount();
+-    }
+-  });
+-
+-  it('falls back to capitalized variant name when title is absent', () => {
+-    const { getByText, unmount } = render(
+-      <ImageEditorView props={{ variant: 'tip' }} content="hello" />,
+-    );
+-    expect(getByText('Tip')).not.toBeNull();
+-    unmount();
+-  });
+-
+-  it('renders explicit title when provided', () => {
+-    const { getByText, unmount } = render(
+-      <ImageEditorView
+-        props={{ variant: 'warning', title: 'Heads up!' }}
+-        content="careful"
+-      />,
+-    );
+-    expect(getByText('Heads up!')).not.toBeNull();
+-    unmount();
+-  });
+-
+-  it('shows empty placeholder when content is missing', () => {
+-    const { getByText, unmount } = render(
+-      <ImageEditorView props={{ variant: 'note' }} />,
+-    );
+-    expect(getByText('No content')).not.toBeNull();
+-    unmount();
+-  });
+-
+-  it('emits a unique data-image-variant per variant + a single icon glyph', () => {
+-    const seenVariants = new Set<string>();
+-    for (const variant of VARIANTS) {
+-      const { container, unmount } = render(
+-        <ImageEditorView props={{ variant }} content="x" />,
+-      );
+-      const aside = container.querySelector('aside');
+-      seenVariants.add(aside?.getAttribute('data-image-variant') ?? '');
+-      const svgs = aside?.querySelectorAll('svg') ?? [];
+-      expect(svgs.length).toBe(1);
+-      unmount();
+-    }
+-    expect(seenVariants.size).toBe(VARIANTS.length);
+-  });
+-});
+-
+-describe('ImageRenderView', () => {
+-  it('renders DOM structure matching EditorView for the same props (byte-equivalent class shape)', () => {
+-    const props = { variant: 'danger', title: 'Stop' } as const;
+-    const editor = render(<ImageEditorView props={props} content="body" />);
+-    const rendered = render(<ImageRenderView props={props} content="body" />);
+-    const editorAside = editor.container.querySelector('aside');
+-    const renderAside = rendered.container.querySelector('aside');
+-    expect(editorAside?.getAttribute('data-image-variant')).toBe(
+-      renderAside?.getAttribute('data-image-variant'),
+-    );
+-    expect(editorAside?.getAttribute('role')).toBe(
+-      renderAside?.getAttribute('role'),
+-    );
+-    expect(editorAside?.getAttribute('aria-label')).toBe(
+-      renderAside?.getAttribute('aria-label'),
+-    );
+-    // shared body subtree shape: same icon SVG count + same title content
+-    expect(editorAside?.querySelectorAll('svg').length).toBe(
+-      renderAside?.querySelectorAll('svg').length,
+-    );
+-    expect(
+-      editorAside?.querySelector('.skb-image-title')?.textContent,
+-    ).toBe(renderAside?.querySelector('.skb-image-title')?.textContent);
+-    editor.unmount();
+-    rendered.unmount();
+-  });
+-
+-  it('omits the empty-placeholder span when content is undefined (passive SSR mode)', () => {
+-    const { queryByText, unmount } = render(
+-      <ImageRenderView props={{ variant: 'note' }} />,
+-    );
+-    expect(queryByText('No content')).toBeNull();
+-    unmount();
+-  });
+-});
+diff --git a/packages/block-image/src/index.ts b/packages/block-image/src/index.ts
+index 4b0e041376276d8a80667f283051c4ef5294a440..ec660ceea15131c3d4aca60642e32a5ec613598d
+--- a/packages/block-image/src/index.ts
++++ b/packages/block-image/src/index.ts
+@@ -1 +1,2 @@
+ export * from './core';
++export * from './ui-default';
+diff --git a/packages/block-image/tsconfig.json b/packages/block-image/tsconfig.json
+index 080da760f9a4c64a2295b648f21062a0b9910466..b2e68f98773261250fca2f3e0da44f8f45ab3882
+--- a/packages/block-image/tsconfig.json
++++ b/packages/block-image/tsconfig.json
+@@ -7,6 +7,7 @@
+   },
+   "include": ["src/**/*", "vitest.config.ts"],
+   "references": [
+-    { "path": "../block-foundation" }
++    { "path": "../block-foundation" },
++    { "path": "../design-tokens" }
+   ]
+ }
+diff --git a/packages/block-image/vitest.config.ts b/packages/block-image/vitest.config.ts
+index 06d247df76bf91aed41a0129c201387f578d1e38..3d31e22e3196521c53c32ce24a1189d0cde23bb4
+--- a/packages/block-image/vitest.config.ts
++++ b/packages/block-image/vitest.config.ts
+@@ -4,6 +4,7 @@
+   test: {
+     include: ['src/**/*.test.{ts,tsx}'],
+     environment: 'happy-dom',
++    passWithNoTests: false,
+     typecheck: { enabled: false },
+   },
+ });
+
+exec
+/bin/bash -lc "ls packages/block-image/src/ui-default && echo '---' && ls packages/block-image/src/__tests__" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+EditorView.tsx
+ImageBody.tsx
+RenderView.tsx
+image.css
+index.ts
+---
+core.test.ts
+registry-integration.test.ts
+ui-default.test.tsx
+
+diff --git a/packages/block-image/CONTRACT.md b/packages/block-image/CONTRACT.md
+index cf02c749a3dec4867c3765083068cf5b4057e992..68c7ae2c46b61b33dcf7cbb14b598a4bfd1d47db
+--- a/packages/block-image/CONTRACT.md
++++ b/packages/block-image/CONTRACT.md
+@@ -5,14 +5,19 @@
+ 
+ ## Public surface
+ 
+-两个 entry：
++四个 entry：
+ 
+-- `.` (root barrel) — re-export `./core`
++- `.` (root barrel) — re-export `./core` 与 `./ui-default`
+ - `./core` — headless 层
+   - `imageCore: BlockCoreDefinition<typeof propsSchema>` — name=`'image'` / kind=`'component'` / mdxComponent=`'Image'`
+   - `serializeImage(node) → mdxJsxFlowElement` — Tiptap → mdast
+   - `parseImage(mdast) → TiptapNode` — mdast → Tiptap
+   - 类型: `ImageTiptapNode` / `ImageMdastJsxElement`
++- `./ui-default` — UI 定义与渲染入口
++  - `imageUIDefault: BlockUIDefinition<typeof imageCore.propsSchema>` — default UI id = `'default'`
++  - `ImageEditorView(props)` / `ImageRenderView(props)` — 同步的图像语义渲染层
++  - `ImageBody(props)` — 输出 `<figure><img ...><figcaption>{alt}</figcaption></figure>`，固定 `loading="lazy"`
++- `./ui-default/image.css` — 样式入口（design-token 变量约束）
+ 
+ `propsSchema` 形状（见 `src/core/core-definition.ts`）:
+ 
+@@ -35,6 +40,19 @@
+ - **Serialize / parse hook 命名**: `serializeImage` / `parseImage`。
+ - **Headless 自给**: `core/` 不 import 任何 React / Tiptap UI 模块；仅依赖 `@skb/block-foundation` + `zod`。
+ - **Self-validating serialize/parse**: `serializeImage` 调 `propsSchema.parse(node.attrs)`；`parseImage` 调 `propsSchema.parse(rawProps)`。
++- **`imageUIDefault` 契约**: `uiId='default'` 且 `coreName='image'`，使用 `defineUI` 且可通过 `BlockRegistry.registerUI` 注入。
++- **语义 DOM 契约**: `ImageBody` 必须输出 `figure` 根节点并包含：
++  - `<img src, alt, loading="lazy", width?, height?>`
++  - `<figcaption>{alt}</figcaption>`
++  - `data-image-loading` 根属性用于 loading-state 挂钩（目前固定 lazy，为未来变体预留）
++- **图像尺寸契约**: `width`/`height` 在 props 缺省时不应硬编码 `img` 属性；当设置时保持数值透传（用于编辑与 SSR 形状一致性）。
++
++## Wave 2 / Wave 3 约束
++
++- Wave 2 scope（本次 C5b）:
++  - 简单语义图像区块：`<figure>` + `<img>` + `<figcaption>`
++- Wave 3 预留（invariant 兼容）:
++  - 图库 / lightbox / blurhash 预览路径；当前 `data-image-loading` 作为语义扩展锚点可承接下一态态变体
+ 
+ ## Wave 3 mdx-bridge 路由集成（pending）
+ 
+diff --git a/packages/block-image/package.json b/packages/block-image/package.json
+index adc4e6b02e6c500806cb76a3a130c58918a3841b..28318cd3649266846164f0cb70564dc65986f59a
+--- a/packages/block-image/package.json
++++ b/packages/block-image/package.json
+@@ -5,7 +5,9 @@
+   "type": "module",
+   "exports": {
+     ".": "./src/index.ts",
+-    "./core": "./src/core/index.ts"
++    "./core": "./src/core/index.ts",
++    "./ui-default": "./src/ui-default/index.ts",
++    "./ui-default/image.css": "./src/ui-default/image.css"
+   },
+   "scripts": {
+     "build": "tsc -b",
+@@ -15,6 +17,7 @@
+   },
+   "dependencies": {
+     "@skb/block-foundation": "workspace:*",
++    "@skb/design-tokens": "workspace:*",
+     "zod": "^3.23.0"
+   },
+   "peerDependencies": {
+@@ -22,6 +25,7 @@
+   },
+   "devDependencies": {
+     "@testing-library/react": "^16.0.0",
++    "@types/react-dom": "^18.3.0",
+     "@types/react": "^18.3.0",
+     "happy-dom": "^15.0.0",
+     "react": "^18.3.0",
+diff --git a/packages/block-image/src/__tests__/ui-default.test.tsx.disabled b/packages/block-image/src/__tests__/ui-default.test.tsx.disabled
+deleted file mode 100644
+index c6a607ff74121f7d06b7069e820ad1430b5a2404..0000000000000000000000000000000000000000
+--- a/packages/block-image/src/__tests__/ui-default.test.tsx.disabled
++++ /dev/null
+@@ -1,128 +0,0 @@
+-import { describe, it, expect } from 'vitest';
+-import { render } from '@testing-library/react';
+-import { BlockRegistry, type BlockUIDefinition } from '@skb/block-foundation';
+-import { imageCore } from '../core/core-definition';
+-import {
+-  imageUIDefault,
+-  ImageEditorView,
+-  ImageRenderView,
+-  VARIANT_TOKENS,
+-} from '../ui-default';
+-import type { Variant } from '../ui-default';
+-
+-const VARIANTS: readonly Variant[] = ['note', 'tip', 'warning', 'danger'];
+-
+-describe('imageUIDefault registration', () => {
+-  it('exposes the BlockUIDefinition shape with coreName + uiId="default"', () => {
+-    expect(imageUIDefault.coreName).toBe('image');
+-    expect(imageUIDefault.uiId).toBe('default');
+-    expect(imageUIDefault.EditorView).toBe(ImageEditorView);
+-    expect(imageUIDefault.RenderView).toBe(ImageRenderView);
+-  });
+-
+-  it('round-trips through BlockRegistry (registerCore + registerUI)', () => {
+-    const reg = new BlockRegistry();
+-    reg.registerCore(imageCore);
+-    reg.registerUI(imageUIDefault as unknown as BlockUIDefinition);
+-    expect(reg.getUI('image')).toBe(imageUIDefault);
+-    expect(reg.getUI('image', 'default')).toBe(imageUIDefault);
+-  });
+-});
+-
+-describe('ImageEditorView', () => {
+-  it('renders all 4 variants with distinct data-image-variant + role/aria-label', () => {
+-    for (const variant of VARIANTS) {
+-      const { container, unmount } = render(
+-        <ImageEditorView props={{ variant }} content="body" />,
+-      );
+-      const aside = container.querySelector('aside');
+-      expect(aside).not.toBeNull();
+-      expect(aside?.getAttribute('data-image-variant')).toBe(variant);
+-      expect(aside?.getAttribute('role')).toBe('note');
+-      expect(aside?.getAttribute('aria-label')).toBe(
+-        `${VARIANT_TOKENS[variant].label} image`,
+-      );
+-      // a11y: focusable for keyboard nav
+-      expect(aside?.getAttribute('tabindex')).toBe('0');
+-      unmount();
+-    }
+-  });
+-
+-  it('falls back to capitalized variant name when title is absent', () => {
+-    const { getByText, unmount } = render(
+-      <ImageEditorView props={{ variant: 'tip' }} content="hello" />,
+-    );
+-    expect(getByText('Tip')).not.toBeNull();
+-    unmount();
+-  });
+-
+-  it('renders explicit title when provided', () => {
+-    const { getByText, unmount } = render(
+-      <ImageEditorView
+-        props={{ variant: 'warning', title: 'Heads up!' }}
+-        content="careful"
+-      />,
+-    );
+-    expect(getByText('Heads up!')).not.toBeNull();
+-    unmount();
+-  });
+-
+-  it('shows empty placeholder when content is missing', () => {
+-    const { getByText, unmount } = render(
+-      <ImageEditorView props={{ variant: 'note' }} />,
+-    );
+-    expect(getByText('No content')).not.toBeNull();
+-    unmount();
+-  });
+-
+-  it('emits a unique data-image-variant per variant + a single icon glyph', () => {
+-    const seenVariants = new Set<string>();
+-    for (const variant of VARIANTS) {
+-      const { container, unmount } = render(
+-        <ImageEditorView props={{ variant }} content="x" />,
+-      );
+-      const aside = container.querySelector('aside');
+-      seenVariants.add(aside?.getAttribute('data-image-variant') ?? '');
+-      const svgs = aside?.querySelectorAll('svg') ?? [];
+-      expect(svgs.length).toBe(1);
+-      unmount();
+-    }
+-    expect(seenVariants.size).toBe(VARIANTS.length);
+-  });
+-});
+-
+-describe('ImageRenderView', () => {
+-  it('renders DOM structure matching EditorView for the same props (byte-equivalent class shape)', () => {
+-    const props = { variant: 'danger', title: 'Stop' } as const;
+-    const editor = render(<ImageEditorView props={props} content="body" />);
+-    const rendered = render(<ImageRenderView props={props} content="body" />);
+-    const editorAside = editor.container.querySelector('aside');
+-    const renderAside = rendered.container.querySelector('aside');
+-    expect(editorAside?.getAttribute('data-image-variant')).toBe(
+-      renderAside?.getAttribute('data-image-variant'),
+-    );
+-    expect(editorAside?.getAttribute('role')).toBe(
+-      renderAside?.getAttribute('role'),
+-    );
+-    expect(editorAside?.getAttribute('aria-label')).toBe(
+-      renderAside?.getAttribute('aria-label'),
+-    );
+-    // shared body subtree shape: same icon SVG count + same title content
+-    expect(editorAside?.querySelectorAll('svg').length).toBe(
+-      renderAside?.querySelectorAll('svg').length,
+-    );
+-    expect(
+-      editorAside?.querySelector('.skb-image-title')?.textContent,
+-    ).toBe(renderAside?.querySelector('.skb-image-title')?.textContent);
+-    editor.unmount();
+-    rendered.unmount();
+-  });
+-
+-  it('omits the empty-placeholder span when content is undefined (passive SSR mode)', () => {
+-    const { queryByText, unmount } = render(
+-      <ImageRenderView props={{ variant: 'note' }} />,
+-    );
+-    expect(queryByText('No content')).toBeNull();
+-    unmount();
+-  });
+-});
+diff --git a/packages/block-image/src/index.ts b/packages/block-image/src/index.ts
+index 4b0e041376276d8a80667f283051c4ef5294a440..ec660ceea15131c3d4aca60642e32a5ec613598d
+--- a/packages/block-image/src/index.ts
++++ b/packages/block-image/src/index.ts
+@@ -1 +1,2 @@
+ export * from './core';
++export * from './ui-default';
+diff --git a/packages/block-image/tsconfig.json b/packages/block-image/tsconfig.json
+index 080da760f9a4c64a2295b648f21062a0b9910466..b2e68f98773261250fca2f3e0da44f8f45ab3882
+--- a/packages/block-image/tsconfig.json
++++ b/packages/block-image/tsconfig.json
+@@ -7,6 +7,7 @@
+   },
+   "include": ["src/**/*", "vitest.config.ts"],
+   "references": [
+-    { "path": "../block-foundation" }
++    { "path": "../block-foundation" },
++    { "path": "../design-tokens" }
+   ]
+ }
+diff --git a/packages/block-image/vitest.config.ts b/packages/block-image/vitest.config.ts
+index 06d247df76bf91aed41a0129c201387f578d1e38..3d31e22e3196521c53c32ce24a1189d0cde23bb4
+--- a/packages/block-image/vitest.config.ts
++++ b/packages/block-image/vitest.config.ts
+@@ -4,6 +4,7 @@
+   test: {
+     include: ['src/**/*.test.{ts,tsx}'],
+     environment: 'happy-dom',
++    passWithNoTests: false,
+     typecheck: { enabled: false },
+   },
+ });
+
+exec
+/bin/bash -lc 'pnpm install' in /home/weiyi/selfKnowledgeBaseWeb
+diff --git a/packages/block-image/CONTRACT.md b/packages/block-image/CONTRACT.md
+index cf02c749a3dec4867c3765083068cf5b4057e992..68c7ae2c46b61b33dcf7cbb14b598a4bfd1d47db
+--- a/packages/block-image/CONTRACT.md
++++ b/packages/block-image/CONTRACT.md
+@@ -5,14 +5,19 @@
+ 
+ ## Public surface
+ 
+-两个 entry：
++四个 entry：
+ 
+-- `.` (root barrel) — re-export `./core`
++- `.` (root barrel) — re-export `./core` 与 `./ui-default`
+ - `./core` — headless 层
+   - `imageCore: BlockCoreDefinition<typeof propsSchema>` — name=`'image'` / kind=`'component'` / mdxComponent=`'Image'`
+   - `serializeImage(node) → mdxJsxFlowElement` — Tiptap → mdast
+   - `parseImage(mdast) → TiptapNode` — mdast → Tiptap
+   - 类型: `ImageTiptapNode` / `ImageMdastJsxElement`
++- `./ui-default` — UI 定义与渲染入口
++  - `imageUIDefault: BlockUIDefinition<typeof imageCore.propsSchema>` — default UI id = `'default'`
++  - `ImageEditorView(props)` / `ImageRenderView(props)` — 同步的图像语义渲染层
++  - `ImageBody(props)` — 输出 `<figure><img ...><figcaption>{alt}</figcaption></figure>`，固定 `loading="lazy"`
++- `./ui-default/image.css` — 样式入口（design-token 变量约束）
+ 
+ `propsSchema` 形状（见 `src/core/core-definition.ts`）:
+ 
+@@ -35,6 +40,19 @@
+ - **Serialize / parse hook 命名**: `serializeImage` / `parseImage`。
+ - **Headless 自给**: `core/` 不 import 任何 React / Tiptap UI 模块；仅依赖 `@skb/block-foundation` + `zod`。
+ - **Self-validating serialize/parse**: `serializeImage` 调 `propsSchema.parse(node.attrs)`；`parseImage` 调 `propsSchema.parse(rawProps)`。
++- **`imageUIDefault` 契约**: `uiId='default'` 且 `coreName='image'`，使用 `defineUI` 且可通过 `BlockRegistry.registerUI` 注入。
++- **语义 DOM 契约**: `ImageBody` 必须输出 `figure` 根节点并包含：
++  - `<img src, alt, loading="lazy", width?, height?>`
++  - `<figcaption>{alt}</figcaption>`
++  - `data-image-loading` 根属性用于 loading-state 挂钩（目前固定 lazy，为未来变体预留）
++- **图像尺寸契约**: `width`/`height` 在 props 缺省时不应硬编码 `img` 属性；当设置时保持数值透传（用于编辑与 SSR 形状一致性）。
++
++## Wave 2 / Wave 3 约束
++
++- Wave 2 scope（本次 C5b）:
++  - 简单语义图像区块：`<figure>` + `<img>` + `<figcaption>`
++- Wave 3 预留（invariant 兼容）:
++  - 图库 / lightbox / blurhash 预览路径；当前 `data-image-loading` 作为语义扩展锚点可承接下一态态变体
+ 
+ ## Wave 3 mdx-bridge 路由集成（pending）
+ 
+diff --git a/packages/block-image/package.json b/packages/block-image/package.json
+index adc4e6b02e6c500806cb76a3a130c58918a3841b..28318cd3649266846164f0cb70564dc65986f59a
+--- a/packages/block-image/package.json
++++ b/packages/block-image/package.json
+@@ -5,7 +5,9 @@
+   "type": "module",
+   "exports": {
+     ".": "./src/index.ts",
+-    "./core": "./src/core/index.ts"
++    "./core": "./src/core/index.ts",
++    "./ui-default": "./src/ui-default/index.ts",
++    "./ui-default/image.css": "./src/ui-default/image.css"
+   },
+   "scripts": {
+     "build": "tsc -b",
+@@ -15,6 +17,7 @@
+   },
+   "dependencies": {
+     "@skb/block-foundation": "workspace:*",
++    "@skb/design-tokens": "workspace:*",
+     "zod": "^3.23.0"
+   },
+   "peerDependencies": {
+@@ -22,6 +25,7 @@
+   },
+   "devDependencies": {
+     "@testing-library/react": "^16.0.0",
++    "@types/react-dom": "^18.3.0",
+     "@types/react": "^18.3.0",
+     "happy-dom": "^15.0.0",
+     "react": "^18.3.0",
+diff --git a/packages/block-image/src/__tests__/ui-default.test.tsx.disabled b/packages/block-image/src/__tests__/ui-default.test.tsx.disabled
+deleted file mode 100644
+index c6a607ff74121f7d06b7069e820ad1430b5a2404..0000000000000000000000000000000000000000
+--- a/packages/block-image/src/__tests__/ui-default.test.tsx.disabled
++++ /dev/null
+@@ -1,128 +0,0 @@
+-import { describe, it, expect } from 'vitest';
+-import { render } from '@testing-library/react';
+-import { BlockRegistry, type BlockUIDefinition } from '@skb/block-foundation';
+-import { imageCore } from '../core/core-definition';
+-import {
+-  imageUIDefault,
+-  ImageEditorView,
+-  ImageRenderView,
+-  VARIANT_TOKENS,
+-} from '../ui-default';
+-import type { Variant } from '../ui-default';
+-
+-const VARIANTS: readonly Variant[] = ['note', 'tip', 'warning', 'danger'];
+-
+-describe('imageUIDefault registration', () => {
+-  it('exposes the BlockUIDefinition shape with coreName + uiId="default"', () => {
+-    expect(imageUIDefault.coreName).toBe('image');
+-    expect(imageUIDefault.uiId).toBe('default');
+-    expect(imageUIDefault.EditorView).toBe(ImageEditorView);
+-    expect(imageUIDefault.RenderView).toBe(ImageRenderView);
+-  });
+-
+-  it('round-trips through BlockRegistry (registerCore + registerUI)', () => {
+-    const reg = new BlockRegistry();
+-    reg.registerCore(imageCore);
+-    reg.registerUI(imageUIDefault as unknown as BlockUIDefinition);
+-    expect(reg.getUI('image')).toBe(imageUIDefault);
+-    expect(reg.getUI('image', 'default')).toBe(imageUIDefault);
+-  });
+-});
+-
+-describe('ImageEditorView', () => {
+-  it('renders all 4 variants with distinct data-image-variant + role/aria-label', () => {
+-    for (const variant of VARIANTS) {
+-      const { container, unmount } = render(
+-        <ImageEditorView props={{ variant }} content="body" />,
+-      );
+-      const aside = container.querySelector('aside');
+-      expect(aside).not.toBeNull();
+-      expect(aside?.getAttribute('data-image-variant')).toBe(variant);
+-      expect(aside?.getAttribute('role')).toBe('note');
+-      expect(aside?.getAttribute('aria-label')).toBe(
+-        `${VARIANT_TOKENS[variant].label} image`,
+-      );
+-      // a11y: focusable for keyboard nav
+-      expect(aside?.getAttribute('tabindex')).toBe('0');
+-      unmount();
+-    }
+-  });
+-
+-  it('falls back to capitalized variant name when title is absent', () => {
+-    const { getByText, unmount } = render(
+-      <ImageEditorView props={{ variant: 'tip' }} content="hello" />,
+-    );
+-    expect(getByText('Tip')).not.toBeNull();
+-    unmount();
+-  });
+-
+-  it('renders explicit title when provided', () => {
+-    const { getByText, unmount } = render(
+-      <ImageEditorView
+-        props={{ variant: 'warning', title: 'Heads up!' }}
+-        content="careful"
+-      />,
+-    );
+-    expect(getByText('Heads up!')).not.toBeNull();
+-    unmount();
+-  });
+-
+-  it('shows empty placeholder when content is missing', () => {
+-    const { getByText, unmount } = render(
+-      <ImageEditorView props={{ variant: 'note' }} />,
+-    );
+-    expect(getByText('No content')).not.toBeNull();
+-    unmount();
+-  });
+-
+-  it('emits a unique data-image-variant per variant + a single icon glyph', () => {
+-    const seenVariants = new Set<string>();
+-    for (const variant of VARIANTS) {
+-      const { container, unmount } = render(
+-        <ImageEditorView props={{ variant }} content="x" />,
+-      );
+-      const aside = container.querySelector('aside');
+-      seenVariants.add(aside?.getAttribute('data-image-variant') ?? '');
+-      const svgs = aside?.querySelectorAll('svg') ?? [];
+-      expect(svgs.length).toBe(1);
+-      unmount();
+-    }
+-    expect(seenVariants.size).toBe(VARIANTS.length);
+-  });
+-});
+-
+-describe('ImageRenderView', () => {
+-  it('renders DOM structure matching EditorView for the same props (byte-equivalent class shape)', () => {
+-    const props = { variant: 'danger', title: 'Stop' } as const;
+-    const editor = render(<ImageEditorView props={props} content="body" />);
+-    const rendered = render(<ImageRenderView props={props} content="body" />);
+-    const editorAside = editor.container.querySelector('aside');
+-    const renderAside = rendered.container.querySelector('aside');
+-    expect(editorAside?.getAttribute('data-image-variant')).toBe(
+-      renderAside?.getAttribute('data-image-variant'),
+-    );
+-    expect(editorAside?.getAttribute('role')).toBe(
+-      renderAside?.getAttribute('role'),
+-    );
+-    expect(editorAside?.getAttribute('aria-label')).toBe(
+-      renderAside?.getAttribute('aria-label'),
+-    );
+-    // shared body subtree shape: same icon SVG count + same title content
+-    expect(editorAside?.querySelectorAll('svg').length).toBe(
+-      renderAside?.querySelectorAll('svg').length,
+-    );
+-    expect(
+-      editorAside?.querySelector('.skb-image-title')?.textContent,
+-    ).toBe(renderAside?.querySelector('.skb-image-title')?.textContent);
+-    editor.unmount();
+-    rendered.unmount();
+-  });
+-
+-  it('omits the empty-placeholder span when content is undefined (passive SSR mode)', () => {
+-    const { queryByText, unmount } = render(
+-      <ImageRenderView props={{ variant: 'note' }} />,
+-    );
+-    expect(queryByText('No content')).toBeNull();
+-    unmount();
+-  });
+-});
+diff --git a/packages/block-image/src/index.ts b/packages/block-image/src/index.ts
+index 4b0e041376276d8a80667f283051c4ef5294a440..ec660ceea15131c3d4aca60642e32a5ec613598d
+--- a/packages/block-image/src/index.ts
++++ b/packages/block-image/src/index.ts
+@@ -1 +1,2 @@
+ export * from './core';
++export * from './ui-default';
+diff --git a/packages/block-image/tsconfig.json b/packages/block-image/tsconfig.json
+index 080da760f9a4c64a2295b648f21062a0b9910466..b2e68f98773261250fca2f3e0da44f8f45ab3882
+--- a/packages/block-image/tsconfig.json
++++ b/packages/block-image/tsconfig.json
+@@ -7,6 +7,7 @@
+   },
+   "include": ["src/**/*", "vitest.config.ts"],
+   "references": [
+-    { "path": "../block-foundation" }
++    { "path": "../block-foundation" },
++    { "path": "../design-tokens" }
+   ]
+ }
+diff --git a/packages/block-image/vitest.config.ts b/packages/block-image/vitest.config.ts
+index 06d247df76bf91aed41a0129c201387f578d1e38..3d31e22e3196521c53c32ce24a1189d0cde23bb4
+--- a/packages/block-image/vitest.config.ts
++++ b/packages/block-image/vitest.config.ts
+@@ -4,6 +4,7 @@
+   test: {
+     include: ['src/**/*.test.{ts,tsx}'],
+     environment: 'happy-dom',
++    passWithNoTests: false,
+     typecheck: { enabled: false },
+   },
+ });
+
+codex
+Install is in progress but currently blocked by network/DNS retries in this environment. I’ll poll for completion and then continue with requested package test/typecheck/build checks.
+diff --git a/packages/block-image/CONTRACT.md b/packages/block-image/CONTRACT.md
+index cf02c749a3dec4867c3765083068cf5b4057e992..68c7ae2c46b61b33dcf7cbb14b598a4bfd1d47db
+--- a/packages/block-image/CONTRACT.md
++++ b/packages/block-image/CONTRACT.md
+@@ -5,14 +5,19 @@
+ 
+ ## Public surface
+ 
+-两个 entry：
++四个 entry：
+ 
+-- `.` (root barrel) — re-export `./core`
++- `.` (root barrel) — re-export `./core` 与 `./ui-default`
+ - `./core` — headless 层
+   - `imageCore: BlockCoreDefinition<typeof propsSchema>` — name=`'image'` / kind=`'component'` / mdxComponent=`'Image'`
+   - `serializeImage(node) → mdxJsxFlowElement` — Tiptap → mdast
+   - `parseImage(mdast) → TiptapNode` — mdast → Tiptap
+   - 类型: `ImageTiptapNode` / `ImageMdastJsxElement`
++- `./ui-default` — UI 定义与渲染入口
++  - `imageUIDefault: BlockUIDefinition<typeof imageCore.propsSchema>` — default UI id = `'default'`
++  - `ImageEditorView(props)` / `ImageRenderView(props)` — 同步的图像语义渲染层
++  - `ImageBody(props)` — 输出 `<figure><img ...><figcaption>{alt}</figcaption></figure>`，固定 `loading="lazy"`
++- `./ui-default/image.css` — 样式入口（design-token 变量约束）
+ 
+ `propsSchema` 形状（见 `src/core/core-definition.ts`）:
+ 
+@@ -35,6 +40,19 @@
+ - **Serialize / parse hook 命名**: `serializeImage` / `parseImage`。
+ - **Headless 自给**: `core/` 不 import 任何 React / Tiptap UI 模块；仅依赖 `@skb/block-foundation` + `zod`。
+ - **Self-validating serialize/parse**: `serializeImage` 调 `propsSchema.parse(node.attrs)`；`parseImage` 调 `propsSchema.parse(rawProps)`。
++- **`imageUIDefault` 契约**: `uiId='default'` 且 `coreName='image'`，使用 `defineUI` 且可通过 `BlockRegistry.registerUI` 注入。
++- **语义 DOM 契约**: `ImageBody` 必须输出 `figure` 根节点并包含：
++  - `<img src, alt, loading="lazy", width?, height?>`
++  - `<figcaption>{alt}</figcaption>`
++  - `data-image-loading` 根属性用于 loading-state 挂钩（目前固定 lazy，为未来变体预留）
++- **图像尺寸契约**: `width`/`height` 在 props 缺省时不应硬编码 `img` 属性；当设置时保持数值透传（用于编辑与 SSR 形状一致性）。
++
++## Wave 2 / Wave 3 约束
++
++- Wave 2 scope（本次 C5b）:
++  - 简单语义图像区块：`<figure>` + `<img>` + `<figcaption>`
++- Wave 3 预留（invariant 兼容）:
++  - 图库 / lightbox / blurhash 预览路径；当前 `data-image-loading` 作为语义扩展锚点可承接下一态态变体
+ 
+ ## Wave 3 mdx-bridge 路由集成（pending）
+ 
+diff --git a/packages/block-image/package.json b/packages/block-image/package.json
+index adc4e6b02e6c500806cb76a3a130c58918a3841b..28318cd3649266846164f0cb70564dc65986f59a
+--- a/packages/block-image/package.json
++++ b/packages/block-image/package.json
+@@ -5,7 +5,9 @@
+   "type": "module",
+   "exports": {
+     ".": "./src/index.ts",
+-    "./core": "./src/core/index.ts"
++    "./core": "./src/core/index.ts",
++    "./ui-default": "./src/ui-default/index.ts",
++    "./ui-default/image.css": "./src/ui-default/image.css"
+   },
+   "scripts": {
+     "build": "tsc -b",
+@@ -15,6 +17,7 @@
+   },
+   "dependencies": {
+     "@skb/block-foundation": "workspace:*",
++    "@skb/design-tokens": "workspace:*",
+     "zod": "^3.23.0"
+   },
+   "peerDependencies": {
+@@ -22,6 +25,7 @@
+   },
+   "devDependencies": {
+     "@testing-library/react": "^16.0.0",
++    "@types/react-dom": "^18.3.0",
+     "@types/react": "^18.3.0",
+     "happy-dom": "^15.0.0",
+     "react": "^18.3.0",
+diff --git a/packages/block-image/src/__tests__/ui-default.test.tsx.disabled b/packages/block-image/src/__tests__/ui-default.test.tsx.disabled
+deleted file mode 100644
+index c6a607ff74121f7d06b7069e820ad1430b5a2404..0000000000000000000000000000000000000000
+--- a/packages/block-image/src/__tests__/ui-default.test.tsx.disabled
++++ /dev/null
+@@ -1,128 +0,0 @@
+-import { describe, it, expect } from 'vitest';
+-import { render } from '@testing-library/react';
+-import { BlockRegistry, type BlockUIDefinition } from '@skb/block-foundation';
+-import { imageCore } from '../core/core-definition';
+-import {
+-  imageUIDefault,
+-  ImageEditorView,
+-  ImageRenderView,
+-  VARIANT_TOKENS,
+-} from '../ui-default';
+-import type { Variant } from '../ui-default';
+-
+-const VARIANTS: readonly Variant[] = ['note', 'tip', 'warning', 'danger'];
+-
+-describe('imageUIDefault registration', () => {
+-  it('exposes the BlockUIDefinition shape with coreName + uiId="default"', () => {
+-    expect(imageUIDefault.coreName).toBe('image');
+-    expect(imageUIDefault.uiId).toBe('default');
+-    expect(imageUIDefault.EditorView).toBe(ImageEditorView);
+-    expect(imageUIDefault.RenderView).toBe(ImageRenderView);
+-  });
+-
+-  it('round-trips through BlockRegistry (registerCore + registerUI)', () => {
+-    const reg = new BlockRegistry();
+-    reg.registerCore(imageCore);
+-    reg.registerUI(imageUIDefault as unknown as BlockUIDefinition);
+-    expect(reg.getUI('image')).toBe(imageUIDefault);
+-    expect(reg.getUI('image', 'default')).toBe(imageUIDefault);
+-  });
+-});
+-
+-describe('ImageEditorView', () => {
+-  it('renders all 4 variants with distinct data-image-variant + role/aria-label', () => {
+-    for (const variant of VARIANTS) {
+-      const { container, unmount } = render(
+-        <ImageEditorView props={{ variant }} content="body" />,
+-      );
+-      const aside = container.querySelector('aside');
+-      expect(aside).not.toBeNull();
+-      expect(aside?.getAttribute('data-image-variant')).toBe(variant);
+-      expect(aside?.getAttribute('role')).toBe('note');
+-      expect(aside?.getAttribute('aria-label')).toBe(
+-        `${VARIANT_TOKENS[variant].label} image`,
+-      );
+-      // a11y: focusable for keyboard nav
+-      expect(aside?.getAttribute('tabindex')).toBe('0');
+-      unmount();
+-    }
+-  });
+-
+-  it('falls back to capitalized variant name when title is absent', () => {
+-    const { getByText, unmount } = render(
+-      <ImageEditorView props={{ variant: 'tip' }} content="hello" />,
+-    );
+-    expect(getByText('Tip')).not.toBeNull();
+-    unmount();
+-  });
+-
+-  it('renders explicit title when provided', () => {
+-    const { getByText, unmount } = render(
+-      <ImageEditorView
+-        props={{ variant: 'warning', title: 'Heads up!' }}
+-        content="careful"
+-      />,
+-    );
+-    expect(getByText('Heads up!')).not.toBeNull();
+-    unmount();
+-  });
+-
+-  it('shows empty placeholder when content is missing', () => {
+-    const { getByText, unmount } = render(
+-      <ImageEditorView props={{ variant: 'note' }} />,
+-    );
+-    expect(getByText('No content')).not.toBeNull();
+-    unmount();
+-  });
+-
+-  it('emits a unique data-image-variant per variant + a single icon glyph', () => {
+-    const seenVariants = new Set<string>();
+-    for (const variant of VARIANTS) {
+-      const { container, unmount } = render(
+-        <ImageEditorView props={{ variant }} content="x" />,
+-      );
+-      const aside = container.querySelector('aside');
+-      seenVariants.add(aside?.getAttribute('data-image-variant') ?? '');
+-      const svgs = aside?.querySelectorAll('svg') ?? [];
+-      expect(svgs.length).toBe(1);
+-      unmount();
+-    }
+-    expect(seenVariants.size).toBe(VARIANTS.length);
+-  });
+-});
+-
+-describe('ImageRenderView', () => {
+-  it('renders DOM structure matching EditorView for the same props (byte-equivalent class shape)', () => {
+-    const props = { variant: 'danger', title: 'Stop' } as const;
+-    const editor = render(<ImageEditorView props={props} content="body" />);
+-    const rendered = render(<ImageRenderView props={props} content="body" />);
+-    const editorAside = editor.container.querySelector('aside');
+-    const renderAside = rendered.container.querySelector('aside');
+-    expect(editorAside?.getAttribute('data-image-variant')).toBe(
+-      renderAside?.getAttribute('data-image-variant'),
+-    );
+-    expect(editorAside?.getAttribute('role')).toBe(
+-      renderAside?.getAttribute('role'),
+-    );
+-    expect(editorAside?.getAttribute('aria-label')).toBe(
+-      renderAside?.getAttribute('aria-label'),
+-    );
+-    // shared body subtree shape: same icon SVG count + same title content
+-    expect(editorAside?.querySelectorAll('svg').length).toBe(
+-      renderAside?.querySelectorAll('svg').length,
+-    );
+-    expect(
+-      editorAside?.querySelector('.skb-image-title')?.textContent,
+-    ).toBe(renderAside?.querySelector('.skb-image-title')?.textContent);
+-    editor.unmount();
+-    rendered.unmount();
+-  });
+-
+-  it('omits the empty-placeholder span when content is undefined (passive SSR mode)', () => {
+-    const { queryByText, unmount } = render(
+-      <ImageRenderView props={{ variant: 'note' }} />,
+-    );
+-    expect(queryByText('No content')).toBeNull();
+-    unmount();
+-  });
+-});
+diff --git a/packages/block-image/src/index.ts b/packages/block-image/src/index.ts
+index 4b0e041376276d8a80667f283051c4ef5294a440..ec660ceea15131c3d4aca60642e32a5ec613598d
+--- a/packages/block-image/src/index.ts
++++ b/packages/block-image/src/index.ts
+@@ -1 +1,2 @@
+ export * from './core';
++export * from './ui-default';
+diff --git a/packages/block-image/tsconfig.json b/packages/block-image/tsconfig.json
+index 080da760f9a4c64a2295b648f21062a0b9910466..b2e68f98773261250fca2f3e0da44f8f45ab3882
+--- a/packages/block-image/tsconfig.json
++++ b/packages/block-image/tsconfig.json
+@@ -7,6 +7,7 @@
+   },
+   "include": ["src/**/*", "vitest.config.ts"],
+   "references": [
+-    { "path": "../block-foundation" }
++    { "path": "../block-foundation" },
++    { "path": "../design-tokens" }
+   ]
+ }
+diff --git a/packages/block-image/vitest.config.ts b/packages/block-image/vitest.config.ts
+index 06d247df76bf91aed41a0129c201387f578d1e38..3d31e22e3196521c53c32ce24a1189d0cde23bb4
+--- a/packages/block-image/vitest.config.ts
++++ b/packages/block-image/vitest.config.ts
+@@ -4,6 +4,7 @@
+   test: {
+     include: ['src/**/*.test.{ts,tsx}'],
+     environment: 'happy-dom',
++    passWithNoTests: false,
+     typecheck: { enabled: false },
+   },
+ });
+
+ exited 1 in 70840ms:
+Scope: all 19 workspace projects
+ WARN  GET https://registry.npmjs.org/react error (EAI_AGAIN). Will retry in 10 seconds. 2 retries left.
+ WARN  GET https://registry.npmjs.org/@testing-library%2Freact error (EAI_AGAIN). Will retry in 10 seconds. 2 retries left.
+ WARN  GET https://registry.npmjs.org/@types%2Freact-dom error (EAI_AGAIN). Will retry in 10 seconds. 2 retries left.
+ WARN  GET https://registry.npmjs.org/@types%2Freact error (EAI_AGAIN). Will retry in 10 seconds. 2 retries left.
+ WARN  GET https://registry.npmjs.org/happy-dom error (EAI_AGAIN). Will retry in 10 seconds. 2 retries left.
+ WARN  GET https://registry.npmjs.org/typescript error (EAI_AGAIN). Will retry in 10 seconds. 2 retries left.
+ WARN  GET https://registry.npmjs.org/react-dom error (EAI_AGAIN). Will retry in 10 seconds. 2 retries left.
+ WARN  GET https://registry.npmjs.org/vitest error (EAI_AGAIN). Will retry in 10 seconds. 2 retries left.
+ WARN  GET https://registry.npmjs.org/@tensorflow%2Ftfjs error (EAI_AGAIN). Will retry in 10 seconds. 2 retries left.
+ WARN  GET https://registry.npmjs.org/zod error (EAI_AGAIN). Will retry in 10 seconds. 2 retries left.
+Progress: resolved 0, reused 1, downloaded 0, added 0
+Progress: resolved 46, reused 46, downloaded 0, added 0
+ WARN  GET https://registry.npmjs.org/react error (EAI_AGAIN). Will retry in 1 minute. 1 retries left.
+ WARN  GET https://registry.npmjs.org/@testing-library%2Freact error (EAI_AGAIN). Will retry in 1 minute. 1 retries left.
+ WARN  GET https://registry.npmjs.org/@types%2Freact-dom error (EAI_AGAIN). Will retry in 1 minute. 1 retries left.
+ WARN  GET https://registry.npmjs.org/@types%2Freact error (EAI_AGAIN). Will retry in 1 minute. 1 retries left.
+ WARN  GET https://registry.npmjs.org/happy-dom error (EAI_AGAIN). Will retry in 1 minute. 1 retries left.
+ WARN  GET https://registry.npmjs.org/typescript error (EAI_AGAIN). Will retry in 1 minute. 1 retries left.
+ WARN  GET https://registry.npmjs.org/react-dom error (EAI_AGAIN). Will retry in 1 minute. 1 retries left.
+ WARN  GET https://registry.npmjs.org/vitest error (EAI_AGAIN). Will retry in 1 minute. 1 retries left.
+ WARN  GET https://registry.npmjs.org/@tensorflow%2Ftfjs error (EAI_AGAIN). Will retry in 1 minute. 1 retries left.
+ WARN  GET https://registry.npmjs.org/zod error (EAI_AGAIN). Will retry in 1 minute. 1 retries left.
+/home/weiyi/selfKnowledgeBaseWeb/packages/block-nn-viz:
+ ERR_PNPM_META_FETCH_FAIL  GET https://registry.npmjs.org/@tensorflow%2Ftfjs: request to https://registry.npmjs.org/@tensorflow%2Ftfjs failed, reason: getaddrinfo EAI_AGAIN registry.npmjs.org
+
+This error happened while installing a direct dependency of /home/weiyi/selfKnowledgeBaseWeb/packages/block-nn-viz
+ ERR_PNPM_META_FETCH_FAIL  GET https://registry.npmjs.org/@testing-library%2Freact: request to https://registry.npmjs.org/@testing-library%2Freact failed, reason: getaddrinfo EAI_AGAIN registry.npmjs.org
+ ERR_PNPM_META_FETCH_FAIL  GET https://registry.npmjs.org/@types%2Freact-dom: request to https://registry.npmjs.org/@types%2Freact-dom failed, reason: getaddrinfo EAI_AGAIN registry.npmjs.org
+ ERR_PNPM_META_FETCH_FAIL  GET https://registry.npmjs.org/@types%2Freact: request to https://registry.npmjs.org/@types%2Freact failed, reason: getaddrinfo EAI_AGAIN registry.npmjs.org
+
+codex
+I hit a network-restricted `pnpm install` failure (`EAI_AGAIN`), so I’ll still run the scoped `@skb/block-image` test/typecheck/lint/build to report what can be validated from the current workspace state.
+exec
+/bin/bash -lc 'pnpm --filter @skb/block-image test' in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc 'pnpm --filter @skb/block-image typecheck' in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc 'pnpm --filter @skb/block-image lint' in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc 'pnpm --filter @skb/block-image build' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 2316ms:
+
+> @skb/block-image@0.0.0 test /home/weiyi/selfKnowledgeBaseWeb/packages/block-image
+> vitest run
+
+
+ RUN  v4.1.5 /home/weiyi/selfKnowledgeBaseWeb/packages/block-image
+
+
+ Test Files  3 passed (3)
+      Tests  15 passed (15)
+   Start at  00:01:32
+   Duration  1.26s (transform 298ms, setup 0ms, import 1.00s, tests 85ms, environment 1.40s)
+
+
+ succeeded in 3205ms:
+
+> @skb/block-image@0.0.0 build /home/weiyi/selfKnowledgeBaseWeb/packages/block-image
+> tsc -b
+
+
+ succeeded in 3341ms:
+
+> @skb/block-image@0.0.0 typecheck /home/weiyi/selfKnowledgeBaseWeb/packages/block-image
+> tsc --noEmit
+
+
+diff --git a/packages/block-image/CONTRACT.md b/packages/block-image/CONTRACT.md
+index cf02c749a3dec4867c3765083068cf5b4057e992..68c7ae2c46b61b33dcf7cbb14b598a4bfd1d47db
+--- a/packages/block-image/CONTRACT.md
++++ b/packages/block-image/CONTRACT.md
+@@ -5,14 +5,19 @@
+ 
+ ## Public surface
+ 
+-两个 entry：
++四个 entry：
+ 
+-- `.` (root barrel) — re-export `./core`
++- `.` (root barrel) — re-export `./core` 与 `./ui-default`
+ - `./core` — headless 层
+   - `imageCore: BlockCoreDefinition<typeof propsSchema>` — name=`'image'` / kind=`'component'` / mdxComponent=`'Image'`
+   - `serializeImage(node) → mdxJsxFlowElement` — Tiptap → mdast
+   - `parseImage(mdast) → TiptapNode` — mdast → Tiptap
+   - 类型: `ImageTiptapNode` / `ImageMdastJsxElement`
++- `./ui-default` — UI 定义与渲染入口
++  - `imageUIDefault: BlockUIDefinition<typeof imageCore.propsSchema>` — default UI id = `'default'`
++  - `ImageEditorView(props)` / `ImageRenderView(props)` — 同步的图像语义渲染层
++  - `ImageBody(props)` — 输出 `<figure><img ...><figcaption>{alt}</figcaption></figure>`，固定 `loading="lazy"`
++- `./ui-default/image.css` — 样式入口（design-token 变量约束）
+ 
+ `propsSchema` 形状（见 `src/core/core-definition.ts`）:
+ 
+@@ -35,6 +40,19 @@
+ - **Serialize / parse hook 命名**: `serializeImage` / `parseImage`。
+ - **Headless 自给**: `core/` 不 import 任何 React / Tiptap UI 模块；仅依赖 `@skb/block-foundation` + `zod`。
+ - **Self-validating serialize/parse**: `serializeImage` 调 `propsSchema.parse(node.attrs)`；`parseImage` 调 `propsSchema.parse(rawProps)`。
++- **`imageUIDefault` 契约**: `uiId='default'` 且 `coreName='image'`，使用 `defineUI` 且可通过 `BlockRegistry.registerUI` 注入。
++- **语义 DOM 契约**: `ImageBody` 必须输出 `figure` 根节点并包含：
++  - `<img src, alt, loading="lazy", width?, height?>`
++  - `<figcaption>{alt}</figcaption>`
++  - `data-image-loading` 根属性用于 loading-state 挂钩（目前固定 lazy，为未来变体预留）
++- **图像尺寸契约**: `width`/`height` 在 props 缺省时不应硬编码 `img` 属性；当设置时保持数值透传（用于编辑与 SSR 形状一致性）。
++
++## Wave 2 / Wave 3 约束
++
++- Wave 2 scope（本次 C5b）:
++  - 简单语义图像区块：`<figure>` + `<img>` + `<figcaption>`
++- Wave 3 预留（invariant 兼容）:
++  - 图库 / lightbox / blurhash 预览路径；当前 `data-image-loading` 作为语义扩展锚点可承接下一态态变体
+ 
+ ## Wave 3 mdx-bridge 路由集成（pending）
+ 
+diff --git a/packages/block-image/package.json b/packages/block-image/package.json
+index adc4e6b02e6c500806cb76a3a130c58918a3841b..28318cd3649266846164f0cb70564dc65986f59a
+--- a/packages/block-image/package.json
++++ b/packages/block-image/package.json
+@@ -5,7 +5,9 @@
+   "type": "module",
+   "exports": {
+     ".": "./src/index.ts",
+-    "./core": "./src/core/index.ts"
++    "./core": "./src/core/index.ts",
++    "./ui-default": "./src/ui-default/index.ts",
++    "./ui-default/image.css": "./src/ui-default/image.css"
+   },
+   "scripts": {
+     "build": "tsc -b",
+@@ -15,6 +17,7 @@
+   },
+   "dependencies": {
+     "@skb/block-foundation": "workspace:*",
++    "@skb/design-tokens": "workspace:*",
+     "zod": "^3.23.0"
+   },
+   "peerDependencies": {
+@@ -22,6 +25,7 @@
+   },
+   "devDependencies": {
+     "@testing-library/react": "^16.0.0",
++    "@types/react-dom": "^18.3.0",
+     "@types/react": "^18.3.0",
+     "happy-dom": "^15.0.0",
+     "react": "^18.3.0",
+diff --git a/packages/block-image/src/__tests__/ui-default.test.tsx.disabled b/packages/block-image/src/__tests__/ui-default.test.tsx.disabled
+deleted file mode 100644
+index c6a607ff74121f7d06b7069e820ad1430b5a2404..0000000000000000000000000000000000000000
+--- a/packages/block-image/src/__tests__/ui-default.test.tsx.disabled
++++ /dev/null
+@@ -1,128 +0,0 @@
+-import { describe, it, expect } from 'vitest';
+-import { render } from '@testing-library/react';
+-import { BlockRegistry, type BlockUIDefinition } from '@skb/block-foundation';
+-import { imageCore } from '../core/core-definition';
+-import {
+-  imageUIDefault,
+-  ImageEditorView,
+-  ImageRenderView,
+-  VARIANT_TOKENS,
+-} from '../ui-default';
+-import type { Variant } from '../ui-default';
+-
+-const VARIANTS: readonly Variant[] = ['note', 'tip', 'warning', 'danger'];
+-
+-describe('imageUIDefault registration', () => {
+-  it('exposes the BlockUIDefinition shape with coreName + uiId="default"', () => {
+-    expect(imageUIDefault.coreName).toBe('image');
+-    expect(imageUIDefault.uiId).toBe('default');
+-    expect(imageUIDefault.EditorView).toBe(ImageEditorView);
+-    expect(imageUIDefault.RenderView).toBe(ImageRenderView);
+-  });
+-
+-  it('round-trips through BlockRegistry (registerCore + registerUI)', () => {
+-    const reg = new BlockRegistry();
+-    reg.registerCore(imageCore);
+-    reg.registerUI(imageUIDefault as unknown as BlockUIDefinition);
+-    expect(reg.getUI('image')).toBe(imageUIDefault);
+-    expect(reg.getUI('image', 'default')).toBe(imageUIDefault);
+-  });
+-});
+-
+-describe('ImageEditorView', () => {
+-  it('renders all 4 variants with distinct data-image-variant + role/aria-label', () => {
+-    for (const variant of VARIANTS) {
+-      const { container, unmount } = render(
+-        <ImageEditorView props={{ variant }} content="body" />,
+-      );
+-      const aside = container.querySelector('aside');
+-      expect(aside).not.toBeNull();
+-      expect(aside?.getAttribute('data-image-variant')).toBe(variant);
+-      expect(aside?.getAttribute('role')).toBe('note');
+-      expect(aside?.getAttribute('aria-label')).toBe(
+-        `${VARIANT_TOKENS[variant].label} image`,
+-      );
+-      // a11y: focusable for keyboard nav
+-      expect(aside?.getAttribute('tabindex')).toBe('0');
+-      unmount();
+-    }
+-  });
+-
+-  it('falls back to capitalized variant name when title is absent', () => {
+-    const { getByText, unmount } = render(
+-      <ImageEditorView props={{ variant: 'tip' }} content="hello" />,
+-    );
+-    expect(getByText('Tip')).not.toBeNull();
+-    unmount();
+-  });
+-
+-  it('renders explicit title when provided', () => {
+-    const { getByText, unmount } = render(
+-      <ImageEditorView
+-        props={{ variant: 'warning', title: 'Heads up!' }}
+-        content="careful"
+-      />,
+-    );
+-    expect(getByText('Heads up!')).not.toBeNull();
+-    unmount();
+-  });
+-
+-  it('shows empty placeholder when content is missing', () => {
+-    const { getByText, unmount } = render(
+-      <ImageEditorView props={{ variant: 'note' }} />,
+-    );
+-    expect(getByText('No content')).not.toBeNull();
+-    unmount();
+-  });
+-
+-  it('emits a unique data-image-variant per variant + a single icon glyph', () => {
+-    const seenVariants = new Set<string>();
+-    for (const variant of VARIANTS) {
+-      const { container, unmount } = render(
+-        <ImageEditorView props={{ variant }} content="x" />,
+-      );
+-      const aside = container.querySelector('aside');
+-      seenVariants.add(aside?.getAttribute('data-image-variant') ?? '');
+-      const svgs = aside?.querySelectorAll('svg') ?? [];
+-      expect(svgs.length).toBe(1);
+-      unmount();
+-    }
+-    expect(seenVariants.size).toBe(VARIANTS.length);
+-  });
+-});
+-
+-describe('ImageRenderView', () => {
+-  it('renders DOM structure matching EditorView for the same props (byte-equivalent class shape)', () => {
+-    const props = { variant: 'danger', title: 'Stop' } as const;
+-    const editor = render(<ImageEditorView props={props} content="body" />);
+-    const rendered = render(<ImageRenderView props={props} content="body" />);
+-    const editorAside = editor.container.querySelector('aside');
+-    const renderAside = rendered.container.querySelector('aside');
+-    expect(editorAside?.getAttribute('data-image-variant')).toBe(
+-      renderAside?.getAttribute('data-image-variant'),
+-    );
+-    expect(editorAside?.getAttribute('role')).toBe(
+-      renderAside?.getAttribute('role'),
+-    );
+-    expect(editorAside?.getAttribute('aria-label')).toBe(
+-      renderAside?.getAttribute('aria-label'),
+-    );
+-    // shared body subtree shape: same icon SVG count + same title content
+-    expect(editorAside?.querySelectorAll('svg').length).toBe(
+-      renderAside?.querySelectorAll('svg').length,
+-    );
+-    expect(
+-      editorAside?.querySelector('.skb-image-title')?.textContent,
+-    ).toBe(renderAside?.querySelector('.skb-image-title')?.textContent);
+-    editor.unmount();
+-    rendered.unmount();
+-  });
+-
+-  it('omits the empty-placeholder span when content is undefined (passive SSR mode)', () => {
+-    const { queryByText, unmount } = render(
+-      <ImageRenderView props={{ variant: 'note' }} />,
+-    );
+-    expect(queryByText('No content')).toBeNull();
+-    unmount();
+-  });
+-});
+diff --git a/packages/block-image/src/index.ts b/packages/block-image/src/index.ts
+index 4b0e041376276d8a80667f283051c4ef5294a440..ec660ceea15131c3d4aca60642e32a5ec613598d
+--- a/packages/block-image/src/index.ts
++++ b/packages/block-image/src/index.ts
+@@ -1 +1,2 @@
+ export * from './core';
++export * from './ui-default';
+diff --git a/packages/block-image/tsconfig.json b/packages/block-image/tsconfig.json
+index 080da760f9a4c64a2295b648f21062a0b9910466..b2e68f98773261250fca2f3e0da44f8f45ab3882
+--- a/packages/block-image/tsconfig.json
++++ b/packages/block-image/tsconfig.json
+@@ -7,6 +7,7 @@
+   },
+   "include": ["src/**/*", "vitest.config.ts"],
+   "references": [
+-    { "path": "../block-foundation" }
++    { "path": "../block-foundation" },
++    { "path": "../design-tokens" }
+   ]
+ }
+diff --git a/packages/block-image/vitest.config.ts b/packages/block-image/vitest.config.ts
+index 06d247df76bf91aed41a0129c201387f578d1e38..3d31e22e3196521c53c32ce24a1189d0cde23bb4
+--- a/packages/block-image/vitest.config.ts
++++ b/packages/block-image/vitest.config.ts
+@@ -4,6 +4,7 @@
+   test: {
+     include: ['src/**/*.test.{ts,tsx}'],
+     environment: 'happy-dom',
++    passWithNoTests: false,
+     typecheck: { enabled: false },
+   },
+ });
+
+ succeeded in 4361ms:
+
+> @skb/block-image@0.0.0 lint /home/weiyi/selfKnowledgeBaseWeb/packages/block-image
+> eslint .
+
+
+codex
+Implemented. C5b `block-image/ui-default` scaffold is now generated from the `block-callout` template with image-specific identifiers and semantic `<figure><img><figcaption>` rendering.
+
+What changed
+
+- Added UI-default entrypoint and components:
+  - [packages/block-image/src/ui-default/index.ts]( /home/weiyi/selfKnowledgeBaseWeb/packages/block-image/src/ui-default/index.ts)
+  - [packages/block-image/src/ui-default/ImageBody.tsx]( /home/weiyi/selfKnowledgeBaseWeb/packages/block-image/src/ui-default/ImageBody.tsx)
+  - [packages/block-image/src/ui-default/EditorView.tsx]( /home/weiyi/selfKnowledgeBaseWeb/packages/block-image/src/ui-default/EditorView.tsx)
+  - [packages/block-image/src/ui-default/RenderView.tsx]( /home/weiyi/selfKnowledgeBaseWeb/packages/block-image/src/ui-default/RenderView.tsx)
+  - [packages/block-image/src/ui-default/image.css]( /home/weiyi/selfKnowledgeBaseWeb/packages/block-image/src/ui-default/image.css)
+- Added image test suite:
+  - [packages/block-image/src/__tests__/ui-default.test.tsx]( /home/weiyi/selfKnowledgeBaseWeb/packages/block-image/src/__tests__/ui-default.test.tsx)
+  - Removed: [packages/block-image/src/__tests__/ui-default.test.tsx.disabled]( /home/weiyi/selfKnowledgeBaseWeb/packages/block-image/src/__tests__/ui-default.test.tsx.disabled)
+- Package/public surface updates:
+  - [packages/block-image/package.json]( /home/weiyi/selfKnowledgeBaseWeb/packages/block-image/package.json) (4 exports, `@skb/design-tokens`, `@types/react-dom`)
+  - [packages/block-image/src/index.ts]( /home/weiyi/selfKnowledgeBaseWeb/packages/block-image/src/index.ts) (re-export ui-default)
+  - [packages/block-image/tsconfig.json]( /home/weiyi/selfKnowledgeBaseWeb/packages/block-image/tsconfig.json) (design-tokens ref)
+  - [packages/block-image/vitest.config.ts]( /home/weiyi/selfKnowledgeBaseWeb/packages/block-image/vitest.config.ts)
+  - [packages/block-image/CONTRACT.md]( /home/weiyi/selfKnowledgeBaseWeb/packages/block-image/CONTRACT.md) (四个 entry + ui-default invariants + Wave 2/3 notes)
+
+Verification
+
+- `pnpm --filter @skb/block-image test`: PASS, 3 files / 15 tests.
+- `pnpm --filter @skb/block-image typecheck`: PASS
+- `pnpm --filter @skb/block-image lint`: PASS
+- `pnpm --filter @skb/block-image build`: PASS
+- `pnpm install`: blocked by environment DNS/network (`EAI_AGAIN`) and failed before completion.
+diff --git a/packages/block-image/CONTRACT.md b/packages/block-image/CONTRACT.md
+index cf02c749a3dec4867c3765083068cf5b4057e992..68c7ae2c46b61b33dcf7cbb14b598a4bfd1d47db
+--- a/packages/block-image/CONTRACT.md
++++ b/packages/block-image/CONTRACT.md
+@@ -5,14 +5,19 @@
+ 
+ ## Public surface
+ 
+-两个 entry：
++四个 entry：
+ 
+-- `.` (root barrel) — re-export `./core`
++- `.` (root barrel) — re-export `./core` 与 `./ui-default`
+ - `./core` — headless 层
+   - `imageCore: BlockCoreDefinition<typeof propsSchema>` — name=`'image'` / kind=`'component'` / mdxComponent=`'Image'`
+   - `serializeImage(node) → mdxJsxFlowElement` — Tiptap → mdast
+   - `parseImage(mdast) → TiptapNode` — mdast → Tiptap
+   - 类型: `ImageTiptapNode` / `ImageMdastJsxElement`
++- `./ui-default` — UI 定义与渲染入口
++  - `imageUIDefault: BlockUIDefinition<typeof imageCore.propsSchema>` — default UI id = `'default'`
++  - `ImageEditorView(props)` / `ImageRenderView(props)` — 同步的图像语义渲染层
++  - `ImageBody(props)` — 输出 `<figure><img ...><figcaption>{alt}</figcaption></figure>`，固定 `loading="lazy"`
++- `./ui-default/image.css` — 样式入口（design-token 变量约束）
+ 
+ `propsSchema` 形状（见 `src/core/core-definition.ts`）:
+ 
+@@ -35,6 +40,19 @@
+ - **Serialize / parse hook 命名**: `serializeImage` / `parseImage`。
+ - **Headless 自给**: `core/` 不 import 任何 React / Tiptap UI 模块；仅依赖 `@skb/block-foundation` + `zod`。
+ - **Self-validating serialize/parse**: `serializeImage` 调 `propsSchema.parse(node.attrs)`；`parseImage` 调 `propsSchema.parse(rawProps)`。
++- **`imageUIDefault` 契约**: `uiId='default'` 且 `coreName='image'`，使用 `defineUI` 且可通过 `BlockRegistry.registerUI` 注入。
++- **语义 DOM 契约**: `ImageBody` 必须输出 `figure` 根节点并包含：
++  - `<img src, alt, loading="lazy", width?, height?>`
++  - `<figcaption>{alt}</figcaption>`
++  - `data-image-loading` 根属性用于 loading-state 挂钩（目前固定 lazy，为未来变体预留）
++- **图像尺寸契约**: `width`/`height` 在 props 缺省时不应硬编码 `img` 属性；当设置时保持数值透传（用于编辑与 SSR 形状一致性）。
++
++## Wave 2 / Wave 3 约束
++
++- Wave 2 scope（本次 C5b）:
++  - 简单语义图像区块：`<figure>` + `<img>` + `<figcaption>`
++- Wave 3 预留（invariant 兼容）:
++  - 图库 / lightbox / blurhash 预览路径；当前 `data-image-loading` 作为语义扩展锚点可承接下一态态变体
+ 
+ ## Wave 3 mdx-bridge 路由集成（pending）
+ 
+diff --git a/packages/block-image/package.json b/packages/block-image/package.json
+index adc4e6b02e6c500806cb76a3a130c58918a3841b..28318cd3649266846164f0cb70564dc65986f59a
+--- a/packages/block-image/package.json
++++ b/packages/block-image/package.json
+@@ -5,7 +5,9 @@
+   "type": "module",
+   "exports": {
+     ".": "./src/index.ts",
+-    "./core": "./src/core/index.ts"
++    "./core": "./src/core/index.ts",
++    "./ui-default": "./src/ui-default/index.ts",
++    "./ui-default/image.css": "./src/ui-default/image.css"
+   },
+   "scripts": {
+     "build": "tsc -b",
+@@ -15,6 +17,7 @@
+   },
+   "dependencies": {
+     "@skb/block-foundation": "workspace:*",
++    "@skb/design-tokens": "workspace:*",
+     "zod": "^3.23.0"
+   },
+   "peerDependencies": {
+@@ -22,6 +25,7 @@
+   },
+   "devDependencies": {
+     "@testing-library/react": "^16.0.0",
++    "@types/react-dom": "^18.3.0",
+     "@types/react": "^18.3.0",
+     "happy-dom": "^15.0.0",
+     "react": "^18.3.0",
+diff --git a/packages/block-image/src/__tests__/ui-default.test.tsx.disabled b/packages/block-image/src/__tests__/ui-default.test.tsx.disabled
+deleted file mode 100644
+index c6a607ff74121f7d06b7069e820ad1430b5a2404..0000000000000000000000000000000000000000
+--- a/packages/block-image/src/__tests__/ui-default.test.tsx.disabled
++++ /dev/null
+@@ -1,128 +0,0 @@
+-import { describe, it, expect } from 'vitest';
+-import { render } from '@testing-library/react';
+-import { BlockRegistry, type BlockUIDefinition } from '@skb/block-foundation';
+-import { imageCore } from '../core/core-definition';
+-import {
+-  imageUIDefault,
+-  ImageEditorView,
+-  ImageRenderView,
+-  VARIANT_TOKENS,
+-} from '../ui-default';
+-import type { Variant } from '../ui-default';
+-
+-const VARIANTS: readonly Variant[] = ['note', 'tip', 'warning', 'danger'];
+-
+-describe('imageUIDefault registration', () => {
+-  it('exposes the BlockUIDefinition shape with coreName + uiId="default"', () => {
+-    expect(imageUIDefault.coreName).toBe('image');
+-    expect(imageUIDefault.uiId).toBe('default');
+-    expect(imageUIDefault.EditorView).toBe(ImageEditorView);
+-    expect(imageUIDefault.RenderView).toBe(ImageRenderView);
+-  });
+-
+-  it('round-trips through BlockRegistry (registerCore + registerUI)', () => {
+-    const reg = new BlockRegistry();
+-    reg.registerCore(imageCore);
+-    reg.registerUI(imageUIDefault as unknown as BlockUIDefinition);
+-    expect(reg.getUI('image')).toBe(imageUIDefault);
+-    expect(reg.getUI('image', 'default')).toBe(imageUIDefault);
+-  });
+-});
+-
+-describe('ImageEditorView', () => {
+-  it('renders all 4 variants with distinct data-image-variant + role/aria-label', () => {
+-    for (const variant of VARIANTS) {
+-      const { container, unmount } = render(
+-        <ImageEditorView props={{ variant }} content="body" />,
+-      );
+-      const aside = container.querySelector('aside');
+-      expect(aside).not.toBeNull();
+-      expect(aside?.getAttribute('data-image-variant')).toBe(variant);
+-      expect(aside?.getAttribute('role')).toBe('note');
+-      expect(aside?.getAttribute('aria-label')).toBe(
+-        `${VARIANT_TOKENS[variant].label} image`,
+-      );
+-      // a11y: focusable for keyboard nav
+-      expect(aside?.getAttribute('tabindex')).toBe('0');
+-      unmount();
+-    }
+-  });
+-
+-  it('falls back to capitalized variant name when title is absent', () => {
+-    const { getByText, unmount } = render(
+-      <ImageEditorView props={{ variant: 'tip' }} content="hello" />,
+-    );
+-    expect(getByText('Tip')).not.toBeNull();
+-    unmount();
+-  });
+-
+-  it('renders explicit title when provided', () => {
+-    const { getByText, unmount } = render(
+-      <ImageEditorView
+-        props={{ variant: 'warning', title: 'Heads up!' }}
+-        content="careful"
+-      />,
+-    );
+-    expect(getByText('Heads up!')).not.toBeNull();
+-    unmount();
+-  });
+-
+-  it('shows empty placeholder when content is missing', () => {
+-    const { getByText, unmount } = render(
+-      <ImageEditorView props={{ variant: 'note' }} />,
+-    );
+-    expect(getByText('No content')).not.toBeNull();
+-    unmount();
+-  });
+-
+-  it('emits a unique data-image-variant per variant + a single icon glyph', () => {
+-    const seenVariants = new Set<string>();
+-    for (const variant of VARIANTS) {
+-      const { container, unmount } = render(
+-        <ImageEditorView props={{ variant }} content="x" />,
+-      );
+-      const aside = container.querySelector('aside');
+-      seenVariants.add(aside?.getAttribute('data-image-variant') ?? '');
+-      const svgs = aside?.querySelectorAll('svg') ?? [];
+-      expect(svgs.length).toBe(1);
+-      unmount();
+-    }
+-    expect(seenVariants.size).toBe(VARIANTS.length);
+-  });
+-});
+-
+-describe('ImageRenderView', () => {
+-  it('renders DOM structure matching EditorView for the same props (byte-equivalent class shape)', () => {
+-    const props = { variant: 'danger', title: 'Stop' } as const;
+-    const editor = render(<ImageEditorView props={props} content="body" />);
+-    const rendered = render(<ImageRenderView props={props} content="body" />);
+-    const editorAside = editor.container.querySelector('aside');
+-    const renderAside = rendered.container.querySelector('aside');
+-    expect(editorAside?.getAttribute('data-image-variant')).toBe(
+-      renderAside?.getAttribute('data-image-variant'),
+-    );
+-    expect(editorAside?.getAttribute('role')).toBe(
+-      renderAside?.getAttribute('role'),
+-    );
+-    expect(editorAside?.getAttribute('aria-label')).toBe(
+-      renderAside?.getAttribute('aria-label'),
+-    );
+-    // shared body subtree shape: same icon SVG count + same title content
+-    expect(editorAside?.querySelectorAll('svg').length).toBe(
+-      renderAside?.querySelectorAll('svg').length,
+-    );
+-    expect(
+-      editorAside?.querySelector('.skb-image-title')?.textContent,
+-    ).toBe(renderAside?.querySelector('.skb-image-title')?.textContent);
+-    editor.unmount();
+-    rendered.unmount();
+-  });
+-
+-  it('omits the empty-placeholder span when content is undefined (passive SSR mode)', () => {
+-    const { queryByText, unmount } = render(
+-      <ImageRenderView props={{ variant: 'note' }} />,
+-    );
+-    expect(queryByText('No content')).toBeNull();
+-    unmount();
+-  });
+-});
+diff --git a/packages/block-image/src/index.ts b/packages/block-image/src/index.ts
+index 4b0e041376276d8a80667f283051c4ef5294a440..ec660ceea15131c3d4aca60642e32a5ec613598d
+--- a/packages/block-image/src/index.ts
++++ b/packages/block-image/src/index.ts
+@@ -1 +1,2 @@
+ export * from './core';
++export * from './ui-default';
+diff --git a/packages/block-image/tsconfig.json b/packages/block-image/tsconfig.json
+index 080da760f9a4c64a2295b648f21062a0b9910466..b2e68f98773261250fca2f3e0da44f8f45ab3882
+--- a/packages/block-image/tsconfig.json
++++ b/packages/block-image/tsconfig.json
+@@ -7,6 +7,7 @@
+   },
+   "include": ["src/**/*", "vitest.config.ts"],
+   "references": [
+-    { "path": "../block-foundation" }
++    { "path": "../block-foundation" },
++    { "path": "../design-tokens" }
+   ]
+ }
+diff --git a/packages/block-image/vitest.config.ts b/packages/block-image/vitest.config.ts
+index 06d247df76bf91aed41a0129c201387f578d1e38..3d31e22e3196521c53c32ce24a1189d0cde23bb4
+--- a/packages/block-image/vitest.config.ts
++++ b/packages/block-image/vitest.config.ts
+@@ -4,6 +4,7 @@
+   test: {
+     include: ['src/**/*.test.{ts,tsx}'],
+     environment: 'happy-dom',
++    passWithNoTests: false,
+     typecheck: { enabled: false },
+   },
+ });
+
+2026-05-01T04:01:39.082928Z ERROR codex_core::session: failed to record rollout items: thread 019de1b1-36d4-7122-bf9e-fff4afc11fb5 not found
+tokens used
+55,978
+Implemented. C5b `block-image/ui-default` scaffold is now generated from the `block-callout` template with image-specific identifiers and semantic `<figure><img><figcaption>` rendering.
+
+What changed
+
+- Added UI-default entrypoint and components:
+  - [packages/block-image/src/ui-default/index.ts]( /home/weiyi/selfKnowledgeBaseWeb/packages/block-image/src/ui-default/index.ts)
+  - [packages/block-image/src/ui-default/ImageBody.tsx]( /home/weiyi/selfKnowledgeBaseWeb/packages/block-image/src/ui-default/ImageBody.tsx)
+  - [packages/block-image/src/ui-default/EditorView.tsx]( /home/weiyi/selfKnowledgeBaseWeb/packages/block-image/src/ui-default/EditorView.tsx)
+  - [packages/block-image/src/ui-default/RenderView.tsx]( /home/weiyi/selfKnowledgeBaseWeb/packages/block-image/src/ui-default/RenderView.tsx)
+  - [packages/block-image/src/ui-default/image.css]( /home/weiyi/selfKnowledgeBaseWeb/packages/block-image/src/ui-default/image.css)
+- Added image test suite:
+  - [packages/block-image/src/__tests__/ui-default.test.tsx]( /home/weiyi/selfKnowledgeBaseWeb/packages/block-image/src/__tests__/ui-default.test.tsx)
+  - Removed: [packages/block-image/src/__tests__/ui-default.test.tsx.disabled]( /home/weiyi/selfKnowledgeBaseWeb/packages/block-image/src/__tests__/ui-default.test.tsx.disabled)
+- Package/public surface updates:
+  - [packages/block-image/package.json]( /home/weiyi/selfKnowledgeBaseWeb/packages/block-image/package.json) (4 exports, `@skb/design-tokens`, `@types/react-dom`)
+  - [packages/block-image/src/index.ts]( /home/weiyi/selfKnowledgeBaseWeb/packages/block-image/src/index.ts) (re-export ui-default)
+  - [packages/block-image/tsconfig.json]( /home/weiyi/selfKnowledgeBaseWeb/packages/block-image/tsconfig.json) (design-tokens ref)
+  - [packages/block-image/vitest.config.ts]( /home/weiyi/selfKnowledgeBaseWeb/packages/block-image/vitest.config.ts)
+  - [packages/block-image/CONTRACT.md]( /home/weiyi/selfKnowledgeBaseWeb/packages/block-image/CONTRACT.md) (四个 entry + ui-default invariants + Wave 2/3 notes)
+
+Verification
+
+- `pnpm --filter @skb/block-image test`: PASS, 3 files / 15 tests.
+- `pnpm --filter @skb/block-image typecheck`: PASS
+- `pnpm --filter @skb/block-image lint`: PASS
+- `pnpm --filter @skb/block-image build`: PASS
+- `pnpm install`: blocked by environment DNS/network (`EAI_AGAIN`) and failed before completion.
