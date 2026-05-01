@@ -31,11 +31,15 @@ const HARD_RULES = `## Hard rules
 2. **Cross-file references**: every doc/code change must keep doc cross-references and
    contract files in sync (\`packages/*/CONTRACT.md\`, \`agent-contract.md\`).
 3. **Lychee link-check**: broken markdown links block merge. Run \`pnpm link-check\` locally.
-4. **\`pnpm check\` is mandatory before requesting review** (lint + typecheck + test + build + size).
-5. **No direct git from workers**: only \`git-operator\` may commit / branch / rebase / push.
-6. **No web access from workers**: only \`researcher\` may \`web_search\` / \`web_fetch\`.
-7. **No cross-package moves from workers**: only \`refactorer\` may reorganize packages,
-   and every reorganization requires an ADR under \`docs/decisions/\`.
+4. **\`pnpm check\` is mandatory before review** (lint + typecheck + test + build + size).
+5. **Git mutation discipline (ADR-0011 D1+D4)**: \`git commit / branch / rebase / push\`
+   only at D1 stage 5 (reviewer codex commit phase) or by orchestrator self for bootstrap
+   scope. Subagents (pr-writer / ux-ui-lead / refactorer / researcher) never run mutating
+   git commands.
+6. **Web access discipline (ADR-0011 D7)**: only the \`researcher\` Claude subagent (one-shot
+   per dispatch) may run \`web_search\` / \`web_fetch\`.
+7. **Cross-package moves (ADR-0011 D7)**: only the \`refactorer\` Claude subagent may
+   reorganize packages, and every reorganization requires an ADR under \`docs/decisions/\`.
 `;
 
 const COMMANDS_TABLE = mdTable(
@@ -54,32 +58,49 @@ const COMMANDS_TABLE = mdTable(
 
 const COMMANDS = `## Commands cheat-sheet\n\n${COMMANDS_TABLE}\n`;
 
-const WORKFLOW = `## Review workflow (spec §3.2 + ADR-0007 D2)
+const WORKFLOW = `## Review workflow (ADR-0011 D1 linear pipeline; supersedes Wave 1+2 tree workflow)
+
+Per PR (PRs run strictly serial; the next PR's PLAN waits for the previous PR's ACCEPT):
 
 \`\`\`
-worker (writes code)
-   │
-   ▼
-[Bash] codex exec --profile code-reviewer  (Codex 5.3-spark, line-level rigor, cheap default)
-   │
-   ├── if high-risk (D2 rows 1/2/4/8) → [Bash] codex exec --profile pr-gate  (Codex 5.5, deep scan)
-   │
-   ▼
-pr-reviewer    (Claude, selective per ADR-0007 D2; spec match + regression + arch consistency)
-   │
-   ▼
-git-operator   (Claude, only authorized git surface, runs \`pnpm check\` once more)
+1. PLAN              pr-writer Claude subagent ↔ orchestrator → lock PR.md (D2 schema)
+       │
+       ▼
+2. EXECUTE           codex \`generic-executor\` (or specialized scaffolder; or
+                     \`ux-ui-lead\` Claude subagent for UI/UX). TDD-front:
+                     write tests → write impl → vitest all PASS.
+       │
+       ▼
+3. REVIEW            codex \`codex-pr-reviewer-55\` (5.5) — line-level + spec-match.
+                     ADR-0006 8-point checklist mandatory. PASS → next stage.
+       │
+       ├── (D2 row 1+4 hit) → 4. PRE-COMMIT CLAUDE REVIEW   orchestrator self.
+       │                          Mitigates same-model echo chamber.
+       │
+       ▼
+5. COMMIT (+ push)   reviewer codex commits. Per ADR-0006 D8 explicit-file-list
+                     staging (\`git reset HEAD\` → \`git add <list>\` →
+                     \`git diff --cached --stat\` verify → \`git commit\`).
+       │
+       ▼
+6. ACCEPT            pr-writer Claude subagent (second invocation): verify the
+                     PR's diff actually meets PR.md's \`acceptance:\` block.
 \`\`\`
 
-High-risk triggers per ADR-0007 D2 (4 rows +pr-gate +pr-reviewer, 4 rows +pr-reviewer only):
-- **+pr-gate +pr-reviewer** (D2 rows 1/2/4/8): contract change, package add/remove, new ADR required, CI/deploy/auth/security touch.
-- **+pr-reviewer only, skip pr-gate** (D2 rows 3/5/6/7): spec/agent-contract/ADR edit, delete/rename package, cross ≥3 packages, performance-auditor flagged.
+D2 trigger judgment (ADR-0007 D2 rows; locked by orchestrator at PLAN):
+- **D1 stage 4 PRE-COMMIT CLAUDE REVIEW fires** on D2 rows 1+4 (contract change OR new
+  ADR required). Other rows skip this stage but still go through codex review.
+- **High-risk classes** (rows 2 package add/remove, row 8 CI/deploy/auth/security) also
+  receive heightened reviewer scrutiny within stage 3 — ADR-0006 D8 staging discipline +
+  ADR-0006 8-point checklist 8th-class hunt.
 
-See [ADR-0007 D2](docs/decisions/ADR-0007-job-function-codex-heavy-execution.md).
+See [ADR-0011](docs/decisions/ADR-0011-linear-pipeline-execution-model.md) D1-D8 +
+[ADR-0007 D2](docs/decisions/ADR-0007-job-function-codex-heavy-execution.md).
 
-Codex tools (code-reviewer / pr-gate / plan-challenger / 5 scaffolders) are
-[orchestrator-direct Bash invocations](docs/runbooks/codex-tool-invocations.md) post ADR-0007 D5,
-not teammate spawns.
+Codex tools (11 patterns: 5 scaffolders + plan-challenger + codex-pr-reviewer-55 +
+4 audit/exec profiles) are
+[orchestrator-direct Bash invocations](docs/runbooks/codex-tool-invocations.md) post
+ADR-0007 D5 + ADR-0011 D6.
 `;
 
 function tierBadge(tier: Agent['tier']): string {

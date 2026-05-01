@@ -24,43 +24,87 @@ describe('parseAgentContract', () => {
     expect(result.tool_patterns[0]?.name).toBe('bar');
   });
 
-  it('parses the real agent-contract.md (20 teammates + 8 tool_patterns)', () => {
+  it('parses the real agent-contract.md post ADR-0011 (5 teammates + 11 tool_patterns)', () => {
     const real = readFileSync('agent-contract.md', 'utf8');
     const result = parseAgentContract(real);
-    expect(result.agents).toHaveLength(20);
-    expect(result.tool_patterns).toHaveLength(8);
+    expect(result.agents).toHaveLength(5);
+    expect(result.tool_patterns).toHaveLength(11);
     expect(result.agents.find((a) => a.name === 'orchestrator')?.tier).toBe(0);
-    expect(result.agents.find((a) => a.name === 'ux-ui-lead')?.tier).toBe(1);
-    expect(result.tool_patterns.find((tp) => tp.name === 'pr-gate')?.profile).toBe('pr-gate');
+    expect(result.agents.find((a) => a.name === 'ux-ui-lead')?.tier).toBe(2);
+    expect(result.agents.find((a) => a.name === 'pr-writer')?.tier).toBe(2);
+    expect(result.tool_patterns.find((tp) => tp.name === 'codex-pr-reviewer-55')?.profile).toBe(
+      'codex-pr-reviewer-55',
+    );
     expect(result.tool_patterns.find((tp) => tp.name === 'codex-block-generator')?.profile).toBe(
       'scaffolder',
     );
-    expect(result.agents.find((a) => a.name === 'researcher')?.permissions).toContain('web_search');
-    expect(result.agents.find((a) => a.name === 'git-operator')?.permissions).toContain(
-      'git_commit',
+    expect(result.tool_patterns.find((tp) => tp.name === 'codex-generic-executor')?.profile).toBe(
+      'generic-executor',
     );
+    expect(result.agents.find((a) => a.name === 'researcher')?.permissions).toContain('web_search');
   });
 
-  it('moved 8 codex agents (5 scaffolder + 3 review) to tool_patterns; agents are pure Claude', () => {
+  it('Tier 1 long-term workers retired (ADR-0011 D3); Tier 3 audits codex-ized (D5); git-operator absorbed (D4)', () => {
     const real = readFileSync('agent-contract.md', 'utf8');
     const result = parseAgentContract(real);
     for (const a of result.agents) {
       expect(a.llm).toBe('claude');
     }
-    const codexNames = [
+    // Retired Tier 1 workers no longer present as agents
+    const retiredWorkers = [
+      'api-builder',
+      'block-foundation-eng',
+      'simple-block-eng',
+      'render-block-eng',
+      'viz-block-eng',
+      'editor-eng',
+      'editor-integrator',
+      'kernel-architect',
+      'kernel-pyodide-eng',
+      'mdx-bridge-eng',
+    ];
+    for (const name of retiredWorkers) {
+      expect(result.agents.find((a) => a.name === name)).toBeUndefined();
+    }
+    // git-operator + pr-reviewer absorbed; structure-auditor / performance-auditor / mdx-doctor / link-checker codex-ized
+    const retiredProcessAndAudit = [
+      'git-operator',
+      'pr-reviewer',
+      'structure-auditor',
+      'performance-auditor',
+      'mdx-doctor',
+      'link-checker',
+    ];
+    for (const name of retiredProcessAndAudit) {
+      expect(result.agents.find((a) => a.name === name)).toBeUndefined();
+    }
+    // Surviving agents = exactly 5 (orchestrator + 4 subagents)
+    const survivors = ['orchestrator', 'pr-writer', 'ux-ui-lead', 'refactorer', 'researcher'];
+    for (const name of survivors) {
+      expect(result.agents.find((a) => a.name === name)).toBeDefined();
+    }
+    // 8 codex tool_patterns from ADR-0007 D5 carried over (5 scaffolders + plan-challenger),
+    // plus codex-pr-reviewer-55 (replaces pr-gate), plus 4 NEW (generic-executor / structure-auditor / perf-auditor / mdx-doctor) = 11.
+    const toolNames = [
       'codex-block-generator',
       'codex-test-scaffolder',
       'codex-script-builder',
       'codex-api-crud-builder',
       'codex-css-stylist',
-      'code-reviewer',
-      'pr-gate',
       'plan-challenger',
+      'codex-pr-reviewer-55',
+      'codex-generic-executor',
+      'codex-structure-auditor',
+      'codex-perf-auditor',
+      'codex-mdx-doctor',
     ];
-    for (const name of codexNames) {
+    for (const name of toolNames) {
       expect(result.agents.find((a) => a.name === name)).toBeUndefined();
       expect(result.tool_patterns.find((tp) => tp.name === name)).toBeDefined();
     }
+    // Wave 2 deprecated profiles no longer present as tool_patterns
+    expect(result.tool_patterns.find((tp) => tp.name === 'code-reviewer')).toBeUndefined();
+    expect(result.tool_patterns.find((tp) => tp.name === 'pr-gate')).toBeUndefined();
   });
 
   it('rejects YAML blocks where any agent name uses placeholder syntax <...>', () => {
@@ -160,32 +204,32 @@ describe('renderClaudeAgent', () => {
 });
 
 describe('renderClaudeMd', () => {
-  it('contains generation banner, teammate count, and all teammate names', () => {
+  it('contains generation banner, teammate count (5 post ADR-0011), and all teammate names', () => {
     const contract = realContract();
     const out = renderClaudeMd(contract);
     expect(out).toContain('GENERATED FROM agent-contract.md');
-    expect(out).toContain('Claude teammates (20)');
+    expect(out).toContain('Claude teammates (5)');
     for (const agent of contract.agents) {
       expect(out).toContain(agent.name);
     }
   });
 
-  it('contains tool_patterns table with all 8 patterns linked to runbook', () => {
+  it('contains tool_patterns table with all 11 patterns linked to runbook', () => {
     const contract = realContract();
     const out = renderClaudeMd(contract);
-    expect(out).toContain('Codex tool patterns (8)');
+    expect(out).toContain('Codex tool patterns (11)');
     expect(out).toContain('docs/runbooks/codex-tool-invocations.md');
     for (const tp of contract.tool_patterns) {
       expect(out).toContain(tp.name);
     }
   });
 
-  it('does NOT list codex agents in the teammate roster', () => {
+  it('does NOT list codex tool_patterns in the teammate roster', () => {
     const contract = realContract();
     const out = renderClaudeMd(contract);
     const teammateSection = out.split('## Claude teammates')[1]?.split('## Codex tool')[0] ?? '';
-    expect(teammateSection).not.toContain('| `code-reviewer` |');
-    expect(teammateSection).not.toContain('| `pr-gate` |');
+    expect(teammateSection).not.toContain('| `codex-pr-reviewer-55` |');
+    expect(teammateSection).not.toContain('| `codex-generic-executor` |');
     expect(teammateSection).not.toContain('| `plan-challenger` |');
   });
 });
@@ -205,7 +249,7 @@ describe('renderAgentsMd', () => {
   it('lists tool_patterns count + cross-link to runbook', () => {
     const contract = realContract();
     const out = renderAgentsMd(contract);
-    expect(out).toContain('Tool patterns (8)');
+    expect(out).toContain('Tool patterns (11)');
     expect(out).toContain('docs/runbooks/codex-tool-invocations.md');
   });
 });
@@ -259,20 +303,29 @@ describe('renderSettingsJson', () => {
 });
 
 describe('renderCodexProfilesToml', () => {
-  it('contains all 4 profile sections', () => {
+  it('contains all 7 profile sections post ADR-0011 D6', () => {
     const out = renderCodexProfilesToml();
     expect(out).toContain('[profiles.scaffolder]');
-    expect(out).toContain('[profiles.code-reviewer]');
-    expect(out).toContain('[profiles.pr-gate]');
     expect(out).toContain('[profiles.plan-challenger]');
+    expect(out).toContain('[profiles.codex-pr-reviewer-55]');
+    expect(out).toContain('[profiles.generic-executor]');
+    expect(out).toContain('[profiles.structure-auditor]');
+    expect(out).toContain('[profiles.perf-auditor]');
+    expect(out).toContain('[profiles.mdx-doctor]');
     expect(out).toContain('model = "gpt-5.3-codex-spark"');
     expect(out).toContain('model = "gpt-5.5"');
+  });
+
+  it('Wave 2 deprecated profiles (code-reviewer / pr-gate) removed from generated TOML', () => {
+    const out = renderCodexProfilesToml();
+    expect(out).not.toContain('[profiles.code-reviewer]');
+    expect(out).not.toContain('[profiles.pr-gate]');
   });
 
   it('every profile sets approval_policy = "never" (orchestrator-driven)', () => {
     const out = renderCodexProfilesToml();
     const profileSections = out.split(/\n\[profiles\./).slice(1);
-    expect(profileSections).toHaveLength(4);
+    expect(profileSections).toHaveLength(7);
     for (const section of profileSections) {
       expect(section).toContain('approval_policy = "never"');
       expect(section).not.toContain('approval_policy = "on-request"');
@@ -281,13 +334,13 @@ describe('renderCodexProfilesToml', () => {
 });
 
 describe('renderReviewChecklist', () => {
-  it('contains all three reviewer sections + spec §3.2 link', () => {
+  it('contains the unified codex-pr-reviewer-55 section + Claude pre-commit section + ADR-0011 references', () => {
     const out = renderReviewChecklist();
     expect(out).toContain('GENERATED FROM agent-contract.md');
-    expect(out).toContain('## For code-reviewer');
-    expect(out).toContain('## For pr-gate');
-    expect(out).toContain('## For pr-reviewer');
-    expect(out).toContain('spec §3.2');
+    expect(out).toContain('## For `codex-pr-reviewer-55`');
+    expect(out).toContain('## For Claude pre-commit review');
+    expect(out).toContain('ADR-0011');
+    expect(out).toContain('ADR-0006');
   });
 });
 

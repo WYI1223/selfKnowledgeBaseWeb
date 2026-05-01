@@ -4,20 +4,27 @@
 >
 > Edit `agent-contract.md` then run `pnpm generate:configs`.
 
-This is the shared rubric for the review chain. Each section maps to one reviewer agent.
+Shared rubric for the ADR-0011 D1 linear pipeline review stage 3 (codex-pr-reviewer-55)
+and stage 4 (orchestrator self pre-commit Claude review on D2 row 1+4 hits).
 
 ## Common invariants (every reviewer must verify)
 
-- [ ] **No worker-side `git` mutating commands.** PRs containing `git commit` / `git push` / `git rebase` outside `git-operator` dispatches are rejected.
-- [ ] **No worker-side `web_search` / `web_fetch`.** External web access must be sourced via researcher dispatch.
-- [ ] **No cross-package moves outside `refactorer`.** Moves under `packages/*` or `apps/*` boundaries require an ADR + refactorer dispatch.
+- [ ] **Git mutation discipline (ADR-0011 D1+D4)**: `git commit / branch / rebase / push`
+      appears only at D1 stage 5 (reviewer codex commit phase) or in orchestrator-self
+      bootstrap scope. PRs with mutating git from any other source are rejected.
+- [ ] **No subagent-side `web_search` / `web_fetch`**: only the `researcher` Claude
+      subagent may source external info.
+- [ ] **No cross-package moves outside `refactorer`**: moves under `packages/*` or
+      `apps/*` boundaries require an ADR + `refactorer` Claude subagent dispatch.
 - [ ] **File size**: warn at 300 (ESLint), hard fail at 500 (`pnpm size-check`).
 - [ ] **Cross-references**: all internal markdown links resolve (`pnpm link-check`).
 - [ ] **Contracts in sync**: `packages/*/CONTRACT.md`, `agent-contract.md`, and code interfaces match.
+- [ ] **PR.md `test_cases:` non-empty** (ADR-0011 D2): TDD-front; executor self-ran vitest all PASS before review.
+- [ ] **PR.md `acceptance:` block satisfied**: every listed item observable in the diff.
 
-Spec: §3.1 + §3.2 + §3.6 + §3.5.
+Spec: §3.1 + §3.2 + §3.6 + §3.5. ADR-0011 D1+D2.
 
-## ADR-0006 asymmetry-audit checklist (mandatory for code-reviewer + pr-gate)
+## ADR-0006 asymmetry-audit checklist (mandatory for codex-pr-reviewer-55)
 
 Apply each item that is in scope for the PR; explicitly skip items that are not (e.g. item #2 "status code" doesn't apply to TS-only packages). Reviewer verdict structure MUST include `asymmetry-audit applied: items {1..8} verdicts: ...`. See [ADR-0006](decisions/ADR-0006-asymmetry-audit-checklist.md) for empirical evidence + full rationale per item.
 
@@ -30,11 +37,12 @@ Apply each item that is in scope for the PR; explicitly skip items that are not 
 - [ ] **#7 Exception-scope equivalence audit**: When replicating an algorithm + its exception handling, audit BOTH happy-path semantics AND `try/catch` scope between authority and replica; narrow vs wide try/catch can produce divergent fall-through behavior.
 - [ ] **#8 Authority-document → generated/consumed surface audit**: When updating an authority document (ADR, spec, `agent-contract.md`, runbook, CONVENTIONS) that mandates downstream behavior, audit every consumer-side replica/generated artifact in the same commit; regenerate codegen outputs (`pnpm generate:configs`); cross-link runbooks; embed in subagent prompts.
 
-`pr-gate` MUST additionally hunt for an 8th-class instance beyond the cited fix (Wave 1 evidence: pr-gate caught one extra asymmetry per round on every Wave 1 high-risk PR).
+`codex-pr-reviewer-55` MUST additionally hunt for an 8th-class instance beyond the cited fix (Wave 1+2 evidence: 5.5-deep review caught one extra asymmetry per round on every high-risk PR).
 
-## For code-reviewer (Codex 5.3-spark)
+## For `codex-pr-reviewer-55` (Codex 5.5, D1 stage 3 default reviewer)
 
-Default cheap line-level review. Output PASS / FAIL with concrete issues.
+Unified reviewer profile post ADR-0011 D6 (replaces Wave 2's `code-reviewer` 5.3-spark
++ `pr-gate` 5.5 split). Output PASS / FAIL with concrete issues.
 
 - [ ] **Types**: no `any` leakage; `unknown` narrowed at boundaries; `pnpm exec tsc -b` clean.
 - [ ] **Lint**: `pnpm exec eslint .` produces no errors (warnings tolerated).
@@ -44,12 +52,6 @@ Default cheap line-level review. Output PASS / FAIL with concrete issues.
 - [ ] **Module boundaries**: imports respect package boundaries (no reaching into another
       package's `src/internal/`); no circular deps introduced.
 - [ ] **Style**: prettier-clean; no commented-out blocks; no leftover `console.log`.
-
-## For pr-gate (Codex 5.5, high-risk only)
-
-Triggered by: contract change, package add/remove, core arch touch, ADR-required PR,
-CI/deploy/auth/security touch. Deep scan.
-
 - [ ] **Vulnerabilities**: no obvious injection / XSS / SSRF / deserialization sinks; secrets
       never read from request bodies; HTTP responses don't leak internal state.
 - [ ] **Cross-package side effects**: changes to one package don't silently break another
@@ -61,9 +63,11 @@ CI/deploy/auth/security touch. Deep scan.
 - [ ] **Auth / boundary**: no permission expanded silently (e.g. router exposing previously
       private route); CSRF / SameSite still enforced; no `eval` / `Function` constructor.
 
-## For pr-reviewer (Claude)
+## For Claude pre-commit review (orchestrator self, D1 stage 4)
 
-Implementation quality, regression risk, spec match. Output APPROVE / REJECT + reasoning.
+Triggered only when ADR-0007 D2 row 1 (contract change) OR row 4 (new ADR required) hits.
+Mitigates same-model echo chamber when stages 2+3 are both codex 5.5. Output APPROVE /
+REJECT + reasoning.
 
 - [ ] **Spec compliance**: implementation matches the locked design spec (cite section).
 - [ ] **Regression risk**: existing tests still cover the affected paths; no behavior change
@@ -74,6 +78,8 @@ Implementation quality, regression risk, spec match. Output APPROVE / REJECT + r
       regenerate; `CONTRACT.md` ↔ implementation; `docs/plans/` reflects status).
 - [ ] **Tests**: `vitest` / `pytest` coverage for new behavior; no flaky timing-dependent
       assertions.
+- [ ] **PR.md `acceptance:` block** (ADR-0011 D2): every item observable in the diff;
+      no scope creep beyond `files:` whitelist.
 
 ## Related
 

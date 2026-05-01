@@ -5,42 +5,57 @@
 > 修改本文件后必须运行 `pnpm generate:configs` 同步派生：
 >
 > - `CLAUDE.md` / `AGENTS.md`
-> - `.claude/agents/*.md` × 20（仅 Claude teammate；ADR-0007 D5 起 codex 为 tool patterns）
+> - `.claude/agents/*.md`（仅 Claude teammate；ADR-0007 D5 起 codex 为 tool patterns；
+>   ADR-0011 D3 起长期 Claude session 收敛到 1）
 > - `.claude/settings.json`
 > - `~/.codex/config.toml` profile 段
 > - `docs/review-checklist.md`
-> - `docs/runbooks/codex-tool-invocations.md`（ADR-0007 D5 新增；8 个 tool_patterns 的 canonical bash + 触发条件）
+> - `docs/runbooks/codex-tool-invocations.md`
 >
 > CI 检查：跑生成器后若仓库有 diff，CI fail。
 >
-> **ADR-0007 D5 拆分**：`agents:` 段只列 Claude **teammate**（持续 context）；`tool_patterns:` 段列 codex **invocation pattern**（每次 stateless Bash 调用，由 orchestrator 直接执行）。
+> **ADR-0011 D-list 重构（Wave 3+ 默认）**：
+>
+> - D3 — 11 个 Tier 1 长期 worker 全部退役；orchestrator 是唯一长期 Claude session
+> - D4 — git-operator 吸收进 D1 stage 5（reviewer codex commit phase）；pr-reviewer
+>   = orchestrator self
+> - D5 — Tier 3 audit 全部 codex 化（structure-auditor / performance-auditor /
+>   mdx-doctor → codex profile；link-checker → CI gate）
+> - D6 — 11 codex profile 目录：5 scaffolders 沿用 + plan-challenger 沿用 +
+>   codex-pr-reviewer-55（替代 pr-gate；D1 stage 3 默认 reviewer） + 4 NEW
+>   （codex-generic-executor / codex-structure-auditor / codex-perf-auditor /
+>   codex-mdx-doctor）；老 `code-reviewer` (5.3-spark) 因 WE-007 deprecated
+> - D7 — 4 个 Claude subagent（pr-writer NEW + ux-ui-lead 降级 + refactorer 沿用
+>   + researcher 沿用），全部 one-shot per dispatch
+>
+> **agents:** 段只列 Claude **teammate / subagent**；**tool_patterns:** 段列 codex
+> **invocation pattern**（每次 stateless Bash 调用，由 orchestrator 直接执行）。
 
 ## Schema
 
 ```yaml
 metadata:
-  version: 1
-  total_teammates: 20
-  total_tool_patterns: 8
+  version: 2
+  total_teammates: 5
+  total_tool_patterns: 11
   generated_at: <填生成时间>
 
 agents:
   - name: <kebab-case>
-    tier: 0 | 1 | 2 | 3
+    tier: 0 | 2     # ADR-0011 后只有 0 (Orchestrator) 与 2 (Subagent) 有 entry；
+                    #          1 (Worker) 与 3 (Audit) 保留 schema 槽位但留空
     llm: claude
     role: <one-liner>
     permissions: <list of capability strings>
     forbidden: <list, optional>
-    triggers: <list, optional, for audit/process agents>
+    triggers: <list, optional, for subagent dispatch conditions>
     description: |
       <multi-line description used in .claude/agents/<name>.md>
 
 tool_patterns:
-  # NOTE: pr-gate.triggered_by entries MUST carry inline `# ADR-0007 D2 row N`
-  # annotations (rows 1/2/4/8 are the pr-gate triggers per D2 carve-out).
-  # See follow-up² PR 932a919 for the rationale.
   - name: <pattern-id>
-    profile: scaffolder | code-reviewer | pr-gate | plan-challenger
+    profile: scaffolder | plan-challenger | codex-pr-reviewer-55
+           | generic-executor | structure-auditor | perf-auditor | mdx-doctor
     invocation: <bash template, e.g. "codex exec --profile X < /dev/null">
     triggered_by: <list of orchestrator-side trigger conditions>
     output_handling: <how orchestrator parses / stores stdout, optional>
@@ -52,252 +67,161 @@ tool_patterns:
 
 ```yaml
 metadata:
-  version: 1
-  total_teammates: 20
-  total_tool_patterns: 8
+  version: 2
+  total_teammates: 5
+  total_tool_patterns: 11
 
 agents:
-  # ====== TIER 0：Orchestrator ======
+  # ====== TIER 0：Orchestrator (sole long-term Claude session per ADR-0011 D3) ======
   - name: orchestrator
     tier: 0
     llm: claude
-    role: 整体规划 + dispatch 工种 + 维护 docs/plans/
-    permissions: [read_repo, write_plans, dispatch_agents, dispatch_codex_tools]
-    forbidden: [edit_code, git_commit]
-    description: |
-      你是 SelfKnowledgeBaseWeb 项目的主脑。你的工作是：
-      1. 接收用户高层目标，拆成 wave / track / task
-      2. 把每个 task 静态分配给具体 agent（标注 LLM 与 profile）
-      3. dispatch agent 后，接收完工通知，触发 review
-      4. 维护 docs/plans/（活跃 wave 标在 active.md）
-      5. **ADR-0007 D5 起**：8 个 codex tool_patterns（code-reviewer / pr-gate / plan-challenger /
-         codex-block-generator / codex-test-scaffolder / codex-script-builder /
-         codex-api-crud-builder / codex-css-stylist）由你直接通过 Bash 调用
-         （`codex exec --profile X < /dev/null`），不再以 teammate 形式存在。
-         详见 docs/runbooks/codex-tool-invocations.md。
-      你**永不修改代码**。如需调研，dispatch researcher。如需挑战自己的 plan，调 plan-challenger tool。
-
-  # ====== TIER 1：Claude Workers (11) ======
-  - name: block-foundation-eng
-    tier: 1
-    llm: claude
-    role: 维护 block-foundation 与 content-types 包
+    role: 整体规划 + dispatch 工种 + 维护 docs/plans/ + D1 pipeline 协调
     permissions:
-      [read_repo, edit_packages_blocks_foundation, edit_packages_content_types, write_tests]
+      [
+        read_repo,
+        write_plans,
+        dispatch_subagents,
+        dispatch_codex_tools,
+        git_commit_bootstrap_only,
+      ]
+    forbidden: [edit_code_outside_bootstrap]
     description: |
-      你负责 packages/block-foundation 与 packages/content-types。
-      block-foundation 是 BlockRegistry 接口 + Prose blocks（StarterKit 包装）。
-      content-types 是跨前后端共享的 Zod schema。
-      改动接口必须同步更新 packages/block-foundation/CONTRACT.md。
+      你是 SelfKnowledgeBaseWeb 项目唯一的长期 Claude session（ADR-0011 D3）。
+      职责：
+      1. 接收用户高层目标，按 ADR-0011 D1 linear pipeline 拆成 PR 序列
+         （每 PR ≤ 200 LOC + ≤ 1 narrow responsibility；PR 之间严格串行）
+      2. 每 PR 走 6 stage：PLAN → EXECUTE → REVIEW → [D2 row 1+4 时 PRE-COMMIT
+         CLAUDE REVIEW] → COMMIT → ACCEPT
+      3. PLAN/ACCEPT dispatch `pr-writer` Claude subagent；EXECUTE 默认 dispatch
+         `codex-generic-executor` tool（UI/UX 工作走 `ux-ui-lead` Claude subagent）；
+         REVIEW dispatch `codex-pr-reviewer-55` tool；PRE-COMMIT CLAUDE REVIEW
+         由你自己跑（同一 session）
+      4. COMMIT stage 由 reviewer codex 兼任（per D1 stage 5）；orchestrator 仅
+         在 bootstrap 例外（D-list 自身改动）时 commit
+      5. 维护 docs/plans/active.md（每 PR 串行进度）+ docs/plans/wave-N/PR-X.md
+         （ADR-0011 D2 schema：title / files / test_cases / contracts_affected /
+         adr_touched / acceptance / executor）
+      6. 监控 ADR-0011 D8 指标：长期 Claude session ≤ 1；每 PR Claude touch ≤ 3；
+         forward-fix rate ≤ 15%；WE-001/009/011 类 hazard 零复发
+      7. 跨包改动 dispatch `refactorer` Claude subagent；外网调研 dispatch
+         `researcher` Claude subagent（per D7，全部 one-shot）
+      你**永不修改代码**（bootstrap 例外见 D1 描述）。如需调研，dispatch researcher。
+      如需挑战自己的 plan，调 plan-challenger codex tool。
 
-  - name: simple-block-eng
-    tier: 1
-    llm: claude
-    role: 写 simple block 模板（block-callout 等）
-    permissions: [read_repo, edit_packages_block_simple, write_tests]
-    description: |
-      你为 block-callout / block-code / block-image 写**模板**实现（即第一个的 block-callout，
-      其余由 codex-block-generator 仿造）。
-      实现包含：EditorView (Tiptap NodeView) / RenderView (Astro) / MdxSerialize / MdxParse / Schema (Zod)。
+  # ====== TIER 1: 退役（ADR-0011 D3，11 个长期 Claude worker 全部转 codex profile） ======
+  # 历史 Tier 1 worker 名单与新形态映射（参考；不再渲染为 .claude/agents/*.md）：
+  #   api-builder            → codex-api-crud-builder profile（已存在）
+  #   block-foundation-eng   → codex-generic-executor + codex-block-generator
+  #   simple-block-eng       → codex-block-generator（template + clone 模式）
+  #   render-block-eng       → codex-generic-executor
+  #   viz-block-eng          → codex-generic-executor
+  #   editor-eng             → codex-generic-executor
+  #   editor-integrator      → codex-generic-executor + ux-ui-lead subagent
+  #   kernel-architect       → codex-generic-executor
+  #   kernel-pyodide-eng     → codex-generic-executor
+  #   mdx-bridge-eng         → codex-generic-executor
+  #   ux-ui-lead             → 降级为 Claude subagent（见 Tier 2）
 
-  - name: render-block-eng
-    tier: 1
+  # ====== TIER 2：Subagents (4 — one-shot Claude per dispatch, ADR-0011 D7) ======
+  - name: pr-writer
+    tier: 2
     llm: claude
-    role: 写 math / pdf 的 block 实现
-    permissions: [read_repo, edit_packages_block_render, write_tests]
+    role: PR.md 起草（PLAN 调）+ ACCEPT 验收（COMMIT 后调）
+    triggers: [pr_plan_dispatch, pr_accept_dispatch]
+    permissions: [read_repo, read_specs, write_plans, read_diff]
+    forbidden: [edit_code, git_commit, dispatch_codex_tools]
     description: |
-      你负责 block-math（KaTeX）与 block-pdf（iframe + 浏览器原生 PDF viewer，
-      build-time 文本提取走 scripts/extract-pdf-text.ts）。
-      block-pdf 复杂度高，独立 hand-craft，不让 codex 仿造。
+      ADR-0011 D7 NEW Claude subagent，每 PR 调用 2 次。
 
-  - name: viz-block-eng
-    tier: 1
-    llm: claude
-    role: 写可视化 block 实现 (jupyter / nn-viz / agent-flow)
-    permissions: [read_repo, edit_packages_block_viz, write_tests]
-    description: |
-      你负责 block-jupyter (JupyterLite 嵌入) / block-nn-viz (TensorFlow.js) / block-agent-flow (React Flow)。
-      每个独立 hand-craft；jupyter block 多实例独立 kernel session。
+      **Dispatch 1：PLAN stage（D1 stage 1）**
+      orchestrator 在 PR 启动时 dispatch 你写 PR.md，schema 见 ADR-0011 D2：
+      - `title`: 一句话目标
+      - `files`: 改动文件白名单（超出 = scope creep）
+      - `test_cases`: TDD 必填非空（input / expected / location 三元组）
+      - `contracts_affected`: 触发 ADR-0007 D2 判定时填
+      - `adr_touched`: 触发 D2 row 4 时填
+      - `acceptance`: reviewer 与 ACCEPT stage 用此核对的验收点
+      - `executor`: codex profile / Claude subagent 名（D1 stage 2 调度依据）
 
-  - name: mdx-bridge-eng
-    tier: 1
-    llm: claude
-    role: 维护 mdx-bridge 双向转换
-    permissions: [read_repo, edit_packages_mdx_bridge, write_tests]
-    description: |
-      你维护 packages/mdx-bridge：MDX ↔ Tiptap doc 双向转换。
-      RTT (round-trip test) 是这个包的核心质量门 —— 任何 block 变更都跑全部 RTT fixture。
-      改动序列化格式必须更新 mdx-bridge/CONTRACT.md。
+      你**不**改代码、不调 codex tool。完工后 SendMessage orchestrator 锁定 PR.md。
+      orchestrator 与你迭代 0-2 轮后 lock，进 stage 2。
 
-  - name: kernel-architect
-    tier: 1
-    llm: claude
-    role: 设计 KernelAdapter 接口与 KernelRegistry
-    permissions:
-      [read_repo, edit_packages_kernel_adapter, edit_packages_kernel_registry, write_tests]
-    description: |
-      你负责 kernel-adapter（接口 + 类型，永远稳定）与 kernel-registry（运行时路由）。
-      接口改动是高风险事件，必须 ADR。
-
-  - name: kernel-pyodide-eng
-    tier: 1
-    llm: claude
-    role: 实现 PyodideAdapter
-    permissions: [read_repo, edit_packages_kernel_pyodide, write_tests]
-    description: |
-      你实现 packages/kernel-pyodide：基于 Pyodide 的浏览器内 Python 内核。
-      必须实现 KernelAdapter 接口，能跑 NumPy/Pandas/Matplotlib。
-
-  - name: editor-eng
-    tier: 1
-    llm: claude
-    role: 写 editor-commands 命令模式与 editor-shell
-    permissions: [read_repo, edit_packages_editor_commands, edit_packages_editor_shell, write_tests]
-    description: |
-      你负责 packages/editor-commands（命令模式根基）与 packages/editor-shell（Tiptap 容器）。
-      命令模式是 agent 集成的基石（spec §2.6）—— 所有编辑器变更必经此层，禁止直接调 Tiptap mutator。
-
-  - name: editor-integrator
-    tier: 1
-    llm: claude
-    role: 把 editor 子模块集成到 site
-    permissions: [read_repo, edit_packages_editor_subs, edit_apps_site, write_tests]
-    description: |
-      你负责 editor-slash-menu / editor-drag-handle / editor-toolbar 三个子模块，
-      并把 editor-shell 接入 apps/site 的编辑器入口。
+      **Dispatch 2：ACCEPT stage（D1 stage 6）**
+      在 reviewer 完成 commit + push 后，orchestrator 二次 dispatch 你做 ACCEPT 核对：
+      读 PR.md `acceptance:` 块 → 拉 diff → 逐条核对是否落实。
+      输出 ACCEPT / REJECT-with-residue。residue 列表回流 orchestrator 决定 follow-up。
 
   - name: ux-ui-lead
-    tier: 1
+    tier: 2
     llm: claude
-    role: 视觉单一权威 — 横跨 ui-default + apps/site + editor 子模块
-    permissions: [read_repo, edit_ui_default, edit_apps_site]
-    forbidden: [edit_block_core, edit_propsschema, edit_mdx_serialize, git_commit, dispatch_codex_tools]
-    triggers: [wave_2_first_block, wave_2_apps_site_polish, wave_2_editor_submodules]
+    role: 视觉单一权威 — 横跨 ui-default + apps/site + editor 子模块（仅 UI/UX PR 触发）
+    triggers: [ui_ux_pr_dispatch]
+    permissions: [read_repo, edit_ui_default, edit_apps_site, write_tests]
+    forbidden:
+      [edit_block_core, edit_propsschema, edit_mdx_serialize, git_commit, dispatch_codex_tools]
     description: |
-      你是 SelfKnowledgeBaseWeb 的 UX/UI 单一权威。横跨 8 个 block 的
-      ui-default、apps/site 视觉、editor 子模块视觉（ADR-0007 D1）。
+      ADR-0011 D7 from Wave 1+2 Tier 1 long-term worker → 降级 Claude subagent。
+      仅在 UI/UX 工作 PR（PR.md `executor: ux-ui-lead`）触发 dispatch。
 
-      你的职责：
-      1. 写第一个 ui-default（block-callout/ui-default/）作 template
+      你的职责（继承 Wave 1+2 形态，不变）：
+      1. 写第一个 ui-default（block-callout/ui-default/ 已 done；后续新 block 同 mode）
       2. 把视觉决策固化到 packages/design-tokens/CONTRACT.md 的"消费方使用规范"段
-      3. 审 codex-block-generator 仿造的其余 7 个 ui-default 视觉一致性
-         （审视觉一致；逻辑/schema 仍由 mdx-doctor / domain 工种审）
-      4. 同 mode 处理 editor 三子模块（slash-menu / drag-handle / toolbar）：
-         editor-eng 写一个 template，codex-block-generator clone 余两个，你审视觉
-      5. 应用三个设计 skill：frontend-design / ui-ux-pro-max-skill / web-design-guidelines
-         （spawn 时一次性注入全部三个，思考顺序仍是 frontend-design → ui-ux-pro-max → vercel-review）
+      3. 审 codex-block-generator 仿造的其余 ui-default 视觉一致性
+         （审视觉一致；逻辑/schema 由 codex-pr-reviewer-55 + codex-mdx-doctor 审）
+      4. editor 三子模块（slash-menu / drag-handle / toolbar）类似处理
+      5. 应用三个设计 skill：frontend-design / ui-ux-pro-max / web-design-guidelines
+         （spawn 时一次性注入全部三个，思考顺序仍是
+         frontend-design → ui-ux-pro-max → vercel-review）
 
-      你**不**改 core 层（propsSchema / MDX serialize 是 domain 工种的活）。
-      你**不**调 codex（dispatch 由 orchestrator 集中调度；你 SendMessage orchestrator
-      请求 codex-block-generator clone）。
-
-  - name: api-builder
-    tier: 1
-    llm: claude
-    role: 写 apps/api FastAPI 后端
-    permissions: [read_repo, edit_apps_api, write_tests]
-    description: |
-      你负责 apps/api：auth + 文件 CRUD + git ops + WS endpoint stub + LLMProvider interface。
-      Phase 1 的 4 个必建项之一是 LLMProvider 抽象 —— 接口冻结，实现可 Phase 2b 完成。
-      CRUD endpoint 骨架可 dispatch 给 codex-api-crud-builder。
-
-  # ====== TIER 2：Process (4) — Claude only post ADR-0007 D5 ======
-  # 3 codex Tier 2 (plan-challenger / code-reviewer / pr-gate) 已迁出至 tool_patterns
-  - name: pr-reviewer
-    tier: 2
-    llm: claude
-    role: 实现质量 + 降级风险 + 规格匹配 review
-    triggers: [code_reviewer_passes]
-    permissions: [read_repo, read_diff, read_specs]
-    description: |
-      你做高层 review：实现是否符合 spec / 是否引入回归 / 架构一致性 / 跨文件影响。
-      输出 APPROVE / REJECT + reasoning。**绝不修改代码**。
-
-  - name: git-operator
-    tier: 2
-    llm: claude
-    role: 唯一 git 操作权
-    triggers: [pr_reviewer_approves]
-    permissions: [git_commit, git_branch, git_rebase, git_push]
-    forbidden: [edit_code]
-    description: |
-      你是唯一被授权 git 操作（commit / branch / rebase / push）的 agent。
-      绝不修改代码。要求所有应跑的 review 都 pass 才执行 commit。
-      Push 前必须再跑一次 `pnpm check` 本地验证。
+      你**不**改 core 层（propsSchema / MDX serialize 是 codex-generic-executor 的活）。
+      你**不**调 codex（dispatch 由 orchestrator 集中调度）。
+      你 SendMessage orchestrator 请求 codex-block-generator clone。
 
   - name: refactorer
     tier: 2
     llm: claude
-    role: 唯一跨包重组权
-    triggers: [structure_auditor_flags, manual_dispatch]
+    role: 唯一跨包重组权（ADR-0011 D7 沿用，按需 one-shot dispatch）
+    triggers: [codex_structure_auditor_flags, manual_dispatch]
     permissions: [read_repo, edit_any_package, write_adr]
     description: |
       你是唯一被授权跨包重组（移文件 / 重命名包 / 拆合并）的 agent。
       每次重组必产 docs/decisions/ADR-NNNN-<topic>.md。
       用 scripts/refactor-move.ts 做机械改动。
 
+      ADR-0011 D7 注：本 subagent 形态 Wave 1+2 已 one-shot；本 ADR 仅显式编入 D7。
+      触发频率预期 ~1-3 次/wave。
+
   - name: researcher
     tier: 2
     llm: claude
-    role: 唯一外网访问权
-    triggers: [other_agent_requests_research]
+    role: 唯一外网访问权（ADR-0011 D7 沿用，按需 one-shot dispatch）
+    triggers: [other_agent_requests_research, manual_dispatch]
     permissions: [read_repo, web_search, web_fetch]
     description: |
       你是唯一被授权 WebSearch / WebFetch 的 agent。
       其他 agent 有调研需求必须 dispatch 给你。
       产出 docs/research/<topic>-YYYY-MM-DD.md，含来源链接 + 时效说明。
 
-  # ====== TIER 3：Audit (4) ======
-  - name: structure-auditor
-    tier: 3
-    llm: claude
-    role: 月度结构审计
-    triggers: [monthly, manual]
-    permissions: [read_repo]
-    description: |
-      每月扫全仓产 docs/audits/structure-YYYY-MM.md：
-      - 候选 god-file（接近或超过 500 行）
-      - 契约漂移（CONTRACT.md 与实际接口不一致）
-      - 孤儿包 / 死代码
-      候选重构由 refactorer 接手。
+      ADR-0011 D7 注：本 subagent 形态 Wave 1+2 已 one-shot；本 ADR 仅显式编入 D7。
+      触发频率预期 ~0-1 次/wave。
 
-  - name: performance-auditor
-    tier: 3
-    llm: claude
-    role: 性能基线 + 回归侦测
-    triggers: [every_n_pr, weekly, manual]
-    permissions: [read_repo, run_lighthouse, run_playwright]
-    description: |
-      跑 Lighthouse CI / size-limit / Astro --analyze / Playwright traces，
-      产 docs/audits/perf-YYYY-MM-DD.md。
-      若 baseline 比上次差 > 20%，开 issue 阻断新功能直到修复。
+  # ====== TIER 3: 退役（ADR-0011 D5，全部 codex 化） ======
+  # 历史 Tier 3 audit 名单与新形态映射（参考；不再渲染为 .claude/agents/*.md）：
+  #   structure-auditor      → codex-structure-auditor profile（每 PR + Wave-close）
+  #   performance-auditor    → codex-perf-auditor profile（bundle-affecting + Wave-close）
+  #   mdx-doctor             → codex-mdx-doctor profile（mdx-bridge / block-* PR + Wave-close）
+  #   link-checker           → CI gate（lychee 配置已就位 .lychee.toml；每 push 跑）
 
-  - name: mdx-doctor
-    tier: 3
-    llm: claude
-    role: MDX round-trip 健康守护
-    triggers: [pr_touches_mdx_bridge_or_blocks]
-    permissions: [read_repo, run_tests]
-    description: |
-      PR 触碰 mdx-bridge 或任何 block 时自动触发。
-      跑全部 RTT fixture。失败 → 阻断所有 block PR。
-
-  - name: link-checker
-    tier: 3
-    llm: claude
-    role: markdown 链接检查
-    triggers: [ci_every_push]
-    permissions: [read_repo, run_lychee]
-    description: |
-      CI 每次 push 跑 lychee 扫全仓 markdown 短链。
-      broken / dead 阻断 merge。
-
-# ====== Tool patterns (8) — orchestrator-direct codex invocation, ADR-0007 D5 ======
-# 这些是 stateless Bash 调用，由 orchestrator 直接执行；不再以 teammate 形式存在。
+# ====== Tool patterns (11) — orchestrator-direct codex invocation ======
+# ADR-0007 D5 + ADR-0011 D6 共 11 profile（5 scaffolders 沿用 + plan-challenger 沿用
+# + codex-pr-reviewer-55 替代 pr-gate + 4 NEW Wave 3 audit/exec）。
+# Wave 2 的 `code-reviewer` (5.3-spark) profile 因 WE-007 (spark PASS != lint clean)
+# 和 codex 5.5 review 性价比追平，已 deprecated；不再在本表中。
 # 详细 canonical bash + 错误处理见 docs/runbooks/codex-tool-invocations.md（生成产物）。
 
 tool_patterns:
-  # ---- Tier 1 scaffolding tools (5) ----
+  # ---- Tier 1 scaffolding tools (5 — ADR-0007 D5 沿用) ----
   - name: codex-block-generator
     profile: scaffolder
     invocation: 'codex exec --profile scaffolder < /dev/null'
@@ -307,7 +231,7 @@ tool_patterns:
       - ui_default_template_committed
     output_handling: |
       orchestrator 读 stdout 拿创建文件清单 + git diff；
-      stdout 落盘到 docs/audits/codex-runs/<date>-<task>-block-clone.txt（ADR-0007 §208 audit-trail 兜底）。
+      stdout 落盘到 docs/audits/codex-runs/<date>-<task>-block-clone.txt。
     description: |
       在 simple-block-eng / ux-ui-lead / editor-eng 提交 template 后，按模板仿造其余 block / submodule。
       ADR-0007 D3 试点：ui-default 8 个由 ux-ui-lead 写 1 个 + 本 tool clone 7 个；
@@ -340,6 +264,7 @@ tool_patterns:
     description: |
       写 scripts/refactor-move.ts / scripts/new-block.ts / scripts/extract-pdf-text.ts 等工具。
       要求 CLI 风格、有 --help、有错误处理、用 commander 或 yargs。
+      WE-007 强制：codex-script-builder 输出后 orchestrator 必跑 pnpm lint 独立验证（spark PASS != lint clean）。
 
   - name: codex-api-crud-builder
     profile: scaffolder
@@ -350,8 +275,8 @@ tool_patterns:
       orchestrator 读 stdout 拿创建路由清单；
       stdout 落盘到 docs/audits/codex-runs/<date>-<task>-api-crud.txt。
     description: |
-      在 apps/api 按 RESTful 风格生成 CRUD 端点骨架（Pydantic schema + 路由），
-      与 api-builder 协作。复杂业务逻辑由 api-builder 写。
+      在 apps/api 按 RESTful 风格生成 CRUD 端点骨架（Pydantic schema + 路由）。
+      复杂业务逻辑由 orchestrator 协调 codex-generic-executor 实现。
 
   - name: codex-css-stylist
     profile: scaffolder
@@ -365,54 +290,9 @@ tool_patterns:
     description: |
       写 packages/design-tokens / packages/ui 的 design tokens（颜色 / 间距 / 字体）+
       各 component 的 Tailwind 类组合。Phase 2b 设计 skill 流水线启动后，
-      本 pattern 归入 ux-ui-lead 调度（lead 写 + 本 tool clone）。
+      本 pattern 归入 ux-ui-lead（subagent）调度（lead 写 + 本 tool clone）。
 
-  # ---- Tier 2 review/process tools (3) ----
-  - name: code-reviewer
-    profile: code-reviewer
-    invocation: 'codex exec --profile code-reviewer < /dev/null'
-    triggered_by:
-      - worker_marks_ready_for_review
-    output_handling: |
-      orchestrator 读 stdout 解析 PASS/FAIL + 问题清单；
-      stdout 落盘到 docs/audits/codex-runs/<date>-<task>-code-review.txt（audit 兜底）。
-    description: |
-      行级 review：类型 / lint / 契约同步 / 文件大小 / 风格 / 边界条件。
-      gpt-5.3-codex-spark（廉价默认）。**绝不修改代码**。
-      高风险 PR 按 ADR-0007 D2 表条件 escalate（rows 1/2/4/8 → +pr-gate +pr-reviewer；rows 3/5/6/7 → 仅 +pr-reviewer，不跑 pr-gate）。
-
-      **强制：ADR-0006 8-point asymmetry-audit checklist**（见 `docs/decisions/ADR-0006-asymmetry-audit-checklist.md`）必须按可适用项目逐条审查，verdict 结构应包含
-      `asymmetry-audit applied: items {1..8} verdicts: ...`。8 项概要：
-      (1) 字段/属性新增 → 审 comparator/序列化；
-      (2) 状态码新增 → 审同 status 的所有 handler（RFC 7235 等强制头）；
-      (3) `.strict()` 加于一层 → 审所有嵌套 ZodObject；
-      (4) single-authority schema → 审所有 consumer 是否复刻定义；
-      (5) 算法 + 运行时常量复刻 → 审 consumer 端字节等价 + 注册回归测试；
-      (6) 一份 CONTRACT.md 改动 → 审 sister CONTRACT.md 是否同步；
-      (7) try/catch 范围 → narrow vs wide 在 happy-path 等价时仍可异常分流；
-      (8) authority 文档（ADR/agent-contract/runbook/CONVENTIONS）改动 → 审 generated/consumed surface（`.claude/agents/*`、`docs/review-checklist.md`、`team-operations.md`、`docs/runbooks/codex-tool-invocations.md`、Codex profiles、**pnpm-lock.yaml**）是否在同一 commit 里同步（commit `e15ec36` 教训：lockfile 也属 generated-from-authority artifact）。
-
-  - name: pr-gate
-    profile: pr-gate
-    invocation: 'codex exec --profile pr-gate < /dev/null'
-    triggered_by:
-      - contract_change                            # ADR-0007 D2 row 1
-      - package_add_remove                         # ADR-0007 D2 row 2
-      - adr_required                               # ADR-0007 D2 row 4
-      - ci_or_deploy_or_auth_or_security_touch     # ADR-0007 D2 row 8
-    output_handling: |
-      orchestrator 读 stdout 解析 PASS/FAIL + 8th-class hunt 结果；
-      stdout 落盘到 docs/audits/codex-runs/<date>-<task>-pr-gate.txt。
-    description: |
-      仅对**高风险 PR 中需 pr-gate 的那 4 类**启用。深度审查：漏洞 / 隐性破坏 / 跨包影响。
-      gpt-5.5（贵但严谨）。**绝不修改代码**。
-      触发条件由 orchestrator 在 review 阶段判断（ADR-0007 D2 表 8 行）：
-      rows 1/2/4/8（CONTRACT 变化 / 新增删除包 / 新 ADR / CI-auth-security）→ 启用；
-      rows 3/5/6/7（spec/ADR 文档 / 删除重命名包 / 跨 3+包 / perf-auditor 标记）→ 跳过 pr-gate，直入 pr-reviewer。
-
-      **强制：ADR-0006 8-point asymmetry-audit checklist**（见 `docs/decisions/ADR-0006-asymmetry-audit-checklist.md`）— 你是这项规则的主要执行者，必须独立验证所有可适用项目（不仅依赖 code-reviewer 的 R1 结论），并主动 hunt 8th-class beyond the cited fix。verdict 结构应包含
-      `asymmetry-audit applied: items {1..8} verdicts: ...` 与（如适用）`8th-class hunt: <findings>`。8 项即 code-reviewer profile 中的 8 项；本 profile 在所有项上都比 code-reviewer 更严苛。
-
+  # ---- plan-challenger (ADR-0007 D5 沿用) ----
   - name: plan-challenger
     profile: plan-challenger
     invocation: 'codex exec --profile plan-challenger < /dev/null'
@@ -420,16 +300,167 @@ tool_patterns:
       - orchestrator_publishes_plan
     output_handling: |
       orchestrator 读 stdout 拿建议清单（不阻塞）；
-      stdout 落盘到 docs/audits/codex-runs/<date>-<task>-plan-challenge.txt。
+      stdout 落盘到 .codex-runs/<wave>-plan-challenge.txt 或
+      docs/audits/codex-runs/<date>-<task>-plan-challenge.txt。
     description: |
-      lock 前挑战 orchestrator 的 wave / track plan：检查 task 大小、可测性、边界场景。
-      orchestrator 写完 wave / track plan 后，**lock 前**通过此 invocation 挑战：
-      1. 每个 task 是否 PR-sized（1-2 commit 内可完成）？
-      2. 是否可测试（验收标准明确）？
+      lock 前挑战 orchestrator 的 wave / track / PR plan：检查 task 大小、可测性、边界场景。
+      orchestrator 写完 plan 后，**lock 前**通过此 invocation 挑战：
+      1. 每个 PR 是否 ≤ 200 LOC + ≤ 1 narrow responsibility（ADR-0011 D2）？
+      2. 是否可测试（test_cases 字段非空且 input/expected/location 三元组完整）？
       3. 是否缺边界条件 / 异常场景？
+      4. 高风险触发判定是否准确（D2 row 1+4 应否触发 D1 stage 4）？
       输出建议清单（不阻塞），orchestrator 决定吸收哪些。
-      ADR-0007 D5 注：原 Tier 2 codex teammate 降级为 tool；本质即一次性 dispatch
-      （ADR-0004 D7 早已如此），与 tool 模型一致。
+      ADR-0011 D-list 起此 tool 还用于 PR-level plan-draft（不仅 wave-level）。
+
+  # ---- codex-pr-reviewer-55 (ADR-0011 D6 升级原 pr-gate；D1 stage 3 默认 reviewer) ----
+  - name: codex-pr-reviewer-55
+    profile: codex-pr-reviewer-55
+    invocation: 'codex exec --profile codex-pr-reviewer-55 < /dev/null'
+    triggered_by:
+      - executor_marks_ready_for_review                                 # 每 PR 默认
+      - high_risk_d2_row_1_contract_change                              # 强制深扫
+      - high_risk_d2_row_2_package_add_remove
+      - high_risk_d2_row_4_adr_required
+      - high_risk_d2_row_8_ci_or_deploy_or_auth_or_security_touch
+    output_handling: |
+      orchestrator 读 stdout 解析 PASS/FAIL + 问题清单 + 8th-class hunt 结果；
+      stdout 落盘到 .codex-runs/<wave>/PR-<n>-pr-reviewer.txt 或
+      docs/audits/codex-runs/<date>-<task>-pr-reviewer-55.txt。
+    description: |
+      ADR-0011 D1 stage 3 默认 reviewer。replaces Wave 1+2 的 pr-gate（5.5）+
+      code-reviewer（5.3-spark）双层链路。gpt-5.5（贵但严谨）。**绝不修改代码**。
+
+      执行内容：
+      - 行级 review（类型 / lint / 契约同步 / 文件大小 / 风格 / 边界条件）
+      - 漏洞扫（injection / XSS / SSRF / 反序列化 sink / secret leak）
+      - 跨包影响（block-foundation / mdx-bridge / kernel-adapter consumer 影响）
+      - 供应链（新 dep maintenance / license / transitive risk）
+      - lockfile 完整性（pnpm-lock.yaml 与 package.json diff 一致）
+      - PR.md `acceptance:` 块条目逐条对照 diff 验证（spec match）
+
+      **强制：ADR-0006 8-point asymmetry-audit checklist**（见 `docs/decisions/ADR-0006-asymmetry-audit-checklist.md`）必须按可适用项目逐条审查；每条 verdict 给结论。8 项概要：
+      (1) 字段/属性新增 → 审 comparator/序列化；
+      (2) 状态码新增 → 审同 status 的所有 handler（RFC 7235 等强制头）；
+      (3) `.strict()` 加于一层 → 审所有嵌套 ZodObject；
+      (4) single-authority schema → 审所有 consumer 是否复刻定义；
+      (5) 算法 + 运行时常量复刻 → 审 consumer 端字节等价 + 注册回归测试；
+      (6) 一份 CONTRACT.md 改动 → 审 sister CONTRACT.md 是否同步；
+      (7) try/catch 范围 → narrow vs wide 在 happy-path 等价时仍可异常分流；
+      (8) authority 文档（ADR/agent-contract/runbook/CONVENTIONS）改动 → 审
+         generated/consumed surface（`.claude/agents/*`、`docs/review-checklist.md`、
+         `team-operations.md`、`docs/runbooks/codex-tool-invocations.md`、
+         Codex profiles、**pnpm-lock.yaml**）是否在同一 commit 里同步
+         （commit `e15ec36` 教训：lockfile 也属 generated-from-authority artifact）。
+
+      verdict 结构应包含
+      `asymmetry-audit applied: items {1..8} verdicts: ...` 与（如适用）
+      `8th-class hunt: <findings>`。
+
+      **D1 stage 5 commit 兼任**：PASS verdict 后由本 profile 在同一 invocation 内
+      执行 commit + push（per ADR-0006 D8 explicit-file-list staging：`git reset HEAD`
+      → `git add <PR.md files: list>` → `git diff --cached --stat` 验证 → `git commit`
+      → `git push`）。orchestrator 不另起 git-operator subagent。
+
+  # ---- codex-generic-executor (ADR-0011 D6 NEW; D1 stage 2 默认 executor) ----
+  - name: codex-generic-executor
+    profile: generic-executor
+    invocation: 'codex exec --profile generic-executor < /dev/null'
+    triggered_by:
+      - pr_plan_locked_executor_field_set_to_generic_executor
+    output_handling: |
+      orchestrator 读 stdout 拿创建/修改文件清单 + vitest 自跑结果；
+      stdout 落盘到 .codex-runs/<wave>/PR-<n>-execute.txt 或
+      docs/audits/codex-runs/<date>-<task>-execute.txt。
+    description: |
+      ADR-0011 D6 NEW Wave 3 默认 executor。gpt-5.5 + workspace-write sandbox。
+
+      D1 stage 2 标准流程：
+      1. 读 PR.md（locked at stage 1）：files / test_cases / contracts_affected /
+         adr_touched / acceptance
+      2. **TDD 前置**：先按 test_cases 字段写 vitest 测试（input/expected/location
+         三元组逐一落到 src/__tests__/）
+      3. 实现代码满足测试（限制在 PR.md `files:` 白名单内；超出 = scope creep）
+      4. 自跑 `pnpm test --filter=<package>` 全部 PASS（不 PASS 不进 stage 3）
+      5. 自跑 `pnpm lint --filter=<package>` + `pnpm typecheck --filter=<package>`
+         clean（per WE-007）
+      6. 写 commit-ready summary 报 orchestrator；orchestrator dispatch
+         codex-pr-reviewer-55 进 stage 3
+
+      你**不**调用其他 codex tool；不 git mutate（commit 由 reviewer 兼任，per D1
+      stage 5）。如发现 PR.md 写错 / 缺信息，停止并 SendMessage orchestrator 修订。
+
+  # ---- codex-structure-auditor (ADR-0011 D6 NEW; per-PR + Wave-close) ----
+  - name: codex-structure-auditor
+    profile: structure-auditor
+    invocation: 'codex exec --profile structure-auditor < /dev/null'
+    triggered_by:
+      - per_pr_post_commit                          # 每 PR 跑（速查）
+      - wave_close                                  # 全量审计
+      - manual_dispatch
+    output_handling: |
+      orchestrator 读 stdout 拿 god-file / 契约漂移 / 孤儿包 / D1 dead-dep 清单；
+      Wave-close 时输出落盘到 docs/audits/structure-YYYY-MM.md（月度 / Wave-close）。
+      Per-PR 速查落盘到 .codex-runs/<wave>/PR-<n>-structure-audit.txt。
+    description: |
+      ADR-0011 D5 + D6 NEW Wave 3 audit profile。从 Wave 1+2 Tier 3
+      structure-auditor Claude teammate 全 codex 化。
+
+      执行内容：
+      - 候选 god-file（接近或超过 500 行；ESLint 300 warn）
+      - 契约漂移（CONTRACT.md 与实际接口不一致）
+      - 孤儿包（无 importers + 无 documented 消费路径）
+      - **ADR-0008 D1 dead-dep mechanical scan**：每个 packages/*/package.json
+        中的 `@skb/*` 工作区依赖必对应至少一个 `from '@skb/<pkg>'` 源码 import
+      - **ADR-0011 D8 监控指标**：长期 Claude session 数 ≤ 1；clone 模板 byte-equiv
+        审计
+
+      候选重构由 refactorer Claude subagent 接手（per D7 触发条件
+      `codex_structure_auditor_flags`）。
+
+  # ---- codex-perf-auditor (ADR-0011 D6 NEW; bundle-affecting + Wave-close) ----
+  - name: codex-perf-auditor
+    profile: perf-auditor
+    invocation: 'codex exec --profile perf-auditor < /dev/null'
+    triggered_by:
+      - bundle_affecting_pr                         # editor-shell / block-* / search index 等
+      - wave_close
+      - manual_dispatch
+    output_handling: |
+      orchestrator 读 stdout 拿 perf baseline + 回归点清单；
+      stdout 落盘到 docs/audits/perf-YYYY-MM-DD.md（Wave-close）或
+      .codex-runs/<wave>/PR-<n>-perf-audit.txt（per-PR）。
+    description: |
+      ADR-0011 D5 + D6 NEW Wave 3 audit profile。从 Wave 1+2 Tier 3
+      performance-auditor Claude teammate 全 codex 化。
+
+      执行内容：
+      - Lighthouse CI 跑 apps/site
+      - size-limit / Astro --analyze（heavy block 包重点关注：block-jupyter Pyodide
+        ~10MB / block-nn-viz TF.js ~3MB / block-agent-flow React Flow ~500KB）
+      - Playwright traces（关键交互延迟 / FCP / LCP / TTI）
+      - 若 baseline 比上次差 > 20%，开 issue 阻断新功能直到修复
+
+  # ---- codex-mdx-doctor (ADR-0011 D6 NEW; mdx-bridge fixture change PR) ----
+  - name: codex-mdx-doctor
+    profile: mdx-doctor
+    invocation: 'codex exec --profile mdx-doctor < /dev/null'
+    triggered_by:
+      - pr_touches_mdx_bridge
+      - pr_touches_block_package                    # block-* core/ 路径任意修改
+      - wave_close
+    output_handling: |
+      orchestrator 读 stdout 拿 RTT fixture PASS/FAIL 清单；
+      FAIL 阻断进入 D1 stage 5 commit；stdout 落盘到 .codex-runs/<wave>/PR-<n>-mdx-doctor.txt。
+    description: |
+      ADR-0011 D5 + D6 NEW Wave 3 audit profile。从 Wave 1+2 Tier 3
+      mdx-doctor Claude teammate 全 codex 化。
+
+      执行内容：
+      - 跑全部 RTT (round-trip test) fixture：mdxToTiptap → tiptapToMdx 字节等价
+      - 跑 stripMdast 路径下的同等价（编辑器构建 doc 不依赖 _mdast 字段）
+      - 任一 fail 阻断所有 mdx-bridge / block-* PR 进 stage 5
+      - Wave 3 起补足 8 component-block fixture (callout/code/image/math/pdf/jupyter/
+        nn-viz/agent-flow) × 2 invariants × 1 fixture per block
 ```
 
 ## Related
@@ -437,5 +468,6 @@ tool_patterns:
 - [设计规格 §3.1 + §3.13](docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md)
 - [生成器 scripts/generate-configs.ts](scripts/generate-configs.ts)
 - [ADR-0007 职能化分工 + Codex-heavy 执行 + teammate/tool 切分](docs/decisions/ADR-0007-job-function-codex-heavy-execution.md)
+- [ADR-0011 Linear-pipeline execution model (Wave 3+)](docs/decisions/ADR-0011-linear-pipeline-execution-model.md)
 - [ADR-0006 cross-location asymmetry-audit checklist](docs/decisions/ADR-0006-asymmetry-audit-checklist.md)
 - [docs/runbooks/codex-tool-invocations.md](docs/runbooks/codex-tool-invocations.md) — tool_patterns canonical bash 调用 + 触发条件 + audit 落盘

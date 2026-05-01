@@ -46,14 +46,18 @@ Wave 2 已闭环 + ADR-0011 已 accepted；下一步起 Wave 3 plan：
 
 **1. ADR-0011 implementation — agent-contract.md 重构 + 下游再生成（Wave 3 第一个 PR；走 D1 pipeline 首次实战）**：
 
+🟡 **In flight (2026-05-01)**: PR.md locked at [`docs/plans/wave-3-prep/PR-1-agent-contract.md`](wave-3-prep/PR-1-agent-contract.md);
+codex 5.5 review (R1: FAIL-FORWARD-FIXABLE → forward-fixes applied → R2 pending);
+commit pending. Bootstrap exception applies — orchestrator drives PLAN/EXECUTE/COMMIT
+directly because the PR's diff modifies the D-list components themselves.
+
 - Tier 1 worker section: 11 → 0 + retire 标记
 - Tier 2 process: git-operator 退役（吸收进 codex reviewer commit phase）+ pr-reviewer 标"orchestrator 兼"
 - Tier 3 audit: 全 codex 化（structure-auditor / performance-auditor / mdx-doctor → codex profile；link-checker → CI gate）
 - 新增 pr-writer Claude subagent（D7）
 - tool_patterns: 新增 4 profile（codex-generic-executor / codex-structure-auditor / codex-perf-auditor / codex-mdx-doctor）+ pr-gate 升级为 codex-pr-reviewer-55 + code-reviewer 标 deprecated（D6）
-- 跑 `pnpm generate:configs` 重新渲染 CLAUDE.md / AGENTS.md / .claude/agents/*.md / docs/runbooks/team-operations.md / docs/runbooks/codex-tool-invocations.md
-- bundle commit (per ADR-0006 D8 explicit-file-list staging)：agent-contract.md + 全部 generated downstream + active.md retire 部分（如需要）
-- **走 D1 pipeline 实战**：pr-writer 写 PR.md → codex-generic-executor 实施 → codex-pr-reviewer-55 review → orchestrator pre-commit Claude review (D2 row 4 触发：本 PR touches authority + new ADR refs) → reviewer commit + push
+- 跑 `pnpm generate:configs` 重新渲染 CLAUDE.md / AGENTS.md / .claude/agents/*.md / docs/runbooks/codex-tool-invocations.md
+- bundle commit (per ADR-0006 D8 explicit-file-list staging)：agent-contract.md + 全部 generated downstream + active.md
 - 此 PR 验证 ADR-0011 D-list 的 pipeline 可工作；后续 Wave 3 PR 才进入正常 stage 序列
 
 **2. F3 — ADR-0008 D1 第一个 mechanical violation**：`block-code` + `block-image` 声明 `@skb/design-tokens` workspace dep 但源码无 TS import（CSS 变量消费）。详见 ADR-0010 D3 #7a；选定路径 **(b)** 仿 block-callout `VARIANT_TOKENS` 引入 typed constants（gatekeeper 2026-05-01 锁定）。Wave 3 第二个 PR。
@@ -71,13 +75,23 @@ Wave 2 已闭环 + ADR-0011 已 accepted；下一步起 Wave 3 plan：
 
 ### Wave 3 高风险触发预测（ADR-0007 D2 + ADR-0011 D1 stage 4 pre-commit Claude review）
 
-- ADR-0011 implementation（第一个 PR）→ row 4 (new ADR refs) + authority touch → **D1 stage 4 pre-commit Claude review 必跑**
-- mdx-bridge round-trip 扩展 → row 1 (contract change in mdx-bridge) → D1 stage 4 触发
-- editor-shell 是新 package → row 2 (package add) → D1 stage 4 触发
-- search index 影响 build 时构建 → row 8 (CI/deploy/auth/security) → D1 stage 4 触发
-- agent_bridge.py 跨 TS↔Python schema → row 5 (cross ≥3 packages) → D1 stage 4 触发
+ADR-0011 D1 stage 4（PRE-COMMIT CLAUDE REVIEW，由 orchestrator 自己跑）**仅在 D2 row 1+4 触发**
+（contract change OR new ADR required）—— 防 codex 同模型 echo chamber，限定在最易出错的两类。
 
-**注**：ADR-0011 D1 stage 4 pre-commit Claude review 由 orchestrator 自己跑（同 Claude opus 4.7 session），不另起 subagent。预期 Wave 3 触发率仍 ~24%（同 Wave 2，因为新 model 没改高风险触发条件，只改了执行流水线）。
+D2 stage-4 触发列：
+
+- ADR-0011 implementation（第一个 PR）→ **row 1（authority/CONTRACT touch）+ row 4（new ADR refs）→ D1 stage 4 必跑**
+- mdx-bridge round-trip 扩展 → row 1 (contract change in mdx-bridge) → D1 stage 4 触发
+
+D2 其他高风险列（**stage 4 不触发**；但 D1 stage 3 codex-pr-reviewer-55 会做 heightened 深扫
++ ADR-0006 8-point 8th-class hunt）：
+
+- editor-shell 是新 package → row 2 (package add) → 仅 stage 3 加压
+- search index 影响 build 时构建 → row 8 (CI/deploy/auth/security) → 仅 stage 3 加压
+- agent_bridge.py 跨 TS↔Python schema → row 5 (cross ≥3 packages) → 仅 stage 3 加压
+
+**注**：预期 Wave 3 stage-4 触发率 ≤ Wave 2 (4 件 row-4 触发 / 17 主 track ≈ 24%)，因为 row 1+4
+在 Wave 3 集成层主体（mdx-bridge round-trip + editor-shell + ADR refs）仍是高频。
 
 ## Wave 2 完工归档（参考）
 

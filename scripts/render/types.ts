@@ -4,6 +4,10 @@
  * Spec: docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md §3.1, §3.13
  * ADR-0007 D5: agents (Claude teammates, persistent context) split from
  * tool_patterns (codex Bash invocations, stateless).
+ * ADR-0011 D6: profile enum extended with codex-pr-reviewer-55 (replaces pr-gate)
+ * + 4 NEW (generic-executor / structure-auditor / perf-auditor / mdx-doctor).
+ * Old `code-reviewer` (5.3-spark) and `pr-gate` removed from the enum (deprecated
+ * per ADR-0011 D6; codex-pr-reviewer-55 is the unified Wave 3+ default reviewer).
  */
 import { z } from 'zod';
 
@@ -20,7 +24,15 @@ export const AgentSchema = z.object({
 
 export const ToolPatternSchema = z.object({
   name: z.string(),
-  profile: z.enum(['scaffolder', 'code-reviewer', 'pr-gate', 'plan-challenger']),
+  profile: z.enum([
+    'scaffolder',
+    'plan-challenger',
+    'codex-pr-reviewer-55',
+    'generic-executor',
+    'structure-auditor',
+    'perf-auditor',
+    'mdx-doctor',
+  ]),
   invocation: z.string(),
   triggered_by: z.array(z.string()),
   output_handling: z.string().optional(),
@@ -87,7 +99,11 @@ export type Agent = z.infer<typeof AgentSchema>;
 export type ToolPattern = z.infer<typeof ToolPatternSchema>;
 export type AgentContract = z.infer<typeof ContractSchema>;
 
-export const TIER_NAMES = ['Orchestrator', 'Worker', 'Process', 'Audit'] as const;
+// Tier 1 (Worker) and Tier 3 (Audit) became empty under ADR-0011 D3+D5.
+// Tier 2 renamed Process → Subagent per ADR-0011 D7 (one-shot Claude form).
+// The 4 labels stay positionally aligned with tier values 0..3 to keep the
+// renderer math intact even when tiers 1/3 carry no agents.
+export const TIER_NAMES = ['Orchestrator', 'Worker', 'Subagent', 'Audit'] as const;
 
 export function tierName(tier: Agent['tier']): string {
   return TIER_NAMES[tier];
