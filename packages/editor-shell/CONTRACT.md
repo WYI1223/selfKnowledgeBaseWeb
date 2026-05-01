@@ -7,23 +7,44 @@ editor surface. Closes the "editor-shell composition" deferral from
 
 ## Public surface
 
-NONE — Wave 3 A1 skeleton.
+- `EditorShell` — functional React component. Mounts a Tiptap editor via
+  `@tiptap/react`'s `useEditor` with `[StarterKit]` prose extensions only.
+  No block-* extensions yet (A3 adds the registry boot).
+- `EditorShellProps` — public props type:
+  ```ts
+  export interface EditorShellProps {
+    /** Optional initial editor content (Tiptap doc JSON or HTML string).
+     *  Defaults to an empty paragraph. */
+    initialContent?: object | string;
+    /** Optional change callback fired on each Tiptap update event. */
+    onChange?: (editor: Editor) => void;
+    /** Optional className applied to the EditorContent root for
+     *  consumer-controlled styling. */
+    className?: string;
+    /** Optional creation hook: invoked once with the constructed editor
+     *  instance after mount. Used by tests + future A3 wrappers needing
+     *  imperative editor access. */
+    onCreate?: (editor: Editor) => void;
+  }
+  ```
+  `Editor` type re-exported transitively from `@tiptap/core` via
+  `@tiptap/react`.
 
-`src/index.ts` is an empty barrel (`export {};`). The package exists as a
-build-graph node and lockfile workspace entry so subsequent A2-A5 PRs can
-populate it incrementally without each adding a new package + tsconfig
-references graph entry.
+The component does NOT include a `'use client'` pragma — consumers (Stage C
+apps/site) decide the client/server boundary at integration time.
 
 ## Wave 3 Stage A expansion outline
 
 A2-A5 each Modify this CONTRACT.md as new exports land:
 
-- **A2** — `EditorShell` React component (Tiptap `useEditor` + StarterKit
-  prose extensions only; no block registry yet). Adds `@tiptap/react`,
-  `@tiptap/starter-kit`, `react`, `react-dom` peer deps + `happy-dom` devDep.
+- **A2** — `EditorShell` React component delivered in this PR (Tiptap
+  `useEditor` + StarterKit prose extensions only; 4-prop API surface above).
+  Adds `@tiptap/{core,react,starter-kit}`, `react`, `react-dom` peer/runtime
+  deps + happy-dom + @testing-library/react devDeps.
 - **A3** — `registerBlocks(registry)` helper. Wires the 8 block-* core +
   ui-default definitions into a `BlockRegistry` instance. Adds 8 `@skb/block-*`
-  + `@skb/block-foundation` workspace deps.
+  + `@skb/block-foundation` workspace deps. May expose a `proseExtensions`
+  prop on `EditorShell` if registry-driven extension composition requires it.
 - **A4** — `registerKernels(registry)` helper. Wires `PyodideAdapter` into
   `kernel-registry`. Adds `@skb/kernel-registry` + `@skb/kernel-pyodide`
   workspace deps.
@@ -32,10 +53,10 @@ A2-A5 each Modify this CONTRACT.md as new exports land:
   Adds `@skb/mdx-bridge` workspace dep. Closes 13 expected orphan packages
   simultaneously by becoming the terminal consumer.
 
-Until A2 lands, this package has no consumer; this is intentional and
 [ADR-0008 D1](../../docs/decisions/ADR-0008-wave-2-entry-policies.md) dead-dep
-policy is satisfied trivially (zero workspace deps declared = zero TS-import
-asymmetry possible).
+policy is satisfied at A2: zero `@skb/*` workspace deps declared (only
+external runtime/peer deps); F3-class TS-import asymmetry impossible by
+construction.
 
 ## Modifying this file
 
