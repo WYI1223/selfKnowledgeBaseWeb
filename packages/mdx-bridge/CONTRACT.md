@@ -1,13 +1,15 @@
 # @skb/mdx-bridge Contract
 
 Bidirectional conversion between MDX source and a Tiptap-shaped JSON document.
-Wave 1 covers prose only; Wave 2 onward extends the walker for component blocks.
+Wave 1 covers prose; Wave 3 Stage B extends the walker for component blocks.
 
 ## Public surface
 
-- `mdxToTiptap(source: string): TiptapDoc` — parse MDX into a Tiptap-shaped tree
-- `tiptapToMdx(doc: TiptapDoc): string` — serialize the Tiptap-shaped tree back to MDX
-- `TiptapDoc`, `TiptapNode`, `TiptapMark` — shape types
+- `mdxToTiptap(source: string, options?: MdxBridgeOptions): TiptapDoc` — parse MDX into a Tiptap-shaped tree
+- `tiptapToMdx(doc: TiptapDoc, options?: MdxBridgeOptions): string` — serialize the Tiptap-shaped tree back to MDX
+- `MdxBridgeOptions { blockRegistry?: BlockRegistry }` — per-call component block registry injection
+- `registerJsxDispatch(entry: JsxDispatchEntry): void` / `getJsxDispatch(mdxComponent: string): JsxDispatchEntry | undefined` — mdx-bridge-local JSX dispatch table
+- `TiptapDoc`, `TiptapNode`, `TiptapMark`, `JsxDispatchEntry` — shape types
 
 `TiptapDoc.frontmatter` is the raw YAML body (without the `---` fences). Block
 nodes carry an internal `_mdast` field holding the originating mdast node — this
@@ -21,6 +23,7 @@ Two byte-equivalence claims, both enforced on every fixture in
 `src/__tests__/fixtures/`:
 
 1. **Parsed-doc invariant** — for any supported MDX input `S`:
+
    ```
    tiptapToMdx(mdxToTiptap(S)).trim() === S.trim()
    ```
@@ -37,29 +40,30 @@ Violating either is a **critical bug**: `mdx-doctor` runs both checks on every
 PR that touches this package or any `block-*` package. Either failure blocks
 merge.
 
-Wave 1 baseline (9 prose fixtures × 2 invariants = 18 RTT assertions):
+Fixture count growing in Stage B (current baseline: 9 prose fixtures × 2
+invariants = 18 RTT assertions):
 
-| Fixture | Coverage |
-|---|---|
-| `01-paragraph.mdx` | frontmatter + paragraph + plain text |
-| `02-heading.mdx` | h1 / h2 + paragraph |
-| `03-list.mdx` | bullet list with nested list (loose-spread item) + ordered list |
-| `04-quote-and-code.mdx` | blockquote + fenced code (with lang) |
-| `05-emphasis-link.mdx` | inline strong / emphasis / inline code / link |
-| `06-nested-inline.mdx` | nested inline marks (multi-child strong/emphasis/link) |
-| `07-link-with-title.mdx` | link with title attribute (e.g. `[x](url "title")`) |
-| `08-bold-with-break.mdx` | hard break (`\\\n`) inside a strong span |
+| Fixture                        | Coverage                                                                                                                                                                 |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `01-paragraph.mdx`             | frontmatter + paragraph + plain text                                                                                                                                     |
+| `02-heading.mdx`               | h1 / h2 + paragraph                                                                                                                                                      |
+| `03-list.mdx`                  | bullet list with nested list (loose-spread item) + ordered list                                                                                                          |
+| `04-quote-and-code.mdx`        | blockquote + fenced code (with lang)                                                                                                                                     |
+| `05-emphasis-link.mdx`         | inline strong / emphasis / inline code / link                                                                                                                            |
+| `06-nested-inline.mdx`         | nested inline marks (multi-child strong/emphasis/link)                                                                                                                   |
+| `07-link-with-title.mdx`       | link with title attribute (e.g. `[x](url "title")`)                                                                                                                      |
+| `08-bold-with-break.mdx`       | hard break (`\\\n`) inside a strong span                                                                                                                                 |
 | `09-link-title-comparator.mdx` | same-href links with distinct titles separated by text in a paragraph (adjacent-shape coverage lives in dedicated `marksEqual` regression tests in `round-trip.test.ts`) |
 
-Wave 2+ rule: every new component block (callout, math, pdf, jupyter, etc.)
+Wave 3+ rule: every new component block (callout, math, pdf, jupyter, etc.)
 must add at least one fixture exercising its MDX form, and that fixture must
 satisfy both invariants, before its block PR can merge. `mdx-doctor` enforces.
 
 ## Implementation notes
 
 - Parser pipeline: `unified` + `remark-parse` + `remark-frontmatter` (yaml only)
-  + `remark-mdx`. Stay on this pipeline — it is the single source of truth for
-  what counts as supported MDX.
+  - `remark-mdx`. Stay on this pipeline — it is the single source of truth for
+    what counts as supported MDX.
 - Serializer pipeline: `unified` + `remark-frontmatter` + `remark-mdx` +
   `remark-stringify` with options chosen so that `parse → stringify` is
   idempotent for canonical markdown.
@@ -116,15 +120,24 @@ loudly." The `mdx-doctor` audit (Wave 2+) and a planned
 structure-auditor pass (Erratum 15 candidate) enforce this rule across
 the package.
 
-There are exactly five enforced throw sites today:
+There are seven logical fail-loud points in Wave 3 post-B1 (consolidated to
+5 physical `throw new Error` statements in `parse.ts` + `serialize.ts` via
+shared `unsupportedBlock` / `unsupportedInline` / `unsupportedMark` helpers
++ 1 in `dispatch-table.ts` = 6 physical statements; `grep -cE "throw new Error"
+packages/mdx-bridge/src/*.ts` returns 6):
 
-- `parse.ts mdastBlockToTiptap` default
+- `parse.ts mdastBlockToTiptap` default → calls `unsupportedBlock(type)`
+- `parse.ts mdastBlockToTiptap` `mdxJsxFlowElement` unknown-name (registry-absent
+  OR registry-present-no-match) → calls `unsupportedBlock(type)` (shared helper)
 - `parse.ts mdastInlineToTiptap` default
-- `serialize.ts tiptapToMdastBlock` default
+- `serialize.ts tiptapToMdastBlock` default → calls `unsupportedBlock(type)`
+- `serialize.ts tiptapToMdastBlock` unknown-component-type → calls
+  `unsupportedBlock(type)` (shared helper)
 - `serialize.ts wrapMark` default
 - `serialize.ts leafInlineToMdast` when `_mdast` is missing
 
-Regression tests assert all of these in `src/__tests__/round-trip.test.ts`.
+Regression tests assert these in `src/__tests__/round-trip.test.ts` and
+`src/__tests__/jsx-routing.test.ts`.
 
 ## Modifying this file / package
 
@@ -141,19 +154,42 @@ Regression tests assert all of these in `src/__tests__/round-trip.test.ts`.
   and a re-baseline run on every fixture. Patch / minor bumps proceed
   through the normal `mdx-doctor` PR check.
 
-## Forward-compat consumers (Wave 2+)
+## Component block dispatch (Wave 3+)
 
-This package will start importing `@skb/block-foundation` (for
-`BlockCoreDefinition` types) and `@skb/content-types` (for shared schemas)
-once Wave 2 begins emitting `mdxJsxFlowElement` for component blocks — at
-which point the dependency MUST be added to `package.json` and a matching
-entry MUST appear in `tsconfig.json#references`. Until then, neither is
-declared as a workspace dependency.
+Component block routing is per-call state, not global state. Callers pass
+`options.blockRegistry` to `mdxToTiptap` / `tiptapToMdx`; mdx-bridge must not
+grow a global `setBlockRegistry` setter. This keeps parallel parse/serialize
+calls isolated even when they use different `BlockRegistry` instances.
+
+`@skb/block-foundation` owns `BlockCoreDefinition` and `BlockRegistry`, but it
+does not own MDX parse/serialize hooks. mdx-bridge owns a small external
+dispatch table in `src/dispatch-table.ts`, keyed by the PascalCase
+`BlockCoreDefinition.mdxComponent` string. Block packages register their MDX
+bridge by convention:
+
+- `mdxComponent: 'Callout'`
+- `blockType: 'callout'`
+- `parse` function named `parseCallout`
+- `serialize` function named `serializeCallout`
+
+The parse path receives an `mdxJsxFlowElement`, finds the core whose
+`mdxComponent` matches `node.name`, then calls the registered parse function.
+The serialize path receives a component-typed Tiptap node, finds the core by
+`node.type`, then calls the registered serialize function. Nested component
+blocks round-trip through the same per-block parse/serialize functions; no
+hidden mdx-bridge registry state is involved.
+
+Fail-loud behavior remains mandatory. With no `options.blockRegistry`, JSX
+blocks fall through to the historical unsupported `mdxJsxFlowElement` branch.
+With a registry present but no matching `mdxComponent`, parse throws
+`unsupported block type "<ComponentName>"`. With a registry present but an
+unknown component-typed Tiptap node, serialize throws `unsupported block type
+"<typeName>"`.
 
 Per [ADR-0008](../../docs/decisions/ADR-0008-wave-2-entry-policies.md) D1
-(dead-dep policy = tighten): every `package.json#dependencies/@skb/*` MUST
-correspond to at least one source `import from '@skb/<pkg>'`. Forward-compat
-intent lives here in prose, not as a placeholder dependency.
+(dead-dep policy = tighten), the `@skb/block-foundation` workspace dependency,
+`tsconfig.json#references` edge, and source import must stay in three-way
+symmetry.
 
 ## Related
 

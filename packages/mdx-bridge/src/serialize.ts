@@ -10,7 +10,9 @@ import type {
   ListItem,
   PhrasingContent,
 } from 'mdast';
-import type { TiptapDoc, TiptapMark, TiptapNode } from './parse';
+import type { MdastJsxElement } from './dispatch-table';
+import { getJsxDispatch } from './dispatch-table';
+import type { MdxBridgeOptions, TiptapDoc, TiptapMark, TiptapNode } from './parse';
 
 const PHRASING_TYPES = new Set([
   'text',
@@ -29,11 +31,24 @@ const PHRASING_TYPES = new Set([
   'mdxTextExpression',
 ]);
 
-function isPhrasing(node: RootContent): node is PhrasingContent {
+const TIPTAP_PROSE_BLOCK_TYPES = new Set([
+  'paragraph',
+  'heading',
+  'bulletList',
+  'orderedList',
+  'blockquote',
+  'codeBlock',
+  'horizontalRule',
+]);
+
+type TiptapMdastBlock = BlockContent | DefinitionContent | MdastJsxElement;
+
+function isPhrasing(node: RootContent | MdastJsxElement): node is PhrasingContent {
   return PHRASING_TYPES.has(node.type);
 }
 
-function isBlock(node: RootContent): node is BlockContent | DefinitionContent {
+function isBlock(node: RootContent | MdastJsxElement): node is TiptapMdastBlock {
+  if (node.type === 'mdxJsxFlowElement') return true;
   return !isPhrasing(node);
 }
 
@@ -45,8 +60,8 @@ function isBlock(node: RootContent): node is BlockContent | DefinitionContent {
  * editor without a parsed source. Stringify with remark-stringify configured
  * to match canonical markdown output.
  */
-export function tiptapToMdx(doc: TiptapDoc): string {
-  const blocks: RootContent[] = doc.content.map(tiptapToMdastBlock);
+export function tiptapToMdx(doc: TiptapDoc, options?: MdxBridgeOptions): string {
+  const blocks = doc.content.map((node) => tiptapToMdastBlock(node, options));
   const children: RootContent[] = [];
   if (doc.frontmatter !== undefined) {
     children.push({ type: 'yaml', value: doc.frontmatter });
@@ -72,7 +87,9 @@ export function tiptapToMdx(doc: TiptapDoc): string {
   return typeof out === 'string' ? out : String(out);
 }
 
-function tiptapToMdastBlock(node: TiptapNode): BlockContent | DefinitionContent {
+function tiptapToMdastBlock(node: TiptapNode, options?: MdxBridgeOptions): TiptapMdastBlock {
+  const dispatched = tiptapComponentToMdast(node, options);
+  if (dispatched) return dispatched;
   if (node._mdast && isBlock(node._mdast)) return node._mdast;
   switch (node.type) {
     case 'paragraph':
@@ -98,14 +115,14 @@ function tiptapToMdastBlock(node: TiptapNode): BlockContent | DefinitionContent 
         type: 'listItem',
         spread: (li.attrs?.['spread'] as boolean | undefined) ?? false,
         checked: null,
-        children: (li.content ?? []).map(tiptapToMdastBlock),
+        children: (li.content ?? []).map((child) => tiptapToMdastBlock(child, options)),
       }));
       return { type: 'list', ordered, start, spread: listSpread, children: items };
     }
     case 'blockquote':
       return {
         type: 'blockquote',
-        children: (node.content ?? []).map(tiptapToMdastBlock),
+        children: (node.content ?? []).map((child) => tiptapToMdastBlock(child, options)),
       };
     case 'codeBlock': {
       const lang = (node.attrs?.['language'] as string | null | undefined) ?? null;
@@ -115,11 +132,30 @@ function tiptapToMdastBlock(node: TiptapNode): BlockContent | DefinitionContent 
     case 'horizontalRule':
       return { type: 'thematicBreak' };
     default:
-      throw new Error(
-        `mdx-bridge: unsupported block type "${node.type}". ` +
-          `Add a fixture and a tiptapToMdastBlock case before introducing this block type.`,
-      );
+      return unsupportedBlock(node.type);
   }
+}
+
+function tiptapComponentToMdast(
+  node: TiptapNode,
+  options?: MdxBridgeOptions,
+): MdastJsxElement | undefined {
+  if (!options?.blockRegistry) return undefined;
+  if (TIPTAP_PROSE_BLOCK_TYPES.has(node.type)) return undefined;
+
+  const core = options.blockRegistry.getCore(node.type);
+  if (!core) return unsupportedBlock(node.type);
+
+  const dispatch = getJsxDispatch(core.mdxComponent);
+  if (!dispatch || dispatch.blockType !== node.type) return unsupportedBlock(node.type);
+  return dispatch.serialize(node);
+}
+
+function unsupportedBlock(type: string): never {
+  throw new Error(
+    `mdx-bridge: unsupported block type "${type}". ` +
+      `Add a fixture and a parse + serialize case before introducing this block type.`,
+  );
 }
 
 /**
