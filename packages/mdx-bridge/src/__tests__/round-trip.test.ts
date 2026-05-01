@@ -8,6 +8,7 @@ import { codeCore, parseCode, serializeCode } from '@skb/block-code/core';
 import { imageCore, parseImage, serializeImage } from '@skb/block-image/core';
 import { mathCore, parseMath, serializeMath } from '@skb/block-math/core';
 import { pdfCore, parsePdf, serializePdf } from '@skb/block-pdf/core';
+import { jupyterCore, parseJupyter, serializeJupyter } from '@skb/block-jupyter/core';
 import {
   getJsxDispatch,
   mdxToTiptap,
@@ -81,6 +82,17 @@ function ensurePdfDispatch(): void {
   }
 }
 
+function ensureJupyterDispatch(): void {
+  if (getJsxDispatch('Jupyter') === undefined) {
+    registerJsxDispatch({
+      mdxComponent: 'Jupyter',
+      blockType: 'jupyter',
+      parse: parseJupyter as unknown as JsxDispatchEntry['parse'],
+      serialize: serializeJupyter as unknown as JsxDispatchEntry['serialize'],
+    });
+  }
+}
+
 function buildComponentBlockOptions(): MdxBridgeOptions {
   const blockRegistry = new BlockRegistry();
   blockRegistry.registerCore(calloutCore);
@@ -88,6 +100,7 @@ function buildComponentBlockOptions(): MdxBridgeOptions {
   blockRegistry.registerCore(imageCore);
   blockRegistry.registerCore(mathCore);
   blockRegistry.registerCore(pdfCore);
+  blockRegistry.registerCore(jupyterCore);
   return { blockRegistry };
 }
 
@@ -97,7 +110,8 @@ function optionsForFixture(file: string, source: string): MdxBridgeOptions | und
     source.includes('<Code') ||
     source.includes('<Image') ||
     source.includes('<Math') ||
-    source.includes('<Pdf')
+    source.includes('<Pdf') ||
+    source.includes('<Jupyter')
     ? buildComponentBlockOptions()
     : undefined;
 }
@@ -121,6 +135,7 @@ describe('MDX <-> Tiptap round-trip', () => {
     ensureImageDispatch();
     ensureMathDispatch();
     ensurePdfDispatch();
+    ensureJupyterDispatch();
   });
 
   for (const file of FIXTURES) {
@@ -143,8 +158,8 @@ describe('MDX <-> Tiptap round-trip', () => {
     });
   }
 
-  it('finds at least 14 fixtures', () => {
-    expect(FIXTURES.length).toBeGreaterThanOrEqual(14);
+  it('finds at least 15 fixtures', () => {
+    expect(FIXTURES.length).toBeGreaterThanOrEqual(15);
   });
 });
 
