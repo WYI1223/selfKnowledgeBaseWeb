@@ -7,6 +7,7 @@ import { calloutCore, parseCallout, serializeCallout } from '@skb/block-callout/
 import { codeCore, parseCode, serializeCode } from '@skb/block-code/core';
 import { imageCore, parseImage, serializeImage } from '@skb/block-image/core';
 import { mathCore, parseMath, serializeMath } from '@skb/block-math/core';
+import { pdfCore, parsePdf, serializePdf } from '@skb/block-pdf/core';
 import {
   getJsxDispatch,
   mdxToTiptap,
@@ -69,12 +70,24 @@ function ensureMathDispatch(): void {
   }
 }
 
+function ensurePdfDispatch(): void {
+  if (getJsxDispatch('Pdf') === undefined) {
+    registerJsxDispatch({
+      mdxComponent: 'Pdf',
+      blockType: 'pdf',
+      parse: parsePdf as unknown as JsxDispatchEntry['parse'],
+      serialize: serializePdf as unknown as JsxDispatchEntry['serialize'],
+    });
+  }
+}
+
 function buildComponentBlockOptions(): MdxBridgeOptions {
   const blockRegistry = new BlockRegistry();
   blockRegistry.registerCore(calloutCore);
   blockRegistry.registerCore(codeCore);
   blockRegistry.registerCore(imageCore);
   blockRegistry.registerCore(mathCore);
+  blockRegistry.registerCore(pdfCore);
   return { blockRegistry };
 }
 
@@ -83,7 +96,8 @@ function optionsForFixture(file: string, source: string): MdxBridgeOptions | und
     source.includes('<Callout') ||
     source.includes('<Code') ||
     source.includes('<Image') ||
-    source.includes('<Math')
+    source.includes('<Math') ||
+    source.includes('<Pdf')
     ? buildComponentBlockOptions()
     : undefined;
 }
@@ -106,6 +120,7 @@ describe('MDX <-> Tiptap round-trip', () => {
     ensureCodeDispatch();
     ensureImageDispatch();
     ensureMathDispatch();
+    ensurePdfDispatch();
   });
 
   for (const file of FIXTURES) {
@@ -128,8 +143,8 @@ describe('MDX <-> Tiptap round-trip', () => {
     });
   }
 
-  it('finds at least 13 fixtures', () => {
-    expect(FIXTURES.length).toBeGreaterThanOrEqual(13);
+  it('finds at least 14 fixtures', () => {
+    expect(FIXTURES.length).toBeGreaterThanOrEqual(14);
   });
 });
 
