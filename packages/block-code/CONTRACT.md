@@ -16,7 +16,8 @@ C5a scope：`packages/block-code/ui-default`（Wave 2 Track C5a）基于 `packag
   - `codeUIDefault: BlockUIDefinition<typeof codeCore.propsSchema>` — coreName=`'code'` / uiId=`'default'`
   - `CodeEditorView` / `CodeRenderView` — `ComponentType<BlockViewProps<typeof codeCore.propsSchema>>`，DOM 形状字节级一致（共享 `CodeBody` 原语）
   - `CodeBody` — 视觉单一权威 primitive，editor + render 双视图都嵌入
-- `./ui-default/code.css` — 视觉规则单一来源，按 `[data-code-language]` + 设计令牌渲染
+  - `CODE_THEME_TOKENS` — `Readonly<Record<string, ColorTokenName>>` 设计令牌消费清单（typed import from `@skb/design-tokens`，see Wave 3 PR #2 + ADR-0010 D3 #7a F3 闭环）
+- `./ui-default/code.css` — 视觉规则单一来源，按 `[data-code-language]` + 设计令牌渲染（运行时颜色消费走 CSS variable `var(--color-*)`；TS 端 `CODE_THEME_TOKENS` 是 typed mirror，per ADR-0008 D1 dead-dep 合规）
 
 `propsSchema` 形状（见 `src/core/core-definition.ts`）：
 
@@ -49,6 +50,7 @@ block-code ui-default 特定不变量：
 - **行号行为锁定**: `showLineNumbers=true` 时，`<pre>` 必含 `.skb-code-line-numbers` class 并逐行渲染 `.skb-code-line` + `.skb-code-lineno`；反之不渲染行号节点。
 - **语言标签展示**: 语言名（`props.language`）必须显示在可见 label 区域。
 - **CSS 单一视觉来源**: 所有视觉规则集中在 `./ui-default/code.css`，React 组件不带 `style` inline。
+- **Design-token 消费**: `code.css` via `var(--color-*)` 是运行时唯一消费路径；`./ui-default/theme-tokens.ts` 的 `CODE_THEME_TOKENS` 是 typed mirror，per [ADR-0008 D1](../../docs/decisions/ADR-0008-wave-2-entry-policies.md) dead-dep mechanical scan 合规（CSS-only 消费不可见于 grep 审计；type-only `import { ColorTokenName } from '@skb/design-tokens'` 关闭 [ADR-0010 D3 #7a F3](../../docs/decisions/ADR-0010-wave-2-close.md)）。`code.css` 的 `var(--color-*)` 集合与 `CODE_THEME_TOKENS` 键集必须一致；不一致 `theme-tokens.test.ts` 失败。
 - **Wave 3 语法高亮延期**: 现阶段仅渲染纯文本 `<pre><code>`；高亮能力（`shiki` / `prism`）移至 Wave 3。
 
 ## Wave 3 mdx-bridge 路由集成（pending）

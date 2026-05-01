@@ -14,3 +14,4 @@ export const codeUIDefault: BlockUIDefinition<typeof codeCore.propsSchema> =
 export { CodeEditorView } from './EditorView';
 export { CodeRenderView } from './RenderView';
 export { CodeBody } from './CodeBody';
+export { CODE_THEME_TOKENS } from './theme-tokens';

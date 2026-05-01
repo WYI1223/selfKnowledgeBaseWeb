@@ -17,7 +17,8 @@
   - `imageUIDefault: BlockUIDefinition<typeof imageCore.propsSchema>` — default UI id = `'default'`
   - `ImageEditorView(props)` / `ImageRenderView(props)` — 同步的图像语义渲染层
   - `ImageBody(props)` — 输出 `<figure><img ...><figcaption>{alt}</figcaption></figure>`，固定 `loading="lazy"`
-- `./ui-default/image.css` — 样式入口（design-token 变量约束）
+  - `IMAGE_THEME_TOKENS` — `Readonly<Record<string, ColorTokenName>>` 设计令牌消费清单（typed import from `@skb/design-tokens`，see Wave 3 PR #2 + ADR-0010 D3 #7a F3 闭环）
+- `./ui-default/image.css` — 样式入口（design-token 变量约束；运行时颜色消费走 CSS variable `var(--color-*)`，TS 端 `IMAGE_THEME_TOKENS` 是 typed mirror）
 
 `propsSchema` 形状（见 `src/core/core-definition.ts`）:
 
@@ -46,6 +47,7 @@ const propsSchema = z.object({
   - `<figcaption>{alt}</figcaption>`
   - `data-image-loading` 根属性用于 loading-state 挂钩（目前固定 lazy，为未来变体预留）
 - **图像尺寸契约**: `width`/`height` 在 props 缺省时不应硬编码 `img` 属性；当设置时保持数值透传（用于编辑与 SSR 形状一致性）。
+- **Design-token 消费**: `image.css` via `var(--color-*)` 是运行时唯一消费路径；`./ui-default/theme-tokens.ts` 的 `IMAGE_THEME_TOKENS` 是 typed mirror，per [ADR-0008 D1](../../docs/decisions/ADR-0008-wave-2-entry-policies.md) dead-dep mechanical scan 合规（CSS-only 消费不可见于 grep 审计；type-only `import { ColorTokenName } from '@skb/design-tokens'` 关闭 [ADR-0010 D3 #7a F3](../../docs/decisions/ADR-0010-wave-2-close.md)）。`image.css` 的 `var(--color-*)` 集合与 `IMAGE_THEME_TOKENS` 键集必须一致；不一致 `theme-tokens.test.ts` 失败。
 
 ## Wave 2 / Wave 3 约束
 
