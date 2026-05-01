@@ -4,6 +4,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { BlockRegistry } from '@skb/block-foundation';
 import { calloutCore, parseCallout, serializeCallout } from '@skb/block-callout/core';
+import { codeCore, parseCode, serializeCode } from '@skb/block-code/core';
 import {
   getJsxDispatch,
   mdxToTiptap,
@@ -33,15 +34,27 @@ function ensureCalloutDispatch(): void {
   }
 }
 
-function buildCalloutOptions(): MdxBridgeOptions {
+function ensureCodeDispatch(): void {
+  if (getJsxDispatch('Code') === undefined) {
+    registerJsxDispatch({
+      mdxComponent: 'Code',
+      blockType: 'code',
+      parse: parseCode as unknown as JsxDispatchEntry['parse'],
+      serialize: serializeCode as unknown as JsxDispatchEntry['serialize'],
+    });
+  }
+}
+
+function buildComponentBlockOptions(): MdxBridgeOptions {
   const blockRegistry = new BlockRegistry();
   blockRegistry.registerCore(calloutCore);
+  blockRegistry.registerCore(codeCore);
   return { blockRegistry };
 }
 
 function optionsForFixture(file: string, source: string): MdxBridgeOptions | undefined {
-  return /^(2[2-9])-/.test(file) || source.includes('<Callout')
-    ? buildCalloutOptions()
+  return /^(2[2-9])-/.test(file) || source.includes('<Callout') || source.includes('<Code')
+    ? buildComponentBlockOptions()
     : undefined;
 }
 
@@ -60,6 +73,7 @@ function stripMdast(doc: TiptapDoc): TiptapDoc {
 describe('MDX <-> Tiptap round-trip', () => {
   beforeAll(() => {
     ensureCalloutDispatch();
+    ensureCodeDispatch();
   });
 
   for (const file of FIXTURES) {
@@ -82,8 +96,8 @@ describe('MDX <-> Tiptap round-trip', () => {
     });
   }
 
-  it('finds at least 10 fixtures', () => {
-    expect(FIXTURES.length).toBeGreaterThanOrEqual(10);
+  it('finds at least 11 fixtures', () => {
+    expect(FIXTURES.length).toBeGreaterThanOrEqual(11);
   });
 });
 
