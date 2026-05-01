@@ -1,0 +1,651 @@
+Reading additional input from stdin...
+OpenAI Codex v0.125.0 (research preview)
+--------
+workdir: /home/weiyi/selfKnowledgeBaseWeb/apps/site
+model: gpt-5.3-codex-spark
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: xhigh
+reasoning summaries: none
+session id: 019ddf9f-946a-7481-9ea2-58bafaa230a9
+--------
+user
+你是 code-reviewer profile (gpt-5.3-spark)。审 SelfKnowledgeBaseWeb Wave 2 Task #32 (FIX-B2-r2: visual-smoke webServer timeout fix)。
+
+## Bundle (1 file)
+git diff apps/site/playwright.config.ts:
+- webServer.command: 'pnpm dev' → 'pnpm exec astro dev --host 127.0.0.1 --port 4321'
+- webServer.timeout: 120_000 → 240_000
+- 加 webServer.stdout: 'pipe', stderr: 'pipe'
+- 8 行 inline comment 解释 pnpm wrapper / cold CI / IPv4 binding 决策
+
+## 背景
+B2 commit b614b72 + FIX-B2 66979ea on main。CI lint passes 但 visual-smoke first run fail 'Timed out waiting 120000ms'，没 stdout 输出。本 R2 修 webServer config（不改 ci.yml，普通 PR）。
+
+editor-integrator diagnosis (3 可能 root causes):
+1. pnpm wrapper swallow stdout
+2. 120s 太紧 (cold CI vite optimization >2min)
+3. localhost vs 127.0.0.1 binding mismatch
+
+R2 修 3 处：skip pnpm wrapper + explicit binding + bump timeout + pipe stdout (调试 hatch).
+
+## 必查
+1. fix 决策合理性: pnpm exec astro dev --host 127.0.0.1 --port 4321 是否正确避开 pnpm wrapper?
+2. timeout bump 240s 是否合理 (cold CI 实际 headroom)
+3. stdout/stderr pipe 是否会引入 buffer issue
+4. 本地 verify: editor-integrator 报 astro 启动 810ms + curl HTTP 200 + pnpm check exit 0
+5. ADR-0006 8 项预期 N/A
+6. fallback path (preview workflow / vite cache / pin ubuntu version) 是否合理
+
+## 触发链
+普通 PR (D2 row 不触发) → 你是唯一 reviewer。
+
+## 不在 scope
+- 不审本机 chromium launch 限制 (WSL2 lib gap, WE-005)
+- 不修改文件
+
+输出 verdict: PASS/FAIL + 'asymmetry-audit applied'。开始。
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the vendored bubblewrap in the meantime.
+codex
+收到。我先按你给的 bundle 逐项做“对称性审计”检查：确认这次 R2 在 Playwright webServer 配置层面的变更是否满足 6 个必查项（决策合理性、120s→240s、stdout/stderr piping 风险、回归上下文、ADR-0006 范围、回退策略）。我先读取 `playwright.config.ts` 的完整修改点并按行给出结论与建议。
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb/apps/site && (printf '--- FILE: playwright.config.ts ---
+'; nl -ba playwright.config.ts; printf '
+--- GIT DIFF ---
+'; git diff -- apps/site/playwright.config.ts)" in /home/weiyi/selfKnowledgeBaseWeb/apps/site
+ succeeded in 141ms:
+/bin/bash: line 2: printf: --: invalid option
+printf: usage: printf [-v var] format [arguments]
+     1	import { defineConfig, devices } from '@playwright/test';
+     2	
+     3	export default defineConfig({
+     4	  testDir: './src/__tests__',
+     5	  testMatch: '**/*.spec.ts',
+     6	  fullyParallel: true,
+     7	  forbidOnly: !!process.env.CI,
+     8	  retries: process.env.CI ? 2 : 0,
+     9	  reporter: process.env.CI ? 'github' : 'list',
+    10	  use: {
+    11	    baseURL: 'http://127.0.0.1:4321',
+    12	    trace: 'on-first-retry',
+    13	    colorScheme: 'light',
+    14	  },
+    15	  projects: [
+    16	    {
+    17	      name: 'chromium',
+    18	      use: { ...devices['Desktop Chrome'] },
+    19	    },
+    20	  ],
+    21	  webServer: {
+    22	    // Skip the pnpm script wrapper and invoke astro directly so signal
+    23	    // forwarding and stdio piping go straight from Playwright to astro
+    24	    // (pnpm-as-middleman has been observed to swallow ready-state output
+    25	    // on slow CI runners, causing Playwright's URL polling to time out
+    26	    // even though the server is up).
+    27	    command: 'pnpm exec astro dev --host 127.0.0.1 --port 4321',
+    28	    url: 'http://127.0.0.1:4321',
+    29	    reuseExistingServer: !process.env.CI,
+    30	    // 120s was tight on cold CI runners (vite dep optimization + content
+    31	    // sync on a fresh ~/.cache). 240s gives headroom; if it still trips,
+    32	    // the stdout pipe below will surface the real cause in CI logs.
+    33	    timeout: 240_000,
+    34	    stdout: 'pipe',
+    35	    stderr: 'pipe',
+    36	  },
+    37	});
+
+--- GIT DIFF ---
+
+exec
+/bin/bash -lc 'cd /home/weiyi/selfKnowledgeBaseWeb && git status --short -- apps/site/playwright.config.ts && git diff -- apps/site/playwright.config.ts' in /home/weiyi/selfKnowledgeBaseWeb/apps/site
+ succeeded in 0ms:
+ M apps/site/playwright.config.ts
+diff --git a/apps/site/playwright.config.ts b/apps/site/playwright.config.ts
+index e04a40d..23edb69 100644
+--- a/apps/site/playwright.config.ts
++++ b/apps/site/playwright.config.ts
+@@ -19,9 +19,19 @@ export default defineConfig({
+     },
+   ],
+   webServer: {
+-    command: 'pnpm dev',
++    // Skip the pnpm script wrapper and invoke astro directly so signal
++    // forwarding and stdio piping go straight from Playwright to astro
++    // (pnpm-as-middleman has been observed to swallow ready-state output
++    // on slow CI runners, causing Playwright's URL polling to time out
++    // even though the server is up).
++    command: 'pnpm exec astro dev --host 127.0.0.1 --port 4321',
+     url: 'http://127.0.0.1:4321',
+     reuseExistingServer: !process.env.CI,
+-    timeout: 120_000,
++    // 120s was tight on cold CI runners (vite dep optimization + content
++    // sync on a fresh ~/.cache). 240s gives headroom; if it still trips,
++    // the stdout pipe below will surface the real cause in CI logs.
++    timeout: 240_000,
++    stdout: 'pipe',
++    stderr: 'pipe',
+   },
+ });
+
+codex
+我已拿到本次 diff（仅改了 `apps/site/playwright.config.ts`）。我再快速核对一次与 `ADR-0006` 的相关约束是否与该类变更相关，再给出结论。
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && rg -n \"ADR-0006|ADR-0006|ADR\" docs -g '*.md'" in /home/weiyi/selfKnowledgeBaseWeb/apps/site
+ succeeded in 0ms:
+docs/plans/overview.md:11:| 0     | done        | [phase-0 plan](../superpowers/plans/2026-04-29-phase-0-scaffolding.md) ✅ ADR-0001       |
+docs/plans/overview.md:18:| 3+    | open        | (按需创建，每条独立 ADR)                                                                |
+docs/plans/overview.md:24:- [decisions/](../decisions/) — ADR 历史
+docs/decisions/ADR-0006-asymmetry-audit-checklist.md:1:# ADR-0006: Cross-location asymmetry-audit checklist (process rule)
+docs/decisions/ADR-0006-asymmetry-audit-checklist.md:9:| 替代 | 不替代任何 ADR；扩展 [ADR-0001](ADR-0001-stack-selection.md) §3.2 review chain |
+docs/decisions/ADR-0006-asymmetry-audit-checklist.md:30:| 8 | Wave 1 close bundle v1 | R1 → fixed v2 | ADR-0006 mandated reviewer-prompt updates vs actual `agent-contract.md` / generated `.claude/agents/*.md` / `docs/review-checklist.md` / `team-operations.md` content | The close-ceremony commit codified a process rule that mandates downstream behavior; consumer-side artifacts (reviewer prompts + runbook) had not been updated to embed the rule, so Wave 2 reviewers would not have seen it |
+docs/decisions/ADR-0006-asymmetry-audit-checklist.md:31:| 9 | Wave 1 close bundle v2 | R2 → fixed v3 | ADR-0006:81 within-document drift "7 distinct instances" | Single bullet missed during the v1→v2 count sweep — sister-bullet variant of item #6 within a single document |
+docs/decisions/ADR-0006-asymmetry-audit-checklist.md:32:| 10 | Wave 1 close bundle v3 | R3 → fixed v4 | ADR-0006:117 within-document drift "7 empirical instances + 18+ erratum candidates" (both numbers stale) | Second sister-bullet drift in the same file, a different bullet — proved per-citation fixes are themselves item #6 traps; comprehensive sweep at fix time is the robust pattern |
+docs/decisions/ADR-0006-asymmetry-audit-checklist.md:64:8. **Authority-document → generated/consumed surface audit**: When updating an authority document (ADR, spec, `agent-contract.md`, runbook, CONVENTIONS) **OR a dependency authority (`package.json`)** that mandates behavior in downstream consumers, audit every consumer-side replica/generated artifact for synchronized update **AND staged-in-the-git-index in the same bundle**. Specifically: an ADR section that says "X file MUST be updated to do Y" requires the same commit to update X and provide a way to verify the synchronization. Generated artifacts (e.g. `docs/review-checklist.md` and `.claude/agents/*.md` derived from `agent-contract.md`; **`pnpm-lock.yaml` derived from `package.json`** — see sub-form C below) MUST be regenerated via the documented codegen step (`pnpm generate:configs` / `pnpm install`) AND **explicitly `git add`'d** so the git **index** (not just the working tree) contains the new content; runbooks (`docs/runbooks/team-operations.md`) MUST be cross-linked; Codex/Claude subagent prompt files MUST embed or reference the new rule.
+docs/decisions/ADR-0006-asymmetry-audit-checklist.md:88:   **Wave 1 evidence**: **instance #8** — ADR-0006 v1 commit codified reviewer-prompt mandates but did not update `agent-contract.md` / regenerate `.claude/agents/code-reviewer.md` / regenerate `.claude/agents/pr-gate.md` / cross-link `team-operations.md` / regenerate `docs/review-checklist.md`; pr-gate caught the dogfood failure during R1 review of the close-ceremony bundle, forcing a v2 fix. **instance #12 (sub-form A — pre-regeneration omission)** — v5 bundle updated authority files (`agent-contract.md`, generator code, `team-operations.md` cross-link) but had not run the generator at all post-edit; the 3 regenerated outputs were stale at HEAD content; pr-gate caught this during R2 review, forcing a v6 fix. **instance #12 (sub-form B — staging-vs-working-tree confusion)** — v6 bundle ran the generator (so working tree had new content) but did NOT `git add` the regenerated outputs; the git **index** still held HEAD blob hashes for the 3 generated files; orchestrator confused `git status --short` "M" prefix (working-tree-vs-index) with index-vs-HEAD; pr-gate caught this via `git ls-files --stage` blob-hash comparison during R3 review, forcing the v7 fix that explicitly stages with `git add` + verifies via `git diff --cached`. **instance #12 (sub-form C — lockfile is a generated-from-authority artifact)** — Wave 1 close ceremony commit `e15ec36` ("fix(deps): commit pnpm-lock.yaml for @tailwindcss/typography (lockfile drift)"): the design-tokens erratum (commit `fdc86a8`) added the `@tailwindcss/typography` dependency to `package.json` but did not stage the regenerated `pnpm-lock.yaml`; CI install used the pre-update lockfile, drifted against the new `package.json`, and failed `pnpm install --frozen-lockfile`. Resolution: commit `e15ec36` staged the lockfile separately. Lesson codified: when the authority is `package.json` (any dependency add / remove / version bump), `pnpm-lock.yaml` is the consumer-side generated artifact and must ride the same bundle — the class equivalence to `.claude/agents/*.md` regeneration is exact (deterministic derive + git-index staging required). The four sub-forms of the same item #8 class — pre-regeneration omission, post-regeneration commit-staging confusion, conceptually-correct-but-operationally-incomplete fix, AND lockfile-as-generated-artifact — together motivate the explicit operational sequence and `git diff --cached` canonical verification command codified above.
+docs/decisions/ADR-0006-asymmetry-audit-checklist.md:114:- **Worker prompt overhead**: each spawn prompt now needs a reference to this ADR + the 8-point checklist. Marginal cost.
+docs/decisions/ADR-0006-asymmetry-audit-checklist.md:120:- **Risk**: this list might grow unbounded as Wave 2+ surfaces new asymmetry classes. **Mitigation**: ADR amendments are cheap; each new instance produces an ADR-0006 erratum capturing item #N+1. Wave 2 close ceremony reviews instances and adds items as needed.
+docs/decisions/ADR-0006-asymmetry-audit-checklist.md:128:1. State the 8-point checklist verbatim (or by reference to this ADR)
+docs/decisions/ADR-0006-asymmetry-audit-checklist.md:132:`docs/runbooks/team-operations.md` §"角色与触发器" Tier 2 reviewer rows should cross-link to this ADR.
+docs/decisions/ADR-0006-asymmetry-audit-checklist.md:140:This ADR is **forward-applicable**. Wave 1 PRs that already shipped under earlier review without this checklist remain valid; the empirical instances they revealed are exactly what grounded this ADR. No retroactive re-review required.
+docs/decisions/ADR-0006-asymmetry-audit-checklist.md:144:- [ADR-0001](ADR-0001-stack-selection.md) §3.2 review chain — this ADR specifies what reviewers MUST do; ADR-0001 specifies who reviews
+docs/decisions/ADR-0006-asymmetry-audit-checklist.md:145:- [ADR-0002](ADR-0002-wave-1-close.md) Wave 1 close — collects the 12 empirical instances + 22 erratum candidates
+docs/decisions/ADR-0006-asymmetry-audit-checklist.md:146:- [ADR-0004](ADR-0004-agent-team-dispatch-model.md) team dispatch — orchestrator dispatches review chain per this checklist
+docs/review-checklist.md:13:- [ ] **No cross-package moves outside `refactorer`.** Moves under `packages/*` or `apps/*` boundaries require an ADR + refactorer dispatch.
+docs/review-checklist.md:20:## ADR-0006 asymmetry-audit checklist (mandatory for code-reviewer + pr-gate)
+docs/review-checklist.md:22:Apply each item that is in scope for the PR; explicitly skip items that are not (e.g. item #2 "status code" doesn't apply to TS-only packages). Reviewer verdict structure MUST include `asymmetry-audit applied: items {1..8} verdicts: ...`. See [ADR-0006](decisions/ADR-0006-asymmetry-audit-checklist.md) for empirical evidence + full rationale per item.
+docs/review-checklist.md:31:- [ ] **#8 Authority-document → generated/consumed surface audit**: When updating an authority document (ADR, spec, `agent-contract.md`, runbook, CONVENTIONS) that mandates downstream behavior, audit every consumer-side replica/generated artifact in the same commit; regenerate codegen outputs (`pnpm generate:configs`); cross-link runbooks; embed in subagent prompts.
+docs/review-checklist.md:50:Triggered by: contract change, package add/remove, core arch touch, ADR-required PR,
+docs/review-checklist.md:72:      ADR under `docs/decisions/` if cross-cutting.
+docs/decisions/README.md:1:# Architecture Decision Records (ADR)
+docs/decisions/README.md:3:每个重大架构决策、跨包重组、接口破坏性改动都对应一份 ADR。
+docs/decisions/README.md:7:| ADR                                                       | 标题                                                       | 日期       | 状态     |
+docs/decisions/README.md:9:| [0001](ADR-0001-stack-selection.md)                       | 技术栈选型与架构基础                                       | 2026-04-29 | accepted |
+docs/decisions/README.md:10:| [0002](ADR-0002-wave-1-close.md)                          | Wave 1 close — empirical lessons + errata roll-up         | 2026-04-30 | accepted |
+docs/decisions/README.md:11:| [0003](ADR-0003-headless-presentational-split.md)         | Headless / Presentational 分层 + 设计 token + 开源就绪      | 2026-04-29 | accepted |
+docs/decisions/README.md:12:| [0004](ADR-0004-agent-team-dispatch-model.md)             | 采用 Claude Code Agent Team 作为多 agent dispatch 模型     | 2026-04-29 | accepted |
+docs/decisions/README.md:13:| [0005](ADR-0005-api-conventions.md)                       | REST API conventions（/v1 / camelCase / RFC 7807）         | 2026-04-29 | accepted |
+docs/decisions/README.md:14:| [0006](ADR-0006-asymmetry-audit-checklist.md)             | Cross-location asymmetry-audit checklist (process rule)    | 2026-04-30 | accepted |
+docs/decisions/README.md:15:| [0007](ADR-0007-job-function-codex-heavy-execution.md)    | 职能化分工 + Codex-heavy 执行 + teammate / tool 切分      | 2026-04-30 | accepted |
+docs/decisions/README.md:16:| [0008](ADR-0008-wave-2-entry-policies.md)                 | Wave 2 entry policies — dead-dep + block-foundation freeze | 2026-04-30 | accepted |
+docs/decisions/README.md:20:复制 `_template.md`（如有）或参照 ADR-0001。模板字段：
+docs/decisions/README.md:25:| 状态 | proposed / accepted / superseded by ADR-XXXX |
+docs/decisions/ADR-0003-headless-presentational-split.md:1:# ADR-0003: Headless / Presentational 分层 + 设计 token 独立 + 开源就绪
+docs/decisions/ADR-0003-headless-presentational-split.md:9:| 替代 | 不替代任何既有 ADR；扩展 ADR-0001 §1.5 / §2.5 / §2.6 边界 |
+docs/decisions/ADR-0003-headless-presentational-split.md:13:ADR-0001 锁定的架构默认 `apps/site` 与 `packages/*` 是单一闭源应用：每个 block 包同时含逻辑（props schema + MDX 序列化）与视觉（Tiptap NodeView + Astro renderer），样式以 Tailwind class 直接落在组件里，颜色 / 间距 / 排版散布全仓。这个安排对单人项目可行，但有两个限制：
+docs/decisions/ADR-0003-headless-presentational-split.md:146:### 影响其他 ADR / spec 的地方
+docs/decisions/ADR-0003-headless-presentational-split.md:148:- ADR-0001 Phase 0 erratum 5（tsconfig references 持续扩展）—— Wave 1 多一个 packages/design-tokens 加进 references
+docs/decisions/ADR-0003-headless-presentational-split.md:188:- [ADR-0001](ADR-0001-stack-selection.md) Phase 0 + Phase 1 架构基础
+docs/decisions/ADR-0002-wave-1-close.md:1:# ADR-0002: Wave 1 close — empirical lessons + errata roll-up
+docs/decisions/ADR-0002-wave-1-close.md:9:| 替代 | 不替代任何 ADR；扩展 [ADR-0001](ADR-0001-stack-selection.md) errata + [ADR-0003](ADR-0003-headless-presentational-split.md) D-list |
+docs/decisions/ADR-0002-wave-1-close.md:15:1. Capture empirical lessons that should bind Wave 2+ (recorded as ADR-0006 process rule and inline notes in CONTRACT.md / CONVENTIONS.md)
+docs/decisions/ADR-0002-wave-1-close.md:16:2. Collect errata + deferred follow-ups discovered during execution that don't yet warrant their own ADR but must not be forgotten
+docs/decisions/ADR-0002-wave-1-close.md:20:This ADR is the close ceremony's permanent record.
+docs/decisions/ADR-0002-wave-1-close.md:26:### D1 — Process rule codified as ADR-0006
+docs/decisions/ADR-0002-wave-1-close.md:28:The 8-point cross-location asymmetry-audit checklist becomes mandatory reviewer practice (see [ADR-0006](ADR-0006-asymmetry-audit-checklist.md)). Wave 1's empirical evidence (12 instances across 6 tracks + 5 close-ceremony fix iterations — 8 distinct failure-mode items + 4 close-ceremony reinforcements of items #6 and #8) is the data behind this rule.
+docs/decisions/ADR-0002-wave-1-close.md:49:The following errata accumulated during Wave 1 review cycles. None warrants its own ADR; all are recorded for Wave 2+ reference:
+docs/decisions/ADR-0002-wave-1-close.md:95:17. **Wave 2 component block ui-default packages** per ADR-0003 D-list. ADR-0003 D7 (npm publishing) deferred to Phase 3; Wave 2 ships `core` + `ui-default` together but neither is npm-published.
+docs/decisions/ADR-0002-wave-1-close.md:99:19. **F1 — mdx-bridge forward-compat dead deps** (audit §5/§6): `mdx-bridge/package.json` declares `@skb/block-foundation` and `@skb/content-types` workspace deps; source contains no imports yet. Documented at mdx-bridge CONTRACT §"Wave 1 declared peers (forward-compat)". Wave 2 entry ADR should resolve dead-dep policy globally (audit §7 recommendation #1: tighten "every package.json `@skb/*` must have a corresponding source import" OR relax "tsconfig refs MUST match package.json + CONTRACT MUST explain").
+docs/decisions/ADR-0002-wave-1-close.md:101:20. **F2 — block-foundation forward-compat dead dep** (audit §6): `block-foundation/package.json` declares `@skb/content-types` dep + matching tsconfig ref; no source import yet. Planned Wave 2 use: block-foundation will validate registered block props against content-types schemas. Resolution bundled with F1 in Wave 2 entry ADR.
+docs/decisions/ADR-0002-wave-1-close.md:113:`docs/plans/active.md` Wave pointer moves from "Wave 1 — 待执行" to "Wave 1 — closed by ADR-0002 / Wave 2 — pending plan draft". Wave 2 plan to be drafted by orchestrator + plan-challenger before Wave 2 spawn.
+docs/decisions/ADR-0002-wave-1-close.md:123:- **Empirical lessons preserved**: 22 errata + ADR-0006 8-point checklist + 3 cross-package single-authority invariants now codified at the right scope (CONTRACT.md / CONVENTIONS.md / ADR). Wave 2+ workers won't re-litigate.
+docs/decisions/ADR-0002-wave-1-close.md:131:- **Review-round count was high** for some tracks (Track F: 5 + 4 = 9 review rounds total; Track A: 3 + 3 = 6). ADR-0006 should reduce this in Wave 2 by front-loading the asymmetry-audit at code-reviewer level.
+docs/decisions/ADR-0002-wave-1-close.md:137:- **Risk**: Wave 2 workers may not read ADR-0006 carefully and hit the same 8-point class. **Mitigation**: ADR-0006 v2 also updates `agent-contract.md` (code-reviewer + pr-gate descriptions embed the 8-item summary), regenerates `.claude/agents/{code-reviewer,pr-gate}.md` + `docs/review-checklist.md` via `pnpm generate:configs`, and adds an ADR-0006 cross-link to `docs/runbooks/team-operations.md` Tier 2 reviewer rows. Every spawn prompt prefix-injects `team-operations.md`, so reviewers see the rule on entry; the regenerated subagent prompts also embed the 8-item summary directly.
+docs/decisions/ADR-0002-wave-1-close.md:138:- **Risk**: ADR-0002 errata roll-up grows unbounded across Waves. **Mitigation**: each Wave's close ceremony has its own ADR (ADR-0002 = Wave 1; future ADR-N for Wave N close); errata don't accumulate in a single file.
+docs/decisions/ADR-0002-wave-1-close.md:142:This ADR is the close ceremony itself. Implementation steps run in this order:
+docs/decisions/ADR-0002-wave-1-close.md:145:2. ✅ ADR-0006 written (`docs/decisions/ADR-0006-asymmetry-audit-checklist.md`)
+docs/decisions/ADR-0002-wave-1-close.md:146:3. ✅ ADR-0002 written (this file)
+docs/decisions/ADR-0002-wave-1-close.md:152:9. ⏳ Wave 1 close commit (orchestrator-direct via git-operator) — bundles ADR-0002 + ADR-0006 + structure baseline + active.md update + decisions/README.md index
+docs/decisions/ADR-0002-wave-1-close.md:157:- [ADR-0001](ADR-0001-stack-selection.md) — technical baseline + Phase 0 errata
+docs/decisions/ADR-0002-wave-1-close.md:158:- [ADR-0003](ADR-0003-headless-presentational-split.md) — D-list (D7 deferred to Phase 3 confirmed)
+docs/decisions/ADR-0002-wave-1-close.md:159:- [ADR-0004](ADR-0004-agent-team-dispatch-model.md) — team dispatch model proven across Wave 1
+docs/decisions/ADR-0002-wave-1-close.md:160:- [ADR-0005](ADR-0005-api-conventions.md) — API conventions enforced in Track D
+docs/decisions/ADR-0002-wave-1-close.md:161:- [ADR-0006](ADR-0006-asymmetry-audit-checklist.md) — 8-point asymmetry-audit checklist (process rule)
+docs/plans/active.md:8:Wave 1 ✅ closed (2026-04-30, HEAD `b5e7217`); Wave 2 Pre-Task 0 (ADR-0007 实施) ✅ committed (`691bc30`); follow-up² ✅ committed (`932a919`).
+docs/plans/active.md:9:**新增架构 ADR**:
+docs/plans/active.md:10:- [ADR-0002](../decisions/ADR-0002-wave-1-close.md) Wave 1 close — 22 errata + 3 cross-package single-authority invariants
+docs/plans/active.md:11:- [ADR-0006](../decisions/ADR-0006-asymmetry-audit-checklist.md) 8-point cross-location asymmetry-audit checklist (process rule, mandatory for code-reviewer + pr-gate; embedded in `agent-contract.md` + regenerated subagent prompts + cross-linked from team-operations.md)
+docs/plans/active.md:12:- [ADR-0007](../decisions/ADR-0007-job-function-codex-heavy-execution.md) **职能化分工 + Codex-heavy 执行 + teammate/tool 切分** (Wave 2 起重大架构调整：新增 ux-ui-lead；Claude pr-reviewer 改选择性；codex agents 降级为 orchestrator-direct tools)
+docs/plans/active.md:15:**团队操作手册**: [docs/runbooks/team-operations.md](../runbooks/team-operations.md)（必须前置注入每个 spawn 的 prompt；Tier 2 reviewer rows 现已 cross-link ADR-0006 8-point checklist；reviewer subagent prompts 也已 regen 嵌入 8 项摘要）
+docs/plans/active.md:21:### A. **Wave 2 Pre-Task 0：实施 ADR-0007**（高风险，必先执行）
+docs/plans/active.md:23:ADR-0007 重构 agent 阵容。**实施作为 Wave 2 第一个 task 走完整 review chain**（codex 5.3-spark + codex 5.5 pr-gate + Claude pr-reviewer，因 ADR-0007 D2 触发条件命中）。**严格按 ADR-0006 D8 staging protocol** 执行（authority + generator code + 全部生成产物在同一 bundle commit；显式 `git add` + `git diff --cached --stat` 验证）。
+docs/plans/active.md:25:具体步骤参 [ADR-0007 §"Wave 2 Pre-Task 0 实施指南"](../decisions/ADR-0007-job-function-codex-heavy-execution.md#wave-2-pre-task-0-实施指南高风险须走完整-review-chain) 7-step 序列：
+docs/plans/active.md:32:6. `pnpm generate:configs` + 严格 staging protocol（见 ADR-0007 Step 6 完整 git add 命令）
+docs/plans/active.md:39:1. 读 [ADR-0002](../decisions/ADR-0002-wave-1-close.md) + [ADR-0006](../decisions/ADR-0006-asymmetry-audit-checklist.md) + **[ADR-0007](../decisions/ADR-0007-job-function-codex-heavy-execution.md)**（必读）
+docs/plans/active.md:44:6. plan-challenger（**现在是 tool**，按 ADR-0007 D5）通过 `codex exec --profile plan-challenger < plan.md > challenge.txt` 挑战 → orchestrator 修订 → lock
+docs/plans/active.md:50:- 12 cross-location asymmetry meta-class 实例（worker layer 1-7：B R1 / D R2 / F R3 / C R2 / F R5 / A R1 / A R2；close-ceremony 8-12：v1 dogfood failure / v2 ADR-0006:81 drift / v3 ADR-0006:117 drift / v4 structure baseline:66 / v5 generator outputs not staged）已编入 ADR-0006 empirical 8-point checklist（8 distinct items + 4 close-ceremony reinforcements of items #6 + #8）
+docs/plans/active.md:64:**新增（ADR-0003）**：Wave 2 各 component block 的 task 拆为 core 实现 + ui-default 实现两部分；codex-block-generator 在 block-callout/{core+ui} 完成后承担其余 simple block 的批量仿造。
+docs/plans/active.md:66:**新增（ADR-0007）**：
+docs/plans/active.md:71:- review chain 默认 codex 5.3-spark + orchestrator 自检；ADR-0007 D2 列表的 7 类高风险 PR 才追加 pr-gate / Claude pr-reviewer
+docs/plans/active.md:81:- [phase-0 plan](../superpowers/plans/2026-04-29-phase-0-scaffolding.md) ✅ closed by ADR-0001
+docs/plans/active.md:84:- [ADR-0001](../decisions/ADR-0001-stack-selection.md)
+docs/plans/active.md:85:- [ADR-0003](../decisions/ADR-0003-headless-presentational-split.md) headless / UI 分层 + design-tokens + 开源就绪
+docs/plans/active.md:86:- [ADR-0007](../decisions/ADR-0007-job-function-codex-heavy-execution.md) 职能化分工 + Codex-heavy 执行 + teammate/tool 切分
+docs/decisions/ADR-0004-agent-team-dispatch-model.md:1:# ADR-0004: 采用 Claude Code Agent Team 作为多 agent dispatch 模型
+docs/decisions/ADR-0004-agent-team-dispatch-model.md:9:| 替代 | 不替代任何 ADR；修正 ADR-0001 / ADR-0003 中默认假设的"一次性 Task dispatch"工作流 |
+docs/decisions/ADR-0004-agent-team-dispatch-model.md:13:ADR-0001 / ADR-0003 / Phase 0 的实现工作（agent-contract.md → 27 agent 定义 → `.claude/agents/*.md`）建立了 agent **类型**单一源。但 Wave 1 plan 与历次讨论默认的 dispatch 模型是 **"一次性 `Task` 工具调用"**：
+docs/decisions/ADR-0004-agent-team-dispatch-model.md:92:team 里它们仍是 **Claude teammate**（消费 Claude Code 上下文），但实际 review / 脚手架工作由 Codex 完成。这正好与 ADR-0001 erratum 2（codex profile `approval_policy="never"`）协同：codex 在 sandbox 里跑完，输出回到 Claude teammate 的 turn，再通过 SendMessage / TaskUpdate 回报 team。
+docs/decisions/ADR-0004-agent-team-dispatch-model.md:137:- **ADR-0002 (Wave 1 close) 撰写更容易**：从 TaskList 自动汇总执行轨迹
+docs/decisions/ADR-0004-agent-team-dispatch-model.md:143:- **失败模式更多样**：teammate 卡住、消息丢失、TaskList 状态不一致都成为新故障类型；ADR-0002 errata 节会捕捉
+docs/decisions/ADR-0004-agent-team-dispatch-model.md:147:### 影响其他 ADR / spec
+docs/decisions/ADR-0004-agent-team-dispatch-model.md:149:- ADR-0001 没有错，但其语境下隐含的"orchestrator → 一次性 Task"假设需更新
+docs/decisions/ADR-0004-agent-team-dispatch-model.md:150:- ADR-0003 不受影响（Track G/A/B 等 dispatch 名字不变，只是变成 team member 名字）
+docs/decisions/ADR-0004-agent-team-dispatch-model.md:153:- spec decision log 追加本 ADR 条目
+docs/decisions/ADR-0004-agent-team-dispatch-model.md:176:- [ADR-0001](ADR-0001-stack-selection.md)
+docs/decisions/ADR-0004-agent-team-dispatch-model.md:177:- [ADR-0003](ADR-0003-headless-presentational-split.md)
+docs/decisions/ADR-0007-job-function-codex-heavy-execution.md:1:# ADR-0007: 职能化分工 + Codex-heavy 执行 + teammate / tool 切分
+docs/decisions/ADR-0007-job-function-codex-heavy-execution.md:9:| 替代 | 不替代任何 ADR；扩展 [ADR-0001](ADR-0001-stack-selection.md) §3.1-§3.2 + [ADR-0003](ADR-0003-headless-presentational-split.md) D2-D6 + [ADR-0004](ADR-0004-agent-team-dispatch-model.md) D2/D5/D7 |
+docs/decisions/ADR-0007-job-function-codex-heavy-execution.md:17:ADR-0003 D2 把每个 component block 拆 `core/` + `ui-default/`。Wave 2 即将启动 8 个 ui-default 实施。如果按 Wave 1 的 package-domain 模型派 agent（block-callout/ui-default 给 simple-block-eng，block-math/ui-default 给 render-block-eng，block-jupyter/ui-default 给 viz-block-eng…），8 个 ui-default 会被 ≥ 3 个不同 Claude agent 写，**8 种"自我品味"覆盖统一设计意图**。视觉 token 从 design-tokens 来不假，但具体 React 组件的 padding 哲学 / hover 微交互 / loading 状态等 design-tokens 不规定的部分会发散。
+docs/decisions/ADR-0007-job-function-codex-heavy-execution.md:23:- Codex 5.5 在 review 阶段抓住 9/12 cross-location asymmetry（[ADR-0006](ADR-0006-asymmetry-audit-checklist.md) 数据）
+docs/decisions/ADR-0007-job-function-codex-heavy-execution.md:66:**spawn prompt 注入**（ADR-0007 D4 详述）：
+docs/decisions/ADR-0007-job-function-codex-heavy-execution.md:67:- `team-operations.md` 全文（按 ADR-0004 D6 强制）
+docs/decisions/ADR-0007-job-function-codex-heavy-execution.md:69:- ADR-0003 全文（headless / UI 分层）
+docs/decisions/ADR-0007-job-function-codex-heavy-execution.md:94:| 修改 spec / agent-contract.md / 任何 ADR | + Claude pr-reviewer（不必 pr-gate，spec 类是文档） |
+docs/decisions/ADR-0007-job-function-codex-heavy-execution.md:95:| 触发新 ADR 创建 | + codex 5.5 pr-gate + Claude pr-reviewer |
+docs/decisions/ADR-0007-job-function-codex-heavy-execution.md:113:试点效果用 Wave 2 close 时的 ADR-0003-style 错误率衡量：codex-cloned core 的 review reject rate vs hand-crafted。如果 reject rate 接近 → Wave 3 推广；高 → 退回 hand-craft。
+docs/decisions/ADR-0007-job-function-codex-heavy-execution.md:146:  editor-eng / editor-integrator / ux-ui-lead (新, ADR-0007 D1) / api-builder
+docs/decisions/ADR-0007-job-function-codex-heavy-execution.md:149:  pr-reviewer (选择性触发, ADR-0007 D2) / git-operator / refactorer / researcher
+docs/decisions/ADR-0007-job-function-codex-heavy-execution.md:204:- **agent-contract.md restructure 是 high-risk PR**（触碰 authority + 全部 generated outputs），必须严格走 ADR-0006 D8 staging protocol
+docs/decisions/ADR-0007-job-function-codex-heavy-execution.md:209:- **plan-challenger 现在是 tool**：原本就是 one-shot 调用，现在去掉 wrapper 反而是清理；ADR-0004 D7 一直把它说成"一次性 dispatch"，与 tool 模型一致
+docs/decisions/ADR-0007-job-function-codex-heavy-execution.md:211:### 影响其他 ADR / spec
+docs/decisions/ADR-0007-job-function-codex-heavy-execution.md:217:| ADR-0001 §3.1 / §3.2（review 模型） | ADR-0007 显式扩展，不替代；ADR-0001 仍是基础架构源 |
+docs/decisions/ADR-0007-job-function-codex-heavy-execution.md:218:| ADR-0003 D2-D6 | ux-ui-lead 是 D2 / D3 落地的执行者；不破坏 ADR-0003 决策 |
+docs/decisions/ADR-0007-job-function-codex-heavy-execution.md:219:| ADR-0004 D2 / D5 / D7 | D2 spawn 模型 + D5 全 codex 是 teammate 的旧约定 + D7 一次性 Task —— ADR-0007 D5 是其延伸（tool 是 Task 一次性的进一步抽象）；不破坏 |
+docs/decisions/ADR-0007-job-function-codex-heavy-execution.md:220:| ADR-0006 8-point checklist | 不破坏；本 ADR 实施时**就是** ADR-0006 D8 的考验场（authority + generator + outputs 必须同 bundle staged） |
+docs/decisions/ADR-0007-job-function-codex-heavy-execution.md:224:本 ADR 是决策记录；实际实施作为 **Wave 2 Pre-Task 0** 在 team 流程中执行。**实施步骤序列**（必须严格按此顺序，并满足 ADR-0006 D8 staging protocol）：
+docs/decisions/ADR-0007-job-function-codex-heavy-execution.md:308:### Step 6: 跑生成器 + 严格按 ADR-0006 D8 staging protocol
+docs/decisions/ADR-0007-job-function-codex-heavy-execution.md:318:# 3. 显式 git add 所有改动 + 生成产物（关键步骤，参 ADR-0006 D8 + 实例 #12 教训）：
+docs/decisions/ADR-0007-job-function-codex-heavy-execution.md:355:git commit -m "feat(arch): ADR-0007 implementation — agent-contract restructure + codex tools"
+docs/decisions/ADR-0007-job-function-codex-heavy-execution.md:362:ADR-0007 D2 触发条件命中：修改 spec / agent-contract.md / 触发新 ADR / 跨 ≥ 3 package。所以本 PR：
+docs/decisions/ADR-0007-job-function-codex-heavy-execution.md:367:**这 PR 是 ADR-0006 8-point checklist 的标准考场** —— 实施者预期会撞 instance #8 子类（authority + generator + outputs not staged）。提前 grep `git status --short`/`git diff --cached --stat` 双检查。
+docs/decisions/ADR-0007-job-function-codex-heavy-execution.md:371:- ADR-0007 实施（Wave 2 Pre-Task 0）必须先于 Wave 2 实际工作 task
+docs/decisions/ADR-0007-job-function-codex-heavy-execution.md:378:- [ADR-0001](ADR-0001-stack-selection.md) §3.1 / §3.2 review 模型基础
+docs/decisions/ADR-0007-job-function-codex-heavy-execution.md:379:- [ADR-0003](ADR-0003-headless-presentational-split.md) D2-D6 ui-default 物理分离
+docs/decisions/ADR-0007-job-function-codex-heavy-execution.md:380:- [ADR-0004](ADR-0004-agent-team-dispatch-model.md) D5 / D7 / D8 team 模型 + 一次性 Task + orchestrator-managed
+docs/decisions/ADR-0007-job-function-codex-heavy-execution.md:381:- [ADR-0006](ADR-0006-asymmetry-audit-checklist.md) 本 ADR 实施时必经的 review checklist；尤其 D8 + instance #12 staging 教训
+docs/decisions/ADR-0007-job-function-codex-heavy-execution.md:383:- [Phase 1 Wave 2 plan](../superpowers/plans/) 待起草，必须按 ADR-0007 调整 agent dispatch 与 review chain
+docs/decisions/ADR-0005-api-conventions.md:1:# ADR-0005: REST API conventions
+docs/decisions/ADR-0005-api-conventions.md:9:| 替代 | 不替代任何 ADR；扩展 ADR-0001 §1.2 / spec §2.5 |
+docs/decisions/ADR-0005-api-conventions.md:22:api-builder 在 Wave 1 + 未来 codex-api-crud-builder 协同（Wave 2 起）会让风格漂移加剧。开源（ADR-0003）目标进一步要求外部使用者拿到稳定 / 文档化的 API。
+docs/decisions/ADR-0005-api-conventions.md:37:10. **Phase 1/2 不维护严格向后兼容**；重大变化经 ADR + `/v2` 双跑
+docs/decisions/ADR-0005-api-conventions.md:46:- **开源就绪**（ADR-0003 D7 配套）：约定明确，外部使用者文档化路径清晰
+docs/decisions/ADR-0005-api-conventions.md:61:| [设计规格](../superpowers/specs/2026-04-29-self-knowledge-base-design.md) decision log | 加 ADR-0005 条目 |
+docs/decisions/ADR-0005-api-conventions.md:63:| [decisions/README.md](README.md) | ADR 索引 +0005 |
+docs/decisions/ADR-0005-api-conventions.md:76:- [ADR-0001](ADR-0001-stack-selection.md) §1.2 技术栈
+docs/decisions/ADR-0005-api-conventions.md:77:- [ADR-0003](ADR-0003-headless-presentational-split.md) 开源就绪 (D7 推迟 npm 发布)
+docs/decisions/ADR-0005-api-conventions.md:78:- [ADR-0004](ADR-0004-agent-team-dispatch-model.md) team dispatch
+docs/plans/phase-1/plan.md:10:| 1 | 基础设施 + 接口（6 路并行） | [2026-04-29-phase-1-wave-1-foundation.md](../../superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md) | ✅ closed by [ADR-0002](../../decisions/ADR-0002-wave-1-close.md) (2026-04-30) |
+docs/plans/phase-1/plan.md:19:- ADR-0002 记录 wave 1 完成
+docs/plans/phase-1/plan.md:23:**Wave 2 Pre-Task 0 必先**：实施 [ADR-0007](../../decisions/ADR-0007-job-function-codex-heavy-execution.md)（agent-contract restructure + ux-ui-lead 加入 + codex agents 降为 tool）。完工后才能起 Wave 2 真正实施 task。
+docs/plans/phase-1/plan.md:27:- **每个 component block 拆 core/ + ui-default/（ADR-0003）**：
+docs/plans/phase-1/plan.md:28:  - core 试点（ADR-0007 D3）：block-callout/core/ template by simple-block-eng；block-code/core/ + block-image/core/ clone by codex-block-generator（tool）；render block / viz block 仍 hand-craft
+docs/plans/phase-1/plan.md:29:  - ui-default 全部由 **ux-ui-lead**（新 Claude teammate, ADR-0007 D1）写第一 template + codex-block-generator (tool) clone 7 个
+docs/plans/phase-1/plan.md:30:- 3 个 editor 子模块（editor-slash-menu / editor-drag-handle / editor-toolbar）由 editor-eng template + codex-block-generator clone（ADR-0007 D3）
+docs/plans/phase-1/plan.md:32:- codex-test-scaffolder / codex-script-builder / codex-css-stylist 首次实战 **作 tool 而非 teammate 调用**（ADR-0007 D5）；orchestrator + 工种 lead 直接 Bash 调用
+docs/plans/phase-1/plan.md:33:- 设计 skill 流水线注入 ux-ui-lead spawn prompt（ADR-0007 D4）—— frontend-design + ui-ux-pro-max-skill + web-design-guidelines 一次性全注入
+docs/plans/phase-1/plan.md:34:- review chain 改为：默认 codex 5.3-spark + orchestrator 自检；ADR-0007 D2 列出的 7 类高风险触发 codex 5.5 pr-gate + Claude pr-reviewer
+docs/plans/phase-1/plan.md:42:每个 wave 结束都产 ADR（ADR-0002 = Wave 1 close, ADR-0003 = Wave 2 close, ...），其内必含：
+docs/plans/phase-1/plan.md:44:- 实际偏离 spec / plan 的地方（errata 风格，如 ADR-0001 的 7 处 errata）
+docs/plans/phase-1/plan.md:53:- [decisions/ADR-0001](../../decisions/ADR-0001-stack-selection.md)
+docs/runbooks/team-operations.md:4:> 适用范围：所有 Claude Code agent team 模式下的 teammate（按 ADR-0004 工作）。
+docs/runbooks/team-operations.md:89:> **ADR-0007 D5 注**：`code-reviewer` / `pr-gate` / `plan-challenger` 在本 ADR 实施 PR 完工后**降级为 tool patterns**（orchestrator 直接 Bash 调 `codex exec --profile X < /dev/null`），不再以 teammate 形式 spawn。canonical bash + 触发条件 + audit 落盘见 [`docs/runbooks/codex-tool-invocations.md`](codex-tool-invocations.md)。本表保留它们为操作语义参考（行为不变；只是 invocation pattern 从 SendMessage→teammate 变为 Bash→tool）。
+docs/runbooks/team-operations.md:91:> **Claude `pr-reviewer` 改为选择性触发**（ADR-0007 D2 8 条触发列表）；普通 PR 由 orchestrator 扫 codex 5.3-spark 输出 + diff 自检，不再每 PR 都调 Claude pr-reviewer。
+docs/runbooks/team-operations.md:95:| `code-reviewer` (tool)                  | orchestrator 触发，PR ready                                          | 读 git diff；orchestrator Bash 调 `codex exec --profile code-reviewer < /dev/null`；输出 PASS / FAIL + 具体问题；stdout 落盘到 `docs/audits/codex-runs/`。**强制 [ADR-0006](../decisions/ADR-0006-asymmetry-audit-checklist.md) 8-point asymmetry-audit checklist**（每条可适用项目都要在 verdict 里给结论） |
+docs/runbooks/team-operations.md:96:| `pr-gate` (tool)                        | code-reviewer pass 后，orchestrator 判断高风险触发（ADR-0007 D2 表） | orchestrator Bash 调 `codex exec --profile pr-gate < /dev/null`（5.5）；输出 PASS / FAIL。**强制 [ADR-0006](../decisions/ADR-0006-asymmetry-audit-checklist.md) 8-point asymmetry-audit checklist + 8th-class hunt**（独立验证 R1 结论 + 主动 hunt cited-fix 之外的对称性缺口）                              |
+docs/runbooks/team-operations.md:97:| `pr-reviewer` (Claude teammate, 选择性) | code-reviewer (+pr-gate if applicable) pass + ADR-0007 D2 触发命中   | 读 spec / plan / diff；输出 APPROVE / REJECT + 跨文件影响分析                                                                                                                                                                                                                                                |
+docs/runbooks/team-operations.md:99:| `refactorer`                            | structure-auditor 标记或 manual 触发                                 | 唯一被授权跨包代码移动；每次产 ADR                                                                                                                                                                                                                                                                           |
+docs/runbooks/team-operations.md:155:orchestrator 在派 review 时按 [ADR-0007 D2](../decisions/ADR-0007-job-function-codex-heavy-execution.md) 表 8 行判断；**rows 1/2/4/8 → 追加 codex 5.5 pr-gate + Claude pr-reviewer**；**rows 3/5/6/7 → 仅追加 Claude pr-reviewer（不跑 pr-gate）**。
+docs/runbooks/team-operations.md:161:| 3 | 修改 spec / `agent-contract.md` / 任何 ADR | — | ✅ |
+docs/runbooks/team-operations.md:162:| 4 | 触发新 ADR 创建（`docs/decisions/ADR-NNNN-*.md`） | ✅ | ✅ |
+docs/runbooks/team-operations.md:168:4-vs-4 carve-out 理由（ADR-0007 D2）：rows 1/2/4/8 是**接口/包结构/CI 类**改动，5.5 深审高 ROI；rows 3/5/6/7 是**文档 / 删除重命名 / 单调跨包 / 已被 perf-auditor 标记**，Claude pr-reviewer 的 spec-match + 跨包影响视角足够，5.5 深审边际收益低。
+docs/runbooks/team-operations.md:201:**ADR-0007 D5 起**，原 `code-reviewer` / `pr-gate` / `plan-challenger` / `codex-*-eng` teammate 全部降级为 tool patterns —— 由 **orchestrator** 直接 Bash 调用，不再 spawn 为 teammate。orchestrator 调用时**必须遵守**：
+docs/runbooks/team-operations.md:207:- **失败回退**：如果 codex 三次重试仍失败，向 orchestrator 报告，让其决定降级到 Claude（按 ADR-0001 降级策略）
+docs/runbooks/team-operations.md:228:- [ADR-0004 团队 dispatch 决策](../decisions/ADR-0004-agent-team-dispatch-model.md)
+docs/runbooks/team-operations.md:229:- [ADR-0007 职能化分工 + Codex-heavy 执行 + teammate/tool 切分](../decisions/ADR-0007-job-function-codex-heavy-execution.md)
+docs/runbooks/team-operations.md:230:- [ADR-0006 cross-location asymmetry-audit checklist](../decisions/ADR-0006-asymmetry-audit-checklist.md)
+docs/decisions/ADR-0001-stack-selection.md:1:# ADR-0001: 技术栈选型与架构基础
+docs/decisions/ADR-0001-stack-selection.md:62:接口稳定（packages/kernel-adapter）+ 运行时路由（packages/kernel-registry）+ Phase 1 唯一实现 packages/kernel-pyodide。接口破坏性改动必产 ADR。
+docs/decisions/ADR-0001-stack-selection.md:103:执行 Phase 0 期间发现 7 处 spec 描述与实现需要校正（5 处在 T0.1-T0.13 主体执行中发现；2 处在 V1 acceptance gate 重测中暴露）。每条都已在对应 commit 落实，本 ADR 集中记录原因与替代实现：
+docs/decisions/ADR-0001-stack-selection.md:121:**修正实现**：T0.3 fix round 选了保守路径——`~5.6.0`，lockfile pin 5.6.3；commit `b8ebbb6`。后续如想升级到 5.7/5.8/5.9，需另起 ADR 评估 tsc 行为变化。
+docs/decisions/ADR-0001-stack-selection.md:161:- 全部 Phase 0 commits（含本 ADR 多次 amendment 在内）：`git log --oneline 2ba57fe..HEAD`
+docs/runbooks/codex-tool-invocations.md:7:ADR-0007 D5 demoted 8 codex agents from team-membered teammates (persistent
+docs/runbooks/codex-tool-invocations.md:17:- Architecture decision: [ADR-0007](../decisions/ADR-0007-job-function-codex-heavy-execution.md) §D5
+docs/runbooks/codex-tool-invocations.md:30:- **3-strike fallback**: if a pattern's invocation fails 3× consecutively, orchestrator MUST escalate (degrade to Claude per ADR-0001 fallback or surface to user).
+docs/runbooks/codex-tool-invocations.md:32:## ADR-0006 D8 reminder
+docs/runbooks/codex-tool-invocations.md:62:高风险 PR 按 ADR-0007 D2 表条件 escalate（rows 1/2/4/8 → +pr-gate +pr-reviewer；rows 3/5/6/7 → 仅 +pr-reviewer，不跑 pr-gate）。
+docs/runbooks/codex-tool-invocations.md:64:**强制：ADR-0006 8-point asymmetry-audit checklist**（见 `docs/decisions/ADR-0006-asymmetry-audit-checklist.md`）必须按可适用项目逐条审查，verdict 结构应包含
+docs/runbooks/codex-tool-invocations.md:73:(8) authority 文档（ADR/agent-contract/runbook/CONVENTIONS）改动 → 审 generated/consumed surface（`.claude/agents/*`、`docs/review-checklist.md`、`team-operations.md`、`docs/runbooks/codex-tool-invocations.md`、Codex profiles、**pnpm-lock.yaml**）是否在同一 commit 里同步（commit `e15ec36` 教训：lockfile 也属 generated-from-authority artifact）。
+docs/runbooks/codex-tool-invocations.md:102:ADR-0007 D5 注：原 Tier 2 codex teammate 降级为 tool；本质即一次性 dispatch
+docs/runbooks/codex-tool-invocations.md:103:（ADR-0004 D7 早已如此），与 tool 模型一致。
+docs/runbooks/codex-tool-invocations.md:131:触发条件由 orchestrator 在 review 阶段判断（ADR-0007 D2 表 8 行）：
+docs/runbooks/codex-tool-invocations.md:132:rows 1/2/4/8（CONTRACT 变化 / 新增删除包 / 新 ADR / CI-auth-security）→ 启用；
+docs/runbooks/codex-tool-invocations.md:133:rows 3/5/6/7（spec/ADR 文档 / 删除重命名包 / 跨 3+包 / perf-auditor 标记）→ 跳过 pr-gate，直入 pr-reviewer。
+docs/runbooks/codex-tool-invocations.md:135:**强制：ADR-0006 8-point asymmetry-audit checklist**（见 `docs/decisions/ADR-0006-asymmetry-audit-checklist.md`）— 你是这项规则的主要执行者，必须独立验证所有可适用项目（不仅依赖 code-reviewer 的 R1 结论），并主动 hunt 8th-class beyond the cited fix。verdict 结构应包含
+docs/runbooks/codex-tool-invocations.md:181:stdout 落盘到 docs/audits/codex-runs/<date>-<task>-block-clone.txt（ADR-0007 §208 audit-trail 兜底）。
+docs/runbooks/codex-tool-invocations.md:186:ADR-0007 D3 试点：ui-default 8 个由 ux-ui-lead 写 1 个 + 本 tool clone 7 个；
+docs/runbooks/codex-tool-invocations.md:270:- [ADR-0007](../decisions/ADR-0007-job-function-codex-heavy-execution.md) — D5 demotion rationale
+docs/runbooks/codex-tool-invocations.md:271:- [ADR-0006](../decisions/ADR-0006-asymmetry-audit-checklist.md) — 8-point asymmetry audit (mandatory for code-reviewer + pr-gate profiles)
+docs/runbooks/codex-tool-invocations.md:272:- [ADR-0001](../decisions/ADR-0001-stack-selection.md) §3.1 / §3.2 — review chain baseline
+docs/decisions/ADR-0008-wave-2-entry-policies.md:1:# ADR-0008: Wave 2 entry policies — dead-dep + block-foundation interface freeze
+docs/decisions/ADR-0008-wave-2-entry-policies.md:8:| 触发 | structure-auditor Wave 1 close baseline §7 推荐 #1（dead-dep policy）+ #2（block-foundation interface freeze）；ADR-0002 D3 erratum #19（F1）+ #20（F2）+ #21（block-foundation RFC） |
+docs/decisions/ADR-0008-wave-2-entry-policies.md:9:| 替代 | 不替代任何 ADR；扩展 [ADR-0001](ADR-0001-stack-selection.md) §1.2/§1.8 monorepo 规则 + [ADR-0003](ADR-0003-headless-presentational-split.md) D2 双层接口        |
+docs/decisions/ADR-0008-wave-2-entry-policies.md:19:ADR-0002 D3 已记录两处 forward-compat dead-dep：
+docs/decisions/ADR-0008-wave-2-entry-policies.md:62:   package.json 形态可在 ADR-N 重新审视；当前不应被 hypothetical future
+docs/decisions/ADR-0008-wave-2-entry-policies.md:90:D2 的实施在 Task A2（owner: `block-foundation-eng`，blocked_by Task A1=本 ADR commit）。
+docs/decisions/ADR-0008-wave-2-entry-policies.md:91:本 ADR 仅 freeze D2 的**目标**与**承诺**；具体 RFC.md 文本由 Task A2 PR 落地。
+docs/decisions/ADR-0008-wave-2-entry-policies.md:98:- **block-foundation 接口在 block-callout 入门前 freeze**：预防 Wave 1 R-round inflation 同源问题（教训源 ADR-0006 instances #1, #5）。
+docs/decisions/ADR-0008-wave-2-entry-policies.md:105:  optional peer 显式声明），届时需 ADR-N 重新评估；当前判断该顾虑不充分（私有
+docs/decisions/ADR-0008-wave-2-entry-policies.md:117:  **缓解**：每个 block-* PR review chain 已强制读 CONTRACT.md（ADR-0007 D2 row 1 触发），prose 段是 review 必经；review 也会检查 dep 与 import 一致。
+docs/decisions/ADR-0008-wave-2-entry-policies.md:121:按 ADR-0006 D8 staging protocol（authority + generated/consumed surface 同 bundle staged）：
+docs/decisions/ADR-0008-wave-2-entry-policies.md:123:1. **同 bundle commit（本 ADR + 应用同 PR）**：
+docs/decisions/ADR-0008-wave-2-entry-policies.md:124:   - `docs/decisions/ADR-0008-wave-2-entry-policies.md`（本 ADR 自身）
+docs/decisions/ADR-0008-wave-2-entry-policies.md:125:   - `docs/decisions/README.md`（索引加 ADR-0008 行）
+docs/decisions/ADR-0008-wave-2-entry-policies.md:131:   - `pnpm-lock.yaml`（如 `pnpm install` 后有变动 — workspace dep 删除通常无 lockfile 影响，但 ADR-0006 D8 sub-form C 要求 verify）
+docs/decisions/ADR-0008-wave-2-entry-policies.md:140:- [ADR-0001](ADR-0001-stack-selection.md) — 技术栈基础与 monorepo 选型
+docs/decisions/ADR-0008-wave-2-entry-policies.md:141:- [ADR-0002](ADR-0002-wave-1-close.md) D3 erratum #19 / #20 / #21 — F1/F2 dead-dep + block-foundation RFC prereq 来源
+docs/decisions/ADR-0008-wave-2-entry-policies.md:142:- [ADR-0003](ADR-0003-headless-presentational-split.md) D2 — block-foundation 双层 API
+docs/decisions/ADR-0008-wave-2-entry-policies.md:143:- [ADR-0006](ADR-0006-asymmetry-audit-checklist.md) D8 — staging protocol 适用本 PR
+docs/decisions/ADR-0008-wave-2-entry-policies.md:144:- [ADR-0007](ADR-0007-job-function-codex-heavy-execution.md) D2 row 4 — 本 PR 触发 +pr-gate +pr-reviewer
+docs/decisions/ADR-0008-wave-2-entry-policies.md:146:- [docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md](../superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md) Task A1 / A2 — 本 ADR 应用入口
+docs/superpowers/plans/2026-04-29-phase-0-scaffolding.md:91:│   │   ├── README.md                   # T0.13 (ADR index)
+docs/superpowers/plans/2026-04-29-phase-0-scaffolding.md:92:│   │   └── ADR-0001-stack-selection.md # T0.13
+docs/superpowers/plans/2026-04-29-phase-0-scaffolding.md:691:      接口改动是高风险事件，必须 ADR。
+docs/superpowers/plans/2026-04-29-phase-0-scaffolding.md:850:      每次重组必产 docs/decisions/ADR-NNNN-<topic>.md。
+docs/superpowers/plans/2026-04-29-phase-0-scaffolding.md:1672:## Task 13: ADR-0001 + Phase 1 plan 初稿（T0.13）
+docs/superpowers/plans/2026-04-29-phase-0-scaffolding.md:1676:- Create: `docs/decisions/ADR-0001-stack-selection.md`
+docs/superpowers/plans/2026-04-29-phase-0-scaffolding.md:1681:**Context:** §3.11 ADR 制度 + §3.4 plans 分层。本 task 写 ADR-0001 追认 §1 决策，并起 Phase 1 plan 占位（后续单独由 writing-plans 完整化）。
+docs/superpowers/plans/2026-04-29-phase-0-scaffolding.md:1686:# Architecture Decision Records (ADR)
+docs/superpowers/plans/2026-04-29-phase-0-scaffolding.md:1688:每个重大架构决策、跨包重组、接口破坏性改动都对应一份 ADR。
+docs/superpowers/plans/2026-04-29-phase-0-scaffolding.md:1692:| ADR | 标题 | 日期 | 状态 |
+docs/superpowers/plans/2026-04-29-phase-0-scaffolding.md:1694:| [0001](ADR-0001-stack-selection.md) | 技术栈选型与架构基础 | 2026-04-29 | accepted |
+docs/superpowers/plans/2026-04-29-phase-0-scaffolding.md:1698:复制 `_template.md`（如有）或参照 ADR-0001。模板字段：
+docs/superpowers/plans/2026-04-29-phase-0-scaffolding.md:1703:| 状态 | proposed / accepted / superseded by ADR-XXXX |
+docs/superpowers/plans/2026-04-29-phase-0-scaffolding.md:1717:- [ ] **Step 2：写 `docs/decisions/ADR-0001-stack-selection.md`**
+docs/superpowers/plans/2026-04-29-phase-0-scaffolding.md:1720:# ADR-0001: 技术栈选型与架构基础
+docs/superpowers/plans/2026-04-29-phase-0-scaffolding.md:1843:git commit -m "docs: ADR-0001 + plans skeleton (overview / active / phase-1 stub)
+docs/superpowers/plans/2026-04-29-phase-0-scaffolding.md:1845:ADR-0001 records §1 spec decisions formally. Plans directory split
+docs/superpowers/plans/2026-04-29-phase-0-scaffolding.md:1911:- §1.1（部署拓扑）：在 ADR-0001 追认；具体实现 Phase 1
+docs/superpowers/plans/2026-04-29-phase-0-scaffolding.md:1926:- §3.11（ADR）：T0.13
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:182:### 1.5 编辑器架构（ADR-0003 后：core / UI 双层注册）
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:193:│  BlockRegistry (双层注册，ADR-0003)                       │
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:224:│  设计系统层 (packages/design-tokens, ADR-0003)            │
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:314:- **包结构允许进化**：通过 ADR + codemod 脚本，包可被合并 / 拆分 / 重命名 / 整体废弃
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:318:### 2.2 monorepo 结构（Phase 1 包数量：25 个；ADR-0003 后）
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:327:│   │  === 设计系统层（ADR-0003 新增）===
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:335:│   │  === Block 系统层（每个 block-* 包内 core/ + ui-default/ subfolder，ADR-0003）===
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:373:│   ├── decisions/                           # ADR
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:400:| **接口包**（极少改） | `kernel-adapter` · `block-foundation/registry` · `content-types` · `agent-tools` | 改动需 ADR；全员同步 | `refactorer` |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:441:| **Block Core / UI 双层接口（ADR-0003）** | `packages/block-foundation/src/registry.ts` | 所有 block 的 core + 所有 block 的 ui-default + editor + site | `block-foundation/CONTRACT.md` |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:442:| **设计 token 接口（ADR-0003）** | `packages/design-tokens/src/{tokens.css,tokens-dark.css,tailwind-preset.cjs,use-theme.ts}` | apps/site + 每个 block-X/ui-default + packages/ui | `design-tokens/CONTRACT.md` |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:506:4. **重大重组必有 ADR**：`docs/decisions/ADR-NNNN-<topic>.md`，由 `refactorer` agent 撰写
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:554:### 3.1 Agent 阵容（20 teammate + 8 tool pattern；ADR-0007 D1+D5）
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:556:ADR-0007 D5 把原 8 个 codex-wrapper agent（5 个 Tier 1 codex worker + Tier 2 `plan-challenger` /
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:559:ADR-0007 D1 同时新增 `ux-ui-lead` Claude teammate 作 ui-default 跨包视觉单一权威。最终阵容为
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:570:  ├─ ux-ui-lead (新, ADR-0007 D1) ── ui-default 跨包视觉单一权威
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:575:  ├─ pr-reviewer    ── 选择性触发 (ADR-0007 D2 高风险条件 8 行表)
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:604:| `orchestrator` | 维护 `docs/plans/`；把高层目标拆成 wave / track / task；dispatch Claude teammate（SendMessage）+ 直接 Bash 调用 codex tool（ADR-0007 D5）；接收 review 结果推进；**永不修改代码** |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:619:| `ux-ui-lead`（ADR-0007 D1） | 视觉单一权威：ui-default 跨包统一意图（写 1 个 template + 审 7 个 codex clone）；apps/site 视觉；editor 子模块视觉。**不**改 core / propsSchema / MDX serialize；**不**直接调 codex（dispatch 由 orchestrator） |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:626:| `pr-reviewer` | 实现质量 / 是否符合规格 / 是否引入降级或回归 / 架构一致性。**ADR-0007 D2 选择性触发**：常规 PR 由 orchestrator 自检 codex code-reviewer 输出 + diff；高风险 PR（§3.2 8 行触发表）才 spawn |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:628:| `refactorer` | 唯一跨包重组权；每次重组必产 ADR |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:640:#### Tool patterns（8 个 codex invocation；ADR-0007 D5）
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:660:| `code-reviewer` | gpt-5.3-codex-spark（默认廉价） | 行级 review：类型 / lint / 契约同步 / 文件大小 / 风格 / 边界条件；强制 ADR-0006 8-point asymmetry-audit |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:664:### 3.2 Review 工作流（成本敏感分层 + ADR-0007 D2 选择性 Claude review）
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:668:Wave 1 数据（codex 5.5 抓 9/12 cross-location asymmetry，[ADR-0006](../../decisions/ADR-0006-asymmetry-audit-checklist.md)）
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:670:跨包 / 长上下文 / 架构一致性判断 —— 因此 ADR-0007 D2 把 Claude pr-review 改为**仅高风险 PR 触发**。
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:680:│  ── 强制 ADR-0006 8-point asymmetry-audit checklist       │
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:688:│  Step 2: orchestrator 自动判断高风险（ADR-0007 D2 八条）  │
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:692:│   3. 修改 spec / agent-contract.md / 任何 ADR             │
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:693:│   4. 触发新 ADR 创建                                       │
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:708:   │              │  注：D2 rows 3/5/6/7（spec/ADR、删  │
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:732:│     判断不增 Claude turn 数"，ADR-0007 D2）               │
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:750:**成本预估**（Phase 1 假设 ~50 PR；已应用 ADR-0007 D2 选择性 + D5 codex tool 化）：
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:754:- **每 PR 节省 ~2-3 个 Claude wrapper turn**（codex 不再走 teammate spawn；详见 [ADR-0007 D5](../../decisions/ADR-0007-job-function-codex-heavy-execution.md)）
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:846:**`structure-auditor` 巡检**：每月扫候选 god-file → `refactorer` 接手 → 产 ADR。
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:923:### 3.11 ADR 制度
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:925:`docs/decisions/ADR-NNNN-<slug>.md`，模板：
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:928:# ADR-NNNN: <title>
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:932:| 状态 | proposed / accepted / superseded by ADR-XXXX |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:935:| 替代 | ADR-YYYY (if applicable) |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:944:触发 ADR 的事件：
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:987:codex exec --profile pr-gate "<full PR context + ADR-trigger reasoning>"
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:1002:**降级策略**：若 Phase 0 验证失败 / Codex CLI 不可用 / profile 路由错误，所有 codex-based agent 任务回退到 Claude，不阻塞 Phase 1。降级会触发 ADR 记录。
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:1095:| T0.13 `docs/decisions/ADR-0001-stack-selection.md`（追认 §1）+ `docs/plans/phase-1/plan.md` 初稿 | orchestrator | ADR + plan 完整 |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:1121:- ADR-0002 记录 wave 1 完成
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:1202:### 4.5 Phase 3+ 路线图（开放，按需触发，每条独立 ADR）
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:1296:| 2026-04-29 | 新增 `pr-gate` (Codex 5.5) 仅对高风险 PR 启用 | 触发条件明确（CONTRACT / 核心包 / ADR / 安全），低频高质量 |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:1302:| 2026-04-29 | Phase 0 任务数 12 → 13（+T0.13 ADR-0001 + plan 初稿） | 追认 §1 决策入 ADR；plan 文档由 orchestrator 维护 |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:1307:| 2026-04-29 | **Headless / Presentational 分层（ADR-0003）** | 开源给别人复用；视觉与功能必须物理可分；ADR-0003 完整记录 |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:1314:| 2026-04-29 | **采用 Claude Code Agent Team 作为 dispatch 模型（ADR-0004）** | 项目本质是 orchestrator + 多 worker + review 链 + 跨 wave 状态；Team + TaskList + SendMessage 是天然契合的原生原语，比一次性 Task 调用更高效 |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:1318:| 2026-04-29 | review 链由 SendMessage + TaskUpdate 串接 | reviewer / git-operator 永久 idle 等消息；零冷启动；TaskList 留状态轨迹便于 ADR close 撰写 |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:1319:| 2026-04-29 | **REST API conventions ratify（ADR-0005）**：/v1 + camelCase + RFC 7807 + ISO 8601 UTC | Track D 即将落地 4 个端点；多 agent 协作 + 开源目标要求约束契约；apps/api/CONVENTIONS.md 落地 10 节约定 |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:1322:| 2026-04-29 | 项目锁定 orchestrator-managed team 模式（ADR-0004 D8） | review-gate 依赖超出 TaskList blocked_by 表达；高风险 escalate / Codex 配额由 orchestrator 集中调度 |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:1323:| 2026-04-30 | **新增 ux-ui-lead Claude teammate（ADR-0007 D1）** | Wave 2 8 个 ui-default 跨 block 统一视觉权威；防视觉八头蛇 |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:1324:| 2026-04-30 | Claude pr-reviewer 改选择性触发（ADR-0007 D2） | Wave 1 数据：codex 5.5 抓 9/12 asymmetry；Claude pr-reviewer 价值集中在跨包 / 长上下文，常规 PR 不浪费 |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:1325:| 2026-04-30 | template + codex-clone 模式扩展到 core 与 editor 子模块（ADR-0007 D3） | Wave 1 ui-default 已经是这个模式；core 在 simple block 集群试点；editor 三子模块同模式 |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:1326:| 2026-04-30 | ux-ui-lead spawn prompt 注入三个设计 skill（ADR-0007 D4） | frontend-design + ui-ux-pro-max + web-design-guidelines；视觉契约一次性灌入避免分阶段串行 |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:1327:| 2026-04-30 | **codex agents 降级为 orchestrator-direct tools（ADR-0007 D5）** | Wave 1 codex wrapper 是纯 context 搬运；省 ~2-3 turn / PR；agent-contract.md 拆 agents:/tool_patterns: 两段 |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:1328:| 2026-04-30 | spec §3.1 agent 阵容 27 → 20 teammate + 8 tool pattern | Wave 2 Pre-Task 0 按 ADR-0007 实施时同步 |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:1329:| 2026-04-30 | spec §3.2 review 工作流改为"orchestrator 自检常规 PR + 选择性 escalate" | ADR-0007 D2 + D5 联动；Wave 2 Pre-Task 0 实施时同步文字 |
+docs/audits/structure-2026-04-29-wave-1.md:253:   Wave 2 plan-draft should pick one and lock in via ADR (Wave 2 entry ADR
+docs/audits/structure-2026-04-29-wave-1.md:276:- Wave 2 entry ADR resolves dead-dep policy (concern #1 above).
+docs/audits/structure-2026-04-29-wave-1.md:286:event triggers: ADR-0006 asymmetry-check failures, contract-touching PR clusters,
+docs/audits/structure-2026-04-29-wave-1.md:295:- [ADR-0002 Wave 1 close](../decisions/ADR-0002-wave-1-close.md)
+docs/audits/structure-2026-04-29-wave-1.md:296:- [ADR-0003 headless / presentational split](../decisions/ADR-0003-headless-presentational-split.md)
+docs/audits/structure-2026-04-29-wave-1.md:297:- [ADR-0006 asymmetry-audit checklist](../decisions/ADR-0006-asymmetry-audit-checklist.md)
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:5:**Goal:** 在 Phase 0 脚手架基础上，落地 Phase 1 Wave 1 的 1 前置 + 6 接口/桥接 track + 1 设计 token track + 1 收尾 task（共 **9 任务**）：消化 Phase 0 deferred follow-up，搭出设计 token 单一源（含 light/dark + 主题切换 hook + ThemeToggle），Astro 站点骨架（消费 token preset + 含切换按钮），9 个接口/桥接包的契约层（`BlockRegistry` 升级为 core+UI 双层注册，ADR-0003），FastAPI 后端骨架（含 ws/llm 抽象），使 Phase 1 Wave 2 可以并行展开 8 个 component block × (core + ui-default) + 3 个 editor 子模块的实现工作。
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:7:> **架构变更（ADR-0003）**：headless / presentational 分层 + 设计 token 独立 + 开源就绪。本 plan 在 v1（2829 行原始版本）基础上加入 Track G（design-tokens）、升级 Track B 的 BlockRegistry 为 Core+UI 双层注册、Track A 改为消费 design-tokens preset 并加切换按钮。详见 [ADR-0003](../../decisions/ADR-0003-headless-presentational-split.md)。
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:23:- [ADR-0001](../../decisions/ADR-0001-stack-selection.md) 含 Phase 0 errata 1-7 + 6 条 deferred follow-up
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:24:- [ADR-0003](../../decisions/ADR-0003-headless-presentational-split.md) headless/UI 分层 + design-tokens + 开源就绪
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:67:├── design-tokens/                         # ★ Track G (新增, ADR-0003)
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:105:docs/decisions/ADR-0002-wave-1-close.md   # Track Z
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:117:## 执行模型：Claude Code Agent Team（ADR-0004）
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:128:详见 [ADR-0004](../../decisions/ADR-0004-agent-team-dispatch-model.md) 与 [team-operations.md](../../runbooks/team-operations.md)。
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:190:cat docs/decisions/ADR-0004-agent-team-dispatch-model.md
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:192:cat docs/decisions/ADR-0003-headless-presentational-split.md
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:193:cat docs/decisions/ADR-0001-stack-selection.md   # 含 7 erratum + 6 deferred follow-up
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:209:  description: "Phase 1 Wave 1: foundation + interfaces. ADR-0001 + ADR-0003 + ADR-0004 in scope. Plan: docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md",
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:235:  content: "Track B: block-foundation + content-types (BlockRegistry Core+UI dual-layer per ADR-0003)",
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:255:  content: "Task Z: Wave 1 close (vitest strict + structure-auditor baseline + ADR-0002 + team shutdown)",
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:288:> Phase 0 实测发现：team 内 Claude teammate 调 `codex exec --profile <name>` 时必须显式 `< /dev/null` 重定向，否则 codex 可能等待非交互输入卡住。code-reviewer / pr-gate / 其余 codex 包装都遵守此约束。详见 [team-operations.md "失败模式与上报"](../../runbooks/team-operations.md) 与 ADR-0001 erratum 2。
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:316:> **关键**：`prompt` 字段把 team-operations.md 全文注入；这是 ADR-0004 D6 的强制要求。如果省略，teammate 不知道用 SendMessage / TaskUpdate / 不知道 review 链消息格式。
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:325:  message: "Please start Task 0 from Wave 1 plan: resolve ADR-0001 deferred follow-ups #3/#4/#6 (lychee configFile + concurrency + fail). See plan section 'Task 0: Phase 0 Deferred Follow-ups' for steps. When done, mark task ready-for-review and message me."
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:349:**Why first:** 这些 follow-up 是 Phase 0 ADR-0001 显式记的债务（Erratum 7 + Deferred 3/4/6）。在 Wave 1 引入大量新文件之前修掉，避免 Wave 1 PR 撞到 lychee 假阳性 / vitest 假阴性。
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:353:- [ ] **Step 1：读 ADR-0001 deferred follow-up 段，确认要点**
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:356:cat docs/decisions/ADR-0001-stack-selection.md | sed -n '/Deferred follow-ups/,/Related/p'
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:398:ADR-0001 Erratum 7 + Deferred follow-up 3/4/6:
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:522:> **关键不变量（ADR-0003）**：apps/site 与所有 `block-*/ui-default/` 都不允许直接定义 `theme.colors` 等视觉值；颜色 / 间距 / 排版 / 圆角 / 阴影 / 动效一律来自 design-tokens preset。pr-gate 强制此约束。
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:745:- **不得直接定义视觉值（颜色 / 间距 / 排版）**：`tailwind.config.ts` 必须经 `presets: [designTokensPreset]` 引入；任何硬编码 hex / rgb / px 值会被 pr-gate reject（ADR-0003）
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:755:- ADR-0003 headless / presentational 分层（`../../docs/decisions/ADR-0003-headless-presentational-split.md`）
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:965:- Frontmatter 必含 `title` 与 `date`；新增 required 字段需 ADR
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:969:向 schema 加可选字段时只需更新本文件 + 单测。改动 required 字段或 enum 值是契约破坏，必须 ADR + 同步所有消费者。
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:1047:- [ ] **Step 15：写 BlockRegistry 接口失败测试 `src/__tests__/registry.test.ts`（ADR-0003 双层注册）**
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:1129:- [ ] **Step 17：写 `src/registry.ts`（ADR-0003 双层注册）**
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:1178: * BlockRegistry：双层注册表（ADR-0003）。
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:1267:- [ ] **Step 21：写 `packages/block-foundation/CONTRACT.md`（ADR-0003 后含 Core+UI 双层）**
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:1274:- `BlockRegistry` class — 双层注册表（ADR-0003）
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:1288:- **Core 与 UI 物理分离（ADR-0003）**：core 不允许 import 任何 React/Tiptap 视觉 API；UI 必须 import core（不允许 inline 重复 schema）
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:1293:- 加新 BlockCoreDefinition / BlockUIDefinition 字段：可加 optional，必加字段需 ADR
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:1294:- 改 BlockKind 枚举或拆分 register 接口：契约破坏，必须 ADR + 同步 mdx-bridge / 全部 component block + 全部 ui-default
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:1299:- ADR-0003 headless / presentational 分层（`../../docs/decisions/ADR-0003-headless-presentational-split.md`）
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:1733:- 加新节点类型支持：扩 fixture + 实现 + 单测，不需要 ADR
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:1734:- 改 TiptapDoc shape：契约破坏，必须 ADR + 同步 editor-shell / 各 block
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:1768:**Risk level:** 高（含 ws + llm 抽象骨架，触碰 4 个 Phase 1 必建项之 2 + 应用 ADR-0005 API 约定，触发 pr-gate 5.5）
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:1771:- 已存在：`apps/api/CONVENTIONS.md`（由 ADR-0005 配套创建，本 track 必读）
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:1777:- [ ] **Step 0：读 [`apps/api/CONVENTIONS.md`](../../../apps/api/CONVENTIONS.md) 与 [ADR-0005](../../decisions/ADR-0005-api-conventions.md)**
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:2383:- 改 auth flow：契约破坏，必须 ADR + 同步 site auth-client
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:2390:- ADR-0005 ratify（`../../docs/decisions/ADR-0005-api-conventions.md`）
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:2447:改 `stream` 签名是契约破坏，必须 ADR + 同步所有 provider 实现 + agent_bridge 调用方。
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:2625:任何接口字段变更必须 ADR；同时同步 kernel-registry 与全部已实现 adapter。
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:3024:- 改命令字段：契约破坏，必须 ADR + 同步 editor-shell + apps/api + agent_bridge
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:3196:加 tool：扩 toolSchemas，向后兼容；改 input shape 是契约破坏，必须 ADR。
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:3226:## Track G: design-tokens（ADR-0003 新增，Track A 的前置依赖）
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:3721:## Invariants（ADR-0003）
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:3723:- **CSS var 名一旦定义不可改名**：消费者（apps/site / 各 ui-default）依赖字面名；改名是契约破坏，必须 ADR
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:3731:- 改 var 含义（语义重定义）：契约破坏，必须 ADR + 通知所有消费者
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:3732:- 主题数量从 light/dark 扩展（如加 sepia / high-contrast）：需要 ADR；STORAGE_KEY value 类型扩展
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:3736:- ADR-0003 headless / presentational 分层（`../../docs/decisions/ADR-0003-headless-presentational-split.md`）
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:3772:ADR-0003 Phase 1 / Wave 1 / Track G:
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:3798:- Create: `docs/decisions/ADR-0002-wave-1-close.md`
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:3803:- [ ] **Step 1：处理 ADR-0001 deferred follow-up #2（strict vitest）**
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:3840:- [ ] **Step 3：写 `docs/decisions/ADR-0002-wave-1-close.md`**
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:3843:# ADR-0002: Wave 1 闭幕 — 接口层完工，Wave 2 解锁
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:3891:- ADR-0001
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:3903:**Wave 1 plan**: [phase-1-wave-1](../superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md) ✅ closed by ADR-0002
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:3923:git add docs/decisions/ADR-0002-wave-1-close.md \
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:3927:git commit -m "docs(adr): ADR-0002 Wave 1 close — interface layer ready
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:3929:- 9 ts packages + apps/api FastAPI skeleton landed (incl design-tokens, ADR-0003)
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:3931:- BlockRegistry split into Core + UI dual layer per ADR-0003
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:3933:- Wave 1 executed via Claude Code Agent Team (ADR-0004); team
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:3945:- [ ] **Step 6：Team shutdown 序列（ADR-0004 D7）**
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:3947:Wave 1 全部代码与文档 commit 完成、ADR-0002 入库后，**有序解散 team**：
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:3990:**Spec coverage（含 ADR-0003 后）**：
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:3995:- §1.5 编辑器架构（ADR-0003 双层注册）：Track B BlockRegistry registerCore+registerUI + Track F editor-commands 落地命令模式
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:4003:- §3.11 ADR：Task Z 产出 ADR-0002
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:4005:- **ADR-0003**：design-tokens 包 + BlockRegistry 双层 + apps/site 切换按钮 + light/dark 主题 全部落地
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:4046:- [ADR-0001](../../decisions/ADR-0001-stack-selection.md) Phase 0 errata + deferred follow-ups
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:4047:- [ADR-0003](../../decisions/ADR-0003-headless-presentational-split.md) headless / presentational 分层 + design-tokens + 开源就绪
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:5:**Goal:** 在 Wave 1 基础设施 + 接口层之上，实现 Phase 1 的全部用户可见工作产物：8 个 component block（每个 core + ui-default 双层，ADR-0003 D2）+ 3 个 editor 子模块（slash-menu / drag-handle / toolbar）+ kernel-pyodide 实现，让 Wave 3 的 editor-shell 集成可以拿到一组完整、可序列化、可视觉一致的 block 与编辑器件。
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:8:- **template + codex-clone 模式（ADR-0007 D3）**：visual single-authority 由 `ux-ui-lead`（新 Claude teammate, ADR-0007 D1）写第一个 ui-default，其余 7 个由 codex-block-generator (tool) 仿造 + ux-ui-lead 视觉一致性审；core 在 simple block 集群试点（block-callout core 是 template，block-code/block-image core 是 clone），render block 与 viz block 仍 hand-craft；editor 三子模块同模式（toolbar template + slash-menu/drag-handle clone）。
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:9:- **Codex-heavy 执行（ADR-0007 D5）**：8 个 codex agent 已降为 orchestrator-direct Bash invocation tool patterns，不再消耗 Claude teammate 槽位；review chain 默认 codex 5.3-spark + orchestrator 自检，仅 ADR-0007 D2 表 8 行高风险 PR 才升级 pr-gate / Claude pr-reviewer。
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:10:- **8-point asymmetry-audit（ADR-0006）强制**：每个 reviewer 必须按 8 项逐条审；Wave 2 第一个 attr-bearing mark（如 `highlight`/`kbd`）扩展时 simul-update wrapMark + marksEqual + fixture（item #1 trip-hazard）。
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:11:- **block-foundation MDX renderer 接口冻结前置**：block-callout 是第一个真实 consumer，其 PR 之前必产 `block-foundation/RFC.md` 描述 "如何注册" walkthrough（structure-auditor 推荐 #2，ADR-0002 erratum #21）。
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:12:- **Wave 2 entry ADR（ADR-0008）必产**：解决 F1（mdx-bridge dead deps）+ F2（block-foundation forward-compat dead dep）的全局 dead-dep 政策（structure-auditor 推荐 #1，ADR-0002 erratum #19/#20）。
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:24:- [ADR-0001](../../decisions/ADR-0001-stack-selection.md) 含 Phase 0 errata + 6 deferred follow-up
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:25:- [ADR-0002](../../decisions/ADR-0002-wave-1-close.md) Wave 1 close — 22 errata + 3 cross-package single-authority invariants（**含 erratum #19 dead-dep policy / #21 block-foundation/RFC.md / #16 attr-bearing mark expansion**）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:26:- [ADR-0003](../../decisions/ADR-0003-headless-presentational-split.md) headless / UI 分层 + design-tokens + 开源就绪（D2 双层 / D4 双注册 / D7 npm publish 推 Phase 3）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:27:- [ADR-0006](../../decisions/ADR-0006-asymmetry-audit-checklist.md) 8-point asymmetry-audit checklist（mandatory for code-reviewer + pr-gate）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:28:- [ADR-0007](../../decisions/ADR-0007-job-function-codex-heavy-execution.md) 职能化分工 + Codex-heavy 执行 + teammate/tool 切分（**D1 ux-ui-lead / D2 selective Claude review / D3 template+clone / D4 design skill 注入 / D5 codex tool**）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:113:docs/decisions/ADR-0008-wave-2-entry-policies.md  # Task A (Wave 2 entry ADR)
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:114:docs/decisions/ADR-0009-wave-2-close.md           # Task Z (close)
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:124:- `agent-contract.md` —— 不修改 agent 阵容（Pre-Task 0 已固化 20+8 模型）；如 Wave 2 中段需调整 trigger / 加 capability，refactorer 改 + ADR
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:129:- `packages/mdx-bridge/package.json` —— Task A1 按 ADR-0008 决议：去 `@skb/block-foundation` 与 `@skb/content-types` 死依赖（如选 Option A）OR 加 tsconfig refs 同步（如选 Option B）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:134:## 执行模型：Claude Code Agent Team（ADR-0004 + ADR-0007）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:136:**Wave 2 起 8 个 codex agent 已不在 team config**（ADR-0007 D5 实施于 Pre-Task 0 commit `691bc30`）。
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:145:- **`ux-ui-lead` spawn prompt 必须额外注入**三个设计 skill 全文（ADR-0007 D4）：`frontend-design` + `ui-ux-pro-max-skill` + `web-design-guidelines`
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:147:详见 [ADR-0004](../../decisions/ADR-0004-agent-team-dispatch-model.md) + [ADR-0007](../../decisions/ADR-0007-job-function-codex-heavy-execution.md) + [team-operations.md](../../runbooks/team-operations.md)。
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:155:主任务：A（dead-dep ADR + RFC）/ B（Wave 1 errata 清理）/ C（simple blocks）/ D（render blocks）/ E（viz blocks）/ F（kernel-pyodide）/ G（editor 子模块）/ I（scripts）/ J（attr-mark 条件触发）/ Z（close）。Task H（test scaffold sweep）已合并入各 track（plan-challenger CRITICAL #1 修订）。
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:170:   │  + ux-ui-lead 注入 3 设计 skill (ADR-0007 D4)
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:173:   ├──► Task A1: ADR-0008 dead-dep policy (refactorer)
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:237:           Z1: ADR-0009 Wave 2 close (errata + commits + structure baseline)
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:244:- Pre-Task 0 → Task A1（dead-dep ADR）+ Task B1（H1 修，独立）+ Task I1（refactor-move，独立）**同时启动**
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:270:cat docs/decisions/ADR-0001-stack-selection.md
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:271:cat docs/decisions/ADR-0002-wave-1-close.md
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:272:cat docs/decisions/ADR-0003-headless-presentational-split.md
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:273:cat docs/decisions/ADR-0004-agent-team-dispatch-model.md
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:274:cat docs/decisions/ADR-0006-asymmetry-audit-checklist.md
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:275:cat docs/decisions/ADR-0007-job-function-codex-heavy-execution.md
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:288:- ADR-0007 D5 8 个 codex agent 是 Bash invocation tool patterns，**不** spawn teammate
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:290:- ux-ui-lead 是 Wave 2 第一次 spawn 的新 teammate（ADR-0007 D1）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:301:- [ ] **Step 3**：把 `TaskList` 一次性建满（每个 task header 注明 ADR-0007 D2 row 触发）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:304:// Task A: dead-dep ADR + RFC freeze
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:305:TaskCreate({task_name: "task-A1-adr-0008-dead-dep", blocked_by: [], meta: {d2_row: 4}});  // 触发新 ADR
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:348:TaskCreate({task_name: "task-Z1-adr-0009-wave-2-close", blocked_by: ["task-Z0-sample-blocks-content"], meta: {d2_row: 4}});  // 触发 ADR-0009
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:363:// Tier 1 Workers (11 — including ux-ui-lead per ADR-0007 D1)
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:372:// ux-ui-lead 特殊：注入三个设计 skill 全文 (ADR-0007 D4)
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:394:- [ ] **Step 5**：监控 ux-ui-lead spawn token 消耗（ADR-0007 D4 监控点）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:398:# 如超过 2.5×，考虑分阶段注入而非一次性灌；记入 ADR-0009 errata
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:404:SendMessage({to: "refactorer", summary: "Task A1 dead-dep ADR", message: TASK_A1_PROMPT});
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:418:**Risk level**: 高（PR 命中 ADR-0007 D2 row 4 "触发新 ADR" → +pr-gate +pr-reviewer）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:421:### Task A1: ADR-0008 — dead-dep policy global resolution
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:424:- Create: `docs/decisions/ADR-0008-wave-2-entry-policies.md`
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:431:- [ ] **Step 1: 读 structure-auditor §7 推荐 #1 + ADR-0002 erratum #19/#20**
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:435:- `docs/decisions/ADR-0002-wave-1-close.md` erratum #19 (F1 mdx-bridge) + #20 (F2 block-foundation)
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:446:- [ ] **Step 3: 写 ADR-0008**
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:449:# ADR-0008: Wave 2 entry policies — dead-dep + block-foundation interface freeze
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:457:| 替代 | 不替代任何 ADR；扩展 ADR-0001 §2.2 monorepo 规则 + ADR-0003 D2 双层接口 |
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:463:ADR-0002 erratum #19 + #20 描述当前两处 dead-dep（F1 mdx-bridge 声明 block-foundation/content-types 不 import；F2 block-foundation 声明 content-types 不 import）。
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:498:1. ADR-0008 commit（本 ADR 自身；触发 D2 row 4 高风险）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:504:- ADR-0001 / ADR-0002 / ADR-0003
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:526:review chain（D2 row 4 触发条件 "触发新 ADR 创建"）：
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:538:**Owner**: `block-foundation-eng`（**blocked_by A1**：ADR-0008 D2 才会冻结接口形状）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:540:**ADR-0007 D2 触发**：row 1（修 CONTRACT.md，因 RFC 是 CONTRACT-level interface freeze；plan-challenger OBS 4 一致）→ +pr-gate +pr-reviewer。
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:548:> **Authority**: ADR-0008 D2 freezes this interface as of <DATE>.
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:679:- Modify: `agent-contract.md`（加 1-line schema 注释解释 `# ADR-0007 D2 row N` 约定）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:681:- Modify: `docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md` §3.13:1047 配置示例 YAML 删 `core_arch_touch` (跟 ADR-0007 D2 同步)
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:687:  # NOTE: pr-gate.triggered_by entries MUST carry inline `# ADR-0007 D2 row N` annotations
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:700:> orchestrator 在派 review 时按 ADR-0007 D2 表 8 行判断；rows 1/2/4/8（CONTRACT 变化 / 新增删除包 / 新 ADR / CI-auth-security）追加 pr-gate；rows 3/5/6/7（spec/ADR 文档 / 删除重命名包 / 跨 3+ 包 / perf-auditor 标记）仅追加 Claude pr-reviewer。
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:704:- [ ] **Step 5**: review chain（D2 row 3 修 spec + agent-contract.md + ADR）：codex 5.3-spark + Claude pr-reviewer + git-operator
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:785:**Risk level**: 高（block-callout core 是第一个 block-foundation 真实 consumer，触发 ADR-0007 D2 row 1 "改 CONTRACT.md" → +pr-gate +pr-reviewer）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:877:- [ ] **Step 6**: 写 CONTRACT.md + index.ts barrel（参 ADR-0003 D2 三入口约定）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:905:- Modify: `packages/design-tokens/CONTRACT.md` 加"消费方使用规范"段（ADR-0007 D1 ux-ui-lead 责任：把视觉决策固化进此段）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:907:**Owner**: `ux-ui-lead`（spawn 时已注入 frontend-design + ui-ux-pro-max-skill + web-design-guidelines 三 skill，per ADR-0007 D4）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:927:格式（ADR-0007 D1 落地形态）：
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:975:   CONTRACT.md 改对应公开导出 + Wave 1 declared peers（按 ADR-0008 D1 不加 dead deps）。
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:979:   ADR-0006 8-point checklist 适用 item #6 (sister-doc): block-callout vs block-code 的
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1160:  2. 工种 worker 在 ready-for-review 报告时**强制自审**：在 ADR-0006 8-point self-audit 段必须明示"item #1: PROPS 含 attr-bearing fields = YES/NO + 列字段名 / NO 的理由"；reviewer cross-check
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1165:**Risk level**: 高（ADR-0002 erratum #16 + ADR-0006 item #1 trip-hazard：marksEqual 默认 `return true` 是 silent-drop trap）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1188:- [ ] **Step 4: review chain（D2 row 1 改 CONTRACT.md）**：full chain；ADR-0006 item #1 是核心审
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1195:**Risk level**: 高（D2 row 4 触发新 ADR：ADR-0009）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1247:### Z1: ADR-0009 Wave 2 Close
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1250:- Create: `docs/decisions/ADR-0009-wave-2-close.md`
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1252:按 ADR-0002 模板：
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1263:- codex catch rate vs Wave 1（ADR-0006 8-point 实战数据）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1264:- ux-ui-lead spawn token cost vs 普通 worker（ADR-0007 D4 监控点）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1265:- template + codex-clone 模式 reject rate（ADR-0007 D3 试点效果）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1275:- tsconfig refs 一致性（按 ADR-0008 D1 dead-dep policy）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1294:- [x] 每个 block 都有 core + ui-default 双层（ADR-0003 D2）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1295:- [x] 8 个 ui-default 全部由 ux-ui-lead 写 1 个 + codex-clone 7 个（ADR-0007 D1+D3）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1301:- [x] Wave 2 entry ADR + close ADR（A1 ADR-0008 + Z1 ADR-0009）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1303:- [x] dead-dep policy resolution（A1 ADR-0008 D1）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1312:- [x] BlockCoreDefinition / BlockUIDefinition / BlockRegistry 命名贯穿（与 ADR-0003 D4 一致）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1317:**4. ADR-0006 8-point trip-hazards 列**:
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1320:- [x] item #8: Pre-Task 0 + Task A1 + Task B3 都强调 ADR-0006 D8 staging protocol（authority + generator + outputs 同 bundle）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1321:- [x] 测试规划：Track C/D/E 各加 round-trip fixtures（覆盖 callout 3 + math 2 + pdf 1 + jupyter 1 + nn-viz 1 + agent-flow 1 = 9 新 fixture，预算 +50% 比 Wave 1 的 9 fixture 增长，对应 ADR-0002 §132 Wave 1 underestimate 教训）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1323:**5. ADR-0007 D2 review chain coverage**:
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1325:- [x] Task A1 触发 row 4（新 ADR）→ full chain
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1332:- [x] Task Z1 ADR-0009 → full chain
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1350:- [ADR-0001](../../decisions/ADR-0001-stack-selection.md) Phase 1 架构基础
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1351:- [ADR-0002](../../decisions/ADR-0002-wave-1-close.md) Wave 1 close — 22 errata + 3 cross-package single-authority invariants
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1352:- [ADR-0003](../../decisions/ADR-0003-headless-presentational-split.md) headless / UI 分层 + design-tokens + 开源就绪
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1353:- [ADR-0006](../../decisions/ADR-0006-asymmetry-audit-checklist.md) 8-point asymmetry-audit checklist
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1354:- [ADR-0007](../../decisions/ADR-0007-job-function-codex-heavy-execution.md) 职能化分工 + Codex-heavy 执行 + teammate/tool 切分
+
+exec
+/bin/bash -lc 'cd /home/weiyi/selfKnowledgeBaseWeb && cat apps/site/package.json' in /home/weiyi/selfKnowledgeBaseWeb/apps/site
+ succeeded in 101ms:
+codex
+VERDICT: PASS  
+asymmetry-audit applied
+
+1. Findings (severity order)
+- Low: 在注释中未直接解释 `--host 127.0.0.1` 的 IPv4 决策意图；当前已把 host 写进命令，但审计要求“pnpm wrapper / cold CI / IPv4 决策”都要有解释，建议补一行注释说明“避免 localhost 解析为 ::1 导致 Playwright 在某些 CI 上访问失败”。  
+  - 位置: [apps/site/playwright.config.ts](/home/weiyi/selfKnowledgeBaseWeb/apps/site/playwright.config.ts:27)
+
+2. 必查逐项结论
+- 1) `pnpm exec astro dev --host 127.0.0.1 --port 4321` 合理性: PASS  
+  - 原先 `pnpm dev` 会经过 `pnpm run` 脚本层；改为 `pnpm exec` 直接执行 bin，通常可减少脚本包装层噪声并保留正确的依赖解析路径。
+- 2) `240_000` timeout 合理性: PASS  
+  - 冷启动 2 分钟抖动场景下，4 分钟有明显 headroom；不过建议后续观测 CI 稳定性（若仍频繁 timeout 再再评估）。
+- 3) `stdout`/`stderr: 'pipe'` 引入 buffer 风险: PASS（低风险）  
+  - 用于增强故障可观测性；Playwright 对该配置通常是流式消费，不是一次性拼死内存读入，风险可控。
+- 4) 本地 verify 依赖: N/A（未在本次 bundle 中直接验证）  
+  - 该项是执行验证动作，不是代码差异中的可见断言。建议在 CI 前保留这类本地复测记录（启动时间、curl 200、check 命令）。
+- 5) ADR-0006 8 项预期 N/A: PASS（本变更仅动 config，不牵涉 authority/consumer 生成物同步链）  
+- 6) 回退路径（preview workflow / vite cache / pin ubuntu）合理性: PASS (当前未提供，但作为可选回退位点不冲突)  
+  - 如本次修复再次超时，这三类回退路径可作为下一层 fallback（本次 PR 以小改最小入侵为合理）。
+
+总结：无阻断性问题。仅建议补一行注释说明 IPv4 绑定动机后可完全闭环。
+2026-04-30T18:21:27.783896Z ERROR codex_core::session: failed to record rollout items: thread 019ddf9f-946a-7481-9ea2-58bafaa230a9 not found
+tokens used
+37,011
+VERDICT: PASS  
+asymmetry-audit applied
+
+1. Findings (severity order)
+- Low: 在注释中未直接解释 `--host 127.0.0.1` 的 IPv4 决策意图；当前已把 host 写进命令，但审计要求“pnpm wrapper / cold CI / IPv4 决策”都要有解释，建议补一行注释说明“避免 localhost 解析为 ::1 导致 Playwright 在某些 CI 上访问失败”。  
+  - 位置: [apps/site/playwright.config.ts](/home/weiyi/selfKnowledgeBaseWeb/apps/site/playwright.config.ts:27)
+
+2. 必查逐项结论
+- 1) `pnpm exec astro dev --host 127.0.0.1 --port 4321` 合理性: PASS  
+  - 原先 `pnpm dev` 会经过 `pnpm run` 脚本层；改为 `pnpm exec` 直接执行 bin，通常可减少脚本包装层噪声并保留正确的依赖解析路径。
+- 2) `240_000` timeout 合理性: PASS  
+  - 冷启动 2 分钟抖动场景下，4 分钟有明显 headroom；不过建议后续观测 CI 稳定性（若仍频繁 timeout 再再评估）。
+- 3) `stdout`/`stderr: 'pipe'` 引入 buffer 风险: PASS（低风险）  
+  - 用于增强故障可观测性；Playwright 对该配置通常是流式消费，不是一次性拼死内存读入，风险可控。
+- 4) 本地 verify 依赖: N/A（未在本次 bundle 中直接验证）  
+  - 该项是执行验证动作，不是代码差异中的可见断言。建议在 CI 前保留这类本地复测记录（启动时间、curl 200、check 命令）。
+- 5) ADR-0006 8 项预期 N/A: PASS（本变更仅动 config，不牵涉 authority/consumer 生成物同步链）  
+- 6) 回退路径（preview workflow / vite cache / pin ubuntu）合理性: PASS (当前未提供，但作为可选回退位点不冲突)  
+  - 如本次修复再次超时，这三类回退路径可作为下一层 fallback（本次 PR 以小改最小入侵为合理）。
+
+总结：无阻断性问题。仅建议补一行注释说明 IPv4 绑定动机后可完全闭环。

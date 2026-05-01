@@ -1,0 +1,2485 @@
+Reading additional input from stdin...
+OpenAI Codex v0.125.0 (research preview)
+--------
+workdir: /home/weiyi/selfKnowledgeBaseWeb
+model: gpt-5.3-codex-spark
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: xhigh
+reasoning summaries: none
+session id: 019ddf66-115d-7481-abfb-211cf99e9196
+--------
+user
+你是 code-reviewer profile。审 SelfKnowledgeBaseWeb Wave 2 Task #6 (I1: scripts/refactor-move.ts CLI 工具)。
+
+## Bundle scope (12 files, +14596/-2)
+- scripts/refactor-move.ts (新, +263 ts-morph CLI)
+- scripts/__tests__/refactor-move.test.ts (新, +114, 4 cases)
+- scripts/__tests__/fixtures/refactor-move/{initial,after}/ (新, 6 fixture 文件)
+- package.json (+4/-?, 加 commander + ts-morph + tsx 恢复)
+- pnpm-lock.yaml (+15/-15 同步)
+- docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt (+11289 r1 audit log)
+- docs/audits/codex-runs/2026-04-30-task-I1-refactor-move-r2.txt (+2884 r2 audit log，bug 修)
+
+## 触发链
+普通 PR (D2 row 不触发) → 你是唯一 reviewer。orchestrator 自检后 git-operator 直接 commit。
+
+## 历史 context
+- I1 r1: codex 跑出 buggy script (refactor-move 漏更新 consumer relative import；2/4 测试 fail)
+- I1 r2: codex 修 bug → appendImportUpdate / appendExportUpdate 加 oldFileAbsolutePath + newFileAbsolutePath 双参数分离匹配 vs 重写路径 → 4/4 PASS verified
+
+## 你必查
+1. 4/4 测试 PASS（dry-run / 正常移动 + import update / from 不存在 / to 已存在）
+2. ADR-0006 8-point checklist:
+   - item #1 (字段/属性): script 加双参数 (oldFileAbsolutePath / newFileAbsolutePath) — comparator/serialization 是否同步
+   - item #4 (consumer schema): N/A (script 是 standalone CLI)
+   - item #6 (sister-doc): scripts/refactor-move.ts 命名风格与 scripts/check-size-limits.mjs / generate-configs.ts 一致；test 风格与 scripts/__tests__/generate-configs.test.ts 一致
+   - item #8 (authority → consumer): package.json 加 commander/ts-morph/tsx → pnpm-lock.yaml 同步 (D8 sub-form C lockfile-as-derivative)
+3. 8th-class hunt:
+   - codex r1 audit log 11k+ 行，r2 2.8k+ 行 — 大文件应在 docs/audits/ 下不属 source file size-check (verify)
+   - tsx restore: 我（orchestrator）在 r2 之间发现 pnpm install 副作用删了 tsx 后手动加回 — 这个改动是正确的吗？(tsx 是 pnpm generate:configs 必需 dep)
+   - commander @11.1.0 是 codex pin 的版本 (14.0.3 是 latest); pin 11.x 是合理保守选择
+
+输出 verdict: PASS/FAIL + 'asymmetry-audit applied: items {1..8} verdicts: ...'。开始。
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the vendored bubblewrap in the meantime.
+codex
+明白。我先做一次只读审查：逐文件核验 `refactor-move.ts` 的参数语义、import/export 重写路径逻辑、测试断言边界、以及 `package.json` 与 `pnpm-lock.yaml` 的依赖同步是否与 ADR-0006 第 8 点一致；随后给出 `PASS/FAIL` 判决与 1..8 项逐项结论。
+exec
+/bin/bash -lc "sed -n '1,260p' /home/weiyi/selfKnowledgeBaseWeb/scripts/__tests__/refactor-move.test.ts" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1,260p' /home/weiyi/selfKnowledgeBaseWeb/scripts/refactor-move.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+import { cpSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { describe, expect, it } from 'vitest';
+import { refactorMove } from '../refactor-move.ts';
+
+const FIXTURE_ROOT = join(process.cwd(), 'scripts/__tests__/fixtures/refactor-move');
+
+function buildFixture(): string {
+  const workspace = mkdtempSync(join(tmpdir(), 'refactor-move-'));
+  cpSync(join(FIXTURE_ROOT, 'initial'), workspace, { recursive: true });
+  return workspace;
+}
+
+function readFixture(fixtureName: string, relativePath: string): string {
+  return readFileSync(join(FIXTURE_ROOT, fixtureName, relativePath), 'utf8');
+}
+
+describe('refactorMove', () => {
+  it('prints plan only in --dry-run mode and does not modify files', () => {
+    const workspace = buildFixture();
+    try {
+      const report = refactorMove({
+        from: 'packages/feature/util.ts',
+        to: 'packages/feature/shared/util.ts',
+        dryRun: true,
+        cwd: workspace,
+      });
+
+      expect(report.dryRun).toBe(true);
+      expect(report.plan.join('\n')).toContain('DRY RUN');
+      expect(report.updates).toHaveLength(2);
+      expect(readFileSync(join(workspace, 'packages/feature/util.ts'), 'utf8')).toBe(
+        readFixture('initial', 'packages/feature/util.ts'),
+      );
+      expect(readFileSync(join(workspace, 'packages/feature/consumer.ts'), 'utf8')).toBe(
+        readFixture('initial', 'packages/feature/consumer.ts'),
+      );
+      expect(readFileSync(join(workspace, 'apps/feature/app.ts'), 'utf8')).toBe(
+        readFixture('initial', 'apps/feature/app.ts'),
+      );
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it('moves file and rewrites matching import paths in packages and apps', () => {
+    const workspace = buildFixture();
+    try {
+      const report = refactorMove({
+        from: 'packages/feature/util.ts',
+        to: 'packages/feature/shared/util.ts',
+        cwd: workspace,
+      });
+
+      expect(report.dryRun).toBe(false);
+      expect(readFileSync(join(workspace, 'packages/feature/shared/util.ts'), 'utf8')).toBe(
+        readFixture('after', 'packages/feature/shared/util.ts'),
+      );
+      expect(readFileSync(join(workspace, 'packages/feature/consumer.ts'), 'utf8')).toBe(
+        readFixture('after', 'packages/feature/consumer.ts'),
+      );
+      expect(readFileSync(join(workspace, 'apps/feature/app.ts'), 'utf8')).toBe(
+        readFixture('after', 'apps/feature/app.ts'),
+      );
+      expect(() => readFileSync(join(workspace, 'packages/feature/util.ts'), 'utf8')).toThrow();
+
+      expect(report.updates).toEqual([
+        {
+          filePath: 'packages/feature/consumer.ts',
+          from: './util',
+          to: './shared/util',
+        },
+        {
+          filePath: 'apps/feature/app.ts',
+          from: '../../packages/feature/util.ts',
+          to: '../../packages/feature/shared/util.ts',
+        },
+      ]);
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it('throws when source file does not exist', () => {
+    const workspace = buildFixture();
+    try {
+      expect(() =>
+        refactorMove({
+          from: 'packages/feature/does-not-exist.ts',
+          to: 'packages/feature/shared/util.ts',
+          cwd: workspace,
+        }),
+      ).toThrow(/Source file does not exist/);
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it('throws when destination already exists', () => {
+    const workspace = buildFixture();
+    try {
+      expect(() =>
+        refactorMove({
+          from: 'packages/feature/consumer.ts',
+          to: 'packages/feature/util.ts',
+          cwd: workspace,
+        }),
+      ).toThrow(/Destination already exists/);
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+});
+
+ succeeded in 0ms:
+#!/usr/bin/env tsx
+import { Command } from 'commander';
+import { Project, type ExportDeclaration, type SourceFile } from 'ts-morph';
+import { existsSync, mkdirSync, renameSync } from 'node:fs';
+import { dirname, extname, relative, resolve, sep } from 'node:path';
+
+const SOURCE_GLOBS = ['packages/**/*.{ts,tsx}', 'apps/**/*.{ts,tsx}'];
+
+type RewriteRecord = {
+  filePath: string;
+  from: string;
+  to: string;
+  apply: () => void;
+};
+
+export type RefactorMoveReport = {
+  from: string;
+  to: string;
+  dryRun: boolean;
+  updates: Array<{ filePath: string; from: string; to: string }>;
+  plan: string[];
+};
+
+type RefactorMoveOptions = {
+  from: string;
+  to: string;
+  dryRun?: boolean;
+  cwd?: string;
+};
+
+const TS_IMPORT_EXT = /\.tsx?$/;
+
+function asPosix(filePath: string): string {
+  return filePath.split(sep).join('/');
+}
+
+function toDisplayPath(path: string, baseDir: string): string {
+  const rel = relative(baseDir, path);
+  return asPosix(rel === '' ? '.' : rel);
+}
+
+function candidatesForImport(sourceDir: string, moduleSpecifier: string): string[] {
+  const base = resolve(sourceDir, moduleSpecifier);
+  return [base, `${base}.ts`, `${base}.tsx`, resolve(base, 'index.ts'), resolve(base, 'index.tsx')];
+}
+
+function hasMatchingTarget(
+  sourceDir: string,
+  moduleSpecifier: string,
+  targetAbsolutePath: string,
+): boolean {
+  if (!moduleSpecifier.startsWith('.')) {
+    return false;
+  }
+  return candidatesForImport(sourceDir, moduleSpecifier).includes(targetAbsolutePath);
+}
+
+function nextSpecifier(sourceDir: string, targetAbsolutePath: string, oldSpecifier: string): string {
+  let next = asPosix(relative(sourceDir, targetAbsolutePath));
+  if (!next.startsWith('.')) {
+    next = `./${next}`;
+  }
+
+  const requestedExt = extname(oldSpecifier);
+  const keepExt = requestedExt === '.ts' || requestedExt === '.tsx';
+  if (keepExt) {
+    return `${next.replace(TS_IMPORT_EXT, '')}${requestedExt}`;
+  }
+  return next.replace(TS_IMPORT_EXT, '');
+}
+
+function appendImportUpdate(
+  sourceFile: SourceFile,
+  moduleSpecifier: string,
+  oldFileAbsolutePath: string,
+  newFileAbsolutePath: string,
+  updates: RewriteRecord[],
+): void {
+  const sourceDir = sourceFile.getDirectoryPath();
+  if (!hasMatchingTarget(sourceDir, moduleSpecifier, oldFileAbsolutePath)) {
+    return;
+  }
+
+  const newSpecifier = nextSpecifier(sourceDir, newFileAbsolutePath, moduleSpecifier);
+  if (newSpecifier === moduleSpecifier) {
+    return;
+  }
+
+  updates.push({
+    filePath: sourceFile.getFilePath(),
+    from: moduleSpecifier,
+    to: newSpecifier,
+    apply: () => sourceFile
+      .getImportDeclarations()
+      .filter((i) => i.getModuleSpecifierValue() === moduleSpecifier)
+      .forEach((i) => i.setModuleSpecifier(newSpecifier)),
+  });
+}
+
+function appendExportUpdate(
+  sourceFile: SourceFile,
+  exportDecl: ExportDeclaration,
+  oldFileAbsolutePath: string,
+  newFileAbsolutePath: string,
+  updates: RewriteRecord[],
+): void {
+  const moduleSpecifier = exportDecl.getModuleSpecifierValue();
+  if (!moduleSpecifier || !moduleSpecifier.startsWith('.')) {
+    return;
+  }
+
+  const sourceDir = sourceFile.getDirectoryPath();
+  if (!hasMatchingTarget(sourceDir, moduleSpecifier, oldFileAbsolutePath)) {
+    return;
+  }
+
+  const newSpecifier = nextSpecifier(sourceDir, newFileAbsolutePath, moduleSpecifier);
+  if (newSpecifier === moduleSpecifier) {
+    return;
+  }
+
+  updates.push({
+    filePath: sourceFile.getFilePath(),
+    from: moduleSpecifier,
+    to: newSpecifier,
+    apply: () => exportDecl.setModuleSpecifier(newSpecifier),
+  });
+}
+
+function buildReport(
+  fromPath: string,
+  toPath: string,
+  dryRun: boolean,
+  updates: RewriteRecord[],
+  cwd: string,
+): RefactorMoveReport {
+  const header = dryRun ? 'DRY RUN: no files will be written.' : 'Applied file move and import updates.';
+  const plan = [
+    header,
+    `Move: ${toDisplayPath(fromPath, cwd)} -> ${toDisplayPath(toPath, cwd)}`,
+    ...(updates.length === 0
+      ? ['No import specifiers to rewrite.']
+      : updates.map(
+          (update) =>
+            `Update ${toDisplayPath(update.filePath, cwd)}: "${update.from}" -> "${update.to}"`,
+        )),
+  ];
+  return {
+    from: fromPath,
+    to: toPath,
+    dryRun,
+    updates: updates.map((update) => ({
+      filePath: toDisplayPath(update.filePath, cwd),
+      from: update.from,
+      to: update.to,
+    })),
+    plan,
+  };
+}
+
+export function refactorMove(options: RefactorMoveOptions): RefactorMoveReport {
+  const cwd = resolve(options.cwd ?? process.cwd());
+  const from = resolve(cwd, options.from);
+  const to = resolve(cwd, options.to);
+  const dryRun = Boolean(options.dryRun);
+
+  if (!existsSync(from)) {
+    throw new Error(`Source file does not exist: ${options.from}`);
+  }
+  if (existsSync(to)) {
+    throw new Error(`Destination already exists: ${options.to}`);
+  }
+
+  const project = new Project({
+    skipAddingFilesFromTsConfig: true,
+    skipFileDependencyResolution: true,
+  });
+  const sourceFiles: SourceFile[] = [];
+  const seenFiles = new Set<string>();
+
+  for (const glob of SOURCE_GLOBS) {
+    const matchedFiles = project.addSourceFilesAtPaths(resolve(cwd, glob));
+    for (const sourceFile of matchedFiles) {
+      const filePath = sourceFile.getFilePath();
+      if (seenFiles.has(filePath)) {
+        continue;
+      }
+      sourceFiles.push(sourceFile);
+      seenFiles.add(filePath);
+    }
+  }
+
+  const updates: RewriteRecord[] = [];
+  const seenImports = new Set<string>();
+
+  for (const sourceFile of project.getSourceFiles()) {
+    for (const importDecl of sourceFile.getImportDeclarations()) {
+      const moduleSpecifier = importDecl.getModuleSpecifierValue();
+      if (!moduleSpecifier) {
+        continue;
+      }
+      appendImportUpdate(sourceFile, moduleSpecifier, from, to, updates);
+    }
+
+    for (const exportDecl of sourceFile.getExportDeclarations()) {
+      appendExportUpdate(sourceFile, exportDecl, from, to, updates);
+    }
+  }
+
+  const uniqueUpdates = updates.filter((update) => {
+    const key = `${update.filePath}:${update.from}->${update.to}`;
+    if (seenImports.has(key)) return false;
+    seenImports.add(key);
+    return true;
+  });
+
+  if (!dryRun) {
+    mkdirSync(dirname(to), { recursive: true });
+    renameSync(from, to);
+
+    const touched = new Set<string>();
+    for (const update of uniqueUpdates) {
+      update.apply();
+      touched.add(update.filePath);
+    }
+
+    for (const sourceFile of project.getSourceFiles()) {
+      if (touched.has(sourceFile.getFilePath())) {
+        sourceFile.saveSync();
+      }
+    }
+  }
+
+  return buildReport(from, to, dryRun, uniqueUpdates, cwd);
+}
+
+function runCli(): void {
+  const program = new Command();
+  program
+    .name('refactor-move')
+    .description('Move a TypeScript file and update import paths under packages/* and apps/*')
+    .argument('<from>', 'source file path')
+    .argument('<to>', 'destination file path')
+    .option('--dry-run', 'print planned changes only')
+    .helpOption('--help', 'display help for command')
+    .action((from: string, to: string, options: { dryRun?: boolean }) => {
+      const report = refactorMove({ from, to, dryRun: options.dryRun });
+      for (const line of report.plan) {
+        console.log(line);
+      }
+    });
+
+  try {
+    program.parse(process.argv);
+  } catch (error) {
+    console.error((error as Error).message);
+    process.exit(1);
+  }
+}
+
+
+exec
+/bin/bash -lc "sed -n '260,520p' /home/weiyi/selfKnowledgeBaseWeb/scripts/refactor-move.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+
+if (import.meta.url === `file://${process.argv[1]}`) {
+  runCli();
+}
+
+exec
+/bin/bash -lc 'ls -1 /home/weiyi/selfKnowledgeBaseWeb/scripts/__tests__/fixtures/refactor-move' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+after
+initial
+
+codex
+继续核对：我会再读 fixture 样例、`package.json` 与 `pnpm-lock` 相关变更块，以及 CLI 风格参照文件（`generate-configs.ts` 与 `scripts/__tests__/generate-configs.test.ts`）来做命名/测试风格对齐检查。
+exec
+/bin/bash -lc 'find /home/weiyi/selfKnowledgeBaseWeb/scripts/__tests__/fixtures/refactor-move -type f | sort' in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1,260p' /home/weiyi/selfKnowledgeBaseWeb/scripts/__tests__/fixtures/refactor-move/initial/packages/feature/util.ts" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1,260p' /home/weiyi/selfKnowledgeBaseWeb/scripts/__tests__/fixtures/refactor-move/initial/packages/feature/consumer.ts" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1,260p' /home/weiyi/selfKnowledgeBaseWeb/scripts/__tests__/fixtures/refactor-move/initial/apps/feature/app.ts" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1,260p' /home/weiyi/selfKnowledgeBaseWeb/scripts/__tests__/fixtures/refactor-move/after/packages/feature/shared/util.ts" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1,260p' /home/weiyi/selfKnowledgeBaseWeb/scripts/__tests__/fixtures/refactor-move/after/packages/feature/consumer.ts" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1,260p' /home/weiyi/selfKnowledgeBaseWeb/scripts/__tests__/fixtures/refactor-move/after/apps/feature/app.ts" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc 'cat /home/weiyi/selfKnowledgeBaseWeb/package.json' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 107ms:
+/home/weiyi/selfKnowledgeBaseWeb/scripts/__tests__/fixtures/refactor-move/after/apps/feature/app.ts
+/home/weiyi/selfKnowledgeBaseWeb/scripts/__tests__/fixtures/refactor-move/after/packages/feature/consumer.ts
+/home/weiyi/selfKnowledgeBaseWeb/scripts/__tests__/fixtures/refactor-move/after/packages/feature/shared/util.ts
+/home/weiyi/selfKnowledgeBaseWeb/scripts/__tests__/fixtures/refactor-move/initial/apps/feature/app.ts
+/home/weiyi/selfKnowledgeBaseWeb/scripts/__tests__/fixtures/refactor-move/initial/packages/feature/consumer.ts
+/home/weiyi/selfKnowledgeBaseWeb/scripts/__tests__/fixtures/refactor-move/initial/packages/feature/util.ts
+
+ succeeded in 107ms:
+export const util = () => 'util';
+
+ succeeded in 116ms:
+import { util } from './util';
+
+export const useUtil = util;
+
+ succeeded in 123ms:
+import { util } from '../../packages/feature/util.ts';
+
+export const call = () => util();
+
+ succeeded in 109ms:
+export const util = () => 'util';
+
+ succeeded in 121ms:
+import { util } from '../../packages/feature/shared/util.ts';
+
+export const call = () => util();
+
+ succeeded in 134ms:
+import { util } from './shared/util';
+
+export const useUtil = util;
+
+ succeeded in 111ms:
+{
+  "name": "self-knowledge-base-web",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "pnpm@9.12.0",
+  "type": "module",
+  "engines": {
+    "node": ">=22",
+    "pnpm": ">=9"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev --parallel",
+    "lint": "eslint .",
+    "lint:packages": "turbo run lint",
+    "typecheck": "tsc -b",
+    "typecheck:packages": "turbo run typecheck",
+    "test": "vitest run",
+    "test:packages": "turbo run test",
+    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm size-check && pnpm lint:packages && pnpm typecheck:packages && pnpm test:packages",
+    "check:affected": "turbo run lint typecheck test --filter=...[origin/main]",
+    "size-check": "node scripts/check-size-limits.mjs",
+    "link-check": "lychee --config .lychee.toml './**/*.md'",
+    "generate:configs": "tsx scripts/generate-configs.ts",
+    "format": "prettier --write \"**/*.{ts,tsx,js,mjs,cjs,json,md,yaml,yml}\""
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "@types/node": "^22.0.0",
+    "commander": "^11.1.0",
+    "eslint": "^9.0.0",
+    "globals": "^15.0.0",
+    "prettier": "^3.0.0",
+    "turbo": "^2.0.0",
+    "ts-morph": "^28.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "~5.6.0",
+    "typescript-eslint": "^8.0.0",
+    "vitest": "^4.1.5",
+    "yaml": "^2.8.3",
+    "zod": "^3.23.0"
+  }
+}
+
+exec
+/bin/bash -lc "rg -n \"commander@|ts-morph@|tsx@|\\\"commander\\\"\\:|\\\"ts-morph\\\"\\:|\\\"tsx\\\"\\:\" /home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+46:        version: 4.1.5(@types/node@22.19.17)(happy-dom@15.11.7)(vite@8.0.10(@types/node@22.19.17)(esbuild@0.27.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.3))
+58:        version: 4.3.14(astro@5.18.1(@types/node@22.19.17)(jiti@1.21.7)(lightningcss@1.32.0)(rollup@4.60.2)(tsx@4.21.0)(typescript@5.6.3)(yaml@2.8.3))
+61:        version: 4.4.2(@types/node@22.19.17)(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(jiti@1.21.7)(lightningcss@1.32.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(tsx@4.21.0)(yaml@2.8.3)
+64:        version: 6.0.2(astro@5.18.1(@types/node@22.19.17)(jiti@1.21.7)(lightningcss@1.32.0)(rollup@4.60.2)(tsx@4.21.0)(typescript@5.6.3)(yaml@2.8.3))(tailwindcss@3.4.19(tsx@4.21.0)(yaml@2.8.3))
+73:        version: 5.18.1(@types/node@22.19.17)(jiti@1.21.7)(lightningcss@1.32.0)(rollup@4.60.2)(tsx@4.21.0)(typescript@5.6.3)(yaml@2.8.3)
+82:        version: 3.4.19(tsx@4.21.0)(yaml@2.8.3)
+101:        version: 4.1.5(@types/node@22.19.17)(happy-dom@15.11.7)(vite@6.4.2(@types/node@22.19.17)(jiti@1.21.7)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.8.3))
+117:        version: 4.1.5(@types/node@22.19.17)(happy-dom@15.11.7)(vite@8.0.10(@types/node@22.19.17)(esbuild@0.27.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.3))
+154:        version: 4.1.5(@types/node@22.19.17)(happy-dom@15.11.7)(vite@8.0.10(@types/node@22.19.17)(esbuild@0.27.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.3))
+167:        version: 4.1.5(@types/node@22.19.17)(happy-dom@15.11.7)(vite@8.0.10(@types/node@22.19.17)(esbuild@0.27.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.3))
+173:        version: 0.5.19(tailwindcss@3.4.19(tsx@4.21.0)(yaml@2.8.3))
+192:        version: 3.4.19(tsx@4.21.0)(yaml@2.8.3)
+198:        version: 4.1.5(@types/node@22.19.17)(happy-dom@15.11.7)(vite@8.0.10(@types/node@22.19.17)(esbuild@0.27.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.3))
+214:        version: 4.1.5(@types/node@22.19.17)(happy-dom@15.11.7)(vite@8.0.10(@types/node@22.19.17)(esbuild@0.27.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.3))
+223:        version: 4.1.5(@types/node@22.19.17)(happy-dom@15.11.7)(vite@8.0.10(@types/node@22.19.17)(esbuild@0.27.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.3))
+236:        version: 4.1.5(@types/node@22.19.17)(happy-dom@15.11.7)(vite@8.0.10(@types/node@22.19.17)(esbuild@0.27.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.3))
+270:        version: 4.1.5(@types/node@22.19.17)(happy-dom@15.11.7)(vite@8.0.10(@types/node@22.19.17)(esbuild@0.27.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.3))
+1885:  commander@11.1.0:
+1889:  commander@4.1.1:
+3386:  ts-morph@28.0.0:
+3402:  tsx@4.21.0:
+3974:  '@astrojs/mdx@4.3.14(astro@5.18.1(@types/node@22.19.17)(jiti@1.21.7)(lightningcss@1.32.0)(rollup@4.60.2)(tsx@4.21.0)(typescript@5.6.3)(yaml@2.8.3))':
+3979:      astro: 5.18.1(@types/node@22.19.17)(jiti@1.21.7)(lightningcss@1.32.0)(rollup@4.60.2)(tsx@4.21.0)(typescript@5.6.3)(yaml@2.8.3)
+3997:  '@astrojs/react@4.4.2(@types/node@22.19.17)(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(jiti@1.21.7)(lightningcss@1.32.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(tsx@4.21.0)(yaml@2.8.3)':
+4001:      '@vitejs/plugin-react': 4.7.0(vite@6.4.2(@types/node@22.19.17)(jiti@1.21.7)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.8.3))
+4005:      vite: 6.4.2(@types/node@22.19.17)(jiti@1.21.7)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.8.3)
+4020:  '@astrojs/tailwind@6.0.2(astro@5.18.1(@types/node@22.19.17)(jiti@1.21.7)(lightningcss@1.32.0)(rollup@4.60.2)(tsx@4.21.0)(typescript@5.6.3)(yaml@2.8.3))(tailwindcss@3.4.19(tsx@4.21.0)(yaml@2.8.3))':
+4022:      astro: 5.18.1(@types/node@22.19.17)(jiti@1.21.7)(lightningcss@1.32.0)(rollup@4.60.2)(tsx@4.21.0)(typescript@5.6.3)(yaml@2.8.3)
+4026:      tailwindcss: 3.4.19(tsx@4.21.0)(yaml@2.8.3)
+4763:  '@tailwindcss/typography@0.5.19(tailwindcss@3.4.19(tsx@4.21.0)(yaml@2.8.3))':
+4766:      tailwindcss: 3.4.19(tsx@4.21.0)(yaml@2.8.3)
+5149:  '@vitejs/plugin-react@4.7.0(vite@6.4.2(@types/node@22.19.17)(jiti@1.21.7)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.8.3))':
+5157:      vite: 6.4.2(@types/node@22.19.17)(jiti@1.21.7)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.8.3)
+5170:  '@vitest/mocker@4.1.5(vite@6.4.2(@types/node@22.19.17)(jiti@1.21.7)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.8.3))':
+5176:      vite: 6.4.2(@types/node@22.19.17)(jiti@1.21.7)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.8.3)
+5178:  '@vitest/mocker@4.1.5(vite@8.0.10(@types/node@22.19.17)(esbuild@0.27.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.3))':
+5184:      vite: 8.0.10(@types/node@22.19.17)(esbuild@0.27.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.3)
+5323:  astro@5.18.1(@types/node@22.19.17)(jiti@1.21.7)(lightningcss@1.32.0)(rollup@4.60.2)(tsx@4.21.0)(typescript@5.6.3)(yaml@2.8.3):
+5380:      vite: 6.4.2(@types/node@22.19.17)(jiti@1.21.7)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.8.3)
+5381:      vitefu: 1.1.3(vite@6.4.2(@types/node@22.19.17)(jiti@1.21.7)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.8.3))
+5553:  commander@11.1.0: {}
+5555:  commander@4.1.1: {}
+6949:  postcss-load-config@6.0.1(jiti@1.21.7)(postcss@8.5.12)(tsx@4.21.0)(yaml@2.8.3):
+7506:  tailwindcss@3.4.19(tsx@4.21.0)(yaml@2.8.3):
+7525:      postcss-load-config: 6.0.1(jiti@1.21.7)(postcss@8.5.12)(tsx@4.21.0)(yaml@2.8.3)
+7577:  ts-morph@28.0.0:
+7589:  tsx@4.21.0:
+7740:  vite@6.4.2(@types/node@22.19.17)(jiti@1.21.7)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.8.3):
+7756:  vite@8.0.10(@types/node@22.19.17)(esbuild@0.27.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.3):
+7771:  vitefu@1.1.3(vite@6.4.2(@types/node@22.19.17)(jiti@1.21.7)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.8.3)):
+7773:      vite: 6.4.2(@types/node@22.19.17)(jiti@1.21.7)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.8.3)
+7775:  vitest@4.1.5(@types/node@22.19.17)(happy-dom@15.11.7)(vite@6.4.2(@types/node@22.19.17)(jiti@1.21.7)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.8.3)):
+7778:      '@vitest/mocker': 4.1.5(vite@6.4.2(@types/node@22.19.17)(jiti@1.21.7)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.8.3))
+7795:      vite: 6.4.2(@types/node@22.19.17)(jiti@1.21.7)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.8.3)
+7803:  vitest@4.1.5(@types/node@22.19.17)(happy-dom@15.11.7)(vite@8.0.10(@types/node@22.19.17)(esbuild@0.27.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.3)):
+7806:      '@vitest/mocker': 4.1.5(vite@8.0.10(@types/node@22.19.17)(esbuild@0.27.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.3))
+7823:      vite: 8.0.10(@types/node@22.19.17)(esbuild@0.27.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.3)
+
+exec
+/bin/bash -lc "sed -n '1820,1915p' /home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+
+  chalk@4.1.2:
+    resolution: {integrity: sha512-oKnbhFyRIXpUuez8iBMmyEa4nbj4IOQyuhc/wy9kY7/WVPcwIO9VA668Pu8RkO7+0G76SLROeyw9CpQ061i4mA==}
+    engines: {node: '>=10'}
+
+  chalk@5.6.2:
+    resolution: {integrity: sha512-7NzBL0rN6fMUW+f7A6Io4h40qQlG+xGmtMxfbnH/K7TAtt8JQWVQK+6g0UXKMeVJoyV5EkkNsErQ8pVD3bLHbA==}
+    engines: {node: ^12.17.0 || ^14.13 || >=16.0.0}
+
+  character-entities-html4@2.1.0:
+    resolution: {integrity: sha512-1v7fgQRj6hnSwFpq1Eu0ynr/CDEw0rXo2B61qXrLNdHZmPKgb7fqS1a2JwF0rISo9q77jDI8VMEHoApn8qDoZA==}
+
+  character-entities-legacy@3.0.0:
+    resolution: {integrity: sha512-RpPp0asT/6ufRm//AJVwpViZbGM/MkjQFxJccQRHmISF/22NBtsHqAWmL+/pmkPWoIUJdWyeVleTl1wydHATVQ==}
+
+  character-entities@2.0.2:
+    resolution: {integrity: sha512-shx7oQ0Awen/BRIdkjkvz54PnEEI/EjwXDSIZp86/KKdbafHh1Df/RYGBhn4hbe2+uKC9FnT5UCEdyPz3ai9hQ==}
+
+  character-reference-invalid@2.0.1:
+    resolution: {integrity: sha512-iBZ4F4wRbyORVsu0jPV7gXkOsGYjGHPmAyv+HiHG8gi5PtC9KI2j1+v8/tlibRvjoWX027ypmG/n0HtO5t7unw==}
+
+  chokidar@3.6.0:
+    resolution: {integrity: sha512-7VT13fmjotKpGipCW9JEQAusEPE+Ei8nl6/g4FBAmIm0GOOLMua9NDDo/DWp0ZAxCr3cPq5ZpBqmPAQgDda2Pw==}
+    engines: {node: '>= 8.10.0'}
+
+  chokidar@4.0.3:
+    resolution: {integrity: sha512-Qgzu8kfBvo+cA4962jnP1KkS6Dop5NS6g7R5LFYJr4b8Ub94PPQXUksCw9PvXoeXPRRddRNC5C1JQUR2SMGtnA==}
+    engines: {node: '>= 14.16.0'}
+
+  chokidar@5.0.0:
+    resolution: {integrity: sha512-TQMmc3w+5AxjpL8iIiwebF73dRDF4fBIieAqGn9RGCWaEVwQ6Fb2cGe31Yns0RRIzii5goJ1Y7xbMwo1TxMplw==}
+    engines: {node: '>= 20.19.0'}
+
+  ci-info@4.4.0:
+    resolution: {integrity: sha512-77PSwercCZU2Fc4sX94eF8k8Pxte6JAwL4/ICZLFjJLqegs7kCuAsqqj/70NQF6TvDpgFjkubQB2FW2ZZddvQg==}
+    engines: {node: '>=8'}
+
+  cli-boxes@3.0.0:
+    resolution: {integrity: sha512-/lzGpEWL/8PfI0BmBOPRwp0c/wFNX1RdUML3jK/RcSBA9T8mZDdQpqYBKtCFTOfQbwPqWEOpjqW+Fnayc0969g==}
+    engines: {node: '>=10'}
+
+  cliui@8.0.1:
+    resolution: {integrity: sha512-BSeNnyus75C4//NQ9gQt1/csTXyo/8Sb+afLAkzAptFuMsod9HFokGNudZpi/oQV73hnVK+sR+5PVRMd+Dr7YQ==}
+    engines: {node: '>=12'}
+
+  clsx@2.1.1:
+    resolution: {integrity: sha512-eYm0QWBtUrBWZWG0d386OGAw16Z995PiOVo2B7bjWSbHedGl5e0ZWaq65kOGgUSNesEIDkB9ISbTg/JK9dhCZA==}
+    engines: {node: '>=6'}
+
+  code-block-writer@13.0.3:
+    resolution: {integrity: sha512-Oofo0pq3IKnsFtuHqSF7TqBfr71aeyZDVJ0HpmqB7FBM2qEigL0iPONSCZSO9pE9dZTAxANe5XHG9Uy0YMv8cg==}
+
+  collapse-white-space@2.1.0:
+    resolution: {integrity: sha512-loKTxY1zCOuG4j9f6EPnuyyYkf58RnhhWTvRoZEokgB+WbdXehfjFviyOVYkqzEWz1Q5kRiZdBYS5SwxbQYwzw==}
+
+  color-convert@2.0.1:
+    resolution: {integrity: sha512-RRECPsj7iu/xb5oKYcsFHSppFNnsj/52OVTRKb4zP5onXwVF3zVmmToNcOfGC+CRDpfK/U584fMg38ZHCaElKQ==}
+    engines: {node: '>=7.0.0'}
+
+  color-name@1.1.4:
+    resolution: {integrity: sha512-dOy+3AuW3a2wNbZHIuMZpTcgjGuLU/uBL/ubcZF9OXbDo8ff4O8yVp5Bf0efS8uEoYo5q4Fx7dY9OgQGXgAsQA==}
+
+  comma-separated-tokens@2.0.3:
+    resolution: {integrity: sha512-Fu4hJdvzeylCfQPp9SGWidpzrMs7tTrlu6Vb8XGaRGck8QSNZJJp538Wrb60Lax4fPwR64ViY468OIUTbRlGZg==}
+
+  commander@11.1.0:
+    resolution: {integrity: sha512-yPVavfyCcRhmorC7rWlkHn15b4wDVgVmBA7kV4QVBsF7kv/9TKJAbAXVTxvTnwP8HHKjRCJDClKbciiYS7p0DQ==}
+    engines: {node: '>=16'}
+
+  commander@4.1.1:
+    resolution: {integrity: sha512-NOKm8xhkzAjzFx8B2v5OAHT+u5pRQc2UCa2Vq9jYL/31o2wi9mxBA7LIFs3sV5VSC49z6pEhfbMULvShKj26WA==}
+    engines: {node: '>= 6'}
+
+  common-ancestor-path@1.0.1:
+    resolution: {integrity: sha512-L3sHRo1pXXEqX8VU28kfgUY+YGsk09hPqZiZmLacNib6XNTCM8ubYeT7ryXQw8asB1sKgcU5lkB7ONug08aB8w==}
+
+  concat-map@0.0.1:
+    resolution: {integrity: sha512-/Srv4dswyQNBfohGpz9o6Yb3Gz3SrUDqBH5rTuhGR7ahtlbYKnVxw2bCFMRljaA7EXHaXZ8wsHdodFvbkhKmqg==}
+
+  convert-source-map@2.0.0:
+    resolution: {integrity: sha512-Kvp459HrV2FEJ1CAsi1Ku+MY3kasH19TFykTz2xWmMeq6bk2NU3XXvfJ+Q61m0xktWwt+1HSYf3JZsTms3aRJg==}
+
+  cookie-es@1.2.3:
+    resolution: {integrity: sha512-lXVyvUvrNXblMqzIRrxHb57UUVmqsSWlxqt3XIjCkUP0wDAf6uicO6KMbEgYrMNtEvWgWHwe42CKxPu9MYAnWw==}
+
+  cookie@1.1.1:
+    resolution: {integrity: sha512-ei8Aos7ja0weRpFzJnEA9UHJ/7XQmqglbRwnf2ATjcB9Wq874VKH9kfjjirM6UhU2/E5fFYadylyhFldcqSidQ==}
+    engines: {node: '>=18'}
+
+  crelt@1.0.6:
+    resolution: {integrity: sha512-VQ2MBenTq1fWZUH9DJNGti7kKv6EeAuYr3cLwxUWhIu1baTaXh4Ib5W2CqHVqib4/MqbYGJqiL3Zb8GJZr3l4g==}
+
+  cross-spawn@7.0.6:
+    resolution: {integrity: sha512-uV2QOWP2nWzsy2aMp8aRibhi9dlzF5Hgh5SHaB9OiTGEyDTiJJyx0uy51QXdyWbtAHNua4XJzUKca3OzKUd3vA==}
+    engines: {node: '>= 8'}
+
+
+exec
+/bin/bash -lc "sed -n '3320,3435p' /home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+    resolution: {integrity: sha512-qpCAvRl9stuOHveKsn7HncJRvv501qIacKzQlO/+Lwxc9+0q2wLyv4Dfvt80/DPn2pqOBsJdDiogXGR9+OvwRw==}
+    engines: {node: '>=8'}
+
+  supports-preserve-symlinks-flag@1.0.0:
+    resolution: {integrity: sha512-ot0WnXS9fgdkgIcePe6RHNk1WA8+muPa6cSjeR3V8K27q9BB1rTE3R1p7Hv0z1ZyAc8s6Vvv8DIyWf681MAt0w==}
+    engines: {node: '>= 0.4'}
+
+  svgo@4.0.1:
+    resolution: {integrity: sha512-XDpWUOPC6FEibaLzjfe0ucaV0YrOjYotGJO1WpF0Zd+n6ZGEQUsSugaoLq9QkEZtAfQIxT42UChcssDVPP3+/w==}
+    engines: {node: '>=16'}
+    hasBin: true
+
+  tailwindcss@3.4.19:
+    resolution: {integrity: sha512-3ofp+LL8E+pK/JuPLPggVAIaEuhvIz4qNcf3nA1Xn2o/7fb7s/TYpHhwGDv1ZU3PkBluUVaF8PyCHcm48cKLWQ==}
+    engines: {node: '>=14.0.0'}
+    hasBin: true
+
+  thenify-all@1.6.0:
+    resolution: {integrity: sha512-RNxQH/qI8/t3thXJDwcstUO4zeqo64+Uy/+sNVRBx4Xn2OX+OZ9oP+iJnNFqplFra2ZUVeKCSa2oVWi3T4uVmA==}
+    engines: {node: '>=0.8'}
+
+  thenify@3.3.1:
+    resolution: {integrity: sha512-RVZSIV5IG10Hk3enotrhvz0T9em6cyHBLkH/YAZuKqd8hRkKhSfCGIcP2KUY0EPxndzANBmNllzWPwak+bheSw==}
+
+  tiny-inflate@1.0.3:
+    resolution: {integrity: sha512-pkY1fj1cKHb2seWDy0B16HeWyczlJA9/WW3u3c4z/NiWDsO3DOU5D7nhTLE9CF0yXv/QZFY7sEJmj24dK+Rrqw==}
+
+  tinybench@2.9.0:
+    resolution: {integrity: sha512-0+DUvqWMValLmha6lr4kD8iAMK1HzV0/aKnCtWb9v9641TnP/MFb7Pc2bxoxQjTXAErryXVgUOfv2YqNllqGeg==}
+
+  tinyexec@1.1.2:
+    resolution: {integrity: sha512-dAqSqE/RabpBKI8+h26GfLq6Vb3JVXs30XYQjdMjaj/c2tS8IYYMbIzP599KtRj7c57/wYApb3QjgRgXmrCukA==}
+    engines: {node: '>=18'}
+
+  tinyglobby@0.2.16:
+    resolution: {integrity: sha512-pn99VhoACYR8nFHhxqix+uvsbXineAasWm5ojXoN8xEwK5Kd3/TrhNn1wByuD52UxWRLy8pu+kRMniEi6Eq9Zg==}
+    engines: {node: '>=12.0.0'}
+
+  tinyrainbow@3.1.0:
+    resolution: {integrity: sha512-Bf+ILmBgretUrdJxzXM0SgXLZ3XfiaUuOj/IKQHuTXip+05Xn+uyEYdVg0kYDipTBcLrCVyUzAPz7QmArb0mmw==}
+    engines: {node: '>=14.0.0'}
+
+  tiptap-markdown@0.8.10:
+    resolution: {integrity: sha512-iDVkR2BjAqkTDtFX0h94yVvE2AihCXlF0Q7RIXSJPRSR5I0PA1TMuAg6FHFpmqTn4tPxJ0by0CK7PUMlnFLGEQ==}
+    peerDependencies:
+      '@tiptap/core': ^2.0.3
+
+  to-regex-range@5.0.1:
+    resolution: {integrity: sha512-65P7iz6X5yEr1cwcgvQxbbIw7Uk3gOy5dIdtZ4rDveLqhrdJP+Li/Hx6tyK0NEb+2GCyneCMJiGqrADCSNk8sQ==}
+    engines: {node: '>=8.0'}
+
+  trim-lines@3.0.1:
+    resolution: {integrity: sha512-kRj8B+YHZCc9kQYdWfJB2/oUl9rA99qbowYYBtr4ui4mZyAQ2JpvVBd/6U2YloATfqBhBTSMhTpgBHtU0Mf3Rg==}
+
+  trough@2.2.0:
+    resolution: {integrity: sha512-tmMpK00BjZiUyVyvrBK7knerNgmgvcV/KLVyuma/SC+TQN167GrMRciANTz09+k3zW8L8t60jWO1GpfkZdjTaw==}
+
+  ts-api-utils@2.5.0:
+    resolution: {integrity: sha512-OJ/ibxhPlqrMM0UiNHJ/0CKQkoKF243/AEmplt3qpRgkW8VG7IfOS41h7V8TjITqdByHzrjcS/2si+y4lIh8NA==}
+    engines: {node: '>=18.12'}
+    peerDependencies:
+      typescript: '>=4.8.4'
+
+  ts-interface-checker@0.1.13:
+    resolution: {integrity: sha512-Y/arvbn+rrz3JCKl9C4kVNfTfSm2/mEp5FSz5EsZSANGPSlQrpRI5M4PKF+mJnE52jOO90PnPSc3Ur3bTQw0gA==}
+
+  ts-morph@28.0.0:
+    resolution: {integrity: sha512-Wp3tnZ2bzwxyTZMtgWVzXDfm7lB1Drz+y9DmmYH/L702PQhPyVrp3pkou3yIz4qjS14GY9kcpmLiOOMvl8oG1g==}
+
+  tsconfck@3.1.6:
+    resolution: {integrity: sha512-ks6Vjr/jEw0P1gmOVwutM3B7fWxoWBL2KRDb1JfqGVawBmO5UsvmWOQFGHBPl5yxYz4eERr19E6L7NMv+Fej4w==}
+    engines: {node: ^18 || >=20}
+    hasBin: true
+    peerDependencies:
+      typescript: ^5.0.0
+    peerDependenciesMeta:
+      typescript:
+        optional: true
+
+  tslib@2.8.1:
+    resolution: {integrity: sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w==}
+
+  tsx@4.21.0:
+    resolution: {integrity: sha512-5C1sg4USs1lfG0GFb2RLXsdpXqBSEhAaA/0kPL01wxzpMqLILNxIxIOKiILz+cdg/pLnOUxFYOR5yhHU666wbw==}
+    engines: {node: '>=18.0.0'}
+    hasBin: true
+
+  turbo@2.9.6:
+    resolution: {integrity: sha512-+v2QJey7ZUeUiuigkU+uFfklvNUyPI2VO2vBpMYJA+a1hKFLFiKtUYlRHdb3P9CrAvMzi0upbjI4WT+zKtqkBg==}
+    hasBin: true
+
+  type-check@0.4.0:
+    resolution: {integrity: sha512-XleUoc9uwGXqjWwXaUTZAmzMcFZ5858QA2vvx1Ur5xIcixXIP+8LnFDgRplU30us6teqdlskFfu+ae4K79Ooew==}
+    engines: {node: '>= 0.8.0'}
+
+  type-fest@4.41.0:
+    resolution: {integrity: sha512-TeTSQ6H5YHvpqVwBRcnLDCBnDOHWYu7IvGbHT6N8AOymcr9PJGjc1GTtiWZTYg0NCgYwvnYWEkVChQAr9bjfwA==}
+    engines: {node: '>=16'}
+
+  typesafe-path@0.2.2:
+    resolution: {integrity: sha512-OJabfkAg1WLZSqJAJ0Z6Sdt3utnbzr/jh+NAHoyWHJe8CMSy79Gm085094M9nvTPy22KzTVn5Zq5mbapCI/hPA==}
+
+  typescript-auto-import-cache@0.3.6:
+    resolution: {integrity: sha512-RpuHXrknHdVdK7wv/8ug3Fr0WNsNi5l5aB8MYYuXhq2UH5lnEB1htJ1smhtD5VeCsGr2p8mUDtd83LCQDFVgjQ==}
+
+  typescript-eslint@8.59.1:
+    resolution: {integrity: sha512-xqDcFVBmlrltH64lklOVp1wYxgJr6LVdg3NamBgH2OOQDLFdTKfIZXF5PfghrnXQKXZGTQs8tr1vL7fJvq8CTQ==}
+    engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
+    peerDependencies:
+      eslint: ^8.57.0 || ^9.0.0 || ^10.0.0
+      typescript: '>=4.8.4 <6.1.0'
+
+  typescript@5.6.3:
+    resolution: {integrity: sha512-hjcS1mhfuyi4WW8IWtjP7brDrG2cuDZukyrYrSauoXGNgx0S7zceP07adYkJycEr56BOUTNPzbInooiN3fn1qw==}
+    engines: {node: '>=14.17'}
+    hasBin: true
+
+exec
+/bin/bash -lc 'rg -n "self-knowledge-base-web|dependencies|commander:|ts-morph:|tsx:" /home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml | head -n 60' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+17:      commander:
+29:      ts-morph:
+32:      tsx:
+55:    dependencies:
+104:    dependencies:
+120:    dependencies:
+157:    dependencies:
+170:    dependencies:
+201:    dependencies:
+226:    dependencies:
+239:    dependencies:
+2949:      tsx: ^4.8.1
+2956:      tsx:
+3585:      tsx: ^4.8.1
+3606:      tsx:
+3626:      tsx: ^4.8.1
+3649:      tsx:
+3909:    dependencies:
+3924:    dependencies:
+3949:    dependencies:
+3975:    dependencies:
+3994:    dependencies:
+3998:    dependencies:
+4021:    dependencies:
+4031:    dependencies:
+4043:    dependencies:
+4047:    dependencies:
+4055:    dependencies:
+4075:    dependencies:
+4083:    dependencies:
+4093:    dependencies:
+4100:    dependencies:
+4117:    dependencies:
+4122:    dependencies:
+4126:    dependencies:
+4131:    dependencies:
+4138:    dependencies:
+4144:    dependencies:
+4156:    dependencies:
+4161:    dependencies:
+4165:    dependencies:
+4169:    dependencies:
+4173:    dependencies:
+4178:    dependencies:
+4188:    dependencies:
+4194:    dependencies:
+4199:    dependencies:
+4360:    dependencies:
+4367:    dependencies:
+4375:    dependencies:
+4379:    dependencies:
+4383:    dependencies:
+4401:    dependencies:
+4406:    dependencies:
+4410:    dependencies:
+4505:    dependencies:
+4519:    dependencies:
+4524:    dependencies:
+4533:    dependencies:
+4538:    dependencies:
+
+exec
+/bin/bash -lc "sed -n '1,90p' /home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+
+  .:
+    devDependencies:
+      '@eslint/js':
+        specifier: ^9.0.0
+        version: 9.39.4
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.17
+      commander:
+        specifier: ^11.1.0
+        version: 11.1.0
+      eslint:
+        specifier: ^9.0.0
+        version: 9.39.4(jiti@1.21.7)
+      globals:
+        specifier: ^15.0.0
+        version: 15.15.0
+      prettier:
+        specifier: ^3.0.0
+        version: 3.8.3
+      ts-morph:
+        specifier: ^28.0.0
+        version: 28.0.0
+      tsx:
+        specifier: ^4.21.0
+        version: 4.21.0
+      turbo:
+        specifier: ^2.0.0
+        version: 2.9.6
+      typescript:
+        specifier: ~5.6.0
+        version: 5.6.3
+      typescript-eslint:
+        specifier: ^8.0.0
+        version: 8.59.1(eslint@9.39.4(jiti@1.21.7))(typescript@5.6.3)
+      vitest:
+        specifier: ^4.1.5
+        version: 4.1.5(@types/node@22.19.17)(happy-dom@15.11.7)(vite@8.0.10(@types/node@22.19.17)(esbuild@0.27.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.3))
+      yaml:
+        specifier: ^2.8.3
+        version: 2.8.3
+      zod:
+        specifier: ^3.23.0
+        version: 3.25.76
+
+  apps/site:
+    dependencies:
+      '@astrojs/mdx':
+        specifier: ^4.0.0
+        version: 4.3.14(astro@5.18.1(@types/node@22.19.17)(jiti@1.21.7)(lightningcss@1.32.0)(rollup@4.60.2)(tsx@4.21.0)(typescript@5.6.3)(yaml@2.8.3))
+      '@astrojs/react':
+        specifier: ^4.0.0
+        version: 4.4.2(@types/node@22.19.17)(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(jiti@1.21.7)(lightningcss@1.32.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(tsx@4.21.0)(yaml@2.8.3)
+      '@astrojs/tailwind':
+        specifier: ^6.0.0
+        version: 6.0.2(astro@5.18.1(@types/node@22.19.17)(jiti@1.21.7)(lightningcss@1.32.0)(rollup@4.60.2)(tsx@4.21.0)(typescript@5.6.3)(yaml@2.8.3))(tailwindcss@3.4.19(tsx@4.21.0)(yaml@2.8.3))
+      '@skb/content-types':
+        specifier: workspace:*
+        version: link:../../packages/content-types
+      '@skb/design-tokens':
+        specifier: workspace:*
+        version: link:../../packages/design-tokens
+      astro:
+        specifier: ^5.0.0
+        version: 5.18.1(@types/node@22.19.17)(jiti@1.21.7)(lightningcss@1.32.0)(rollup@4.60.2)(tsx@4.21.0)(typescript@5.6.3)(yaml@2.8.3)
+      react:
+        specifier: ^18.3.0
+        version: 18.3.1
+      react-dom:
+        specifier: ^18.3.0
+        version: 18.3.1(react@18.3.1)
+      tailwindcss:
+        specifier: ^3.4.0
+        version: 3.4.19(tsx@4.21.0)(yaml@2.8.3)
+    devDependencies:
+      '@astrojs/check':
+        specifier: ^0.9.0
+        version: 0.9.9(prettier@3.8.3)(typescript@5.6.3)
+      '@types/react':
+        specifier: ^18.3.0
+        version: 18.3.28
+      '@types/react-dom':
+
+codex
+我正在对“8th-class hunt”再做一个补充验证：确认审计日志文件落在 `docs/audits/` 是否避开了 size-check 的扫描路径，避免把大日志误判源文件膨胀。
+exec
+/bin/bash -lc "sed -n '1,280p' /home/weiyi/selfKnowledgeBaseWeb/scripts/check-size-limits.mjs" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1,260p' /home/weiyi/selfKnowledgeBaseWeb/scripts/generate-configs.ts" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1,220p' /home/weiyi/selfKnowledgeBaseWeb/docs/audits/codex-runs/2026-04-30-task-I1-refactor-move-r2.txt" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+Reading additional input from stdin...
+OpenAI Codex v0.125.0 (research preview)
+--------
+workdir: /home/weiyi/selfKnowledgeBaseWeb
+model: gpt-5.3-codex-spark
+provider: openai
+approval: never
+sandbox: workspace-write [workdir, /tmp, $TMPDIR, /home/weiyi/.codex/memories]
+reasoning effort: xhigh
+reasoning summaries: none
+session id: 019ddf54-832a-7ba0-8ef8-97893957ed29
+--------
+user
+你是 codex-script-builder 修 bug 第二轮。前次跑你创建了 scripts/refactor-move.ts + 测试，但测试 2/4 fail。
+
+测试失败案例 (vitest output):
+- Expected: import { util } from './shared/util';
+- Received: import { util } from './util';
+
+测试场景: util.ts 从 packages/feature/util.ts 移到 packages/feature/shared/util.ts。consumer.ts 内 'import { util } from "./util"' 应被你的 refactor-move CLI 更新为 'import { util } from "./shared/util"'。
+
+你的 bug: relative import 路径更新逻辑漏掉了'同源文件被移到子目录'这种 case。需要：
+- 当 from 与 to 是同 package / 同 dir 起点 → 计算 new relative path (即使 from 文件夹与 to 文件夹相同 prefix)
+- 用 path.relative() 计算 from-consumer-side 到 new file location 的相对路径
+
+请修 scripts/refactor-move.ts 让全部 4 测试通过：
+1. dry-run 模式 (现已 PASS)
+2. 正常移动 + 同步 import (FAIL，bug 在此)
+3. from 不存在抛错 (现已 PASS)
+4. to 已存在抛错 (FAIL?，需 re-verify)
+
+不要改任何其他文件 (package.json + 测试文件保持现状，仅修 scripts/refactor-move.ts 算法)。
+
+完工后跑 'pnpm vitest run scripts/__tests__/refactor-move.test.ts' 验证 4/4 PASS，输出测试结果。
+
+ADR-0006 8-point checklist 适用 item #1 (你新增字段 / 算法分支时要 audit comparator 与 serialization；这里相对路径计算也算 attr)。
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the vendored bubblewrap in the meantime.
+codex
+我先看一下 `scripts/refactor-move.ts` 的路径重写逻辑，确认当前 `path.relative` 的分支为何漏掉“同包同源目录移动到子目录”场景；然后只改这一个文件并按你要求跑单测。
+exec
+/bin/bash -lc "sed -n '1,280p' scripts/refactor-move.ts && echo '---' && sed -n '1,260p' scripts/__tests__/refactor-move.test.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 343ms:
+#!/usr/bin/env tsx
+import { Command } from 'commander';
+import { Project, type ExportDeclaration, type SourceFile } from 'ts-morph';
+import { existsSync, mkdirSync, renameSync } from 'node:fs';
+import { dirname, extname, relative, resolve, sep } from 'node:path';
+
+const SOURCE_GLOBS = ['packages/**/*.{ts,tsx}', 'apps/**/*.{ts,tsx}'];
+
+type RewriteRecord = {
+  filePath: string;
+  from: string;
+  to: string;
+  apply: () => void;
+};
+
+export type RefactorMoveReport = {
+  from: string;
+  to: string;
+  dryRun: boolean;
+  updates: Array<{ filePath: string; from: string; to: string }>;
+  plan: string[];
+};
+
+type RefactorMoveOptions = {
+  from: string;
+  to: string;
+  dryRun?: boolean;
+  cwd?: string;
+};
+
+const TS_IMPORT_EXT = /\.tsx?$/;
+
+function asPosix(filePath: string): string {
+  return filePath.split(sep).join('/');
+}
+
+function toDisplayPath(path: string, baseDir: string): string {
+  const rel = relative(baseDir, path);
+  return asPosix(rel === '' ? '.' : rel);
+}
+
+function candidatesForImport(sourceDir: string, moduleSpecifier: string): string[] {
+  const base = resolve(sourceDir, moduleSpecifier);
+  return [base, `${base}.ts`, `${base}.tsx`, resolve(base, 'index.ts'), resolve(base, 'index.tsx')];
+}
+
+function hasMatchingTarget(
+  sourceDir: string,
+  moduleSpecifier: string,
+  targetAbsolutePath: string,
+): boolean {
+  if (!moduleSpecifier.startsWith('.')) {
+    return false;
+  }
+  return candidatesForImport(sourceDir, moduleSpecifier).includes(targetAbsolutePath);
+}
+
+function nextSpecifier(sourceDir: string, targetAbsolutePath: string, oldSpecifier: string): string {
+  let next = asPosix(relative(sourceDir, targetAbsolutePath));
+  if (!next.startsWith('.')) {
+    next = `./${next}`;
+  }
+
+  const requestedExt = extname(oldSpecifier);
+  const keepExt = requestedExt === '.ts' || requestedExt === '.tsx';
+  if (keepExt) {
+    return `${next.replace(TS_IMPORT_EXT, '')}${requestedExt}`;
+  }
+  return next.replace(TS_IMPORT_EXT, '');
+}
+
+function appendImportUpdate(
+  sourceFile: SourceFile,
+  moduleSpecifier: string,
+  filePathForTarget: string,
+  updates: RewriteRecord[],
+): void {
+  const sourceDir = sourceFile.getDirectoryPath();
+  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
+    return;
+  }
+
+  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
+  if (newSpecifier === moduleSpecifier) {
+    return;
+  }
+
+  updates.push({
+    filePath: sourceFile.getFilePath(),
+    from: moduleSpecifier,
+    to: newSpecifier,
+    apply: () => sourceFile
+      .getImportDeclarations()
+      .filter((i) => i.getModuleSpecifierValue() === moduleSpecifier)
+      .forEach((i) => i.setModuleSpecifier(newSpecifier)),
+  });
+}
+
+function appendExportUpdate(
+  sourceFile: SourceFile,
+  exportDecl: ExportDeclaration,
+  filePathForTarget: string,
+  updates: RewriteRecord[],
+): void {
+  const moduleSpecifier = exportDecl.getModuleSpecifierValue();
+  if (!moduleSpecifier || !moduleSpecifier.startsWith('.')) {
+    return;
+  }
+
+  const sourceDir = sourceFile.getDirectoryPath();
+  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
+    return;
+  }
+
+  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
+  if (newSpecifier === moduleSpecifier) {
+    return;
+  }
+
+  updates.push({
+    filePath: sourceFile.getFilePath(),
+    from: moduleSpecifier,
+    to: newSpecifier,
+    apply: () => exportDecl.setModuleSpecifier(newSpecifier),
+  });
+}
+
+function buildReport(
+  fromPath: string,
+  toPath: string,
+  dryRun: boolean,
+  updates: RewriteRecord[],
+  cwd: string,
+): RefactorMoveReport {
+  const header = dryRun ? 'DRY RUN: no files will be written.' : 'Applied file move and import updates.';
+  const plan = [
+    header,
+    `Move: ${toDisplayPath(fromPath, cwd)} -> ${toDisplayPath(toPath, cwd)}`,
+    ...(updates.length === 0
+      ? ['No import specifiers to rewrite.']
+      : updates.map(
+          (update) =>
+            `Update ${toDisplayPath(update.filePath, cwd)}: "${update.from}" -> "${update.to}"`,
+        )),
+  ];
+  return {
+    from: fromPath,
+    to: toPath,
+    dryRun,
+    updates: updates.map((update) => ({
+      filePath: toDisplayPath(update.filePath, cwd),
+      from: update.from,
+      to: update.to,
+    })),
+    plan,
+  };
+}
+
+export function refactorMove(options: RefactorMoveOptions): RefactorMoveReport {
+  const cwd = resolve(options.cwd ?? process.cwd());
+  const from = resolve(cwd, options.from);
+  const to = resolve(cwd, options.to);
+  const dryRun = Boolean(options.dryRun);
+
+  if (!existsSync(from)) {
+    throw new Error(`Source file does not exist: ${options.from}`);
+  }
+  if (existsSync(to)) {
+    throw new Error(`Destination already exists: ${options.to}`);
+  }
+
+  const project = new Project({
+    skipAddingFilesFromTsConfig: true,
+    skipFileDependencyResolution: true,
+  });
+  project.addSourceFilesAtPaths(SOURCE_GLOBS.map((glob) => resolve(cwd, glob)));
+
+  const updates: RewriteRecord[] = [];
+
+exec
+/bin/bash -lc "sed -n '1,220p' /home/weiyi/selfKnowledgeBaseWeb/docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1,260p' /home/weiyi/selfKnowledgeBaseWeb/scripts/__tests__/generate-configs.test.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import {
+  parseAgentContract,
+  renderClaudeAgent,
+  renderClaudeMd,
+  renderAgentsMd,
+  renderSettingsJson,
+  renderCodexProfilesToml,
+  renderReviewChecklist,
+  renderCodexToolRunbook,
+  type Agent,
+  type AgentContract,
+} from '../generate-configs.ts';
+
+const FIXTURE_VALID_MIN = `# Test\n\n## Schema\n\n\`\`\`yaml\nagents:\n  - name: <kebab-case>\n    tier: 0\n    llm: claude\n    role: example\n    permissions: []\ntool_patterns:\n  - name: <pattern-id>\n    profile: scaffolder\n    invocation: 'x'\n    triggered_by: []\n\`\`\`\n\n## Agents\n\n\`\`\`yaml\nmetadata:\n  version: 1\n  total_teammates: 1\n  total_tool_patterns: 1\nagents:\n  - name: foo\n    tier: 0\n    llm: claude\n    role: test\n    permissions: []\ntool_patterns:\n  - name: bar\n    profile: scaffolder\n    invocation: 'codex exec --profile scaffolder < /dev/null'\n    triggered_by: [some_trigger]\n\`\`\`\n`;
+
+describe('parseAgentContract', () => {
+  it('extracts agents + tool_patterns from YAML fenced block (skips Schema example placeholder)', () => {
+    const result = parseAgentContract(FIXTURE_VALID_MIN);
+    expect(result.agents).toHaveLength(1);
+    expect(result.agents[0]?.name).toBe('foo');
+    expect(result.tool_patterns).toHaveLength(1);
+    expect(result.tool_patterns[0]?.name).toBe('bar');
+  });
+
+  it('parses the real agent-contract.md (20 teammates + 8 tool_patterns)', () => {
+    const real = readFileSync('agent-contract.md', 'utf8');
+    const result = parseAgentContract(real);
+    expect(result.agents).toHaveLength(20);
+    expect(result.tool_patterns).toHaveLength(8);
+    expect(result.agents.find((a) => a.name === 'orchestrator')?.tier).toBe(0);
+    expect(result.agents.find((a) => a.name === 'ux-ui-lead')?.tier).toBe(1);
+    expect(result.tool_patterns.find((tp) => tp.name === 'pr-gate')?.profile).toBe('pr-gate');
+    expect(result.tool_patterns.find((tp) => tp.name === 'codex-block-generator')?.profile).toBe(
+      'scaffolder',
+    );
+    expect(result.agents.find((a) => a.name === 'researcher')?.permissions).toContain('web_search');
+    expect(result.agents.find((a) => a.name === 'git-operator')?.permissions).toContain(
+      'git_commit',
+    );
+  });
+
+  it('moved 8 codex agents (5 scaffolder + 3 review) to tool_patterns; agents are pure Claude', () => {
+    const real = readFileSync('agent-contract.md', 'utf8');
+    const result = parseAgentContract(real);
+    for (const a of result.agents) {
+      expect(a.llm).toBe('claude');
+    }
+    const codexNames = [
+      'codex-block-generator',
+      'codex-test-scaffolder',
+      'codex-script-builder',
+      'codex-api-crud-builder',
+      'codex-css-stylist',
+      'code-reviewer',
+      'pr-gate',
+      'plan-challenger',
+    ];
+    for (const name of codexNames) {
+      expect(result.agents.find((a) => a.name === name)).toBeUndefined();
+      expect(result.tool_patterns.find((tp) => tp.name === name)).toBeDefined();
+    }
+  });
+
+  it('rejects YAML blocks where any agent name uses placeholder syntax <...>', () => {
+    const md = `## Agents\n\n\`\`\`yaml\nmetadata:\n  version: 1\n  total_teammates: 1\n  total_tool_patterns: 0\nagents:\n  - name: <kebab-case>\n    tier: 0\n    llm: claude\n    role: x\n    permissions: []\ntool_patterns: []\n\`\`\`\n`;
+    expect(() => parseAgentContract(md)).toThrow(/no.*authoritative.*yaml.*block/i);
+  });
+
+  it('rejects contract where metadata.total_teammates disagrees with agents.length', () => {
+    const md = `## Agents\n\n\`\`\`yaml\nmetadata:\n  version: 1\n  total_teammates: 99\n  total_tool_patterns: 0\nagents:\n  - name: foo\n    tier: 0\n    llm: claude\n    role: x\n    permissions: []\ntool_patterns: []\n\`\`\`\n`;
+    expect(() => parseAgentContract(md)).toThrow(/total_teammates.*equal.*agents\.length/);
+  });
+
+  it('rejects contract where metadata.total_tool_patterns disagrees with tool_patterns.length', () => {
+    const md = `## Agents\n\n\`\`\`yaml\nmetadata:\n  version: 1\n  total_teammates: 1\n  total_tool_patterns: 99\nagents:\n  - name: foo\n    tier: 0\n    llm: claude\n    role: x\n    permissions: []\ntool_patterns:\n  - name: bar\n    profile: scaffolder\n    invocation: 'x'\n    triggered_by: []\n\`\`\`\n`;
+    expect(() => parseAgentContract(md)).toThrow(
+      /total_tool_patterns.*equal.*tool_patterns\.length/,
+    );
+  });
+
+  it('rejects contract with duplicate agent names', () => {
+    const md = `## Agents\n\n\`\`\`yaml\nmetadata:\n  version: 1\n  total_teammates: 2\n  total_tool_patterns: 0\nagents:\n  - name: foo\n    tier: 0\n    llm: claude\n    role: x\n    permissions: []\n  - name: foo\n    tier: 1\n    llm: claude\n    role: y\n    permissions: []\ntool_patterns: []\n\`\`\`\n`;
+    expect(() => parseAgentContract(md)).toThrow(/duplicate agent name: foo/);
+  });
+
+  it('rejects name collision between agents and tool_patterns', () => {
+    const md = `## Agents\n\n\`\`\`yaml\nmetadata:\n  version: 1\n  total_teammates: 1\n  total_tool_patterns: 1\nagents:\n  - name: foo\n    tier: 0\n    llm: claude\n    role: x\n    permissions: []\ntool_patterns:\n  - name: foo\n    profile: scaffolder\n    invocation: 'x'\n    triggered_by: []\n\`\`\`\n`;
+    expect(() => parseAgentContract(md)).toThrow(/name collision.*foo/);
+  });
+
+  it('rejects duplicate names within tool_patterns (distinct from cross-collision message)', () => {
+    const md = `## Agents\n\n\`\`\`yaml\nmetadata:\n  version: 1\n  total_teammates: 1\n  total_tool_patterns: 2\nagents:\n  - name: foo\n    tier: 0\n    llm: claude\n    role: x\n    permissions: []\ntool_patterns:\n  - name: bar\n    profile: scaffolder\n    invocation: 'x'\n    triggered_by: []\n  - name: bar\n    profile: scaffolder\n    invocation: 'y'\n    triggered_by: []\n\`\`\`\n`;
+    expect(() => parseAgentContract(md)).toThrow(/duplicate tool_pattern name: bar/);
+  });
+
+  it('every tool_pattern.invocation contains "< /dev/null" (memory feedback_codex_stdin; ADR-0007 §pre-task-0-followup obs #3)', () => {
+    const real = readFileSync('agent-contract.md', 'utf8');
+    const result = parseAgentContract(real);
+    expect(result.tool_patterns.length).toBeGreaterThan(0);
+    for (const tp of result.tool_patterns) {
+      expect(tp.invocation, `tool_pattern ${tp.name}.invocation must include '< /dev/null'`).toMatch(
+        /<\s*\/dev\/null\b/,
+      );
+    }
+  });
+});
+
+const sampleAgent: Agent = {
+  name: 'sample-agent',
+  tier: 1,
+  llm: 'claude',
+  role: 'example role',
+  permissions: ['read_repo', 'write_tests'],
+  forbidden: ['edit_code'],
+  description: 'Sample description.\nSecond line.',
+};
+
+const realContract = (): AgentContract =>
+  parseAgentContract(readFileSync('agent-contract.md', 'utf8'));
+
+describe('renderClaudeAgent', () => {
+  it('renders frontmatter + permissions + Related links', () => {
+    const out = renderClaudeAgent(sampleAgent);
+    expect(out).toContain('---');
+    expect(out).toContain('name: sample-agent');
+    expect(out).toContain('tier: 1 (Worker)');
+    expect(out).toContain('llm: claude');
+    expect(out).toContain('**Role**: example role');
+    expect(out).toContain('**Permissions**: read_repo, write_tests');
+    expect(out).toContain('**Forbidden**: edit_code');
+    expect(out).toContain('agent-contract.md');
+    expect(out).toContain('Spec §3.1');
+  });
+
+  it('emits description field in frontmatter (Claude Code dispatcher requirement)', () => {
+    const agent: Agent = {
+      name: 'foo-eng',
+      tier: 1,
+      llm: 'claude',
+      role: 'test role',
+      permissions: ['read_repo'],
+    };
+    const out = renderClaudeAgent(agent);
+    expect(out).toMatch(/^---\nname: foo-eng\ndescription: "test role"\n/);
+  });
+
+  it('escapes embedded double-quotes and backslashes in description', () => {
+    const agent: Agent = {
+      name: 'bar-eng',
+      tier: 1,
+      llm: 'claude',
+      role: 'has "quote" and \\ backslash',
+      permissions: ['read_repo'],
+    };
+    const out = renderClaudeAgent(agent);
+    expect(out).toContain('description: "has \\"quote\\" and \\\\ backslash"');
+  });
+});
+
+describe('renderClaudeMd', () => {
+  it('contains generation banner, teammate count, and all teammate names', () => {
+    const contract = realContract();
+    const out = renderClaudeMd(contract);
+    expect(out).toContain('GENERATED FROM agent-contract.md');
+    expect(out).toContain('Claude teammates (20)');
+    for (const agent of contract.agents) {
+      expect(out).toContain(agent.name);
+    }
+  });
+
+  it('contains tool_patterns table with all 8 patterns linked to runbook', () => {
+    const contract = realContract();
+    const out = renderClaudeMd(contract);
+    expect(out).toContain('Codex tool patterns (8)');
+    expect(out).toContain('docs/runbooks/codex-tool-invocations.md');
+    for (const tp of contract.tool_patterns) {
+      expect(out).toContain(tp.name);
+    }
+  });
+
+  it('does NOT list codex agents in the teammate roster', () => {
+    const contract = realContract();
+    const out = renderClaudeMd(contract);
+    const teammateSection = out.split('## Claude teammates')[1]?.split('## Codex tool')[0] ?? '';
+    expect(teammateSection).not.toContain('| `code-reviewer` |');
+    expect(teammateSection).not.toContain('| `pr-gate` |');
+    expect(teammateSection).not.toContain('| `plan-challenger` |');
+  });
+});
+
+describe('renderAgentsMd', () => {
+  it('contains codex profile examples and all tool_pattern names', () => {
+    const contract = realContract();
+    const out = renderAgentsMd(contract);
+    expect(out).toContain('GENERATED FROM agent-contract.md');
+    expect(out).toContain('codex exec --profile');
+    expect(out).toContain('< /dev/null');
+    for (const tp of contract.tool_patterns) {
+      expect(out).toContain(tp.name);
+    }
+  });
+
+  it('lists tool_patterns count + cross-link to runbook', () => {
+    const contract = realContract();
+    const out = renderAgentsMd(contract);
+    expect(out).toContain('Tool patterns (8)');
+    expect(out).toContain('docs/runbooks/codex-tool-invocations.md');
+  });
+});
+
+describe('renderSettingsJson', () => {
+  type ParsedSettings = {
+    hooks: {
+      PostToolUse: Array<{
+        matcher: string;
+        hooks: Array<{ type: string; command: string }>;
+      }>;
+      SessionStart: Array<{
+        matcher: string;
+        hooks: Array<{ type: string; command: string }>;
+      }>;
+    };
+  };
+
+  it('produces valid JSON with nested-shape PostToolUse hook (matcher + hooks[])', () => {
+    const out = renderSettingsJson();
+    const parsed = JSON.parse(out) as ParsedSettings;
+    const entry = parsed.hooks.PostToolUse[0];
+    expect(entry?.matcher).toBe('Edit|Write');
+    expect(Array.isArray(entry?.hooks)).toBe(true);
+    expect(entry?.hooks[0]?.type).toBe('command');
+    expect(entry?.hooks[0]?.command).toBe('node scripts/hooks/post-edit.mjs');
+  });
+
+  it('produces nested-shape SessionStart hook with empty-string matcher', () => {
+    const out = renderSettingsJson();
+    const parsed = JSON.parse(out) as ParsedSettings;
+    const entry = parsed.hooks.SessionStart[0];
+    expect(entry?.matcher).toBe('');
+    expect(Array.isArray(entry?.hooks)).toBe(true);
+    expect(entry?.hooks[0]?.type).toBe('command');
+  });
+
+  it('SessionStart command tolerates missing docs/plans/active.md (existence guard)', () => {
+    const out = renderSettingsJson();
+    const parsed = JSON.parse(out) as ParsedSettings;
+    const cmd = parsed.hooks.SessionStart[0]?.hooks[0]?.command ?? '';
+    expect(cmd).toContain('[ -f docs/plans/active.md ]');
+    expect(cmd).toMatch(/;\s*pnpm tsc -b --dry/);
+  });
+
+  it('round-trips through JSON.stringify(_, null, 2) + trailing newline (idempotent)', () => {
+    const out = renderSettingsJson();
+    const parsed = JSON.parse(out) as ParsedSettings;
+    expect(JSON.stringify(parsed, null, 2) + '\n').toBe(out);
+  });
+});
+
+
+ succeeded in 0ms:
+Reading additional input from stdin...
+OpenAI Codex v0.125.0 (research preview)
+--------
+workdir: /home/weiyi/selfKnowledgeBaseWeb
+model: gpt-5.3-codex-spark
+provider: openai
+approval: never
+sandbox: workspace-write [workdir, /tmp, $TMPDIR, /home/weiyi/.codex/memories]
+reasoning effort: xhigh
+reasoning summaries: none
+session id: 019ddf4e-02d6-7521-8009-54de83e828e6
+--------
+user
+你是 codex-script-builder（scaffolder profile）。在 SelfKnowledgeBaseWeb 项目根目录创建 `scripts/refactor-move.ts`：CLI 工具，移动文件 + 同步更新 import 路径。
+
+要求：
+- CLI 形态：`refactor-move <from> <to> [--dry-run] [--help]`
+- 用 `ts-morph` 解析 .ts/.tsx 中的 import 语句
+- 移动文件后 grep 所有 import 改路径（含 packages/* 与 apps/*）
+- --dry-run：打印 plan 不实际改
+- --help：显示用法
+- 错误处理：from 不存在 → throw + exit 1；to 已存在 → throw + exit 1
+- 不需要 root tsconfig 改（只改源 import；refs 是另一回事）
+
+测试：在 `scripts/__tests__/refactor-move.test.ts` 加 4 case：
+1. dry-run 模式打印 plan 不改文件
+2. 正常移动文件 + 同步 import
+3. from 不存在抛错
+4. to 已存在抛错（不允许覆盖）
+
+依赖：用 commander 解析 CLI；ts-morph 解析 import；vitest 测试。已装在 package.json devDependencies？如无 → 加。
+
+ADR-0006 8-point checklist 适用 item #6 (sister-doc): scripts/__tests__/refactor-move.test.ts 模式与 scripts/__tests__/generate-configs.test.ts 风格一致 (用 readFileSync + 真实 fixture，不造 mock)。
+
+不修改 git；不写 README。完工后输出新建文件列表 + 测试运行 PASS/FAIL。
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the vendored bubblewrap in the meantime.
+codex
+我先快速确认工程里现有脚本测试约定和依赖：先读 `package.json`、`scripts/__tests__/generate-configs.test.ts`、`scripts/refactor-move.ts` 是否已存在，然后一次性实现脚本与测试。随后我会补齐依赖（若缺失）并跑相应测试给出 PASS/FAIL。
+exec
+/bin/bash -lc "sed -n '1,240p' package.json && printf '\\n---\\n' && sed -n '1,260p' scripts/__tests__/generate-configs.test.ts && printf '\\n---\\n' && ls -l scripts/refactor-move.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ exited 2 in 128ms:
+{
+  "name": "self-knowledge-base-web",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "pnpm@9.12.0",
+  "type": "module",
+  "engines": {
+    "node": ">=22",
+    "pnpm": ">=9"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev --parallel",
+    "lint": "eslint .",
+    "lint:packages": "turbo run lint",
+    "typecheck": "tsc -b",
+    "typecheck:packages": "turbo run typecheck",
+    "test": "vitest run",
+    "test:packages": "turbo run test",
+    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm size-check && pnpm lint:packages && pnpm typecheck:packages && pnpm test:packages",
+    "check:affected": "turbo run lint typecheck test --filter=...[origin/main]",
+    "size-check": "node scripts/check-size-limits.mjs",
+    "link-check": "lychee --config .lychee.toml './**/*.md'",
+    "generate:configs": "tsx scripts/generate-configs.ts",
+    "format": "prettier --write \"**/*.{ts,tsx,js,mjs,cjs,json,md,yaml,yml}\""
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "@types/node": "^22.0.0",
+    "eslint": "^9.0.0",
+    "globals": "^15.0.0",
+    "prettier": "^3.0.0",
+    "tsx": "^4.0.0",
+    "turbo": "^2.0.0",
+    "typescript": "~5.6.0",
+    "typescript-eslint": "^8.0.0",
+    "vitest": "^4.1.5",
+    "yaml": "^2.8.3",
+    "zod": "^3.23.0"
+  }
+}
+
+---
+import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import {
+  parseAgentContract,
+  renderClaudeAgent,
+  renderClaudeMd,
+  renderAgentsMd,
+  renderSettingsJson,
+  renderCodexProfilesToml,
+  renderReviewChecklist,
+  renderCodexToolRunbook,
+  type Agent,
+  type AgentContract,
+} from '../generate-configs.ts';
+
+const FIXTURE_VALID_MIN = `# Test\n\n## Schema\n\n\`\`\`yaml\nagents:\n  - name: <kebab-case>\n    tier: 0\n    llm: claude\n    role: example\n    permissions: []\ntool_patterns:\n  - name: <pattern-id>\n    profile: scaffolder\n    invocation: 'x'\n    triggered_by: []\n\`\`\`\n\n## Agents\n\n\`\`\`yaml\nmetadata:\n  version: 1\n  total_teammates: 1\n  total_tool_patterns: 1\nagents:\n  - name: foo\n    tier: 0\n    llm: claude\n    role: test\n    permissions: []\ntool_patterns:\n  - name: bar\n    profile: scaffolder\n    invocation: 'codex exec --profile scaffolder < /dev/null'\n    triggered_by: [some_trigger]\n\`\`\`\n`;
+
+describe('parseAgentContract', () => {
+  it('extracts agents + tool_patterns from YAML fenced block (skips Schema example placeholder)', () => {
+    const result = parseAgentContract(FIXTURE_VALID_MIN);
+    expect(result.agents).toHaveLength(1);
+    expect(result.agents[0]?.name).toBe('foo');
+    expect(result.tool_patterns).toHaveLength(1);
+    expect(result.tool_patterns[0]?.name).toBe('bar');
+  });
+
+  it('parses the real agent-contract.md (20 teammates + 8 tool_patterns)', () => {
+    const real = readFileSync('agent-contract.md', 'utf8');
+    const result = parseAgentContract(real);
+    expect(result.agents).toHaveLength(20);
+    expect(result.tool_patterns).toHaveLength(8);
+    expect(result.agents.find((a) => a.name === 'orchestrator')?.tier).toBe(0);
+    expect(result.agents.find((a) => a.name === 'ux-ui-lead')?.tier).toBe(1);
+    expect(result.tool_patterns.find((tp) => tp.name === 'pr-gate')?.profile).toBe('pr-gate');
+    expect(result.tool_patterns.find((tp) => tp.name === 'codex-block-generator')?.profile).toBe(
+      'scaffolder',
+    );
+    expect(result.agents.find((a) => a.name === 'researcher')?.permissions).toContain('web_search');
+    expect(result.agents.find((a) => a.name === 'git-operator')?.permissions).toContain(
+      'git_commit',
+    );
+  });
+
+  it('moved 8 codex agents (5 scaffolder + 3 review) to tool_patterns; agents are pure Claude', () => {
+    const real = readFileSync('agent-contract.md', 'utf8');
+    const result = parseAgentContract(real);
+    for (const a of result.agents) {
+      expect(a.llm).toBe('claude');
+    }
+    const codexNames = [
+      'codex-block-generator',
+      'codex-test-scaffolder',
+      'codex-script-builder',
+      'codex-api-crud-builder',
+      'codex-css-stylist',
+      'code-reviewer',
+      'pr-gate',
+      'plan-challenger',
+    ];
+    for (const name of codexNames) {
+      expect(result.agents.find((a) => a.name === name)).toBeUndefined();
+      expect(result.tool_patterns.find((tp) => tp.name === name)).toBeDefined();
+    }
+  });
+
+  it('rejects YAML blocks where any agent name uses placeholder syntax <...>', () => {
+    const md = `## Agents\n\n\`\`\`yaml\nmetadata:\n  version: 1\n  total_teammates: 1\n  total_tool_patterns: 0\nagents:\n  - name: <kebab-case>\n    tier: 0\n    llm: claude\n    role: x\n    permissions: []\ntool_patterns: []\n\`\`\`\n`;
+    expect(() => parseAgentContract(md)).toThrow(/no.*authoritative.*yaml.*block/i);
+  });
+
+  it('rejects contract where metadata.total_teammates disagrees with agents.length', () => {
+    const md = `## Agents\n\n\`\`\`yaml\nmetadata:\n  version: 1\n  total_teammates: 99\n  total_tool_patterns: 0\nagents:\n  - name: foo\n    tier: 0\n    llm: claude\n    role: x\n    permissions: []\ntool_patterns: []\n\`\`\`\n`;
+    expect(() => parseAgentContract(md)).toThrow(/total_teammates.*equal.*agents\.length/);
+  });
+
+  it('rejects contract where metadata.total_tool_patterns disagrees with tool_patterns.length', () => {
+    const md = `## Agents\n\n\`\`\`yaml\nmetadata:\n  version: 1\n  total_teammates: 1\n  total_tool_patterns: 99\nagents:\n  - name: foo\n    tier: 0\n    llm: claude\n    role: x\n    permissions: []\ntool_patterns:\n  - name: bar\n    profile: scaffolder\n    invocation: 'x'\n    triggered_by: []\n\`\`\`\n`;
+    expect(() => parseAgentContract(md)).toThrow(
+      /total_tool_patterns.*equal.*tool_patterns\.length/,
+    );
+  });
+
+  it('rejects contract with duplicate agent names', () => {
+    const md = `## Agents\n\n\`\`\`yaml\nmetadata:\n  version: 1\n  total_teammates: 2\n  total_tool_patterns: 0\nagents:\n  - name: foo\n    tier: 0\n    llm: claude\n    role: x\n    permissions: []\n  - name: foo\n    tier: 1\n    llm: claude\n    role: y\n    permissions: []\ntool_patterns: []\n\`\`\`\n`;
+    expect(() => parseAgentContract(md)).toThrow(/duplicate agent name: foo/);
+  });
+
+  it('rejects name collision between agents and tool_patterns', () => {
+    const md = `## Agents\n\n\`\`\`yaml\nmetadata:\n  version: 1\n  total_teammates: 1\n  total_tool_patterns: 1\nagents:\n  - name: foo\n    tier: 0\n    llm: claude\n    role: x\n    permissions: []\ntool_patterns:\n  - name: foo\n    profile: scaffolder\n    invocation: 'x'\n    triggered_by: []\n\`\`\`\n`;
+    expect(() => parseAgentContract(md)).toThrow(/name collision.*foo/);
+  });
+
+  it('rejects duplicate names within tool_patterns (distinct from cross-collision message)', () => {
+    const md = `## Agents\n\n\`\`\`yaml\nmetadata:\n  version: 1\n  total_teammates: 1\n  total_tool_patterns: 2\nagents:\n  - name: foo\n    tier: 0\n    llm: claude\n    role: x\n    permissions: []\ntool_patterns:\n  - name: bar\n    profile: scaffolder\n    invocation: 'x'\n    triggered_by: []\n  - name: bar\n    profile: scaffolder\n    invocation: 'y'\n    triggered_by: []\n\`\`\`\n`;
+    expect(() => parseAgentContract(md)).toThrow(/duplicate tool_pattern name: bar/);
+  });
+
+  it('every tool_pattern.invocation contains "< /dev/null" (memory feedback_codex_stdin; ADR-0007 §pre-task-0-followup obs #3)', () => {
+    const real = readFileSync('agent-contract.md', 'utf8');
+    const result = parseAgentContract(real);
+    expect(result.tool_patterns.length).toBeGreaterThan(0);
+    for (const tp of result.tool_patterns) {
+      expect(tp.invocation, `tool_pattern ${tp.name}.invocation must include '< /dev/null'`).toMatch(
+        /<\s*\/dev\/null\b/,
+      );
+    }
+  });
+});
+
+const sampleAgent: Agent = {
+  name: 'sample-agent',
+  tier: 1,
+  llm: 'claude',
+  role: 'example role',
+  permissions: ['read_repo', 'write_tests'],
+  forbidden: ['edit_code'],
+  description: 'Sample description.\nSecond line.',
+};
+
+const realContract = (): AgentContract =>
+  parseAgentContract(readFileSync('agent-contract.md', 'utf8'));
+
+describe('renderClaudeAgent', () => {
+  it('renders frontmatter + permissions + Related links', () => {
+    const out = renderClaudeAgent(sampleAgent);
+    expect(out).toContain('---');
+    expect(out).toContain('name: sample-agent');
+    expect(out).toContain('tier: 1 (Worker)');
+    expect(out).toContain('llm: claude');
+    expect(out).toContain('**Role**: example role');
+    expect(out).toContain('**Permissions**: read_repo, write_tests');
+    expect(out).toContain('**Forbidden**: edit_code');
+    expect(out).toContain('agent-contract.md');
+    expect(out).toContain('Spec §3.1');
+  });
+
+
+ succeeded in 103ms:
+#!/usr/bin/env tsx
+/**
+ * Derives from agent-contract.md:
+ *   - CLAUDE.md / AGENTS.md (root)
+ *   - .claude/agents/<name>.md × N (Claude teammates only post ADR-0007 D5)
+ *   - .claude/settings.json
+ *   - tmp/codex-profiles.toml (manual merge into ~/.codex/config.toml)
+ *   - docs/review-checklist.md
+ *   - docs/runbooks/codex-tool-invocations.md (ADR-0007 D5 — codex tool patterns)
+ *
+ * Spec: docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md §3.13
+ *
+ * Idempotent: running twice produces no diff. CI in
+ * .github/workflows/agent-contract-check.yml fails on drift.
+ */
+import { readFileSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+import { parse as parseYaml } from 'yaml';
+import { ContractSchema, type AgentContract } from './render/types.ts';
+import { renderClaudeAgent } from './render/claude-agent.ts';
+import { renderClaudeMd } from './render/claude-md.ts';
+import { renderAgentsMd } from './render/agents-md.ts';
+import { renderSettingsJson } from './render/settings-json.ts';
+import { renderCodexProfilesToml } from './render/codex-profiles-toml.ts';
+import { renderReviewChecklist } from './render/review-checklist.ts';
+import { renderCodexToolRunbook } from './render/codex-tool-runbook.ts';
+
+export type { Agent, ToolPattern, AgentContract } from './render/types.ts';
+export { renderClaudeAgent } from './render/claude-agent.ts';
+export { renderClaudeMd } from './render/claude-md.ts';
+export { renderAgentsMd } from './render/agents-md.ts';
+export { renderSettingsJson } from './render/settings-json.ts';
+export { renderCodexProfilesToml } from './render/codex-profiles-toml.ts';
+export { renderReviewChecklist } from './render/review-checklist.ts';
+export { renderCodexToolRunbook } from './render/codex-tool-runbook.ts';
+
+const PLACEHOLDER_PATTERN = /<[^>]+>/;
+
+export function parseAgentContract(markdown: string): AgentContract {
+  const matches = [...markdown.matchAll(/```yaml\n([\s\S]*?)\n```/g)];
+  if (matches.length === 0) {
+    throw new Error('No YAML fenced block in agent-contract.md');
+  }
+
+  for (const m of matches) {
+    const raw = m[1];
+    if (!raw) continue;
+    let candidate: unknown;
+    try {
+      candidate = parseYaml(raw);
+    } catch {
+      // Pseudo-YAML schema-example blocks may not parse; skip them.
+      continue;
+    }
+    if (
+      candidate &&
+      typeof candidate === 'object' &&
+      'agents' in candidate &&
+      Array.isArray(candidate.agents)
+    ) {
+      const agents = candidate.agents as Array<{ name?: unknown }>;
+      const tps =
+        'tool_patterns' in candidate && Array.isArray(candidate.tool_patterns)
+          ? (candidate.tool_patterns as Array<{ name?: unknown }>)
+          : [];
+      const namesWithPlaceholder = [...agents, ...tps].some(
+        (a) => typeof a?.name === 'string' && PLACEHOLDER_PATTERN.test(a.name),
+      );
+      if (!namesWithPlaceholder) {
+        return ContractSchema.parse(candidate);
+      }
+    }
+  }
+  throw new Error('No authoritative YAML block with agents found (placeholder block was skipped)');
+}
+
+export function generateClaudeAgents(contract: AgentContract): void {
+  const dir = '.claude/agents';
+  rmSync(dir, { recursive: true, force: true });
+  mkdirSync(dir, { recursive: true });
+  const sorted = [...contract.agents].sort((a, b) => a.name.localeCompare(b.name));
+  for (const agent of sorted) {
+    writeFileSync(join(dir, `${agent.name}.md`), renderClaudeAgent(agent));
+  }
+}
+
+function main(): void {
+  const contract = parseAgentContract(readFileSync('agent-contract.md', 'utf8'));
+
+  generateClaudeAgents(contract);
+
+  writeFileSync('CLAUDE.md', renderClaudeMd(contract));
+  writeFileSync('AGENTS.md', renderAgentsMd(contract));
+
+  mkdirSync('.claude', { recursive: true });
+  writeFileSync('.claude/settings.json', renderSettingsJson());
+
+  mkdirSync('tmp', { recursive: true });
+  writeFileSync('tmp/codex-profiles.toml', renderCodexProfilesToml());
+
+  mkdirSync('docs', { recursive: true });
+  writeFileSync('docs/review-checklist.md', renderReviewChecklist());
+
+  mkdirSync('docs/runbooks', { recursive: true });
+  writeFileSync('docs/runbooks/codex-tool-invocations.md', renderCodexToolRunbook(contract));
+
+  console.log(
+    `Generated configs from agent-contract.md (${contract.agents.length} teammates + ${contract.tool_patterns.length} tool_patterns).`,
+  );
+}
+
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main();
+}
+
+ succeeded in 108ms:
+#!/usr/bin/env node
+/**
+ * 文件大小硬上限检查
+ * - 300 行 soft warn (ESLint 已处理 .ts/.tsx)
+ * - 500 行 hard fail (本脚本，覆盖所有源文件)
+ *
+ * Spec: docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md §3.6
+ */
+
+import { readFileSync } from 'node:fs';
+import { execSync } from 'node:child_process';
+
+const HARD_LIMIT = 500;
+const EXTENSIONS = /\.(ts|tsx|js|mjs|jsx|py|astro|svelte)$/;
+
+const trackedFiles = execSync('git ls-files --cached --others --exclude-standard', {
+  encoding: 'utf8',
+})
+  .split('\n')
+  .filter((f) => f && EXTENSIONS.test(f));
+
+let violations = 0;
+for (const file of trackedFiles) {
+  const content = readFileSync(file, 'utf8');
+  const lines = content.endsWith('\n')
+    ? content.slice(0, -1).split('\n').length
+    : content.split('\n').length;
+  if (lines > HARD_LIMIT) {
+    console.error(`✗ ${file}: ${lines} lines (limit ${HARD_LIMIT})`);
+    violations++;
+  }
+}
+
+if (violations > 0) {
+  console.error(`\n${violations} file(s) exceed the ${HARD_LIMIT}-line hard limit.`);
+  process.exit(1);
+}
+console.log(`✓ All ${trackedFiles.length} source files under ${HARD_LIMIT} lines.`);
+
+exec
+/bin/bash -lc "sed -n '280,560p' /home/weiyi/selfKnowledgeBaseWeb/scripts/refactor-move.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+exec
+/bin/bash -lc 'rg -n "4/4|PASS|FAIL|refactor-move|ERR|summary|vitest|dry-run|Destination already exists|Source file does not exist|from|to" /home/weiyi/selfKnowledgeBaseWeb/docs/audits/codex-runs/2026-04-30-task-I1-refactor-move-r2.txt | head -n 80' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+1:Reading additional input from stdin...
+14:你是 codex-script-builder 修 bug 第二轮。前次跑你创建了 scripts/refactor-move.ts + 测试，但测试 2/4 fail。
+16:测试失败案例 (vitest output):
+17:- Expected: import { util } from './shared/util';
+18:- Received: import { util } from './util';
+20:测试场景: util.ts 从 packages/feature/util.ts 移到 packages/feature/shared/util.ts。consumer.ts 内 'import { util } from "./util"' 应被你的 refactor-move CLI 更新为 'import { util } from "./shared/util"'。
+23:- 当 from 与 to 是同 package / 同 dir 起点 → 计算 new relative path (即使 from 文件夹与 to 文件夹相同 prefix)
+24:- 用 path.relative() 计算 from-consumer-side 到 new file location 的相对路径
+26:请修 scripts/refactor-move.ts 让全部 4 测试通过：
+27:1. dry-run 模式 (现已 PASS)
+28:2. 正常移动 + 同步 import (FAIL，bug 在此)
+29:3. from 不存在抛错 (现已 PASS)
+30:4. to 已存在抛错 (FAIL?，需 re-verify)
+32:不要改任何其他文件 (package.json + 测试文件保持现状，仅修 scripts/refactor-move.ts 算法)。
+34:完工后跑 'pnpm vitest run scripts/__tests__/refactor-move.test.ts' 验证 4/4 PASS，输出测试结果。
+36:ADR-0006 8-point checklist 适用 item #1 (你新增字段 / 算法分支时要 audit comparator 与 serialization；这里相对路径计算也算 attr)。
+39:我先看一下 `scripts/refactor-move.ts` 的路径重写逻辑，确认当前 `path.relative` 的分支为何漏掉“同包同源目录移动到子目录”场景；然后只改这一个文件并按你要求跑单测。
+41:/bin/bash -lc "sed -n '1,280p' scripts/refactor-move.ts && echo '---' && sed -n '1,260p' scripts/__tests__/refactor-move.test.ts" in /home/weiyi/selfKnowledgeBaseWeb
+44:import { Command } from 'commander';
+45:import { Project, type ExportDeclaration, type SourceFile } from 'ts-morph';
+46:import { existsSync, mkdirSync, renameSync } from 'node:fs';
+47:import { dirname, extname, relative, resolve, sep } from 'node:path';
+53:  from: string;
+54:  to: string;
+58:export type RefactorMoveReport = {
+59:  from: string;
+60:  to: string;
+62:  updates: Array<{ filePath: string; from: string; to: string }>;
+66:type RefactorMoveOptions = {
+67:  from: string;
+68:  to: string;
+79:function toDisplayPath(path: string, baseDir: string): string {
+120:  const sourceDir = sourceFile.getDirectoryPath();
+132:    from: moduleSpecifier,
+133:    to: newSpecifier,
+152:  const sourceDir = sourceFile.getDirectoryPath();
+164:    from: moduleSpecifier,
+165:    to: newSpecifier,
+171:  fromPath: string,
+172:  toPath: string,
+176:): RefactorMoveReport {
+180:    `Move: ${toDisplayPath(fromPath, cwd)} -> ${toDisplayPath(toPath, cwd)}`,
+182:      ? ['No import specifiers to rewrite.']
+185:            `Update ${toDisplayPath(update.filePath, cwd)}: "${update.from}" -> "${update.to}"`,
+189:    from: fromPath,
+190:    to: toPath,
+193:      filePath: toDisplayPath(update.filePath, cwd),
+194:      from: update.from,
+195:      to: update.to,
+201:export function refactorMove(options: RefactorMoveOptions): RefactorMoveReport {
+203:  const from = resolve(cwd, options.from);
+204:  const to = resolve(cwd, options.to);
+207:  if (!existsSync(from)) {
+208:    throw new Error(`Source file does not exist: ${options.from}`);
+210:  if (existsSync(to)) {
+211:    throw new Error(`Destination already exists: ${options.to}`);
+229:      appendImportUpdate(sourceFile, moduleSpecifier, from, updates);
+233:      appendExportUpdate(sourceFile, exportDecl, from, updates);
+238:    const key = `${update.filePath}:${update.from}->${update.to}`;
+245:    mkdirSync(dirname(to), { recursive: true });
+246:    renameSync(from, to);
+248:    const touched = new Set<string>();
+251:      touched.add(update.filePath);
+255:      if (touched.has(sourceFile.getFilePath())) {
+261:  return buildReport(from, to, dryRun, uniqueUpdates, cwd);
+267:    .name('refactor-move')
+269:    .argument('<from>', 'source file path')
+270:    .argument('<to>', 'destination file path')
+271:    .option('--dry-run', 'print planned changes only')
+273:    .action((from: string, to: string, options: { dryRun?: boolean }) => {
+274:      const report = refactorMove({ from, to, dryRun: options.dryRun });
+292:import { cpSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+293:import { tmpdir } from 'node:os';
+294:import { join } from 'node:path';
+295:import { describe, expect, it } from 'vitest';
+296:import { refactorMove } from '../refactor-move.ts';
+298:const FIXTURE_ROOT = join(process.cwd(), 'scripts/__tests__/fixtures/refactor-move');
+301:  const workspace = mkdtempSync(join(tmpdir(), 'refactor-move-'));
+310:describe('refactorMove', () => {
+311:  it('prints plan only in --dry-run mode and does not modify files', () => {
+
+exec
+/bin/bash -lc 'rg -n "4 passed|pass|PASS|PASSING|pass:" /home/weiyi/selfKnowledgeBaseWeb/docs/audits/codex-runs/2026-04-30-task-I1-refactor-move-r2.txt | head -n 40' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+27:1. dry-run 模式 (现已 PASS)
+29:3. from 不存在抛错 (现已 PASS)
+34:完工后跑 'pnpm vitest run scripts/__tests__/refactor-move.test.ts' 验证 4/4 PASS，输出测试结果。
+623:      Tests  2 failed | 2 passed (4)
+1314:      Tests  1 failed | 3 passed (4)
+2753: Test Files  1 passed (1)
+2754:      Tests  4 passed (4)
+2775:结果：`4 passed (4)`。
+2882:结果：`4 passed (4)`。
+
+exec
+/bin/bash -lc "sed -n '620,700p' /home/weiyi/selfKnowledgeBaseWeb/docs/audits/codex-runs/2026-04-30-task-I1-refactor-move-r2.txt" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1300,1335p' /home/weiyi/selfKnowledgeBaseWeb/docs/audits/codex-runs/2026-04-30-task-I1-refactor-move-r2.txt" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+  ]
+
+ ❯ scripts/__tests__/refactor-move.test.ts:68:30
+     66|       expect(() => readFileSync(join(workspace, 'packages/feature/util…
+     67|
+     68|       expect(report.updates).toEqual([
+       |                              ^
+     69|         {
+     70|           filePath: 'packages/feature/consumer.ts',
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 3 passed (4)
+   Start at  13:00:09
+   Duration  1.12s (transform 107ms, setup 0ms, import 707ms, tests 147ms, environment 0ms)
+
+
+exec
+/bin/bash -lc "node - <<'NODE'
+const { mkdtempSync, cpSync, rmSync } = require('node:fs');
+const { tmpdir } = require('node:os');
+const { join, resolve } = require('node:path');
+const { Project } = require('ts-morph');
+const cwd = mkdtempSync(join(tmpdir(),'refactor-move-order-'));
+cpSync(join(process.cwd(),'scripts/__tests__/fixtures/refactor-move/initial'), cwd, { recursive: true });
+const project = new Project({ skipAddingFilesFromTsConfig: true, skipFileDependencyResolution: true});
+const globs = ['packages/**/*.{ts,tsx}','apps/**/*.{ts,tsx}'];
+const ordered=[];
+for (const glob of globs) {
+  const files = project.addSourceFilesAtPaths(resolve(cwd,glob));
+  ordered.push(...files.map((f)=>f.getFilePath().replace(cwd+'/', '')));
+}
+console.log('ordered', ordered);
+console.log('all', project.getSourceFiles().map((f)=>f.getFilePath().replace(cwd+'/', '')));
+
+ succeeded in 0ms:
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 2 passed (4)
+   Start at  12:59:46
+   Duration  639ms (transform 71ms, setup 0ms, import 414ms, tests 86ms, environment 0ms)
+
+
+codex
+我先对仓库里是否已有“路径重写”相同实现做一次快速对比，避免重复造不一致的逻辑。
+exec
+/bin/bash -lc "rg -n \"candidatesForImport|hasMatchingTarget|nextSpecifier|refactorMove\\(\" -S ." in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 306ms:
+./scripts/refactor-move.ts:42:function candidatesForImport(sourceDir: string, moduleSpecifier: string): string[] {
+./scripts/refactor-move.ts:47:function hasMatchingTarget(
+./scripts/refactor-move.ts:55:  return candidatesForImport(sourceDir, moduleSpecifier).includes(targetAbsolutePath);
+./scripts/refactor-move.ts:58:function nextSpecifier(sourceDir: string, targetAbsolutePath: string, oldSpecifier: string): string {
+./scripts/refactor-move.ts:79:  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
+./scripts/refactor-move.ts:83:  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
+./scripts/refactor-move.ts:111:  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
+./scripts/refactor-move.ts:115:  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
+./scripts/refactor-move.ts:159:export function refactorMove(options: RefactorMoveOptions): RefactorMoveReport {
+./scripts/refactor-move.ts:232:      const report = refactorMove({ from, to, dryRun: options.dryRun });
+./scripts/__tests__/refactor-move.test.ts:23:      const report = refactorMove({
+./scripts/__tests__/refactor-move.test.ts:50:      const report = refactorMove({
+./scripts/__tests__/refactor-move.test.ts:89:        refactorMove({
+./scripts/__tests__/refactor-move.test.ts:104:        refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move-r2.txt:84:function candidatesForImport(sourceDir: string, moduleSpecifier: string): string[] {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move-r2.txt:89:function hasMatchingTarget(
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move-r2.txt:97:  return candidatesForImport(sourceDir, moduleSpecifier).includes(targetAbsolutePath);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move-r2.txt:100:function nextSpecifier(sourceDir: string, targetAbsolutePath: string, oldSpecifier: string): string {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move-r2.txt:121:  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move-r2.txt:125:  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move-r2.txt:153:  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move-r2.txt:157:  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move-r2.txt:201:export function refactorMove(options: RefactorMoveOptions): RefactorMoveReport {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move-r2.txt:274:      const report = refactorMove({ from, to, dryRun: options.dryRun });
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move-r2.txt:314:      const report = refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move-r2.txt:341:      const report = refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move-r2.txt:380:        refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move-r2.txt:395:        refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move-r2.txt:429:/bin/bash -lc "node -e \"const { mkdtempSync, cpSync, rmSync } = require('node:fs'); const { tmpdir } = require('node:os'); const { join } = require('node:path'); const { refactorMove } = require('./scripts/refactor-move.ts'); const workspace = mkdtempSync(join(tmpdir(),'refactor-move-debug-')); cpSync(join(process.cwd(),'scripts/__tests__/fixtures/refactor-move/initial'), workspace, { recursive: true }); const report = refactorMove({ from: 'packages/feature/util.ts', to: 'packages/feature/shared/util.ts', dryRun: true, cwd: workspace }); console.log(report); rmSync(workspace, { recursive: true, force: true });\"" in /home/weiyi/selfKnowledgeBaseWeb
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move-r2.txt:460:function candidatesForImport(sourceDir, moduleSpecifier){
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move-r2.txt:464:function hasMatchingTarget(sourceDir, moduleSpecifier, targetAbsolutePath){
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move-r2.txt:466:  return candidatesForImport(sourceDir,moduleSpecifier).includes(targetAbsolutePath);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move-r2.txt:481:      const cands = candidatesForImport(sourceDir, ms);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move-r2.txt:485:      console.log('has?', hasMatchingTarget(sourceDir, ms, from));
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move-r2.txt:522:  const report = mod.refactorMove({ from: 'packages/feature/util.ts', to: 'packages/feature/shared/util.ts', dryRun: true, cwd: workspace });
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move-r2.txt:631:/bin/bash -lc "rg -n \"candidatesForImport|hasMatchingTarget|nextSpecifier|refactorMove\\(\" -S ." in /home/weiyi/selfKnowledgeBaseWeb
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:803:+function candidatesForImport(sourceDir: string, moduleSpecifier: string): string[] {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:808:+function hasMatchingTarget(
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:816:+  return candidatesForImport(sourceDir, moduleSpecifier).includes(targetAbsolutePath);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:819:+function nextSpecifier(sourceDir: string, targetAbsolutePath: string, oldSpecifier: string): string {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:840:+  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:844:+  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:872:+  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:876:+  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:920:+export function refactorMove(options: RefactorMoveOptions): RefactorMoveReport {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:993:+      const report = refactorMove({ from, to, dryRun: options.dryRun });
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:1076:+function candidatesForImport(sourceDir: string, moduleSpecifier: string): string[] {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:1081:+function hasMatchingTarget(
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:1089:+  return candidatesForImport(sourceDir, moduleSpecifier).includes(targetAbsolutePath);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:1092:+function nextSpecifier(sourceDir: string, targetAbsolutePath: string, oldSpecifier: string): string {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:1113:+  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:1117:+  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:1145:+  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:1149:+  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:1193:+export function refactorMove(options: RefactorMoveOptions): RefactorMoveReport {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:1266:+      const report = refactorMove({ from, to, dryRun: options.dryRun });
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:1333:+      const report = refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:1360:+      const report = refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:1399:+        refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:1414:+        refactorMove({
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:1472:+function candidatesForImport(sourceDir: string, moduleSpecifier: string): string[] {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:1477:+function hasMatchingTarget(
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:1485:+  return candidatesForImport(sourceDir, moduleSpecifier).includes(targetAbsolutePath);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:1488:+function nextSpecifier(sourceDir: string, targetAbsolutePath: string, oldSpecifier: string): string {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:1509:+  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:1513:+  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:1541:+  if (!hasMatchingTarget(sourceDir, moduleSpecifier, filePathForTarget)) {
+./docs/audits/codex-runs/2026-04-30-task-I1-refactor-move.txt:1545:+  const newSpecifier = nextSpecifier(sourceDir, filePathForTarget, moduleSpecifier);
+
+exec
+/bin/bash -lc "sed -n '2738,2760p' /home/weiyi/selfKnowledgeBaseWeb/docs/audits/codex-runs/2026-04-30-task-I1-refactor-move-r2.txt" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '2868,2890p' /home/weiyi/selfKnowledgeBaseWeb/docs/audits/codex-runs/2026-04-30-task-I1-refactor-move-r2.txt" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
++      appendImportUpdate(sourceFile, moduleSpecifier, from, to, updates);
+     }
+ 
+     for (const exportDecl of sourceFile.getExportDeclarations()) {
+-      appendExportUpdate(sourceFile, exportDecl, from, updates);
++      appendExportUpdate(sourceFile, exportDecl, from, to, updates);
+     }
+   }
+ 
+
+ succeeded in 1620ms:
+
+ RUN  v4.1.5 /home/weiyi/selfKnowledgeBaseWeb
+
+
+ Test Files  1 passed (1)
+      Tests  4 passed (4)
+   Start at  13:00:54
+   Duration  621ms (transform 59ms, setup 0ms, import 386ms, tests 123ms, environment 0ms)
+
+
+codex
+已修复：`scripts/refactor-move.ts` 里重写 import 的分支现在把“匹配旧文件路径”和“重写到新文件路径”分开了。
+
+ succeeded in 0ms:
+
+- 变更点（仅 `scripts/refactor-move.ts`）：
+  - 在 `appendImportUpdate` / `appendExportUpdate` 中新增 `oldFileAbsolutePath` 与 `newFileAbsolutePath` 两个参数：
+    - 用 `oldFileAbsolutePath` 做 `hasMatchingTarget(...)` 匹配（判断该 import/export 是否指向旧文件）。
+    - 用 `newFileAbsolutePath` 做 `nextSpecifier(...)` 计算（生成 `path.relative(...)` 的新路径）。
+  - 这样 `consumer.ts` 中 `./util` 能正确更新为 `./shared/util`（同包/同起点移动到子目录的场景）。
+  - 文件扫描改为按 `SOURCE_GLOBS` 顺序逐 glob 收集 `SourceFile`，并去重，保证更新顺序稳定可预期（满足测试的更新列表顺序）。
+
+- 相关文件：
+  - [scripts/refactor-move.ts](/home/weiyi/selfKnowledgeBaseWeb/scripts/refactor-move.ts)
+
+已按你要求执行验证：
+`pnpm vitest run scripts/__tests__/refactor-move.test.ts`
+
+结果：`4 passed (4)`。
+
+如果你要，我可以再继续把这次修复的逻辑压成一段简短的实现说明（便于你写 changelog/回归说明）。
+
+exec
+/bin/bash -lc 'rg -n "no-unused-vars|noUnusedLocals|noUnusedParameters" /home/weiyi/selfKnowledgeBaseWeb -g "*.ts" -g "*.json" | head -n 80' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+codex
+我再快速核对一个潜在 lint 风险点：`refactor-move.ts` 里存在一些未使用集合变量（`sourceFiles`/`seenFiles`），确认是否会触发本仓库 lint 规则。
+exec
+/bin/bash -lc 'rg -n "no-unused|unused" /home/weiyi/selfKnowledgeBaseWeb/.eslintrc* /home/weiyi/selfKnowledgeBaseWeb/package.json /home/weiyi/selfKnowledgeBaseWeb/eslint.config.* /home/weiyi/selfKnowledgeBaseWeb/.github -g "*eslin*" -g "*.cjs" -g "*.mjs" -g "*.js"' in /home/weiyi/selfKnowledgeBaseWeb
+ exited 2 in 0ms:
+rg: /home/weiyi/selfKnowledgeBaseWeb/.eslintrc*: No such file or directory (os error 2)
+
+exec
+/bin/bash -lc "rg --files /home/weiyi/selfKnowledgeBaseWeb | rg -n \"eslint|eslint\\.config|eslintrc\" | head -n 40" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 124ms:
+4:/home/weiyi/selfKnowledgeBaseWeb/eslint.config.js
+
+exec
+/bin/bash -lc "sed -n '1,260p' /home/weiyi/selfKnowledgeBaseWeb/eslint.config.js" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+import tseslint from 'typescript-eslint';
+import js from '@eslint/js';
+import globals from 'globals';
+
+export default tseslint.config(
+  // Universal recommended (no type-aware)
+  js.configs.recommended,
+
+  // Type-aware lint for TS files in apps/*, packages/*, and scripts/
+  {
+    files: ['apps/**/*.{ts,tsx}', 'packages/**/*.{ts,tsx}', 'scripts/**/*.ts'],
+    extends: [...tseslint.configs.recommendedTypeChecked],
+    languageOptions: {
+      parserOptions: {
+        projectService: true,
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
+    rules: {
+      'max-lines': ['warn', { max: 300, skipBlankLines: true, skipComments: true }],
+      'no-console': ['warn', { allow: ['warn', 'error'] }],
+    },
+  },
+
+  // Same max-lines rule for non-typed JS files (config, mjs/cjs tooling)
+  {
+    files: ['**/*.{js,mjs,cjs}'],
+    languageOptions: {
+      globals: { ...globals.node },
+    },
+    rules: {
+      'max-lines': ['warn', { max: 300, skipBlankLines: true, skipComments: true }],
+      'no-console': ['warn', { allow: ['warn', 'error'] }],
+    },
+  },
+
+  // Test files exempt
+  {
+    files: ['**/*.test.{ts,tsx,js,mjs}'],
+    rules: { 'max-lines': 'off' },
+  },
+
+  // apps/site overrides: disable type-aware unsafe-* rules.
+  //
+  // Astro's virtual modules (`astro:content`, `astro/loaders`) and the
+  // generated `.astro/types.d.ts` are only resolvable after `astro sync` /
+  // `astro check` / `astro build` has run. CI / fresh checkouts may lint
+  // before those run, so root eslint's projectService falls back to
+  // unresolved types and floods `no-unsafe-*` errors on otherwise-correct
+  // code. apps/site has its own `astro check && tsc --noEmit` gate (see
+  // `apps/site/package.json#scripts.typecheck`), so type safety is not lost.
+  {
+    files: ['apps/site/**/*.{ts,tsx}'],
+    rules: {
+      '@typescript-eslint/no-unsafe-call': 'off',
+      '@typescript-eslint/no-unsafe-member-access': 'off',
+      '@typescript-eslint/no-unsafe-assignment': 'off',
+      '@typescript-eslint/no-unsafe-argument': 'off',
+      '@typescript-eslint/no-unsafe-return': 'off',
+    },
+  },
+
+  // tailwind.config.ts + astro.config.mjs are build-tooling configuration;
+  // type-aware lint adds no value and routinely trips on Tailwind's preset
+  // typings + Astro integration types. Disable type-checked rules entirely.
+  {
+    files: ['apps/site/tailwind.config.ts', 'apps/site/astro.config.mjs'],
+    ...tseslint.configs.disableTypeChecked,
+  },
+
+  {
+    ignores: [
+      '**/dist/**',
+      '**/.astro/**',
+      '**/.turbo/**',
+      '**/node_modules/**',
+      // Python virtualenv + tool caches under apps/api ship third-party JS
+      // (e.g. urllib3 emscripten worker) that fails our globals lint.
+      // .gitignore already excludes these from VCS; mirror that for ESLint.
+      '**/.venv/**',
+      '**/__pycache__/**',
+      '**/.pytest_cache/**',
+      '**/.mypy_cache/**',
+      '**/.ruff_cache/**',
+    ],
+  },
+);
+
+exec
+/bin/bash -lc 'rg -n "ADR-0006|8-point|point 1|point #1|point #6|item #" /home/weiyi/selfKnowledgeBaseWeb/docs/superpowers/specs /home/weiyi/selfKnowledgeBaseWeb/docs/audits/codex-runs/2026-04-30-task-I1-refactor-move-r2.txt | head -n 40' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+/home/weiyi/selfKnowledgeBaseWeb/docs/audits/codex-runs/2026-04-30-task-I1-refactor-move-r2.txt:36:ADR-0006 8-point checklist 适用 item #1 (你新增字段 / 算法分支时要 audit comparator 与 serialization；这里相对路径计算也算 attr)。
+/home/weiyi/selfKnowledgeBaseWeb/docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:660:| `code-reviewer` | gpt-5.3-codex-spark（默认廉价） | 行级 review：类型 / lint / 契约同步 / 文件大小 / 风格 / 边界条件；强制 ADR-0006 8-point asymmetry-audit |
+/home/weiyi/selfKnowledgeBaseWeb/docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:668:Wave 1 数据（codex 5.5 抓 9/12 cross-location asymmetry，[ADR-0006](../../decisions/ADR-0006-asymmetry-audit-checklist.md)）
+/home/weiyi/selfKnowledgeBaseWeb/docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:680:│  ── 强制 ADR-0006 8-point asymmetry-audit checklist       │
+
+exec
+/bin/bash -lc "sed -n '1,260p' /home/weiyi/selfKnowledgeBaseWeb/docs/decisions/ADR-0006-asymmetry-audit-checklist.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+# ADR-0006: Cross-location asymmetry-audit checklist (process rule)
+
+| 字段 | 值                                    |
+| ---- | ------------------------------------- |
+| 状态 | accepted                              |
+| 日期 | 2026-04-30                            |
+| 作者 | orchestrator (Claude Opus 4.7 1M ctx) |
+| 触发 | Wave 1 codex 5.5 reviews caught 12 instances of the same meta-class across 6 tracks + 5 close-ceremony fix iterations (8 distinct items + 4 close-ceremony reinforcements of items #6 and #8) |
+| 替代 | 不替代任何 ADR；扩展 [ADR-0001](ADR-0001-stack-selection.md) §3.2 review chain |
+
+## Context
+
+Wave 1 implementation produced strong empirical evidence that **a single bug class** dominates the failure mode at line-level review:
+
+> **Cross-location asymmetry**: a value, schema, algorithm, or invariant exists in two or more places, and an edit to one location is not symmetrically applied to all peers, so behavior diverges silently.
+
+Across 6 tracks + 5 close-ceremony fix iterations, codex 5.5 (`pr-gate`) caught **12 instances** of this meta-class (8 distinct failure-mode items + 4 close-ceremony reinforcements of items #6 and #8). Every PR that lasted ≥ 2 review rounds hit at least one instance. The pattern is so consistent that linear "fix the cited blocker, ship v_n+1" iteration would not have caught the second-order asymmetry; codex specifically catches the symmetric counterpart that the worker missed.
+
+### Wave 1 empirical record (12 instances)
+
+| # | Track | Round | Asymmetry pair | Bug behavior |
+|---|---|---|---|---|
+| 1 | Track B (block-foundation + content-types) | R1 → fixed v3 | `listUIs` mutability vs `listCores` defensive copy | Caller mutation of return value polluted registry singleton |
+| 2 | Track D (apps/api) | R2 → fixed v4 | RFC 7235 `WWW-Authenticate` on framework-raised 401 vs custom `SkbError` 401 | 4 of 5 401 paths emitted spec-mandated header; the custom-error path silently dropped it |
+| 3 | Track F (editor-commands) | R3 → fixed v4 | `.strict()` on top-level Zod object vs nested `frontmatterSchema` | Top-level rejected unknown keys; nested still silently stripped them |
+| 4 | Track C (mdx-bridge) | R2 → fixed v4 | `marksEqual` link comparator: `href` only vs `href + title` | Same href, different titles silently merged into one link with the first title preserved |
+| 5 | Track F v5 | R3 → fixed v6 | One CONTRACT.md updated to reflect code; sister CONTRACT.md (`agent-tools`) had stale wording | Documentation-vs-code drift in the file the worker did not edit |
+| 6 | Track A | R1 → fixed v2 | FOUC inline IIFE saved-value algorithm + content schema | Truthy-coerce diverges from strict-whitelist for invalid / case-mismatched values; inline `z.object` redefinition diverges from `frontmatterSchema` authority |
+| 7 | Track A v2 | R2 → fixed v3 | FOUC inline IIFE try/catch scope | Wide try/catch in IIFE swallowed `matchMedia` exceptions while authority's narrow try/catch propagated; storage-throws scenarios produced light→dark hydration flash |
+| 8 | Wave 1 close bundle v1 | R1 → fixed v2 | ADR-0006 mandated reviewer-prompt updates vs actual `agent-contract.md` / generated `.claude/agents/*.md` / `docs/review-checklist.md` / `team-operations.md` content | The close-ceremony commit codified a process rule that mandates downstream behavior; consumer-side artifacts (reviewer prompts + runbook) had not been updated to embed the rule, so Wave 2 reviewers would not have seen it |
+| 9 | Wave 1 close bundle v2 | R2 → fixed v3 | ADR-0006:81 within-document drift "7 distinct instances" | Single bullet missed during the v1→v2 count sweep — sister-bullet variant of item #6 within a single document |
+| 10 | Wave 1 close bundle v3 | R3 → fixed v4 | ADR-0006:117 within-document drift "7 empirical instances + 18+ erratum candidates" (both numbers stale) | Second sister-bullet drift in the same file, a different bullet — proved per-citation fixes are themselves item #6 traps; comprehensive sweep at fix time is the robust pattern |
+| 11 | Wave 1 close bundle v4 (informational) | R4 (informational) → fixed v5 | structure baseline:66 "× 7 endpoints" while apps/api has 4 routes / 11 tests | Pre-existing content-accuracy drift in the structure baseline document (authored at v1) — content number mismatched real code; surfaced during the broader 11th-class hunt |
+| 12 | Wave 1 close bundle v5 | R2 (pr-gate) → fixed v6 | Regenerated `.claude/agents/code-reviewer.md` + `.claude/agents/pr-gate.md` + `docs/review-checklist.md` were not staged in the bundle commit — authority + generator code updated, but generator outputs remained at pre-update HEAD content | Sub-form of item #8: regenerating an artifact and `git add`'ing it are separate steps; a bundle that updates authority + generator without staging the regenerated outputs is silently stale. Motivated the "verify by clean second-run" step now part of item #8. |
+
+Codex's structured review consistently caught these with three patterns:
+
+1. After fixing one location, **codex audits all peer locations** (not just the cited site)
+2. After a value/schema acquires an attribute, **codex audits every comparator/serialization function** for that attribute
+3. After a "happy path" fix, **codex audits the exception path** for the same equivalence
+
+These three habits collectively define the process rule below.
+
+## Decision
+
+Adopt an **8-point asymmetry-audit checklist** as a mandatory part of `code-reviewer` (Codex 5.3-spark, default cheap) and `pr-gate` (Codex 5.5, deep) review prompts. Reviewers MUST work through every applicable item before declaring PASS.
+
+### The 8 items
+
+1. **Field/attribute audit**: After adding a field to a data shape (Zod schema, Pydantic model, TS interface, mdast attrs, etc.), audit every comparator / equality / serialization / canonicalization function that handles this shape. (Wave 1 evidence: instance #4 — `marksEqual` link branch missed `title` when serialize emitted it.)
+
+2. **Status code audit**: After adding a status code to one HTTP handler (or, generally, an exit/error code to one branch), audit every other handler emitting the same code. RFC-mandated headers (RFC 7235 `WWW-Authenticate` on 401, RFC 7231 `Allow` on 405) attach to **the status code itself**, not the framework code path that emitted it. (Wave 1 evidence: instance #2 — custom `SkbError` 401 path missed `WWW-Authenticate`.)
+
+3. **Strictness audit**: After adding `.strict()` (Zod) / `extra='forbid'` (Pydantic) at one level of an object schema, audit every nested object/sub-schema. The strictness setting **does not propagate**; nested objects must opt in independently. (Wave 1 evidence: instance #3 — top-level `.strict()` shipped while nested `frontmatterSchema` still silently stripped unknown keys.)
+
+4. **Consumer schema audit**: After defining a schema in a single-authority package (e.g. `@skb/content-types/frontmatterSchema`), audit every consumer for inline duplicates or inline redefinitions that should `import` instead. The "deferred swap" pattern — "I'll inline now and import later" — is a contract break that compounds over time. (Wave 1 evidence: instance #6 part 2 — apps/site/content.config.ts inlined `z.object(...)` rather than importing `frontmatterSchema`.)
+
+5. **Algorithm + runtime constant replication audit**: When an algorithm or runtime constant is replicated outside its authority (e.g. inline FOUC scripts, login challenge derivation, pre-hydration boot logic that cannot import from packages), audit every consumer-side replica for byte-equivalent reproduction. The replica must register a **regression test** that asserts equivalence against the authority across a representative input corpus. (Wave 1 evidence: instance #6 part 1 — FOUC IIFE truthy-coerce vs `getInitialTheme()` strict-whitelist; remediated with `apps/site/src/__tests__/fouc-script.test.ts` 16-row corpus.)
+
+6. **Sister-file documentation audit**: After updating one CONTRACT.md (or any document that describes a code surface), audit ALL related CONTRACT.md files in the package family for sister-file drift. Two CONTRACT.md files that describe two halves of the same contract must use **identical terminology** for the shared identifiers (function names, schema names, refine predicate names). (Wave 1 evidence: instance #5 — `editor-commands/CONTRACT.md` updated to cite `editBlockInputSchema` while `agent-tools/CONTRACT.md` still referred to the old shape.)
+
+7. **Exception-scope equivalence audit**: When replicating an algorithm + its exception handling across files, audit BOTH the happy-path semantics AND the `try/catch` scope between authority and replica. Narrow vs wide `try/catch` can produce divergent fall-through behavior even with identical happy-path logic. Specifically: when `localStorage` / `sessionStorage` / `IndexedDB` / `matchMedia` / any browser API in the algorithm path can throw, the `try/catch` MUST wrap ONLY the throwing call, with the fall-through branch (matchMedia / system default / DOM apply) running AFTER the catch handler — not inside it. (Wave 1 evidence: instance #7 — FOUC IIFE wide-scope try/catch swallowed matchMedia exceptions; remediated with narrow try/catch + 2 storage-throws regression tests.)
+
+8. **Authority-document → generated/consumed surface audit**: When updating an authority document (ADR, spec, `agent-contract.md`, runbook, CONVENTIONS) **OR a dependency authority (`package.json`)** that mandates behavior in downstream consumers, audit every consumer-side replica/generated artifact for synchronized update **AND staged-in-the-git-index in the same bundle**. Specifically: an ADR section that says "X file MUST be updated to do Y" requires the same commit to update X and provide a way to verify the synchronization. Generated artifacts (e.g. `docs/review-checklist.md` and `.claude/agents/*.md` derived from `agent-contract.md`; **`pnpm-lock.yaml` derived from `package.json`** — see sub-form C below) MUST be regenerated via the documented codegen step (`pnpm generate:configs` / `pnpm install`) AND **explicitly `git add`'d** so the git **index** (not just the working tree) contains the new content; runbooks (`docs/runbooks/team-operations.md`) MUST be cross-linked; Codex/Claude subagent prompt files MUST embed or reference the new rule.
+
+   **Operational sequence** (do not skip steps):
+   ```bash
+   # 1. Edit authority + generator code
+   # 2. Run codegen
+   pnpm generate:configs
+   # 3. Stage regenerated outputs (CRITICAL — see Pitfall below)
+   git add <regenerated/path/foo.md> <regenerated/path/bar.md>
+   # 4. Verify index reflects content (NOT just working tree):
+   git diff --cached --stat -- <regenerated paths>
+   #    → expects non-empty diff with the expected line counts
+   # 5. Verify idempotence: re-run codegen + confirm working tree matches index:
+   pnpm generate:configs
+   git status --short -- <regenerated paths>
+   #    → expects column-1 'M' (staged) + column-2 blank (working tree clean)
+   ```
+
+   **Pitfall (this is the load-bearing step)**: `git status --short` shows two columns: column 1 is index-vs-HEAD; column 2 is working-tree-vs-index. After running the generator without `git add`, you see `' M'` (space + M) — **working tree differs from index, but index still matches HEAD**. `git commit` only commits the index. Skipping `git add` means the regenerated content is in your working tree but NOT in the next commit. The bundle would land authority + generator-code changes WITHOUT the regenerated outputs, leaving consumers (Wave 2 reviewers reading `.claude/agents/*.md`) at pre-update content. Use `git diff --cached` (not `git status`) as the canonical staging-verification command — `--cached` shows index-vs-HEAD only, which is what `git commit` will produce.
+
+   **Pitfall extension — `pnpm-lock.yaml` is a generated artifact too (sub-form C below)**: when the authority is `package.json` (any dependency add / remove / version bump / `@types/*` shift), `pnpm install` regenerates `pnpm-lock.yaml` as a deterministic derived artifact. Skipping `git add pnpm-lock.yaml` produces the same class of failure as skipping `git add .claude/agents/*.md`: working tree has the synced lockfile but the **index** still holds HEAD's stale lockfile, so the bundle ships `package.json` ahead of its lockfile. CI runs `pnpm install --frozen-lockfile` from the bundled state, sees the stale lockfile disagreeing with the new `package.json`, and fails install. The same `git diff --cached --stat -- pnpm-lock.yaml` canonical verification applies. (Wave 1 erratum commit `e15ec36`; codified as sub-form C below.)
+
+   Generated-from-authority files carry their own header comment ("GENERATED FROM agent-contract.md — DO NOT EDIT BY HAND") OR YAML frontmatter declaring authority source — both forms are acceptable. `pnpm-lock.yaml` lacks an explicit header (the format is fixed by pnpm) but is implicitly declared by `pnpm install`'s contract — its authority is `package.json` + the workspace `pnpm-workspace.yaml`.
+
+   **Wave 1 evidence**: **instance #8** — ADR-0006 v1 commit codified reviewer-prompt mandates but did not update `agent-contract.md` / regenerate `.claude/agents/code-reviewer.md` / regenerate `.claude/agents/pr-gate.md` / cross-link `team-operations.md` / regenerate `docs/review-checklist.md`; pr-gate caught the dogfood failure during R1 review of the close-ceremony bundle, forcing a v2 fix. **instance #12 (sub-form A — pre-regeneration omission)** — v5 bundle updated authority files (`agent-contract.md`, generator code, `team-operations.md` cross-link) but had not run the generator at all post-edit; the 3 regenerated outputs were stale at HEAD content; pr-gate caught this during R2 review, forcing a v6 fix. **instance #12 (sub-form B — staging-vs-working-tree confusion)** — v6 bundle ran the generator (so working tree had new content) but did NOT `git add` the regenerated outputs; the git **index** still held HEAD blob hashes for the 3 generated files; orchestrator confused `git status --short` "M" prefix (working-tree-vs-index) with index-vs-HEAD; pr-gate caught this via `git ls-files --stage` blob-hash comparison during R3 review, forcing the v7 fix that explicitly stages with `git add` + verifies via `git diff --cached`. **instance #12 (sub-form C — lockfile is a generated-from-authority artifact)** — Wave 1 close ceremony commit `e15ec36` ("fix(deps): commit pnpm-lock.yaml for @tailwindcss/typography (lockfile drift)"): the design-tokens erratum (commit `fdc86a8`) added the `@tailwindcss/typography` dependency to `package.json` but did not stage the regenerated `pnpm-lock.yaml`; CI install used the pre-update lockfile, drifted against the new `package.json`, and failed `pnpm install --frozen-lockfile`. Resolution: commit `e15ec36` staged the lockfile separately. Lesson codified: when the authority is `package.json` (any dependency add / remove / version bump), `pnpm-lock.yaml` is the consumer-side generated artifact and must ride the same bundle — the class equivalence to `.claude/agents/*.md` regeneration is exact (deterministic derive + git-index staging required). The four sub-forms of the same item #8 class — pre-regeneration omission, post-regeneration commit-staging confusion, conceptually-correct-but-operationally-incomplete fix, AND lockfile-as-generated-artifact — together motivate the explicit operational sequence and `git diff --cached` canonical verification command codified above.
+
+### Wave 2 prep notes (forward-compatibility application)
+
+The 8 items have specific Wave 2 trip-hazards already identified by Wave 1's review record:
+
+- **Item #1 + Wave 2 attr-bearing marks**: when the first attr-bearing mark beyond `link` is added to mdx-bridge (e.g. `highlight: {color}`, `kbd: {style}`), the worker MUST simultaneously update `wrapMark` AND `marksEqual` AND add a fixture exercising attr-equality + attr-distinction. Default `return true` in `marksEqual` is a silent-drop trap for any attr-bearing mark. (See pr-gate Track C v4 R3 caveat.)
+
+- **Item #2 + Wave 2 new error categories**: when Wave 2+ adds new HTTP error categories (e.g. `auth-rate-limit`, `kernel-timeout`), each new `SkbError` subclass MUST emit the same RFC-mandated headers as framework-raised peers. Add a unit test asserting header presence per error type. (See `apps/api/CONVENTIONS.md` §5 Pitfall + Pitfall continued.)
+
+- **Item #5 + Wave 2 client-side replications**: when apps/site adds new client-side algorithm replications (theme variants beyond light/dark, locale negotiation pre-hydration, etc.), the worker MUST audit both saved-value semantics AND try/catch scope against authority. (See `packages/design-tokens/CONTRACT.md` Inverse-direction obligation invariant.)
+
+- **Item #7 + future inline scripts**: ANY future `<script is:inline>` block in the project that needs pre-hydration replication of a package algorithm MUST follow the FOUC template (narrow try/catch + corpus regression test).
+
+## Consequences
+
+### Positive
+
+- **Catch the failure mode proactively**: Wave 1 evidence shows reviewer-applied checklist would have caught all 12 instances on the first review round (including the close-ceremony dogfood instance #8 + the 4 fix-loop reinforcements), eliminating 12 round-trip cycles
+- **Reviewer prompt clarity**: code-reviewer + pr-gate codex profile prompts gain a concrete, enumerable checklist rather than the implicit "look for symmetric counterparts" expectation
+- **Worker self-audit**: workers gain a pre-PR checklist they can run before reporting `ready-for-review`, catching their own asymmetries (memory: `feedback_verification_fresh_state.md` showed the verification-rigor lesson; this checklist is the analogous rigor at code-design level)
+- **Empirical grounding**: 12 distinct instances spread across 6 tracks + 5 close-ceremony fix iterations make this rule data-driven, not a "best practice" speculation; instances #9-12 reinforce items #6 + #8 specifically through close-ceremony fix-loop evidence
+
+### Costs
+
+- **Review-round time**: applying 8-point audit at every review adds ~5-10 minutes per round of code-reviewer + pr-gate runtime. Acceptable trade-off given Wave 1 round-counts (Track F: 5 rounds; Track A: 3 rounds; Track C: 4 rounds; Track D: 4 rounds) — front-loading review thoroughness reduces total cycles
+- **Worker prompt overhead**: each spawn prompt now needs a reference to this ADR + the 8-point checklist. Marginal cost.
+- **False-positive risk**: items that don't apply (e.g. #2 "status code" doesn't apply to TS-only packages) need to be triaged and skipped. Reviewer profile prompts must explicitly say "skip items not applicable to this PR's scope" to avoid bloat.
+
+### Risks (mitigated)
+
+- **Risk**: workers might mechanically check items without thinking, producing false confidence. **Mitigation**: each item enumerates concrete failure modes from Wave 1, not abstract heuristics — easier to apply
+- **Risk**: this list might grow unbounded as Wave 2+ surfaces new asymmetry classes. **Mitigation**: ADR amendments are cheap; each new instance produces an ADR-0006 erratum capturing item #N+1. Wave 2 close ceremony reviews instances and adds items as needed.
+
+## Implementation
+
+### Reviewer prompt updates
+
+`code-reviewer` and `pr-gate` profile prompts MUST be updated to:
+
+1. State the 8-point checklist verbatim (or by reference to this ADR)
+2. Require the reviewer's verdict structure to include "asymmetry-audit applied: items {1..8} verdicts: ..."
+3. Explicitly mark FAIL if any applicable item is left un-audited
+
+`docs/runbooks/team-operations.md` §"角色与触发器" Tier 2 reviewer rows should cross-link to this ADR.
+
+### Worker pre-flight (template addition)
+
+Worker `ready-for-review` reports SHOULD include a brief asymmetry-audit summary: which of the 8 items applied, and the worker's self-audit verdict. Reviewers cross-check.
+
+### Wave 1 retroactive
+
+This ADR is **forward-applicable**. Wave 1 PRs that already shipped under earlier review without this checklist remain valid; the empirical instances they revealed are exactly what grounded this ADR. No retroactive re-review required.
+
+## Related
+
+- [ADR-0001](ADR-0001-stack-selection.md) §3.2 review chain — this ADR specifies what reviewers MUST do; ADR-0001 specifies who reviews
+- [ADR-0002](ADR-0002-wave-1-close.md) Wave 1 close — collects the 12 empirical instances + 22 erratum candidates
+- [ADR-0004](ADR-0004-agent-team-dispatch-model.md) team dispatch — orchestrator dispatches review chain per this checklist
+- [docs/runbooks/team-operations.md](../runbooks/team-operations.md) — operational reference for reviewers and workers
+- [packages/design-tokens/CONTRACT.md](../../packages/design-tokens/CONTRACT.md) Inverse-direction obligation — concrete application of items #5 + #7
+- [apps/api/CONVENTIONS.md](../../apps/api/CONVENTIONS.md) §5 Pitfalls — concrete application of item #2
+
+exec
+/bin/bash -lc "rg -n \"sourceFiles|seenFiles|addSourceFilesAtPaths|appendExportUpdate\\(|appendImportUpdate\\(\" /home/weiyi/selfKnowledgeBaseWeb/scripts/refactor-move.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+72:function appendImportUpdate(
+100:function appendExportUpdate(
+178:  const sourceFiles: SourceFile[] = [];
+179:  const seenFiles = new Set<string>();
+182:    const matchedFiles = project.addSourceFilesAtPaths(resolve(cwd, glob));
+185:      if (seenFiles.has(filePath)) {
+188:      sourceFiles.push(sourceFile);
+189:      seenFiles.add(filePath);
+202:      appendImportUpdate(sourceFile, moduleSpecifier, from, to, updates);
+206:      appendExportUpdate(sourceFile, exportDecl, from, to, updates);
+
+exec
+/bin/bash -lc 'rg -n "commander|ts-morph|tsx" /home/weiyi/selfKnowledgeBaseWeb/package.json /home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml | head -n 30' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:17:      commander:
+/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:29:      ts-morph:
+/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:32:      tsx:
+/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:46:        version: 4.1.5(@types/node@22.19.17)(happy-dom@15.11.7)(vite@8.0.10(@types/node@22.19.17)(esbuild@0.27.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.3))
+/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:58:        version: 4.3.14(astro@5.18.1(@types/node@22.19.17)(jiti@1.21.7)(lightningcss@1.32.0)(rollup@4.60.2)(tsx@4.21.0)(typescript@5.6.3)(yaml@2.8.3))
+/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:61:        version: 4.4.2(@types/node@22.19.17)(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(jiti@1.21.7)(lightningcss@1.32.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(tsx@4.21.0)(yaml@2.8.3)
+/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:64:        version: 6.0.2(astro@5.18.1(@types/node@22.19.17)(jiti@1.21.7)(lightningcss@1.32.0)(rollup@4.60.2)(tsx@4.21.0)(typescript@5.6.3)(yaml@2.8.3))(tailwindcss@3.4.19(tsx@4.21.0)(yaml@2.8.3))
+/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:73:        version: 5.18.1(@types/node@22.19.17)(jiti@1.21.7)(lightningcss@1.32.0)(rollup@4.60.2)(tsx@4.21.0)(typescript@5.6.3)(yaml@2.8.3)
+/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:82:        version: 3.4.19(tsx@4.21.0)(yaml@2.8.3)
+/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:101:        version: 4.1.5(@types/node@22.19.17)(happy-dom@15.11.7)(vite@6.4.2(@types/node@22.19.17)(jiti@1.21.7)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.8.3))
+/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:117:        version: 4.1.5(@types/node@22.19.17)(happy-dom@15.11.7)(vite@8.0.10(@types/node@22.19.17)(esbuild@0.27.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.3))
+/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:154:        version: 4.1.5(@types/node@22.19.17)(happy-dom@15.11.7)(vite@8.0.10(@types/node@22.19.17)(esbuild@0.27.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.3))
+/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:167:        version: 4.1.5(@types/node@22.19.17)(happy-dom@15.11.7)(vite@8.0.10(@types/node@22.19.17)(esbuild@0.27.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.3))
+/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:173:        version: 0.5.19(tailwindcss@3.4.19(tsx@4.21.0)(yaml@2.8.3))
+/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:192:        version: 3.4.19(tsx@4.21.0)(yaml@2.8.3)
+/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:198:        version: 4.1.5(@types/node@22.19.17)(happy-dom@15.11.7)(vite@8.0.10(@types/node@22.19.17)(esbuild@0.27.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.3))
+/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:214:        version: 4.1.5(@types/node@22.19.17)(happy-dom@15.11.7)(vite@8.0.10(@types/node@22.19.17)(esbuild@0.27.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.3))
+/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:223:        version: 4.1.5(@types/node@22.19.17)(happy-dom@15.11.7)(vite@8.0.10(@types/node@22.19.17)(esbuild@0.27.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.3))
+/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:236:        version: 4.1.5(@types/node@22.19.17)(happy-dom@15.11.7)(vite@8.0.10(@types/node@22.19.17)(esbuild@0.27.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.3))
+/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:270:        version: 4.1.5(@types/node@22.19.17)(happy-dom@15.11.7)(vite@8.0.10(@types/node@22.19.17)(esbuild@0.27.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.3))
+/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:1415:  '@ts-morph/common@0.29.0':
+/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:1885:  commander@11.1.0:
+/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:1889:  commander@4.1.1:
+/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:2949:      tsx: ^4.8.1
+/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:2956:      tsx:
+/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:3386:  ts-morph@28.0.0:
+/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:3402:  tsx@4.21.0:
+/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:3585:      tsx: ^4.8.1
+/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:3606:      tsx:
+/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:3626:      tsx: ^4.8.1
+
+codex
+我确认了关键行号后会给你结论；若无阻断性问题会给 PASS，并附上 1..8 项逐条审计结论。现在给出最终 review 结果。
+codex
+Verdict: **PASS**
+
+asymmetry-audit applied: items {1..8} verdicts:
+1. PASS — `appendImportUpdate` / `appendExportUpdate` 中将 `oldFileAbsolutePath` 与 `newFileAbsolutePath` 分离，并分别用于 `hasMatchingTarget` 与 `nextSpecifier`，比较与序列化链路一致（`scripts/refactor-move.ts:72, 100, 202, 206, 178`）。
+2. N/A — 本任务不涉及 HTTP 状态码新增/传播类变更。
+3. N/A — 本任务无新增 schema 嵌套 strictness 的类比场景。
+4. N/A（不适用）— 本任务无单一 authority schema 的 consumer inline 重复/替换问题。
+5. N/A — 未引入跨位置算法/运行时常量副本。
+6. PASS — 脚本文件命名与脚本风格（`scripts/check-size-limits.mjs`、`scripts/generate-configs.ts`）一致；测试风格与 `scripts/__tests__/generate-configs.test.ts` 保持一致（fixture + `readFileSync`，无 mock）。
+7. PASS — 未出现 authority/consumer 异常分支不一致样式（脚本/测试逻辑内未见对应复制-副本异常分支复用风险）。
+8. PASS — `package.json` 依赖与 `pnpm-lock.yaml` 同步更新（`commander@^11.1.0`、`ts-morph@^28.0.0`、`tsx@^4.21.0`，以及锁文件对应条目与 importer 显式同步），并且 `docs/audits/*.txt` 不在 `size-check` 扫描后缀范围（`scripts/check-size-limits.mjs` 只检查 `.ts/.tsx/.js/.mjs/.jsx/.py/.astro/.svelte`）。
+
+1) 发现
+- [低] `scripts/refactor-move.ts` 中有未使用变量/集合：`sourceFiles` 与 `seenFiles` 在构建去重后未参与后续逻辑（`scripts/refactor-move.ts:178-189`）。当前逻辑功能未被破坏，但这类 dead code 会放大维护成本，建议清理；若 lint 规则对未使用变量更严格也可能触发告警。
+
+2) 你要求的专项核验
+- 测试结论：`r2` 审计日志显示本任务 `4 passed (4)`（`Test Files 1 passed (1)`，`Tests 4 passed (4)`）。
+- `r1`/`r2` 回放链路中 r2 已明确修复“同目录起点移动到子目录时未更新 import”的问题。
+- `tsx` 恢复是合理且正确的：`scripts/generate-configs.ts` 依赖 `tsx` 执行；保持 `tsx@^4.21.0` 与锁文件同步符合第 8 项 authority→generated artifact 约束。
+2026-04-30T17:19:13.271149Z ERROR codex_core::session: failed to record rollout items: thread 019ddf66-115d-7481-abfb-211cf99e9196 not found
+tokens used
+68,063
+Verdict: **PASS**
+
+asymmetry-audit applied: items {1..8} verdicts:
+1. PASS — `appendImportUpdate` / `appendExportUpdate` 中将 `oldFileAbsolutePath` 与 `newFileAbsolutePath` 分离，并分别用于 `hasMatchingTarget` 与 `nextSpecifier`，比较与序列化链路一致（`scripts/refactor-move.ts:72, 100, 202, 206, 178`）。
+2. N/A — 本任务不涉及 HTTP 状态码新增/传播类变更。
+3. N/A — 本任务无新增 schema 嵌套 strictness 的类比场景。
+4. N/A（不适用）— 本任务无单一 authority schema 的 consumer inline 重复/替换问题。
+5. N/A — 未引入跨位置算法/运行时常量副本。
+6. PASS — 脚本文件命名与脚本风格（`scripts/check-size-limits.mjs`、`scripts/generate-configs.ts`）一致；测试风格与 `scripts/__tests__/generate-configs.test.ts` 保持一致（fixture + `readFileSync`，无 mock）。
+7. PASS — 未出现 authority/consumer 异常分支不一致样式（脚本/测试逻辑内未见对应复制-副本异常分支复用风险）。
+8. PASS — `package.json` 依赖与 `pnpm-lock.yaml` 同步更新（`commander@^11.1.0`、`ts-morph@^28.0.0`、`tsx@^4.21.0`，以及锁文件对应条目与 importer 显式同步），并且 `docs/audits/*.txt` 不在 `size-check` 扫描后缀范围（`scripts/check-size-limits.mjs` 只检查 `.ts/.tsx/.js/.mjs/.jsx/.py/.astro/.svelte`）。
+
+1) 发现
+- [低] `scripts/refactor-move.ts` 中有未使用变量/集合：`sourceFiles` 与 `seenFiles` 在构建去重后未参与后续逻辑（`scripts/refactor-move.ts:178-189`）。当前逻辑功能未被破坏，但这类 dead code 会放大维护成本，建议清理；若 lint 规则对未使用变量更严格也可能触发告警。
+
+2) 你要求的专项核验
+- 测试结论：`r2` 审计日志显示本任务 `4 passed (4)`（`Test Files 1 passed (1)`，`Tests 4 passed (4)`）。
+- `r1`/`r2` 回放链路中 r2 已明确修复“同目录起点移动到子目录时未更新 import”的问题。
+- `tsx` 恢复是合理且正确的：`scripts/generate-configs.ts` 依赖 `tsx` 执行；保持 `tsx@^4.21.0` 与锁文件同步符合第 8 项 authority→generated artifact 约束。

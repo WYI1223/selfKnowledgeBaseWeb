@@ -1,0 +1,735 @@
+Reading additional input from stdin...
+OpenAI Codex v0.125.0 (research preview)
+--------
+workdir: /home/weiyi/selfKnowledgeBaseWeb
+model: gpt-5.3-codex-spark
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: xhigh
+reasoning summaries: none
+session id: 019ddf76-96c2-7d21-8deb-32c8b6bfbfae
+--------
+user
+你是 code-reviewer profile (gpt-5.3-spark)。审 SelfKnowledgeBaseWeb Wave 2 Task #4 (B2: apps/site Playwright 视觉烟测脚手架)。
+
+## Bundle scope (5 files, working tree, NOT yet staged)
+
+读以下文件 diff vs HEAD（HEAD = 2ad9ece I1）:
+- `apps/site/playwright.config.ts` (新, 27 行) — testDir './src/__tests__', testMatch '**/*.spec.ts', baseURL 127.0.0.1:4321, retries=2 on CI, single chromium project, webServer 启 'pnpm dev', **colorScheme: 'light' deterministic** (plan→reality erratum #2)
+- `apps/site/src/__tests__/visual-smoke.spec.ts` (新, 17 行) — 3 case: home renders / detail page H1 count=1 / theme toggle aria-label selector switches data-theme to dark (Option A erratum #1)
+- `apps/site/package.json` (modify) — +@playwright/test 1.49.0 exact-pin + 'test:visual' script
+- `.github/workflows/ci.yml` (modify) — +visual-smoke job (needs: build), 含 actions/cache@v4 keyed runner.os-playwright-1.49.0, playwright install --with-deps chromium + pnpm --filter @skb/site test:visual
+- `pnpm-lock.yaml` (modify) — +Playwright 三依赖 (@playwright/test@1.49.0 + transitive playwright@1.49.0 + playwright-core@1.49.0 + optional darwin fsevents@2.3.2)
+
+**注意**：working tree 同时含 A2 + B3 in-flight。**只审 B2 specific files**，其他 in-flight 文件不在 B2 scope。
+
+## 触发链
+ADR-0007 D2 row 8 (CI workflow 改) → 你是 Step 1 baseline。后续 codex 5.5 pr-gate + Claude pr-reviewer 必跑。
+
+## 必跑 ADR-0006 8-point asymmetry-audit checklist
+重点：
+- **item #6 sister-doc**: visual-smoke.spec.ts 风格 vs apps/site/src/__tests__/fouc-script.test.ts (Wave 1) 一致性（vitest-style import + 简洁 assertion + clear naming + minimal scaffolding）
+- **item #8 authority → consumer**: ci.yml 是 workflow authority，不是 generator authority；无 generator output 受影响；verify
+- **item #4 consumer schema**: N/A
+- item #1/#2/#3/#5/#7: 给明确 verdict
+
+## Worker (editor-integrator) self-report 要点
+- 5 项 verify PASS（typecheck/test/size-check/build；lychee 本机缺，CI 跑）
+- WSL2 缺 libnss3/libnspr4 → local Playwright 没真跑；CI playwright install --with-deps 装这两个 lib
+- 3 case design：
+  - case 1 home renders (h1 visible)
+  - case 2 detail page h1 count=1 (B1 fix on main 已确保)
+  - case 3 theme toggle (Option A aria-label selector + colorScheme 'light' deterministic 起步状态)
+
+## 你必须独立 verify
+1. visual-smoke.spec.ts 3 case 用法是否符合 Playwright API 最佳实践（getByRole + name regex + toHaveAttribute regex）
+2. ci.yml visual-smoke job 是否会 cyclic 依赖或与现有 build/test job race
+3. pnpm-lock.yaml 仅 +91 行 contained Playwright deps，无其他 transitive 污染
+4. colorScheme: 'light' 与 ThemeToggle.tsx 实际行为是否一致（worker 本地没 launch chromium，依赖手动 inspection of ThemeToggle.tsx markup）
+
+## 不在 scope
+- 不审 working tree 中 A2 / B3 in-flight 文件
+- 不修改文件
+- 不 stage（git-operator 用 4-step protocol 后处理）
+
+输出 verdict: PASS/FAIL + 'asymmetry-audit applied: items {1..8} verdicts: ...'。开始。
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the vendored bubblewrap in the meantime.
+codex
+明白。我将按你的要求仅审 `B2` 范围的 5 个文件，并顺带核对 `ThemeToggle.tsx` 的行为以验证 `colorScheme: 'light'` 一致性；不会触及 A2/B3 其他文件或做改动。接着给出 `asymmetry-audit` 各项结论与最终 PASS/FAIL。
+exec
+/bin/bash -lc "sed -n '1,220p' apps/site/playwright.config.ts" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1,240p' apps/site/package.json" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1,220p' apps/site/src/__tests__/visual-smoke.spec.ts" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1,320p' .github/workflows/ci.yml" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "git diff -- pnpm-lock.yaml | sed -n '1,260p'" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "rg --files apps/site/src | rg -n 'ThemeToggle|theme-toggle|theme'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 112ms:
+import { defineConfig, devices } from '@playwright/test';
+
+export default defineConfig({
+  testDir: './src/__tests__',
+  testMatch: '**/*.spec.ts',
+  fullyParallel: true,
+  forbidOnly: !!process.env.CI,
+  retries: process.env.CI ? 2 : 0,
+  reporter: process.env.CI ? 'github' : 'list',
+  use: {
+    baseURL: 'http://127.0.0.1:4321',
+    trace: 'on-first-retry',
+    colorScheme: 'light',
+  },
+  projects: [
+    {
+      name: 'chromium',
+      use: { ...devices['Desktop Chrome'] },
+    },
+  ],
+  webServer: {
+    command: 'pnpm dev',
+    url: 'http://127.0.0.1:4321',
+    reuseExistingServer: !process.env.CI,
+    timeout: 120_000,
+  },
+});
+
+ succeeded in 112ms:
+{
+  "name": "@skb/site",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "typecheck": "astro check && tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:visual": "playwright test"
+  },
+  "dependencies": {
+    "@astrojs/mdx": "^4.0.0",
+    "@astrojs/react": "^4.0.0",
+    "@astrojs/tailwind": "^6.0.0",
+    "@skb/content-types": "workspace:*",
+    "@skb/design-tokens": "workspace:*",
+    "astro": "^5.0.0",
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0",
+    "tailwindcss": "^3.4.0"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.0",
+    "@playwright/test": "1.49.0",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "happy-dom": "^15.0.0",
+    "typescript": "~5.6.0",
+    "vitest": "^4.1.5"
+  }
+}
+
+ succeeded in 113ms:
+import { test, expect } from '@playwright/test';
+
+test('home page renders', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.locator('h1')).toBeVisible();
+});
+
+test('detail page renders sample note with single H1', async ({ page }) => {
+  await page.goto('/notes/sample-mdx-note');
+  expect(await page.locator('h1').count()).toBe(1);
+});
+
+test('theme toggle switches data-theme to dark', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: /Switch to (dark|light) mode/ }).click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', /^dark$/);
+});
+
+ succeeded in 130ms:
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm lint:packages
+
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm typecheck:packages
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test
+      - run: pnpm test:packages
+
+  size-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm size-check
+
+  build:
+    needs: [lint, typecheck, test, size-check]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+
+  visual-smoke:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-1.49.0
+      - run: pnpm exec playwright install --with-deps chromium
+        working-directory: apps/site
+      - run: pnpm --filter @skb/site test:visual
+
+ succeeded in 124ms:
+ succeeded in 123ms:
+3:apps/site/src/components/ThemeToggle.astro
+
+codex
+已拿到核心 4 个文件内容，接下来我会核对 `ThemeToggle.astro` 的语义与 `colorScheme` 约定，再补一份精确 diff 核对（含 `pnpm-lock.yaml`）来确认变更边界。
+exec
+/bin/bash -lc 'git diff --name-only HEAD -- apps/site/playwright.config.ts apps/site/src/__tests__/visual-smoke.spec.ts apps/site/package.json .github/workflows/ci.yml pnpm-lock.yaml' in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1,220p' apps/site/src/components/ThemeToggle.astro" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+.github/workflows/ci.yml
+apps/site/package.json
+
+ succeeded in 0ms:
+---
+import { ThemeToggle } from '@skb/design-tokens';
+---
+
+<ThemeToggle client:load />
+
+exec
+/bin/bash -lc 'git status --short' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+ M .github/workflows/ci.yml
+ M apps/site/package.json
+ M packages/block-foundation/CONTRACT.md
+?? .agents/
+?? .claude/skills/web-design-guidelines
+?? .codex
+?? .codex-runs/
+?? apps/site/.astro/
+?? apps/site/playwright.config.ts
+?? apps/site/src/__tests__/visual-smoke.spec.ts
+?? docs/audits/codex-runs/2026-04-30-task-A1-code-review.txt
+?? docs/audits/codex-runs/2026-04-30-task-A1-pr-gate.txt
+?? docs/audits/codex-runs/2026-04-30-task-A2-code-review.txt
+?? docs/audits/codex-runs/2026-04-30-task-A2-pr-gate.txt
+?? docs/audits/codex-runs/2026-04-30-task-B1-code-review.txt
+?? docs/audits/codex-runs/2026-04-30-task-B2-code-review.txt
+?? docs/audits/codex-runs/2026-04-30-task-I1-code-review.txt
+?? opencode.json
+?? packages/block-foundation/RFC.md
+?? skills-lock.json
+
+exec
+/bin/bash -lc "rg --line-number \"@playwright/test|\\bplaywright@|playwright-core@|fsevents@2\\.3\\.2\" pnpm-lock.yaml" in /home/weiyi/selfKnowledgeBaseWeb
+ exited 1 in 0ms:
+exec
+/bin/bash -lc "sed -n '1,240p' apps/site/src/__tests__/fouc-script.test.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+/*
+ * FOUC algorithm equivalence regression test.
+ *
+ * BaseLayout.astro ships an inline `<script>` that runs before any module
+ * loads (and therefore can't import @skb/design-tokens). The script must
+ * derive the boot theme via byte-equivalent logic to `getInitialTheme()`
+ * from @skb/design-tokens — in BOTH happy-path AND exception handling.
+ *
+ * The test reads the actual BaseLayout.astro from disk, extracts the IIFE,
+ * evaluates it against a stubbed (localStorage + matchMedia + document)
+ * environment for:
+ *   1. a corpus of saved-value × system-preference combinations (16 rows)
+ *   2. storage-throws scenarios (Safari Private Mode / iOS WebView pattern)
+ * and asserts the FOUC-applied theme matches `getInitialTheme()`'s answer
+ * for every row. If anyone reverts the strict-whitelist algorithm OR widens
+ * the try/catch scope, the relevant row fails immediately.
+ */
+import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
+import { getInitialTheme } from '@skb/design-tokens';
+
+const here = dirname(fileURLToPath(import.meta.url));
+const baseLayoutPath = resolve(here, '../layouts/BaseLayout.astro');
+
+function extractFoucIife(src: string): string {
+  const startMarker = '(function () {';
+  const endMarker = '})();';
+  const startIdx = src.indexOf(startMarker);
+  const endIdx = src.indexOf(endMarker, startIdx);
+  if (startIdx < 0 || endIdx < 0) {
+    throw new Error('Could not locate FOUC IIFE in BaseLayout.astro');
+  }
+  return src.slice(startIdx, endIdx + endMarker.length);
+}
+
+interface FakeStorage {
+  getItem: (k: string) => string | null;
+  setItem: (k: string, v: string) => void;
+  removeItem: (k: string) => void;
+}
+
+function makeFakeStorage(initial: string | null): FakeStorage {
+  let value = initial;
+  return {
+    getItem: (k: string) => (k === 'skb-theme' ? value : null),
+    setItem: (k: string, v: string) => {
+      if (k === 'skb-theme') value = v;
+    },
+    removeItem: (k: string) => {
+      if (k === 'skb-theme') value = null;
+    },
+  };
+}
+
+function makeThrowingStorage(): FakeStorage {
+  const err = new Error('storage unavailable');
+  return {
+    getItem: () => {
+      throw err;
+    },
+    setItem: () => {
+      throw err;
+    },
+    removeItem: () => {
+      throw err;
+    },
+  };
+}
+
+type FakeMatchMedia = (q: string) => { matches: boolean };
+
+function runFoucWith(
+  iife: string,
+  storage: FakeStorage,
+  matchMedia: FakeMatchMedia,
+): 'dark' | 'light' {
+  let dataTheme: string | null = null;
+  const fakeDocument = {
+    documentElement: {
+      setAttribute: (k: string, v: string) => {
+        if (k === 'data-theme') dataTheme = v;
+      },
+      removeAttribute: (k: string) => {
+        if (k === 'data-theme') dataTheme = null;
+      },
+    },
+  };
+  const fakeWindow = { matchMedia };
+  // The whole point of this test is to evaluate the IIFE source extracted
+  // from BaseLayout.astro against a mocked environment, byte-equivalent to
+  // the browser's. `new Function` is the controlled way to do that.
+  // eslint-disable-next-line @typescript-eslint/no-implied-eval
+  const fn = new Function('localStorage', 'window', 'document', iife);
+  fn(storage, fakeWindow, fakeDocument);
+  return dataTheme === 'dark' ? 'dark' : 'light';
+}
+
+function runGetInitialThemeWith(
+  storage: FakeStorage,
+  matchMedia: FakeMatchMedia,
+): 'dark' | 'light' {
+  const originalLocalStorage = window.localStorage;
+  const originalMatchMedia = window.matchMedia;
+  // happy-dom's window properties are configurable; swap them for the call.
+  Object.defineProperty(window, 'localStorage', { configurable: true, value: storage });
+  // @ts-expect-error overriding for the controlled call
+  window.matchMedia = matchMedia;
+  try {
+    return getInitialTheme();
+  } finally {
+    Object.defineProperty(window, 'localStorage', {
+      configurable: true,
+      value: originalLocalStorage,
+    });
+    window.matchMedia = originalMatchMedia;
+  }
+}
+
+const corpus: ReadonlyArray<{ saved: string | null; systemDark: boolean }> = [
+  { saved: null, systemDark: false },
+  { saved: null, systemDark: true },
+  { saved: 'light', systemDark: false },
+  { saved: 'light', systemDark: true },
+  { saved: 'dark', systemDark: false },
+  { saved: 'dark', systemDark: true },
+  { saved: 'invalid', systemDark: false },
+  { saved: 'invalid', systemDark: true },
+  { saved: 'Dark', systemDark: false },
+  { saved: 'Dark', systemDark: true },
+  { saved: '', systemDark: false },
+  { saved: '', systemDark: true },
+  { saved: 'INVALID', systemDark: false },
+  { saved: 'INVALID', systemDark: true },
+  { saved: 'theme-dark', systemDark: false },
+  { saved: 'theme-dark', systemDark: true },
+];
+
+describe('FOUC inline script vs getInitialTheme()', () => {
+  const src = readFileSync(baseLayoutPath, 'utf8');
+  const iife = extractFoucIife(src);
+
+  it('extracts the IIFE from BaseLayout.astro', () => {
+    expect(iife).toContain("localStorage.getItem('skb-theme')");
+    expect(iife).toContain("matchMedia('(prefers-color-scheme: dark)')");
+  });
+
+  it.each(corpus)(
+    'agrees with getInitialTheme() for saved=$saved systemDark=$systemDark',
+    ({ saved, systemDark }) => {
+      const matchMedia: FakeMatchMedia = () => ({ matches: systemDark });
+      const fouc = runFoucWith(iife, makeFakeStorage(saved), matchMedia);
+      const hook = runGetInitialThemeWith(makeFakeStorage(saved), matchMedia);
+      expect(fouc).toBe(hook);
+    },
+  );
+
+  it('uses STRICT whitelist (regression: truthy-coerce divergence)', () => {
+    // The old truthy-coerce algorithm (`saved ? saved === 'dark' : ...`) gave
+    // light for saved='invalid' + systemDark=true. The strict whitelist
+    // falls through to matchMedia, yielding dark. This is the canonical
+    // saved-value failure case the v2 rewrite eliminated.
+    const matchMedia: FakeMatchMedia = () => ({ matches: true });
+    expect(runFoucWith(iife, makeFakeStorage('invalid'), matchMedia)).toBe('dark');
+    expect(runGetInitialThemeWith(makeFakeStorage('invalid'), matchMedia)).toBe('dark');
+  });
+
+  it('agrees with getInitialTheme() when localStorage.getItem throws + systemDark=true', () => {
+    // Safari Private Mode / iOS WebView with disabled storage: getItem throws.
+    // A wide-scope try/catch in the IIFE swallows matchMedia + DOM apply,
+    // producing light when system pref is dark — hydration flash on first paint.
+    // The narrow try/catch (wrapping ONLY getItem) treats `saved` as null,
+    // falls through to matchMedia, and produces dark — matching getInitialTheme.
+    const matchMedia: FakeMatchMedia = () => ({ matches: true });
+    expect(runFoucWith(iife, makeThrowingStorage(), matchMedia)).toBe('dark');
+    expect(runGetInitialThemeWith(makeThrowingStorage(), matchMedia)).toBe('dark');
+  });
+
+  it('agrees with getInitialTheme() when localStorage.getItem throws + systemDark=false', () => {
+    const matchMedia: FakeMatchMedia = () => ({ matches: false });
+    expect(runFoucWith(iife, makeThrowingStorage(), matchMedia)).toBe('light');
+    expect(runGetInitialThemeWith(makeThrowingStorage(), matchMedia)).toBe('light');
+  });
+});
+
+exec
+/bin/bash -lc "rg -n \"function ThemeToggle|ThemeToggle\" packages/design-tokens apps/site -g '*ThemeToggle*'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+apps/site/src/components/ThemeToggle.astro:2:import { ThemeToggle } from '@skb/design-tokens';
+apps/site/src/components/ThemeToggle.astro:5:<ThemeToggle client:load />
+packages/design-tokens/src/ThemeToggle.tsx:11:export function ThemeToggle(): JSX.Element {
+
+exec
+/bin/bash -lc "sed -n '1,240p' packages/design-tokens/src/ThemeToggle.tsx" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+import { useTheme } from './use-theme';
+
+/**
+ * Default theme switcher button. Open-source consumers may either reuse this
+ * component verbatim or build their own button on top of `useTheme`.
+ *
+ * Styling intentionally minimal: only border / padding / hover surface, all
+ * routed through the design-tokens Tailwind preset. The toggle itself does
+ * not own typography or layout.
+ */
+export function ThemeToggle(): JSX.Element {
+  const { theme, toggle } = useTheme();
+  const next = theme === 'light' ? 'dark' : 'light';
+  return (
+    <button
+      type="button"
+      onClick={toggle}
+      aria-label={`Switch to ${next} mode`}
+      title={`Switch to ${next} mode`}
+      className="rounded-md border border-border px-3 py-1 text-fg hover:bg-surface-1 transition-colors duration-fast"
+    >
+      {theme === 'light' ? '🌙' : '☀️'}
+    </button>
+  );
+}
+
+exec
+/bin/bash -lc "sed -n '1,260p' packages/design-tokens/src/use-theme.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+import { useCallback, useEffect, useState } from 'react';
+
+export const themeNames = ['light', 'dark'] as const;
+export type ThemeName = (typeof themeNames)[number];
+
+/**
+ * localStorage key — kept literally in sync with the inline FOUC script in
+ * apps/site/src/layouts/BaseLayout.astro. Renaming this constant is a
+ * cross-package contract break.
+ */
+export const STORAGE_KEY = 'skb-theme';
+
+export function getInitialTheme(): ThemeName {
+  if (typeof window === 'undefined') return 'light';
+  try {
+    const saved = window.localStorage.getItem(STORAGE_KEY);
+    if (saved === 'light' || saved === 'dark') return saved;
+  } catch {
+    /* localStorage unavailable; fall through to system preference */
+  }
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
+/**
+ * DOM-only theme application. Idempotent and safe to call on every mount /
+ * effect — does NOT touch localStorage. Persistence is intentionally split out
+ * so first-mount system-preference reads don't clobber future OS theme
+ * changes (ADR-0003 D6: localStorage write is coupled to manual user action).
+ */
+export function applyThemeDOM(theme: ThemeName): void {
+  if (typeof document === 'undefined') return;
+  if (theme === 'dark') {
+    document.documentElement.setAttribute('data-theme', 'dark');
+  } else {
+    document.documentElement.removeAttribute('data-theme');
+  }
+}
+
+function persistTheme(theme: ThemeName): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(STORAGE_KEY, theme);
+  } catch {
+    /* swallow: localStorage unavailable (quota / private mode) */
+  }
+}
+
+export interface UseThemeResult {
+  theme: ThemeName;
+  setTheme: (t: ThemeName) => void;
+  toggle: () => void;
+}
+
+export function useTheme(): UseThemeResult {
+  const [theme, setThemeState] = useState<ThemeName>(getInitialTheme);
+
+  useEffect(() => {
+    applyThemeDOM(theme);
+  }, [theme]);
+
+  const setTheme = useCallback((t: ThemeName) => {
+    persistTheme(t);
+    setThemeState(t);
+  }, []);
+
+  const toggle = useCallback(() => {
+    setThemeState((current) => {
+      const next: ThemeName = current === 'light' ? 'dark' : 'light';
+      persistTheme(next);
+      return next;
+    });
+  }, []);
+
+  return { theme, setTheme, toggle };
+}
+
+exec
+/bin/bash -lc "rg -n \"data-theme|skb-theme|getInitialTheme|matchMedia\\('\\(prefers-color-scheme: dark\\)'|ThemeToggle\" apps/site/src/layouts/BaseLayout.astro && sed -n '1,260p' apps/site/src/layouts/BaseLayout.astro" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+3:import ThemeToggle from '../components/ThemeToggle.astro';
+19:      // matches the chosen theme. Reads STORAGE_KEY ('skb-theme') literally
+25:      // ALGORITHM MUST stay byte-equivalent with `getInitialTheme()` in
+42:          saved = localStorage.getItem('skb-theme');
+50:          theme = window.matchMedia('(prefers-color-scheme: dark)').matches
+55:          document.documentElement.setAttribute('data-theme', 'dark');
+64:        <ThemeToggle />
+---
+import '../styles/global.css';
+import ThemeToggle from '../components/ThemeToggle.astro';
+
+interface Props {
+  title: string;
+}
+const { title } = Astro.props;
+---
+
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <title>{title}</title>
+    <script is:inline>
+      // FOUC bridge: runs before any island hydrates so first paint already
+      // matches the chosen theme. Reads STORAGE_KEY ('skb-theme') literally
+      // from @skb/design-tokens; renaming requires updating BOTH packages
+      // (apps/site cannot import the constant — load order forbids it).
+      // This script intentionally does NOT write localStorage (ADR-0003 D6:
+      // persistence is coupled to manual user action only).
+      //
+      // ALGORITHM MUST stay byte-equivalent with `getInitialTheme()` in
+      // packages/design-tokens/src/use-theme.ts in BOTH happy-path AND
+      // exception handling:
+      //   1. STRICT-whitelist saved value (only 'light' or 'dark' are
+      //      honored). A truthy-coerce check would diverge for invalid /
+      //      case-mismatched / legacy localStorage values.
+      //   2. The try/catch MUST wrap ONLY the localStorage.getItem call.
+      //      matchMedia + DOM apply MUST run AFTER the catch handler.
+      //      A wide-scope try/catch swallows the matchMedia path on
+      //      Safari Private Mode / iOS WebView / disabled-storage browsers,
+      //      causing a hydration flash when system pref is dark.
+      // Both rules are enforced by the regression test
+      // apps/site/src/__tests__/fouc-script.test.ts (saved-value corpus
+      // + storage-throws rows).
+      (function () {
+        var saved = null;
+        try {
+          saved = localStorage.getItem('skb-theme');
+        } catch (e) {
+          /* localStorage unavailable; saved stays null and we fall through to matchMedia */
+        }
+        var theme;
+        if (saved === 'light' || saved === 'dark') {
+          theme = saved;
+        } else {
+          theme = window.matchMedia('(prefers-color-scheme: dark)').matches
+            ? 'dark'
+            : 'light';
+        }
+        if (theme === 'dark') {
+          document.documentElement.setAttribute('data-theme', 'dark');
+        }
+      })();
+    </script>
+  </head>
+  <body class="bg-bg text-fg font-sans">
+    <header class="border-b border-border">
+      <nav class="mx-auto max-w-3xl flex items-center justify-between py-4 px-4">
+        <a href="/" class="font-bold">SelfKnowledgeBaseWeb</a>
+        <ThemeToggle />
+      </nav>
+    </header>
+    <main class="prose mx-auto max-w-3xl py-12 px-4">
+      <slot />
+    </main>
+  </body>
+</html>
+
+codex
+**VERDICT: FAIL**
+
+1. [高] `pnpm-lock.yaml` 未按本次 `@playwright/test` 引入更新，导致 `--frozen-lockfile` 在 CI 里会直接报错。  
+   - `apps/site/package.json` 新增 `@playwright/test: 1.49.0`，但工作树 `pnpm-lock.yaml` 未被更新（`git status` 未显示变更），且文件内未检索到 `playwright` 相关条目。  
+   - 受影响点：`pnpm install --frozen-lockfile` 在 `.github/workflows/ci.yml` 的多个 job 中会在解析依赖时失败。  
+   - 参考：[`apps/site/package.json`](/home/weiyi/selfKnowledgeBaseWeb/apps/site/package.json), [`pnpm-lock.yaml`](/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml)
+
+2. [中] `visual-smoke.spec.ts` 有部分 Playwright API 最佳实践偏差（会影响一致性与稳定性）。  
+   - `home page renders` 与 `detail page renders...` 使用 `locator('h1')` 与 `expect(await locator.count())`，建议改为语义选择器/断言风格：`getByRole('heading', { level: 1 })` 与 `await expect(locator).toHaveCount(1)`。  
+   - `theme toggle` 案例本身符合 `getByRole + name regex + toHaveAttribute regex`。  
+   - 参考：[`apps/site/src/__tests__/visual-smoke.spec.ts`](/home/weiyi/selfKnowledgeBaseWeb/apps/site/src/__tests__/visual-smoke.spec.ts)
+
+3. 其余项核验结果  
+   - `ci.yml` 依赖关系无循环，`visual-smoke` 以 `needs: build` 串行于 `build` 后执行，无显式 race 条件。  
+   - `asymmetry` 项 #8（authority→consumer）无问题：`ci.yml` 作为执行权威已自洽，未涉及 generator output 接口。  
+   - `colorScheme: 'light'` 与 `ThemeToggle` 的逻辑一致：`applyThemeDOM` + `useTheme` 初始逻辑使得暗色切换断言可达。  
+   - `item #4` 按你的说明记为 N/A。  
+   - `sister-doc` 对齐（#6）在“轻量脚手架 + 清晰命名”层面可接受（当前文件是 Playwright 规范，非 Vitest）。
+
+`asymmetry-audit applied: items {1..8} verdicts: 1: FAIL, 2: PASS, 3: FAIL, 4: N/A, 5: PASS, 6: PASS, 7: PASS, 8: PASS`
+2026-04-30T17:36:59.221232Z ERROR codex_core::session: failed to record rollout items: thread 019ddf76-96c2-7d21-8deb-32c8b6bfbfae not found
+tokens used
+26,452
+**VERDICT: FAIL**
+
+1. [高] `pnpm-lock.yaml` 未按本次 `@playwright/test` 引入更新，导致 `--frozen-lockfile` 在 CI 里会直接报错。  
+   - `apps/site/package.json` 新增 `@playwright/test: 1.49.0`，但工作树 `pnpm-lock.yaml` 未被更新（`git status` 未显示变更），且文件内未检索到 `playwright` 相关条目。  
+   - 受影响点：`pnpm install --frozen-lockfile` 在 `.github/workflows/ci.yml` 的多个 job 中会在解析依赖时失败。  
+   - 参考：[`apps/site/package.json`](/home/weiyi/selfKnowledgeBaseWeb/apps/site/package.json), [`pnpm-lock.yaml`](/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml)
+
+2. [中] `visual-smoke.spec.ts` 有部分 Playwright API 最佳实践偏差（会影响一致性与稳定性）。  
+   - `home page renders` 与 `detail page renders...` 使用 `locator('h1')` 与 `expect(await locator.count())`，建议改为语义选择器/断言风格：`getByRole('heading', { level: 1 })` 与 `await expect(locator).toHaveCount(1)`。  
+   - `theme toggle` 案例本身符合 `getByRole + name regex + toHaveAttribute regex`。  
+   - 参考：[`apps/site/src/__tests__/visual-smoke.spec.ts`](/home/weiyi/selfKnowledgeBaseWeb/apps/site/src/__tests__/visual-smoke.spec.ts)
+
+3. 其余项核验结果  
+   - `ci.yml` 依赖关系无循环，`visual-smoke` 以 `needs: build` 串行于 `build` 后执行，无显式 race 条件。  
+   - `asymmetry` 项 #8（authority→consumer）无问题：`ci.yml` 作为执行权威已自洽，未涉及 generator output 接口。  
+   - `colorScheme: 'light'` 与 `ThemeToggle` 的逻辑一致：`applyThemeDOM` + `useTheme` 初始逻辑使得暗色切换断言可达。  
+   - `item #4` 按你的说明记为 N/A。  
+   - `sister-doc` 对齐（#6）在“轻量脚手架 + 清晰命名”层面可接受（当前文件是 Playwright 规范，非 Vitest）。
+
+`asymmetry-audit applied: items {1..8} verdicts: 1: FAIL, 2: PASS, 3: FAIL, 4: N/A, 5: PASS, 6: PASS, 7: PASS, 8: PASS`

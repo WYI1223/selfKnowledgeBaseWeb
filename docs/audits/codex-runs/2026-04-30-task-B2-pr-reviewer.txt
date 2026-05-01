@@ -1,0 +1,66 @@
+Wave 2 Task B2 R2 — Claude pr-reviewer audit
+=============================================
+Date: 2026-04-30
+Reviewer: pr-reviewer-b2 (Claude sonnet-4-6)
+Bundle: 5 files (apps/site Playwright visual smoke)
+Triggers: ADR-0007 D2 row 8 (CI workflow change) → +pr-gate +pr-reviewer
+R1 codex 5.3 + 5.5: FAIL (lockfile + hydration race) → R2 fixes
+R2 codex 5.3-spark: PASS
+R2 codex 5.5 pr-gate: 等待
+R2 Claude pr-reviewer (this): APPROVE
+
+VERDICT: APPROVE
+
+================================================================
+SPEC MATCH
+================================================================
+
+Plan §"Task B2" 4 requirements all met:
+- 3 test cases (home H1 / detail single H1 / theme toggle)
+- pinned @playwright/test version (1.49.0)
+- browser cache in CI (actions/cache@v4 keyed by version)
+- test:visual script
+
+Plan→reality 修订 3 处（ADR-0009 errata 候选）:
+1. Selector: data-testid → getByRole aria-label (Option A)（plan 错了 markup，R2 修对）
+2. colorScheme: 'light' deterministic（plan 没考虑 chromium 默认 prefers-color-scheme）
+3. Hydration wait via networkidle（plan Step 3 没考虑 client:load 异步）
+
+================================================================
+CROSS-FILE IMPACT
+================================================================
+
+Lockfile delta: 仅 Playwright entries (@playwright/test + transitive)，no cross-worker contamination。
+ci.yml: visual-smoke 序列正确 (needs: build)，不破坏现有 jobs。
+Test glob 隔离: .spec.ts vs .test.ts 仍 disjoint (vitest 不 pick up Playwright)。
+
+================================================================
+ARCHITECTURAL CONSISTENCY
+================================================================
+
+Wave 2 第一个 add-on CI workflow step；与既有 4 jobs pattern 一致。Cache key pin 到 Playwright version 是正确的 invalidation strategy。
+
+================================================================
+REGRESSION RISK
+================================================================
+
+Vitest 20/20 仍 PASS (glob 隔离)。Build gate 自动 (needs: build)。Hydration race 修复降低 flakiness。
+
+================================================================
+ADR-0006 8-POINT SELF-AUDIT
+================================================================
+
+Items 1/2/3/4/5/7 N/A
+Item 6 (sister-doc): PASS — visual-smoke.spec.ts vs fouc-script.test.ts 风格一致
+Item 8 (authority → consumer): PASS — package.json authority + pnpm-lock.yaml D8 sub-form C lockfile derivative 正确处理（pnpm install regen, staged together）
+
+================================================================
+NON-BLOCKING OBSERVATIONS
+================================================================
+
+1. Case 1 用 toBeVisible() 而 case 2 用 toHaveCount(1) — codex 5.3 R2 同 noted; 都是 auto-retry assertion，acceptable
+2. 3 处 plan→reality 修订 (selector/colorScheme/hydration wait) → ADR-0009 errata 归档
+3. Cache restore ordering 正确
+
+================================================================
+APPROVE — ready for git-operator commit.

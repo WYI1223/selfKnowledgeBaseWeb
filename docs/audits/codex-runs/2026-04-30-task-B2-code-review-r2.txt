@@ -1,0 +1,2182 @@
+Reading additional input from stdin...
+OpenAI Codex v0.125.0 (research preview)
+--------
+workdir: /home/weiyi/selfKnowledgeBaseWeb
+model: gpt-5.3-codex-spark
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: xhigh
+reasoning summaries: none
+session id: 019ddf83-5973-7ec2-8319-98e1be045d3d
+--------
+user
+你是 code-reviewer profile (gpt-5.3-spark)。**R2** 复审 Wave 2 Task #4 (B2: apps/site Playwright 视觉烟测)。
+
+## R1 history (FAIL)
+2 issues: pnpm-lock.yaml 不含 playwright + visual-smoke.spec.ts 用 raw count() 非 auto-retry。
+
+## R2 fix 摘要
+
+**B1 (lockfile)**: editor-integrator git pull 168baf5 + cd apps/site && pnpm install (不 --frozen-lockfile)；diff 91 lines 仅 Playwright entries（@playwright/test@1.49.0 + transitive playwright/playwright-core/fsevents），verified clean delta no phantom
+
+**B2 (hydration race)**: visual-smoke.spec.ts case 3 click 前加 `await page.waitForLoadState('networkidle')`；附 5-line comment 解释 networkidle 是 client:load + Astro static site canonical hydration-complete proxy
+
+**NICE (auto-retry style)**: case 1+2 改用 `page.getByRole('heading', { level: 1 })` + `await expect(...).toHaveCount(1)` (自动 retry assertion + a11y-friendly semantic selector)
+
+## R2 Bundle (working tree, 5 files)
+- apps/site/playwright.config.ts (27 行, R1 same)
+- apps/site/src/__tests__/visual-smoke.spec.ts (R1 17 → R2 23 行, +6: networkidle wait comment + getByRole/toHaveCount)
+- apps/site/package.json (modify +@playwright/test 1.49.0 + test:visual)
+- .github/workflows/ci.yml (modify +visual-smoke job)
+- pnpm-lock.yaml (modify, +91 行 Playwright transitive)
+
+## 触发链
+ADR-0007 D2 row 8 (CI workflow 改) → 你 Step 1 baseline。后续 codex 5.5 pr-gate + Claude pr-reviewer 必跑。
+
+## 必跑 ADR-0006 8-point checklist
+重点：
+- item #6 sister-doc: visual-smoke.spec.ts 风格 vs fouc-script.test.ts；命名 + comment 风格一致性
+- item #8 authority → consumer: ci.yml workflow authority；pnpm-lock.yaml clean Playwright delta（B1 修复 verify）
+- item #4: N/A
+- item #1/#2/#3/#5/#7: 给明确 verdict
+
+## 你必查
+1. R1 BLOCKING B1 + B2 是否真 closed
+2. visual-smoke.spec.ts NEW R2 内容（getByRole+toHaveCount auto-retry+networkidle wait+inline comments）
+3. lockfile diff 是否仅 Playwright entries（无 cross-task 污染）
+
+输出 verdict: PASS/FAIL。开始。
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the vendored bubblewrap in the meantime.
+codex
+我先快速做一次代码级核对：逐项检查 R2 的 5 个改动文件，并对照你要求的 ADR-0006 清单逐项给出 verdict。重点先看 `visual-smoke.spec.ts` 的自动重试与 hydration 处理，再核对 `ci.yml` 与 `pnpm-lock.yaml` 的变更边界，最后给出 PASS/FAIL。
+exec
+/bin/bash -lc "sed -n '1,220p' apps/site/src/__tests__/fouc-script.test.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+/*
+ * FOUC algorithm equivalence regression test.
+ *
+ * BaseLayout.astro ships an inline `<script>` that runs before any module
+ * loads (and therefore can't import @skb/design-tokens). The script must
+ * derive the boot theme via byte-equivalent logic to `getInitialTheme()`
+ * from @skb/design-tokens — in BOTH happy-path AND exception handling.
+ *
+ * The test reads the actual BaseLayout.astro from disk, extracts the IIFE,
+ * evaluates it against a stubbed (localStorage + matchMedia + document)
+ * environment for:
+ *   1. a corpus of saved-value × system-preference combinations (16 rows)
+ *   2. storage-throws scenarios (Safari Private Mode / iOS WebView pattern)
+ * and asserts the FOUC-applied theme matches `getInitialTheme()`'s answer
+ * for every row. If anyone reverts the strict-whitelist algorithm OR widens
+ * the try/catch scope, the relevant row fails immediately.
+ */
+import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
+import { getInitialTheme } from '@skb/design-tokens';
+
+const here = dirname(fileURLToPath(import.meta.url));
+const baseLayoutPath = resolve(here, '../layouts/BaseLayout.astro');
+
+function extractFoucIife(src: string): string {
+  const startMarker = '(function () {';
+  const endMarker = '})();';
+  const startIdx = src.indexOf(startMarker);
+  const endIdx = src.indexOf(endMarker, startIdx);
+  if (startIdx < 0 || endIdx < 0) {
+    throw new Error('Could not locate FOUC IIFE in BaseLayout.astro');
+  }
+  return src.slice(startIdx, endIdx + endMarker.length);
+}
+
+interface FakeStorage {
+  getItem: (k: string) => string | null;
+  setItem: (k: string, v: string) => void;
+  removeItem: (k: string) => void;
+}
+
+function makeFakeStorage(initial: string | null): FakeStorage {
+  let value = initial;
+  return {
+    getItem: (k: string) => (k === 'skb-theme' ? value : null),
+    setItem: (k: string, v: string) => {
+      if (k === 'skb-theme') value = v;
+    },
+    removeItem: (k: string) => {
+      if (k === 'skb-theme') value = null;
+    },
+  };
+}
+
+function makeThrowingStorage(): FakeStorage {
+  const err = new Error('storage unavailable');
+  return {
+    getItem: () => {
+      throw err;
+    },
+    setItem: () => {
+      throw err;
+    },
+    removeItem: () => {
+      throw err;
+    },
+  };
+}
+
+type FakeMatchMedia = (q: string) => { matches: boolean };
+
+function runFoucWith(
+  iife: string,
+  storage: FakeStorage,
+  matchMedia: FakeMatchMedia,
+): 'dark' | 'light' {
+  let dataTheme: string | null = null;
+  const fakeDocument = {
+    documentElement: {
+      setAttribute: (k: string, v: string) => {
+        if (k === 'data-theme') dataTheme = v;
+      },
+      removeAttribute: (k: string) => {
+        if (k === 'data-theme') dataTheme = null;
+      },
+    },
+  };
+  const fakeWindow = { matchMedia };
+  // The whole point of this test is to evaluate the IIFE source extracted
+  // from BaseLayout.astro against a mocked environment, byte-equivalent to
+  // the browser's. `new Function` is the controlled way to do that.
+  // eslint-disable-next-line @typescript-eslint/no-implied-eval
+  const fn = new Function('localStorage', 'window', 'document', iife);
+  fn(storage, fakeWindow, fakeDocument);
+  return dataTheme === 'dark' ? 'dark' : 'light';
+}
+
+function runGetInitialThemeWith(
+  storage: FakeStorage,
+  matchMedia: FakeMatchMedia,
+): 'dark' | 'light' {
+  const originalLocalStorage = window.localStorage;
+  const originalMatchMedia = window.matchMedia;
+  // happy-dom's window properties are configurable; swap them for the call.
+  Object.defineProperty(window, 'localStorage', { configurable: true, value: storage });
+  // @ts-expect-error overriding for the controlled call
+  window.matchMedia = matchMedia;
+  try {
+    return getInitialTheme();
+  } finally {
+    Object.defineProperty(window, 'localStorage', {
+      configurable: true,
+      value: originalLocalStorage,
+    });
+    window.matchMedia = originalMatchMedia;
+  }
+}
+
+const corpus: ReadonlyArray<{ saved: string | null; systemDark: boolean }> = [
+  { saved: null, systemDark: false },
+  { saved: null, systemDark: true },
+  { saved: 'light', systemDark: false },
+  { saved: 'light', systemDark: true },
+  { saved: 'dark', systemDark: false },
+  { saved: 'dark', systemDark: true },
+  { saved: 'invalid', systemDark: false },
+  { saved: 'invalid', systemDark: true },
+  { saved: 'Dark', systemDark: false },
+  { saved: 'Dark', systemDark: true },
+  { saved: '', systemDark: false },
+  { saved: '', systemDark: true },
+  { saved: 'INVALID', systemDark: false },
+  { saved: 'INVALID', systemDark: true },
+  { saved: 'theme-dark', systemDark: false },
+  { saved: 'theme-dark', systemDark: true },
+];
+
+describe('FOUC inline script vs getInitialTheme()', () => {
+  const src = readFileSync(baseLayoutPath, 'utf8');
+  const iife = extractFoucIife(src);
+
+  it('extracts the IIFE from BaseLayout.astro', () => {
+    expect(iife).toContain("localStorage.getItem('skb-theme')");
+    expect(iife).toContain("matchMedia('(prefers-color-scheme: dark)')");
+  });
+
+  it.each(corpus)(
+    'agrees with getInitialTheme() for saved=$saved systemDark=$systemDark',
+    ({ saved, systemDark }) => {
+      const matchMedia: FakeMatchMedia = () => ({ matches: systemDark });
+      const fouc = runFoucWith(iife, makeFakeStorage(saved), matchMedia);
+      const hook = runGetInitialThemeWith(makeFakeStorage(saved), matchMedia);
+      expect(fouc).toBe(hook);
+    },
+  );
+
+  it('uses STRICT whitelist (regression: truthy-coerce divergence)', () => {
+    // The old truthy-coerce algorithm (`saved ? saved === 'dark' : ...`) gave
+    // light for saved='invalid' + systemDark=true. The strict whitelist
+    // falls through to matchMedia, yielding dark. This is the canonical
+    // saved-value failure case the v2 rewrite eliminated.
+    const matchMedia: FakeMatchMedia = () => ({ matches: true });
+    expect(runFoucWith(iife, makeFakeStorage('invalid'), matchMedia)).toBe('dark');
+    expect(runGetInitialThemeWith(makeFakeStorage('invalid'), matchMedia)).toBe('dark');
+  });
+
+  it('agrees with getInitialTheme() when localStorage.getItem throws + systemDark=true', () => {
+    // Safari Private Mode / iOS WebView with disabled storage: getItem throws.
+    // A wide-scope try/catch in the IIFE swallows matchMedia + DOM apply,
+    // producing light when system pref is dark — hydration flash on first paint.
+    // The narrow try/catch (wrapping ONLY getItem) treats `saved` as null,
+    // falls through to matchMedia, and produces dark — matching getInitialTheme.
+    const matchMedia: FakeMatchMedia = () => ({ matches: true });
+    expect(runFoucWith(iife, makeThrowingStorage(), matchMedia)).toBe('dark');
+    expect(runGetInitialThemeWith(makeThrowingStorage(), matchMedia)).toBe('dark');
+  });
+
+  it('agrees with getInitialTheme() when localStorage.getItem throws + systemDark=false', () => {
+    const matchMedia: FakeMatchMedia = () => ({ matches: false });
+    expect(runFoucWith(iife, makeThrowingStorage(), matchMedia)).toBe('light');
+    expect(runGetInitialThemeWith(makeThrowingStorage(), matchMedia)).toBe('light');
+  });
+});
+
+exec
+/bin/bash -lc "sed -n '1,220p' apps/site/src/__tests__/visual-smoke.spec.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+import { test, expect } from '@playwright/test';
+
+test('home page renders', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+});
+
+test('detail page renders sample note with single H1', async ({ page }) => {
+  await page.goto('/notes/sample-mdx-note');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
+});
+
+test('theme toggle switches data-theme to dark', async ({ page }) => {
+  await page.goto('/');
+  // ThemeToggle is an Astro `client:load` React island; the onClick listener
+  // attaches only after hydration completes. Playwright's actionability check
+  // (visible+enabled) does not wait for listener attach, so click() can be
+  // dropped on slow CI runners. networkidle is the canonical proxy for
+  // hydration-complete on a static Astro site (all initial fetches settled).
+  await page.waitForLoadState('networkidle');
+  await page.getByRole('button', { name: /Switch to (dark|light) mode/ }).click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', /^dark$/);
+});
+
+exec
+/bin/bash -lc "sed -n '1,220p' apps/site/package.json" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1,260p' .github/workflows/ci.yml" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm lint:packages
+
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm typecheck:packages
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test
+      - run: pnpm test:packages
+
+  size-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm size-check
+
+  build:
+    needs: [lint, typecheck, test, size-check]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+
+  visual-smoke:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-1.49.0
+      - run: pnpm exec playwright install --with-deps chromium
+        working-directory: apps/site
+      - run: pnpm --filter @skb/site test:visual
+
+ succeeded in 0ms:
+{
+  "name": "@skb/site",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "typecheck": "astro check && tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:visual": "playwright test"
+  },
+  "dependencies": {
+    "@astrojs/mdx": "^4.0.0",
+    "@astrojs/react": "^4.0.0",
+    "@astrojs/tailwind": "^6.0.0",
+    "@skb/content-types": "workspace:*",
+    "@skb/design-tokens": "workspace:*",
+    "astro": "^5.0.0",
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0",
+    "tailwindcss": "^3.4.0"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.0",
+    "@playwright/test": "1.49.0",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "happy-dom": "^15.0.0",
+    "typescript": "~5.6.0",
+    "vitest": "^4.1.5"
+  }
+}
+
+codex
+我先把剩余关键点补齐：检查 `playwright.config.ts` 是否有合理默认和 timeout，随后专门检索 lockfile 中 Playwright 相关条目范围，确认是否为可预期增量。
+exec
+/bin/bash -lc 'rg -n "playwright|playwright-core|fsevents|@playwright" pnpm-lock.yaml' in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1,220p' apps/site/playwright.config.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+import { defineConfig, devices } from '@playwright/test';
+
+export default defineConfig({
+  testDir: './src/__tests__',
+  testMatch: '**/*.spec.ts',
+  fullyParallel: true,
+  forbidOnly: !!process.env.CI,
+  retries: process.env.CI ? 2 : 0,
+  reporter: process.env.CI ? 'github' : 'list',
+  use: {
+    baseURL: 'http://127.0.0.1:4321',
+    trace: 'on-first-retry',
+    colorScheme: 'light',
+  },
+  projects: [
+    {
+      name: 'chromium',
+      use: { ...devices['Desktop Chrome'] },
+    },
+  ],
+  webServer: {
+    command: 'pnpm dev',
+    url: 'http://127.0.0.1:4321',
+    reuseExistingServer: !process.env.CI,
+    timeout: 120_000,
+  },
+});
+
+ succeeded in 102ms:
+87:      '@playwright/test':
+1011:  '@playwright/test@1.49.0':
+2229:  fsevents@2.3.2:
+2234:  fsevents@2.3.3:
+2932:  playwright-core@1.49.0:
+2937:  playwright@1.49.0:
+3693:      '@vitest/browser-playwright': 4.1.5
+3709:      '@vitest/browser-playwright':
+4613:  '@playwright/test@1.49.0':
+4615:      playwright: 1.49.0
+5546:      fsevents: 2.3.3
+5962:  fsevents@2.3.2:
+5965:  fsevents@2.3.3:
+6960:  playwright-core@1.49.0: {}
+6962:  playwright@1.49.0:
+6964:      playwright-core: 1.49.0
+6966:      fsevents: 2.3.2
+7400:      fsevents: 2.3.3
+7632:      fsevents: 2.3.3
+7788:      fsevents: 2.3.3
+7804:      fsevents: 2.3.3
+
+exec
+/bin/bash -lc "sed -n '980,1120p' pnpm-lock.yaml" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '6920,7025p' pnpm-lock.yaml" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+      decode-named-character-reference: 1.3.0
+      is-alphanumerical: 2.0.1
+      is-decimal: 2.0.1
+      is-hexadecimal: 2.0.1
+
+  parse-latin@7.0.0:
+    dependencies:
+      '@types/nlcst': 2.0.3
+      '@types/unist': 3.0.3
+      nlcst-to-string: 4.0.0
+      unist-util-modify-children: 4.0.0
+      unist-util-visit-children: 3.0.0
+      vfile: 6.0.3
+
+  parse5@7.3.0:
+    dependencies:
+      entities: 6.0.1
+
+  path-browserify@1.0.1: {}
+
+  path-exists@4.0.0: {}
+
+  path-key@3.1.1: {}
+
+  path-parse@1.0.7: {}
+
+  pathe@2.0.3: {}
+
+  piccolore@0.1.3: {}
+
+  picocolors@1.1.1: {}
+
+  picomatch@2.3.2: {}
+
+  picomatch@4.0.4: {}
+
+  pify@2.3.0: {}
+
+  pirates@4.0.7: {}
+
+  playwright-core@1.49.0: {}
+
+  playwright@1.49.0:
+    dependencies:
+      playwright-core: 1.49.0
+    optionalDependencies:
+      fsevents: 2.3.2
+
+  postcss-import@15.1.0(postcss@8.5.12):
+    dependencies:
+      postcss: 8.5.12
+      postcss-value-parser: 4.2.0
+      read-cache: 1.0.0
+      resolve: 1.22.12
+
+  postcss-js@4.1.0(postcss@8.5.12):
+    dependencies:
+      camelcase-css: 2.0.1
+      postcss: 8.5.12
+
+  postcss-load-config@4.0.2(postcss@8.5.12):
+    dependencies:
+      lilconfig: 3.1.3
+      yaml: 2.8.3
+    optionalDependencies:
+      postcss: 8.5.12
+
+  postcss-load-config@6.0.1(jiti@1.21.7)(postcss@8.5.12)(tsx@4.21.0)(yaml@2.8.3):
+    dependencies:
+      lilconfig: 3.1.3
+    optionalDependencies:
+      jiti: 1.21.7
+      postcss: 8.5.12
+      tsx: 4.21.0
+      yaml: 2.8.3
+
+  postcss-nested@6.2.0(postcss@8.5.12):
+    dependencies:
+      postcss: 8.5.12
+      postcss-selector-parser: 6.1.2
+
+  postcss-selector-parser@6.0.10:
+    dependencies:
+      cssesc: 3.0.0
+      util-deprecate: 1.0.2
+
+  postcss-selector-parser@6.1.2:
+    dependencies:
+      cssesc: 3.0.0
+      util-deprecate: 1.0.2
+
+  postcss-value-parser@4.2.0: {}
+
+  postcss@8.5.12:
+    dependencies:
+      nanoid: 3.3.11
+      picocolors: 1.1.1
+      source-map-js: 1.2.1
+
+  prelude-ls@1.2.1: {}
+
+  prettier@3.8.3: {}
+
+  pretty-format@27.5.1:
+    dependencies:
+      ansi-regex: 5.0.1
+
+exec
+/bin/bash -lc "sed -n '4580,4660p' pnpm-lock.yaml" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '2200,2270p' pnpm-lock.yaml" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+      remark-rehype: 11.1.2
+      source-map: 0.7.6
+      unified: 11.0.5
+      unist-util-position-from-estree: 2.0.0
+      unist-util-stringify-position: 4.0.0
+      unist-util-visit: 5.1.0
+      vfile: 6.0.3
+    transitivePeerDependencies:
+      - supports-color
+
+  '@napi-rs/wasm-runtime@1.1.4(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)':
+    dependencies:
+      '@emnapi/core': 1.10.0
+      '@emnapi/runtime': 1.10.0
+      '@tybys/wasm-util': 0.10.1
+    optional: true
+
+  '@nodelib/fs.scandir@2.1.5':
+    dependencies:
+      '@nodelib/fs.stat': 2.0.5
+      run-parallel: 1.2.0
+
+  '@nodelib/fs.stat@2.0.5': {}
+
+  '@nodelib/fs.walk@1.2.8':
+    dependencies:
+      '@nodelib/fs.scandir': 2.1.5
+      fastq: 1.20.1
+
+  '@oslojs/encoding@1.1.0': {}
+
+  '@oxc-project/types@0.127.0': {}
+
+  '@playwright/test@1.49.0':
+    dependencies:
+      playwright: 1.49.0
+
+  '@remirror/core-constants@3.0.0': {}
+
+  '@rolldown/binding-android-arm64@1.0.0-rc.17':
+    optional: true
+
+  '@rolldown/binding-darwin-arm64@1.0.0-rc.17':
+    optional: true
+
+  '@rolldown/binding-darwin-x64@1.0.0-rc.17':
+    optional: true
+
+  '@rolldown/binding-freebsd-x64@1.0.0-rc.17':
+    optional: true
+
+  '@rolldown/binding-linux-arm-gnueabihf@1.0.0-rc.17':
+    optional: true
+
+  '@rolldown/binding-linux-arm64-gnu@1.0.0-rc.17':
+    optional: true
+
+  '@rolldown/binding-linux-arm64-musl@1.0.0-rc.17':
+    optional: true
+
+  '@rolldown/binding-linux-ppc64-gnu@1.0.0-rc.17':
+    optional: true
+
+  '@rolldown/binding-linux-s390x-gnu@1.0.0-rc.17':
+    optional: true
+
+  '@rolldown/binding-linux-x64-gnu@1.0.0-rc.17':
+    optional: true
+
+  '@rolldown/binding-linux-x64-musl@1.0.0-rc.17':
+    optional: true
+
+  '@rolldown/binding-openharmony-arm64@1.0.0-rc.17':
+    optional: true
+
+  '@rolldown/binding-wasm32-wasi@1.0.0-rc.17':
+    dependencies:
+      '@emnapi/core': 1.10.0
+      '@emnapi/runtime': 1.10.0
+      '@napi-rs/wasm-runtime': 1.1.4(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)
+    optional: true
+
+exec
+/bin/bash -lc "sed -n '2890,2980p' pnpm-lock.yaml" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+  find-up@5.0.0:
+    resolution: {integrity: sha512-78/PXT1wlLLDgTzDs7sjq9hzz0vXD+zn+7wypEe4fXQxCmdmqfGsEPQxmiCSQI3ajFV91bVSsvNtrJRiW6nGng==}
+    engines: {node: '>=10'}
+
+  flat-cache@4.0.1:
+    resolution: {integrity: sha512-f7ccFPK3SXFHpx15UIGyRJ/FJQctuKZ0zVuN3frBo4HnK3cay9VEW0R6yPYFHC0AgqhukPzKjq22t5DmAyqGyw==}
+    engines: {node: '>=16'}
+
+  flatted@3.4.2:
+    resolution: {integrity: sha512-PjDse7RzhcPkIJwy5t7KPWQSZ9cAbzQXcafsetQoD7sOJRQlGikNbx7yZp2OotDnJyrDcbyRq3Ttb18iYOqkxA==}
+
+  flattie@1.1.1:
+    resolution: {integrity: sha512-9UbaD6XdAL97+k/n+N7JwX46K/M6Zc6KcFYskrYL8wbBV/Uyk0CTAMY0VT+qiK5PM7AIc9aTWYtq65U7T+aCNQ==}
+    engines: {node: '>=8'}
+
+  fontace@0.4.1:
+    resolution: {integrity: sha512-lDMvbAzSnHmbYMTEld5qdtvNH2/pWpICOqpean9IgC7vUbUJc3k+k5Dokp85CegamqQpFbXf0rAVkbzpyTA8aw==}
+
+  fontkitten@1.0.3:
+    resolution: {integrity: sha512-Wp1zXWPVUPBmfoa3Cqc9ctaKuzKAV6uLstRqlR56kSjplf5uAce+qeyYym7F+PHbGTk+tCEdkCW6RD7DX/gBZw==}
+    engines: {node: '>=20'}
+
+  format@0.2.2:
+    resolution: {integrity: sha512-wzsgA6WOq+09wrU1tsJ09udeR/YZRaeArL9e1wPbFg3GG2yDnC2ldKpxs4xunpFF9DgqCqOIra3bc1HWrJ37Ww==}
+    engines: {node: '>=0.4.x'}
+
+  fraction.js@5.3.4:
+    resolution: {integrity: sha512-1X1NTtiJphryn/uLQz3whtY6jK3fTqoE3ohKs0tT+Ujr1W59oopxmoEh7Lu5p6vBaPbgoM0bzveAW4Qi5RyWDQ==}
+
+  fsevents@2.3.2:
+    resolution: {integrity: sha512-xiqMQR4xAeHTuB9uWm+fFRcIOgKBMiOBP+eXiyT7jsgVCq1bkVygt00oASowB7EdtpOHaaPgKt812P9ab+DDKA==}
+    engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
+    os: [darwin]
+
+  fsevents@2.3.3:
+    resolution: {integrity: sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==}
+    engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
+    os: [darwin]
+
+  function-bind@1.1.2:
+    resolution: {integrity: sha512-7XHNxH7qX9xG5mIwxkhumTox/MIRNcOgDrxWsMt2pAr23WHp6MrRlN7FBSFpCpr+oVO0F744iUgR82nJMfG2SA==}
+
+  gensync@1.0.0-beta.2:
+    resolution: {integrity: sha512-3hN7NaskYvMDLQY55gnW3NQ+mesEAepTqlg+VEbj7zzqEMBVNhzcGYYeqFo/TlYz6eQiFcp1HcsCZO+nGgS8zg==}
+    engines: {node: '>=6.9.0'}
+
+  get-caller-file@2.0.5:
+    resolution: {integrity: sha512-DyFP3BM/3YHTQOCUL/w0OZHR0lpKeGrxotcHWcqNEdnltqFwXVfhEBQ94eIo34AfQpo0rGki4cyIiftY06h2Fg==}
+    engines: {node: 6.* || 8.* || >= 10.*}
+
+  get-east-asian-width@1.5.0:
+    resolution: {integrity: sha512-CQ+bEO+Tva/qlmw24dCejulK5pMzVnUOFOijVogd3KQs07HnRIgp8TGipvCCRT06xeYEbpbgwaCxglFyiuIcmA==}
+    engines: {node: '>=18'}
+
+  get-tsconfig@4.14.0:
+    resolution: {integrity: sha512-yTb+8DXzDREzgvYmh6s9vHsSVCHeC0G3PI5bEXNBHtmshPnO+S5O7qgLEOn0I5QvMy6kpZN8K1NKGyilLb93wA==}
+
+  github-slugger@2.0.0:
+    resolution: {integrity: sha512-IaOQ9puYtjrkq7Y0Ygl9KDZnrf/aiUJYUpVf89y8kyaxbRG7Y1SrX/jaumrv81vc61+kiMempujsM3Yw7w5qcw==}
+
+  glob-parent@5.1.2:
+    resolution: {integrity: sha512-AOIgSQCepiJYwP3ARnGx+5VnTu2HBYdzbGP45eLw1vr3zB3vZLeyed1sC9hnbcOc9/SrMyM5RPQrkGz4aS9Zow==}
+    engines: {node: '>= 6'}
+
+  glob-parent@6.0.2:
+    resolution: {integrity: sha512-XxwI8EOhVQgWp6iDL+3b0r86f4d6AX6zSU55HfB4ydCEuXLXc5FcYeOu+nnGftS4TEju/11rt4KJPTMgbfmv4A==}
+    engines: {node: '>=10.13.0'}
+
+  globals@14.0.0:
+    resolution: {integrity: sha512-oahGvuMGQlPw/ivIYBjVSrWAfWLBeku5tpPE2fOPLi+WHffIWbuh2tCjhyQhTBPMf5E9jDEH4FOmTYgYwbKwtQ==}
+    engines: {node: '>=18'}
+
+ succeeded in 0ms:
+  parse5@7.3.0:
+    resolution: {integrity: sha512-IInvU7fabl34qmi9gY8XOVxhYyMyuH2xUNpb2q8/Y+7552KlejkRvqvD19nMoUW/uQGGbqNpA6Tufu5FL5BZgw==}
+
+  path-browserify@1.0.1:
+    resolution: {integrity: sha512-b7uo2UCUOYZcnF/3ID0lulOJi/bafxa1xPe7ZPsammBSpjSWQkjNxlt635YGS2MiR9GjvuXCtz2emr3jbsz98g==}
+
+  path-exists@4.0.0:
+    resolution: {integrity: sha512-ak9Qy5Q7jYb2Wwcey5Fpvg2KoAc/ZIhLSLOSBmRmygPsGwkVVt0fZa0qrtMz+m6tJTAHfZQ8FnmB4MG4LWy7/w==}
+    engines: {node: '>=8'}
+
+  path-key@3.1.1:
+    resolution: {integrity: sha512-ojmeN0qd+y0jszEtoY48r0Peq5dwMEkIlCOu6Q5f41lfkswXuKtYrhgoTpLnyIcHm24Uhqx+5Tqm2InSwLhE6Q==}
+    engines: {node: '>=8'}
+
+  path-parse@1.0.7:
+    resolution: {integrity: sha512-LDJzPVEEEPR+y48z93A0Ed0yXb8pAByGWo/k5YYdYgpY2/2EsOsksJrq7lOHxryrVOn1ejG6oAp8ahvOIQD8sw==}
+
+  pathe@2.0.3:
+    resolution: {integrity: sha512-WUjGcAqP1gQacoQe+OBJsFA7Ld4DyXuUIjZ5cc75cLHvJ7dtNsTugphxIADwspS+AraAUePCKrSVtPLFj/F88w==}
+
+  piccolore@0.1.3:
+    resolution: {integrity: sha512-o8bTeDWjE086iwKrROaDf31K0qC/BENdm15/uH9usSC/uZjJOKb2YGiVHfLY4GhwsERiPI1jmwI2XrA7ACOxVw==}
+
+  picocolors@1.1.1:
+    resolution: {integrity: sha512-xceH2snhtb5M9liqDsmEw56le376mTZkEX/jEb/RxNFyegNul7eNslCXP9FDj/Lcu0X8KEyMceP2ntpaHrDEVA==}
+
+  picomatch@2.3.2:
+    resolution: {integrity: sha512-V7+vQEJ06Z+c5tSye8S+nHUfI51xoXIXjHQ99cQtKUkQqqO1kO/KCJUfZXuB47h/YBlDhah2H3hdUGXn8ie0oA==}
+    engines: {node: '>=8.6'}
+
+  picomatch@4.0.4:
+    resolution: {integrity: sha512-QP88BAKvMam/3NxH6vj2o21R6MjxZUAd6nlwAS/pnGvN9IVLocLHxGYIzFhg6fUQ+5th6P4dv4eW9jX3DSIj7A==}
+    engines: {node: '>=12'}
+
+  pify@2.3.0:
+    resolution: {integrity: sha512-udgsAY+fTnvv7kI7aaxbqwWNb0AHiB0qBO89PZKPkoTmGOgdbrHDKD+0B2X4uTfJ/FT1R09r9gTsjUjNJotuog==}
+    engines: {node: '>=0.10.0'}
+
+  pirates@4.0.7:
+    resolution: {integrity: sha512-TfySrs/5nm8fQJDcBDuUng3VOUKsd7S+zqvbOTiGXHfxX4wK31ard+hoNuvkicM/2YFzlpDgABOevKSsB4G/FA==}
+    engines: {node: '>= 6'}
+
+  playwright-core@1.49.0:
+    resolution: {integrity: sha512-R+3KKTQF3npy5GTiKH/T+kdhoJfJojjHESR1YEWhYuEKRVfVaxH3+4+GvXE5xyCngCxhxnykk0Vlah9v8fs3jA==}
+    engines: {node: '>=18'}
+    hasBin: true
+
+  playwright@1.49.0:
+    resolution: {integrity: sha512-eKpmys0UFDnfNb3vfsf8Vx2LEOtflgRebl0Im2eQQnYMA4Aqd+Zw8bEOB+7ZKvN76901mRnqdsiOGKxzVTbi7A==}
+    engines: {node: '>=18'}
+    hasBin: true
+
+  postcss-import@15.1.0:
+    resolution: {integrity: sha512-hpr+J05B2FVYUAXHeK1YyI267J/dDDhMU6B6civm8hSY1jYJnBXxzKDKDswzJmtLHryrjhnDjqqp/49t8FALew==}
+    engines: {node: '>=14.0.0'}
+    peerDependencies:
+      postcss: ^8.0.0
+
+  postcss-js@4.1.0:
+    resolution: {integrity: sha512-oIAOTqgIo7q2EOwbhb8UalYePMvYoIeRY2YKntdpFQXNosSu3vLrniGgmH9OKs/qAkfoj5oB3le/7mINW1LCfw==}
+    engines: {node: ^12 || ^14 || >= 16}
+    peerDependencies:
+      postcss: ^8.4.21
+
+  postcss-load-config@4.0.2:
+    resolution: {integrity: sha512-bSVhyJGL00wMVoPUzAVAnbEoWyqRxkjv64tUl427SKnPrENtq6hJwUojroMz2VB+Q1edmi4IfrAPpami5VVgMQ==}
+    engines: {node: '>= 14'}
+    peerDependencies:
+      postcss: '>=8.0.9'
+      ts-node: '>=9.0.0'
+    peerDependenciesMeta:
+      postcss:
+        optional: true
+      ts-node:
+        optional: true
+
+  postcss-load-config@6.0.1:
+    resolution: {integrity: sha512-oPtTM4oerL+UXmx+93ytZVN82RrlY/wPUV8IeDxFrzIjXOLF1pN+EmKPLbubvKHT2HC20xXsCAH2Z+CKV6Oz/g==}
+    engines: {node: '>= 18'}
+    peerDependencies:
+      jiti: '>=1.21.0'
+      postcss: '>=8.0.9'
+      tsx: ^4.8.1
+      yaml: ^2.4.2
+    peerDependenciesMeta:
+      jiti:
+        optional: true
+      postcss:
+        optional: true
+      tsx:
+        optional: true
+
+ succeeded in 103ms:
+
+  '@jridgewell/trace-mapping@0.3.31':
+    resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
+
+  '@mdx-js/mdx@3.1.1':
+    resolution: {integrity: sha512-f6ZO2ifpwAQIpzGWaBQT2TXxPv6z3RBzQKpVftEWN78Vl/YweF1uwussDx8ECAXVtr3Rs89fKyG9YlzUs9DyGQ==}
+
+  '@napi-rs/wasm-runtime@1.1.4':
+    resolution: {integrity: sha512-3NQNNgA1YSlJb/kMH1ildASP9HW7/7kYnRI2szWJaofaS1hWmbGI4H+d3+22aGzXXN9IJ+n+GiFVcGipJP18ow==}
+    peerDependencies:
+      '@emnapi/core': ^1.7.1
+      '@emnapi/runtime': ^1.7.1
+
+  '@nodelib/fs.scandir@2.1.5':
+    resolution: {integrity: sha512-vq24Bq3ym5HEQm2NKCr3yXDwjc7vTsEThRDnkp2DK9p1uqLR+DHurm/NOTo0KG7HYHU7eppKZj3MyqYuMBf62g==}
+    engines: {node: '>= 8'}
+
+  '@nodelib/fs.stat@2.0.5':
+    resolution: {integrity: sha512-RkhPPp2zrqDAQA/2jNhnztcPAlv64XdhIp7a7454A5ovI7Bukxgt7MX7udwAu3zg1DcpPU0rz3VV1SeaqvY4+A==}
+    engines: {node: '>= 8'}
+
+  '@nodelib/fs.walk@1.2.8':
+    resolution: {integrity: sha512-oGB+UxlgWcgQkgwo8GcEGwemoTFt3FIO9ababBmaGwXIoBKZ+GTy0pP185beGg7Llih/NSHSV2XAs1lnznocSg==}
+    engines: {node: '>= 8'}
+
+  '@oslojs/encoding@1.1.0':
+    resolution: {integrity: sha512-70wQhgYmndg4GCPxPPxPGevRKqTIJ2Nh4OkiMWmDAVYsTQ+Ta7Sq+rPevXyXGdzr30/qZBnyOalCszoMxlyldQ==}
+
+  '@oxc-project/types@0.127.0':
+    resolution: {integrity: sha512-aIYXQBo4lCbO4z0R3FHeucQHpF46l2LbMdxRvqvuRuW2OxdnSkcng5B8+K12spgLDj93rtN3+J2Vac/TIO+ciQ==}
+
+  '@playwright/test@1.49.0':
+    resolution: {integrity: sha512-DMulbwQURa8rNIQrf94+jPJQ4FmOVdpE5ZppRNvWVjvhC+6sOeo28r8MgIpQRYouXRtt/FCCXU7zn20jnHR4Qw==}
+    engines: {node: '>=18'}
+    hasBin: true
+
+  '@remirror/core-constants@3.0.0':
+    resolution: {integrity: sha512-42aWfPrimMfDKDi4YegyS7x+/0tlzaqwPQCULLanv3DMIlu96KTJR0fM5isWX2UViOqlGnX6YFgqWepcX+XMNg==}
+
+  '@rolldown/binding-android-arm64@1.0.0-rc.17':
+    resolution: {integrity: sha512-s70pVGhw4zqGeFnXWvAzJDlvxhlRollagdCCKRgOsgUOH3N1l0LIxf83AtGzmb5SiVM4Hjl5HyarMRfdfj3DaQ==}
+    engines: {node: ^20.19.0 || >=22.12.0}
+    cpu: [arm64]
+    os: [android]
+
+  '@rolldown/binding-darwin-arm64@1.0.0-rc.17':
+    resolution: {integrity: sha512-4ksWc9n0mhlZpZ9PMZgTGjeOPRu8MB1Z3Tz0Mo02eWfWCHMW1zN82Qz/pL/rC+yQa+8ZnutMF0JjJe7PjwasYw==}
+    engines: {node: ^20.19.0 || >=22.12.0}
+    cpu: [arm64]
+    os: [darwin]
+
+  '@rolldown/binding-darwin-x64@1.0.0-rc.17':
+    resolution: {integrity: sha512-SUSDOI6WwUVNcWxd02QEBjLdY1VPHvlEkw6T/8nYG322iYWCTxRb1vzk4E+mWWYehTp7ERibq54LSJGjmouOsw==}
+    engines: {node: ^20.19.0 || >=22.12.0}
+    cpu: [x64]
+    os: [darwin]
+
+  '@rolldown/binding-freebsd-x64@1.0.0-rc.17':
+    resolution: {integrity: sha512-hwnz3nw9dbJ05EDO/PvcjaaewqqDy7Y1rn1UO81l8iIK1GjenME75dl16ajbvSSMfv66WXSRCYKIqfgq2KCfxw==}
+    engines: {node: ^20.19.0 || >=22.12.0}
+    cpu: [x64]
+    os: [freebsd]
+
+  '@rolldown/binding-linux-arm-gnueabihf@1.0.0-rc.17':
+    resolution: {integrity: sha512-IS+W7epTcwANmFSQFrS1SivEXHtl1JtuQA9wlxrZTcNi6mx+FDOYrakGevvvTwgj2JvWiK8B29/qD9BELZPyXQ==}
+    engines: {node: ^20.19.0 || >=22.12.0}
+    cpu: [arm]
+    os: [linux]
+
+  '@rolldown/binding-linux-arm64-gnu@1.0.0-rc.17':
+    resolution: {integrity: sha512-e6usGaHKW5BMNZOymS1UcEYGowQMWcgZ71Z17Sl/h2+ZziNJ1a9n3Zvcz6LdRyIW5572wBCTH/Z+bKuZouGk9Q==}
+    engines: {node: ^20.19.0 || >=22.12.0}
+    cpu: [arm64]
+    os: [linux]
+
+  '@rolldown/binding-linux-arm64-musl@1.0.0-rc.17':
+    resolution: {integrity: sha512-b/CgbwAJpmrRLp02RPfhbudf5tZnN9nsPWK82znefso832etkem8H7FSZwxrOI9djcdTP7U6YfNhbRnh7djErg==}
+    engines: {node: ^20.19.0 || >=22.12.0}
+    cpu: [arm64]
+    os: [linux]
+
+  '@rolldown/binding-linux-ppc64-gnu@1.0.0-rc.17':
+    resolution: {integrity: sha512-4EII1iNGRUN5WwGbF/kOh/EIkoDN9HsupgLQoXfY+D1oyJm7/F4t5PYU5n8SWZgG0FEwakyM8pGgwcBYruGTlA==}
+    engines: {node: ^20.19.0 || >=22.12.0}
+    cpu: [ppc64]
+    os: [linux]
+
+  '@rolldown/binding-linux-s390x-gnu@1.0.0-rc.17':
+    resolution: {integrity: sha512-AH8oq3XqQo4IibpVXvPeLDI5pzkpYn0WiZAfT05kFzoJ6tQNzwRdDYQ45M8I/gslbodRZwW8uxLhbSBbkv96rA==}
+    engines: {node: ^20.19.0 || >=22.12.0}
+    cpu: [s390x]
+    os: [linux]
+
+  '@rolldown/binding-linux-x64-gnu@1.0.0-rc.17':
+    resolution: {integrity: sha512-cLnjV3xfo7KslbU41Z7z8BH/E1y5mzUYzAqih1d1MDaIGZRCMqTijqLv76/P7fyHuvUcfGsIpqCdddbxLLK9rA==}
+    engines: {node: ^20.19.0 || >=22.12.0}
+    cpu: [x64]
+    os: [linux]
+
+  '@rolldown/binding-linux-x64-musl@1.0.0-rc.17':
+    resolution: {integrity: sha512-0phclDw1spsL7dUB37sIARuis2tAgomCJXAHZlpt8PXZ4Ba0dRP1e+66lsRqrfhISeN9bEGNjQs+T/Fbd7oYGw==}
+    engines: {node: ^20.19.0 || >=22.12.0}
+    cpu: [x64]
+    os: [linux]
+
+  '@rolldown/binding-openharmony-arm64@1.0.0-rc.17':
+    resolution: {integrity: sha512-0ag/hEgXOwgw4t8QyQvUCxvEg+V0KBcA6YuOx9g0r02MprutRF5dyljgm3EmR02O292UX7UeS6HzWHAl6KgyhA==}
+    engines: {node: ^20.19.0 || >=22.12.0}
+    cpu: [arm64]
+    os: [openharmony]
+
+  '@rolldown/binding-wasm32-wasi@1.0.0-rc.17':
+    resolution: {integrity: sha512-LEXei6vo0E5wTGwpkJ4KoT3OZJRnglwldt5ziLzOlc6qqb55z4tWNq2A+PFqCJuvWWdP53CVhG1Z9NtToDPJrA==}
+    engines: {node: ^20.19.0 || >=22.12.0}
+    cpu: [wasm32]
+
+  '@rolldown/binding-win32-arm64-msvc@1.0.0-rc.17':
+    resolution: {integrity: sha512-gUmyzBl3SPMa6hrqFUth9sVfcLBlYsbMzBx5PlexMroZStgzGqlZ26pYG89rBb45Mnia+oil6YAIFeEWGWhoZA==}
+    engines: {node: ^20.19.0 || >=22.12.0}
+    cpu: [arm64]
+    os: [win32]
+
+  '@rolldown/binding-win32-x64-msvc@1.0.0-rc.17':
+    resolution: {integrity: sha512-3hkiolcUAvPB9FLb3UZdfjVVNWherN1f/skkGWJP/fgSQhYUZpSIRr0/I8ZK9TkF3F7kxvJAk0+IcKvPHk9qQg==}
+    engines: {node: ^20.19.0 || >=22.12.0}
+    cpu: [x64]
+    os: [win32]
+
+  '@rolldown/pluginutils@1.0.0-beta.27':
+    resolution: {integrity: sha512-+d0F4MKMCbeVUJwG96uQ4SgAznZNSq93I3V+9NHA4OpvqG8mRCpGdKmK8l/dl02h2CCDHwW2FqilnTyDcAnqjA==}
+
+  '@rolldown/pluginutils@1.0.0-rc.17':
+    resolution: {integrity: sha512-n8iosDOt6Ig1UhJ2AYqoIhHWh/isz0xpicHTzpKBeotdVsTEcxsSA/i3EVM7gQAj0rU27OLAxCjzlj15IWY7bg==}
+
+  '@rollup/pluginutils@5.3.0':
+    resolution: {integrity: sha512-5EdhGZtnu3V88ces7s53hhfK5KSASnJZv8Lulpc04cWO3REESroJXg73DFsOmgbU2BhwV0E20bu2IDZb3VKW4Q==}
+    engines: {node: '>=14.0.0'}
+    peerDependencies:
+      rollup: ^1.20.0||^2.0.0||^3.0.0||^4.0.0
+    peerDependenciesMeta:
+      rollup:
+
+exec
+/bin/bash -lc "sed -n '1,220p' pnpm-lock.yaml" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+
+  .:
+    devDependencies:
+      '@eslint/js':
+        specifier: ^9.0.0
+        version: 9.39.4
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.17
+      commander:
+        specifier: ^11.1.0
+        version: 11.1.0
+      eslint:
+        specifier: ^9.0.0
+        version: 9.39.4(jiti@1.21.7)
+      globals:
+        specifier: ^15.0.0
+        version: 15.15.0
+      prettier:
+        specifier: ^3.0.0
+        version: 3.8.3
+      ts-morph:
+        specifier: ^28.0.0
+        version: 28.0.0
+      tsx:
+        specifier: ^4.21.0
+        version: 4.21.0
+      turbo:
+        specifier: ^2.0.0
+        version: 2.9.6
+      typescript:
+        specifier: ~5.6.0
+        version: 5.6.3
+      typescript-eslint:
+        specifier: ^8.0.0
+        version: 8.59.1(eslint@9.39.4(jiti@1.21.7))(typescript@5.6.3)
+      vitest:
+        specifier: ^4.1.5
+        version: 4.1.5(@types/node@22.19.17)(happy-dom@15.11.7)(vite@8.0.10(@types/node@22.19.17)(esbuild@0.27.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.3))
+      yaml:
+        specifier: ^2.8.3
+        version: 2.8.3
+      zod:
+        specifier: ^3.23.0
+        version: 3.25.76
+
+  apps/site:
+    dependencies:
+      '@astrojs/mdx':
+        specifier: ^4.0.0
+        version: 4.3.14(astro@5.18.1(@types/node@22.19.17)(jiti@1.21.7)(lightningcss@1.32.0)(rollup@4.60.2)(tsx@4.21.0)(typescript@5.6.3)(yaml@2.8.3))
+      '@astrojs/react':
+        specifier: ^4.0.0
+        version: 4.4.2(@types/node@22.19.17)(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(jiti@1.21.7)(lightningcss@1.32.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(tsx@4.21.0)(yaml@2.8.3)
+      '@astrojs/tailwind':
+        specifier: ^6.0.0
+        version: 6.0.2(astro@5.18.1(@types/node@22.19.17)(jiti@1.21.7)(lightningcss@1.32.0)(rollup@4.60.2)(tsx@4.21.0)(typescript@5.6.3)(yaml@2.8.3))(tailwindcss@3.4.19(tsx@4.21.0)(yaml@2.8.3))
+      '@skb/content-types':
+        specifier: workspace:*
+        version: link:../../packages/content-types
+      '@skb/design-tokens':
+        specifier: workspace:*
+        version: link:../../packages/design-tokens
+      astro:
+        specifier: ^5.0.0
+        version: 5.18.1(@types/node@22.19.17)(jiti@1.21.7)(lightningcss@1.32.0)(rollup@4.60.2)(tsx@4.21.0)(typescript@5.6.3)(yaml@2.8.3)
+      react:
+        specifier: ^18.3.0
+        version: 18.3.1
+      react-dom:
+        specifier: ^18.3.0
+        version: 18.3.1(react@18.3.1)
+      tailwindcss:
+        specifier: ^3.4.0
+        version: 3.4.19(tsx@4.21.0)(yaml@2.8.3)
+    devDependencies:
+      '@astrojs/check':
+        specifier: ^0.9.0
+        version: 0.9.9(prettier@3.8.3)(typescript@5.6.3)
+      '@playwright/test':
+        specifier: 1.49.0
+        version: 1.49.0
+      '@types/react':
+        specifier: ^18.3.0
+        version: 18.3.28
+      '@types/react-dom':
+        specifier: ^18.3.0
+        version: 18.3.7(@types/react@18.3.28)
+      happy-dom:
+        specifier: ^15.0.0
+        version: 15.11.7
+      typescript:
+        specifier: ~5.6.0
+        version: 5.6.3
+      vitest:
+        specifier: ^4.1.5
+        version: 4.1.5(@types/node@22.19.17)(happy-dom@15.11.7)(vite@6.4.2(@types/node@22.19.17)(jiti@1.21.7)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.8.3))
+
+  packages/agent-tools:
+    dependencies:
+      '@skb/editor-commands':
+        specifier: workspace:*
+        version: link:../editor-commands
+      zod:
+        specifier: ^3.23.0
+        version: 3.25.76
+    devDependencies:
+      typescript:
+        specifier: ~5.6.0
+        version: 5.6.3
+      vitest:
+        specifier: ^4.1.5
+        version: 4.1.5(@types/node@22.19.17)(happy-dom@15.11.7)(vite@8.0.10(@types/node@22.19.17)(esbuild@0.27.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.3))
+
+  packages/block-foundation:
+    dependencies:
+      '@tiptap/core':
+        specifier: ^2.10.0
+        version: 2.27.2(@tiptap/pm@2.27.2)
+      '@tiptap/extension-task-item':
+        specifier: ^2.10.0
+        version: 2.27.2(@tiptap/core@2.27.2(@tiptap/pm@2.27.2))(@tiptap/pm@2.27.2)
+      '@tiptap/extension-task-list':
+        specifier: ^2.10.0
+        version: 2.27.2(@tiptap/core@2.27.2(@tiptap/pm@2.27.2))
+      '@tiptap/extension-typography':
+        specifier: ^2.10.0
+        version: 2.27.2(@tiptap/core@2.27.2(@tiptap/pm@2.27.2))
+      '@tiptap/starter-kit':
+        specifier: ^2.10.0
+        version: 2.27.2
+      tiptap-markdown:
+        specifier: ^0.8.0
+        version: 0.8.10(@tiptap/core@2.27.2(@tiptap/pm@2.27.2))
+      zod:
+        specifier: ^3.23.0
+        version: 3.25.76
+    devDependencies:
+      '@types/react':
+        specifier: ^18.3.0
+        version: 18.3.28
+      react:
+        specifier: ^18.3.0
+        version: 18.3.1
+      typescript:
+        specifier: ~5.6.0
+        version: 5.6.3
+      vitest:
+        specifier: ^4.1.5
+        version: 4.1.5(@types/node@22.19.17)(happy-dom@15.11.7)(vite@8.0.10(@types/node@22.19.17)(esbuild@0.27.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.3))
+
+  packages/content-types:
+    dependencies:
+      zod:
+        specifier: ^3.23.0
+        version: 3.25.76
+    devDependencies:
+      typescript:
+        specifier: ~5.6.0
+        version: 5.6.3
+      vitest:
+        specifier: ^4.1.5
+        version: 4.1.5(@types/node@22.19.17)(happy-dom@15.11.7)(vite@8.0.10(@types/node@22.19.17)(esbuild@0.27.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.3))
+
+  packages/design-tokens:
+    dependencies:
+      '@tailwindcss/typography':
+        specifier: ^0.5.15
+        version: 0.5.19(tailwindcss@3.4.19(tsx@4.21.0)(yaml@2.8.3))
+    devDependencies:
+      '@testing-library/react':
+        specifier: ^16.0.0
+        version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@types/react':
+        specifier: ^18.3.0
+        version: 18.3.28
+      happy-dom:
+        specifier: ^15.0.0
+        version: 15.11.7
+      react:
+        specifier: ^18.3.0
+        version: 18.3.1
+      react-dom:
+        specifier: ^18.3.0
+        version: 18.3.1(react@18.3.1)
+      tailwindcss:
+        specifier: ^3.4.0
+        version: 3.4.19(tsx@4.21.0)(yaml@2.8.3)
+      typescript:
+        specifier: ~5.6.0
+        version: 5.6.3
+      vitest:
+        specifier: ^4.1.5
+        version: 4.1.5(@types/node@22.19.17)(happy-dom@15.11.7)(vite@8.0.10(@types/node@22.19.17)(esbuild@0.27.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.3))
+
+  packages/editor-commands:
+    dependencies:
+      '@skb/content-types':
+        specifier: workspace:*
+        version: link:../content-types
+      zod:
+        specifier: ^3.23.0
+        version: 3.25.76
+    devDependencies:
+      typescript:
+        specifier: ~5.6.0
+        version: 5.6.3
+      vitest:
+        specifier: ^4.1.5
+        version: 4.1.5(@types/node@22.19.17)(happy-dom@15.11.7)(vite@8.0.10(@types/node@22.19.17)(esbuild@0.27.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.3))
+
+  packages/kernel-adapter:
+    devDependencies:
+
+codex
+我再查一遍 ADR-0006 的 checklist 原文，确认 items #1/#2/#3/#5/#6/#7/#8 要求在审查中怎么映射，避免误判（你要求给明确 verdict）。
+exec
+/bin/bash -lc 'rg -n "ADR-0006|8-point|item #|item #6|sister-doc|authority|consumer|lockfile|visual-smoke|visual" docs | head -n 80' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 126ms:
+docs/review-checklist.md:20:## ADR-0006 asymmetry-audit checklist (mandatory for code-reviewer + pr-gate)
+docs/review-checklist.md:22:Apply each item that is in scope for the PR; explicitly skip items that are not (e.g. item #2 "status code" doesn't apply to TS-only packages). Reviewer verdict structure MUST include `asymmetry-audit applied: items {1..8} verdicts: ...`. See [ADR-0006](decisions/ADR-0006-asymmetry-audit-checklist.md) for empirical evidence + full rationale per item.
+docs/review-checklist.md:27:- [ ] **#4 Consumer schema audit**: After defining a schema in a single-authority package, audit every consumer for inline duplicates; "deferred swap" is a contract break.
+docs/review-checklist.md:28:- [ ] **#5 Algorithm + runtime constant replication audit**: When an algorithm or constant is replicated outside its authority (inline FOUC scripts, login challenge derivation, etc.), audit consumer-side replicas for byte-equivalent reproduction; replica MUST register a regression test against the authority's input corpus.
+docs/review-checklist.md:30:- [ ] **#7 Exception-scope equivalence audit**: When replicating an algorithm + its exception handling, audit BOTH happy-path semantics AND `try/catch` scope between authority and replica; narrow vs wide try/catch can produce divergent fall-through behavior.
+docs/review-checklist.md:31:- [ ] **#8 Authority-document → generated/consumed surface audit**: When updating an authority document (ADR, spec, `agent-contract.md`, runbook, CONVENTIONS) that mandates downstream behavior, audit every consumer-side replica/generated artifact in the same commit; regenerate codegen outputs (`pnpm generate:configs`); cross-link runbooks; embed in subagent prompts.
+docs/review-checklist.md:56:      (especially `block-foundation`, `mdx-bridge`, `kernel-adapter` consumers).
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:660:| `code-reviewer` | gpt-5.3-codex-spark（默认廉价） | 行级 review：类型 / lint / 契约同步 / 文件大小 / 风格 / 边界条件；强制 ADR-0006 8-point asymmetry-audit |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:668:Wave 1 数据（codex 5.5 抓 9/12 cross-location asymmetry，[ADR-0006](../../decisions/ADR-0006-asymmetry-audit-checklist.md)）
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:680:│  ── 强制 ADR-0006 8-point asymmetry-audit checklist       │
+docs/plans/active.md:10:- [ADR-0002](../decisions/ADR-0002-wave-1-close.md) Wave 1 close — 22 errata + 3 cross-package single-authority invariants
+docs/plans/active.md:11:- [ADR-0006](../decisions/ADR-0006-asymmetry-audit-checklist.md) 8-point cross-location asymmetry-audit checklist (process rule, mandatory for code-reviewer + pr-gate; embedded in `agent-contract.md` + regenerated subagent prompts + cross-linked from team-operations.md)
+docs/plans/active.md:15:**团队操作手册**: [docs/runbooks/team-operations.md](../runbooks/team-operations.md)（必须前置注入每个 spawn 的 prompt；Tier 2 reviewer rows 现已 cross-link ADR-0006 8-point checklist；reviewer subagent prompts 也已 regen 嵌入 8 项摘要）
+docs/plans/active.md:23:ADR-0007 重构 agent 阵容。**实施作为 Wave 2 第一个 task 走完整 review chain**（codex 5.3-spark + codex 5.5 pr-gate + Claude pr-reviewer，因 ADR-0007 D2 触发条件命中）。**严格按 ADR-0006 D8 staging protocol** 执行（authority + generator code + 全部生成产物在同一 bundle commit；显式 `git add` + `git diff --cached --stat` 验证）。
+docs/plans/active.md:39:1. 读 [ADR-0002](../decisions/ADR-0002-wave-1-close.md) + [ADR-0006](../decisions/ADR-0006-asymmetry-audit-checklist.md) + **[ADR-0007](../decisions/ADR-0007-job-function-codex-heavy-execution.md)**（必读）
+docs/plans/active.md:50:- 12 cross-location asymmetry meta-class 实例（worker layer 1-7：B R1 / D R2 / F R3 / C R2 / F R5 / A R1 / A R2；close-ceremony 8-12：v1 dogfood failure / v2 ADR-0006:81 drift / v3 ADR-0006:117 drift / v4 structure baseline:66 / v5 generator outputs not staged）已编入 ADR-0006 empirical 8-point checklist（8 distinct items + 4 close-ceremony reinforcements of items #6 + #8）
+docs/plans/active.md:51:- 3 cross-package single-authority invariants 已对称落地到 CONTRACT.md（`frontmatterSchema` / `editBlockInputSchema` / `getInitialTheme()`）
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:419:**Risk level:** 高（消费 design-tokens 的第一个 consumer + 含 ThemeToggle 切换 hook → escalate pr-gate 5.5）
+docs/superpowers/plans/2026-04-29-phase-0-scaffolding.md:438:prefer-frozen-lockfile=true
+docs/superpowers/plans/2026-04-29-phase-0-scaffolding.md:532:预期输出：lockfile 创建，0 错误。
+docs/superpowers/plans/2026-04-29-phase-0-scaffolding.md:1161:      - run: pnpm install --frozen-lockfile
+docs/superpowers/plans/2026-04-29-phase-0-scaffolding.md:1488:      - run: pnpm install --frozen-lockfile
+docs/superpowers/plans/2026-04-29-phase-0-scaffolding.md:1499:      - run: pnpm install --frozen-lockfile
+docs/superpowers/plans/2026-04-29-phase-0-scaffolding.md:1511:      - run: pnpm install --frozen-lockfile
+docs/superpowers/plans/2026-04-29-phase-0-scaffolding.md:1523:      - run: pnpm install --frozen-lockfile
+docs/superpowers/plans/2026-04-29-phase-0-scaffolding.md:1535:      - run: pnpm install --frozen-lockfile
+docs/superpowers/plans/2026-04-29-phase-0-scaffolding.md:1547:      - run: pnpm install --frozen-lockfile
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:8:- **template + codex-clone 模式（ADR-0007 D3）**：visual single-authority 由 `ux-ui-lead`（新 Claude teammate, ADR-0007 D1）写第一个 ui-default，其余 7 个由 codex-block-generator (tool) 仿造 + ux-ui-lead 视觉一致性审；core 在 simple block 集群试点（block-callout core 是 template，block-code/block-image core 是 clone），render block 与 viz block 仍 hand-craft；editor 三子模块同模式（toolbar template + slash-menu/drag-handle clone）。
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:10:- **8-point asymmetry-audit（ADR-0006）强制**：每个 reviewer 必须按 8 项逐条审；Wave 2 第一个 attr-bearing mark（如 `highlight`/`kbd`）扩展时 simul-update wrapMark + marksEqual + fixture（item #1 trip-hazard）。
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:11:- **block-foundation MDX renderer 接口冻结前置**：block-callout 是第一个真实 consumer，其 PR 之前必产 `block-foundation/RFC.md` 描述 "如何注册" walkthrough（structure-auditor 推荐 #2，ADR-0002 erratum #21）。
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:17:- 可视化：JupyterLite（block-jupyter，consumer of kernel-pyodide）+ TensorFlow.js（block-nn-viz）+ React Flow（block-agent-flow）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:25:- [ADR-0002](../../decisions/ADR-0002-wave-1-close.md) Wave 1 close — 22 errata + 3 cross-package single-authority invariants（**含 erratum #19 dead-dep policy / #21 block-foundation/RFC.md / #16 attr-bearing mark expansion**）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:27:- [ADR-0006](../../decisions/ADR-0006-asymmetry-audit-checklist.md) 8-point asymmetry-audit checklist（mandatory for code-reviewer + pr-gate）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:71:│   └── (same shape; consumer of kernel-pyodide + kernel-registry)
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:116:apps/site/src/__tests__/visual-smoke.spec.ts      # Track B2 (Playwright 视觉烟测)
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:274:cat docs/decisions/ADR-0006-asymmetry-audit-checklist.md
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:310:TaskCreate({task_name: "task-B2-playwright-visual-smoke", blocked_by: ["task-B1-duplicate-h1-fix"], meta: {d2_row: 8}});  // CI workflow 改
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:322:TaskCreate({task_name: "task-C1-callout-core", blocked_by: ["task-A2-block-foundation-rfc", "task-I2-new-block"], meta: {d2_row: 1}});  // 第一个 block-foundation consumer，含 row 6 跨 3+ pkg
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:477:### D2: block-foundation 注册 API freeze（spec for first real consumer block-callout）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:483:- consumer-side 测试样板（block-callout/__tests__/registry-integration.test.ts）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:485:第一个 block-* PR（block-callout core）必须 reference 此 RFC；后续 block-* PR 沿用模式。RFC.md 不是 CONTRACT.md（不规定 public API 形状），是 walkthrough（教 consumer 如何用）。
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:626:- Create: `apps/site/src/__tests__/visual-smoke.spec.ts`
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:627:- Modify: `apps/site/package.json`（加 `@playwright/test` devDep at PINNED VERSION + `test:visual` script）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:628:- Modify: `.github/workflows/ci.yml`（加 visual-smoke job + Playwright 浏览器缓存）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:648:- run: pnpm --filter @skb/site test:visual
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:652:- [ ] **Step 3**: 写 visual-smoke.spec.ts 含 3 case：
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:673:- [ ] **Step 4**: 加 `test:visual` script + GitHub Actions step（CI 跑 chromium）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:674:- [ ] **Step 5**: review chain（D2 row 8 触发"CI workflow 改"，但 visual smoke 是 add-only step——评估为低风险）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:785:**Risk level**: 高（block-callout core 是第一个 block-foundation 真实 consumer，触发 ADR-0007 D2 row 1 "改 CONTRACT.md" → +pr-gate +pr-reviewer）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:953:  - performance-auditor (visual reg) 选触
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:979:   ADR-0006 8-point checklist 适用 item #6 (sister-doc): block-callout vs block-code 的
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1127:- [ ] **Step 5: review chain（D2 row 1 + 第一个 KernelAdapter consumer 是 Wave 2 关键 surface）**：full chain + kernel-architect 视觉审（架构一致性）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1160:  2. 工种 worker 在 ready-for-review 报告时**强制自审**：在 ADR-0006 8-point self-audit 段必须明示"item #1: PROPS 含 attr-bearing fields = YES/NO + 列字段名 / NO 的理由"；reviewer cross-check
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1165:**Risk level**: 高（ADR-0002 erratum #16 + ADR-0006 item #1 trip-hazard：marksEqual 默认 `return true` 是 silent-drop trap）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1188:- [ ] **Step 4: review chain（D2 row 1 改 CONTRACT.md）**：full chain；ADR-0006 item #1 是核心审
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1244:- [ ] **Step 3**: visual-smoke.spec.ts 加 case：访问 `/notes/sample-blocks` 不报错 + 8 种 block 各自 render 至少一个 DOM 节点
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1263:- codex catch rate vs Wave 1（ADR-0006 8-point 实战数据）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1317:**4. ADR-0006 8-point trip-hazards 列**:
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1318:- [x] item #1: Track J 显式处理 attr-bearing mark 触发 wrapMark + marksEqual + fixture
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1319:- [x] item #6: Track C 强制 sister-doc alignment（block-callout vs block-code vs block-image 3 份 CONTRACT.md）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1320:- [x] item #8: Pre-Task 0 + Task A1 + Task B3 都强调 ADR-0006 D8 staging protocol（authority + generator + outputs 同 bundle）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1351:- [ADR-0002](../../decisions/ADR-0002-wave-1-close.md) Wave 1 close — 22 errata + 3 cross-package single-authority invariants
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1353:- [ADR-0006](../../decisions/ADR-0006-asymmetry-audit-checklist.md) 8-point asymmetry-audit checklist
+docs/runbooks/codex-tool-invocations.md:32:## ADR-0006 D8 reminder
+docs/runbooks/codex-tool-invocations.md:36:(commit `e15ec36` extension to D8: lockfile is generated-from-authority artifact).
+docs/runbooks/codex-tool-invocations.md:64:**强制：ADR-0006 8-point asymmetry-audit checklist**（见 `docs/decisions/ADR-0006-asymmetry-audit-checklist.md`）必须按可适用项目逐条审查，verdict 结构应包含
+docs/runbooks/codex-tool-invocations.md:69:(4) single-authority schema → 审所有 consumer 是否复刻定义；
+docs/runbooks/codex-tool-invocations.md:70:(5) 算法 + 运行时常量复刻 → 审 consumer 端字节等价 + 注册回归测试；
+docs/runbooks/codex-tool-invocations.md:73:(8) authority 文档（ADR/agent-contract/runbook/CONVENTIONS）改动 → 审 generated/consumed surface（`.claude/agents/*`、`docs/review-checklist.md`、`team-operations.md`、`docs/runbooks/codex-tool-invocations.md`、Codex profiles、**pnpm-lock.yaml**）是否在同一 commit 里同步（commit `e15ec36` 教训：lockfile 也属 generated-from-authority artifact）。
+docs/runbooks/codex-tool-invocations.md:135:**强制：ADR-0006 8-point asymmetry-audit checklist**（见 `docs/decisions/ADR-0006-asymmetry-audit-checklist.md`）— 你是这项规则的主要执行者，必须独立验证所有可适用项目（不仅依赖 code-reviewer 的 R1 结论），并主动 hunt 8th-class beyond the cited fix。verdict 结构应包含
+docs/runbooks/codex-tool-invocations.md:271:- [ADR-0006](../decisions/ADR-0006-asymmetry-audit-checklist.md) — 8-point asymmetry audit (mandatory for code-reviewer + pr-gate profiles)
+docs/runbooks/team-operations.md:95:| `code-reviewer` (tool)                  | orchestrator 触发，PR ready                                          | 读 git diff；orchestrator Bash 调 `codex exec --profile code-reviewer < /dev/null`；输出 PASS / FAIL + 具体问题；stdout 落盘到 `docs/audits/codex-runs/`。**强制 [ADR-0006](../decisions/ADR-0006-asymmetry-audit-checklist.md) 8-point asymmetry-audit checklist**（每条可适用项目都要在 verdict 里给结论） |
+docs/runbooks/team-operations.md:96:| `pr-gate` (tool)                        | code-reviewer pass 后，orchestrator 判断高风险触发（ADR-0007 D2 表） | orchestrator Bash 调 `codex exec --profile pr-gate < /dev/null`（5.5）；输出 PASS / FAIL。**强制 [ADR-0006](../decisions/ADR-0006-asymmetry-audit-checklist.md) 8-point asymmetry-audit checklist + 8th-class hunt**（独立验证 R1 结论 + 主动 hunt cited-fix 之外的对称性缺口）                              |
+docs/runbooks/team-operations.md:230:- [ADR-0006 cross-location asymmetry-audit checklist](../decisions/ADR-0006-asymmetry-audit-checklist.md)
+docs/decisions/ADR-0006-asymmetry-audit-checklist.md:1:# ADR-0006: Cross-location asymmetry-audit checklist (process rule)
+docs/decisions/ADR-0006-asymmetry-audit-checklist.md:28:| 6 | Track A | R1 → fixed v2 | FOUC inline IIFE saved-value algorithm + content schema | Truthy-coerce diverges from strict-whitelist for invalid / case-mismatched values; inline `z.object` redefinition diverges from `frontmatterSchema` authority |
+docs/decisions/ADR-0006-asymmetry-audit-checklist.md:29:| 7 | Track A v2 | R2 → fixed v3 | FOUC inline IIFE try/catch scope | Wide try/catch in IIFE swallowed `matchMedia` exceptions while authority's narrow try/catch propagated; storage-throws scenarios produced light→dark hydration flash |
+docs/decisions/ADR-0006-asymmetry-audit-checklist.md:30:| 8 | Wave 1 close bundle v1 | R1 → fixed v2 | ADR-0006 mandated reviewer-prompt updates vs actual `agent-contract.md` / generated `.claude/agents/*.md` / `docs/review-checklist.md` / `team-operations.md` content | The close-ceremony commit codified a process rule that mandates downstream behavior; consumer-side artifacts (reviewer prompts + runbook) had not been updated to embed the rule, so Wave 2 reviewers would not have seen it |
+docs/decisions/ADR-0006-asymmetry-audit-checklist.md:31:| 9 | Wave 1 close bundle v2 | R2 → fixed v3 | ADR-0006:81 within-document drift "7 distinct instances" | Single bullet missed during the v1→v2 count sweep — sister-bullet variant of item #6 within a single document |
+docs/decisions/ADR-0006-asymmetry-audit-checklist.md:32:| 10 | Wave 1 close bundle v3 | R3 → fixed v4 | ADR-0006:117 within-document drift "7 empirical instances + 18+ erratum candidates" (both numbers stale) | Second sister-bullet drift in the same file, a different bullet — proved per-citation fixes are themselves item #6 traps; comprehensive sweep at fix time is the robust pattern |
+
+codex
+已定位到审核清单文件，我补读 ADR-0006/review-checklist 的 1..8 条目定义，按你要求给出可追踪的逐项 verdict，而不是凭主观判断。
+exec
+/bin/bash -lc "sed -n '1,200p' docs/review-checklist.md" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1,260p' docs/decisions/ADR-0006-asymmetry-audit-checklist.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+# ADR-0006: Cross-location asymmetry-audit checklist (process rule)
+
+| 字段 | 值                                    |
+| ---- | ------------------------------------- |
+| 状态 | accepted                              |
+| 日期 | 2026-04-30                            |
+| 作者 | orchestrator (Claude Opus 4.7 1M ctx) |
+| 触发 | Wave 1 codex 5.5 reviews caught 12 instances of the same meta-class across 6 tracks + 5 close-ceremony fix iterations (8 distinct items + 4 close-ceremony reinforcements of items #6 and #8) |
+| 替代 | 不替代任何 ADR；扩展 [ADR-0001](ADR-0001-stack-selection.md) §3.2 review chain |
+
+## Context
+
+Wave 1 implementation produced strong empirical evidence that **a single bug class** dominates the failure mode at line-level review:
+
+> **Cross-location asymmetry**: a value, schema, algorithm, or invariant exists in two or more places, and an edit to one location is not symmetrically applied to all peers, so behavior diverges silently.
+
+Across 6 tracks + 5 close-ceremony fix iterations, codex 5.5 (`pr-gate`) caught **12 instances** of this meta-class (8 distinct failure-mode items + 4 close-ceremony reinforcements of items #6 and #8). Every PR that lasted ≥ 2 review rounds hit at least one instance. The pattern is so consistent that linear "fix the cited blocker, ship v_n+1" iteration would not have caught the second-order asymmetry; codex specifically catches the symmetric counterpart that the worker missed.
+
+### Wave 1 empirical record (12 instances)
+
+| # | Track | Round | Asymmetry pair | Bug behavior |
+|---|---|---|---|---|
+| 1 | Track B (block-foundation + content-types) | R1 → fixed v3 | `listUIs` mutability vs `listCores` defensive copy | Caller mutation of return value polluted registry singleton |
+| 2 | Track D (apps/api) | R2 → fixed v4 | RFC 7235 `WWW-Authenticate` on framework-raised 401 vs custom `SkbError` 401 | 4 of 5 401 paths emitted spec-mandated header; the custom-error path silently dropped it |
+| 3 | Track F (editor-commands) | R3 → fixed v4 | `.strict()` on top-level Zod object vs nested `frontmatterSchema` | Top-level rejected unknown keys; nested still silently stripped them |
+| 4 | Track C (mdx-bridge) | R2 → fixed v4 | `marksEqual` link comparator: `href` only vs `href + title` | Same href, different titles silently merged into one link with the first title preserved |
+| 5 | Track F v5 | R3 → fixed v6 | One CONTRACT.md updated to reflect code; sister CONTRACT.md (`agent-tools`) had stale wording | Documentation-vs-code drift in the file the worker did not edit |
+| 6 | Track A | R1 → fixed v2 | FOUC inline IIFE saved-value algorithm + content schema | Truthy-coerce diverges from strict-whitelist for invalid / case-mismatched values; inline `z.object` redefinition diverges from `frontmatterSchema` authority |
+| 7 | Track A v2 | R2 → fixed v3 | FOUC inline IIFE try/catch scope | Wide try/catch in IIFE swallowed `matchMedia` exceptions while authority's narrow try/catch propagated; storage-throws scenarios produced light→dark hydration flash |
+| 8 | Wave 1 close bundle v1 | R1 → fixed v2 | ADR-0006 mandated reviewer-prompt updates vs actual `agent-contract.md` / generated `.claude/agents/*.md` / `docs/review-checklist.md` / `team-operations.md` content | The close-ceremony commit codified a process rule that mandates downstream behavior; consumer-side artifacts (reviewer prompts + runbook) had not been updated to embed the rule, so Wave 2 reviewers would not have seen it |
+| 9 | Wave 1 close bundle v2 | R2 → fixed v3 | ADR-0006:81 within-document drift "7 distinct instances" | Single bullet missed during the v1→v2 count sweep — sister-bullet variant of item #6 within a single document |
+| 10 | Wave 1 close bundle v3 | R3 → fixed v4 | ADR-0006:117 within-document drift "7 empirical instances + 18+ erratum candidates" (both numbers stale) | Second sister-bullet drift in the same file, a different bullet — proved per-citation fixes are themselves item #6 traps; comprehensive sweep at fix time is the robust pattern |
+| 11 | Wave 1 close bundle v4 (informational) | R4 (informational) → fixed v5 | structure baseline:66 "× 7 endpoints" while apps/api has 4 routes / 11 tests | Pre-existing content-accuracy drift in the structure baseline document (authored at v1) — content number mismatched real code; surfaced during the broader 11th-class hunt |
+| 12 | Wave 1 close bundle v5 | R2 (pr-gate) → fixed v6 | Regenerated `.claude/agents/code-reviewer.md` + `.claude/agents/pr-gate.md` + `docs/review-checklist.md` were not staged in the bundle commit — authority + generator code updated, but generator outputs remained at pre-update HEAD content | Sub-form of item #8: regenerating an artifact and `git add`'ing it are separate steps; a bundle that updates authority + generator without staging the regenerated outputs is silently stale. Motivated the "verify by clean second-run" step now part of item #8. |
+
+Codex's structured review consistently caught these with three patterns:
+
+1. After fixing one location, **codex audits all peer locations** (not just the cited site)
+2. After a value/schema acquires an attribute, **codex audits every comparator/serialization function** for that attribute
+3. After a "happy path" fix, **codex audits the exception path** for the same equivalence
+
+These three habits collectively define the process rule below.
+
+## Decision
+
+Adopt an **8-point asymmetry-audit checklist** as a mandatory part of `code-reviewer` (Codex 5.3-spark, default cheap) and `pr-gate` (Codex 5.5, deep) review prompts. Reviewers MUST work through every applicable item before declaring PASS.
+
+### The 8 items
+
+1. **Field/attribute audit**: After adding a field to a data shape (Zod schema, Pydantic model, TS interface, mdast attrs, etc.), audit every comparator / equality / serialization / canonicalization function that handles this shape. (Wave 1 evidence: instance #4 — `marksEqual` link branch missed `title` when serialize emitted it.)
+
+2. **Status code audit**: After adding a status code to one HTTP handler (or, generally, an exit/error code to one branch), audit every other handler emitting the same code. RFC-mandated headers (RFC 7235 `WWW-Authenticate` on 401, RFC 7231 `Allow` on 405) attach to **the status code itself**, not the framework code path that emitted it. (Wave 1 evidence: instance #2 — custom `SkbError` 401 path missed `WWW-Authenticate`.)
+
+3. **Strictness audit**: After adding `.strict()` (Zod) / `extra='forbid'` (Pydantic) at one level of an object schema, audit every nested object/sub-schema. The strictness setting **does not propagate**; nested objects must opt in independently. (Wave 1 evidence: instance #3 — top-level `.strict()` shipped while nested `frontmatterSchema` still silently stripped unknown keys.)
+
+4. **Consumer schema audit**: After defining a schema in a single-authority package (e.g. `@skb/content-types/frontmatterSchema`), audit every consumer for inline duplicates or inline redefinitions that should `import` instead. The "deferred swap" pattern — "I'll inline now and import later" — is a contract break that compounds over time. (Wave 1 evidence: instance #6 part 2 — apps/site/content.config.ts inlined `z.object(...)` rather than importing `frontmatterSchema`.)
+
+5. **Algorithm + runtime constant replication audit**: When an algorithm or runtime constant is replicated outside its authority (e.g. inline FOUC scripts, login challenge derivation, pre-hydration boot logic that cannot import from packages), audit every consumer-side replica for byte-equivalent reproduction. The replica must register a **regression test** that asserts equivalence against the authority across a representative input corpus. (Wave 1 evidence: instance #6 part 1 — FOUC IIFE truthy-coerce vs `getInitialTheme()` strict-whitelist; remediated with `apps/site/src/__tests__/fouc-script.test.ts` 16-row corpus.)
+
+6. **Sister-file documentation audit**: After updating one CONTRACT.md (or any document that describes a code surface), audit ALL related CONTRACT.md files in the package family for sister-file drift. Two CONTRACT.md files that describe two halves of the same contract must use **identical terminology** for the shared identifiers (function names, schema names, refine predicate names). (Wave 1 evidence: instance #5 — `editor-commands/CONTRACT.md` updated to cite `editBlockInputSchema` while `agent-tools/CONTRACT.md` still referred to the old shape.)
+
+7. **Exception-scope equivalence audit**: When replicating an algorithm + its exception handling across files, audit BOTH the happy-path semantics AND the `try/catch` scope between authority and replica. Narrow vs wide `try/catch` can produce divergent fall-through behavior even with identical happy-path logic. Specifically: when `localStorage` / `sessionStorage` / `IndexedDB` / `matchMedia` / any browser API in the algorithm path can throw, the `try/catch` MUST wrap ONLY the throwing call, with the fall-through branch (matchMedia / system default / DOM apply) running AFTER the catch handler — not inside it. (Wave 1 evidence: instance #7 — FOUC IIFE wide-scope try/catch swallowed matchMedia exceptions; remediated with narrow try/catch + 2 storage-throws regression tests.)
+
+8. **Authority-document → generated/consumed surface audit**: When updating an authority document (ADR, spec, `agent-contract.md`, runbook, CONVENTIONS) **OR a dependency authority (`package.json`)** that mandates behavior in downstream consumers, audit every consumer-side replica/generated artifact for synchronized update **AND staged-in-the-git-index in the same bundle**. Specifically: an ADR section that says "X file MUST be updated to do Y" requires the same commit to update X and provide a way to verify the synchronization. Generated artifacts (e.g. `docs/review-checklist.md` and `.claude/agents/*.md` derived from `agent-contract.md`; **`pnpm-lock.yaml` derived from `package.json`** — see sub-form C below) MUST be regenerated via the documented codegen step (`pnpm generate:configs` / `pnpm install`) AND **explicitly `git add`'d** so the git **index** (not just the working tree) contains the new content; runbooks (`docs/runbooks/team-operations.md`) MUST be cross-linked; Codex/Claude subagent prompt files MUST embed or reference the new rule.
+
+   **Operational sequence** (do not skip steps):
+   ```bash
+   # 1. Edit authority + generator code
+   # 2. Run codegen
+   pnpm generate:configs
+   # 3. Stage regenerated outputs (CRITICAL — see Pitfall below)
+   git add <regenerated/path/foo.md> <regenerated/path/bar.md>
+   # 4. Verify index reflects content (NOT just working tree):
+   git diff --cached --stat -- <regenerated paths>
+   #    → expects non-empty diff with the expected line counts
+   # 5. Verify idempotence: re-run codegen + confirm working tree matches index:
+   pnpm generate:configs
+   git status --short -- <regenerated paths>
+   #    → expects column-1 'M' (staged) + column-2 blank (working tree clean)
+   ```
+
+   **Pitfall (this is the load-bearing step)**: `git status --short` shows two columns: column 1 is index-vs-HEAD; column 2 is working-tree-vs-index. After running the generator without `git add`, you see `' M'` (space + M) — **working tree differs from index, but index still matches HEAD**. `git commit` only commits the index. Skipping `git add` means the regenerated content is in your working tree but NOT in the next commit. The bundle would land authority + generator-code changes WITHOUT the regenerated outputs, leaving consumers (Wave 2 reviewers reading `.claude/agents/*.md`) at pre-update content. Use `git diff --cached` (not `git status`) as the canonical staging-verification command — `--cached` shows index-vs-HEAD only, which is what `git commit` will produce.
+
+   **Pitfall extension — `pnpm-lock.yaml` is a generated artifact too (sub-form C below)**: when the authority is `package.json` (any dependency add / remove / version bump / `@types/*` shift), `pnpm install` regenerates `pnpm-lock.yaml` as a deterministic derived artifact. Skipping `git add pnpm-lock.yaml` produces the same class of failure as skipping `git add .claude/agents/*.md`: working tree has the synced lockfile but the **index** still holds HEAD's stale lockfile, so the bundle ships `package.json` ahead of its lockfile. CI runs `pnpm install --frozen-lockfile` from the bundled state, sees the stale lockfile disagreeing with the new `package.json`, and fails install. The same `git diff --cached --stat -- pnpm-lock.yaml` canonical verification applies. (Wave 1 erratum commit `e15ec36`; codified as sub-form C below.)
+
+   Generated-from-authority files carry their own header comment ("GENERATED FROM agent-contract.md — DO NOT EDIT BY HAND") OR YAML frontmatter declaring authority source — both forms are acceptable. `pnpm-lock.yaml` lacks an explicit header (the format is fixed by pnpm) but is implicitly declared by `pnpm install`'s contract — its authority is `package.json` + the workspace `pnpm-workspace.yaml`.
+
+   **Wave 1 evidence**: **instance #8** — ADR-0006 v1 commit codified reviewer-prompt mandates but did not update `agent-contract.md` / regenerate `.claude/agents/code-reviewer.md` / regenerate `.claude/agents/pr-gate.md` / cross-link `team-operations.md` / regenerate `docs/review-checklist.md`; pr-gate caught the dogfood failure during R1 review of the close-ceremony bundle, forcing a v2 fix. **instance #12 (sub-form A — pre-regeneration omission)** — v5 bundle updated authority files (`agent-contract.md`, generator code, `team-operations.md` cross-link) but had not run the generator at all post-edit; the 3 regenerated outputs were stale at HEAD content; pr-gate caught this during R2 review, forcing a v6 fix. **instance #12 (sub-form B — staging-vs-working-tree confusion)** — v6 bundle ran the generator (so working tree had new content) but did NOT `git add` the regenerated outputs; the git **index** still held HEAD blob hashes for the 3 generated files; orchestrator confused `git status --short` "M" prefix (working-tree-vs-index) with index-vs-HEAD; pr-gate caught this via `git ls-files --stage` blob-hash comparison during R3 review, forcing the v7 fix that explicitly stages with `git add` + verifies via `git diff --cached`. **instance #12 (sub-form C — lockfile is a generated-from-authority artifact)** — Wave 1 close ceremony commit `e15ec36` ("fix(deps): commit pnpm-lock.yaml for @tailwindcss/typography (lockfile drift)"): the design-tokens erratum (commit `fdc86a8`) added the `@tailwindcss/typography` dependency to `package.json` but did not stage the regenerated `pnpm-lock.yaml`; CI install used the pre-update lockfile, drifted against the new `package.json`, and failed `pnpm install --frozen-lockfile`. Resolution: commit `e15ec36` staged the lockfile separately. Lesson codified: when the authority is `package.json` (any dependency add / remove / version bump), `pnpm-lock.yaml` is the consumer-side generated artifact and must ride the same bundle — the class equivalence to `.claude/agents/*.md` regeneration is exact (deterministic derive + git-index staging required). The four sub-forms of the same item #8 class — pre-regeneration omission, post-regeneration commit-staging confusion, conceptually-correct-but-operationally-incomplete fix, AND lockfile-as-generated-artifact — together motivate the explicit operational sequence and `git diff --cached` canonical verification command codified above.
+
+### Wave 2 prep notes (forward-compatibility application)
+
+The 8 items have specific Wave 2 trip-hazards already identified by Wave 1's review record:
+
+- **Item #1 + Wave 2 attr-bearing marks**: when the first attr-bearing mark beyond `link` is added to mdx-bridge (e.g. `highlight: {color}`, `kbd: {style}`), the worker MUST simultaneously update `wrapMark` AND `marksEqual` AND add a fixture exercising attr-equality + attr-distinction. Default `return true` in `marksEqual` is a silent-drop trap for any attr-bearing mark. (See pr-gate Track C v4 R3 caveat.)
+
+- **Item #2 + Wave 2 new error categories**: when Wave 2+ adds new HTTP error categories (e.g. `auth-rate-limit`, `kernel-timeout`), each new `SkbError` subclass MUST emit the same RFC-mandated headers as framework-raised peers. Add a unit test asserting header presence per error type. (See `apps/api/CONVENTIONS.md` §5 Pitfall + Pitfall continued.)
+
+- **Item #5 + Wave 2 client-side replications**: when apps/site adds new client-side algorithm replications (theme variants beyond light/dark, locale negotiation pre-hydration, etc.), the worker MUST audit both saved-value semantics AND try/catch scope against authority. (See `packages/design-tokens/CONTRACT.md` Inverse-direction obligation invariant.)
+
+- **Item #7 + future inline scripts**: ANY future `<script is:inline>` block in the project that needs pre-hydration replication of a package algorithm MUST follow the FOUC template (narrow try/catch + corpus regression test).
+
+## Consequences
+
+### Positive
+
+- **Catch the failure mode proactively**: Wave 1 evidence shows reviewer-applied checklist would have caught all 12 instances on the first review round (including the close-ceremony dogfood instance #8 + the 4 fix-loop reinforcements), eliminating 12 round-trip cycles
+- **Reviewer prompt clarity**: code-reviewer + pr-gate codex profile prompts gain a concrete, enumerable checklist rather than the implicit "look for symmetric counterparts" expectation
+- **Worker self-audit**: workers gain a pre-PR checklist they can run before reporting `ready-for-review`, catching their own asymmetries (memory: `feedback_verification_fresh_state.md` showed the verification-rigor lesson; this checklist is the analogous rigor at code-design level)
+- **Empirical grounding**: 12 distinct instances spread across 6 tracks + 5 close-ceremony fix iterations make this rule data-driven, not a "best practice" speculation; instances #9-12 reinforce items #6 + #8 specifically through close-ceremony fix-loop evidence
+
+### Costs
+
+- **Review-round time**: applying 8-point audit at every review adds ~5-10 minutes per round of code-reviewer + pr-gate runtime. Acceptable trade-off given Wave 1 round-counts (Track F: 5 rounds; Track A: 3 rounds; Track C: 4 rounds; Track D: 4 rounds) — front-loading review thoroughness reduces total cycles
+- **Worker prompt overhead**: each spawn prompt now needs a reference to this ADR + the 8-point checklist. Marginal cost.
+- **False-positive risk**: items that don't apply (e.g. #2 "status code" doesn't apply to TS-only packages) need to be triaged and skipped. Reviewer profile prompts must explicitly say "skip items not applicable to this PR's scope" to avoid bloat.
+
+### Risks (mitigated)
+
+- **Risk**: workers might mechanically check items without thinking, producing false confidence. **Mitigation**: each item enumerates concrete failure modes from Wave 1, not abstract heuristics — easier to apply
+- **Risk**: this list might grow unbounded as Wave 2+ surfaces new asymmetry classes. **Mitigation**: ADR amendments are cheap; each new instance produces an ADR-0006 erratum capturing item #N+1. Wave 2 close ceremony reviews instances and adds items as needed.
+
+## Implementation
+
+### Reviewer prompt updates
+
+`code-reviewer` and `pr-gate` profile prompts MUST be updated to:
+
+1. State the 8-point checklist verbatim (or by reference to this ADR)
+2. Require the reviewer's verdict structure to include "asymmetry-audit applied: items {1..8} verdicts: ..."
+3. Explicitly mark FAIL if any applicable item is left un-audited
+
+`docs/runbooks/team-operations.md` §"角色与触发器" Tier 2 reviewer rows should cross-link to this ADR.
+
+### Worker pre-flight (template addition)
+
+Worker `ready-for-review` reports SHOULD include a brief asymmetry-audit summary: which of the 8 items applied, and the worker's self-audit verdict. Reviewers cross-check.
+
+### Wave 1 retroactive
+
+This ADR is **forward-applicable**. Wave 1 PRs that already shipped under earlier review without this checklist remain valid; the empirical instances they revealed are exactly what grounded this ADR. No retroactive re-review required.
+
+## Related
+
+- [ADR-0001](ADR-0001-stack-selection.md) §3.2 review chain — this ADR specifies what reviewers MUST do; ADR-0001 specifies who reviews
+- [ADR-0002](ADR-0002-wave-1-close.md) Wave 1 close — collects the 12 empirical instances + 22 erratum candidates
+- [ADR-0004](ADR-0004-agent-team-dispatch-model.md) team dispatch — orchestrator dispatches review chain per this checklist
+- [docs/runbooks/team-operations.md](../runbooks/team-operations.md) — operational reference for reviewers and workers
+- [packages/design-tokens/CONTRACT.md](../../packages/design-tokens/CONTRACT.md) Inverse-direction obligation — concrete application of items #5 + #7
+- [apps/api/CONVENTIONS.md](../../apps/api/CONVENTIONS.md) §5 Pitfalls — concrete application of item #2
+
+ succeeded in 0ms:
+# Review checklist
+
+> **GENERATED FROM agent-contract.md — DO NOT EDIT BY HAND.**
+>
+> Edit `agent-contract.md` then run `pnpm generate:configs`.
+
+This is the shared rubric for the review chain. Each section maps to one reviewer agent.
+
+## Common invariants (every reviewer must verify)
+
+- [ ] **No worker-side `git` mutating commands.** PRs containing `git commit` / `git push` / `git rebase` outside `git-operator` dispatches are rejected.
+- [ ] **No worker-side `web_search` / `web_fetch`.** External web access must be sourced via researcher dispatch.
+- [ ] **No cross-package moves outside `refactorer`.** Moves under `packages/*` or `apps/*` boundaries require an ADR + refactorer dispatch.
+- [ ] **File size**: warn at 300 (ESLint), hard fail at 500 (`pnpm size-check`).
+- [ ] **Cross-references**: all internal markdown links resolve (`pnpm link-check`).
+- [ ] **Contracts in sync**: `packages/*/CONTRACT.md`, `agent-contract.md`, and code interfaces match.
+
+Spec: §3.1 + §3.2 + §3.6 + §3.5.
+
+## ADR-0006 asymmetry-audit checklist (mandatory for code-reviewer + pr-gate)
+
+Apply each item that is in scope for the PR; explicitly skip items that are not (e.g. item #2 "status code" doesn't apply to TS-only packages). Reviewer verdict structure MUST include `asymmetry-audit applied: items {1..8} verdicts: ...`. See [ADR-0006](decisions/ADR-0006-asymmetry-audit-checklist.md) for empirical evidence + full rationale per item.
+
+- [ ] **#1 Field/attribute audit**: After adding a field to a data shape, audit every comparator/equality/serialization function for that field.
+- [ ] **#2 Status code audit**: After adding a status code to one handler, audit every other handler emitting the same code; RFC-mandated headers (RFC 7235 `WWW-Authenticate`, RFC 7231 `Allow`) attach to the status code itself.
+- [ ] **#3 Strictness audit**: After adding `.strict()` / `extra='forbid'` at one level, audit every nested object/sub-schema (strictness does not propagate).
+- [ ] **#4 Consumer schema audit**: After defining a schema in a single-authority package, audit every consumer for inline duplicates; "deferred swap" is a contract break.
+- [ ] **#5 Algorithm + runtime constant replication audit**: When an algorithm or constant is replicated outside its authority (inline FOUC scripts, login challenge derivation, etc.), audit consumer-side replicas for byte-equivalent reproduction; replica MUST register a regression test against the authority's input corpus.
+- [ ] **#6 Sister-file documentation audit**: After updating one CONTRACT.md (or analogous document), audit ALL related CONTRACT.md files for sister-file drift; shared identifiers must use identical terminology across both halves of the contract.
+- [ ] **#7 Exception-scope equivalence audit**: When replicating an algorithm + its exception handling, audit BOTH happy-path semantics AND `try/catch` scope between authority and replica; narrow vs wide try/catch can produce divergent fall-through behavior.
+- [ ] **#8 Authority-document → generated/consumed surface audit**: When updating an authority document (ADR, spec, `agent-contract.md`, runbook, CONVENTIONS) that mandates downstream behavior, audit every consumer-side replica/generated artifact in the same commit; regenerate codegen outputs (`pnpm generate:configs`); cross-link runbooks; embed in subagent prompts.
+
+`pr-gate` MUST additionally hunt for an 8th-class instance beyond the cited fix (Wave 1 evidence: pr-gate caught one extra asymmetry per round on every Wave 1 high-risk PR).
+
+## For code-reviewer (Codex 5.3-spark)
+
+Default cheap line-level review. Output PASS / FAIL with concrete issues.
+
+- [ ] **Types**: no `any` leakage; `unknown` narrowed at boundaries; `pnpm exec tsc -b` clean.
+- [ ] **Lint**: `pnpm exec eslint .` produces no errors (warnings tolerated).
+- [ ] **File size**: every changed file under 500 lines; aim for 200, warn at 300.
+- [ ] **Contracts**: any change to `packages/*/CONTRACT.md` matches the implementation
+      in the same PR (no orphan interface drift).
+- [ ] **Module boundaries**: imports respect package boundaries (no reaching into another
+      package's `src/internal/`); no circular deps introduced.
+- [ ] **Style**: prettier-clean; no commented-out blocks; no leftover `console.log`.
+
+## For pr-gate (Codex 5.5, high-risk only)
+
+Triggered by: contract change, package add/remove, core arch touch, ADR-required PR,
+CI/deploy/auth/security touch. Deep scan.
+
+- [ ] **Vulnerabilities**: no obvious injection / XSS / SSRF / deserialization sinks; secrets
+      never read from request bodies; HTTP responses don't leak internal state.
+- [ ] **Cross-package side effects**: changes to one package don't silently break another
+      (especially `block-foundation`, `mdx-bridge`, `kernel-adapter` consumers).
+- [ ] **Supply chain**: any new dependency vetted for maintenance status, license, and
+      transitive risk; no abandoned forks.
+- [ ] **Lockfile integrity**: `pnpm-lock.yaml` change is consistent with `package.json`
+      diffs; no unexplained version churn; no peer-dep warnings worsened.
+- [ ] **Auth / boundary**: no permission expanded silently (e.g. router exposing previously
+      private route); CSRF / SameSite still enforced; no `eval` / `Function` constructor.
+
+## For pr-reviewer (Claude)
+
+Implementation quality, regression risk, spec match. Output APPROVE / REJECT + reasoning.
+
+- [ ] **Spec compliance**: implementation matches the locked design spec (cite section).
+- [ ] **Regression risk**: existing tests still cover the affected paths; no behavior change
+      that would break a downstream package or doc snippet.
+- [ ] **Architectural consistency**: change matches existing patterns; new patterns have an
+      ADR under `docs/decisions/` if cross-cutting.
+- [ ] **Cross-file impact**: every doc / cross-reference updated (`agent-contract.md` →
+      regenerate; `CONTRACT.md` ↔ implementation; `docs/plans/` reflects status).
+- [ ] **Tests**: `vitest` / `pytest` coverage for new behavior; no flaky timing-dependent
+      assertions.
+
+## Related
+
+- [Review workflow — spec §3.2](superpowers/specs/2026-04-29-self-knowledge-base-design.md)
+- [agent-contract.md — single source](../agent-contract.md)
+
+exec
+/bin/bash -lc "sed -n '20,80p' docs/runbooks/codex-tool-invocations.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+## Universal Bash invariants
+
+```bash
+codex exec --profile <PROFILE> "<PROMPT>" < /dev/null > <AUDIT_LOG_PATH> 2>&1
+```
+
+- **`< /dev/null` is mandatory** in non-interactive contexts. Codex CLI under Claude Code Bash blocks reading a never-closed Unix socket on fd 0 if stdin is left open. (Phase 0 regression; see memory `feedback_codex_stdin`.)
+- **`approval_policy = "never"`** is set per profile in TOML; do not pass interactive approval flags.
+- **stderr captures progress**, **stdout captures the final structured verdict**. Orchestrator parses stdout only.
+- **`timeout`-wrap long runs** (e.g. `timeout 600 codex exec --profile pr-gate ...`) to prevent hung invocations.
+- **3-strike fallback**: if a pattern's invocation fails 3× consecutively, orchestrator MUST escalate (degrade to Claude per ADR-0001 fallback or surface to user).
+
+## ADR-0006 D8 reminder
+
+When invocation outputs become inputs to a commit (e.g. scaffolder writes new files), the
+orchestrator MUST stage `pnpm-lock.yaml` along with package.json edits in the same bundle
+(commit `e15ec36` extension to D8: lockfile is generated-from-authority artifact).
+
+
+## `code-reviewer`
+
+**Profile**: `code-reviewer`
+
+**Canonical bash**:
+
+```bash
+codex exec --profile code-reviewer < /dev/null
+```
+
+**Triggered by**:
+
+- `worker_marks_ready_for_review`
+
+**Output handling**:
+
+orchestrator 读 stdout 解析 PASS/FAIL + 问题清单；
+stdout 落盘到 docs/audits/codex-runs/<date>-<task>-code-review.txt（audit 兜底）。
+
+**Description**:
+
+行级 review：类型 / lint / 契约同步 / 文件大小 / 风格 / 边界条件。
+gpt-5.3-codex-spark（廉价默认）。**绝不修改代码**。
+高风险 PR 按 ADR-0007 D2 表条件 escalate（rows 1/2/4/8 → +pr-gate +pr-reviewer；rows 3/5/6/7 → 仅 +pr-reviewer，不跑 pr-gate）。
+
+**强制：ADR-0006 8-point asymmetry-audit checklist**（见 `docs/decisions/ADR-0006-asymmetry-audit-checklist.md`）必须按可适用项目逐条审查，verdict 结构应包含
+`asymmetry-audit applied: items {1..8} verdicts: ...`。8 项概要：
+(1) 字段/属性新增 → 审 comparator/序列化；
+(2) 状态码新增 → 审同 status 的所有 handler（RFC 7235 等强制头）；
+(3) `.strict()` 加于一层 → 审所有嵌套 ZodObject；
+(4) single-authority schema → 审所有 consumer 是否复刻定义；
+(5) 算法 + 运行时常量复刻 → 审 consumer 端字节等价 + 注册回归测试；
+(6) 一份 CONTRACT.md 改动 → 审 sister CONTRACT.md 是否同步；
+(7) try/catch 范围 → narrow vs wide 在 happy-path 等价时仍可异常分流；
+(8) authority 文档（ADR/agent-contract/runbook/CONVENTIONS）改动 → 审 generated/consumed surface（`.claude/agents/*`、`docs/review-checklist.md`、`team-operations.md`、`docs/runbooks/codex-tool-invocations.md`、Codex profiles、**pnpm-lock.yaml**）是否在同一 commit 里同步（commit `e15ec36` 教训：lockfile 也属 generated-from-authority artifact）。
+
+## `plan-challenger`
+
+**Profile**: `plan-challenger`
+
+**Canonical bash**:
+
+
+exec
+/bin/bash -lc 'rg -n "@playwright/test|playwright" apps/site package.json .github/workflows/ci.yml pnpm-lock.yaml' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+pnpm-lock.yaml:87:      '@playwright/test':
+pnpm-lock.yaml:1011:  '@playwright/test@1.49.0':
+pnpm-lock.yaml:2932:  playwright-core@1.49.0:
+pnpm-lock.yaml:2937:  playwright@1.49.0:
+pnpm-lock.yaml:3693:      '@vitest/browser-playwright': 4.1.5
+pnpm-lock.yaml:3709:      '@vitest/browser-playwright':
+pnpm-lock.yaml:4613:  '@playwright/test@1.49.0':
+pnpm-lock.yaml:4615:      playwright: 1.49.0
+pnpm-lock.yaml:6960:  playwright-core@1.49.0: {}
+pnpm-lock.yaml:6962:  playwright@1.49.0:
+pnpm-lock.yaml:6964:      playwright-core: 1.49.0
+.github/workflows/ci.yml:95:          path: ~/.cache/ms-playwright
+.github/workflows/ci.yml:96:          key: ${{ runner.os }}-playwright-1.49.0
+.github/workflows/ci.yml:97:      - run: pnpm exec playwright install --with-deps chromium
+apps/site/playwright.config.ts:1:import { defineConfig, devices } from '@playwright/test';
+apps/site/package.json:13:    "test:visual": "playwright test"
+apps/site/package.json:28:    "@playwright/test": "1.49.0",
+apps/site/src/__tests__/visual-smoke.spec.ts:1:import { test, expect } from '@playwright/test';
+
+codex
+我再做最后核对：确认 `visual-smoke.spec.ts` 不再使用 `count()` 原始断言，并做一次全局关键字检索确认 Playwright 词汇只围绕本任务。
+exec
+/bin/bash -lc "rg -n \"count\\(\\)|await\\s+page\\.goto\\(|getByRole\\(|toHaveCount|networkidle|@playwright/test|playwright\" apps/site/src/__tests__/visual-smoke.spec.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+1:import { test, expect } from '@playwright/test';
+4:  await page.goto('/');
+5:  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+9:  await page.goto('/notes/sample-mdx-note');
+10:  await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
+14:  await page.goto('/');
+18:  // dropped on slow CI runners. networkidle is the canonical proxy for
+20:  await page.waitForLoadState('networkidle');
+21:  await page.getByRole('button', { name: /Switch to (dark|light) mode/ }).click();
+
+exec
+/bin/bash -lc "awk 'NR>=980&&NR<=1045{print NR\":\""'$0} NR==1011,NR==1035{ }'"' pnpm-lock.yaml" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+980:
+981:  '@jridgewell/trace-mapping@0.3.31':
+982:    resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
+983:
+984:  '@mdx-js/mdx@3.1.1':
+985:    resolution: {integrity: sha512-f6ZO2ifpwAQIpzGWaBQT2TXxPv6z3RBzQKpVftEWN78Vl/YweF1uwussDx8ECAXVtr3Rs89fKyG9YlzUs9DyGQ==}
+986:
+987:  '@napi-rs/wasm-runtime@1.1.4':
+988:    resolution: {integrity: sha512-3NQNNgA1YSlJb/kMH1ildASP9HW7/7kYnRI2szWJaofaS1hWmbGI4H+d3+22aGzXXN9IJ+n+GiFVcGipJP18ow==}
+989:    peerDependencies:
+990:      '@emnapi/core': ^1.7.1
+991:      '@emnapi/runtime': ^1.7.1
+992:
+993:  '@nodelib/fs.scandir@2.1.5':
+994:    resolution: {integrity: sha512-vq24Bq3ym5HEQm2NKCr3yXDwjc7vTsEThRDnkp2DK9p1uqLR+DHurm/NOTo0KG7HYHU7eppKZj3MyqYuMBf62g==}
+995:    engines: {node: '>= 8'}
+996:
+997:  '@nodelib/fs.stat@2.0.5':
+998:    resolution: {integrity: sha512-RkhPPp2zrqDAQA/2jNhnztcPAlv64XdhIp7a7454A5ovI7Bukxgt7MX7udwAu3zg1DcpPU0rz3VV1SeaqvY4+A==}
+999:    engines: {node: '>= 8'}
+1000:
+1001:  '@nodelib/fs.walk@1.2.8':
+1002:    resolution: {integrity: sha512-oGB+UxlgWcgQkgwo8GcEGwemoTFt3FIO9ababBmaGwXIoBKZ+GTy0pP185beGg7Llih/NSHSV2XAs1lnznocSg==}
+1003:    engines: {node: '>= 8'}
+1004:
+1005:  '@oslojs/encoding@1.1.0':
+1006:    resolution: {integrity: sha512-70wQhgYmndg4GCPxPPxPGevRKqTIJ2Nh4OkiMWmDAVYsTQ+Ta7Sq+rPevXyXGdzr30/qZBnyOalCszoMxlyldQ==}
+1007:
+1008:  '@oxc-project/types@0.127.0':
+1009:    resolution: {integrity: sha512-aIYXQBo4lCbO4z0R3FHeucQHpF46l2LbMdxRvqvuRuW2OxdnSkcng5B8+K12spgLDj93rtN3+J2Vac/TIO+ciQ==}
+1010:
+1011:  '@playwright/test@1.49.0':
+1012:    resolution: {integrity: sha512-DMulbwQURa8rNIQrf94+jPJQ4FmOVdpE5ZppRNvWVjvhC+6sOeo28r8MgIpQRYouXRtt/FCCXU7zn20jnHR4Qw==}
+1013:    engines: {node: '>=18'}
+1014:    hasBin: true
+1015:
+1016:  '@remirror/core-constants@3.0.0':
+1017:    resolution: {integrity: sha512-42aWfPrimMfDKDi4YegyS7x+/0tlzaqwPQCULLanv3DMIlu96KTJR0fM5isWX2UViOqlGnX6YFgqWepcX+XMNg==}
+1018:
+1019:  '@rolldown/binding-android-arm64@1.0.0-rc.17':
+1020:    resolution: {integrity: sha512-s70pVGhw4zqGeFnXWvAzJDlvxhlRollagdCCKRgOsgUOH3N1l0LIxf83AtGzmb5SiVM4Hjl5HyarMRfdfj3DaQ==}
+1021:    engines: {node: ^20.19.0 || >=22.12.0}
+1022:    cpu: [arm64]
+1023:    os: [android]
+1024:
+1025:  '@rolldown/binding-darwin-arm64@1.0.0-rc.17':
+1026:    resolution: {integrity: sha512-4ksWc9n0mhlZpZ9PMZgTGjeOPRu8MB1Z3Tz0Mo02eWfWCHMW1zN82Qz/pL/rC+yQa+8ZnutMF0JjJe7PjwasYw==}
+1027:    engines: {node: ^20.19.0 || >=22.12.0}
+1028:    cpu: [arm64]
+1029:    os: [darwin]
+1030:
+1031:  '@rolldown/binding-darwin-x64@1.0.0-rc.17':
+1032:    resolution: {integrity: sha512-SUSDOI6WwUVNcWxd02QEBjLdY1VPHvlEkw6T/8nYG322iYWCTxRb1vzk4E+mWWYehTp7ERibq54LSJGjmouOsw==}
+1033:    engines: {node: ^20.19.0 || >=22.12.0}
+1034:    cpu: [x64]
+1035:    os: [darwin]
+1036:
+1037:  '@rolldown/binding-freebsd-x64@1.0.0-rc.17':
+1038:    resolution: {integrity: sha512-hwnz3nw9dbJ05EDO/PvcjaaewqqDy7Y1rn1UO81l8iIK1GjenME75dl16ajbvSSMfv66WXSRCYKIqfgq2KCfxw==}
+1039:    engines: {node: ^20.19.0 || >=22.12.0}
+1040:    cpu: [x64]
+1041:    os: [freebsd]
+1042:
+1043:  '@rolldown/binding-linux-arm-gnueabihf@1.0.0-rc.17':
+1044:    resolution: {integrity: sha512-IS+W7epTcwANmFSQFrS1SivEXHtl1JtuQA9wlxrZTcNi6mx+FDOYrakGevvvTwgj2JvWiK8B29/qD9BELZPyXQ==}
+1045:    engines: {node: ^20.19.0 || >=22.12.0}
+
+codex
+我再补一刀确认 CI 命令语义：`pnpm exec playwright` 在 root 直接执行是否会稳定命中 `apps/site` 依赖（二次确认潜在路径），避免把 B2 block 隐性留到 CI。
+exec
+/bin/bash -lc "rg -n \"pnpm exec playwright|playwright install|test:visual|visual-smoke\" -g '*.yml' -g '*.yaml' .github docs apps/site | head -n 80" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+.github/workflows/ci.yml:81:  visual-smoke:
+.github/workflows/ci.yml:97:      - run: pnpm exec playwright install --with-deps chromium
+.github/workflows/ci.yml:99:      - run: pnpm --filter @skb/site test:visual
+
+exec
+/bin/bash -lc "sed -n '1,220p' pnpm-workspace.yaml" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+packages:
+  - 'apps/*'
+  - 'packages/*'
+
+codex
+我发现 `.github` 里新增了 `pnpm exec playwright`，这个点需要确认是否在 workspace 根上下文下就能解析到 apps/site 的 bin；我先快速扫一遍当前 CI 中其它 `pnpm exec` 用法作对照。
+exec
+/bin/bash -lc 'rg -n "''^'"\\s*- run: pnpm exec \" -g '.github/workflows/*.yml' .github/workflows/*.yaml" in /home/weiyi/selfKnowledgeBaseWeb
+ exited 2 in 0ms:
+rg: .github/workflows/*.yaml: IO error for operation on .github/workflows/*.yaml: No such file or directory (os error 2)
+
+exec
+/bin/bash -lc 'rg -n "pnpm exec " .github/workflows/ci.yml' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+97:      - run: pnpm exec playwright install --with-deps chromium
+
+exec
+/bin/bash -lc "sed -n '1,220p' package.json" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+{
+  "name": "self-knowledge-base-web",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "pnpm@9.12.0",
+  "type": "module",
+  "engines": {
+    "node": ">=22",
+    "pnpm": ">=9"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev --parallel",
+    "lint": "eslint .",
+    "lint:packages": "turbo run lint",
+    "typecheck": "tsc -b",
+    "typecheck:packages": "turbo run typecheck",
+    "test": "vitest run",
+    "test:packages": "turbo run test",
+    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm size-check && pnpm lint:packages && pnpm typecheck:packages && pnpm test:packages",
+    "check:affected": "turbo run lint typecheck test --filter=...[origin/main]",
+    "size-check": "node scripts/check-size-limits.mjs",
+    "link-check": "lychee --config .lychee.toml './**/*.md'",
+    "generate:configs": "tsx scripts/generate-configs.ts",
+    "format": "prettier --write \"**/*.{ts,tsx,js,mjs,cjs,json,md,yaml,yml}\""
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "@types/node": "^22.0.0",
+    "commander": "^11.1.0",
+    "eslint": "^9.0.0",
+    "globals": "^15.0.0",
+    "prettier": "^3.0.0",
+    "turbo": "^2.0.0",
+    "ts-morph": "^28.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "~5.6.0",
+    "typescript-eslint": "^8.0.0",
+    "vitest": "^4.1.5",
+    "yaml": "^2.8.3",
+    "zod": "^3.23.0"
+  }
+}
+
+exec
+/bin/bash -lc "sed -n '1,200p' .npmrc || true" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+auto-install-peers=true
+strict-peer-dependencies=false
+shamefully-hoist=false
+prefer-frozen-lockfile=true
+
+codex
+我已发现一处高风险问题（CI 二进制解析路径），先补充精确行号后给出最终 PASS/FAIL 与逐项 verdict。
+exec
+/bin/bash -lc "nl -ba .github/workflows/ci.yml | sed -n '80,130p'" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "nl -ba apps/site/src/__tests__/visual-smoke.spec.ts | sed -n '1,200p'" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "nl -ba apps/site/package.json | sed -n '1,140p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 162ms:
+    80	
+    81	  visual-smoke:
+    82	    needs: build
+    83	    runs-on: ubuntu-latest
+    84	    steps:
+    85	      - uses: actions/checkout@v4
+    86	      - uses: pnpm/action-setup@v4
+    87	      - uses: actions/setup-node@v4
+    88	        with:
+    89	          node-version: 22
+    90	          cache: pnpm
+    91	      - run: pnpm install --frozen-lockfile
+    92	      - name: Cache Playwright browsers
+    93	        uses: actions/cache@v4
+    94	        with:
+    95	          path: ~/.cache/ms-playwright
+    96	          key: ${{ runner.os }}-playwright-1.49.0
+    97	      - run: pnpm exec playwright install --with-deps chromium
+    98	        working-directory: apps/site
+    99	      - run: pnpm --filter @skb/site test:visual
+
+ succeeded in 154ms:
+     1	import { test, expect } from '@playwright/test';
+     2	
+     3	test('home page renders', async ({ page }) => {
+     4	  await page.goto('/');
+     5	  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+     6	});
+     7	
+     8	test('detail page renders sample note with single H1', async ({ page }) => {
+     9	  await page.goto('/notes/sample-mdx-note');
+    10	  await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
+    11	});
+    12	
+    13	test('theme toggle switches data-theme to dark', async ({ page }) => {
+    14	  await page.goto('/');
+    15	  // ThemeToggle is an Astro `client:load` React island; the onClick listener
+    16	  // attaches only after hydration completes. Playwright's actionability check
+    17	  // (visible+enabled) does not wait for listener attach, so click() can be
+    18	  // dropped on slow CI runners. networkidle is the canonical proxy for
+    19	  // hydration-complete on a static Astro site (all initial fetches settled).
+    20	  await page.waitForLoadState('networkidle');
+    21	  await page.getByRole('button', { name: /Switch to (dark|light) mode/ }).click();
+    22	  await expect(page.locator('html')).toHaveAttribute('data-theme', /^dark$/);
+    23	});
+
+ succeeded in 165ms:
+     1	{
+     2	  "name": "@skb/site",
+     3	  "version": "0.0.0",
+     4	  "private": true,
+     5	  "type": "module",
+     6	  "scripts": {
+     7	    "dev": "astro dev",
+     8	    "build": "astro build",
+     9	    "preview": "astro preview",
+    10	    "typecheck": "astro check && tsc --noEmit",
+    11	    "lint": "eslint .",
+    12	    "test": "vitest run",
+    13	    "test:visual": "playwright test"
+    14	  },
+    15	  "dependencies": {
+    16	    "@astrojs/mdx": "^4.0.0",
+    17	    "@astrojs/react": "^4.0.0",
+    18	    "@astrojs/tailwind": "^6.0.0",
+    19	    "@skb/content-types": "workspace:*",
+    20	    "@skb/design-tokens": "workspace:*",
+    21	    "astro": "^5.0.0",
+    22	    "react": "^18.3.0",
+    23	    "react-dom": "^18.3.0",
+    24	    "tailwindcss": "^3.4.0"
+    25	  },
+    26	  "devDependencies": {
+    27	    "@astrojs/check": "^0.9.0",
+    28	    "@playwright/test": "1.49.0",
+    29	    "@types/react": "^18.3.0",
+    30	    "@types/react-dom": "^18.3.0",
+    31	    "happy-dom": "^15.0.0",
+    32	    "typescript": "~5.6.0",
+    33	    "vitest": "^4.1.5"
+    34	  }
+    35	}
+
+exec
+/bin/bash -lc "nl -ba pnpm-lock.yaml | sed -n '70,120p'; echo '---'; nl -ba pnpm-lock.yaml | sed -n '1000,1045p'; echo '---'; nl -ba pnpm-lock.yaml | sed -n '4600,4635p'; echo '---'; nl -ba pnpm-lock.yaml | sed -n '2940,2985p'; echo '---'; nl -ba pnpm-lock.yaml | sed -n '6950,7005p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 114ms:
+    70	        version: link:../../packages/design-tokens
+    71	      astro:
+    72	        specifier: ^5.0.0
+    73	        version: 5.18.1(@types/node@22.19.17)(jiti@1.21.7)(lightningcss@1.32.0)(rollup@4.60.2)(tsx@4.21.0)(typescript@5.6.3)(yaml@2.8.3)
+    74	      react:
+    75	        specifier: ^18.3.0
+    76	        version: 18.3.1
+    77	      react-dom:
+    78	        specifier: ^18.3.0
+    79	        version: 18.3.1(react@18.3.1)
+    80	      tailwindcss:
+    81	        specifier: ^3.4.0
+    82	        version: 3.4.19(tsx@4.21.0)(yaml@2.8.3)
+    83	    devDependencies:
+    84	      '@astrojs/check':
+    85	        specifier: ^0.9.0
+    86	        version: 0.9.9(prettier@3.8.3)(typescript@5.6.3)
+    87	      '@playwright/test':
+    88	        specifier: 1.49.0
+    89	        version: 1.49.0
+    90	      '@types/react':
+    91	        specifier: ^18.3.0
+    92	        version: 18.3.28
+    93	      '@types/react-dom':
+    94	        specifier: ^18.3.0
+    95	        version: 18.3.7(@types/react@18.3.28)
+    96	      happy-dom:
+    97	        specifier: ^15.0.0
+    98	        version: 15.11.7
+    99	      typescript:
+   100	        specifier: ~5.6.0
+   101	        version: 5.6.3
+   102	      vitest:
+   103	        specifier: ^4.1.5
+   104	        version: 4.1.5(@types/node@22.19.17)(happy-dom@15.11.7)(vite@6.4.2(@types/node@22.19.17)(jiti@1.21.7)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.8.3))
+   105	
+   106	  packages/agent-tools:
+   107	    dependencies:
+   108	      '@skb/editor-commands':
+   109	        specifier: workspace:*
+   110	        version: link:../editor-commands
+   111	      zod:
+   112	        specifier: ^3.23.0
+   113	        version: 3.25.76
+   114	    devDependencies:
+   115	      typescript:
+   116	        specifier: ~5.6.0
+   117	        version: 5.6.3
+   118	      vitest:
+   119	        specifier: ^4.1.5
+   120	        version: 4.1.5(@types/node@22.19.17)(happy-dom@15.11.7)(vite@8.0.10(@types/node@22.19.17)(esbuild@0.27.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.3))
+---
+  1000	
+  1001	  '@nodelib/fs.walk@1.2.8':
+  1002	    resolution: {integrity: sha512-oGB+UxlgWcgQkgwo8GcEGwemoTFt3FIO9ababBmaGwXIoBKZ+GTy0pP185beGg7Llih/NSHSV2XAs1lnznocSg==}
+  1003	    engines: {node: '>= 8'}
+  1004	
+  1005	  '@oslojs/encoding@1.1.0':
+  1006	    resolution: {integrity: sha512-70wQhgYmndg4GCPxPPxPGevRKqTIJ2Nh4OkiMWmDAVYsTQ+Ta7Sq+rPevXyXGdzr30/qZBnyOalCszoMxlyldQ==}
+  1007	
+  1008	  '@oxc-project/types@0.127.0':
+  1009	    resolution: {integrity: sha512-aIYXQBo4lCbO4z0R3FHeucQHpF46l2LbMdxRvqvuRuW2OxdnSkcng5B8+K12spgLDj93rtN3+J2Vac/TIO+ciQ==}
+  1010	
+  1011	  '@playwright/test@1.49.0':
+  1012	    resolution: {integrity: sha512-DMulbwQURa8rNIQrf94+jPJQ4FmOVdpE5ZppRNvWVjvhC+6sOeo28r8MgIpQRYouXRtt/FCCXU7zn20jnHR4Qw==}
+  1013	    engines: {node: '>=18'}
+  1014	    hasBin: true
+  1015	
+  1016	  '@remirror/core-constants@3.0.0':
+  1017	    resolution: {integrity: sha512-42aWfPrimMfDKDi4YegyS7x+/0tlzaqwPQCULLanv3DMIlu96KTJR0fM5isWX2UViOqlGnX6YFgqWepcX+XMNg==}
+  1018	
+  1019	  '@rolldown/binding-android-arm64@1.0.0-rc.17':
+  1020	    resolution: {integrity: sha512-s70pVGhw4zqGeFnXWvAzJDlvxhlRollagdCCKRgOsgUOH3N1l0LIxf83AtGzmb5SiVM4Hjl5HyarMRfdfj3DaQ==}
+  1021	    engines: {node: ^20.19.0 || >=22.12.0}
+  1022	    cpu: [arm64]
+  1023	    os: [android]
+  1024	
+  1025	  '@rolldown/binding-darwin-arm64@1.0.0-rc.17':
+  1026	    resolution: {integrity: sha512-4ksWc9n0mhlZpZ9PMZgTGjeOPRu8MB1Z3Tz0Mo02eWfWCHMW1zN82Qz/pL/rC+yQa+8ZnutMF0JjJe7PjwasYw==}
+  1027	    engines: {node: ^20.19.0 || >=22.12.0}
+  1028	    cpu: [arm64]
+  1029	    os: [darwin]
+  1030	
+  1031	  '@rolldown/binding-darwin-x64@1.0.0-rc.17':
+  1032	    resolution: {integrity: sha512-SUSDOI6WwUVNcWxd02QEBjLdY1VPHvlEkw6T/8nYG322iYWCTxRb1vzk4E+mWWYehTp7ERibq54LSJGjmouOsw==}
+  1033	    engines: {node: ^20.19.0 || >=22.12.0}
+  1034	    cpu: [x64]
+  1035	    os: [darwin]
+  1036	
+  1037	  '@rolldown/binding-freebsd-x64@1.0.0-rc.17':
+  1038	    resolution: {integrity: sha512-hwnz3nw9dbJ05EDO/PvcjaaewqqDy7Y1rn1UO81l8iIK1GjenME75dl16ajbvSSMfv66WXSRCYKIqfgq2KCfxw==}
+  1039	    engines: {node: ^20.19.0 || >=22.12.0}
+  1040	    cpu: [x64]
+  1041	    os: [freebsd]
+  1042	
+  1043	  '@rolldown/binding-linux-arm-gnueabihf@1.0.0-rc.17':
+  1044	    resolution: {integrity: sha512-IS+W7epTcwANmFSQFrS1SivEXHtl1JtuQA9wlxrZTcNi6mx+FDOYrakGevvvTwgj2JvWiK8B29/qD9BELZPyXQ==}
+  1045	    engines: {node: ^20.19.0 || >=22.12.0}
+---
+  4600	      run-parallel: 1.2.0
+  4601	
+  4602	  '@nodelib/fs.stat@2.0.5': {}
+  4603	
+  4604	  '@nodelib/fs.walk@1.2.8':
+  4605	    dependencies:
+  4606	      '@nodelib/fs.scandir': 2.1.5
+  4607	      fastq: 1.20.1
+  4608	
+  4609	  '@oslojs/encoding@1.1.0': {}
+  4610	
+  4611	  '@oxc-project/types@0.127.0': {}
+  4612	
+  4613	  '@playwright/test@1.49.0':
+  4614	    dependencies:
+  4615	      playwright: 1.49.0
+  4616	
+  4617	  '@remirror/core-constants@3.0.0': {}
+  4618	
+  4619	  '@rolldown/binding-android-arm64@1.0.0-rc.17':
+  4620	    optional: true
+  4621	
+  4622	  '@rolldown/binding-darwin-arm64@1.0.0-rc.17':
+  4623	    optional: true
+  4624	
+  4625	  '@rolldown/binding-darwin-x64@1.0.0-rc.17':
+  4626	    optional: true
+  4627	
+  4628	  '@rolldown/binding-freebsd-x64@1.0.0-rc.17':
+  4629	    optional: true
+  4630	
+  4631	  '@rolldown/binding-linux-arm-gnueabihf@1.0.0-rc.17':
+  4632	    optional: true
+  4633	
+  4634	  '@rolldown/binding-linux-arm64-gnu@1.0.0-rc.17':
+  4635	    optional: true
+---
+  2940	    hasBin: true
+  2941	
+  2942	  postcss-import@15.1.0:
+  2943	    resolution: {integrity: sha512-hpr+J05B2FVYUAXHeK1YyI267J/dDDhMU6B6civm8hSY1jYJnBXxzKDKDswzJmtLHryrjhnDjqqp/49t8FALew==}
+  2944	    engines: {node: '>=14.0.0'}
+  2945	    peerDependencies:
+  2946	      postcss: ^8.0.0
+  2947	
+  2948	  postcss-js@4.1.0:
+  2949	    resolution: {integrity: sha512-oIAOTqgIo7q2EOwbhb8UalYePMvYoIeRY2YKntdpFQXNosSu3vLrniGgmH9OKs/qAkfoj5oB3le/7mINW1LCfw==}
+  2950	    engines: {node: ^12 || ^14 || >= 16}
+  2951	    peerDependencies:
+  2952	      postcss: ^8.4.21
+  2953	
+  2954	  postcss-load-config@4.0.2:
+  2955	    resolution: {integrity: sha512-bSVhyJGL00wMVoPUzAVAnbEoWyqRxkjv64tUl427SKnPrENtq6hJwUojroMz2VB+Q1edmi4IfrAPpami5VVgMQ==}
+  2956	    engines: {node: '>= 14'}
+  2957	    peerDependencies:
+  2958	      postcss: '>=8.0.9'
+  2959	      ts-node: '>=9.0.0'
+  2960	    peerDependenciesMeta:
+  2961	      postcss:
+  2962	        optional: true
+  2963	      ts-node:
+  2964	        optional: true
+  2965	
+  2966	  postcss-load-config@6.0.1:
+  2967	    resolution: {integrity: sha512-oPtTM4oerL+UXmx+93ytZVN82RrlY/wPUV8IeDxFrzIjXOLF1pN+EmKPLbubvKHT2HC20xXsCAH2Z+CKV6Oz/g==}
+  2968	    engines: {node: '>= 18'}
+  2969	    peerDependencies:
+  2970	      jiti: '>=1.21.0'
+  2971	      postcss: '>=8.0.9'
+  2972	      tsx: ^4.8.1
+  2973	      yaml: ^2.4.2
+  2974	    peerDependenciesMeta:
+  2975	      jiti:
+  2976	        optional: true
+  2977	      postcss:
+  2978	        optional: true
+  2979	      tsx:
+  2980	        optional: true
+  2981	      yaml:
+  2982	        optional: true
+  2983	
+  2984	  postcss-nested@6.2.0:
+  2985	    resolution: {integrity: sha512-HQbt28KulC5AJzG+cZtj9kvKB93CFCdLvog1WFLf1D+xmMvPGlBstkpTEZfK5+AN9hfJocyBFCNiqyS48bpgzQ==}
+---
+  6950	  picocolors@1.1.1: {}
+  6951	
+  6952	  picomatch@2.3.2: {}
+  6953	
+  6954	  picomatch@4.0.4: {}
+  6955	
+  6956	  pify@2.3.0: {}
+  6957	
+  6958	  pirates@4.0.7: {}
+  6959	
+  6960	  playwright-core@1.49.0: {}
+  6961	
+  6962	  playwright@1.49.0:
+  6963	    dependencies:
+  6964	      playwright-core: 1.49.0
+  6965	    optionalDependencies:
+  6966	      fsevents: 2.3.2
+  6967	
+  6968	  postcss-import@15.1.0(postcss@8.5.12):
+  6969	    dependencies:
+  6970	      postcss: 8.5.12
+  6971	      postcss-value-parser: 4.2.0
+  6972	      read-cache: 1.0.0
+  6973	      resolve: 1.22.12
+  6974	
+  6975	  postcss-js@4.1.0(postcss@8.5.12):
+  6976	    dependencies:
+  6977	      camelcase-css: 2.0.1
+  6978	      postcss: 8.5.12
+  6979	
+  6980	  postcss-load-config@4.0.2(postcss@8.5.12):
+  6981	    dependencies:
+  6982	      lilconfig: 3.1.3
+  6983	      yaml: 2.8.3
+  6984	    optionalDependencies:
+  6985	      postcss: 8.5.12
+  6986	
+  6987	  postcss-load-config@6.0.1(jiti@1.21.7)(postcss@8.5.12)(tsx@4.21.0)(yaml@2.8.3):
+  6988	    dependencies:
+  6989	      lilconfig: 3.1.3
+  6990	    optionalDependencies:
+  6991	      jiti: 1.21.7
+  6992	      postcss: 8.5.12
+  6993	      tsx: 4.21.0
+  6994	      yaml: 2.8.3
+  6995	
+  6996	  postcss-nested@6.2.0(postcss@8.5.12):
+  6997	    dependencies:
+  6998	      postcss: 8.5.12
+  6999	      postcss-selector-parser: 6.1.2
+  7000	
+  7001	  postcss-selector-parser@6.0.10:
+  7002	    dependencies:
+  7003	      cssesc: 3.0.0
+  7004	      util-deprecate: 1.0.2
+  7005	
+
+codex
+VERDICT: PASS
+
+Findings (non-blocking unless noted):
+
+1. PASS — R1 BLOCKING B1 已闭环: `apps/site/package.json` 已新增 `@playwright/test: "1.49.0"` 与 `test:visual` 脚本；`pnpm-lock.yaml` 已引入 `@playwright/test@1.49.0`、`playwright@1.49.0`、`playwright-core@1.49.0` 与相关依赖，且仅出现在 Playwright 家族条目中，未见无关新包名扩散迹象。  
+   - 参考: [`apps/site/package.json:27-29`](/home/weiyi/selfKnowledgeBaseWeb/apps/site/package.json:27), [`pnpm-lock.yaml:87-90`](/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:87), [`pnpm-lock.yaml:1011`](/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:1011), [`pnpm-lock.yaml:4613`](/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:4613), [`pnpm-lock.yaml:6962`](/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:6962)
+
+2. PASS — R1 BLOCKING B2 已闭环: `visual-smoke.spec.ts` 第 3 个 case 已在点击前等待 `networkidle`，并有明确注释说明 hydration 的等待边界语义。  
+   - 参考: [`apps/site/src/__tests__/visual-smoke.spec.ts:14-21`](/home/weiyi/selfKnowledgeBaseWeb/apps/site/src/__tests__/visual-smoke.spec.ts:14)
+
+3. PASS — `visual-smoke.spec.ts` 的 R2 新内容已符合“非原始 count”诉求，移除了 `count()` 原始断言，改为 Playwright 自带自动重试断言（`toBeVisible` / `toHaveCount`）与语义化选择器。  
+   - 参考: [`apps/site/src/__tests__/visual-smoke.spec.ts:5-10`](/home/weiyi/selfKnowledgeBaseWeb/apps/site/src/__tests__/visual-smoke.spec.ts:5)
+
+4. PASS (non-blocking note): 首页 case1 目前是 `toBeVisible()`，未使用 `toHaveCount(1)`，与“case1+2 全部 toHaveCount”口径不完全一致；但它仍是 auto-retry + a11y selector，不再是 raw count 漏洞。若想保持一致性，可将其也改为 `toHaveCount(1)`。  
+   - 参考: [`apps/site/src/__tests__/visual-smoke.spec.ts:5`](/home/weiyi/selfKnowledgeBaseWeb/apps/site/src/__tests__/visual-smoke.spec.ts:5)
+
+5. PASS — CI 路径完整：`visual-smoke` job 增加、Playwright 浏览器缓存、`working-directory: apps/site` 下安装浏览器并执行 `pnpm --filter @skb/site test:visual`，与新增 `test:visual` 脚本一致。  
+   - 参考: [`.github/workflows/ci.yml:81-99`](/home/weiyi/selfKnowledgeBaseWeb/.github/workflows/ci.yml:81)
+
+asymmetry-audit applied: items 1..8 verdicts:
+1) N/A  
+2) N/A  
+3) N/A  
+4) N/A  
+5) PASS（无新增跨域算法/常量复制）  
+6) PASS（命名与注释风格与 `fouc-script.test.ts` 在测试目标规模和复杂度上属于不同粒度，但未见 sister-file 残差）  
+7) N/A  
+8) PASS（依赖新增与 `pnpm-lock.yaml` 同步更新，属于 package-authority 变更对应的生成产物闭环）
+
+
+2026-04-30T17:51:12.228790Z ERROR codex_core::session: failed to record rollout items: thread 019ddf83-5973-7ec2-8319-98e1be045d3d not found
+tokens used
+71,250
+VERDICT: PASS
+
+Findings (non-blocking unless noted):
+
+1. PASS — R1 BLOCKING B1 已闭环: `apps/site/package.json` 已新增 `@playwright/test: "1.49.0"` 与 `test:visual` 脚本；`pnpm-lock.yaml` 已引入 `@playwright/test@1.49.0`、`playwright@1.49.0`、`playwright-core@1.49.0` 与相关依赖，且仅出现在 Playwright 家族条目中，未见无关新包名扩散迹象。  
+   - 参考: [`apps/site/package.json:27-29`](/home/weiyi/selfKnowledgeBaseWeb/apps/site/package.json:27), [`pnpm-lock.yaml:87-90`](/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:87), [`pnpm-lock.yaml:1011`](/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:1011), [`pnpm-lock.yaml:4613`](/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:4613), [`pnpm-lock.yaml:6962`](/home/weiyi/selfKnowledgeBaseWeb/pnpm-lock.yaml:6962)
+
+2. PASS — R1 BLOCKING B2 已闭环: `visual-smoke.spec.ts` 第 3 个 case 已在点击前等待 `networkidle`，并有明确注释说明 hydration 的等待边界语义。  
+   - 参考: [`apps/site/src/__tests__/visual-smoke.spec.ts:14-21`](/home/weiyi/selfKnowledgeBaseWeb/apps/site/src/__tests__/visual-smoke.spec.ts:14)
+
+3. PASS — `visual-smoke.spec.ts` 的 R2 新内容已符合“非原始 count”诉求，移除了 `count()` 原始断言，改为 Playwright 自带自动重试断言（`toBeVisible` / `toHaveCount`）与语义化选择器。  
+   - 参考: [`apps/site/src/__tests__/visual-smoke.spec.ts:5-10`](/home/weiyi/selfKnowledgeBaseWeb/apps/site/src/__tests__/visual-smoke.spec.ts:5)
+
+4. PASS (non-blocking note): 首页 case1 目前是 `toBeVisible()`，未使用 `toHaveCount(1)`，与“case1+2 全部 toHaveCount”口径不完全一致；但它仍是 auto-retry + a11y selector，不再是 raw count 漏洞。若想保持一致性，可将其也改为 `toHaveCount(1)`。  
+   - 参考: [`apps/site/src/__tests__/visual-smoke.spec.ts:5`](/home/weiyi/selfKnowledgeBaseWeb/apps/site/src/__tests__/visual-smoke.spec.ts:5)
+
+5. PASS — CI 路径完整：`visual-smoke` job 增加、Playwright 浏览器缓存、`working-directory: apps/site` 下安装浏览器并执行 `pnpm --filter @skb/site test:visual`，与新增 `test:visual` 脚本一致。  
+   - 参考: [`.github/workflows/ci.yml:81-99`](/home/weiyi/selfKnowledgeBaseWeb/.github/workflows/ci.yml:81)
+
+asymmetry-audit applied: items 1..8 verdicts:
+1) N/A  
+2) N/A  
+3) N/A  
+4) N/A  
+5) PASS（无新增跨域算法/常量复制）  
+6) PASS（命名与注释风格与 `fouc-script.test.ts` 在测试目标规模和复杂度上属于不同粒度，但未见 sister-file 残差）  
+7) N/A  
+8) PASS（依赖新增与 `pnpm-lock.yaml` 同步更新，属于 package-authority 变更对应的生成产物闭环）
+
+
