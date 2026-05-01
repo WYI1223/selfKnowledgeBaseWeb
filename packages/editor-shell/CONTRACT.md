@@ -46,6 +46,16 @@ editor surface. Closes the "editor-shell composition" deferral from
   `KernelAdapter` implementation. PyodideAdapter constructor is cheap
   (no Pyodide boot until `startSession()`). `KernelAdapter` type imported
   from `@skb/kernel-adapter` (3rd workspace dep added at A4).
+- `saveToMdx(editor: Editor, options?: SaveLoadOptions): string` — serialize
+  the editor's current document to MDX source. Prose-only at A5 (Stage A);
+  component blocks throw via mdx-bridge's existing fail-loud rule until B1
+  extends the walker. `options.blockRegistry` is forward-compat (accepted
+  but unused at A5; B1 threads through to mdx-bridge per-call injection).
+- `loadFromMdx(editor: Editor, source: string, options?: SaveLoadOptions): void`
+  — replace the editor's document by parsing MDX source. Same prose-only
+  semantics as `saveToMdx`; component-block JSX throws until B1.
+- `SaveLoadOptions { blockRegistry?: BlockRegistry }` — public options type
+  for the per-call BlockRegistry injection pattern. Threading lands in B1.
 
 The component does NOT include a `'use client'` pragma — consumers (Stage C
 apps/site) decide the client/server boundary at integration time.
@@ -70,17 +80,38 @@ A2-A5 each Modify this CONTRACT.md as new exports land:
   `@skb/kernel-registry` + `@skb/kernel-pyodide` + `@skb/kernel-adapter`
   workspace deps (3 not 2 — `KernelAdapter` type lives in `@skb/kernel-adapter`,
   not re-exported by registry/pyodide).
-- **A5** — `saveToMdx(editor)` + `loadFromMdx(editor, mdxString)`. Threads
-  `blockRegistry` through `mdx-bridge`'s per-call injection (no global setter).
-  Adds `@skb/mdx-bridge` workspace dep. Closes 13 expected orphan packages
-  simultaneously by becoming the terminal consumer.
+- **A5** — `saveToMdx(editor, options?)` + `loadFromMdx(editor, source, options?)`
+  delivered in this PR. Wraps `@skb/mdx-bridge`'s `tiptapToMdx` /
+  `mdxToTiptap` for **prose-only** RTT. The `options.blockRegistry`
+  parameter is forward-compat at the public API surface; threading
+  through to mdx-bridge's per-call injection is deferred to B1 (because
+  mdx-bridge does not yet accept a `{ blockRegistry }` option). Added
+  `@skb/mdx-bridge` workspace dep — 13th `@skb/*` and Stage A close.
+
+## Stage A close note
+
+All 5 Stage A PRs are now delivered. Consumers can:
+
+1. Mount `EditorShell` (Tiptap useEditor + StarterKit; A2)
+2. Call `registerBlocks(registry)` to wire 8 block-* into a BlockRegistry (A3)
+3. Call `registerKernels(registry, adapter?)` to wire PyodideAdapter into a KernelRegistry (A4)
+4. Call `saveToMdx(editor, options?)` + `loadFromMdx(editor, source, options?)`
+   for **prose-only** RTT (A5)
+
+**Component-block RTT is NOT yet operational** — Stage B (B1-B8) extends
+mdx-bridge with `mdxJsxFlowElement` routing + per-call BlockRegistry
+injection. Until B1 lands, attempting to save/load any document containing
+the 8 Wave 2 component blocks (Callout / Code / Image / Math / Pdf /
+Jupyter / NnViz / AgentFlow) will throw via mdx-bridge's existing
+fail-loud rule. The `SaveLoadOptions.blockRegistry` parameter at the
+saveLoad public API is accepted-but-unused until B1 threads it through.
 
 [ADR-0008 D1](../../docs/decisions/ADR-0008-wave-2-entry-policies.md) dead-dep
-policy is satisfied at A4 by construction: every declared `@skb/*` workspace
-dep has at least one `from '@skb/<pkg>'` source import in
-`src/registerBlocks.ts` / `src/registerKernels.ts` / `src/index.ts`. The 12
-declared deps + 12 source imports + 12 tsconfig references hold three-way
-exact-match symmetry.
+policy is satisfied at A5 by construction: every declared `@skb/*` workspace
+dep has at least one `from '@skb/<pkg>'` source import. The 13 declared deps
++ 13 source imports (across `registerBlocks.ts` / `registerKernels.ts` /
+`saveLoad.ts` / `index.ts`) + 13 tsconfig references hold three-way exact-match
+symmetry.
 
 ## Modifying this file
 
@@ -95,4 +126,4 @@ declaration (orchestrator decision at Stage A close ceremony).
 - [ADR-0011 D1+D6](../../docs/decisions/ADR-0011-linear-pipeline-execution-model.md) — pipeline + codex profiles
 - [Wave 3 plan, Stage A](../../docs/superpowers/plans/2026-05-01-phase-1-wave-3-integration.md) — locked Stage A scope
 - [packages/block-foundation/CONTRACT.md](../block-foundation/CONTRACT.md) — registry consumer pattern A3 will use
-- [packages/mdx-bridge/CONTRACT.md](../mdx-bridge/CONTRACT.md) — per-call injection pattern A5 will use
+- [packages/mdx-bridge/CONTRACT.md](../mdx-bridge/CONTRACT.md) — per-call injection pattern B1 will thread through saveLoad
