@@ -14,6 +14,8 @@
 | [0006](ADR-0006-asymmetry-audit-checklist.md)             | Cross-location asymmetry-audit checklist (process rule)    | 2026-04-30 | accepted |
 | [0007](ADR-0007-job-function-codex-heavy-execution.md)    | 职能化分工 + Codex-heavy 执行 + teammate / tool 切分      | 2026-04-30 | accepted |
 | [0008](ADR-0008-wave-2-entry-policies.md)                 | Wave 2 entry policies — dead-dep + block-foundation freeze | 2026-04-30 | accepted |
+| [0009](ADR-0009-block-kind-union-expansion.md)            | BlockKind union additive expansion (Wave 2)                | 2026-04-30 | accepted |
+| [0010](ADR-0010-wave-2-close.md)                          | Wave 2 close — empirical lessons + errata + WE-* process   | 2026-05-01 | accepted |
 
 ## 模板
 

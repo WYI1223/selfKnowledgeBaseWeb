@@ -8,8 +8,8 @@
 | Wave | 主题 | 文件 | 状态 |
 |---|---|---|---|
 | 1 | 基础设施 + 接口（6 路并行） | [2026-04-29-phase-1-wave-1-foundation.md](../../superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md) | ✅ closed by [ADR-0002](../../decisions/ADR-0002-wave-1-close.md) (2026-04-30) |
-| 2 | 实现层（10 主任务 ~28 sub-tasks + 首次 ux-ui-lead + codex tool 实战） | [2026-04-30-phase-1-wave-2-implementation.md](../../superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md) | 🔒 plan locked (2026-04-30); Pre-Task 0 待启动 |
-| 3 | 集成（editor-shell + site 接入 + search） | 待 Wave 2 完工后起草 | pending |
+| 2 | 实现层（17 main tracks + 33 commits + 9 new packages + ux-ui-lead 实战 + codex tool 实战） | [2026-04-30-phase-1-wave-2-implementation.md](../../superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md) | ✅ closed by [ADR-0010](../../decisions/ADR-0010-wave-2-close.md) (2026-05-01) |
+| 3 | 集成（apps/site BlockRegistry 路由 + editor-shell + mdx-bridge 真实 round-trip + search） | 待起草（plan-challenger 先行） | pending plan-draft |
 | 4 | 验收 + 部署（Cloudflare Pages + Tunnel + perf baseline） | 待 Wave 3 完工后起草 | pending |
 
 ## Wave 1 退出标准（spec §4.2.1）
