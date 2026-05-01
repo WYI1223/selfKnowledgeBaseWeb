@@ -98,6 +98,49 @@ block-agent-flow 特定不变量：
 - **Layout 单一权威**：`flow-layout.ts` 唯一 layout + validation + SVG geometry
   authority；React + Astro 同源（ADR-0006 #5）；ssr-render.test.ts byte-equal 守护
 
+## Test corpus invariants
+
+`src/__tests__/flow-bridge.test.ts` (326 lines) is the **cross-runtime
+state-machine authority** for the React Flow phase machine. It owns:
+
+- `FlowPhase` discriminated union transitions (idle → laying-out → ready /
+  errored)
+- Topology-validation invariants (cycle detection / unknown-id rejection;
+  R2-1 regression: validation runs unconditionally on both explicit-position
+  and BFS layout paths — it cannot be silently swallowed)
+- Idempotent auto-layout (`bridge.mount()` runs `computeFlowLayout` exactly
+  once; `onLaidOut` callback fires once per mount)
+- AbortSignal-driven cleanup (NodeView unmount cancels in-flight layout +
+  stops emit)
+- Errored phase escalation (layout failure → `data-phase='errored'` +
+  `--color-error` + `role="alert"`; sister-pattern with E1's `kernelError`
+  phase — never silent)
+- LayoutFn injection point (`FlowBridgeOptions.layout` + `AgentFlowViewProps.layout`
+  hot-swap path; Wave 3 dagre/elkjs swap exercises this contract)
+
+Per [ADR-0006 #5](../../docs/decisions/ADR-0006-asymmetry-audit-checklist.md)
+(algorithm + runtime constant replication audit), `flow-bridge.test.ts` is
+the single regression-test corpus binding `createFlowBridge`'s state machine
+to the `reactflow` runtime authority; line count (326) reflects per-runtime
+invariant complexity. ESLint `max-lines: 300` warn is globally OFF for
+`**/*.test.*` (per
+[eslint.config.js](../../eslint.config.js) test-files exemption), so this
+file does not trigger lint warnings; this CONTRACT entry is the explicit
+disclosure for structure-auditor monthly drift scan.
+
+Sister test corpora (Wave 2 viz-block triplet at the same authority grain):
+
+- E1 [`block-jupyter/__tests__/kernel-bridge.test.ts`](../block-jupyter/src/__tests__/kernel-bridge.test.ts) (414)
+- E2 [`block-nn-viz/__tests__/tfjs-bridge.test.ts`](../block-nn-viz/src/__tests__/tfjs-bridge.test.ts) (327)
+- E3 [`block-agent-flow/__tests__/flow-bridge.test.ts`](src/__tests__/flow-bridge.test.ts) (326)
+
+Authority precedent: Wave 1
+[`mdx-bridge/serialize.ts`](../mdx-bridge/CONTRACT.md) (243 lines) is the
+single-runtime authority predecessor disclosed in `mdx-bridge/CONTRACT.md`
+"Implementation notes". Drift between any corpus and its bridge
+implementation is a release-blocker per ADR-0011 D5 + D6 codex-mdx-doctor /
+codex-pr-reviewer-55 audit profile triggers.
+
 ## Wave 3 mdx-bridge 路由（pending）
 
 `serializeAgentFlow` / `parseAgentFlow` 是 stub。Wave 3：mdast `AgentFlow` ↔

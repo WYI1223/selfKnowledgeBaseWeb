@@ -101,6 +101,46 @@ block-jupyter 特定不变量：
   提取 `kind`；不 `instanceof` 子类（per [@skb/kernel-pyodide](../kernel-pyodide/CONTRACT.md)
   CONTRACT § Error classes 同款 sister-aligned 规则）
 
+## Test corpus invariants
+
+`src/__tests__/kernel-bridge.test.ts` (414 lines) is the **cross-runtime
+state-machine authority** for the Pyodide message-event mapping. It owns:
+
+- `KernelEvent → KernelPhase` 6-variant fanout (per
+  [@skb/kernel-adapter](../kernel-adapter/CONTRACT.md) `KernelEvent` family +
+  this package's `KernelPhase` discriminated union)
+- Phase transitions (idle → starting → running → idle / errored sub-paths)
+- Execution lifecycle (`startSession` → first `KernelEvent`, request
+  cancellation, fire-and-forget shutdown of mid-startSession sessions)
+- Error-class triage (`KernelStartupError` / `KernelImportError` /
+  `KernelInterruptError` / generic `KernelError` → `KernelPhase{type:'kernelError', kind, message}`)
+- Disposal cleanup invariants (`AbortSignal`-driven cleanup at NodeView
+  unmount; idempotent abort; pending session post-resolve fire-and-forget
+  shutdown)
+
+Per [ADR-0006 #5](../../docs/decisions/ADR-0006-asymmetry-audit-checklist.md)
+(algorithm + runtime constant replication audit), `kernel-bridge.test.ts` is
+the single regression-test corpus binding `createKernelBridge`'s state
+machine to the `@skb/kernel-pyodide` runtime authority; line count (414)
+reflects per-runtime invariant complexity. ESLint `max-lines: 300` warn is
+globally OFF for `**/*.test.*` (per
+[eslint.config.js](../../eslint.config.js) test-files exemption), so this
+file does not trigger lint warnings; this CONTRACT entry is the explicit
+disclosure for structure-auditor monthly drift scan.
+
+Sister test corpora (Wave 2 viz-block triplet at the same authority grain):
+
+- E1 [`block-jupyter/__tests__/kernel-bridge.test.ts`](src/__tests__/kernel-bridge.test.ts) (414)
+- E2 [`block-nn-viz/__tests__/tfjs-bridge.test.ts`](../block-nn-viz/src/__tests__/tfjs-bridge.test.ts) (327)
+- E3 [`block-agent-flow/__tests__/flow-bridge.test.ts`](../block-agent-flow/src/__tests__/flow-bridge.test.ts) (326)
+
+Authority precedent: Wave 1
+[`mdx-bridge/serialize.ts`](../mdx-bridge/CONTRACT.md) (243 lines) is the
+single-runtime authority predecessor disclosed in `mdx-bridge/CONTRACT.md`
+"Implementation notes". Drift between any corpus and its bridge
+implementation is a release-blocker per ADR-0011 D5 + D6 codex-mdx-doctor /
+codex-pr-reviewer-55 audit profile triggers.
+
 ## Wave 3 mdx-bridge 路由集成（pending）
 
 当前 `serializeJupyter` / `parseJupyter` 是 stub —— 暴露稳定签名，未被 mdx-bridge 消费。

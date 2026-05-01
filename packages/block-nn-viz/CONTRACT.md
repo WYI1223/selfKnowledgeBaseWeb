@@ -123,6 +123,44 @@ block-nn-viz 特定不变量：
 - **Error 显式（不静默）**：load failure 走 `data-phase='httpError|loadError|unknownError'`；
   nn-viz.css 把三者都 escalate 到 `--color-error` token
 
+## Test corpus invariants
+
+`src/__tests__/tfjs-bridge.test.ts` (327 lines) is the **cross-runtime
+state-machine authority** for the TF.js `LayersModel` lifecycle. It owns:
+
+- `LoadLayersModelFn → NnVizPhase` fanout (loading / loaded / httpError /
+  loadError / unknownError discriminated phases)
+- Per-block isolation (each `createTfjsBridge` gets a private `tf.LayersModel`
+  reference; two viz instances never share a model)
+- Tensor lifecycle (load → ready → predict → dispose); idempotent disposal
+- Error-class triage (HTTP 4xx/5xx vs network failure vs unknown thrown
+  shape → distinct `NnVizPhase` variants surfaced to the React tree)
+- AbortSignal-driven cleanup (mid-load abort cancels the in-flight
+  `tf.loadLayersModel` and prevents post-resolve dispatch)
+
+Per [ADR-0006 #5](../../docs/decisions/ADR-0006-asymmetry-audit-checklist.md)
+(algorithm + runtime constant replication audit), `tfjs-bridge.test.ts` is
+the single regression-test corpus binding `createTfjsBridge`'s state machine
+to the `@tensorflow/tfjs` runtime authority; line count (327) reflects
+per-runtime invariant complexity. ESLint `max-lines: 300` warn is globally
+OFF for `**/*.test.*` (per
+[eslint.config.js](../../eslint.config.js) test-files exemption), so this
+file does not trigger lint warnings; this CONTRACT entry is the explicit
+disclosure for structure-auditor monthly drift scan.
+
+Sister test corpora (Wave 2 viz-block triplet at the same authority grain):
+
+- E1 [`block-jupyter/__tests__/kernel-bridge.test.ts`](../block-jupyter/src/__tests__/kernel-bridge.test.ts) (414)
+- E2 [`block-nn-viz/__tests__/tfjs-bridge.test.ts`](src/__tests__/tfjs-bridge.test.ts) (327)
+- E3 [`block-agent-flow/__tests__/flow-bridge.test.ts`](../block-agent-flow/src/__tests__/flow-bridge.test.ts) (326)
+
+Authority precedent: Wave 1
+[`mdx-bridge/serialize.ts`](../mdx-bridge/CONTRACT.md) (243 lines) is the
+single-runtime authority predecessor disclosed in `mdx-bridge/CONTRACT.md`
+"Implementation notes". Drift between any corpus and its bridge
+implementation is a release-blocker per ADR-0011 D5 + D6 codex-mdx-doctor /
+codex-pr-reviewer-55 audit profile triggers.
+
 ## Wave 3 work
 
 - **mdx-bridge routing**: `serializeNnViz` / `parseNnViz` stub 暴露稳定签名；
