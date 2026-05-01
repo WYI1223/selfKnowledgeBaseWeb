@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { BlockRegistry } from '@skb/block-foundation';
 import { calloutCore, parseCallout, serializeCallout } from '@skb/block-callout/core';
 import { codeCore, parseCode, serializeCode } from '@skb/block-code/core';
+import { imageCore, parseImage, serializeImage } from '@skb/block-image/core';
 import {
   getJsxDispatch,
   mdxToTiptap,
@@ -45,15 +46,27 @@ function ensureCodeDispatch(): void {
   }
 }
 
+function ensureImageDispatch(): void {
+  if (getJsxDispatch('Image') === undefined) {
+    registerJsxDispatch({
+      mdxComponent: 'Image',
+      blockType: 'image',
+      parse: parseImage as unknown as JsxDispatchEntry['parse'],
+      serialize: serializeImage as unknown as JsxDispatchEntry['serialize'],
+    });
+  }
+}
+
 function buildComponentBlockOptions(): MdxBridgeOptions {
   const blockRegistry = new BlockRegistry();
   blockRegistry.registerCore(calloutCore);
   blockRegistry.registerCore(codeCore);
+  blockRegistry.registerCore(imageCore);
   return { blockRegistry };
 }
 
 function optionsForFixture(file: string, source: string): MdxBridgeOptions | undefined {
-  return /^(2[2-9])-/.test(file) || source.includes('<Callout') || source.includes('<Code')
+  return /^(2[2-9])-/.test(file) || source.includes('<Callout') || source.includes('<Code') || source.includes('<Image')
     ? buildComponentBlockOptions()
     : undefined;
 }
@@ -74,6 +87,7 @@ describe('MDX <-> Tiptap round-trip', () => {
   beforeAll(() => {
     ensureCalloutDispatch();
     ensureCodeDispatch();
+    ensureImageDispatch();
   });
 
   for (const file of FIXTURES) {
@@ -96,8 +110,8 @@ describe('MDX <-> Tiptap round-trip', () => {
     });
   }
 
-  it('finds at least 11 fixtures', () => {
-    expect(FIXTURES.length).toBeGreaterThanOrEqual(11);
+  it('finds at least 12 fixtures', () => {
+    expect(FIXTURES.length).toBeGreaterThanOrEqual(12);
   });
 });
 
