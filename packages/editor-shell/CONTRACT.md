@@ -29,6 +29,17 @@ editor surface. Closes the "editor-shell composition" deferral from
   ```
   `Editor` type re-exported transitively from `@tiptap/core` via
   `@tiptap/react`.
+- `registerBlocks(registry: BlockRegistry): void` — wires the 8 Wave 2
+  block-* core + ui-default definitions into the supplied `BlockRegistry`
+  instance. Idempotent at consumer scope (each registerBlocks call expects a
+  fresh registry; calling twice on the same registry throws "Duplicate core
+  name" per BlockRegistry contract). Insertion order = locked-plan order:
+  callout, code, image (component), math, pdf (render), jupyter, nn-viz,
+  agent-flow (viz). Per ADR-0009 D1: 3 component + 2 render + 3 viz = 8.
+- `proseExtensions` — Tiptap Extension array re-exported from
+  `@skb/block-foundation`. Consumers wire into `useEditor({ extensions: [...] })`
+  alongside `StarterKit` for prose-block-aware editing. A2's `EditorShell`
+  does NOT consume this yet (StarterKit-only); A3+ wrappers may.
 
 The component does NOT include a `'use client'` pragma — consumers (Stage C
 apps/site) decide the client/server boundary at integration time.
@@ -41,10 +52,13 @@ A2-A5 each Modify this CONTRACT.md as new exports land:
   `useEditor` + StarterKit prose extensions only; 4-prop API surface above).
   Adds `@tiptap/{core,react,starter-kit}`, `react`, `react-dom` peer/runtime
   deps + happy-dom + @testing-library/react devDeps.
-- **A3** — `registerBlocks(registry)` helper. Wires the 8 block-* core +
-  ui-default definitions into a `BlockRegistry` instance. Adds 8 `@skb/block-*`
-  + `@skb/block-foundation` workspace deps. May expose a `proseExtensions`
-  prop on `EditorShell` if registry-driven extension composition requires it.
+- **A3** — `registerBlocks(registry)` helper delivered in this PR. Wires the
+  8 block-* core + ui-default definitions into a `BlockRegistry` instance.
+  Added 8 `@skb/block-*` + `@skb/block-foundation` workspace deps + 9
+  composite-project tsconfig references. Also re-exports `proseExtensions`
+  from block-foundation as a barrel convenience. `proseExtensions` is NOT
+  exposed as an `EditorShell` prop in A3 (the speculative A2-outline form);
+  consumers compose it directly into their `useEditor` extensions array.
 - **A4** — `registerKernels(registry)` helper. Wires `PyodideAdapter` into
   `kernel-registry`. Adds `@skb/kernel-registry` + `@skb/kernel-pyodide`
   workspace deps.
@@ -54,9 +68,10 @@ A2-A5 each Modify this CONTRACT.md as new exports land:
   simultaneously by becoming the terminal consumer.
 
 [ADR-0008 D1](../../docs/decisions/ADR-0008-wave-2-entry-policies.md) dead-dep
-policy is satisfied at A2: zero `@skb/*` workspace deps declared (only
-external runtime/peer deps); F3-class TS-import asymmetry impossible by
-construction.
+policy is satisfied at A3 by construction: every declared `@skb/*` workspace
+dep has at least one `from '@skb/<pkg>'` source import in
+`src/registerBlocks.ts` + `src/index.ts`. The 9 declared deps + 9 source
+imports + 9 tsconfig references hold three-way exact-match symmetry.
 
 ## Modifying this file
 
