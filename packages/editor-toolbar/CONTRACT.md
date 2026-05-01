@@ -109,6 +109,8 @@ spec §2.6）。
 
 ## Related
 
+- [@skb/editor-slash-menu CONTRACT](../editor-slash-menu/CONTRACT.md) — sister G2 codex-clone
+- [@skb/editor-drag-handle CONTRACT](../editor-drag-handle/CONTRACT.md) — sister G3 codex-clone
 - [@skb/editor-commands CONTRACT](../editor-commands/CONTRACT.md) — `editBlockInputSchema` 权威源
 - [设计规格 §2.6](../../docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md) — 命令模式 surface
 - [ADR-0003 headless / presentational 分层](../../docs/decisions/ADR-0003-headless-presentational-split.md)

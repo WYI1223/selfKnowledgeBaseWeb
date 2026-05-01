@@ -1,0 +1,2515 @@
+Reading prompt from stdin...
+OpenAI Codex v0.125.0 (research preview)
+--------
+workdir: /home/weiyi/selfKnowledgeBaseWeb
+model: gpt-5.3-codex-spark
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: xhigh
+reasoning summaries: none
+session id: 019de1c1-ec11-7142-9e0e-1b683950cb70
+--------
+user
+You are codex 5.3-spark code-reviewer. Audit packages/editor-slash-menu/ for Wave 2 Task #22 (G2: editor-slash-menu, codex-clone of G1).
+
+G2 is codex-clone (d2_row=null) of G1 editor-toolbar (committed at `138cc16`).
+
+Verify:
+1. Headless / UI separation: src/core no React/Tiptap.
+2. slashMenuConfig schema z.object({items}).strict() with nested item schema also .strict().
+3. defaultSlashMenuConfig has 10 items (4 categories: heading/list/block/media).
+4. SlashMenu.tsx uses FloatingMenu + filter logic (matches by `/` trigger).
+5. runDefaultSlashCommand dispatcher (mirror G1 runDefaultCommand pattern).
+6. Tests: 12/12 PASS (5 config + 7 dispatch).
+7. ADR-0008 D1 dead-dep.
+8. ADR-0006 8-point.
+9. Sister-doc CONTRACT.md aligned with G1 editor-toolbar/CONTRACT.md.
+
+Run pnpm --filter @skb/editor-slash-menu test/typecheck/lint/build.
+
+Verdict: PASS or FAIL.
+
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the vendored bubblewrap in the meantime.
+codex
+I’ll validate the editor-slash-menu implementation against each of your 9 checkpoints, then run the requested package scripts for `@skb/editor-slash-menu` and return a direct PASS/FAIL verdict with concrete file-level evidence. I’ll focus on minimal targeted reads: config/schema, menu component, dispatcher, tests, and contract/docs.
+exec
+/bin/bash -lc "rg --files packages/editor-slash-menu packages/editor-toolbar | sed -n '1,200p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 128ms:
+packages/editor-toolbar/tsconfig.json
+packages/editor-slash-menu/tsconfig.json
+packages/editor-toolbar/src/index.ts
+packages/editor-slash-menu/src/index.ts
+packages/editor-toolbar/src/ui-default/dispatch.ts
+packages/editor-toolbar/src/ui-default/index.ts
+packages/editor-toolbar/src/ui-default/icons/index.tsx
+packages/editor-slash-menu/src/ui-default/dispatch.ts
+packages/editor-slash-menu/src/ui-default/SlashMenu.tsx
+packages/editor-slash-menu/src/ui-default/index.ts
+packages/editor-slash-menu/src/ui-default/slash-menu.css
+packages/editor-toolbar/src/ui-default/Toolbar.tsx
+packages/editor-toolbar/src/ui-default/toolbar.css
+packages/editor-slash-menu/src/ui-default/icons/index.tsx
+packages/editor-toolbar/src/core/index.ts
+packages/editor-toolbar/src/core/toolbar-config.ts
+packages/editor-toolbar/src/core/command-bindings.ts
+packages/editor-toolbar/vitest.config.ts
+packages/editor-toolbar/CONTRACT.md
+packages/editor-toolbar/package.json
+packages/editor-slash-menu/src/core/index.ts
+packages/editor-slash-menu/src/core/slash-menu-config.ts
+packages/editor-slash-menu/src/core/command-bindings.ts
+packages/editor-slash-menu/vitest.config.ts
+packages/editor-slash-menu/CONTRACT.md
+packages/editor-slash-menu/package.json
+packages/editor-toolbar/src/__tests__/toolbar-dispatch.test.ts
+packages/editor-toolbar/src/__tests__/toolbar-config.test.ts
+packages/editor-slash-menu/src/__tests__/slash-menu-dispatch.test.ts
+packages/editor-slash-menu/src/__tests__/slash-menu-config.test.ts
+
+codex
+I’ve got the relevant package layout. Next I’ll pull the specific slash-menu core/UI/dispatch files, tests, and both contracts side-by-side with editor-toolbar equivalents plus ADR docs so verification is evidence-backed.
+exec
+/bin/bash -lc "sed -n '1,240p' packages/editor-slash-menu/src/core/slash-menu-config.ts" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1,220p' packages/editor-slash-menu/src/ui-default/dispatch.ts" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1,260p' packages/editor-slash-menu/src/ui-default/SlashMenu.tsx" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1,220p' packages/editor-slash-menu/src/core/index.ts" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1,240p' packages/editor-slash-menu/src/__tests__/slash-menu-config.test.ts" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1,260p' packages/editor-slash-menu/src/__tests__/slash-menu-dispatch.test.ts" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1,220p' packages/editor-slash-menu/CONTRACT.md" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1,220p' packages/editor-toolbar/src/ui-default/dispatch.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 146ms:
+import type { ChainedCommands, Editor } from '@tiptap/core';
+
+interface ProseChainedCommands extends ChainedCommands {
+  focus: () => ProseChainedCommands;
+  run: () => boolean;
+  toggleTaskList: () => ProseChainedCommands;
+  toggleBulletList: () => ProseChainedCommands;
+  toggleOrderedList: () => ProseChainedCommands;
+  toggleHeading: (attrs: { level: 1 | 2 | 3 | 4 | 5 | 6 }) => ProseChainedCommands;
+  setCodeBlock: () => ProseChainedCommands;
+  insertContent: (value: unknown) => ProseChainedCommands;
+  deleteRange: (range: { from: number; to: number }) => ProseChainedCommands;
+}
+
+function safeInvoke<T extends readonly unknown[]>(
+  method: ((...args: T) => ProseChainedCommands) | undefined,
+  ...args: T
+): boolean {
+  if (typeof method !== 'function') return false;
+  const next = method(...args);
+  if (!next || typeof next.run !== 'function') return false;
+  return next.run();
+}
+
+export function runDefaultSlashCommand(
+  name: string,
+  chain: ChainedCommands,
+): boolean {
+  const focused = (chain as ProseChainedCommands).focus();
+  switch (name) {
+    case 'toggleHeading1':
+      return safeInvoke(focused.toggleHeading, { level: 1 });
+    case 'toggleHeading2':
+      return safeInvoke(focused.toggleHeading, { level: 2 });
+    case 'toggleHeading3':
+      return safeInvoke(focused.toggleHeading, { level: 3 });
+    case 'toggleBulletList':
+      return safeInvoke(focused.toggleBulletList);
+    case 'toggleOrderedList':
+      return safeInvoke(focused.toggleOrderedList);
+    case 'toggleTaskList':
+      return safeInvoke(focused.toggleTaskList);
+    case 'insertCodeBlock':
+      return safeInvoke(focused.setCodeBlock);
+    case 'insertCallout':
+      return safeInvoke(focused.insertContent, {
+        type: 'callout',
+        content: [],
+      });
+    case 'insertMathBlock':
+      return safeInvoke(focused.insertContent, {
+        type: 'math',
+        content: [],
+      });
+    case 'insertImage':
+      return safeInvoke(focused.insertContent, {
+        type: 'image',
+        attrs: { src: '' },
+      });
+    default:
+      return false;
+  }
+}
+
+export function isDefaultCommandActive(
+  editor: Editor,
+  command: string,
+): boolean {
+  switch (command) {
+    case 'toggleHeading1':
+      return editor.isActive('heading', { level: 1 });
+    case 'toggleHeading2':
+      return editor.isActive('heading', { level: 2 });
+    case 'toggleHeading3':
+      return editor.isActive('heading', { level: 3 });
+    case 'toggleBulletList':
+      return editor.isActive('bulletList');
+    case 'toggleOrderedList':
+      return editor.isActive('orderedList');
+    case 'toggleTaskList':
+      return editor.isActive('taskList');
+    case 'insertCodeBlock':
+      return editor.isActive('codeBlock');
+    case 'insertCallout':
+      return editor.isActive('callout');
+    case 'insertMathBlock':
+      return editor.isActive('math');
+    case 'insertImage':
+      return editor.isActive('image');
+    default:
+      return false;
+  }
+}
+
+ succeeded in 167ms:
+import { z } from 'zod';
+
+export const slashMenuItemSchema = z
+  .object({
+    id: z.string(),
+    trigger: z.string(),
+    label: z.string(),
+    category: z.enum(['heading', 'list', 'block', 'media']),
+    command: z.string(),
+    icon: z.string().optional(),
+  })
+  .strict();
+
+export const slashMenuConfigSchema = z
+  .object({
+    items: z.array(slashMenuItemSchema).min(1),
+  })
+  .strict();
+
+export type SlashMenuItem = z.infer<typeof slashMenuItemSchema>;
+export type SlashMenuConfig = z.infer<typeof slashMenuConfigSchema>;
+
+export const defaultSlashMenuConfig: SlashMenuConfig = slashMenuConfigSchema.parse({
+  items: [
+    { id: 'h1', trigger: 'h1', label: 'Heading 1', category: 'heading', command: 'toggleHeading1', icon: 'h1' },
+    { id: 'h2', trigger: 'h2', label: 'Heading 2', category: 'heading', command: 'toggleHeading2', icon: 'h2' },
+    { id: 'h3', trigger: 'h3', label: 'Heading 3', category: 'heading', command: 'toggleHeading3', icon: 'h3' },
+    { id: 'bulletList', trigger: 'bullet', label: 'Bulleted list', category: 'list', command: 'toggleBulletList', icon: 'bulletList' },
+    { id: 'orderedList', trigger: 'ordered', label: 'Numbered list', category: 'list', command: 'toggleOrderedList', icon: 'orderedList' },
+    { id: 'taskList', trigger: 'task', label: 'Task list', category: 'list', command: 'toggleTaskList', icon: 'taskList' },
+    { id: 'callout', trigger: 'callout', label: 'Callout', category: 'block', command: 'insertCallout', icon: 'callout' },
+    { id: 'code', trigger: 'code', label: 'Code block', category: 'block', command: 'insertCodeBlock', icon: 'code' },
+    { id: 'math', trigger: 'math', label: 'Math block', category: 'block', command: 'insertMathBlock', icon: 'math' },
+    { id: 'image', trigger: 'image', label: 'Image', category: 'media', command: 'insertImage', icon: 'image' },
+  ],
+});
+
+exec
+/bin/bash -lc "sed -n '1,260p' packages/editor-toolbar/src/ui-default/Toolbar.tsx" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1,240p' packages/editor-toolbar/src/core/toolbar-config.ts" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1,220p' packages/editor-toolbar/src/__tests__/toolbar-config.test.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 176ms:
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { Editor } from '@tiptap/core';
+import { FloatingMenu } from '@tiptap/react';
+import {
+  defaultSlashMenuConfig,
+  type SlashMenuConfig,
+  type SlashMenuItem,
+} from '../core/slash-menu-config';
+import { SLASH_MENU_ICONS } from './icons';
+import { runDefaultSlashCommand, isDefaultCommandActive } from './dispatch';
+import './slash-menu.css';
+
+type SlashQuery = {
+  readonly text: string;
+  readonly from: number;
+  readonly to: number;
+} | null;
+
+export interface EditorSlashMenuProps {
+  readonly editor: Editor | null;
+  readonly config?: SlashMenuConfig;
+}
+
+function resolveSlashQuery(editor: Editor): SlashQuery {
+  const { selection } = editor.state;
+  if (!selection.empty) return null;
+
+  const $from = selection.$from;
+  const before = $from.parent.textBetween(0, $from.parentOffset, '\n', '\n');
+  const match = /(?:^|\s)\/(?<query>[^\s]*)$/.exec(before);
+  if (!match) return null;
+
+  const query = match.groups?.query ?? '';
+
+  const slashIndex = before.lastIndexOf('/');
+  if (slashIndex < 0) return null;
+
+  const from = $from.start() + slashIndex;
+  const to = $from.start() + $from.parentOffset;
+  return { text: query.toLowerCase(), from, to };
+}
+
+export function EditorSlashMenu({
+  editor,
+  config = defaultSlashMenuConfig,
+}: EditorSlashMenuProps): JSX.Element | null {
+  const [slashQuery, setSlashQuery] = useState<SlashQuery>(null);
+  const [selected, setSelected] = useState(0);
+
+  const filteredItems = useMemo(() => {
+    if (!slashQuery) return [];
+    return config.items.filter((item) =>
+      item.trigger.toLowerCase().startsWith(slashQuery.text.toLowerCase()),
+    );
+  }, [config.items, slashQuery]);
+
+  const execute = useCallback(
+    (item: SlashMenuItem): void => {
+      if (!editor || !slashQuery) return;
+      const chain = editor.chain().focus();
+      chain.deleteRange({ from: slashQuery.from, to: slashQuery.to });
+      runDefaultSlashCommand(item.command, chain);
+      setSlashQuery(null);
+    },
+    [editor, slashQuery],
+  );
+
+  const onItemActivate = useCallback(
+    (index: number, item: SlashMenuItem): void => {
+      setSelected(index);
+      execute(item);
+    },
+    [execute],
+  );
+
+  const updateSlashQuery = useCallback(() => {
+    if (!editor) {
+      setSlashQuery(null);
+      return;
+    }
+    setSlashQuery(resolveSlashQuery(editor));
+  }, [editor]);
+
+  useEffect(() => {
+    if (!editor) return;
+    updateSlashQuery();
+
+    const onDocumentChange = () => updateSlashQuery();
+    const view = editor.view.dom;
+
+    editor.on('selectionUpdate', onDocumentChange);
+    editor.on('update', onDocumentChange);
+
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (!slashQuery || filteredItems.length === 0) return;
+
+      if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        setSelected((i) => (i + 1) % filteredItems.length);
+        return;
+      }
+      if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        setSelected(
+          (i) => (i - 1 + filteredItems.length) % filteredItems.length,
+        );
+        return;
+      }
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        const selectedItem = filteredItems[selected];
+        if (!selectedItem) return;
+        execute(selectedItem);
+        return;
+      }
+      if (event.key === 'Escape') {
+        setSlashQuery(null);
+      }
+    };
+
+    view.addEventListener('keydown', onKeyDown);
+
+    return () => {
+      editor.off('selectionUpdate', onDocumentChange);
+      editor.off('update', onDocumentChange);
+      view.removeEventListener('keydown', onKeyDown);
+    };
+  }, [editor, filteredItems, slashQuery, selected, updateSlashQuery, execute]);
+
+  useEffect(() => {
+    setSelected(0);
+  }, [filteredItems]);
+
+  if (!editor || !slashQuery || filteredItems.length === 0) {
+    return null;
+  }
+
+  return (
+    <FloatingMenu
+      editor={editor}
+      className='skb-editor-slash-menu'
+      shouldShow={() => Boolean(slashQuery)}
+    >
+      <ul className='skb-editor-slash-menu__list' role='menu' aria-label='Slash menu'>
+        {filteredItems.map((item, index) => {
+          const isActive = isDefaultCommandActive(editor, item.command);
+          const isSelected = index === selected;
+              const Icon = item.icon ? SLASH_MENU_ICONS[item.icon] : undefined;
+
+              return (
+                <li key={item.id} role='none'>
+              <button
+                role='menuitem'
+                type='button'
+                className={`skb-editor-slash-menu__button ${isSelected ? 'is-selected' : ''}`}
+                aria-label={item.label}
+                data-active={isActive ? 'true' : 'false'}
+                onMouseEnter={() => setSelected(index)}
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                  onItemActivate(index, item);
+                }}
+              >
+                {Icon ? <Icon /> : <span>{item.label[0]}</span>}
+                <span className='skb-editor-slash-menu__label'>{item.label}</span>
+                <span className='skb-editor-slash-menu__trigger'>{item.trigger}</span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </FloatingMenu>
+  );
+}
+
+ succeeded in 126ms:
+export {
+  slashMenuItemSchema,
+  slashMenuConfigSchema,
+  defaultSlashMenuConfig,
+} from './slash-menu-config';
+export type { SlashMenuItem, SlashMenuConfig } from './slash-menu-config';
+
+export { findItem, listCommands, buildEditBlockInput, defaultCommandBindings } from './command-bindings';
+
+ succeeded in 124ms:
+import { describe, it, expect } from 'vitest';
+import { slashMenuConfigSchema, defaultSlashMenuConfig, findItem, listCommands, buildEditBlockInput, defaultCommandBindings } from '../core';
+
+describe('slashMenuConfigSchema', () => {
+  it('accepts a valid config and rejects unknown keys (.strict)', () => {
+    const ok = slashMenuConfigSchema.safeParse({
+      items: [{ id: 'h1', trigger: 'h1', label: 'Heading 1', category: 'heading', command: 'toggleHeading1' }],
+    });
+    expect(ok.success).toBe(true);
+
+    const bad = slashMenuConfigSchema.safeParse({
+      items: [{ id: 'h1', trigger: 'h1', label: 'Heading 1', category: 'heading', command: 'toggleHeading1' }],
+      extra: 'x',
+    });
+    expect(bad.success).toBe(false);
+  });
+
+  it('rejects empty items array (min(1))', () => {
+    const r = slashMenuConfigSchema.safeParse({ items: [] });
+    expect(r.success).toBe(false);
+  });
+
+  it('defaultSlashMenuConfig.items aligns with the wave 2 slash-menu defaults (10 items)', () => {
+    expect(defaultSlashMenuConfig.items.map((item) => item.id)).toEqual([
+      'h1',
+      'h2',
+      'h3',
+      'bulletList',
+      'orderedList',
+      'taskList',
+      'callout',
+      'code',
+      'math',
+      'image',
+    ]);
+    expect(defaultSlashMenuConfig.items.map((item) => item.category)).toEqual([
+      'heading',
+      'heading',
+      'heading',
+      'list',
+      'list',
+      'list',
+      'block',
+      'block',
+      'block',
+      'media',
+    ]);
+    expect(defaultSlashMenuConfig.items.map((item) => item.trigger)).toEqual([
+      'h1',
+      'h2',
+      'h3',
+      'bullet',
+      'ordered',
+      'task',
+      'callout',
+      'code',
+      'math',
+      'image',
+    ]);
+    expect(defaultSlashMenuConfig.items).toHaveLength(10);
+  });
+
+  it('findItem + listCommands + defaultCommandBindings agree', () => {
+    expect(findItem(defaultSlashMenuConfig, 'h1')?.command).toBe('toggleHeading1');
+    expect(findItem(defaultSlashMenuConfig, 'nonsense')).toBeUndefined();
+    expect(listCommands(defaultSlashMenuConfig)).toContain('insertImage');
+    expect(defaultCommandBindings.image).toBe('insertImage');
+    expect(findItem(defaultSlashMenuConfig, 'orderedList')?.command).toBe('toggleOrderedList');
+    expect(defaultCommandBindings.taskList).toBe('toggleTaskList');
+  });
+
+  it('buildEditBlockInput delegates to editBlockInputSchema (cross-package authority)', () => {
+    const ok = buildEditBlockInput('foo', 'b1', { content: 'updated' });
+    expect(ok).toEqual({ pageSlug: 'foo', blockId: 'b1', content: 'updated' });
+
+    expect(() => buildEditBlockInput('foo', 'b1', {})).toThrow(
+      /at least one of props or content/,
+    );
+
+    expect(() => buildEditBlockInput('Foo', 'b1', { content: 'x' })).toThrow();
+  });
+});
+
+exec
+/bin/bash -lc "sed -n '1,260p' packages/editor-toolbar/src/__tests__/toolbar-dispatch.test.ts" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc 'cat packages/editor-slash-menu/package.json' in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc 'cat packages/editor-toolbar/package.json' in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1,260p' packages/editor-toolbar/CONTRACT.md" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "rg --line-number \"ADR-0006|ADR-0008|D1|D8|dead\" docs docs -g '*.md'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 145ms:
+# @skb/editor-slash-menu Contract
+
+This package is the `editor-*` slash-command launcher for editor surface actions.
+It is generated from the editor-toolbar template and adapted to slash-menu semantics.
+
+## Public surface
+
+- `./` (root barrel): re-exports `./core`.
+- `./core`: headless config and schema:
+  - `slashMenuItemSchema` / `slashMenuConfigSchema` (`.strict()`), where `slashMenuConfig` is `{ items: SlashMenuItem[] }`
+  - `defaultSlashMenuConfig` (10 items)
+    - heading: `h1`, `h2`, `h3` → `toggleHeading1/2/3`
+    - list: `bulletList`, `orderedList`, `taskList` → `toggleBulletList/Ordered/Task`
+    - block: `callout`, `code`, `math` → `insertCallout/insertCodeBlock/insertMathBlock`
+    - media: `image` → `insertImage`
+  - `findItem(config, itemId)`, `listCommands(config)` helpers
+  - `buildEditBlockInput(pageSlug, blockId, draft)` pass-through to `editBlockInputSchema.parse`
+  - `SlashMenuItem`, `SlashMenuConfig` types
+- `./ui-default`: React + Tiptap consumer:
+  - `EditorSlashMenu` using `FloatingMenu`
+  - `SLASH_MENU_ICONS`
+  - `runDefaultSlashCommand(name, chain)` and `isDefaultCommandActive(editor, command)` explicit switch dispatchers
+
+## Behavioural invariants
+
+- Slash trigger opens only when text before cursor matches `/(?:^|\s)\/[^\s]*$/`.
+- Menu items filter live by `item.trigger` prefix from user input after `/`.
+- Selection supports ArrowUp/ArrowDown and Enter; item click also executes command.
+- Command execution deletes the `/` query range before dispatching, then calls
+  `runDefaultSlashCommand`.
+- Unknown command strings always return `false` without throwing.
+- All default items must be exercised by dispatch tests (including `every defaultSlashMenuConfig item id is dispatch-routable`).
+- Headless layer remains free of React/Tiptap imports.
+
+## Wave 3 future (deferred)
+
+Wave 3 will add:
+
+1. custom item registration (consumer-provided `slashMenuConfig` extension APIs)
+2. drag-and-drop reorder of default menu items in UI
+
+These features require both `editor-slash-menu` UI updates and any prerequisite command-schema updates in `editor-commands`/`block-foundation`, then a dedicated `Wave 3` PR.
+
+ succeeded in 153ms:
+import { describe, it, expect, vi } from 'vitest';
+import type { ChainedCommands, Editor } from '@tiptap/core';
+import { runDefaultSlashCommand, isDefaultCommandActive } from '../ui-default/dispatch';
+import { defaultSlashMenuConfig } from '../core/slash-menu-config';
+
+interface ChainCallLog {
+  readonly calls: string[];
+  readonly args: unknown[][];
+}
+
+function makeMockChain(): { chain: ChainedCommands; log: ChainCallLog } {
+  const log: ChainCallLog = { calls: [], args: [] };
+  const handler: ProxyHandler<object> = {
+    get(_target, prop) {
+      if (prop === 'run') return () => true;
+      const method = String(prop);
+      return (...args: unknown[]) => {
+        log.calls.push(method);
+        log.args.push(args);
+        return new Proxy({}, handler);
+      };
+    },
+  };
+  const chain = new Proxy({}, handler) as unknown as ChainedCommands;
+  return { chain, log };
+}
+
+describe('runDefaultSlashCommand', () => {
+  it('routes heading commands to toggleHeading({level})', () => {
+    const c1 = makeMockChain();
+    runDefaultSlashCommand('toggleHeading1', c1.chain);
+    expect(c1.log.calls).toEqual(['focus', 'toggleHeading']);
+    expect(c1.log.args[1]).toEqual([{ level: 1 }]);
+
+    const c2 = makeMockChain();
+    runDefaultSlashCommand('toggleHeading2', c2.chain);
+    expect(c2.log.calls).toEqual(['focus', 'toggleHeading']);
+    expect(c2.log.args[1]).toEqual([{ level: 2 }]);
+
+    const c3 = makeMockChain();
+    runDefaultSlashCommand('toggleHeading3', c3.chain);
+    expect(c3.log.calls).toEqual(['focus', 'toggleHeading']);
+    expect(c3.log.args[1]).toEqual([{ level: 3 }]);
+  });
+
+  it('routes list commands to their list chain methods', () => {
+    const b = makeMockChain();
+    runDefaultSlashCommand('toggleBulletList', b.chain);
+    expect(b.log.calls).toEqual(['focus', 'toggleBulletList']);
+
+    const o = makeMockChain();
+    runDefaultSlashCommand('toggleOrderedList', o.chain);
+    expect(o.log.calls).toEqual(['focus', 'toggleOrderedList']);
+
+    const t = makeMockChain();
+    runDefaultSlashCommand('toggleTaskList', t.chain);
+    expect(t.log.calls).toEqual(['focus', 'toggleTaskList']);
+  });
+
+  it('routes block/ media commands via insertion methods', () => {
+    const callout = makeMockChain();
+    runDefaultSlashCommand('insertCallout', callout.chain);
+    expect(callout.log.calls).toEqual(['focus', 'insertContent']);
+    expect(callout.log.args[1]).toEqual([{ type: 'callout', content: [] }]);
+
+    const code = makeMockChain();
+    runDefaultSlashCommand('insertCodeBlock', code.chain);
+    expect(code.log.calls).toEqual(['focus', 'setCodeBlock']);
+
+    const math = makeMockChain();
+    runDefaultSlashCommand('insertMathBlock', math.chain);
+    expect(math.log.calls).toEqual(['focus', 'insertContent']);
+    expect(math.log.args[1]).toEqual([{ type: 'math', content: [] }]);
+
+    const image = makeMockChain();
+    runDefaultSlashCommand('insertImage', image.chain);
+    expect(image.log.calls).toEqual(['focus', 'insertContent']);
+    expect(image.log.args[1]).toEqual([{ type: 'image', attrs: { src: '' } }]);
+  });
+
+  it('returns false for unknown commands without invoking any non-focus command', () => {
+    const { chain, log } = makeMockChain();
+    const result = runDefaultSlashCommand('toggleUnderline', chain);
+    expect(result).toBe(false);
+    expect(log.calls).toEqual(['focus']);
+
+    const r2 = makeMockChain();
+    expect(runDefaultSlashCommand('setLink', r2.chain)).toBe(false);
+    expect(runDefaultSlashCommand('nonsense', r2.chain)).toBe(false);
+  });
+
+  it('every defaultSlashMenuConfig item command dispatches', () => {
+    for (const item of defaultSlashMenuConfig.items) {
+      const { chain, log } = makeMockChain();
+      const result = runDefaultSlashCommand(item.command, chain);
+      expect(result, `item ${item.id} (${item.command}) must dispatch`).toBe(true);
+      expect(log.calls[0]).toBe('focus');
+      expect(log.calls.length).toBeGreaterThan(1);
+    }
+  });
+});
+
+describe('isDefaultCommandActive', () => {
+  it('queries editor.isActive with matching state keys', () => {
+    const isActive = vi.fn().mockReturnValue(true);
+    const editor = { isActive } as unknown as Editor;
+
+    expect(isDefaultCommandActive(editor, 'toggleHeading2')).toBe(true);
+    expect(isActive).toHaveBeenLastCalledWith('heading', { level: 2 });
+
+    isDefaultCommandActive(editor, 'toggleTaskList');
+    expect(isActive).toHaveBeenLastCalledWith('taskList');
+
+    isDefaultCommandActive(editor, 'insertImage');
+    expect(isActive).toHaveBeenLastCalledWith('image');
+  });
+
+  it('returns false for unknown commands without querying editor', () => {
+    const isActive = vi.fn().mockReturnValue(true);
+    const editor = { isActive } as unknown as Editor;
+
+    expect(isDefaultCommandActive(editor, 'toggleUnderline')).toBe(false);
+    expect(isDefaultCommandActive(editor, 'setLink')).toBe(false);
+    expect(isActive).not.toHaveBeenCalled();
+  });
+});
+
+ succeeded in 147ms:
+import type { ChainedCommands, Editor } from '@tiptap/core';
+
+interface ProseChainedCommands {
+  focus: () => ProseChainedCommands;
+  run: () => boolean;
+  toggleBold: () => ProseChainedCommands;
+  toggleItalic: () => ProseChainedCommands;
+  toggleStrike: () => ProseChainedCommands;
+  toggleCode: () => ProseChainedCommands;
+  toggleHeading: (attrs: { level: 1 | 2 | 3 | 4 | 5 | 6 }) => ProseChainedCommands;
+  toggleBulletList: () => ProseChainedCommands;
+  toggleOrderedList: () => ProseChainedCommands;
+}
+
+export function runDefaultCommand(
+  name: string,
+  chain: ChainedCommands,
+): boolean {
+  const focused = (chain as unknown as ProseChainedCommands).focus();
+  switch (name) {
+    case 'toggleBold':
+      return focused.toggleBold().run();
+    case 'toggleItalic':
+      return focused.toggleItalic().run();
+    case 'toggleStrike':
+      return focused.toggleStrike().run();
+    case 'toggleCode':
+      return focused.toggleCode().run();
+    case 'toggleHeading1':
+      return focused.toggleHeading({ level: 1 }).run();
+    case 'toggleHeading2':
+      return focused.toggleHeading({ level: 2 }).run();
+    case 'toggleHeading3':
+      return focused.toggleHeading({ level: 3 }).run();
+    case 'toggleBulletList':
+      return focused.toggleBulletList().run();
+    case 'toggleOrderedList':
+      return focused.toggleOrderedList().run();
+    default:
+      return false;
+  }
+}
+
+export function isDefaultCommandActive(
+  editor: Editor,
+  command: string,
+): boolean {
+  switch (command) {
+    case 'toggleBold':
+      return editor.isActive('bold');
+    case 'toggleItalic':
+      return editor.isActive('italic');
+    case 'toggleStrike':
+      return editor.isActive('strike');
+    case 'toggleCode':
+      return editor.isActive('code');
+    case 'toggleHeading1':
+      return editor.isActive('heading', { level: 1 });
+    case 'toggleHeading2':
+      return editor.isActive('heading', { level: 2 });
+    case 'toggleHeading3':
+      return editor.isActive('heading', { level: 3 });
+    case 'toggleBulletList':
+      return editor.isActive('bulletList');
+    case 'toggleOrderedList':
+      return editor.isActive('orderedList');
+    default:
+      return false;
+  }
+}
+
+ succeeded in 143ms:
+import type { ReactNode } from 'react';
+import type { Editor } from '@tiptap/core';
+import { BubbleMenu } from '@tiptap/react';
+import {
+  defaultToolbarConfig,
+  type ToolbarButton,
+  type ToolbarConfig,
+} from '../core/toolbar-config';
+import { TOOLBAR_ICONS } from './icons';
+import { runDefaultCommand, isDefaultCommandActive } from './dispatch';
+import './toolbar.css';
+
+export interface EditorToolbarProps {
+  readonly editor: Editor | null;
+  readonly config?: ToolbarConfig;
+}
+
+export function EditorToolbar({
+  editor,
+  config = defaultToolbarConfig,
+}: EditorToolbarProps): ReactNode {
+  if (!editor) return null;
+
+  return (
+    <BubbleMenu editor={editor} className="skb-editor-toolbar">
+      <div role="toolbar" aria-label="Text formatting" className="skb-editor-toolbar__row">
+        {config.buttons.map((b) => (
+          <ToolbarButtonView key={b.id} button={b} editor={editor} />
+        ))}
+      </div>
+    </BubbleMenu>
+  );
+}
+
+interface ToolbarButtonViewProps {
+  readonly button: ToolbarButton;
+  readonly editor: Editor;
+}
+
+function ToolbarButtonView({ button, editor }: ToolbarButtonViewProps): ReactNode {
+  const Icon = TOOLBAR_ICONS[button.icon];
+  const isActive = isDefaultCommandActive(editor, button.command);
+  const ariaLabel = button.shortcut
+    ? `${button.label} (${button.shortcut})`
+    : button.label;
+
+  return (
+    <button
+      type="button"
+      onClick={() => runDefaultCommand(button.command, editor.chain())}
+      aria-label={ariaLabel}
+      aria-pressed={isActive}
+      data-command={button.command}
+      className="skb-editor-toolbar__button"
+      data-active={isActive ? 'true' : 'false'}
+    >
+      {Icon ? <Icon /> : <span>{button.label[0]}</span>}
+    </button>
+  );
+}
+
+ succeeded in 142ms:
+import { z } from 'zod';
+
+export const toolbarButtonSchema = z
+  .object({
+    id: z.string().min(1),
+    command: z.string().min(1),
+    icon: z.string().min(1),
+    label: z.string().min(1),
+    shortcut: z.string().optional(),
+  })
+  .strict();
+
+export const toolbarConfigSchema = z
+  .object({
+    buttons: z.array(toolbarButtonSchema).min(1),
+  })
+  .strict();
+
+export type ToolbarButton = z.infer<typeof toolbarButtonSchema>;
+export type ToolbarConfig = z.infer<typeof toolbarConfigSchema>;
+
+export const defaultToolbarConfig: ToolbarConfig = toolbarConfigSchema.parse({
+  buttons: [
+    { id: 'bold', command: 'toggleBold', icon: 'bold', label: 'Bold', shortcut: 'Mod-b' },
+    { id: 'italic', command: 'toggleItalic', icon: 'italic', label: 'Italic', shortcut: 'Mod-i' },
+    { id: 'strike', command: 'toggleStrike', icon: 'strike', label: 'Strikethrough' },
+    { id: 'h1', command: 'toggleHeading1', icon: 'h1', label: 'Heading 1' },
+    { id: 'h2', command: 'toggleHeading2', icon: 'h2', label: 'Heading 2' },
+    { id: 'h3', command: 'toggleHeading3', icon: 'h3', label: 'Heading 3' },
+    { id: 'bulletList', command: 'toggleBulletList', icon: 'bullet-list', label: 'Bulleted list' },
+    { id: 'orderedList', command: 'toggleOrderedList', icon: 'ordered-list', label: 'Numbered list' },
+    { id: 'code', command: 'toggleCode', icon: 'code', label: 'Inline code' },
+  ],
+});
+
+ succeeded in 140ms:
+{
+  "name": "@skb/editor-slash-menu",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./core": "./src/core/index.ts",
+    "./ui-default": "./src/ui-default/index.ts"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@skb/editor-commands": "workspace:*",
+    "zod": "^3.23.0"
+  },
+  "peerDependencies": {
+    "@tiptap/core": "^2.6.0",
+    "@tiptap/react": "^2.6.0",
+    "react": "^18.3.0 || ^19.0.0"
+  },
+  "devDependencies": {
+    "@tiptap/core": "^2.6.0",
+    "@tiptap/react": "^2.6.0",
+    "@types/react": "^18.3.0",
+    "react": "^18.3.0",
+    "typescript": "~5.6.0",
+    "vitest": "^4.1.5"
+  }
+}
+
+ succeeded in 156ms:
+import { describe, it, expect } from 'vitest';
+import {
+  toolbarConfigSchema,
+  defaultToolbarConfig,
+  findButton,
+  listCommands,
+  buildEditBlockInput,
+  defaultCommandBindings,
+} from '../core';
+
+describe('toolbarConfigSchema', () => {
+  it('accepts a valid config and rejects unknown keys (.strict)', () => {
+    const ok = toolbarConfigSchema.safeParse({
+      buttons: [{ id: 'bold', command: 'toggleBold', icon: 'bold', label: 'Bold' }],
+    });
+    expect(ok.success).toBe(true);
+
+    const bad = toolbarConfigSchema.safeParse({
+      buttons: [{ id: 'bold', command: 'toggleBold', icon: 'bold', label: 'Bold' }],
+      extra: 'x',
+    });
+    expect(bad.success).toBe(false);
+  });
+
+  it('rejects empty buttons array (min(1))', () => {
+    const r = toolbarConfigSchema.safeParse({ buttons: [] });
+    expect(r.success).toBe(false);
+  });
+
+  it('defaultToolbarConfig.buttons aligns with block-foundation prose extensions (9 buttons, no underline/link)', () => {
+    const ids = defaultToolbarConfig.buttons.map((b) => b.id);
+    expect(ids).toEqual([
+      'bold',
+      'italic',
+      'strike',
+      'h1',
+      'h2',
+      'h3',
+      'bulletList',
+      'orderedList',
+      'code',
+    ]);
+    expect(ids).not.toContain('underline');
+    expect(ids).not.toContain('link');
+  });
+
+  it('findButton + listCommands + defaultCommandBindings agree', () => {
+    expect(findButton(defaultToolbarConfig, 'bold')?.command).toBe('toggleBold');
+    expect(findButton(defaultToolbarConfig, 'nonsense')).toBeUndefined();
+    expect(listCommands(defaultToolbarConfig)).toContain('toggleBold');
+    expect(defaultCommandBindings.bold).toBe('toggleBold');
+  });
+
+  it('buildEditBlockInput delegates to editBlockInputSchema (cross-package authority)', () => {
+    const ok = buildEditBlockInput('foo', 'b1', { content: 'updated' });
+    expect(ok).toEqual({ pageSlug: 'foo', blockId: 'b1', content: 'updated' });
+
+    expect(() => buildEditBlockInput('foo', 'b1', {})).toThrow(
+      /at least one of props or content/,
+    );
+
+    expect(() => buildEditBlockInput('Foo', 'b1', { content: 'x' })).toThrow();
+  });
+});
+
+ succeeded in 148ms:
+import { describe, it, expect, vi } from 'vitest';
+import type { ChainedCommands, Editor } from '@tiptap/core';
+import { runDefaultCommand, isDefaultCommandActive } from '../ui-default/dispatch';
+import { defaultToolbarConfig } from '../core/toolbar-config';
+
+interface ChainCallLog {
+  readonly calls: string[];
+  readonly args: unknown[][];
+}
+
+function makeMockChain(): { chain: ChainedCommands; log: ChainCallLog } {
+  const log: ChainCallLog = { calls: [], args: [] };
+  const handler: ProxyHandler<object> = {
+    get(_target, prop) {
+      if (prop === 'run') return () => true;
+      const method = String(prop);
+      return (...args: unknown[]) => {
+        log.calls.push(method);
+        log.args.push(args);
+        return new Proxy({}, handler);
+      };
+    },
+  };
+  const chain = new Proxy({}, handler) as unknown as ChainedCommands;
+  return { chain, log };
+}
+
+describe('runDefaultCommand', () => {
+  it('routes toggleBold → chain.focus().toggleBold().run()', () => {
+    const { chain, log } = makeMockChain();
+    const result = runDefaultCommand('toggleBold', chain);
+    expect(result).toBe(true);
+    expect(log.calls).toEqual(['focus', 'toggleBold']);
+    expect(log.args[1]).toEqual([]);
+  });
+
+  it('routes toggleHeading1 → chain.focus().toggleHeading({level:1}).run() (NOT toggleHeading1)', () => {
+    const { chain, log } = makeMockChain();
+    runDefaultCommand('toggleHeading1', chain);
+    expect(log.calls).toEqual(['focus', 'toggleHeading']);
+    expect(log.args[1]).toEqual([{ level: 1 }]);
+  });
+
+  it('routes toggleHeading2 / toggleHeading3 with correct level args', () => {
+    const r2 = makeMockChain();
+    runDefaultCommand('toggleHeading2', r2.chain);
+    expect(r2.log.calls).toEqual(['focus', 'toggleHeading']);
+    expect(r2.log.args[1]).toEqual([{ level: 2 }]);
+
+    const r3 = makeMockChain();
+    runDefaultCommand('toggleHeading3', r3.chain);
+    expect(r3.log.calls).toEqual(['focus', 'toggleHeading']);
+    expect(r3.log.args[1]).toEqual([{ level: 3 }]);
+  });
+
+  it('routes toggleBulletList / toggleOrderedList correctly', () => {
+    const r1 = makeMockChain();
+    runDefaultCommand('toggleBulletList', r1.chain);
+    expect(r1.log.calls).toEqual(['focus', 'toggleBulletList']);
+
+    const r2 = makeMockChain();
+    runDefaultCommand('toggleOrderedList', r2.chain);
+    expect(r2.log.calls).toEqual(['focus', 'toggleOrderedList']);
+  });
+
+  it('routes toggleItalic / toggleStrike / toggleCode correctly', () => {
+    for (const cmd of ['toggleItalic', 'toggleStrike', 'toggleCode']) {
+      const { chain, log } = makeMockChain();
+      runDefaultCommand(cmd, chain);
+      expect(log.calls).toEqual(['focus', cmd]);
+    }
+  });
+
+  it('returns false for unknown commands without invoking the chain', () => {
+    const { chain, log } = makeMockChain();
+    const result = runDefaultCommand('toggleUnderline', chain);
+    expect(result).toBe(false);
+    expect(log.calls).toEqual(['focus']);
+
+    const r2 = makeMockChain();
+    expect(runDefaultCommand('setLink', r2.chain)).toBe(false);
+    expect(runDefaultCommand('nonsense', r2.chain)).toBe(false);
+  });
+
+  it('every defaultToolbarConfig button id is dispatch-routable', () => {
+    for (const button of defaultToolbarConfig.buttons) {
+      const { chain, log } = makeMockChain();
+      const result = runDefaultCommand(button.command, chain);
+      expect(result, `button ${button.id} (command ${button.command}) must dispatch`).toBe(true);
+      expect(log.calls.length, `button ${button.id} must invoke chain`).toBeGreaterThan(1);
+    }
+  });
+});
+
+describe('isDefaultCommandActive', () => {
+  it('queries editor.isActive with the matching node/mark name + heading level', () => {
+    const isActive = vi.fn().mockReturnValue(true);
+    const editor = { isActive } as unknown as Editor;
+
+    expect(isDefaultCommandActive(editor, 'toggleBold')).toBe(true);
+    expect(isActive).toHaveBeenLastCalledWith('bold');
+
+    isDefaultCommandActive(editor, 'toggleHeading2');
+    expect(isActive).toHaveBeenLastCalledWith('heading', { level: 2 });
+
+    isDefaultCommandActive(editor, 'toggleBulletList');
+    expect(isActive).toHaveBeenLastCalledWith('bulletList');
+  });
+
+  it('returns false for unknown commands without querying editor', () => {
+    const isActive = vi.fn().mockReturnValue(true);
+    const editor = { isActive } as unknown as Editor;
+
+    expect(isDefaultCommandActive(editor, 'toggleUnderline')).toBe(false);
+    expect(isDefaultCommandActive(editor, 'setLink')).toBe(false);
+    expect(isActive).not.toHaveBeenCalled();
+  });
+});
+
+ succeeded in 148ms:
+{
+  "name": "@skb/editor-toolbar",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./core": "./src/core/index.ts",
+    "./ui-default": "./src/ui-default/index.ts"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@skb/editor-commands": "workspace:*",
+    "zod": "^3.23.0"
+  },
+  "peerDependencies": {
+    "@tiptap/core": "^2.6.0",
+    "@tiptap/react": "^2.6.0",
+    "react": "^18.3.0 || ^19.0.0"
+  },
+  "devDependencies": {
+    "@tiptap/core": "^2.6.0",
+    "@tiptap/react": "^2.6.0",
+    "@types/react": "^18.3.0",
+    "react": "^18.3.0",
+    "typescript": "~5.6.0",
+    "vitest": "^4.1.5"
+  }
+}
+
+ succeeded in 139ms:
+# @skb/editor-toolbar Contract
+
+第一个 editor-* sub-module（Wave 2 Track G1 template）。
+后续 `editor-slash-menu` / `editor-drag-handle` 按本包结构 clone（codex-block-generator）。
+
+## Public surface
+
+三个 entry：
+
+- `.` (root barrel) — re-export `./core`
+- `./core` — headless 层（无 React / Tiptap import）
+  - `toolbarConfigSchema` / `toolbarButtonSchema` — Zod `.strict()`
+  - `defaultToolbarConfig` — **9 default buttons**, grouped by Tiptap surface category:
+    - **Marks via StarterKit (3)**: `bold` / `italic` / `strike`
+    - **Headings via StarterKit (3)**: `h1` / `h2` / `h3` (all dispatch `toggleHeading({level: N})`)
+    - **Lists via StarterKit (2)**: `bulletList` / `orderedList`
+    - **Inline code via StarterKit (1)**: `code`
+  - `findButton(config, id)` / `listCommands(config)` — config 查询工具
+  - `buildEditBlockInput(pageSlug, blockId, draft)` — 调 `editBlockInputSchema.parse`，
+    把 toolbar 触发的 selection 改动收敛为 Wave 1 命令模式入参（spec §2.6）
+  - `defaultCommandBindings` — `Record<buttonId, tiptapChainCommand>` frozen
+  - 类型：`ToolbarButton` / `ToolbarConfig`
+- `./ui-default` — React + Tiptap 消费者
+  - `EditorToolbar` — `BubbleMenu` 浮动工具条；接 `editor: Editor | null` + 可选 `config`
+  - `TOOLBAR_ICONS` — SVG 图标 frozen Record（9 项，与 `defaultToolbarConfig` 严格对齐）；按 `button.icon` key 查表
+  - `runDefaultCommand(name, chain)` / `isDefaultCommandActive(editor, command)` — 显式
+    `switch` 派发器，把命令名映射到真实的 Tiptap chain API 形状
+    （e.g. `'toggleHeading1'` → `chain.focus().toggleHeading({level:1}).run()`）；未知命令返回 `false`，不抛错
+
+## Invariants
+
+- **Headless 自给**: `core/` 不 import React / Tiptap；仅依赖 `@skb/editor-commands` + `zod`
+  （ADR-0003 D1）
+- **Schema strictness**: `toolbarConfigSchema` / `toolbarButtonSchema` 一律 `.strict()`，
+  unknown key 直接 reject（ADR-0006 item #3）
+- **Cross-package consumer = structural identity**: `buildEditBlockInput` 复用
+  `@skb/editor-commands` 的 `editBlockInputSchema`，不 inline 重复 refine 逻辑
+  （ADR-0006 item #4 + memory `cross_package_consumer_pattern`）
+- **Tiptap 命令派发显式枚举**: `runDefaultCommand` / `isDefaultCommandActive`
+  用 `switch` 把 `ToolbarButton.command` 字面值映射到 Tiptap chain API。命令字符串 ≠
+  Tiptap 方法名（heading 是 `toggleHeading({level:N})` 而非 `toggleHeading1`），动态
+  `chain[name]()` 派发会 silent no-op；显式 switch 是该类 silent-bug 的唯一防线。
+  **新增按钮三处必须同步**：(1) `defaultToolbarConfig.buttons` 增项，(2)
+  `runDefaultCommand` 加 case，(3) `isDefaultCommandActive` 加 case + 同 PR 加 dispatch
+  test。`__tests__/toolbar-dispatch.test.ts#every defaultToolbarConfig button id is dispatch-routable`
+  自动卡口任何漏 case（ADR-0006 item #1：算法 + 比较器配套）
+
+- **Prose-extension 对齐**: 默认按钮集合**严格子集**于 `@skb/block-foundation/prose.ts`
+  `proseExtensions`（StarterKit + TaskList + Typography + tiptap-markdown）暴露的命令。
+  `underline` / `link` 暂不在 prose 扩展中 → **不**进入 `defaultToolbarConfig`，避免
+  silent no-op。Wave 3 若 block-foundation 加入 `@tiptap/extension-underline` /
+  `@tiptap/extension-link`，本包同 PR 在 `defaultToolbarConfig` 加按钮 + `runDefaultCommand`
+  加 case + 加 dispatch test（ADR-0006 item #1 + sister-package alignment）
+- **A11y**: 工具条 `role="toolbar"` + `aria-label`；按钮 `aria-pressed` + `aria-label`
+  含可选 `shortcut`；图标 `aria-hidden`
+- **CSS 变量绑定 design-tokens**: `toolbar.css` 用 `var(--skb-color-*)`；
+  consumer 应用 `@skb/design-tokens`（Wave 2 后续 site 集成时引入；本包 CSS 写
+  fallback hex 让独立测试可用）
+
+## Wave 3 future work
+
+**Underline + link buttons deferred.** `defaultToolbarConfig` ships with 9 buttons (above)
+because that's the strict subset of commands `@skb/block-foundation/src/prose.ts` `proseExtensions`
+(StarterKit + TaskList + Typography + tiptap-markdown) actually exposes. To enable underline
+and link, Wave 3 must do — in this order, in one cross-package PR:
+
+1. `@skb/block-foundation`: add `@tiptap/extension-underline` (and a link-flow primitive — link
+   needs an href-input UX, not a single chain command) to `proseExtensions`; bump deps in
+   `package.json`; regenerate `pnpm-lock.yaml`.
+2. `@skb/editor-toolbar` (this package, same PR): add the two buttons to `defaultToolbarConfig`,
+   add their cases to `runDefaultCommand` + `isDefaultCommandActive`, restore the Underline +
+   LinkIcon SVG entries to `TOOLBAR_ICONS`, and update the dispatch test "every default
+   button id is dispatch-routable" to cover them.
+
+Until that PR lands, the dispatch layer fails-safe: `runDefaultCommand('toggleUnderline', …)`
+and `runDefaultCommand('setLink', …)` both return `false`. The G1 R2 dispatch tests assert
+this fail-safe so accidental re-introduction of those button IDs without the prerequisite
+prose-extension work is caught immediately (ADR-0006 item #1).
+
+## G2 / G3 codex-clone 指引
+
+`codex-block-generator`（[runbook](../../docs/runbooks/codex-tool-invocations.md#codex-block-generator)）
+以本包为 source 模板生成姐妹 sub-module：
+
+1. **G2 `editor-slash-menu`**: 改 `toolbarConfig` → `slashMenuConfig`（`items: SlashMenuItem[]`，
+   每项 `command` 改成 `insert_block` 的 `blockType` + `props`）；改 `buildEditBlockInput`
+   → `buildInsertBlockInput`，复用 `commandSchemas.insert_block`；UI 改成下拉列表（可
+   保留 BubbleMenu 浮动定位）
+2. **G3 `editor-drag-handle`**: 改 `toolbarConfig` → `dragHandleConfig`（仅 1-2 个动作：
+   move-up / move-down / drag-start）；UI 改成 block 左侧拖拽 handle；`buildMoveBlockInput`
+   复用 `commandSchemas.move_block`
+3. **保持目录结构同形**: `core/{*-config.ts, command-bindings.ts, index.ts}` +
+   `ui-default/{*.tsx, *.css, icons/, dispatch.ts}` + `__tests__/{*-config.test.ts, *-dispatch.test.ts}`
+   （schema-validation 套件 ≥4 用例 + dispatch 套件覆盖每个 default 按钮 → Tiptap 真实 chain 形状）
+4. **Dispatch 测试模板**: 每个 sub-module 必须配 `*-dispatch.test.ts`，用 `Proxy`-mock 的
+   `ChainedCommands` 校验：(a) 每个 `defaultConfig` 按钮都能 dispatch 成功；(b) 命令名
+   到真实 chain 方法 + 参数（如 `{level: N}`）的映射；(c) 未知命令早返回。
+   `runDefaultCommand` switch 与 `defaultConfig` 之间的 drift 由 "every defaultConfig button
+   id is dispatch-routable" 用例自动 catch（ADR-0006 item #1 闭环）
+
+## Modifying this file
+
+`toolbarConfigSchema` / `toolbarButtonSchema` / `EditorToolbar` props / `defaultToolbarConfig`
+按钮列表的字段或值变更需 ADR — 与 `editor-commands/CONTRACT.md` 同 freeze 级别
+（toolbar 是 editor-commands 的第一类 UI 触发源，schema 漂移会让 agent / UI 命令路径不一致，
+spec §2.6）。
+
+`buildEditBlockInput` 签名变更需配 `editor-commands` 同步 PR（强耦合于 `editBlockInputSchema`）。
+
+## Related
+
+- [@skb/editor-commands CONTRACT](../editor-commands/CONTRACT.md) — `editBlockInputSchema` 权威源
+- [设计规格 §2.6](../../docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md) — 命令模式 surface
+- [ADR-0003 headless / presentational 分层](../../docs/decisions/ADR-0003-headless-presentational-split.md)
+- [ADR-0006 asymmetry audit checklist](../../docs/decisions/ADR-0006-asymmetry-audit-checklist.md) item #1 + #3 + #4 + #6
+- [ADR-0008 D1 dead-dep policy](../../docs/decisions/ADR-0008-wave-2-entry-policies.md)
+- [Wave 2 plan §Task G1](../../docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md)
+
+ succeeded in 142ms:
+docs/review-checklist.md:20:## ADR-0006 asymmetry-audit checklist (mandatory for code-reviewer + pr-gate)
+docs/review-checklist.md:22:Apply each item that is in scope for the PR; explicitly skip items that are not (e.g. item #2 "status code" doesn't apply to TS-only packages). Reviewer verdict structure MUST include `asymmetry-audit applied: items {1..8} verdicts: ...`. See [ADR-0006](decisions/ADR-0006-asymmetry-audit-checklist.md) for empirical evidence + full rationale per item.
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:554:### 3.1 Agent 阵容（20 teammate + 8 tool pattern；ADR-0007 D1+D5）
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:559:ADR-0007 D1 同时新增 `ux-ui-lead` Claude teammate 作 ui-default 跨包视觉单一权威。最终阵容为
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:570:  ├─ ux-ui-lead (新, ADR-0007 D1) ── ui-default 跨包视觉单一权威
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:619:| `ux-ui-lead`（ADR-0007 D1） | 视觉单一权威：ui-default 跨包统一意图（写 1 个 template + 审 7 个 codex clone）；apps/site 视觉；editor 子模块视觉。**不**改 core / propsSchema / MDX serialize；**不**直接调 codex（dispatch 由 orchestrator） |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:660:| `code-reviewer` | gpt-5.3-codex-spark（默认廉价） | 行级 review：类型 / lint / 契约同步 / 文件大小 / 风格 / 边界条件；强制 ADR-0006 8-point asymmetry-audit |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:668:Wave 1 数据（codex 5.5 抓 9/12 cross-location asymmetry，[ADR-0006](../../decisions/ADR-0006-asymmetry-audit-checklist.md)）
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:680:│  ── 强制 ADR-0006 8-point asymmetry-audit checklist       │
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:1322:| 2026-04-29 | 项目锁定 orchestrator-managed team 模式（ADR-0004 D8） | review-gate 依赖超出 TaskList blocked_by 表达；高风险 escalate / Codex 配额由 orchestrator 集中调度 |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:1323:| 2026-04-30 | **新增 ux-ui-lead Claude teammate（ADR-0007 D1）** | Wave 2 8 个 ui-default 跨 block 统一视觉权威；防视觉八头蛇 |
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:8:- **template + codex-clone 模式（ADR-0007 D3）**：visual single-authority 由 `ux-ui-lead`（新 Claude teammate, ADR-0007 D1）写第一个 ui-default，其余 7 个由 codex-block-generator (tool) 仿造 + ux-ui-lead 视觉一致性审；core 在 simple block 集群试点（block-callout core 是 template，block-code/block-image core 是 clone），render block 与 viz block 仍 hand-craft；editor 三子模块同模式（toolbar template + slash-menu/drag-handle clone）。
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:10:- **8-point asymmetry-audit（ADR-0006）强制**：每个 reviewer 必须按 8 项逐条审；Wave 2 第一个 attr-bearing mark（如 `highlight`/`kbd`）扩展时 simul-update wrapMark + marksEqual + fixture（item #1 trip-hazard）。
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:12:- **Wave 2 entry ADR（ADR-0008）必产**：解决 F1（mdx-bridge dead deps）+ F2（block-foundation forward-compat dead dep）的全局 dead-dep 政策（structure-auditor 推荐 #1，ADR-0002 erratum #19/#20）。
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:25:- [ADR-0002](../../decisions/ADR-0002-wave-1-close.md) Wave 1 close — 22 errata + 3 cross-package single-authority invariants（**含 erratum #19 dead-dep policy / #21 block-foundation/RFC.md / #16 attr-bearing mark expansion**）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:27:- [ADR-0006](../../decisions/ADR-0006-asymmetry-audit-checklist.md) 8-point asymmetry-audit checklist（mandatory for code-reviewer + pr-gate）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:28:- [ADR-0007](../../decisions/ADR-0007-job-function-codex-heavy-execution.md) 职能化分工 + Codex-heavy 执行 + teammate/tool 切分（**D1 ux-ui-lead / D2 selective Claude review / D3 template+clone / D4 design skill 注入 / D5 codex tool**）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:66:├── block-math/                           # Track D1 (render block, hand-craft, KaTeX)
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:113:docs/decisions/ADR-0008-wave-2-entry-policies.md  # Task A (Wave 2 entry ADR)
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:129:- `packages/mdx-bridge/package.json` —— Task A1 按 ADR-0008 决议：去 `@skb/block-foundation` 与 `@skb/content-types` 死依赖（如选 Option A）OR 加 tsconfig refs 同步（如选 Option B）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:155:主任务：A（dead-dep ADR + RFC）/ B（Wave 1 errata 清理）/ C（simple blocks）/ D（render blocks）/ E（viz blocks）/ F（kernel-pyodide）/ G（editor 子模块）/ I（scripts）/ J（attr-mark 条件触发）/ Z（close）。Task H（test scaffold sweep）已合并入各 track（plan-challenger CRITICAL #1 修订）。
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:173:   ├──► Task A1: ADR-0008 dead-dep policy (refactorer)
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:204:C1 callout    D1 math      E1 jupyter   F pyodide    G1 toolbar
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:219:   core         (D1/D2 ui-                            mdx-doctor 静态扫描
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:244:- Pre-Task 0 → Task A1（dead-dep ADR）+ Task B1（H1 修，独立）+ Task I1（refactor-move，独立）**同时启动**
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:274:cat docs/decisions/ADR-0006-asymmetry-audit-checklist.md
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:290:- ux-ui-lead 是 Wave 2 第一次 spawn 的新 teammate（ADR-0007 D1）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:304:// Task A: dead-dep ADR + RFC freeze
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:305:TaskCreate({task_name: "task-A1-adr-0008-dead-dep", blocked_by: [], meta: {d2_row: 4}});  // 触发新 ADR
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:306:TaskCreate({task_name: "task-A2-block-foundation-rfc", blocked_by: ["task-A1-adr-0008-dead-dep"], meta: {d2_row: 1}});  // 视为 CONTRACT-level (challenger OBS 4)
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:330:TaskCreate({task_name: "task-D1-math", blocked_by: ["task-A2-block-foundation-rfc"], meta: {d2_row: 1}});
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:363:// Tier 1 Workers (11 — including ux-ui-lead per ADR-0007 D1)
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:404:SendMessage({to: "refactorer", summary: "Task A1 dead-dep ADR", message: TASK_A1_PROMPT});
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:419:**Why first**: A1 决议 dead-dep 政策，影响 mdx-bridge / block-foundation / 全部 block-* package.json 形态；A2 freeze block-foundation 注册 API 形态，blocks all block-* track 入门。
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:421:### Task A1: ADR-0008 — dead-dep policy global resolution
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:424:- Create: `docs/decisions/ADR-0008-wave-2-entry-policies.md`
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:425:- Modify (per Option A 决议): `packages/mdx-bridge/package.json`（去 `@skb/block-foundation` + `@skb/content-types` 两个 dead deps）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:426:- Modify (per Option A 决议): `packages/block-foundation/package.json`（去 `@skb/content-types` dead dep）+ `packages/block-foundation/tsconfig.json`（去 ref）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:440:- audit invariant 更简洁：dead-dep = bug，不必维护"forward-compat"特例
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:446:- [ ] **Step 3: 写 ADR-0008**
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:449:# ADR-0008: Wave 2 entry policies — dead-dep + block-foundation interface freeze
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:456:| 触发 | structure-auditor Wave 1 close baseline §7 推荐 #1（dead-dep policy）+ #2（block-foundation interface freeze） |
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:461:structure-auditor Wave 1 close 报告 §7 提出 3 个结构关注点；其中 #1（dead-dep policy）+ #2（block-foundation interface freeze）必须在 Wave 2 第一个 block-* PR 之前 lock。
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:463:ADR-0002 erratum #19 + #20 描述当前两处 dead-dep（F1 mdx-bridge 声明 block-foundation/content-types 不 import；F2 block-foundation 声明 content-types 不 import）。
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:467:### D1: dead-dep policy = Option A（tighten）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:498:1. ADR-0008 commit（本 ADR 自身；触发 D2 row 4 高风险）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:508:- [ ] **Step 4: 应用 D1（dead-dep cleanup）**
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:538:**Owner**: `block-foundation-eng`（**blocked_by A1**：ADR-0008 D2 才会冻结接口形状）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:548:> **Authority**: ADR-0008 D2 freezes this interface as of <DATE>.
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:887:- 15-16: block-math inline/display (D1)
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:905:- Modify: `packages/design-tokens/CONTRACT.md` 加"消费方使用规范"段（ADR-0007 D1 ux-ui-lead 责任：把视觉决策固化进此段）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:927:格式（ADR-0007 D1 落地形态）：
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:975:   CONTRACT.md 改对应公开导出 + Wave 1 declared peers（按 ADR-0008 D1 不加 dead deps）。
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:979:   ADR-0006 8-point checklist 适用 item #6 (sister-doc): block-callout vs block-code 的
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1025:任意 block 的 ui-default 都跑这个 checklist；codex-block-generator clone simple block ui-default (C5a/C5b) 时**也**遵循；hand-craft 的 render+viz block ui-default (D1/D2/E1/E2/E3) 也遵循。**Track C6 不是单独 task entry**；它是 ux-ui-lead 的"持续审视责任"——每次 block ui-default PR 都要 SendMessage ux-ui-lead 视觉审。
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1033:**Risk level**: 高 (D1 KaTeX SSR + dark-mode 渲染；D2 PDF.js worker thread + 文本提取)
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1035:### Task D1: block-math（KaTeX）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1059:- [ ] **Step 5: review chain（同 D1）+ mdx-doctor 跑 PDF fixture**
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1160:  2. 工种 worker 在 ready-for-review 报告时**强制自审**：在 ADR-0006 8-point self-audit 段必须明示"item #1: PROPS 含 attr-bearing fields = YES/NO + 列字段名 / NO 的理由"；reviewer cross-check
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1165:**Risk level**: 高（ADR-0002 erratum #16 + ADR-0006 item #1 trip-hazard：marksEqual 默认 `return true` 是 silent-drop trap）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1188:- [ ] **Step 4: review chain（D2 row 1 改 CONTRACT.md）**：full chain；ADR-0006 item #1 是核心审
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1253:- D1：empirical lessons codified
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1263:- codex catch rate vs Wave 1（ADR-0006 8-point 实战数据）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1275:- tsconfig refs 一致性（按 ADR-0008 D1 dead-dep policy）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1295:- [x] 8 个 ui-default 全部由 ux-ui-lead 写 1 个 + codex-clone 7 个（ADR-0007 D1+D3）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1301:- [x] Wave 2 entry ADR + close ADR（A1 ADR-0008 + Z1 ADR-0009）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1303:- [x] dead-dep policy resolution（A1 ADR-0008 D1）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1317:**4. ADR-0006 8-point trip-hazards 列**:
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1320:- [x] item #8: Pre-Task 0 + Task A1 + Task B3 都强调 ADR-0006 D8 staging protocol（authority + generator + outputs 同 bundle）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1353:- [ADR-0006](../../decisions/ADR-0006-asymmetry-audit-checklist.md) 8-point asymmetry-audit checklist
+docs/superpowers/plans/2026-04-29-phase-0-scaffolding.md:907:      broken / dead 阻断 merge。
+docs/plans/active.md:11:- [ADR-0006](../decisions/ADR-0006-asymmetry-audit-checklist.md) 8-point cross-location asymmetry-audit checklist (process rule, mandatory for code-reviewer + pr-gate; embedded in `agent-contract.md` + regenerated subagent prompts + cross-linked from team-operations.md)
+docs/plans/active.md:15:**团队操作手册**: [docs/runbooks/team-operations.md](../runbooks/team-operations.md)（必须前置注入每个 spawn 的 prompt；Tier 2 reviewer rows 现已 cross-link ADR-0006 8-point checklist；reviewer subagent prompts 也已 regen 嵌入 8 项摘要）
+docs/plans/active.md:23:ADR-0007 重构 agent 阵容。**实施作为 Wave 2 第一个 task 走完整 review chain**（codex 5.3-spark + codex 5.5 pr-gate + Claude pr-reviewer，因 ADR-0007 D2 触发条件命中）。**严格按 ADR-0006 D8 staging protocol** 执行（authority + generator code + 全部生成产物在同一 bundle commit；显式 `git add` + `git diff --cached --stat` 验证）。
+docs/plans/active.md:39:1. 读 [ADR-0002](../decisions/ADR-0002-wave-1-close.md) + [ADR-0006](../decisions/ADR-0006-asymmetry-audit-checklist.md) + **[ADR-0007](../decisions/ADR-0007-job-function-codex-heavy-execution.md)**（必读）
+docs/plans/active.md:50:- 12 cross-location asymmetry meta-class 实例（worker layer 1-7：B R1 / D R2 / F R3 / C R2 / F R5 / A R1 / A R2；close-ceremony 8-12：v1 dogfood failure / v2 ADR-0006:81 drift / v3 ADR-0006:117 drift / v4 structure baseline:66 / v5 generator outputs not staged）已编入 ADR-0006 empirical 8-point checklist（8 distinct items + 4 close-ceremony reinforcements of items #6 + #8）
+docs/plans/active.md:67:- 8 个 ui-default 由 **ux-ui-lead** (新 Claude teammate) 写第一个 template，其余 codex-block-generator (tool) clone（D1 + D3）
+docs/review-checklist.md:20:## ADR-0006 asymmetry-audit checklist (mandatory for code-reviewer + pr-gate)
+docs/review-checklist.md:22:Apply each item that is in scope for the PR; explicitly skip items that are not (e.g. item #2 "status code" doesn't apply to TS-only packages). Reviewer verdict structure MUST include `asymmetry-audit applied: items {1..8} verdicts: ...`. See [ADR-0006](decisions/ADR-0006-asymmetry-audit-checklist.md) for empirical evidence + full rationale per item.
+docs/plans/phase-1/plan.md:29:  - ui-default 全部由 **ux-ui-lead**（新 Claude teammate, ADR-0007 D1）写第一 template + codex-block-generator (tool) clone 7 个
+docs/runbooks/team-operations.md:95:| `code-reviewer` (tool)                  | orchestrator 触发，PR ready                                          | 读 git diff；orchestrator Bash 调 `codex exec --profile code-reviewer < /dev/null`；输出 PASS / FAIL + 具体问题；stdout 落盘到 `docs/audits/codex-runs/`。**强制 [ADR-0006](../decisions/ADR-0006-asymmetry-audit-checklist.md) 8-point asymmetry-audit checklist**（每条可适用项目都要在 verdict 里给结论） |
+docs/runbooks/team-operations.md:96:| `pr-gate` (tool)                        | code-reviewer pass 后，orchestrator 判断高风险触发（ADR-0007 D2 表） | orchestrator Bash 调 `codex exec --profile pr-gate < /dev/null`（5.5）；输出 PASS / FAIL。**强制 [ADR-0006](../decisions/ADR-0006-asymmetry-audit-checklist.md) 8-point asymmetry-audit checklist + 8th-class hunt**（独立验证 R1 结论 + 主动 hunt cited-fix 之外的对称性缺口）                              |
+docs/runbooks/team-operations.md:230:- [ADR-0006 cross-location asymmetry-audit checklist](../decisions/ADR-0006-asymmetry-audit-checklist.md)
+docs/decisions/ADR-0006-asymmetry-audit-checklist.md:1:# ADR-0006: Cross-location asymmetry-audit checklist (process rule)
+docs/decisions/ADR-0006-asymmetry-audit-checklist.md:30:| 8 | Wave 1 close bundle v1 | R1 → fixed v2 | ADR-0006 mandated reviewer-prompt updates vs actual `agent-contract.md` / generated `.claude/agents/*.md` / `docs/review-checklist.md` / `team-operations.md` content | The close-ceremony commit codified a process rule that mandates downstream behavior; consumer-side artifacts (reviewer prompts + runbook) had not been updated to embed the rule, so Wave 2 reviewers would not have seen it |
+docs/decisions/ADR-0006-asymmetry-audit-checklist.md:31:| 9 | Wave 1 close bundle v2 | R2 → fixed v3 | ADR-0006:81 within-document drift "7 distinct instances" | Single bullet missed during the v1→v2 count sweep — sister-bullet variant of item #6 within a single document |
+docs/decisions/ADR-0006-asymmetry-audit-checklist.md:32:| 10 | Wave 1 close bundle v3 | R3 → fixed v4 | ADR-0006:117 within-document drift "7 empirical instances + 18+ erratum candidates" (both numbers stale) | Second sister-bullet drift in the same file, a different bullet — proved per-citation fixes are themselves item #6 traps; comprehensive sweep at fix time is the robust pattern |
+docs/decisions/ADR-0006-asymmetry-audit-checklist.md:88:   **Wave 1 evidence**: **instance #8** — ADR-0006 v1 commit codified reviewer-prompt mandates but did not update `agent-contract.md` / regenerate `.claude/agents/code-reviewer.md` / regenerate `.claude/agents/pr-gate.md` / cross-link `team-operations.md` / regenerate `docs/review-checklist.md`; pr-gate caught the dogfood failure during R1 review of the close-ceremony bundle, forcing a v2 fix. **instance #12 (sub-form A — pre-regeneration omission)** — v5 bundle updated authority files (`agent-contract.md`, generator code, `team-operations.md` cross-link) but had not run the generator at all post-edit; the 3 regenerated outputs were stale at HEAD content; pr-gate caught this during R2 review, forcing a v6 fix. **instance #12 (sub-form B — staging-vs-working-tree confusion)** — v6 bundle ran the generator (so working tree had new content) but did NOT `git add` the regenerated outputs; the git **index** still held HEAD blob hashes for the 3 generated files; orchestrator confused `git status --short` "M" prefix (working-tree-vs-index) with index-vs-HEAD; pr-gate caught this via `git ls-files --stage` blob-hash comparison during R3 review, forcing the v7 fix that explicitly stages with `git add` + verifies via `git diff --cached`. **instance #12 (sub-form C — lockfile is a generated-from-authority artifact)** — Wave 1 close ceremony commit `e15ec36` ("fix(deps): commit pnpm-lock.yaml for @tailwindcss/typography (lockfile drift)"): the design-tokens erratum (commit `fdc86a8`) added the `@tailwindcss/typography` dependency to `package.json` but did not stage the regenerated `pnpm-lock.yaml`; CI install used the pre-update lockfile, drifted against the new `package.json`, and failed `pnpm install --frozen-lockfile`. Resolution: commit `e15ec36` staged the lockfile separately. Lesson codified: when the authority is `package.json` (any dependency add / remove / version bump), `pnpm-lock.yaml` is the consumer-side generated artifact and must ride the same bundle — the class equivalence to `.claude/agents/*.md` regeneration is exact (deterministic derive + git-index staging required). The four sub-forms of the same item #8 class — pre-regeneration omission, post-regeneration commit-staging confusion, conceptually-correct-but-operationally-incomplete fix, AND lockfile-as-generated-artifact — together motivate the explicit operational sequence and `git diff --cached` canonical verification command codified above.
+docs/decisions/ADR-0006-asymmetry-audit-checklist.md:120:- **Risk**: this list might grow unbounded as Wave 2+ surfaces new asymmetry classes. **Mitigation**: ADR amendments are cheap; each new instance produces an ADR-0006 erratum capturing item #N+1. Wave 2 close ceremony reviews instances and adds items as needed.
+docs/decisions/ADR-0008-wave-2-entry-policies.md:1:# ADR-0008: Wave 2 entry policies — dead-dep + block-foundation interface freeze
+docs/decisions/ADR-0008-wave-2-entry-policies.md:8:| 触发 | structure-auditor Wave 1 close baseline §7 推荐 #1（dead-dep policy）+ #2（block-foundation interface freeze）；ADR-0002 D3 erratum #19（F1）+ #20（F2）+ #21（block-foundation RFC） |
+docs/decisions/ADR-0008-wave-2-entry-policies.md:14:（dead-dep policy）+ #2（block-foundation interface freeze）必须在 Wave 2 第一个
+docs/decisions/ADR-0008-wave-2-entry-policies.md:19:ADR-0002 D3 已记录两处 forward-compat dead-dep：
+docs/decisions/ADR-0008-wave-2-entry-policies.md:26:  `{ "path": "../content-types" }`（即 package.json 与 tsconfig 一致但都是 dead）。
+docs/decisions/ADR-0008-wave-2-entry-policies.md:43:### D1：dead-dep policy = Option A（tighten）
+docs/decisions/ADR-0008-wave-2-entry-policies.md:52:1. **audit invariant 更简洁**：dead-dep = bug，结构审计不必为
+docs/decisions/ADR-0008-wave-2-entry-policies.md:53:   "forward-compat 是合法 dead-dep" 维护特例；structure-auditor 月度可机械化
+docs/decisions/ADR-0008-wave-2-entry-policies.md:65:**具体执行（D1 应用范围限于 Wave 1 已识别的两处）**：
+docs/decisions/ADR-0008-wave-2-entry-policies.md:97:- **audit invariant 简洁可机械化**：structure-auditor 月度增加单条扫描（package.json `@skb/*` ↔ source import），覆盖 D1 不变量。
+docs/decisions/ADR-0008-wave-2-entry-policies.md:98:- **block-foundation 接口在 block-callout 入门前 freeze**：预防 Wave 1 R-round inflation 同源问题（教训源 ADR-0006 instances #1, #5）。
+docs/decisions/ADR-0008-wave-2-entry-policies.md:99:- **YAGNI 原则在 monorepo 层落地**：dead-dep 不再合法，迫使依赖在真消费时声明。
+docs/decisions/ADR-0008-wave-2-entry-policies.md:121:按 ADR-0006 D8 staging protocol（authority + generated/consumed surface 同 bundle staged）：
+docs/decisions/ADR-0008-wave-2-entry-policies.md:124:   - `docs/decisions/ADR-0008-wave-2-entry-policies.md`（本 ADR 自身）
+docs/decisions/ADR-0008-wave-2-entry-policies.md:125:   - `docs/decisions/README.md`（索引加 ADR-0008 行）
+docs/decisions/ADR-0008-wave-2-entry-policies.md:126:   - `packages/mdx-bridge/package.json`（删 2 条 dead deps）
+docs/decisions/ADR-0008-wave-2-entry-policies.md:128:   - `packages/block-foundation/package.json`（删 1 条 dead dep）
+docs/decisions/ADR-0008-wave-2-entry-policies.md:131:   - `pnpm-lock.yaml`（如 `pnpm install` 后有变动 — workspace dep 删除通常无 lockfile 影响，但 ADR-0006 D8 sub-form C 要求 verify）
+docs/decisions/ADR-0008-wave-2-entry-policies.md:135:3. **structure-auditor 2026-05 月度审计**：增加 D1 机械扫描项；任何 dead-dep
+docs/decisions/ADR-0008-wave-2-entry-policies.md:141:- [ADR-0002](ADR-0002-wave-1-close.md) D3 erratum #19 / #20 / #21 — F1/F2 dead-dep + block-foundation RFC prereq 来源
+docs/decisions/ADR-0008-wave-2-entry-policies.md:143:- [ADR-0006](ADR-0006-asymmetry-audit-checklist.md) D8 — staging protocol 适用本 PR
+docs/plans/active.md:11:- [ADR-0006](../decisions/ADR-0006-asymmetry-audit-checklist.md) 8-point cross-location asymmetry-audit checklist (process rule, mandatory for code-reviewer + pr-gate; embedded in `agent-contract.md` + regenerated subagent prompts + cross-linked from team-operations.md)
+docs/plans/active.md:15:**团队操作手册**: [docs/runbooks/team-operations.md](../runbooks/team-operations.md)（必须前置注入每个 spawn 的 prompt；Tier 2 reviewer rows 现已 cross-link ADR-0006 8-point checklist；reviewer subagent prompts 也已 regen 嵌入 8 项摘要）
+docs/plans/active.md:23:ADR-0007 重构 agent 阵容。**实施作为 Wave 2 第一个 task 走完整 review chain**（codex 5.3-spark + codex 5.5 pr-gate + Claude pr-reviewer，因 ADR-0007 D2 触发条件命中）。**严格按 ADR-0006 D8 staging protocol** 执行（authority + generator code + 全部生成产物在同一 bundle commit；显式 `git add` + `git diff --cached --stat` 验证）。
+docs/plans/active.md:39:1. 读 [ADR-0002](../decisions/ADR-0002-wave-1-close.md) + [ADR-0006](../decisions/ADR-0006-asymmetry-audit-checklist.md) + **[ADR-0007](../decisions/ADR-0007-job-function-codex-heavy-execution.md)**（必读）
+docs/plans/active.md:50:- 12 cross-location asymmetry meta-class 实例（worker layer 1-7：B R1 / D R2 / F R3 / C R2 / F R5 / A R1 / A R2；close-ceremony 8-12：v1 dogfood failure / v2 ADR-0006:81 drift / v3 ADR-0006:117 drift / v4 structure baseline:66 / v5 generator outputs not staged）已编入 ADR-0006 empirical 8-point checklist（8 distinct items + 4 close-ceremony reinforcements of items #6 + #8）
+docs/plans/active.md:67:- 8 个 ui-default 由 **ux-ui-lead** (新 Claude teammate) 写第一个 template，其余 codex-block-generator (tool) clone（D1 + D3）
+docs/decisions/README.md:14:| [0006](ADR-0006-asymmetry-audit-checklist.md)             | Cross-location asymmetry-audit checklist (process rule)    | 2026-04-30 | accepted |
+docs/decisions/README.md:16:| [0008](ADR-0008-wave-2-entry-policies.md)                 | Wave 2 entry policies — dead-dep + block-foundation freeze | 2026-04-30 | accepted |
+docs/decisions/ADR-0002-wave-1-close.md:15:1. Capture empirical lessons that should bind Wave 2+ (recorded as ADR-0006 process rule and inline notes in CONTRACT.md / CONVENTIONS.md)
+docs/decisions/ADR-0002-wave-1-close.md:26:### D1 — Process rule codified as ADR-0006
+docs/decisions/ADR-0002-wave-1-close.md:28:The 8-point cross-location asymmetry-audit checklist becomes mandatory reviewer practice (see [ADR-0006](ADR-0006-asymmetry-audit-checklist.md)). Wave 1's empirical evidence (12 instances across 6 tracks + 5 close-ceremony fix iterations — 8 distinct failure-mode items + 4 close-ceremony reinforcements of items #6 and #8) is the data behind this rule.
+docs/decisions/ADR-0002-wave-1-close.md:99:19. **F1 — mdx-bridge forward-compat dead deps** (audit §5/§6): `mdx-bridge/package.json` declares `@skb/block-foundation` and `@skb/content-types` workspace deps; source contains no imports yet. Documented at mdx-bridge CONTRACT §"Wave 1 declared peers (forward-compat)". Wave 2 entry ADR should resolve dead-dep policy globally (audit §7 recommendation #1: tighten "every package.json `@skb/*` must have a corresponding source import" OR relax "tsconfig refs MUST match package.json + CONTRACT MUST explain").
+docs/decisions/ADR-0002-wave-1-close.md:101:20. **F2 — block-foundation forward-compat dead dep** (audit §6): `block-foundation/package.json` declares `@skb/content-types` dep + matching tsconfig ref; no source import yet. Planned Wave 2 use: block-foundation will validate registered block props against content-types schemas. Resolution bundled with F1 in Wave 2 entry ADR.
+docs/decisions/ADR-0002-wave-1-close.md:123:- **Empirical lessons preserved**: 22 errata + ADR-0006 8-point checklist + 3 cross-package single-authority invariants now codified at the right scope (CONTRACT.md / CONVENTIONS.md / ADR). Wave 2+ workers won't re-litigate.
+docs/decisions/ADR-0002-wave-1-close.md:131:- **Review-round count was high** for some tracks (Track F: 5 + 4 = 9 review rounds total; Track A: 3 + 3 = 6). ADR-0006 should reduce this in Wave 2 by front-loading the asymmetry-audit at code-reviewer level.
+docs/decisions/ADR-0002-wave-1-close.md:137:- **Risk**: Wave 2 workers may not read ADR-0006 carefully and hit the same 8-point class. **Mitigation**: ADR-0006 v2 also updates `agent-contract.md` (code-reviewer + pr-gate descriptions embed the 8-item summary), regenerates `.claude/agents/{code-reviewer,pr-gate}.md` + `docs/review-checklist.md` via `pnpm generate:configs`, and adds an ADR-0006 cross-link to `docs/runbooks/team-operations.md` Tier 2 reviewer rows. Every spawn prompt prefix-injects `team-operations.md`, so reviewers see the rule on entry; the regenerated subagent prompts also embed the 8-item summary directly.
+docs/decisions/ADR-0002-wave-1-close.md:145:2. ✅ ADR-0006 written (`docs/decisions/ADR-0006-asymmetry-audit-checklist.md`)
+docs/decisions/ADR-0002-wave-1-close.md:152:9. ⏳ Wave 1 close commit (orchestrator-direct via git-operator) — bundles ADR-0002 + ADR-0006 + structure baseline + active.md update + decisions/README.md index
+docs/decisions/ADR-0002-wave-1-close.md:161:- [ADR-0006](ADR-0006-asymmetry-audit-checklist.md) — 8-point asymmetry-audit checklist (process rule)
+docs/runbooks/codex-tool-invocations.md:32:## ADR-0006 D8 reminder
+docs/runbooks/codex-tool-invocations.md:36:(commit `e15ec36` extension to D8: lockfile is generated-from-authority artifact).
+docs/runbooks/codex-tool-invocations.md:64:**强制：ADR-0006 8-point asymmetry-audit checklist**（见 `docs/decisions/ADR-0006-asymmetry-audit-checklist.md`）必须按可适用项目逐条审查，verdict 结构应包含
+docs/runbooks/codex-tool-invocations.md:135:**强制：ADR-0006 8-point asymmetry-audit checklist**（见 `docs/decisions/ADR-0006-asymmetry-audit-checklist.md`）— 你是这项规则的主要执行者，必须独立验证所有可适用项目（不仅依赖 code-reviewer 的 R1 结论），并主动 hunt 8th-class beyond the cited fix。verdict 结构应包含
+docs/runbooks/codex-tool-invocations.md:271:- [ADR-0006](../decisions/ADR-0006-asymmetry-audit-checklist.md) — 8-point asymmetry audit (mandatory for code-reviewer + pr-gate profiles)
+docs/plans/phase-1/plan.md:29:  - ui-default 全部由 **ux-ui-lead**（新 Claude teammate, ADR-0007 D1）写第一 template + codex-block-generator (tool) clone 7 个
+docs/audits/structure-2026-04-29-wave-1.md:216:- **F1 (mdx-bridge dead deps)**: same as §5; CONTRACT-documented but worth re-flagging.
+docs/audits/structure-2026-04-29-wave-1.md:228:Track F R1 review (code-reviewer) caught a now-fixed dead dep in early agent-tools
+docs/audits/structure-2026-04-29-wave-1.md:229:package.json. The remaining F1 / F2 are the only known dead-dep conditions, both
+docs/audits/structure-2026-04-29-wave-1.md:231:unintended dead deps detected.
+docs/audits/structure-2026-04-29-wave-1.md:236:zero unexpected orphan packages, zero unintended dead deps. The four expected
+docs/audits/structure-2026-04-29-wave-1.md:238:documented Wave 2 consumers. The two forward-compat dead-dep conditions (F1
+docs/audits/structure-2026-04-29-wave-1.md:244:1. **Resolve the forward-compat dead-dep policy (F1 + F2).** Pick one of:
+docs/audits/structure-2026-04-29-wave-1.md:276:- Wave 2 entry ADR resolves dead-dep policy (concern #1 above).
+docs/audits/structure-2026-04-29-wave-1.md:286:event triggers: ADR-0006 asymmetry-check failures, contract-touching PR clusters,
+docs/audits/structure-2026-04-29-wave-1.md:297:- [ADR-0006 asymmetry-audit checklist](../decisions/ADR-0006-asymmetry-audit-checklist.md)
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:554:### 3.1 Agent 阵容（20 teammate + 8 tool pattern；ADR-0007 D1+D5）
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:559:ADR-0007 D1 同时新增 `ux-ui-lead` Claude teammate 作 ui-default 跨包视觉单一权威。最终阵容为
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:570:  ├─ ux-ui-lead (新, ADR-0007 D1) ── ui-default 跨包视觉单一权威
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:619:| `ux-ui-lead`（ADR-0007 D1） | 视觉单一权威：ui-default 跨包统一意图（写 1 个 template + 审 7 个 codex clone）；apps/site 视觉；editor 子模块视觉。**不**改 core / propsSchema / MDX serialize；**不**直接调 codex（dispatch 由 orchestrator） |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:660:| `code-reviewer` | gpt-5.3-codex-spark（默认廉价） | 行级 review：类型 / lint / 契约同步 / 文件大小 / 风格 / 边界条件；强制 ADR-0006 8-point asymmetry-audit |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:668:Wave 1 数据（codex 5.5 抓 9/12 cross-location asymmetry，[ADR-0006](../../decisions/ADR-0006-asymmetry-audit-checklist.md)）
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:680:│  ── 强制 ADR-0006 8-point asymmetry-audit checklist       │
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:1322:| 2026-04-29 | 项目锁定 orchestrator-managed team 模式（ADR-0004 D8） | review-gate 依赖超出 TaskList blocked_by 表达；高风险 escalate / Codex 配额由 orchestrator 集中调度 |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:1323:| 2026-04-30 | **新增 ux-ui-lead Claude teammate（ADR-0007 D1）** | Wave 2 8 个 ui-default 跨 block 统一视觉权威；防视觉八头蛇 |
+docs/decisions/ADR-0004-agent-team-dispatch-model.md:29:### D1: Wave 1 起，所有 wave 用 Claude Code Agent Team 执行
+docs/decisions/ADR-0004-agent-team-dispatch-model.md:115:### D8: 项目锁定 orchestrator-managed 模式
+docs/decisions/ADR-0007-job-function-codex-heavy-execution.md:23:- Codex 5.5 在 review 阶段抓住 9/12 cross-location asymmetry（[ADR-0006](ADR-0006-asymmetry-audit-checklist.md) 数据）
+docs/decisions/ADR-0007-job-function-codex-heavy-execution.md:56:### D1：新增 `ux-ui-lead` Claude teammate 作视觉单一权威
+docs/decisions/ADR-0007-job-function-codex-heavy-execution.md:105:**ui-default**（D1 已述）：ux-ui-lead 写 template 1 个 + codex-block-generator clone 7 个
+docs/decisions/ADR-0007-job-function-codex-heavy-execution.md:146:  editor-eng / editor-integrator / ux-ui-lead (新, ADR-0007 D1) / api-builder
+docs/decisions/ADR-0007-job-function-codex-heavy-execution.md:173:### 组合效果（D1-D5 联动）
+docs/decisions/ADR-0007-job-function-codex-heavy-execution.md:204:- **agent-contract.md restructure 是 high-risk PR**（触碰 authority + 全部 generated outputs），必须严格走 ADR-0006 D8 staging protocol
+docs/decisions/ADR-0007-job-function-codex-heavy-execution.md:220:| ADR-0006 8-point checklist | 不破坏；本 ADR 实施时**就是** ADR-0006 D8 的考验场（authority + generator + outputs 必须同 bundle staged） |
+docs/decisions/ADR-0007-job-function-codex-heavy-execution.md:224:本 ADR 是决策记录；实际实施作为 **Wave 2 Pre-Task 0** 在 team 流程中执行。**实施步骤序列**（必须严格按此顺序，并满足 ADR-0006 D8 staging protocol）：
+docs/decisions/ADR-0007-job-function-codex-heavy-execution.md:308:### Step 6: 跑生成器 + 严格按 ADR-0006 D8 staging protocol
+docs/decisions/ADR-0007-job-function-codex-heavy-execution.md:318:# 3. 显式 git add 所有改动 + 生成产物（关键步骤，参 ADR-0006 D8 + 实例 #12 教训）：
+docs/decisions/ADR-0007-job-function-codex-heavy-execution.md:367:**这 PR 是 ADR-0006 8-point checklist 的标准考场** —— 实施者预期会撞 instance #8 子类（authority + generator + outputs not staged）。提前 grep `git status --short`/`git diff --cached --stat` 双检查。
+docs/decisions/ADR-0007-job-function-codex-heavy-execution.md:380:- [ADR-0004](ADR-0004-agent-team-dispatch-model.md) D5 / D7 / D8 team 模型 + 一次性 Task + orchestrator-managed
+docs/decisions/ADR-0007-job-function-codex-heavy-execution.md:381:- [ADR-0006](ADR-0006-asymmetry-audit-checklist.md) 本 ADR 实施时必经的 review checklist；尤其 D8 + instance #12 staging 教训
+docs/decisions/ADR-0009-block-kind-union-expansion.md:8:| 触发 | Wave 2 Task D1 (block-math) 实施过程中 codex 5.5 pr-gate R3 verdict 提示 ADR 缺口；plan §66-71 块分类已暗含 4-way union 需求           |
+docs/decisions/ADR-0009-block-kind-union-expansion.md:9:| 替代 | 不替代；扩展 [ADR-0008](ADR-0008-wave-2-entry-policies.md) D2 block-foundation interface freeze rule（freeze 仍 in effect — 本 ADR 是 freeze 的 ADR-authorized exception 通道） |
+docs/decisions/ADR-0009-block-kind-union-expansion.md:26:├── block-math/      # Track D1 — render block (KaTeX, hand-craft)
+docs/decisions/ADR-0009-block-kind-union-expansion.md:37:D1 实施时 render-block-eng-d1 在 R2 round 中 codex 5.3 catch 了 `kind: 'component'` 与 plan §66 "render block" 不一致；orchestrator 直接判定为"plan 暗含 4-way union"并指示 union 扩展。这跳过了 freeze gate，触发 codex 5.5 pr-gate R3 procedural FAIL。本 ADR 补足该授权。
+docs/decisions/ADR-0009-block-kind-union-expansion.md:47:Wave 1 二项 `'prose'` + `'component'` 字面值 + 语义 **完全保留**，扩展为纯 additive；本 ADR **不是** ADR-0008 D2 freeze 的撤回，而是 freeze 规则下的 **首次 ADR-authorized exception**。
+docs/decisions/ADR-0009-block-kind-union-expansion.md:49:### D1: 4 个值的语义边界
+docs/decisions/ADR-0009-block-kind-union-expansion.md:58:### D2: ADR-0008 D2 freeze 兼容性
+docs/decisions/ADR-0009-block-kind-union-expansion.md:60:ADR-0008 D2 ("block-foundation interface freeze") 规则文本：
+docs/decisions/ADR-0009-block-kind-union-expansion.md:75:本 ADR 在 D1 (block-math) 实施之前应该 first-of-Wave-2 land，但实际操作中先发现需要再 author。**Wave 2 process 改进**：
+docs/decisions/ADR-0009-block-kind-union-expansion.md:78:- Wave 2 例外：本 ADR 与 D1 (block-math) 同 bundle commit，因 D1 是 union 扩展的首个消费方且 BlockKind:render usage + ADR 授权都集中在同一 PR 单点 review 更便利（避免 cross-PR 时序断裂）。
+docs/decisions/ADR-0009-block-kind-union-expansion.md:83:- BlockKind union 4-way 形式化授权 — D1/D2/E1/E2/E3 实施 worker 可以直接引用本 ADR 而不重新讨论
+docs/decisions/ADR-0009-block-kind-union-expansion.md:85:- ADR-0008 D2 freeze rule 有了首次"工作示例"：列在 CONTRACT.md 的"Modifying this file"规则下，作为正确的扩展范本
+docs/decisions/ADR-0009-block-kind-union-expansion.md:92:- [ ] 本 ADR 与 D1 (block-math) 同 commit landed
+docs/decisions/ADR-0009-block-kind-union-expansion.md:100:- [ADR-0003](ADR-0003-headless-presentational-split.md) D1+D2 — `kind` 与 headless/UI split 关系
+docs/decisions/ADR-0009-block-kind-union-expansion.md:101:- [ADR-0006](ADR-0006-asymmetry-audit-checklist.md) — sister-doc 对齐规则（本 ADR 同 bundle 触发了 #6 多处更新）
+docs/decisions/ADR-0009-block-kind-union-expansion.md:103:- [ADR-0008](ADR-0008-wave-2-entry-policies.md) D2 — block-foundation interface freeze rule
+docs/audits/structure-2026-04-29-wave-1.md:216:- **F1 (mdx-bridge dead deps)**: same as §5; CONTRACT-documented but worth re-flagging.
+docs/audits/structure-2026-04-29-wave-1.md:228:Track F R1 review (code-reviewer) caught a now-fixed dead dep in early agent-tools
+docs/audits/structure-2026-04-29-wave-1.md:229:package.json. The remaining F1 / F2 are the only known dead-dep conditions, both
+docs/audits/structure-2026-04-29-wave-1.md:231:unintended dead deps detected.
+docs/audits/structure-2026-04-29-wave-1.md:236:zero unexpected orphan packages, zero unintended dead deps. The four expected
+docs/audits/structure-2026-04-29-wave-1.md:238:documented Wave 2 consumers. The two forward-compat dead-dep conditions (F1
+docs/audits/structure-2026-04-29-wave-1.md:244:1. **Resolve the forward-compat dead-dep policy (F1 + F2).** Pick one of:
+docs/audits/structure-2026-04-29-wave-1.md:276:- Wave 2 entry ADR resolves dead-dep policy (concern #1 above).
+docs/audits/structure-2026-04-29-wave-1.md:286:event triggers: ADR-0006 asymmetry-check failures, contract-touching PR clusters,
+docs/audits/structure-2026-04-29-wave-1.md:297:- [ADR-0006 asymmetry-audit checklist](../decisions/ADR-0006-asymmetry-audit-checklist.md)
+docs/decisions/ADR-0007-job-function-codex-heavy-execution.md:23:- Codex 5.5 在 review 阶段抓住 9/12 cross-location asymmetry（[ADR-0006](ADR-0006-asymmetry-audit-checklist.md) 数据）
+docs/decisions/ADR-0007-job-function-codex-heavy-execution.md:56:### D1：新增 `ux-ui-lead` Claude teammate 作视觉单一权威
+docs/decisions/ADR-0007-job-function-codex-heavy-execution.md:105:**ui-default**（D1 已述）：ux-ui-lead 写 template 1 个 + codex-block-generator clone 7 个
+docs/decisions/ADR-0007-job-function-codex-heavy-execution.md:146:  editor-eng / editor-integrator / ux-ui-lead (新, ADR-0007 D1) / api-builder
+docs/decisions/ADR-0007-job-function-codex-heavy-execution.md:173:### 组合效果（D1-D5 联动）
+docs/decisions/ADR-0007-job-function-codex-heavy-execution.md:204:- **agent-contract.md restructure 是 high-risk PR**（触碰 authority + 全部 generated outputs），必须严格走 ADR-0006 D8 staging protocol
+docs/decisions/ADR-0007-job-function-codex-heavy-execution.md:220:| ADR-0006 8-point checklist | 不破坏；本 ADR 实施时**就是** ADR-0006 D8 的考验场（authority + generator + outputs 必须同 bundle staged） |
+docs/decisions/ADR-0007-job-function-codex-heavy-execution.md:224:本 ADR 是决策记录；实际实施作为 **Wave 2 Pre-Task 0** 在 team 流程中执行。**实施步骤序列**（必须严格按此顺序，并满足 ADR-0006 D8 staging protocol）：
+docs/decisions/ADR-0007-job-function-codex-heavy-execution.md:308:### Step 6: 跑生成器 + 严格按 ADR-0006 D8 staging protocol
+docs/decisions/ADR-0007-job-function-codex-heavy-execution.md:318:# 3. 显式 git add 所有改动 + 生成产物（关键步骤，参 ADR-0006 D8 + 实例 #12 教训）：
+docs/decisions/ADR-0007-job-function-codex-heavy-execution.md:367:**这 PR 是 ADR-0006 8-point checklist 的标准考场** —— 实施者预期会撞 instance #8 子类（authority + generator + outputs not staged）。提前 grep `git status --short`/`git diff --cached --stat` 双检查。
+docs/decisions/ADR-0007-job-function-codex-heavy-execution.md:380:- [ADR-0004](ADR-0004-agent-team-dispatch-model.md) D5 / D7 / D8 team 模型 + 一次性 Task + orchestrator-managed
+docs/decisions/ADR-0007-job-function-codex-heavy-execution.md:381:- [ADR-0006](ADR-0006-asymmetry-audit-checklist.md) 本 ADR 实施时必经的 review checklist；尤其 D8 + instance #12 staging 教训
+docs/decisions/ADR-0004-agent-team-dispatch-model.md:29:### D1: Wave 1 起，所有 wave 用 Claude Code Agent Team 执行
+docs/decisions/ADR-0004-agent-team-dispatch-model.md:115:### D8: 项目锁定 orchestrator-managed 模式
+docs/decisions/ADR-0009-block-kind-union-expansion.md:8:| 触发 | Wave 2 Task D1 (block-math) 实施过程中 codex 5.5 pr-gate R3 verdict 提示 ADR 缺口；plan §66-71 块分类已暗含 4-way union 需求           |
+docs/decisions/ADR-0009-block-kind-union-expansion.md:9:| 替代 | 不替代；扩展 [ADR-0008](ADR-0008-wave-2-entry-policies.md) D2 block-foundation interface freeze rule（freeze 仍 in effect — 本 ADR 是 freeze 的 ADR-authorized exception 通道） |
+docs/decisions/ADR-0009-block-kind-union-expansion.md:26:├── block-math/      # Track D1 — render block (KaTeX, hand-craft)
+docs/decisions/ADR-0009-block-kind-union-expansion.md:37:D1 实施时 render-block-eng-d1 在 R2 round 中 codex 5.3 catch 了 `kind: 'component'` 与 plan §66 "render block" 不一致；orchestrator 直接判定为"plan 暗含 4-way union"并指示 union 扩展。这跳过了 freeze gate，触发 codex 5.5 pr-gate R3 procedural FAIL。本 ADR 补足该授权。
+docs/decisions/ADR-0009-block-kind-union-expansion.md:47:Wave 1 二项 `'prose'` + `'component'` 字面值 + 语义 **完全保留**，扩展为纯 additive；本 ADR **不是** ADR-0008 D2 freeze 的撤回，而是 freeze 规则下的 **首次 ADR-authorized exception**。
+docs/decisions/ADR-0009-block-kind-union-expansion.md:49:### D1: 4 个值的语义边界
+docs/decisions/ADR-0009-block-kind-union-expansion.md:58:### D2: ADR-0008 D2 freeze 兼容性
+docs/decisions/ADR-0009-block-kind-union-expansion.md:60:ADR-0008 D2 ("block-foundation interface freeze") 规则文本：
+docs/decisions/ADR-0009-block-kind-union-expansion.md:75:本 ADR 在 D1 (block-math) 实施之前应该 first-of-Wave-2 land，但实际操作中先发现需要再 author。**Wave 2 process 改进**：
+docs/decisions/ADR-0009-block-kind-union-expansion.md:78:- Wave 2 例外：本 ADR 与 D1 (block-math) 同 bundle commit，因 D1 是 union 扩展的首个消费方且 BlockKind:render usage + ADR 授权都集中在同一 PR 单点 review 更便利（避免 cross-PR 时序断裂）。
+docs/decisions/ADR-0009-block-kind-union-expansion.md:83:- BlockKind union 4-way 形式化授权 — D1/D2/E1/E2/E3 实施 worker 可以直接引用本 ADR 而不重新讨论
+docs/decisions/ADR-0009-block-kind-union-expansion.md:85:- ADR-0008 D2 freeze rule 有了首次"工作示例"：列在 CONTRACT.md 的"Modifying this file"规则下，作为正确的扩展范本
+docs/decisions/ADR-0009-block-kind-union-expansion.md:92:- [ ] 本 ADR 与 D1 (block-math) 同 commit landed
+docs/decisions/ADR-0009-block-kind-union-expansion.md:100:- [ADR-0003](ADR-0003-headless-presentational-split.md) D1+D2 — `kind` 与 headless/UI split 关系
+docs/decisions/ADR-0009-block-kind-union-expansion.md:101:- [ADR-0006](ADR-0006-asymmetry-audit-checklist.md) — sister-doc 对齐规则（本 ADR 同 bundle 触发了 #6 多处更新）
+docs/decisions/ADR-0009-block-kind-union-expansion.md:103:- [ADR-0008](ADR-0008-wave-2-entry-policies.md) D2 — block-foundation interface freeze rule
+docs/decisions/ADR-0008-wave-2-entry-policies.md:1:# ADR-0008: Wave 2 entry policies — dead-dep + block-foundation interface freeze
+docs/decisions/ADR-0008-wave-2-entry-policies.md:8:| 触发 | structure-auditor Wave 1 close baseline §7 推荐 #1（dead-dep policy）+ #2（block-foundation interface freeze）；ADR-0002 D3 erratum #19（F1）+ #20（F2）+ #21（block-foundation RFC） |
+docs/decisions/ADR-0008-wave-2-entry-policies.md:14:（dead-dep policy）+ #2（block-foundation interface freeze）必须在 Wave 2 第一个
+docs/decisions/ADR-0008-wave-2-entry-policies.md:19:ADR-0002 D3 已记录两处 forward-compat dead-dep：
+docs/decisions/ADR-0008-wave-2-entry-policies.md:26:  `{ "path": "../content-types" }`（即 package.json 与 tsconfig 一致但都是 dead）。
+docs/decisions/ADR-0008-wave-2-entry-policies.md:43:### D1：dead-dep policy = Option A（tighten）
+docs/decisions/ADR-0008-wave-2-entry-policies.md:52:1. **audit invariant 更简洁**：dead-dep = bug，结构审计不必为
+docs/decisions/ADR-0008-wave-2-entry-policies.md:53:   "forward-compat 是合法 dead-dep" 维护特例；structure-auditor 月度可机械化
+docs/decisions/ADR-0008-wave-2-entry-policies.md:65:**具体执行（D1 应用范围限于 Wave 1 已识别的两处）**：
+docs/decisions/ADR-0008-wave-2-entry-policies.md:97:- **audit invariant 简洁可机械化**：structure-auditor 月度增加单条扫描（package.json `@skb/*` ↔ source import），覆盖 D1 不变量。
+docs/decisions/ADR-0008-wave-2-entry-policies.md:98:- **block-foundation 接口在 block-callout 入门前 freeze**：预防 Wave 1 R-round inflation 同源问题（教训源 ADR-0006 instances #1, #5）。
+docs/decisions/ADR-0008-wave-2-entry-policies.md:99:- **YAGNI 原则在 monorepo 层落地**：dead-dep 不再合法，迫使依赖在真消费时声明。
+docs/decisions/ADR-0008-wave-2-entry-policies.md:121:按 ADR-0006 D8 staging protocol（authority + generated/consumed surface 同 bundle staged）：
+docs/decisions/ADR-0008-wave-2-entry-policies.md:124:   - `docs/decisions/ADR-0008-wave-2-entry-policies.md`（本 ADR 自身）
+docs/decisions/ADR-0008-wave-2-entry-policies.md:125:   - `docs/decisions/README.md`（索引加 ADR-0008 行）
+docs/decisions/ADR-0008-wave-2-entry-policies.md:126:   - `packages/mdx-bridge/package.json`（删 2 条 dead deps）
+docs/decisions/ADR-0008-wave-2-entry-policies.md:128:   - `packages/block-foundation/package.json`（删 1 条 dead dep）
+docs/decisions/ADR-0008-wave-2-entry-policies.md:131:   - `pnpm-lock.yaml`（如 `pnpm install` 后有变动 — workspace dep 删除通常无 lockfile 影响，但 ADR-0006 D8 sub-form C 要求 verify）
+docs/decisions/ADR-0008-wave-2-entry-policies.md:135:3. **structure-auditor 2026-05 月度审计**：增加 D1 机械扫描项；任何 dead-dep
+docs/decisions/ADR-0008-wave-2-entry-policies.md:141:- [ADR-0002](ADR-0002-wave-1-close.md) D3 erratum #19 / #20 / #21 — F1/F2 dead-dep + block-foundation RFC prereq 来源
+docs/decisions/ADR-0008-wave-2-entry-policies.md:143:- [ADR-0006](ADR-0006-asymmetry-audit-checklist.md) D8 — staging protocol 适用本 PR
+docs/decisions/README.md:14:| [0006](ADR-0006-asymmetry-audit-checklist.md)             | Cross-location asymmetry-audit checklist (process rule)    | 2026-04-30 | accepted |
+docs/decisions/README.md:16:| [0008](ADR-0008-wave-2-entry-policies.md)                 | Wave 2 entry policies — dead-dep + block-foundation freeze | 2026-04-30 | accepted |
+docs/decisions/ADR-0003-headless-presentational-split.md:25:### D1: 三层分离
+docs/decisions/ADR-0003-headless-presentational-split.md:25:### D1: 三层分离
+docs/decisions/ADR-0006-asymmetry-audit-checklist.md:1:# ADR-0006: Cross-location asymmetry-audit checklist (process rule)
+docs/decisions/ADR-0006-asymmetry-audit-checklist.md:30:| 8 | Wave 1 close bundle v1 | R1 → fixed v2 | ADR-0006 mandated reviewer-prompt updates vs actual `agent-contract.md` / generated `.claude/agents/*.md` / `docs/review-checklist.md` / `team-operations.md` content | The close-ceremony commit codified a process rule that mandates downstream behavior; consumer-side artifacts (reviewer prompts + runbook) had not been updated to embed the rule, so Wave 2 reviewers would not have seen it |
+docs/decisions/ADR-0006-asymmetry-audit-checklist.md:31:| 9 | Wave 1 close bundle v2 | R2 → fixed v3 | ADR-0006:81 within-document drift "7 distinct instances" | Single bullet missed during the v1→v2 count sweep — sister-bullet variant of item #6 within a single document |
+docs/decisions/ADR-0006-asymmetry-audit-checklist.md:32:| 10 | Wave 1 close bundle v3 | R3 → fixed v4 | ADR-0006:117 within-document drift "7 empirical instances + 18+ erratum candidates" (both numbers stale) | Second sister-bullet drift in the same file, a different bullet — proved per-citation fixes are themselves item #6 traps; comprehensive sweep at fix time is the robust pattern |
+docs/decisions/ADR-0006-asymmetry-audit-checklist.md:88:   **Wave 1 evidence**: **instance #8** — ADR-0006 v1 commit codified reviewer-prompt mandates but did not update `agent-contract.md` / regenerate `.claude/agents/code-reviewer.md` / regenerate `.claude/agents/pr-gate.md` / cross-link `team-operations.md` / regenerate `docs/review-checklist.md`; pr-gate caught the dogfood failure during R1 review of the close-ceremony bundle, forcing a v2 fix. **instance #12 (sub-form A — pre-regeneration omission)** — v5 bundle updated authority files (`agent-contract.md`, generator code, `team-operations.md` cross-link) but had not run the generator at all post-edit; the 3 regenerated outputs were stale at HEAD content; pr-gate caught this during R2 review, forcing a v6 fix. **instance #12 (sub-form B — staging-vs-working-tree confusion)** — v6 bundle ran the generator (so working tree had new content) but did NOT `git add` the regenerated outputs; the git **index** still held HEAD blob hashes for the 3 generated files; orchestrator confused `git status --short` "M" prefix (working-tree-vs-index) with index-vs-HEAD; pr-gate caught this via `git ls-files --stage` blob-hash comparison during R3 review, forcing the v7 fix that explicitly stages with `git add` + verifies via `git diff --cached`. **instance #12 (sub-form C — lockfile is a generated-from-authority artifact)** — Wave 1 close ceremony commit `e15ec36` ("fix(deps): commit pnpm-lock.yaml for @tailwindcss/typography (lockfile drift)"): the design-tokens erratum (commit `fdc86a8`) added the `@tailwindcss/typography` dependency to `package.json` but did not stage the regenerated `pnpm-lock.yaml`; CI install used the pre-update lockfile, drifted against the new `package.json`, and failed `pnpm install --frozen-lockfile`. Resolution: commit `e15ec36` staged the lockfile separately. Lesson codified: when the authority is `package.json` (any dependency add / remove / version bump), `pnpm-lock.yaml` is the consumer-side generated artifact and must ride the same bundle — the class equivalence to `.claude/agents/*.md` regeneration is exact (deterministic derive + git-index staging required). The four sub-forms of the same item #8 class — pre-regeneration omission, post-regeneration commit-staging confusion, conceptually-correct-but-operationally-incomplete fix, AND lockfile-as-generated-artifact — together motivate the explicit operational sequence and `git diff --cached` canonical verification command codified above.
+docs/decisions/ADR-0006-asymmetry-audit-checklist.md:120:- **Risk**: this list might grow unbounded as Wave 2+ surfaces new asymmetry classes. **Mitigation**: ADR amendments are cheap; each new instance produces an ADR-0006 erratum capturing item #N+1. Wave 2 close ceremony reviews instances and adds items as needed.
+docs/decisions/ADR-0002-wave-1-close.md:15:1. Capture empirical lessons that should bind Wave 2+ (recorded as ADR-0006 process rule and inline notes in CONTRACT.md / CONVENTIONS.md)
+docs/decisions/ADR-0002-wave-1-close.md:26:### D1 — Process rule codified as ADR-0006
+docs/decisions/ADR-0002-wave-1-close.md:28:The 8-point cross-location asymmetry-audit checklist becomes mandatory reviewer practice (see [ADR-0006](ADR-0006-asymmetry-audit-checklist.md)). Wave 1's empirical evidence (12 instances across 6 tracks + 5 close-ceremony fix iterations — 8 distinct failure-mode items + 4 close-ceremony reinforcements of items #6 and #8) is the data behind this rule.
+docs/decisions/ADR-0002-wave-1-close.md:99:19. **F1 — mdx-bridge forward-compat dead deps** (audit §5/§6): `mdx-bridge/package.json` declares `@skb/block-foundation` and `@skb/content-types` workspace deps; source contains no imports yet. Documented at mdx-bridge CONTRACT §"Wave 1 declared peers (forward-compat)". Wave 2 entry ADR should resolve dead-dep policy globally (audit §7 recommendation #1: tighten "every package.json `@skb/*` must have a corresponding source import" OR relax "tsconfig refs MUST match package.json + CONTRACT MUST explain").
+docs/decisions/ADR-0002-wave-1-close.md:101:20. **F2 — block-foundation forward-compat dead dep** (audit §6): `block-foundation/package.json` declares `@skb/content-types` dep + matching tsconfig ref; no source import yet. Planned Wave 2 use: block-foundation will validate registered block props against content-types schemas. Resolution bundled with F1 in Wave 2 entry ADR.
+docs/decisions/ADR-0002-wave-1-close.md:123:- **Empirical lessons preserved**: 22 errata + ADR-0006 8-point checklist + 3 cross-package single-authority invariants now codified at the right scope (CONTRACT.md / CONVENTIONS.md / ADR). Wave 2+ workers won't re-litigate.
+docs/decisions/ADR-0002-wave-1-close.md:131:- **Review-round count was high** for some tracks (Track F: 5 + 4 = 9 review rounds total; Track A: 3 + 3 = 6). ADR-0006 should reduce this in Wave 2 by front-loading the asymmetry-audit at code-reviewer level.
+docs/decisions/ADR-0002-wave-1-close.md:137:- **Risk**: Wave 2 workers may not read ADR-0006 carefully and hit the same 8-point class. **Mitigation**: ADR-0006 v2 also updates `agent-contract.md` (code-reviewer + pr-gate descriptions embed the 8-item summary), regenerates `.claude/agents/{code-reviewer,pr-gate}.md` + `docs/review-checklist.md` via `pnpm generate:configs`, and adds an ADR-0006 cross-link to `docs/runbooks/team-operations.md` Tier 2 reviewer rows. Every spawn prompt prefix-injects `team-operations.md`, so reviewers see the rule on entry; the regenerated subagent prompts also embed the 8-item summary directly.
+docs/decisions/ADR-0002-wave-1-close.md:145:2. ✅ ADR-0006 written (`docs/decisions/ADR-0006-asymmetry-audit-checklist.md`)
+docs/decisions/ADR-0002-wave-1-close.md:152:9. ⏳ Wave 1 close commit (orchestrator-direct via git-operator) — bundles ADR-0002 + ADR-0006 + structure baseline + active.md update + decisions/README.md index
+docs/decisions/ADR-0002-wave-1-close.md:161:- [ADR-0006](ADR-0006-asymmetry-audit-checklist.md) — 8-point asymmetry-audit checklist (process rule)
+docs/runbooks/codex-tool-invocations.md:32:## ADR-0006 D8 reminder
+docs/runbooks/codex-tool-invocations.md:36:(commit `e15ec36` extension to D8: lockfile is generated-from-authority artifact).
+docs/runbooks/codex-tool-invocations.md:64:**强制：ADR-0006 8-point asymmetry-audit checklist**（见 `docs/decisions/ADR-0006-asymmetry-audit-checklist.md`）必须按可适用项目逐条审查，verdict 结构应包含
+docs/runbooks/codex-tool-invocations.md:135:**强制：ADR-0006 8-point asymmetry-audit checklist**（见 `docs/decisions/ADR-0006-asymmetry-audit-checklist.md`）— 你是这项规则的主要执行者，必须独立验证所有可适用项目（不仅依赖 code-reviewer 的 R1 结论），并主动 hunt 8th-class beyond the cited fix。verdict 结构应包含
+docs/runbooks/codex-tool-invocations.md:271:- [ADR-0006](../decisions/ADR-0006-asymmetry-audit-checklist.md) — 8-point asymmetry audit (mandatory for code-reviewer + pr-gate profiles)
+docs/runbooks/team-operations.md:95:| `code-reviewer` (tool)                  | orchestrator 触发，PR ready                                          | 读 git diff；orchestrator Bash 调 `codex exec --profile code-reviewer < /dev/null`；输出 PASS / FAIL + 具体问题；stdout 落盘到 `docs/audits/codex-runs/`。**强制 [ADR-0006](../decisions/ADR-0006-asymmetry-audit-checklist.md) 8-point asymmetry-audit checklist**（每条可适用项目都要在 verdict 里给结论） |
+docs/runbooks/team-operations.md:96:| `pr-gate` (tool)                        | code-reviewer pass 后，orchestrator 判断高风险触发（ADR-0007 D2 表） | orchestrator Bash 调 `codex exec --profile pr-gate < /dev/null`（5.5）；输出 PASS / FAIL。**强制 [ADR-0006](../decisions/ADR-0006-asymmetry-audit-checklist.md) 8-point asymmetry-audit checklist + 8th-class hunt**（独立验证 R1 结论 + 主动 hunt cited-fix 之外的对称性缺口）                              |
+docs/runbooks/team-operations.md:230:- [ADR-0006 cross-location asymmetry-audit checklist](../decisions/ADR-0006-asymmetry-audit-checklist.md)
+docs/superpowers/plans/2026-04-29-phase-0-scaffolding.md:907:      broken / dead 阻断 merge。
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:8:- **template + codex-clone 模式（ADR-0007 D3）**：visual single-authority 由 `ux-ui-lead`（新 Claude teammate, ADR-0007 D1）写第一个 ui-default，其余 7 个由 codex-block-generator (tool) 仿造 + ux-ui-lead 视觉一致性审；core 在 simple block 集群试点（block-callout core 是 template，block-code/block-image core 是 clone），render block 与 viz block 仍 hand-craft；editor 三子模块同模式（toolbar template + slash-menu/drag-handle clone）。
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:10:- **8-point asymmetry-audit（ADR-0006）强制**：每个 reviewer 必须按 8 项逐条审；Wave 2 第一个 attr-bearing mark（如 `highlight`/`kbd`）扩展时 simul-update wrapMark + marksEqual + fixture（item #1 trip-hazard）。
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:12:- **Wave 2 entry ADR（ADR-0008）必产**：解决 F1（mdx-bridge dead deps）+ F2（block-foundation forward-compat dead dep）的全局 dead-dep 政策（structure-auditor 推荐 #1，ADR-0002 erratum #19/#20）。
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:25:- [ADR-0002](../../decisions/ADR-0002-wave-1-close.md) Wave 1 close — 22 errata + 3 cross-package single-authority invariants（**含 erratum #19 dead-dep policy / #21 block-foundation/RFC.md / #16 attr-bearing mark expansion**）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:27:- [ADR-0006](../../decisions/ADR-0006-asymmetry-audit-checklist.md) 8-point asymmetry-audit checklist（mandatory for code-reviewer + pr-gate）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:28:- [ADR-0007](../../decisions/ADR-0007-job-function-codex-heavy-execution.md) 职能化分工 + Codex-heavy 执行 + teammate/tool 切分（**D1 ux-ui-lead / D2 selective Claude review / D3 template+clone / D4 design skill 注入 / D5 codex tool**）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:66:├── block-math/                           # Track D1 (render block, hand-craft, KaTeX)
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:113:docs/decisions/ADR-0008-wave-2-entry-policies.md  # Task A (Wave 2 entry ADR)
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:129:- `packages/mdx-bridge/package.json` —— Task A1 按 ADR-0008 决议：去 `@skb/block-foundation` 与 `@skb/content-types` 死依赖（如选 Option A）OR 加 tsconfig refs 同步（如选 Option B）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:155:主任务：A（dead-dep ADR + RFC）/ B（Wave 1 errata 清理）/ C（simple blocks）/ D（render blocks）/ E（viz blocks）/ F（kernel-pyodide）/ G（editor 子模块）/ I（scripts）/ J（attr-mark 条件触发）/ Z（close）。Task H（test scaffold sweep）已合并入各 track（plan-challenger CRITICAL #1 修订）。
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:173:   ├──► Task A1: ADR-0008 dead-dep policy (refactorer)
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:204:C1 callout    D1 math      E1 jupyter   F pyodide    G1 toolbar
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:219:   core         (D1/D2 ui-                            mdx-doctor 静态扫描
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:244:- Pre-Task 0 → Task A1（dead-dep ADR）+ Task B1（H1 修，独立）+ Task I1（refactor-move，独立）**同时启动**
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:274:cat docs/decisions/ADR-0006-asymmetry-audit-checklist.md
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:290:- ux-ui-lead 是 Wave 2 第一次 spawn 的新 teammate（ADR-0007 D1）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:304:// Task A: dead-dep ADR + RFC freeze
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:305:TaskCreate({task_name: "task-A1-adr-0008-dead-dep", blocked_by: [], meta: {d2_row: 4}});  // 触发新 ADR
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:306:TaskCreate({task_name: "task-A2-block-foundation-rfc", blocked_by: ["task-A1-adr-0008-dead-dep"], meta: {d2_row: 1}});  // 视为 CONTRACT-level (challenger OBS 4)
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:330:TaskCreate({task_name: "task-D1-math", blocked_by: ["task-A2-block-foundation-rfc"], meta: {d2_row: 1}});
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:363:// Tier 1 Workers (11 — including ux-ui-lead per ADR-0007 D1)
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:404:SendMessage({to: "refactorer", summary: "Task A1 dead-dep ADR", message: TASK_A1_PROMPT});
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:419:**Why first**: A1 决议 dead-dep 政策，影响 mdx-bridge / block-foundation / 全部 block-* package.json 形态；A2 freeze block-foundation 注册 API 形态，blocks all block-* track 入门。
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:421:### Task A1: ADR-0008 — dead-dep policy global resolution
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:424:- Create: `docs/decisions/ADR-0008-wave-2-entry-policies.md`
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:425:- Modify (per Option A 决议): `packages/mdx-bridge/package.json`（去 `@skb/block-foundation` + `@skb/content-types` 两个 dead deps）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:426:- Modify (per Option A 决议): `packages/block-foundation/package.json`（去 `@skb/content-types` dead dep）+ `packages/block-foundation/tsconfig.json`（去 ref）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:440:- audit invariant 更简洁：dead-dep = bug，不必维护"forward-compat"特例
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:446:- [ ] **Step 3: 写 ADR-0008**
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:449:# ADR-0008: Wave 2 entry policies — dead-dep + block-foundation interface freeze
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:456:| 触发 | structure-auditor Wave 1 close baseline §7 推荐 #1（dead-dep policy）+ #2（block-foundation interface freeze） |
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:461:structure-auditor Wave 1 close 报告 §7 提出 3 个结构关注点；其中 #1（dead-dep policy）+ #2（block-foundation interface freeze）必须在 Wave 2 第一个 block-* PR 之前 lock。
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:463:ADR-0002 erratum #19 + #20 描述当前两处 dead-dep（F1 mdx-bridge 声明 block-foundation/content-types 不 import；F2 block-foundation 声明 content-types 不 import）。
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:467:### D1: dead-dep policy = Option A（tighten）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:498:1. ADR-0008 commit（本 ADR 自身；触发 D2 row 4 高风险）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:508:- [ ] **Step 4: 应用 D1（dead-dep cleanup）**
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:538:**Owner**: `block-foundation-eng`（**blocked_by A1**：ADR-0008 D2 才会冻结接口形状）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:548:> **Authority**: ADR-0008 D2 freezes this interface as of <DATE>.
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:887:- 15-16: block-math inline/display (D1)
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:905:- Modify: `packages/design-tokens/CONTRACT.md` 加"消费方使用规范"段（ADR-0007 D1 ux-ui-lead 责任：把视觉决策固化进此段）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:927:格式（ADR-0007 D1 落地形态）：
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:975:   CONTRACT.md 改对应公开导出 + Wave 1 declared peers（按 ADR-0008 D1 不加 dead deps）。
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:979:   ADR-0006 8-point checklist 适用 item #6 (sister-doc): block-callout vs block-code 的
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1025:任意 block 的 ui-default 都跑这个 checklist；codex-block-generator clone simple block ui-default (C5a/C5b) 时**也**遵循；hand-craft 的 render+viz block ui-default (D1/D2/E1/E2/E3) 也遵循。**Track C6 不是单独 task entry**；它是 ux-ui-lead 的"持续审视责任"——每次 block ui-default PR 都要 SendMessage ux-ui-lead 视觉审。
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1033:**Risk level**: 高 (D1 KaTeX SSR + dark-mode 渲染；D2 PDF.js worker thread + 文本提取)
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1035:### Task D1: block-math（KaTeX）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1059:- [ ] **Step 5: review chain（同 D1）+ mdx-doctor 跑 PDF fixture**
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1160:  2. 工种 worker 在 ready-for-review 报告时**强制自审**：在 ADR-0006 8-point self-audit 段必须明示"item #1: PROPS 含 attr-bearing fields = YES/NO + 列字段名 / NO 的理由"；reviewer cross-check
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1165:**Risk level**: 高（ADR-0002 erratum #16 + ADR-0006 item #1 trip-hazard：marksEqual 默认 `return true` 是 silent-drop trap）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1188:- [ ] **Step 4: review chain（D2 row 1 改 CONTRACT.md）**：full chain；ADR-0006 item #1 是核心审
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1253:- D1：empirical lessons codified
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1263:- codex catch rate vs Wave 1（ADR-0006 8-point 实战数据）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1275:- tsconfig refs 一致性（按 ADR-0008 D1 dead-dep policy）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1295:- [x] 8 个 ui-default 全部由 ux-ui-lead 写 1 个 + codex-clone 7 个（ADR-0007 D1+D3）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1301:- [x] Wave 2 entry ADR + close ADR（A1 ADR-0008 + Z1 ADR-0009）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1303:- [x] dead-dep policy resolution（A1 ADR-0008 D1）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1317:**4. ADR-0006 8-point trip-hazards 列**:
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1320:- [x] item #8: Pre-Task 0 + Task A1 + Task B3 都强调 ADR-0006 D8 staging protocol（authority + generator + outputs 同 bundle）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1353:- [ADR-0006](../../decisions/ADR-0006-asymmetry-audit-checklist.md) 8-point asymmetry-audit checklist
+
+codex
+I’ve confirmed most core UI/logic files. I’ll now validate governance/doc requirements (ADR-0006, ADR-0008, and sibling contract alignment) and spot-check the G1 baseline at commit `138cc16` for true clone parity.
+exec
+/bin/bash -lc "sed -n '1,260p' docs/decisions/ADR-0008-wave-2-entry-policies.md" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1,260p' docs/decisions/ADR-0006-asymmetry-audit-checklist.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+# ADR-0008: Wave 2 entry policies — dead-dep + block-foundation interface freeze
+
+| 字段 | 值                                                                                                                                                                |
+| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 状态 | accepted                                                                                                                                                          |
+| 日期 | 2026-04-30                                                                                                                                                        |
+| 作者 | refactorer (Claude Opus 4.7 1M ctx)                                                                                                                               |
+| 触发 | structure-auditor Wave 1 close baseline §7 推荐 #1（dead-dep policy）+ #2（block-foundation interface freeze）；ADR-0002 D3 erratum #19（F1）+ #20（F2）+ #21（block-foundation RFC） |
+| 替代 | 不替代任何 ADR；扩展 [ADR-0001](ADR-0001-stack-selection.md) §1.2/§1.8 monorepo 规则 + [ADR-0003](ADR-0003-headless-presentational-split.md) D2 双层接口        |
+
+## Context
+
+`docs/audits/structure-2026-04-29-wave-1.md` §7 提出 3 个结构关注点；其中 #1
+（dead-dep policy）+ #2（block-foundation interface freeze）必须在 Wave 2 第一个
+`block-*` PR 之前 lock，否则会让 block-callout 入门 PR 同时承担"消费 contract"+
+"决议 dep policy" 双重负担，触发 R-round inflation（Wave 1 Track F 5 轮 + Track A
+3 轮的同源教训）。
+
+ADR-0002 D3 已记录两处 forward-compat dead-dep：
+
+- **F1 — `packages/mdx-bridge`** `package.json#dependencies` 列出
+  `@skb/block-foundation` + `@skb/content-types`，源码零 import；
+  `tsconfig.json#references` 留空（即 package.json 与 tsconfig 不一致）。
+- **F2 — `packages/block-foundation`** `package.json#dependencies` 列出
+  `@skb/content-types`，源码零 import；`tsconfig.json#references` 已含
+  `{ "path": "../content-types" }`（即 package.json 与 tsconfig 一致但都是 dead）。
+
+structure-auditor §7 推荐 #1 给出两条互斥路径：
+
+- **Option A（tighten）**：每个 `package.json#dependencies/peerDependencies` 中的
+  `@skb/*` 必须对应至少一个源码 `from '@skb/<pkg>'` import；
+  CONTRACT.md 可在 prose 段表达 forward-compat 意图，但 package.json 不占位。
+- **Option B（relax）**：package.json 可 forward-declare；
+  `tsconfig.json#references` 必须与 `package.json` 一致；CONTRACT.md 必须解释。
+
+structure-auditor §7 推荐 #2 提出 block-foundation MDX renderer interface freeze：
+Wave 2 brings the first `block-callout` package (per agent-contract `simple-block-eng`)
+作为 `block-foundation` 双层 API 第一个真实 consumer；任何接口 gap 会在
+block-callout review 阶段反复返工。
+
+## Decision
+
+### D1：dead-dep policy = Option A（tighten）
+
+**规则**：每个 `package.json#dependencies` / `peerDependencies` 中的 `@skb/*`
+工作区依赖**必须**对应至少一个源码 `from '@skb/<pkg>'` import。
+forward-compat 意图（"Wave N+1 will consume X"）可在 CONTRACT.md prose 段表达，
+但**不在 package.json 占位**。
+
+**理由（Option A 优于 Option B）**：
+
+1. **audit invariant 更简洁**：dead-dep = bug，结构审计不必为
+   "forward-compat 是合法 dead-dep" 维护特例；structure-auditor 月度可机械化
+   `grep` 检查（"package.json `@skb/*` ↔ source import 一一对应"），
+   比 CONTRACT 文本对比可靠。
+2. **YAGNI**：mdx-bridge / block-foundation 真用上时再加 dep 是同包改动 + 同 PR
+   单点 churn；预先占位换来的"少改一行 package.json"不抵 audit 复杂度。
+3. **CONTRACT prose 仍可表达意图**：authoring intent 不丢，只是不再让
+   `package.json` 同时承担 "runtime fact" + "future plan" 双重语义。
+4. **Phase 3 npm publish 反向证据弱**：当前 phase 全部 `private: true`
+   workspace 包，npm publish 顾虑是 Phase 3 议题；届时若需 forward-compat 的
+   package.json 形态可在 ADR-N 重新审视；当前不应被 hypothetical future
+   requirement 绑架（CLAUDE.md hard rule "Don't design for hypothetical future"）。
+
+**具体执行（D1 应用范围限于 Wave 1 已识别的两处）**：
+
+| 包                             | 改动                                                                                                                                              |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/mdx-bridge`          | 删 `package.json#dependencies` 的 `@skb/block-foundation` + `@skb/content-types`；`tsconfig.json` 已无相关 references，无需改；`CONTRACT.md` § "Wave 1 declared peers" 改 prose（描述 forward-compat 意图，不再宣称 deps 占位）。 |
+| `packages/block-foundation`    | 删 `package.json#dependencies` 的 `@skb/content-types`；删 `tsconfig.json#references` 中 `{ "path": "../content-types" }`（与 package.json 同步）；`CONTRACT.md` 加一段 prose 说明 Wave 2 引入 content-types 的时机。 |
+
+`structure-auditor` 月度审计（next: 2026-05）增加机械检查项：扫所有
+`packages/*/package.json` 的 `@skb/*` deps，与同包 `src/**/*.{ts,tsx}` 的
+`from '@skb/...'` import 比对，发现单边即报 violation。
+
+### D2：block-foundation 注册 API freeze（spec for first real consumer block-callout）
+
+在 `packages/block-foundation/RFC.md`（新增）写 walkthrough："block-callout
+如何注册 core + ui-default 到 BlockRegistry"，覆盖：
+
+- `registerCore(core)` + `propsSchema` + `mdxComponent` name + `serialize/parse` hook 形状
+- `registerUI(ui)` + `uiId` + `EditorView` / `RenderView` 类型契约
+- 错误场景（unknown core / 重复 uiId / propsSchema 非 ZodObject）的 throw 行为
+- consumer-side 测试样板（`block-callout/src/__tests__/registry-integration.test.ts` 雏形）
+
+第一个 `block-*` PR（C1: block-callout/core）必须 reference 此 RFC；后续
+`block-*` PR 沿用模式。**RFC.md 不是 CONTRACT.md**：CONTRACT.md 规定 public API
+形状（已存在），RFC.md 是 walkthrough（教 consumer 如何用）；二者补充而非重叠。
+
+D2 的实施在 Task A2（owner: `block-foundation-eng`，blocked_by Task A1=本 ADR commit）。
+本 ADR 仅 freeze D2 的**目标**与**承诺**；具体 RFC.md 文本由 Task A2 PR 落地。
+
+## Consequences
+
+### 正面
+
+- **audit invariant 简洁可机械化**：structure-auditor 月度增加单条扫描（package.json `@skb/*` ↔ source import），覆盖 D1 不变量。
+- **block-foundation 接口在 block-callout 入门前 freeze**：预防 Wave 1 R-round inflation 同源问题（教训源 ADR-0006 instances #1, #5）。
+- **YAGNI 原则在 monorepo 层落地**：dead-dep 不再合法，迫使依赖在真消费时声明。
+- **Wave 2 plan-draft 阻塞解锁**：Task A1 commit 后 Track C/D/E/G 全部解锁。
+
+### 负面
+
+- **若 Phase 3 npm publish 阶段需 forward-compat package.json 形态**（包发布前要把
+  optional peer 显式声明），届时需 ADR-N 重新评估；当前判断该顾虑不充分（私有
+  workspace 全程 `private: true`）。
+- **block-foundation tsconfig 短期失去 content-types reference**：在 D2/D3
+  block-callout 落地后会重建（block-callout 的 tsconfig refs 需要 content-types
+  + block-foundation；block-foundation 自己若 Wave 2 中段开始 import content-types
+  schema 用于 props 验证，再加 ref）。这是预期 churn，不是退化。
+
+### Risks (mitigated)
+
+- **风险**：Wave 2 中段 block-foundation 真消费 content-types 时漏加 dep + ref。
+  **缓解**：`pnpm typecheck` + structure-auditor 双门会立刻报缺失（import 找不到 / refs 不一致），与 Wave 1 同类问题处理流程一致。
+- **风险**：Option A 让"forward-compat 意图"只能进 CONTRACT prose，未来读者可能漏看。
+  **缓解**：每个 block-* PR review chain 已强制读 CONTRACT.md（ADR-0007 D2 row 1 触发），prose 段是 review 必经；review 也会检查 dep 与 import 一致。
+
+## Implementation
+
+按 ADR-0006 D8 staging protocol（authority + generated/consumed surface 同 bundle staged）：
+
+1. **同 bundle commit（本 ADR + 应用同 PR）**：
+   - `docs/decisions/ADR-0008-wave-2-entry-policies.md`（本 ADR 自身）
+   - `docs/decisions/README.md`（索引加 ADR-0008 行）
+   - `packages/mdx-bridge/package.json`（删 2 条 dead deps）
+   - `packages/mdx-bridge/CONTRACT.md` § "Wave 1 declared peers" 改 prose
+   - `packages/block-foundation/package.json`（删 1 条 dead dep）
+   - `packages/block-foundation/tsconfig.json`（删 references content-types）
+   - `packages/block-foundation/CONTRACT.md`（加 prose 说明 Wave 2 真消费时机）
+   - `pnpm-lock.yaml`（如 `pnpm install` 后有变动 — workspace dep 删除通常无 lockfile 影响，但 ADR-0006 D8 sub-form C 要求 verify）
+2. **后续 PR**（Task A2，blocked_by 本 commit）：
+   - 新增 `packages/block-foundation/RFC.md`
+   - `packages/block-foundation/CONTRACT.md` 加一行指向 RFC.md
+3. **structure-auditor 2026-05 月度审计**：增加 D1 机械扫描项；任何 dead-dep
+   再现 → 直接报 violation 阻断 PR。
+
+## Related
+
+- [ADR-0001](ADR-0001-stack-selection.md) — 技术栈基础与 monorepo 选型
+- [ADR-0002](ADR-0002-wave-1-close.md) D3 erratum #19 / #20 / #21 — F1/F2 dead-dep + block-foundation RFC prereq 来源
+- [ADR-0003](ADR-0003-headless-presentational-split.md) D2 — block-foundation 双层 API
+- [ADR-0006](ADR-0006-asymmetry-audit-checklist.md) D8 — staging protocol 适用本 PR
+- [ADR-0007](ADR-0007-job-function-codex-heavy-execution.md) D2 row 4 — 本 PR 触发 +pr-gate +pr-reviewer
+- [docs/audits/structure-2026-04-29-wave-1.md](../audits/structure-2026-04-29-wave-1.md) §7 — 推荐 #1 + #2 来源
+- [docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md](../superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md) Task A1 / A2 — 本 ADR 应用入口
+
+ succeeded in 0ms:
+# ADR-0006: Cross-location asymmetry-audit checklist (process rule)
+
+| 字段 | 值                                    |
+| ---- | ------------------------------------- |
+| 状态 | accepted                              |
+| 日期 | 2026-04-30                            |
+| 作者 | orchestrator (Claude Opus 4.7 1M ctx) |
+| 触发 | Wave 1 codex 5.5 reviews caught 12 instances of the same meta-class across 6 tracks + 5 close-ceremony fix iterations (8 distinct items + 4 close-ceremony reinforcements of items #6 and #8) |
+| 替代 | 不替代任何 ADR；扩展 [ADR-0001](ADR-0001-stack-selection.md) §3.2 review chain |
+
+## Context
+
+Wave 1 implementation produced strong empirical evidence that **a single bug class** dominates the failure mode at line-level review:
+
+> **Cross-location asymmetry**: a value, schema, algorithm, or invariant exists in two or more places, and an edit to one location is not symmetrically applied to all peers, so behavior diverges silently.
+
+Across 6 tracks + 5 close-ceremony fix iterations, codex 5.5 (`pr-gate`) caught **12 instances** of this meta-class (8 distinct failure-mode items + 4 close-ceremony reinforcements of items #6 and #8). Every PR that lasted ≥ 2 review rounds hit at least one instance. The pattern is so consistent that linear "fix the cited blocker, ship v_n+1" iteration would not have caught the second-order asymmetry; codex specifically catches the symmetric counterpart that the worker missed.
+
+### Wave 1 empirical record (12 instances)
+
+| # | Track | Round | Asymmetry pair | Bug behavior |
+|---|---|---|---|---|
+| 1 | Track B (block-foundation + content-types) | R1 → fixed v3 | `listUIs` mutability vs `listCores` defensive copy | Caller mutation of return value polluted registry singleton |
+| 2 | Track D (apps/api) | R2 → fixed v4 | RFC 7235 `WWW-Authenticate` on framework-raised 401 vs custom `SkbError` 401 | 4 of 5 401 paths emitted spec-mandated header; the custom-error path silently dropped it |
+| 3 | Track F (editor-commands) | R3 → fixed v4 | `.strict()` on top-level Zod object vs nested `frontmatterSchema` | Top-level rejected unknown keys; nested still silently stripped them |
+| 4 | Track C (mdx-bridge) | R2 → fixed v4 | `marksEqual` link comparator: `href` only vs `href + title` | Same href, different titles silently merged into one link with the first title preserved |
+| 5 | Track F v5 | R3 → fixed v6 | One CONTRACT.md updated to reflect code; sister CONTRACT.md (`agent-tools`) had stale wording | Documentation-vs-code drift in the file the worker did not edit |
+| 6 | Track A | R1 → fixed v2 | FOUC inline IIFE saved-value algorithm + content schema | Truthy-coerce diverges from strict-whitelist for invalid / case-mismatched values; inline `z.object` redefinition diverges from `frontmatterSchema` authority |
+| 7 | Track A v2 | R2 → fixed v3 | FOUC inline IIFE try/catch scope | Wide try/catch in IIFE swallowed `matchMedia` exceptions while authority's narrow try/catch propagated; storage-throws scenarios produced light→dark hydration flash |
+| 8 | Wave 1 close bundle v1 | R1 → fixed v2 | ADR-0006 mandated reviewer-prompt updates vs actual `agent-contract.md` / generated `.claude/agents/*.md` / `docs/review-checklist.md` / `team-operations.md` content | The close-ceremony commit codified a process rule that mandates downstream behavior; consumer-side artifacts (reviewer prompts + runbook) had not been updated to embed the rule, so Wave 2 reviewers would not have seen it |
+| 9 | Wave 1 close bundle v2 | R2 → fixed v3 | ADR-0006:81 within-document drift "7 distinct instances" | Single bullet missed during the v1→v2 count sweep — sister-bullet variant of item #6 within a single document |
+| 10 | Wave 1 close bundle v3 | R3 → fixed v4 | ADR-0006:117 within-document drift "7 empirical instances + 18+ erratum candidates" (both numbers stale) | Second sister-bullet drift in the same file, a different bullet — proved per-citation fixes are themselves item #6 traps; comprehensive sweep at fix time is the robust pattern |
+| 11 | Wave 1 close bundle v4 (informational) | R4 (informational) → fixed v5 | structure baseline:66 "× 7 endpoints" while apps/api has 4 routes / 11 tests | Pre-existing content-accuracy drift in the structure baseline document (authored at v1) — content number mismatched real code; surfaced during the broader 11th-class hunt |
+| 12 | Wave 1 close bundle v5 | R2 (pr-gate) → fixed v6 | Regenerated `.claude/agents/code-reviewer.md` + `.claude/agents/pr-gate.md` + `docs/review-checklist.md` were not staged in the bundle commit — authority + generator code updated, but generator outputs remained at pre-update HEAD content | Sub-form of item #8: regenerating an artifact and `git add`'ing it are separate steps; a bundle that updates authority + generator without staging the regenerated outputs is silently stale. Motivated the "verify by clean second-run" step now part of item #8. |
+
+Codex's structured review consistently caught these with three patterns:
+
+1. After fixing one location, **codex audits all peer locations** (not just the cited site)
+2. After a value/schema acquires an attribute, **codex audits every comparator/serialization function** for that attribute
+3. After a "happy path" fix, **codex audits the exception path** for the same equivalence
+
+These three habits collectively define the process rule below.
+
+## Decision
+
+Adopt an **8-point asymmetry-audit checklist** as a mandatory part of `code-reviewer` (Codex 5.3-spark, default cheap) and `pr-gate` (Codex 5.5, deep) review prompts. Reviewers MUST work through every applicable item before declaring PASS.
+
+### The 8 items
+
+1. **Field/attribute audit**: After adding a field to a data shape (Zod schema, Pydantic model, TS interface, mdast attrs, etc.), audit every comparator / equality / serialization / canonicalization function that handles this shape. (Wave 1 evidence: instance #4 — `marksEqual` link branch missed `title` when serialize emitted it.)
+
+2. **Status code audit**: After adding a status code to one HTTP handler (or, generally, an exit/error code to one branch), audit every other handler emitting the same code. RFC-mandated headers (RFC 7235 `WWW-Authenticate` on 401, RFC 7231 `Allow` on 405) attach to **the status code itself**, not the framework code path that emitted it. (Wave 1 evidence: instance #2 — custom `SkbError` 401 path missed `WWW-Authenticate`.)
+
+3. **Strictness audit**: After adding `.strict()` (Zod) / `extra='forbid'` (Pydantic) at one level of an object schema, audit every nested object/sub-schema. The strictness setting **does not propagate**; nested objects must opt in independently. (Wave 1 evidence: instance #3 — top-level `.strict()` shipped while nested `frontmatterSchema` still silently stripped unknown keys.)
+
+4. **Consumer schema audit**: After defining a schema in a single-authority package (e.g. `@skb/content-types/frontmatterSchema`), audit every consumer for inline duplicates or inline redefinitions that should `import` instead. The "deferred swap" pattern — "I'll inline now and import later" — is a contract break that compounds over time. (Wave 1 evidence: instance #6 part 2 — apps/site/content.config.ts inlined `z.object(...)` rather than importing `frontmatterSchema`.)
+
+5. **Algorithm + runtime constant replication audit**: When an algorithm or runtime constant is replicated outside its authority (e.g. inline FOUC scripts, login challenge derivation, pre-hydration boot logic that cannot import from packages), audit every consumer-side replica for byte-equivalent reproduction. The replica must register a **regression test** that asserts equivalence against the authority across a representative input corpus. (Wave 1 evidence: instance #6 part 1 — FOUC IIFE truthy-coerce vs `getInitialTheme()` strict-whitelist; remediated with `apps/site/src/__tests__/fouc-script.test.ts` 16-row corpus.)
+
+6. **Sister-file documentation audit**: After updating one CONTRACT.md (or any document that describes a code surface), audit ALL related CONTRACT.md files in the package family for sister-file drift. Two CONTRACT.md files that describe two halves of the same contract must use **identical terminology** for the shared identifiers (function names, schema names, refine predicate names). (Wave 1 evidence: instance #5 — `editor-commands/CONTRACT.md` updated to cite `editBlockInputSchema` while `agent-tools/CONTRACT.md` still referred to the old shape.)
+
+7. **Exception-scope equivalence audit**: When replicating an algorithm + its exception handling across files, audit BOTH the happy-path semantics AND the `try/catch` scope between authority and replica. Narrow vs wide `try/catch` can produce divergent fall-through behavior even with identical happy-path logic. Specifically: when `localStorage` / `sessionStorage` / `IndexedDB` / `matchMedia` / any browser API in the algorithm path can throw, the `try/catch` MUST wrap ONLY the throwing call, with the fall-through branch (matchMedia / system default / DOM apply) running AFTER the catch handler — not inside it. (Wave 1 evidence: instance #7 — FOUC IIFE wide-scope try/catch swallowed matchMedia exceptions; remediated with narrow try/catch + 2 storage-throws regression tests.)
+
+8. **Authority-document → generated/consumed surface audit**: When updating an authority document (ADR, spec, `agent-contract.md`, runbook, CONVENTIONS) **OR a dependency authority (`package.json`)** that mandates behavior in downstream consumers, audit every consumer-side replica/generated artifact for synchronized update **AND staged-in-the-git-index in the same bundle**. Specifically: an ADR section that says "X file MUST be updated to do Y" requires the same commit to update X and provide a way to verify the synchronization. Generated artifacts (e.g. `docs/review-checklist.md` and `.claude/agents/*.md` derived from `agent-contract.md`; **`pnpm-lock.yaml` derived from `package.json`** — see sub-form C below) MUST be regenerated via the documented codegen step (`pnpm generate:configs` / `pnpm install`) AND **explicitly `git add`'d** so the git **index** (not just the working tree) contains the new content; runbooks (`docs/runbooks/team-operations.md`) MUST be cross-linked; Codex/Claude subagent prompt files MUST embed or reference the new rule.
+
+   **Operational sequence** (do not skip steps):
+   ```bash
+   # 1. Edit authority + generator code
+   # 2. Run codegen
+   pnpm generate:configs
+   # 3. Stage regenerated outputs (CRITICAL — see Pitfall below)
+   git add <regenerated/path/foo.md> <regenerated/path/bar.md>
+   # 4. Verify index reflects content (NOT just working tree):
+   git diff --cached --stat -- <regenerated paths>
+   #    → expects non-empty diff with the expected line counts
+   # 5. Verify idempotence: re-run codegen + confirm working tree matches index:
+   pnpm generate:configs
+   git status --short -- <regenerated paths>
+   #    → expects column-1 'M' (staged) + column-2 blank (working tree clean)
+   ```
+
+   **Pitfall (this is the load-bearing step)**: `git status --short` shows two columns: column 1 is index-vs-HEAD; column 2 is working-tree-vs-index. After running the generator without `git add`, you see `' M'` (space + M) — **working tree differs from index, but index still matches HEAD**. `git commit` only commits the index. Skipping `git add` means the regenerated content is in your working tree but NOT in the next commit. The bundle would land authority + generator-code changes WITHOUT the regenerated outputs, leaving consumers (Wave 2 reviewers reading `.claude/agents/*.md`) at pre-update content. Use `git diff --cached` (not `git status`) as the canonical staging-verification command — `--cached` shows index-vs-HEAD only, which is what `git commit` will produce.
+
+   **Pitfall extension — `pnpm-lock.yaml` is a generated artifact too (sub-form C below)**: when the authority is `package.json` (any dependency add / remove / version bump / `@types/*` shift), `pnpm install` regenerates `pnpm-lock.yaml` as a deterministic derived artifact. Skipping `git add pnpm-lock.yaml` produces the same class of failure as skipping `git add .claude/agents/*.md`: working tree has the synced lockfile but the **index** still holds HEAD's stale lockfile, so the bundle ships `package.json` ahead of its lockfile. CI runs `pnpm install --frozen-lockfile` from the bundled state, sees the stale lockfile disagreeing with the new `package.json`, and fails install. The same `git diff --cached --stat -- pnpm-lock.yaml` canonical verification applies. (Wave 1 erratum commit `e15ec36`; codified as sub-form C below.)
+
+   Generated-from-authority files carry their own header comment ("GENERATED FROM agent-contract.md — DO NOT EDIT BY HAND") OR YAML frontmatter declaring authority source — both forms are acceptable. `pnpm-lock.yaml` lacks an explicit header (the format is fixed by pnpm) but is implicitly declared by `pnpm install`'s contract — its authority is `package.json` + the workspace `pnpm-workspace.yaml`.
+
+   **Wave 1 evidence**: **instance #8** — ADR-0006 v1 commit codified reviewer-prompt mandates but did not update `agent-contract.md` / regenerate `.claude/agents/code-reviewer.md` / regenerate `.claude/agents/pr-gate.md` / cross-link `team-operations.md` / regenerate `docs/review-checklist.md`; pr-gate caught the dogfood failure during R1 review of the close-ceremony bundle, forcing a v2 fix. **instance #12 (sub-form A — pre-regeneration omission)** — v5 bundle updated authority files (`agent-contract.md`, generator code, `team-operations.md` cross-link) but had not run the generator at all post-edit; the 3 regenerated outputs were stale at HEAD content; pr-gate caught this during R2 review, forcing a v6 fix. **instance #12 (sub-form B — staging-vs-working-tree confusion)** — v6 bundle ran the generator (so working tree had new content) but did NOT `git add` the regenerated outputs; the git **index** still held HEAD blob hashes for the 3 generated files; orchestrator confused `git status --short` "M" prefix (working-tree-vs-index) with index-vs-HEAD; pr-gate caught this via `git ls-files --stage` blob-hash comparison during R3 review, forcing the v7 fix that explicitly stages with `git add` + verifies via `git diff --cached`. **instance #12 (sub-form C — lockfile is a generated-from-authority artifact)** — Wave 1 close ceremony commit `e15ec36` ("fix(deps): commit pnpm-lock.yaml for @tailwindcss/typography (lockfile drift)"): the design-tokens erratum (commit `fdc86a8`) added the `@tailwindcss/typography` dependency to `package.json` but did not stage the regenerated `pnpm-lock.yaml`; CI install used the pre-update lockfile, drifted against the new `package.json`, and failed `pnpm install --frozen-lockfile`. Resolution: commit `e15ec36` staged the lockfile separately. Lesson codified: when the authority is `package.json` (any dependency add / remove / version bump), `pnpm-lock.yaml` is the consumer-side generated artifact and must ride the same bundle — the class equivalence to `.claude/agents/*.md` regeneration is exact (deterministic derive + git-index staging required). The four sub-forms of the same item #8 class — pre-regeneration omission, post-regeneration commit-staging confusion, conceptually-correct-but-operationally-incomplete fix, AND lockfile-as-generated-artifact — together motivate the explicit operational sequence and `git diff --cached` canonical verification command codified above.
+
+### Wave 2 prep notes (forward-compatibility application)
+
+The 8 items have specific Wave 2 trip-hazards already identified by Wave 1's review record:
+
+- **Item #1 + Wave 2 attr-bearing marks**: when the first attr-bearing mark beyond `link` is added to mdx-bridge (e.g. `highlight: {color}`, `kbd: {style}`), the worker MUST simultaneously update `wrapMark` AND `marksEqual` AND add a fixture exercising attr-equality + attr-distinction. Default `return true` in `marksEqual` is a silent-drop trap for any attr-bearing mark. (See pr-gate Track C v4 R3 caveat.)
+
+- **Item #2 + Wave 2 new error categories**: when Wave 2+ adds new HTTP error categories (e.g. `auth-rate-limit`, `kernel-timeout`), each new `SkbError` subclass MUST emit the same RFC-mandated headers as framework-raised peers. Add a unit test asserting header presence per error type. (See `apps/api/CONVENTIONS.md` §5 Pitfall + Pitfall continued.)
+
+- **Item #5 + Wave 2 client-side replications**: when apps/site adds new client-side algorithm replications (theme variants beyond light/dark, locale negotiation pre-hydration, etc.), the worker MUST audit both saved-value semantics AND try/catch scope against authority. (See `packages/design-tokens/CONTRACT.md` Inverse-direction obligation invariant.)
+
+- **Item #7 + future inline scripts**: ANY future `<script is:inline>` block in the project that needs pre-hydration replication of a package algorithm MUST follow the FOUC template (narrow try/catch + corpus regression test).
+
+## Consequences
+
+### Positive
+
+- **Catch the failure mode proactively**: Wave 1 evidence shows reviewer-applied checklist would have caught all 12 instances on the first review round (including the close-ceremony dogfood instance #8 + the 4 fix-loop reinforcements), eliminating 12 round-trip cycles
+- **Reviewer prompt clarity**: code-reviewer + pr-gate codex profile prompts gain a concrete, enumerable checklist rather than the implicit "look for symmetric counterparts" expectation
+- **Worker self-audit**: workers gain a pre-PR checklist they can run before reporting `ready-for-review`, catching their own asymmetries (memory: `feedback_verification_fresh_state.md` showed the verification-rigor lesson; this checklist is the analogous rigor at code-design level)
+- **Empirical grounding**: 12 distinct instances spread across 6 tracks + 5 close-ceremony fix iterations make this rule data-driven, not a "best practice" speculation; instances #9-12 reinforce items #6 + #8 specifically through close-ceremony fix-loop evidence
+
+### Costs
+
+- **Review-round time**: applying 8-point audit at every review adds ~5-10 minutes per round of code-reviewer + pr-gate runtime. Acceptable trade-off given Wave 1 round-counts (Track F: 5 rounds; Track A: 3 rounds; Track C: 4 rounds; Track D: 4 rounds) — front-loading review thoroughness reduces total cycles
+- **Worker prompt overhead**: each spawn prompt now needs a reference to this ADR + the 8-point checklist. Marginal cost.
+- **False-positive risk**: items that don't apply (e.g. #2 "status code" doesn't apply to TS-only packages) need to be triaged and skipped. Reviewer profile prompts must explicitly say "skip items not applicable to this PR's scope" to avoid bloat.
+
+### Risks (mitigated)
+
+- **Risk**: workers might mechanically check items without thinking, producing false confidence. **Mitigation**: each item enumerates concrete failure modes from Wave 1, not abstract heuristics — easier to apply
+- **Risk**: this list might grow unbounded as Wave 2+ surfaces new asymmetry classes. **Mitigation**: ADR amendments are cheap; each new instance produces an ADR-0006 erratum capturing item #N+1. Wave 2 close ceremony reviews instances and adds items as needed.
+
+## Implementation
+
+### Reviewer prompt updates
+
+`code-reviewer` and `pr-gate` profile prompts MUST be updated to:
+
+1. State the 8-point checklist verbatim (or by reference to this ADR)
+2. Require the reviewer's verdict structure to include "asymmetry-audit applied: items {1..8} verdicts: ..."
+3. Explicitly mark FAIL if any applicable item is left un-audited
+
+`docs/runbooks/team-operations.md` §"角色与触发器" Tier 2 reviewer rows should cross-link to this ADR.
+
+### Worker pre-flight (template addition)
+
+Worker `ready-for-review` reports SHOULD include a brief asymmetry-audit summary: which of the 8 items applied, and the worker's self-audit verdict. Reviewers cross-check.
+
+### Wave 1 retroactive
+
+This ADR is **forward-applicable**. Wave 1 PRs that already shipped under earlier review without this checklist remain valid; the empirical instances they revealed are exactly what grounded this ADR. No retroactive re-review required.
+
+## Related
+
+- [ADR-0001](ADR-0001-stack-selection.md) §3.2 review chain — this ADR specifies what reviewers MUST do; ADR-0001 specifies who reviews
+- [ADR-0002](ADR-0002-wave-1-close.md) Wave 1 close — collects the 12 empirical instances + 22 erratum candidates
+- [ADR-0004](ADR-0004-agent-team-dispatch-model.md) team dispatch — orchestrator dispatches review chain per this checklist
+- [docs/runbooks/team-operations.md](../runbooks/team-operations.md) — operational reference for reviewers and workers
+- [packages/design-tokens/CONTRACT.md](../../packages/design-tokens/CONTRACT.md) Inverse-direction obligation — concrete application of items #5 + #7
+- [apps/api/CONVENTIONS.md](../../apps/api/CONVENTIONS.md) §5 Pitfalls — concrete application of item #2
+
+exec
+/bin/bash -lc "sed -n '1,260p' docs/review-checklist.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+# Review checklist
+
+> **GENERATED FROM agent-contract.md — DO NOT EDIT BY HAND.**
+>
+> Edit `agent-contract.md` then run `pnpm generate:configs`.
+
+This is the shared rubric for the review chain. Each section maps to one reviewer agent.
+
+## Common invariants (every reviewer must verify)
+
+- [ ] **No worker-side `git` mutating commands.** PRs containing `git commit` / `git push` / `git rebase` outside `git-operator` dispatches are rejected.
+- [ ] **No worker-side `web_search` / `web_fetch`.** External web access must be sourced via researcher dispatch.
+- [ ] **No cross-package moves outside `refactorer`.** Moves under `packages/*` or `apps/*` boundaries require an ADR + refactorer dispatch.
+- [ ] **File size**: warn at 300 (ESLint), hard fail at 500 (`pnpm size-check`).
+- [ ] **Cross-references**: all internal markdown links resolve (`pnpm link-check`).
+- [ ] **Contracts in sync**: `packages/*/CONTRACT.md`, `agent-contract.md`, and code interfaces match.
+
+Spec: §3.1 + §3.2 + §3.6 + §3.5.
+
+## ADR-0006 asymmetry-audit checklist (mandatory for code-reviewer + pr-gate)
+
+Apply each item that is in scope for the PR; explicitly skip items that are not (e.g. item #2 "status code" doesn't apply to TS-only packages). Reviewer verdict structure MUST include `asymmetry-audit applied: items {1..8} verdicts: ...`. See [ADR-0006](decisions/ADR-0006-asymmetry-audit-checklist.md) for empirical evidence + full rationale per item.
+
+- [ ] **#1 Field/attribute audit**: After adding a field to a data shape, audit every comparator/equality/serialization function for that field.
+- [ ] **#2 Status code audit**: After adding a status code to one handler, audit every other handler emitting the same code; RFC-mandated headers (RFC 7235 `WWW-Authenticate`, RFC 7231 `Allow`) attach to the status code itself.
+- [ ] **#3 Strictness audit**: After adding `.strict()` / `extra='forbid'` at one level, audit every nested object/sub-schema (strictness does not propagate).
+- [ ] **#4 Consumer schema audit**: After defining a schema in a single-authority package, audit every consumer for inline duplicates; "deferred swap" is a contract break.
+- [ ] **#5 Algorithm + runtime constant replication audit**: When an algorithm or constant is replicated outside its authority (inline FOUC scripts, login challenge derivation, etc.), audit consumer-side replicas for byte-equivalent reproduction; replica MUST register a regression test against the authority's input corpus.
+- [ ] **#6 Sister-file documentation audit**: After updating one CONTRACT.md (or analogous document), audit ALL related CONTRACT.md files for sister-file drift; shared identifiers must use identical terminology across both halves of the contract.
+- [ ] **#7 Exception-scope equivalence audit**: When replicating an algorithm + its exception handling, audit BOTH happy-path semantics AND `try/catch` scope between authority and replica; narrow vs wide try/catch can produce divergent fall-through behavior.
+- [ ] **#8 Authority-document → generated/consumed surface audit**: When updating an authority document (ADR, spec, `agent-contract.md`, runbook, CONVENTIONS) that mandates downstream behavior, audit every consumer-side replica/generated artifact in the same commit; regenerate codegen outputs (`pnpm generate:configs`); cross-link runbooks; embed in subagent prompts.
+
+`pr-gate` MUST additionally hunt for an 8th-class instance beyond the cited fix (Wave 1 evidence: pr-gate caught one extra asymmetry per round on every Wave 1 high-risk PR).
+
+## For code-reviewer (Codex 5.3-spark)
+
+Default cheap line-level review. Output PASS / FAIL with concrete issues.
+
+- [ ] **Types**: no `any` leakage; `unknown` narrowed at boundaries; `pnpm exec tsc -b` clean.
+- [ ] **Lint**: `pnpm exec eslint .` produces no errors (warnings tolerated).
+- [ ] **File size**: every changed file under 500 lines; aim for 200, warn at 300.
+- [ ] **Contracts**: any change to `packages/*/CONTRACT.md` matches the implementation
+      in the same PR (no orphan interface drift).
+- [ ] **Module boundaries**: imports respect package boundaries (no reaching into another
+      package's `src/internal/`); no circular deps introduced.
+- [ ] **Style**: prettier-clean; no commented-out blocks; no leftover `console.log`.
+
+## For pr-gate (Codex 5.5, high-risk only)
+
+Triggered by: contract change, package add/remove, core arch touch, ADR-required PR,
+CI/deploy/auth/security touch. Deep scan.
+
+- [ ] **Vulnerabilities**: no obvious injection / XSS / SSRF / deserialization sinks; secrets
+      never read from request bodies; HTTP responses don't leak internal state.
+- [ ] **Cross-package side effects**: changes to one package don't silently break another
+      (especially `block-foundation`, `mdx-bridge`, `kernel-adapter` consumers).
+- [ ] **Supply chain**: any new dependency vetted for maintenance status, license, and
+      transitive risk; no abandoned forks.
+- [ ] **Lockfile integrity**: `pnpm-lock.yaml` change is consistent with `package.json`
+      diffs; no unexplained version churn; no peer-dep warnings worsened.
+- [ ] **Auth / boundary**: no permission expanded silently (e.g. router exposing previously
+      private route); CSRF / SameSite still enforced; no `eval` / `Function` constructor.
+
+## For pr-reviewer (Claude)
+
+Implementation quality, regression risk, spec match. Output APPROVE / REJECT + reasoning.
+
+- [ ] **Spec compliance**: implementation matches the locked design spec (cite section).
+- [ ] **Regression risk**: existing tests still cover the affected paths; no behavior change
+      that would break a downstream package or doc snippet.
+- [ ] **Architectural consistency**: change matches existing patterns; new patterns have an
+      ADR under `docs/decisions/` if cross-cutting.
+- [ ] **Cross-file impact**: every doc / cross-reference updated (`agent-contract.md` →
+      regenerate; `CONTRACT.md` ↔ implementation; `docs/plans/` reflects status).
+- [ ] **Tests**: `vitest` / `pytest` coverage for new behavior; no flaky timing-dependent
+      assertions.
+
+## Related
+
+- [Review workflow — spec §3.2](superpowers/specs/2026-04-29-self-knowledge-base-design.md)
+- [agent-contract.md — single source](../agent-contract.md)
+
+exec
+/bin/bash -lc 'git show 138cc16:packages/editor-toolbar/src/ui-default/dispatch.ts' in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc 'git show 138cc16:packages/editor-toolbar/src/ui-default/Toolbar.tsx' in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc 'git show 138cc16:packages/editor-slash-menu/src/core/slash-menu-config.ts' in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc 'git show 138cc16:packages/editor-slash-menu/src/ui-default/dispatch.ts' in /home/weiyi/selfKnowledgeBaseWeb
+ exited 128 in 0ms:
+fatal: path 'packages/editor-slash-menu/src/ui-default/dispatch.ts' exists on disk, but not in '138cc16'
+
+exec
+/bin/bash -lc "sed -n '1,220p' packages/editor-slash-menu/src/ui-default/index.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+export { EditorSlashMenu } from './SlashMenu';
+export type { EditorSlashMenuProps } from './SlashMenu';
+export { SLASH_MENU_ICONS } from './icons';
+export { runDefaultSlashCommand, isDefaultCommandActive } from './dispatch';
+
+exec
+/bin/bash -lc 'git show --stat --name-only 138cc16 -- packages/editor-toolbar/src/ packages/editor-slash-menu' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+commit 138cc160367e4e3caa3f563c4c479e0e5fd26b00
+Author: W_YI <W_YI1223@outlook.com>
+Date:   Thu Apr 30 17:05:24 2026 -0400
+
+    feat(editor): editor-toolbar — first editor-* sub-module template (Wave 2 Track G1)
+    
+    Floating toolbar consuming Tiptap BubbleMenu. Template structure for
+    codex-block-generator clones (G2: editor-slash-menu, G3: editor-drag-handle).
+    
+    - Headless / UI separation per ADR-0003: core/ no React/Tiptap; ui-default/ has them
+    - toolbarConfig schema z.object({buttons: array(...)}).strict() top-level + nested .strict()
+    - runDefaultCommand explicit dispatcher (not dynamic chain[command]) — toggleHeading({level: N})
+    - 9 default buttons: bold/italic/strike + h1/h2/h3 + bulletList/orderedList + code
+      (matches block-foundation StarterKit prose authority)
+    - Underline + link deferred to Wave 3 (block-foundation prose authority must add
+      @tiptap/extension-underline + link command flow before toolbar can dispatch)
+    - 14/14 tests PASS (5 toolbar-config + 9 toolbar-dispatch with mock chain)
+    - editor-commands single authority preserved: buildEditBlockInput delegates to
+      editBlockInputSchema (no inline z.object redef)
+    
+    Closes Wave 2 Task G1 (D2 row 1 — CONTRACT-level + first editor-* template).
+    Review: codex 5.3 R3 PASS / Claude pr-reviewer R2 APPROVE.
+    
+    Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+
+packages/editor-toolbar/src/__tests__/toolbar-config.test.ts
+packages/editor-toolbar/src/__tests__/toolbar-dispatch.test.ts
+packages/editor-toolbar/src/core/command-bindings.ts
+packages/editor-toolbar/src/core/index.ts
+packages/editor-toolbar/src/core/toolbar-config.ts
+packages/editor-toolbar/src/index.ts
+packages/editor-toolbar/src/ui-default/Toolbar.tsx
+packages/editor-toolbar/src/ui-default/dispatch.ts
+packages/editor-toolbar/src/ui-default/icons/index.tsx
+packages/editor-toolbar/src/ui-default/index.ts
+packages/editor-toolbar/src/ui-default/toolbar.css
+
+ succeeded in 107ms:
+import type { ChainedCommands, Editor } from '@tiptap/core';
+
+interface ProseChainedCommands {
+  focus: () => ProseChainedCommands;
+  run: () => boolean;
+  toggleBold: () => ProseChainedCommands;
+  toggleItalic: () => ProseChainedCommands;
+  toggleStrike: () => ProseChainedCommands;
+  toggleCode: () => ProseChainedCommands;
+  toggleHeading: (attrs: { level: 1 | 2 | 3 | 4 | 5 | 6 }) => ProseChainedCommands;
+  toggleBulletList: () => ProseChainedCommands;
+  toggleOrderedList: () => ProseChainedCommands;
+}
+
+export function runDefaultCommand(
+  name: string,
+  chain: ChainedCommands,
+): boolean {
+  const focused = (chain as unknown as ProseChainedCommands).focus();
+  switch (name) {
+    case 'toggleBold':
+      return focused.toggleBold().run();
+    case 'toggleItalic':
+      return focused.toggleItalic().run();
+    case 'toggleStrike':
+      return focused.toggleStrike().run();
+    case 'toggleCode':
+      return focused.toggleCode().run();
+    case 'toggleHeading1':
+      return focused.toggleHeading({ level: 1 }).run();
+    case 'toggleHeading2':
+      return focused.toggleHeading({ level: 2 }).run();
+    case 'toggleHeading3':
+      return focused.toggleHeading({ level: 3 }).run();
+    case 'toggleBulletList':
+      return focused.toggleBulletList().run();
+    case 'toggleOrderedList':
+      return focused.toggleOrderedList().run();
+    default:
+      return false;
+  }
+}
+
+export function isDefaultCommandActive(
+  editor: Editor,
+  command: string,
+): boolean {
+  switch (command) {
+    case 'toggleBold':
+      return editor.isActive('bold');
+    case 'toggleItalic':
+      return editor.isActive('italic');
+    case 'toggleStrike':
+      return editor.isActive('strike');
+    case 'toggleCode':
+      return editor.isActive('code');
+    case 'toggleHeading1':
+      return editor.isActive('heading', { level: 1 });
+    case 'toggleHeading2':
+      return editor.isActive('heading', { level: 2 });
+    case 'toggleHeading3':
+      return editor.isActive('heading', { level: 3 });
+    case 'toggleBulletList':
+      return editor.isActive('bulletList');
+    case 'toggleOrderedList':
+      return editor.isActive('orderedList');
+    default:
+      return false;
+  }
+}
+
+ exited 128 in 101ms:
+ succeeded in 110ms:
+import type { ReactNode } from 'react';
+import type { Editor } from '@tiptap/core';
+import { BubbleMenu } from '@tiptap/react';
+import {
+  defaultToolbarConfig,
+  type ToolbarButton,
+  type ToolbarConfig,
+} from '../core/toolbar-config';
+import { TOOLBAR_ICONS } from './icons';
+import { runDefaultCommand, isDefaultCommandActive } from './dispatch';
+import './toolbar.css';
+
+export interface EditorToolbarProps {
+  readonly editor: Editor | null;
+  readonly config?: ToolbarConfig;
+}
+
+export function EditorToolbar({
+  editor,
+  config = defaultToolbarConfig,
+}: EditorToolbarProps): ReactNode {
+  if (!editor) return null;
+
+  return (
+    <BubbleMenu editor={editor} className="skb-editor-toolbar">
+      <div role="toolbar" aria-label="Text formatting" className="skb-editor-toolbar__row">
+        {config.buttons.map((b) => (
+          <ToolbarButtonView key={b.id} button={b} editor={editor} />
+        ))}
+      </div>
+    </BubbleMenu>
+  );
+}
+
+interface ToolbarButtonViewProps {
+  readonly button: ToolbarButton;
+  readonly editor: Editor;
+}
+
+function ToolbarButtonView({ button, editor }: ToolbarButtonViewProps): ReactNode {
+  const Icon = TOOLBAR_ICONS[button.icon];
+  const isActive = isDefaultCommandActive(editor, button.command);
+  const ariaLabel = button.shortcut
+    ? `${button.label} (${button.shortcut})`
+    : button.label;
+
+  return (
+    <button
+      type="button"
+      onClick={() => runDefaultCommand(button.command, editor.chain())}
+      aria-label={ariaLabel}
+      aria-pressed={isActive}
+      data-command={button.command}
+      className="skb-editor-toolbar__button"
+      data-active={isActive ? 'true' : 'false'}
+    >
+      {Icon ? <Icon /> : <span>{button.label[0]}</span>}
+    </button>
+  );
+}
+
+exec
+/bin/bash -lc "sed -n '1,260p' packages/editor-slash-menu/src/core/command-bindings.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+import { editBlockInputSchema } from '@skb/editor-commands';
+import {
+  defaultSlashMenuConfig,
+  type SlashMenuConfig,
+  type SlashMenuItem,
+} from './slash-menu-config';
+
+export function findItem(
+  config: SlashMenuConfig,
+  itemId: string,
+): SlashMenuItem | undefined {
+  return config.items.find((item) => item.id === itemId);
+}
+
+export function listCommands(config: SlashMenuConfig): readonly string[] {
+  return config.items.map((item) => item.command);
+}
+
+export function buildEditBlockInput(
+  pageSlug: string,
+  blockId: string,
+  draft: { props?: Record<string, unknown>; content?: string },
+): ReturnType<typeof editBlockInputSchema.parse> {
+  return editBlockInputSchema.parse({ pageSlug, blockId, ...draft });
+}
+
+export const defaultCommandBindings: Readonly<Record<string, string>> =
+  Object.freeze(
+    Object.fromEntries(defaultSlashMenuConfig.items.map((item) => [item.id, item.command])),
+  );
+
+codex
+I’ve finished static evidence collection for checkpoints 1–8 and contract checks. I’ll run the requested package pipeline (`test`, `typecheck`, `lint`, `build`) now and then return PASS/FAIL with itemized mapping to your 9 checks.
+exec
+/bin/bash -lc 'pnpm --filter @skb/editor-slash-menu test && pnpm --filter @skb/editor-slash-menu run typecheck && pnpm --filter @skb/editor-slash-menu lint && pnpm --filter @skb/editor-slash-menu build' in /home/weiyi/selfKnowledgeBaseWeb
+ exited 1 in 723ms:
+
+> @skb/editor-slash-menu@0.0.0 test /home/weiyi/selfKnowledgeBaseWeb/packages/editor-slash-menu
+> vitest run
+
+failed to load config from /home/weiyi/selfKnowledgeBaseWeb/packages/editor-slash-menu/vitest.config.ts
+
+⎯⎯⎯⎯⎯⎯⎯ Startup Error ⎯⎯⎯⎯⎯⎯⎯⎯
+Error: EROFS: read-only file system, open '/home/weiyi/selfKnowledgeBaseWeb/packages/editor-slash-menu/node_modules/.vite-temp/vitest.config.ts.timestamp-1777609092849-c8ad9e665a049.mjs'
+    at async open (node:internal/fs/promises:639:25)
+    at async Object.writeFile (node:internal/fs/promises:1219:14)
+    at async loadConfigFromBundledFile (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:34769:3)
+    at async bundleAndLoadConfigFile (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:34632:17)
+    at async loadConfigFromFile (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:34599:42)
+    at async resolveConfig (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:34223:22)
+    at async _createServer (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:26029:65)
+    at async createViteServer (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vitest@4.1.5_@types+node@22.19.17_happy-dom@15.11.7_vite@8.0.10_@types+node@22.19.17_esbuild@_njtu3hruheo7esciutan5fga5a/node_modules/vitest/dist/chunks/cli-api.Cjt90eJu.js:8818:17)
+    at async createVitest (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vitest@4.1.5_@types+node@22.19.17_happy-dom@15.11.7_vite@8.0.10_@types+node@22.19.17_esbuild@_njtu3hruheo7esciutan5fga5a/node_modules/vitest/dist/chunks/cli-api.Cjt90eJu.js:14205:18)
+    at async prepareVitest (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vitest@4.1.5_@types+node@22.19.17_happy-dom@15.11.7_vite@8.0.10_@types+node@22.19.17_esbuild@_njtu3hruheo7esciutan5fga5a/node_modules/vitest/dist/chunks/cli-api.Cjt90eJu.js:14572:14) {
+  errno: -30,
+  code: 'EROFS',
+  syscall: 'open',
+  path: '/home/weiyi/selfKnowledgeBaseWeb/packages/editor-slash-menu/node_modules/.vite-temp/vitest.config.ts.timestamp-1777609092849-c8ad9e665a049.mjs'
+}
+
+
+
+/home/weiyi/selfKnowledgeBaseWeb/packages/editor-slash-menu:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @skb/editor-slash-menu@0.0.0 test: `vitest run`
+Exit status 1
+
+codex
+The requested test step is blocked by environment (read-only FS) at Vitest bootstrap (`.vite-temp` under workspace cannot be written), so I’ll still execute the remaining requested scripts (`typecheck`, `lint`, `build`) to isolate what is independently runnable versus sandbox-limited.
+exec
+/bin/bash -lc 'pnpm --filter @skb/editor-slash-menu run typecheck && pnpm --filter @skb/editor-slash-menu lint && pnpm --filter @skb/editor-slash-menu build' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 6217ms:
+
+> @skb/editor-slash-menu@0.0.0 typecheck /home/weiyi/selfKnowledgeBaseWeb/packages/editor-slash-menu
+> tsc --noEmit
+
+
+> @skb/editor-slash-menu@0.0.0 lint /home/weiyi/selfKnowledgeBaseWeb/packages/editor-slash-menu
+> eslint .
+
+
+> @skb/editor-slash-menu@0.0.0 build /home/weiyi/selfKnowledgeBaseWeb/packages/editor-slash-menu
+> tsc -b
+
+
+codex
+I’m doing one focused retry for `test` by checking Vitest/Vite cache flags, since this is the only blocked script and it appears unrelated to package logic.
+exec
+/bin/bash -lc 'pnpm --filter @skb/editor-slash-menu exec vitest --help' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 434ms:
+vitest/4.1.5
+
+Usage:
+  $ vitest [...filters]
+
+Commands:
+  run [...filters]      
+  related [...filters]  
+  watch [...filters]    
+  dev [...filters]      
+  bench [...filters]    
+  init <project>        
+  list [...filters]     
+  [...filters]          
+  complete [shell]      
+
+For more info, run any command with the `--help` flag:
+  $ vitest run --help
+  $ vitest related --help
+  $ vitest watch --help
+  $ vitest dev --help
+  $ vitest bench --help
+  $ vitest init --help
+  $ vitest list --help
+  $ vitest --help
+  $ vitest complete --help
+  $ vitest --help --expand-help
+
+Options:
+  -v, --version                                              Display version number 
+  -r, --root <path>                                          Root path 
+  -c, --config <path>                                        Path to config file 
+  -u, --update [type]                                        Update snapshot (accepts boolean, "new", "all" or "none") 
+  -w, --watch                                                Enable watch mode 
+  -t, --testNamePattern <pattern>                            Run tests with full names matching the specified regexp pattern 
+  --dir <path>                                               Base directory to scan for the test files 
+  --ui                                                       Enable UI 
+  --open                                                     Open UI automatically (default: !process.env.CI) 
+  --api [port]                                               Specify server port. Note if the port is already being used, Vite will automatically try the next available port so this may not be the actual port the server ends up listening on. If true will be set to 51204. Use '--help --api' for more info. 
+  --silent [value]                                           Silent console output from tests. Use 'passed-only' to see logs from failing tests only. 
+  --hideSkippedTests                                         Hide logs for skipped tests 
+  --reporter <name>                                          Specify reporters (default, agent, minimal, blob, verbose, dot, json, tap, tap-flat, junit, tree, hanging-process, github-actions) 
+  --outputFile <filename/-s>                                 Write test results to a file when supporter reporter is also specified, use cac's dot notation for individual outputs of multiple reporters (example: --outputFile.tap=./tap.txt) 
+  --coverage                                                 Enable coverage report. Use '--help --coverage' for more info. 
+  --mode <name>                                              Override Vite mode (default: test or benchmark) 
+  --isolate                                                  Run every test file in isolation. To disable isolation, use --no-isolate (default: true) 
+  --globals                                                  Inject apis globally 
+  --dom                                                      Mock browser API with happy-dom 
+  --browser <name>                                           Run tests in the browser. Equivalent to --browser.enabled (default: false). Use '--help --browser' for more info. 
+  --pool <pool>                                              Specify pool, if not running in the browser (default: forks) 
+  --execArgv <option>                                        Pass additional arguments to node process when spawning worker_threads or child_process. 
+  --vmMemoryLimit <limit>                                    Memory limit for VM pools. If you see memory leaks, try to tinker this value. 
+  --fileParallelism                                          Should all test files run in parallel. Use --no-file-parallelism to disable (default: true) 
+  --maxWorkers <workers>                                     Maximum number or percentage of workers to run tests in 
+  --environment <name>                                       Specify runner environment, if not running in the browser (default: node) 
+  --passWithNoTests                                          Pass when no tests are found 
+  --logHeapUsage                                             Show the size of heap for each test when running in node 
+  --detectAsyncLeaks                                         Detect asynchronous resources leaking from the test file (default: false) 
+  --allowOnly                                                Allow tests and suites that are marked as only (default: !process.env.CI) 
+  --dangerouslyIgnoreUnhandledErrors                         Ignore any unhandled errors that occur 
+  --shard <shards>                                           Test suite shard to execute in a format of <index>/<count> 
+  --changed [since]                                          Run tests that are affected by the changed files (default: false) 
+  --sequence <options>                                       Options for how tests should be sorted. Use '--help --sequence' for more info. 
+  --inspect [[host:]port]                                    Enable Node.js inspector (default: 127.0.0.1:9229) 
+  --inspectBrk [[host:]port]                                 Enable Node.js inspector and break before the test starts 
+  --testTimeout <timeout>                                    Default timeout of a test in milliseconds (default: 5000). Use 0 to disable timeout completely. 
+  --hookTimeout <timeout>                                    Default hook timeout in milliseconds (default: 10000). Use 0 to disable timeout completely. 
+  --bail <number>                                            Stop test execution when given number of tests have failed (default: 0) 
+  --retry <times>                                            Retry the test specific number of times if it fails (default: 0). Use '--help --retry' for more info. 
+  --diff <path>                                              DiffOptions object or a path to a module which exports DiffOptions object. Use '--help --diff' for more info. 
+  --exclude <glob>                                           Additional file globs to be excluded from test 
+  --expandSnapshotDiff                                       Show full diff when snapshot fails 
+  --disableConsoleIntercept                                  Disable automatic interception of console logging (default: false) 
+  --typecheck                                                Enable typechecking alongside tests (default: false). Use '--help --typecheck' for more info. 
+  --project <name>                                           The name of the project to run if you are using Vitest workspace feature. This can be repeated for multiple projects: --project=1 --project=2. You can also filter projects using wildcards like --project=packages*, and exclude projects with --project=!pattern. 
+  --slowTestThreshold <threshold>                            Threshold in milliseconds for a test or suite to be considered slow (default: 300) 
+  --teardownTimeout <timeout>                                Default timeout of a teardown function in milliseconds (default: 10000) 
+  --cache                                                    Enable cache. Use '--help --cache' for more info. 
+  --maxConcurrency <number>                                  Maximum number of concurrent tests and suites during test file execution (default: 5) 
+  --expect                                                   Configuration options for expect() matches. Use '--help --expect' for more info. 
+  --printConsoleTrace                                        Always print console stack traces 
+  --includeTaskLocation                                      Collect test and suite locations in the location property 
+  --attachmentsDir <dir>                                     The directory where attachments from context.annotate are stored in (default: .vitest-attachments) 
+  --run                                                      Disable watch mode 
+  --no-color                                                 Removes colors from the console output (default: true)
+  --clearScreen                                              Clear terminal screen when re-running tests during watch mode (default: true) 
+  --configLoader <loader>                                    Use bundle to bundle the config with esbuild or runner (experimental) to process it on the fly. This is only available in vite version 6.1.0 and above. (default: bundle) 
+  --standalone                                               Start Vitest without running tests. Tests will be running only on change. If browser mode is enabled, the UI will be opened automatically. This option is ignored when CLI file filters are passed. (default: false) 
+  --mergeReports [path]                                      Path to a blob reports directory. If this options is used, Vitest won't run any tests, it will only report previously recorded tests 
+  --listTags [type]                                          List all available tags instead of running tests. --list-tags=json will output tags in JSON format, unless there are no tags. 
+  --clearCache                                               Delete all Vitest caches, including experimental.fsModuleCache, without running any tests. This will reduce the performance in the subsequent test run. 
+  --tagsFilter <expression>                                  Run only tests with the specified tags. You can use logical operators && (and), || (or) and ! (not) to create complex expressions, see https://vitest.dev/guide/test-tags#syntax for more information. 
+  --strictTags                                               Should Vitest throw an error if test has a tag that is not defined in the config. (default: true) 
+  --experimental <features>                                  Experimental features.. Use '--help --experimental' for more info. 
+  -h, --help                                                 Display this message 
+
+exec
+/bin/bash -lc 'cat packages/editor-slash-menu/vitest.config.ts' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+import { defineConfig } from 'vitest/config';
+
+export default defineConfig({
+  test: {
+    include: ['src/**/*.test.ts'],
+    typecheck: { enabled: false },
+  },
+});
+
+codex
+I’ll do a final spot-check on exports/docs coupling (sister-doc consistency risk), since that’s the only remaining ambiguity in the 9th checkpoint.
+exec
+/bin/bash -lc "cat packages/editor-slash-menu/src/index.ts && echo '---' && cat packages/editor-toolbar/src/index.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+export * from './core';
+---
+export * from './core';
+
+exec
+/bin/bash -lc 'rg --line-number "react|@tiptap" packages/editor-slash-menu/src/core' in /home/weiyi/selfKnowledgeBaseWeb
+ exited 1 in 0ms:
+exec
+/bin/bash -lc 'rg --line-number "@skb/" packages/editor-slash-menu/package.json' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 147ms:
+2:  "name": "@skb/editor-slash-menu",
+18:    "@skb/editor-commands": "workspace:*",
+
+exec
+/bin/bash -lc "cat > /tmp/editor-slash-menu-vitest.config.ts <<'EOF'
+import { defineConfig } from 'vitest/config';
+
+export default defineConfig({
+  cacheDir: '/tmp/.vite-editor-slash-menu',
+  test: {
+    include: ['src/**/*.test.ts'],
+    typecheck: { enabled: false },
+  },
+});
+EOF
+pnpm --filter @skb/editor-slash-menu exec vitest run --config /tmp/editor-slash-menu-vitest.config.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ exited 1 in 740ms:
+failed to load config from /tmp/editor-slash-menu-vitest.config.ts
+
+⎯⎯⎯⎯⎯⎯⎯ Startup Error ⎯⎯⎯⎯⎯⎯⎯⎯
+Error: Build failed with 1 error:
+
+[31m[UNRESOLVED_ENTRY] Error:[0m Cannot resolve entry module ../../../../../tmp/editor-slash-menu-vitest.config.ts.
+
+    at aggregateBindingErrorsIntoJsError (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/rolldown@1.0.0-rc.17/node_modules/rolldown/dist/shared/error-DL-e8-oE.mjs:48:18)
+    at unwrapBindingResult (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/rolldown@1.0.0-rc.17/node_modules/rolldown/dist/shared/error-DL-e8-oE.mjs:18:128)
+    at #build (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/rolldown@1.0.0-rc.17/node_modules/rolldown/dist/shared/rolldown-build-DSxL8qiP.mjs:3317:34)
+    at async bundleConfigFile (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:34722:17)
+    at async bundleAndLoadConfigFile (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:34630:18)
+    at async loadConfigFromFile (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:34599:42)
+    at async resolveConfig (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:34223:22)
+    at async _createServer (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vite@8.0.10_@types+node@22.19.17_esbuild@0.27.7_jiti@1.21.7_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/node.js:26029:65)
+    at async createViteServer (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vitest@4.1.5_@types+node@22.19.17_happy-dom@15.11.7_vite@8.0.10_@types+node@22.19.17_esbuild@_njtu3hruheo7esciutan5fga5a/node_modules/vitest/dist/chunks/cli-api.Cjt90eJu.js:8818:17)
+    at async createVitest (file:///home/weiyi/selfKnowledgeBaseWeb/node_modules/.pnpm/vitest@4.1.5_@types+node@22.19.17_happy-dom@15.11.7_vite@8.0.10_@types+node@22.19.17_esbuild@_njtu3hruheo7esciutan5fga5a/node_modules/vitest/dist/chunks/cli-api.Cjt90eJu.js:14205:18) {
+  errors: [Getter/Setter]
+}
+
+
+
+undefined
+/home/weiyi/selfKnowledgeBaseWeb/packages/editor-slash-menu:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: vitest run --config /tmp/editor-slash-menu-vitest.config.ts
+
+codex
+Verdict: **FAIL**
+
+1. **Headless / UI separation (src/core)** — **PASS**
+   - `packages/editor-slash-menu/src/core` imports only `zod` + `@skb/editor-commands`, no React/Tiptap symbols.  
+   - Verified via [slash-menu-config.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/editor-slash-menu/src/core/slash-menu-config.ts), [command-bindings.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/editor-slash-menu/src/core/command-bindings.ts), [core/index.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/editor-slash-menu/src/core/index.ts).
+
+2. **slashMenuConfig strict schema** — **PASS**
+   - `slashMenuConfigSchema` is `.strict()` and nested `slashMenuItemSchema` is also `.strict()`.  
+   - [slash-menu-config.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/editor-slash-menu/src/core/slash-menu-config.ts).
+
+3. **defaultSlashMenuConfig 10 items / 4 categories** — **PASS**
+   - Exactly 10 entries: 3 heading, 3 list, 3 block, 1 media.  
+   - [slash-menu-config.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/editor-slash-menu/src/core/slash-menu-config.ts).
+
+4. **SlashMenu.tsx uses FloatingMenu + `/` filter logic** — **PASS**
+   - Uses [`FloatingMenu`](/home/weiyi/selfKnowledgeBaseWeb/packages/editor-slash-menu/src/ui-default/SlashMenu.tsx) and regex matching for `/` query with prefix filtering (`^…/`).  
+   - [SlashMenu.tsx](/home/weiyi/selfKnowledgeBaseWeb/packages/editor-slash-menu/src/ui-default/SlashMenu.tsx).
+
+5. **runDefaultSlashCommand dispatcher pattern** — **PASS**
+   - Explicit `switch` on command names, focused chain call, no dynamic indexing; mirrors G1 `runDefaultCommand` style.  
+   - [dispatch.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/editor-slash-menu/src/ui-default/dispatch.ts) and G1 baseline [dispatch.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/editor-toolbar/src/ui-default/dispatch.ts:1).
+
+6. **Tests: 12/12 (5 config + 7 dispatch) PASS** — **FAIL (not executed)**
+   - Static shape is correct:  
+     - [slash-menu-config.test.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/editor-slash-menu/src/__tests__/slash-menu-config.test.ts) has 5 test cases.  
+     - [slash-menu-dispatch.test.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/editor-slash-menu/src/__tests__/slash-menu-dispatch.test.ts) has 7 test cases.
+   - Actual run was blocked by environment: `pnpm --filter @skb/editor-slash-menu test` failed with `EROFS` writing `node_modules/.vite-temp/...`.
+
+7. **ADR-0008 D1 dead-dep** — **PASS**
+   - `@skb/editor-slash-menu/package.json` has `@skb/editor-commands` and is imported in code (`@skb/editor-commands` usage exists in [command-bindings.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/editor-slash-menu/src/core/command-bindings.ts)); no dead `@skb/*` dependency visible for this package.  
+   - [package.json](/home/weiyi/selfKnowledgeBaseWeb/packages/editor-slash-menu/package.json), [ADR-0008](/home/weiyi/selfKnowledgeBaseWeb/docs/decisions/ADR-0008-wave-2-entry-policies.md).
+
+8. **ADR-0006 8-point** — **PASS/N/A split**
+   - 1) PASS: command dispatch and active checks cover default items consistently with config-driven assertions.  
+   - 2) N/A: TS-only package editor UI; no status-code handlers.  
+   - 3) PASS: `.strict()` explicitly applied at top + nested object schemas.  
+   - 4) PASS: uses `editBlockInputSchema` authority import (no inline duplicate schema).  
+   - 5) N/A: no replicated cross-location algorithm/constants beyond local UI behavior.  
+   - 6) PASS: [CONTRACT.md](/home/weiyi/selfKnowledgeBaseWeb/packages/editor-slash-menu/CONTRACT.md) mirrors G1 structure/semantics for template alignment.  
+   - 7) N/A: no replicated exception-scope algorithm with authority replica pattern.  
+   - 8) N/A: no related authority doc/codegen bundle change in this diff.
+
+9. **Sister-doc CONTRACT alignment with editor-toolbar** — **PASS**
+   - Structure and surface contracts are aligned in template shape (core/ui separation, strict schemas, dispatch semantics, test contract framing), with slash-specific semantics adapted in place.  
+   - [packages/editor-toolbar/CONTRACT.md](/home/weiyi/selfKnowledgeBaseWeb/packages/editor-toolbar/CONTRACT.md) vs [packages/editor-slash-menu/CONTRACT.md](/home/weiyi/selfKnowledgeBaseWeb/packages/editor-slash-menu/CONTRACT.md).
+
+Pipeline run status:
+- `pnpm --filter @skb/editor-slash-menu test` ❌ failed (`EROFS` in workspace `node_modules/.vite-temp`).
+- `pnpm --filter @skb/editor-slash-menu run typecheck` ✅
+- `pnpm --filter @skb/editor-slash-menu lint` ✅
+- `pnpm --filter @skb/editor-slash-menu build` ✅
+
+If you want, I can rerun the package `test` step in a writable workspace/mutable `/tmp`-friendly environment to close the remaining verification gap and convert checkpoint 6 to PASS.
+2026-05-01T04:18:38.527010Z ERROR codex_core::session: failed to record rollout items: thread 019de1c1-ec11-7142-9e0e-1b683950cb70 not found
+tokens used
+76,762
+Verdict: **FAIL**
+
+1. **Headless / UI separation (src/core)** — **PASS**
+   - `packages/editor-slash-menu/src/core` imports only `zod` + `@skb/editor-commands`, no React/Tiptap symbols.  
+   - Verified via [slash-menu-config.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/editor-slash-menu/src/core/slash-menu-config.ts), [command-bindings.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/editor-slash-menu/src/core/command-bindings.ts), [core/index.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/editor-slash-menu/src/core/index.ts).
+
+2. **slashMenuConfig strict schema** — **PASS**
+   - `slashMenuConfigSchema` is `.strict()` and nested `slashMenuItemSchema` is also `.strict()`.  
+   - [slash-menu-config.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/editor-slash-menu/src/core/slash-menu-config.ts).
+
+3. **defaultSlashMenuConfig 10 items / 4 categories** — **PASS**
+   - Exactly 10 entries: 3 heading, 3 list, 3 block, 1 media.  
+   - [slash-menu-config.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/editor-slash-menu/src/core/slash-menu-config.ts).
+
+4. **SlashMenu.tsx uses FloatingMenu + `/` filter logic** — **PASS**
+   - Uses [`FloatingMenu`](/home/weiyi/selfKnowledgeBaseWeb/packages/editor-slash-menu/src/ui-default/SlashMenu.tsx) and regex matching for `/` query with prefix filtering (`^…/`).  
+   - [SlashMenu.tsx](/home/weiyi/selfKnowledgeBaseWeb/packages/editor-slash-menu/src/ui-default/SlashMenu.tsx).
+
+5. **runDefaultSlashCommand dispatcher pattern** — **PASS**
+   - Explicit `switch` on command names, focused chain call, no dynamic indexing; mirrors G1 `runDefaultCommand` style.  
+   - [dispatch.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/editor-slash-menu/src/ui-default/dispatch.ts) and G1 baseline [dispatch.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/editor-toolbar/src/ui-default/dispatch.ts:1).
+
+6. **Tests: 12/12 (5 config + 7 dispatch) PASS** — **FAIL (not executed)**
+   - Static shape is correct:  
+     - [slash-menu-config.test.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/editor-slash-menu/src/__tests__/slash-menu-config.test.ts) has 5 test cases.  
+     - [slash-menu-dispatch.test.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/editor-slash-menu/src/__tests__/slash-menu-dispatch.test.ts) has 7 test cases.
+   - Actual run was blocked by environment: `pnpm --filter @skb/editor-slash-menu test` failed with `EROFS` writing `node_modules/.vite-temp/...`.
+
+7. **ADR-0008 D1 dead-dep** — **PASS**
+   - `@skb/editor-slash-menu/package.json` has `@skb/editor-commands` and is imported in code (`@skb/editor-commands` usage exists in [command-bindings.ts](/home/weiyi/selfKnowledgeBaseWeb/packages/editor-slash-menu/src/core/command-bindings.ts)); no dead `@skb/*` dependency visible for this package.  
+   - [package.json](/home/weiyi/selfKnowledgeBaseWeb/packages/editor-slash-menu/package.json), [ADR-0008](/home/weiyi/selfKnowledgeBaseWeb/docs/decisions/ADR-0008-wave-2-entry-policies.md).
+
+8. **ADR-0006 8-point** — **PASS/N/A split**
+   - 1) PASS: command dispatch and active checks cover default items consistently with config-driven assertions.  
+   - 2) N/A: TS-only package editor UI; no status-code handlers.  
+   - 3) PASS: `.strict()` explicitly applied at top + nested object schemas.  
+   - 4) PASS: uses `editBlockInputSchema` authority import (no inline duplicate schema).  
+   - 5) N/A: no replicated cross-location algorithm/constants beyond local UI behavior.  
+   - 6) PASS: [CONTRACT.md](/home/weiyi/selfKnowledgeBaseWeb/packages/editor-slash-menu/CONTRACT.md) mirrors G1 structure/semantics for template alignment.  
+   - 7) N/A: no replicated exception-scope algorithm with authority replica pattern.  
+   - 8) N/A: no related authority doc/codegen bundle change in this diff.
+
+9. **Sister-doc CONTRACT alignment with editor-toolbar** — **PASS**
+   - Structure and surface contracts are aligned in template shape (core/ui separation, strict schemas, dispatch semantics, test contract framing), with slash-specific semantics adapted in place.  
+   - [packages/editor-toolbar/CONTRACT.md](/home/weiyi/selfKnowledgeBaseWeb/packages/editor-toolbar/CONTRACT.md) vs [packages/editor-slash-menu/CONTRACT.md](/home/weiyi/selfKnowledgeBaseWeb/packages/editor-slash-menu/CONTRACT.md).
+
+Pipeline run status:
+- `pnpm --filter @skb/editor-slash-menu test` ❌ failed (`EROFS` in workspace `node_modules/.vite-temp`).
+- `pnpm --filter @skb/editor-slash-menu run typecheck` ✅
+- `pnpm --filter @skb/editor-slash-menu lint` ✅
+- `pnpm --filter @skb/editor-slash-menu build` ✅
+
+If you want, I can rerun the package `test` step in a writable workspace/mutable `/tmp`-friendly environment to close the remaining verification gap and convert checkpoint 6 to PASS.
