@@ -9,6 +9,8 @@ import { imageCore, parseImage, serializeImage } from '@skb/block-image/core';
 import { mathCore, parseMath, serializeMath } from '@skb/block-math/core';
 import { pdfCore, parsePdf, serializePdf } from '@skb/block-pdf/core';
 import { jupyterCore, parseJupyter, serializeJupyter } from '@skb/block-jupyter/core';
+import { nnVizCore, parseNnViz, serializeNnViz } from '@skb/block-nn-viz/core';
+import { agentFlowCore, parseAgentFlow, serializeAgentFlow } from '@skb/block-agent-flow/core';
 import {
   getJsxDispatch,
   mdxToTiptap,
@@ -93,6 +95,28 @@ function ensureJupyterDispatch(): void {
   }
 }
 
+function ensureNnVizDispatch(): void {
+  if (getJsxDispatch('NnViz') === undefined) {
+    registerJsxDispatch({
+      mdxComponent: 'NnViz',
+      blockType: 'nn-viz',
+      parse: parseNnViz as unknown as JsxDispatchEntry['parse'],
+      serialize: serializeNnViz as unknown as JsxDispatchEntry['serialize'],
+    });
+  }
+}
+
+function ensureAgentFlowDispatch(): void {
+  if (getJsxDispatch('AgentFlow') === undefined) {
+    registerJsxDispatch({
+      mdxComponent: 'AgentFlow',
+      blockType: 'agent-flow',
+      parse: parseAgentFlow as unknown as JsxDispatchEntry['parse'],
+      serialize: serializeAgentFlow as unknown as JsxDispatchEntry['serialize'],
+    });
+  }
+}
+
 function buildComponentBlockOptions(): MdxBridgeOptions {
   const blockRegistry = new BlockRegistry();
   blockRegistry.registerCore(calloutCore);
@@ -101,6 +125,8 @@ function buildComponentBlockOptions(): MdxBridgeOptions {
   blockRegistry.registerCore(mathCore);
   blockRegistry.registerCore(pdfCore);
   blockRegistry.registerCore(jupyterCore);
+  blockRegistry.registerCore(nnVizCore);
+  blockRegistry.registerCore(agentFlowCore);
   return { blockRegistry };
 }
 
@@ -111,7 +137,9 @@ function optionsForFixture(file: string, source: string): MdxBridgeOptions | und
     source.includes('<Image') ||
     source.includes('<Math') ||
     source.includes('<Pdf') ||
-    source.includes('<Jupyter')
+    source.includes('<Jupyter') ||
+    source.includes('<NnViz') ||
+    source.includes('<AgentFlow')
     ? buildComponentBlockOptions()
     : undefined;
 }
@@ -136,6 +164,8 @@ describe('MDX <-> Tiptap round-trip', () => {
     ensureMathDispatch();
     ensurePdfDispatch();
     ensureJupyterDispatch();
+    ensureNnVizDispatch();
+    ensureAgentFlowDispatch();
   });
 
   for (const file of FIXTURES) {
@@ -158,8 +188,8 @@ describe('MDX <-> Tiptap round-trip', () => {
     });
   }
 
-  it('finds at least 15 fixtures', () => {
-    expect(FIXTURES.length).toBeGreaterThanOrEqual(15);
+  it('finds at least 17 fixtures', () => {
+    expect(FIXTURES.length).toBeGreaterThanOrEqual(17);
   });
 });
 
