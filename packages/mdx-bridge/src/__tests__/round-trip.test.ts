@@ -6,6 +6,7 @@ import { BlockRegistry } from '@skb/block-foundation';
 import { calloutCore, parseCallout, serializeCallout } from '@skb/block-callout/core';
 import { codeCore, parseCode, serializeCode } from '@skb/block-code/core';
 import { imageCore, parseImage, serializeImage } from '@skb/block-image/core';
+import { mathCore, parseMath, serializeMath } from '@skb/block-math/core';
 import {
   getJsxDispatch,
   mdxToTiptap,
@@ -57,16 +58,32 @@ function ensureImageDispatch(): void {
   }
 }
 
+function ensureMathDispatch(): void {
+  if (getJsxDispatch('Math') === undefined) {
+    registerJsxDispatch({
+      mdxComponent: 'Math',
+      blockType: 'math',
+      parse: parseMath as unknown as JsxDispatchEntry['parse'],
+      serialize: serializeMath as unknown as JsxDispatchEntry['serialize'],
+    });
+  }
+}
+
 function buildComponentBlockOptions(): MdxBridgeOptions {
   const blockRegistry = new BlockRegistry();
   blockRegistry.registerCore(calloutCore);
   blockRegistry.registerCore(codeCore);
   blockRegistry.registerCore(imageCore);
+  blockRegistry.registerCore(mathCore);
   return { blockRegistry };
 }
 
 function optionsForFixture(file: string, source: string): MdxBridgeOptions | undefined {
-  return /^(2[2-9])-/.test(file) || source.includes('<Callout') || source.includes('<Code') || source.includes('<Image')
+  return /^(2[2-9])-/.test(file) ||
+    source.includes('<Callout') ||
+    source.includes('<Code') ||
+    source.includes('<Image') ||
+    source.includes('<Math')
     ? buildComponentBlockOptions()
     : undefined;
 }
@@ -88,6 +105,7 @@ describe('MDX <-> Tiptap round-trip', () => {
     ensureCalloutDispatch();
     ensureCodeDispatch();
     ensureImageDispatch();
+    ensureMathDispatch();
   });
 
   for (const file of FIXTURES) {
@@ -110,8 +128,8 @@ describe('MDX <-> Tiptap round-trip', () => {
     });
   }
 
-  it('finds at least 12 fixtures', () => {
-    expect(FIXTURES.length).toBeGreaterThanOrEqual(12);
+  it('finds at least 13 fixtures', () => {
+    expect(FIXTURES.length).toBeGreaterThanOrEqual(13);
   });
 });
 

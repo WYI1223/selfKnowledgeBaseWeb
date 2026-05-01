@@ -40,8 +40,8 @@ Violating either is a **critical bug**: `mdx-doctor` runs both checks on every
 PR that touches this package or any `block-*` package. Either failure blocks
 merge.
 
-Fixture count growing in Stage B (post-B4 baseline: 9 prose + 3 component
-fixtures = 12 fixtures × 2 invariants = 24 RTT assertions):
+Fixture count growing in Stage B (post-B5 baseline: 9 prose + 4 component
+fixtures = 13 fixtures × 2 invariants = 26 RTT assertions):
 
 | Fixture                        | Coverage                                                                                                                                                                 |
 | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
