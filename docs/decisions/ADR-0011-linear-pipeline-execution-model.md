@@ -90,6 +90,34 @@ executor: codex-block-generator | codex-api-crud-builder | … | ux-ui-lead
 
 **TDD 前置 = test_cases 字段强制非空**。executor 拿到 PR.md 后**先写 test → 再写 impl → 自跑 vitest 全 PASS** 才进 review。
 
+**Single-source-of-truth 强制条款 (v0.1.1; Wave 3 Stage A retrospective)**：
+
+PR.md 中每条事实性声明（factual claim）必须**单一来源**（state once in the
+canonical section）+ **跨节引用**（reference rather than duplicate）。被反复
+codify 出现 R-round drift 的事实包括但不限于：
+
+- 文件计数（`## files` 是 canonical）
+- 依赖计数 / three-way symmetry（TC8 是 canonical）
+- 测试计数（`## test_cases` 是 canonical）
+- 字母序位置 / 排序约束（`## files` 是 canonical）
+- Cast 模式 / API 签名形状 / 类型生成器变异
+- D2 触发判定 row 命中状态（`## D2 trigger judgment` 是 canonical）
+
+跨节使用 "see `## files` for X" / "per acceptance bullet N" / "TC<N> evidence"
+等引用形式；**禁止逐字 duplicate**。
+
+**EXECUTE 发现矛盾时的更新协议**：
+
+1. 仅更新 canonical 段
+2. `grep` 全 PR.md 搜索 canonical 段的关键词，捕捉所有引用点
+3. 验证每个引用点指向的 canonical 段说法仍正确（不复述）
+4. 不在引用点 inline 复述事实
+
+**实证依据 (Wave 3 Stage A 6 PRs forward-fix R-round 计数)**：A1=1（lychee
+typo）/ A2=1 / A3=3（5/3 倒装 + 测试计数 + defensive-copy 残段）/ A4=1 / **A5=0**
+（首例 SOTed 纪律执行，零事实漂移）。本条款 v0.1.1 起强制：适用 Wave 3 Stage B
+起所有 PR.md，受益面 Stage B 8 PR + Stage C 6 PR + Stage D 4 PR = 18 PR。
+
 ### D3 — 长期 Claude session 收敛到 1
 
 **Wave 3+ 唯一长期 Claude session = orchestrator (Claude opus 4.7 1M ctx)**。
@@ -214,6 +242,24 @@ executor: codex-block-generator | codex-api-crud-builder | … | ux-ui-lead
 **Bootstrap 例外**：本 ADR 由 gatekeeper（Claude Opus 4.7 1M ctx, Windows session）直接起草 + commit，**不走 D1 pipeline**。理由：D1 pipeline 引入本身需要先有 ADR-0011，循环依赖。仅 D1 pipeline 自身的 meta-level 改动适用此例外；普通 PR 严格走 pipeline。
 
 post-commit 由 user 直接验收（user 是 ADR-0011 D-list 的实质决策者，本 session 全程协商对齐）。
+
+## Amendments
+
+### v0.1.1 (2026-05-01; Wave 3 Pre-B1)
+
+D2 PR.md schema 加 "Single-source-of-truth 强制条款"（见 D2 段末）。收口
+Wave 3 Stage A retrospective item 1：PR.md cross-section duplication of
+factual claims invites stale-prose drift during R-rounds.
+
+强制起点：本 amend PR 合 main 起，所有 Wave 3 main pipeline PR.md 适用。
+受益 PR 数：Stage B 8 + Stage C 6 + Stage D 4 = 18 PR。
+
+实证依据见 D2 末 "实证依据" 段（Wave 3 Stage A R-round 计数 A1-A5）。
+Wave 3 close ADR-0013 will tabulate Stage B-D forward-fix rate to verify
+the discipline scales.
+
+非破坏性 / 向后兼容：D1 / D3 / D4 / D5 / D6 / D7 / D8 不变。仅 D2 schema 加
+新强制条款 + EXECUTE 矛盾更新协议；既有 PR.md（Pre-A1 / A1-A5）回溯不必重写。
 
 ## Related
 
