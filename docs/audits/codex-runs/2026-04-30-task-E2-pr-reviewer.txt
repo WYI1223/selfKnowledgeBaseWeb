@@ -1,0 +1,301 @@
+E2 — block-nn-viz | Claude pr-reviewer (ADR-0007 D2 row 1 high-risk)
+======================================================================
+Reviewer: pr-reviewer-e2 (Claude Opus 4.7 1M ctx)
+Date: 2026-04-30 (verified: Fri May 1 00:17 EDT 2026)
+Team: phase-1-wave-2
+Scope: packages/block-nn-viz/ (Wave 2 Task #19, second kind='viz' block)
+Sister precedent: E1 block-jupyter @ a09273c
+Tests: 48/48 PASS (4 files: core 26, tfjs-bridge 13, ui-default 8, registry-integration 6)
+       — re-run locally in this review session, see "Verification" below.
+
+VERDICT: APPROVE
+=================
+
+----------------------------------------------------------------------
+1. Spec match (ADR-0007 D2 row 1 — required)
+----------------------------------------------------------------------
+1.1 propsSchema (core-definition.ts:14-28)
+    OK — exactly the spec'd shape:
+      modelUrl: z.string().min(1)               ✓
+      layers:   z.array(layerSchema).default([]) ✓
+      showWeights: z.boolean().default(false)   ✓
+    Outer .strict() ✓; inner layerSchema also .strict() ✓ (ADR-0006 #3).
+    layerSchema fields: name:string / units:int().positive() / activation:enum(5) ✓.
+
+1.2 BlockCoreDefinition surface (core-definition.ts:30-35; verified vs live HEAD
+    packages/block-foundation/src/registry.ts:4-13 — BlockKind = 'prose' |
+    'component' | 'render' | 'viz')
+    name='nn-viz' / kind='viz' / mdxComponent='NnViz' ✓.
+
+1.3 Verb-as-prefix hook naming (RFC §5)
+    serializeNnViz / parseNnViz / createTfjsBridge ✓.
+    Hook owner contract honored: each hook calls propsSchema.parse internally.
+
+1.4 5-entry public surface
+    Verified package.json:exports + src/index.ts + src/core/index.ts +
+    src/ui-default/index.ts:
+      "."                                 → re-export ./core            ✓
+      "./core"                            → 5 named symbols (correct)   ✓
+      "./ui-default"                      → 7 named symbols + types     ✓
+      "./ui-default/NnViz.astro"          ✓
+      "./ui-default/nn-viz.css"           ✓
+    1:1 mirror with E1 jupyter exports map.
+
+1.5 tfjs-bridge consumer pattern (tfjs-bridge.ts)
+    Mirrors E1 kernel-bridge structure exactly:
+      - Per-block isolation (each createTfjsBridge owns its own LayersModel) ✓
+      - Loading-state mandatory (idle → loading → ready/*Error) ✓
+      - AbortSignal-driven cleanup with disposed-guard, abort-after-resolve
+        path disposes the late-arriving model exactly once ✓
+      - Error-class triage at the consumer boundary (httpError / loadError /
+        unknownError) — derived from message-pattern match because tfjs has
+        no public error-class hierarchy. Documented + test-covered (4 cases
+        including non-Error throws). ✓
+    Phase set is an intentional simplification of E1's: no run/interrupt/
+    finished — correct because a tf.LayersModel is a static inspectable, not
+    an executable session. Documented in CONTRACT.md:54-74.
+
+----------------------------------------------------------------------
+2. Regression risk + cross-package impact
+----------------------------------------------------------------------
+2.1 BlockKind union — kind='viz' is sanctioned (ADR-0009 accepted, status
+    confirmed at HEAD). E1 block-jupyter already shipped kind='viz'; E2 is
+    the second consumer; no new union element. No registry-side regression
+    surface.
+
+2.2 No imports of internal block-jupyter symbols (verified by grep). E2 is
+    structurally parallel to E1, NOT a runtime consumer of E1 — correct
+    isolation. Bridge replication is intentional (different runtime
+    authority: tfjs vs kernel-adapter), not item #5 algorithm-replication
+    (no shared algorithm to extract).
+
+2.3 ADR-0008 dead-dep policy (D1) — every @skb/* dep witnessed by ≥1
+    TS-source consumer:
+      @skb/block-foundation   — core-definition.ts:1, ui.ts:1, NnViz.tsx:2,
+                                registry-integration.test.ts:2  ✓
+      @skb/design-tokens      — nn-viz-tokens.ts:1               ✓
+      @tensorflow/tfjs        — tfjs-bridge.ts:1, NnViz.tsx:3,
+                                tests           ✓
+    No dead deps. zod / react under usual usage.
+
+2.4 ADR-0008 D2 interface freeze — block-foundation surface used: defineCore,
+    BlockCoreDefinition, defineUI, BlockRegistry, BlockViewProps. All are
+    public symbols that already exist at HEAD; no new exports added.
+
+2.5 mdx-bridge routing — Wave 3 work; CONTRACT.md:107-110 documents the
+    forward-compat plan. Wave 2 stub signatures stable; no premature wiring
+    into mdx-bridge package. Correct.
+
+2.6 File-size budget (Spec §3.6, hard 500):
+       max non-test file: NnViz.tsx — 225 lines (target 200, warn 300)
+       max test file:    tfjs-bridge.test.ts — 327 lines (warn 300, hard 500)
+    NnViz.tsx is just over the 200 target (acceptable — concentrates SVG
+    canvas math in one place; splitting would scatter the topology
+    derivation). All other src files are ≤147. No hard-fail risk.
+
+----------------------------------------------------------------------
+3. ADR-0006 8-point asymmetry audit (independent reviewer pass)
+----------------------------------------------------------------------
+#1 Field/attribute audit
+   — propsSchema fields are emitted symmetrically by serialize (3 attrs:
+     modelUrl/layers/showWeights), consumed symmetrically by parse, asserted
+     in the round-trip test (core.test.ts:209-223). No comparator/serializer
+     drift surface. PASS.
+
+#2 Status code audit
+   — N/A (no HTTP handler).
+
+#3 Strictness audit (load-bearing for this PR)
+   — Outer propsSchema.strict() AND inner layerSchema.strict() both present.
+     core.test.ts:81-92 lock the inner one with an explicit "INSIDE a layer"
+     assertion that fails iff someone removes inner .strict(). The CONTRACT
+     also calls this out explicitly (CONTRACT.md:90-92). PASS.
+
+#4 Consumer schema audit
+   — propsSchema is single-authority in core/core-definition.ts:14-28.
+     Verified no inline z.object redefinitions outside this file in the
+     package. NnViz.astro defines a structural Props interface (LayerProp)
+     for its prop-typing rather than re-importing the Zod schema — this is
+     the pre-existing E1 jupyter Astro pattern and is acceptable because
+     Astro pages don't validate at runtime; they receive props from the MDX
+     consumer that already passed propsSchema validation upstream. The
+     LayerProp.activation literal-union mirrors the schema enum exactly
+     ('relu'|'softmax'|'sigmoid'|'tanh'|'linear') — drift would be a pure
+     TS error, not a silent strip. NOTE-but-not-blocker.
+
+#5 Algorithm + runtime constant replication audit
+   — tf.loadLayersModel is NOT replicated; bridge takes it via injection
+     (LoadLayersModelFn) and the production NnViz.tsx wires
+     `tf.loadLayersModel` directly (NnViz.tsx:44). Authority = @tensorflow/tfjs.
+     Astro topology-layout math (positions/edges/SVG_WIDTH=480/HEIGHT=200/
+     RADIUS=6) is replicated between NnViz.astro and NnVizCanvas in
+     NnViz.tsx — this is the pre-hydration FOUC-equivalent for SSR vs
+     hydrated views. Both use the SAME constants (verified by grep, all
+     three numbers match) and the same algorithm. The Astro side renders
+     declarative-layers-only as documented (NnViz.astro:8-14); on hydration
+     React layers in model-derived topology + status + slider. Markup
+     classes match (skb-nn-viz-canvas / -layer / -edge / -label) so the CSS
+     applies identically (CONTRACT.md acknowledges hydration-class symmetry).
+     This is acceptable because:
+       (a) Astro cannot import React,
+       (b) the constants are 3 magic numbers, not an algorithm with branches,
+       (c) divergence would manifest as a visible FOUC and is detectable.
+     E1 jupyter's Jupyter.astro carries the same handcraft pattern. PASS
+     with note: if a future tweak adjusts SVG_WIDTH/HEIGHT/RADIUS, both
+     files must move together. Not a Wave 2 blocker.
+
+#6 Sister-file documentation audit
+   — Cross-doc terminology compared:
+       block-nn-viz/CONTRACT.md vs block-jupyter/CONTRACT.md (sister-doc, E1
+         viz-block precedent): identical structure (sections "Public surface"
+         / "tfjs|kernel consumer pattern" / "Invariants" / "Wave 3 work" /
+         "Forward-compat consumers" / "Modifying this file" / "Related"). All
+         shared identifiers (BlockCoreDefinition / BlockUIDefinition /
+         registerCore / registerUI / `kind='viz'` / `uiId='default'`) use
+         identical wording. The bridge factory naming uses the analogous
+         pattern (createTfjsBridge ↔ createKernelBridge), and CONTRACT.md
+         explicitly calls out the inheritance from E1 (line 4-7).
+       block-nn-viz/CONTRACT.md vs block-math/CONTRACT.md (peer Wave 2
+         hand-craft, kind='render'): cited as "sister-doc" for Wave 2
+         hand-craft pattern at line 140; consistent terminology. PASS.
+   — In-package terminology: 'nn-viz' (kebab) vs NnViz (Pascal) consistent
+     across core-definition / serialize / parse / index / tests / Astro /
+     css. Verified by grep. PASS.
+
+#7 Exception-scope equivalence audit
+   — tfjs-bridge.ts try/catch scopes:
+       load(): try wraps `await loadLayersModel(modelUrl)` (one call), then
+         classifyLoadError on catch. dispose() is in a separate
+         signal-listener scope. Idempotency guards (disposed/model/loadPromise)
+         BEFORE the try. Narrow scope ✓.
+       dispose(): try wraps only `m.dispose()`; ignores double-dispose. ✓.
+     No matchMedia/storage-style call paths in this package. PASS.
+
+#8 Authority-document → generated/consumed surface audit
+   — No authority document edited in this PR (no ADR / agent-contract /
+     spec / package.json-dep change beyond local additions). The ADR-0008
+     dead-dep policy is HONORED rather than amended. The ADR-0009 BlockKind
+     union is CONSUMED at value `'viz'`, not amended. No regenerate-and-
+     stage chain triggered. PASS.
+
+ADR-0006 verdict: PASS on all 8 items (2 informational notes on #4 and
+#5 are documented above; neither is a blocker).
+
+----------------------------------------------------------------------
+4. Tests — coverage + verification
+----------------------------------------------------------------------
+4.1 core.test.ts (26 tests, 224 lines)
+    - propsSchema valid/default/min(1)/non-string/units boundaries/non-int
+      units/unsupported activation/outer-strict/INNER-strict/identity
+    - serializeNnViz: emits string-form bool + JSON-encoded layers; rejects
+      invalid attrs
+    - parseNnViz: bool shorthand, throws on invalid bool, throws on
+      non-array layers, post-JSON schema rejection, mismatched mdxComponent
+      name, round-trip identity
+    Inner-strict assertion (lines 81-92) is the load-bearing guard cited
+    in CONTRACT.md:90-92. PASS.
+
+4.2 tfjs-bridge.test.ts (13 tests, 327 lines)
+    - lifecycle: idle→loading→ready, idempotent reload, shared in-flight
+    - error triage: httpError/loadError/unknownError, non-Error throws
+    - abort cleanup: mid-load abort disposes late-resolved model, post-ready
+      abort disposes once (double-abort no-op), pre-load abort never calls,
+      error-after-abort suppressed
+    - per-block isolation: modelUrl propagation, two distinct bridges
+    Strong test surface; mirrors E1 kernel-bridge.test.ts coverage. PASS.
+
+4.3 ui-default.test.tsx (8 tests, 214 lines)
+    - registration shape (coreName/uiId/EditorView/RenderView identity)
+    - tokens witness (NN_VIZ_TOKENS fg/error/muted/accent)
+    - render: declarative layers, units cap at 8, data-phase=loading→ready,
+      httpError data-phase, slider visibility gated on showWeights+ready
+    Uses injected `loadLayersModel` to avoid booting WebGL. PASS.
+
+4.4 registry-integration.test.ts (6 tests, 51 lines)
+    - registerCore/getCore identity, registerUI/getUI identity, default UI
+      lookup, registerUI-before-registerCore throws, kind='viz' assertion.
+    Mirrors E1 jupyter registry tests. PASS.
+
+4.5 Verification (this session, 00:17:15 EDT)
+    `pnpm --filter @skb/block-nn-viz test` →
+       Test Files  4 passed (4)
+       Tests       48 passed (48)
+       Duration    1.12s
+    Confirms the 48/48 PASS claim from the worker.
+
+----------------------------------------------------------------------
+5. Notes (non-blocking)
+----------------------------------------------------------------------
+N1. NnViz.tsx (225 lines) is over the 200-line target but under the 300
+    warn threshold. The split point would be NnVizCanvas (the SVG layout
+    routine, ~80 lines) — would be reasonable to extract in a future PR if
+    the file grows again. Not a Wave 2 blocker.
+
+N2. CSS/Astro topology constants are duplicated between NnViz.astro and
+    NnVizCanvas in NnViz.tsx (SVG_WIDTH=480/HEIGHT=200/NEURON_RADIUS=6).
+    Both files use the SAME values today; if they drift, the visible bug
+    would be a hydration jump. Worth a one-line comment in either file
+    pointing to the other ("must match"). Not a blocker — E1 jupyter does
+    not have an analogous duplication because its Astro placeholder is text-
+    only, not a layout-math replica.
+
+N3. CONTRACT.md:140 cites `block-math/CONTRACT.md` as a sister-doc; verified
+    that file exists in the repo. The cross-link is healthy; lychee will
+    catch any future breakage.
+
+N4. ADR-0007 D2 says high-risk PRs in row-1 (contract change) get pr-gate
+    + pr-reviewer. This bundle is row-1 by virtue of "package add" (new
+    block package); whether a Codex pr-gate run is required is the
+    orchestrator's decision — this pr-reviewer pass independently verifies
+    no asymmetry-class issue, no contract regression, and spec match. If
+    pr-gate is also being run, it should focus on the bridge state-machine
+    + abort race conditions (already exercised by the 13 bridge tests, so
+    expected to pass). Not a blocker.
+
+----------------------------------------------------------------------
+6. Final
+----------------------------------------------------------------------
+APPROVE.
+
+The bundle:
+  - Implements the spec'd kind='viz' core with the correct propsSchema
+    (including the load-bearing nested .strict() per ADR-0006 #3).
+  - Mirrors E1 block-jupyter's structure 1:1 across CONTRACT.md, package
+    layout, public surface count, and consumer-bridge pattern (per-block
+    isolation + AbortSignal cleanup + error-class triage).
+  - Uses only sanctioned BlockKind value ('viz' per ADR-0009 accepted),
+    with no contract surface change.
+  - Honors ADR-0008 dead-dep policy (every @skb/* dep + tfjs has a
+    TS-source consumer).
+  - Passes 48/48 tests locally, including the inner-.strict() guard.
+  - Carries no Wave 2 blocker on the ADR-0006 8-point checklist.
+
+Hand off to git-operator for explicit-file-list staging + `pnpm check`.
+
+----------------------------------------------------------------------
+Files reviewed (absolute paths):
+  /home/weiyi/selfKnowledgeBaseWeb/packages/block-nn-viz/CONTRACT.md
+  /home/weiyi/selfKnowledgeBaseWeb/packages/block-nn-viz/package.json
+  /home/weiyi/selfKnowledgeBaseWeb/packages/block-nn-viz/src/index.ts
+  /home/weiyi/selfKnowledgeBaseWeb/packages/block-nn-viz/src/core/index.ts
+  /home/weiyi/selfKnowledgeBaseWeb/packages/block-nn-viz/src/core/core-definition.ts
+  /home/weiyi/selfKnowledgeBaseWeb/packages/block-nn-viz/src/core/serialize.ts
+  /home/weiyi/selfKnowledgeBaseWeb/packages/block-nn-viz/src/core/parse.ts
+  /home/weiyi/selfKnowledgeBaseWeb/packages/block-nn-viz/src/ui-default/index.ts
+  /home/weiyi/selfKnowledgeBaseWeb/packages/block-nn-viz/src/ui-default/NnViz.tsx
+  /home/weiyi/selfKnowledgeBaseWeb/packages/block-nn-viz/src/ui-default/NnViz.astro
+  /home/weiyi/selfKnowledgeBaseWeb/packages/block-nn-viz/src/ui-default/nn-viz.ui.ts
+  /home/weiyi/selfKnowledgeBaseWeb/packages/block-nn-viz/src/ui-default/nn-viz-tokens.ts
+  /home/weiyi/selfKnowledgeBaseWeb/packages/block-nn-viz/src/ui-default/nn-viz.css
+  /home/weiyi/selfKnowledgeBaseWeb/packages/block-nn-viz/src/ui-default/tfjs-bridge.ts
+  /home/weiyi/selfKnowledgeBaseWeb/packages/block-nn-viz/src/__tests__/core.test.ts
+  /home/weiyi/selfKnowledgeBaseWeb/packages/block-nn-viz/src/__tests__/tfjs-bridge.test.ts
+  /home/weiyi/selfKnowledgeBaseWeb/packages/block-nn-viz/src/__tests__/ui-default.test.tsx
+  /home/weiyi/selfKnowledgeBaseWeb/packages/block-nn-viz/src/__tests__/registry-integration.test.ts
+
+Cross-checks against (HEAD):
+  /home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation/src/registry.ts
+  /home/weiyi/selfKnowledgeBaseWeb/packages/block-jupyter/* (sister precedent)
+  /home/weiyi/selfKnowledgeBaseWeb/packages/block-jupyter/CONTRACT.md
+  /home/weiyi/selfKnowledgeBaseWeb/docs/decisions/ADR-0006-asymmetry-audit-checklist.md
+  /home/weiyi/selfKnowledgeBaseWeb/docs/decisions/ADR-0009-block-kind-union-expansion.md

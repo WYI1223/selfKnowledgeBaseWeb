@@ -1,0 +1,62 @@
+---
+import { computeTopology } from './topology';
+
+/**
+ * SSR rendering for `kind='viz'` nn-viz block.
+ *
+ * Layout 走 `./topology.ts` 单一权威，与 NnViz.tsx 同源
+ * （ADR-0006 item #5 algorithm + runtime constants replication：authority =
+ * computeTopology；不允许在此文件 inline SVG_WIDTH / column-step / edge
+ * enumeration / aria-label phrasing / showWeights → strokeWidth 映射）。
+ *
+ * Astro 是 pre-render path；model 在客户端 hydration 后由 NnViz.tsx 加载。
+ * 此处仅渲染声明式 layers 派生的拓扑 SVG 占位；status / sliders / model-derived
+ * 拓扑在 hydration 后由 NnVizView 接管。`showWeights` 一并透传给 computeTopology
+ * 让 SSR 与 hydration 后 React 路径生成同 ariaLabel + 同 strokeWidth。
+ */
+
+interface LayerProp {
+  name: string;
+  units: number;
+  activation: 'relu' | 'softmax' | 'sigmoid' | 'tanh' | 'linear';
+}
+
+interface Props {
+  layers?: LayerProp[];
+  showWeights?: boolean;
+}
+
+const { layers = [], showWeights = false } = Astro.props;
+const descriptor = computeTopology({ layers, showWeights });
+---
+
+<div data-block="nn-viz" data-phase="idle">
+  <div class="skb-nn-viz-status">Idle</div>
+  <svg
+    class="skb-nn-viz-canvas"
+    viewBox={`0 0 ${descriptor.width} ${descriptor.height}`}
+    role="img"
+    aria-label={descriptor.ariaLabel}
+  >
+    {descriptor.edges.map((e) => (
+      <line
+        class="skb-nn-viz-edge"
+        x1={e.x1}
+        y1={e.y1}
+        x2={e.x2}
+        y2={e.y2}
+        stroke-width={e.strokeWidth}
+      />
+    ))}
+    {descriptor.columns.map((col) => (
+      <g>
+        {col.neurons.map((n) => (
+          <circle class="skb-nn-viz-layer" cx={n.x} cy={n.y} r={n.r} />
+        ))}
+        <text class="skb-nn-viz-label" x={col.labelX} y={col.labelY}>
+          {col.label}
+        </text>
+      </g>
+    ))}
+  </svg>
+</div>
