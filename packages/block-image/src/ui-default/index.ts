@@ -14,3 +14,4 @@ export const imageUIDefault: BlockUIDefinition<typeof imageCore.propsSchema> =
 export { ImageEditorView } from './EditorView';
 export { ImageRenderView } from './RenderView';
 export { ImageBody } from './ImageBody';
+export { IMAGE_THEME_TOKENS } from './theme-tokens';
