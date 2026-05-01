@@ -40,6 +40,12 @@ editor surface. Closes the "editor-shell composition" deferral from
   `@skb/block-foundation`. Consumers wire into `useEditor({ extensions: [...] })`
   alongside `StarterKit` for prose-block-aware editing. A2's `EditorShell`
   does NOT consume this yet (StarterKit-only); A3+ wrappers may.
+- `registerKernels(registry: KernelRegistry, adapter?: KernelAdapter): void`
+  — wires `PyodideAdapter` (default) into the supplied `KernelRegistry`
+  instance. `adapter` parameter lets consumers override with a custom
+  `KernelAdapter` implementation. PyodideAdapter constructor is cheap
+  (no Pyodide boot until `startSession()`). `KernelAdapter` type imported
+  from `@skb/kernel-adapter` (3rd workspace dep added at A4).
 
 The component does NOT include a `'use client'` pragma — consumers (Stage C
 apps/site) decide the client/server boundary at integration time.
@@ -59,19 +65,22 @@ A2-A5 each Modify this CONTRACT.md as new exports land:
   from block-foundation as a barrel convenience. `proseExtensions` is NOT
   exposed as an `EditorShell` prop in A3 (the speculative A2-outline form);
   consumers compose it directly into their `useEditor` extensions array.
-- **A4** — `registerKernels(registry)` helper. Wires `PyodideAdapter` into
-  `kernel-registry`. Adds `@skb/kernel-registry` + `@skb/kernel-pyodide`
-  workspace deps.
+- **A4** — `registerKernels(registry, adapter?)` helper delivered in this
+  PR. Wires `PyodideAdapter` (default) into `kernel-registry`. Added
+  `@skb/kernel-registry` + `@skb/kernel-pyodide` + `@skb/kernel-adapter`
+  workspace deps (3 not 2 — `KernelAdapter` type lives in `@skb/kernel-adapter`,
+  not re-exported by registry/pyodide).
 - **A5** — `saveToMdx(editor)` + `loadFromMdx(editor, mdxString)`. Threads
   `blockRegistry` through `mdx-bridge`'s per-call injection (no global setter).
   Adds `@skb/mdx-bridge` workspace dep. Closes 13 expected orphan packages
   simultaneously by becoming the terminal consumer.
 
 [ADR-0008 D1](../../docs/decisions/ADR-0008-wave-2-entry-policies.md) dead-dep
-policy is satisfied at A3 by construction: every declared `@skb/*` workspace
+policy is satisfied at A4 by construction: every declared `@skb/*` workspace
 dep has at least one `from '@skb/<pkg>'` source import in
-`src/registerBlocks.ts` + `src/index.ts`. The 9 declared deps + 9 source
-imports + 9 tsconfig references hold three-way exact-match symmetry.
+`src/registerBlocks.ts` / `src/registerKernels.ts` / `src/index.ts`. The 12
+declared deps + 12 source imports + 12 tsconfig references hold three-way
+exact-match symmetry.
 
 ## Modifying this file
 
