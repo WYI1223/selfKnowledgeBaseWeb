@@ -288,7 +288,7 @@ not force stage 4 alone).
   invariant cited in COMMIT block).
 - [ADR-0008 D1](../../decisions/ADR-0008-wave-2-entry-policies.md) — dead-dep
   policy (tighten); A1 ships zero workspace deps so no F3 violations possible.
-- [ADR-0010 D7 #3](../../decisions/ADR-0010-wave-2-architecture-decisions.md)
+- [ADR-0010 D7 #3](../../decisions/ADR-0010-wave-2-close.md)
   — "editor-shell composition" deferral that Stage A closes.
 - [Wave 3 plan, A1 entry](../../superpowers/plans/2026-05-01-phase-1-wave-3-integration.md)
   — locked plan entry (lines 118-158), Stage A intro (lines 111-117).
