@@ -40,8 +40,8 @@ Violating either is a **critical bug**: `mdx-doctor` runs both checks on every
 PR that touches this package or any `block-*` package. Either failure blocks
 merge.
 
-Fixture count growing in Stage B (current baseline: 9 prose fixtures × 2
-invariants = 18 RTT assertions):
+Fixture count growing in Stage B (post-B2 baseline: 9 prose + 1 component
+fixture = 10 fixtures × 2 invariants = 20 RTT assertions):
 
 | Fixture                        | Coverage                                                                                                                                                                 |
 | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -54,6 +54,7 @@ invariants = 18 RTT assertions):
 | `07-link-with-title.mdx`       | link with title attribute (e.g. `[x](url "title")`)                                                                                                                      |
 | `08-bold-with-break.mdx`       | hard break (`\\\n`) inside a strong span                                                                                                                                 |
 | `09-link-title-comparator.mdx` | same-href links with distinct titles separated by text in a paragraph (adjacent-shape coverage lives in dedicated `marksEqual` regression tests in `round-trip.test.ts`) |
+| `22-callout.mdx`               | first component block — `<Callout variant title>` exercising real `parseCallout` / `serializeCallout` from `@skb/block-callout/core` via the B1 dispatch table          |
 
 Wave 3+ rule: every new component block (callout, math, pdf, jupyter, etc.)
 must add at least one fixture exercising its MDX form, and that fixture must
@@ -139,21 +140,6 @@ packages/mdx-bridge/src/*.ts` returns 6):
 Regression tests assert these in `src/__tests__/round-trip.test.ts` and
 `src/__tests__/jsx-routing.test.ts`.
 
-## Modifying this file / package
-
-- **Adding a new node type** (block or inline): write a fixture first, watch it
-  fail, add the parse + serialize branches, watch it pass. No ADR required.
-- **Changing `TiptapDoc` / `TiptapNode` shape**: this is a contract break and
-  requires an ADR plus synchronized updates in `editor-commands`,
-  `editor-shell`, and any block package consuming the shape.
-- **Loosening the round-trip invariant**: not allowed without an ADR. The
-  invariant is the load-bearing reason `mdx-doctor` exists.
-- **Major upgrade of `unified` / `remark-*` / `mdast` types**: a major-version
-  bump can change canonical stringification and break byte-equivalence on
-  existing fixtures. Treat as a contract-touching change — requires an ADR
-  and a re-baseline run on every fixture. Patch / minor bumps proceed
-  through the normal `mdx-doctor` PR check.
-
 ## Component block dispatch (Wave 3+)
 
 Component block routing is per-call state, not global state. Callers pass
@@ -190,6 +176,34 @@ Per [ADR-0008](../../docs/decisions/ADR-0008-wave-2-entry-policies.md) D1
 (dead-dep policy = tighten), the `@skb/block-foundation` workspace dependency,
 `tsconfig.json#references` edge, and source import must stay in three-way
 symmetry.
+
+## Canonicalization rules
+
+- **List bullets**: input `-` / `+` bullets canonicalize to `*` output through
+  the serializer's `remark-stringify` options. The existing `03-list.mdx`
+  fixture records the canonical `*` form.
+- **Adjacent same-mark merging**: equivalent adjacent marks merge during
+  canonical reconstruction, e.g. `**a****b**` emits as `**ab**`. See the
+  inline-grouper notes above and the inline-prose fixtures
+  `05-emphasis-link.mdx` / `06-nested-inline.mdx`.
+- **Stripped `_mdast` invariant**: canonical reconstruction after dropping
+  `_mdast` must still satisfy byte-equivalent fixture output. See
+  `## Round-trip invariant`, especially invariant 2.
+
+## Modifying this file / package
+
+- **Adding a new node type** (block or inline): write a fixture first, watch it
+  fail, add the parse + serialize branches, watch it pass. No ADR required.
+- **Changing `TiptapDoc` / `TiptapNode` shape**: this is a contract break and
+  requires an ADR plus synchronized updates in `editor-commands`,
+  `editor-shell`, and any block package consuming the shape.
+- **Loosening the round-trip invariant**: not allowed without an ADR. The
+  invariant is the load-bearing reason `mdx-doctor` exists.
+- **Major upgrade of `unified` / `remark-*` / `mdast` types**: a major-version
+  bump can change canonical stringification and break byte-equivalence on
+  existing fixtures. Treat as a contract-touching change — requires an ADR
+  and a re-baseline run on every fixture. Patch / minor bumps proceed
+  through the normal `mdx-doctor` PR check.
 
 ## Related
 

@@ -1,9 +1,18 @@
-import { describe, it, expect } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { mdxToTiptap, tiptapToMdx } from '../index';
-import type { TiptapDoc } from '../parse';
+import { BlockRegistry } from '@skb/block-foundation';
+import { calloutCore, parseCallout, serializeCallout } from '@skb/block-callout/core';
+import {
+  getJsxDispatch,
+  mdxToTiptap,
+  registerJsxDispatch,
+  tiptapToMdx,
+  type JsxDispatchEntry,
+  type MdxBridgeOptions,
+  type TiptapDoc,
+} from '../index';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -12,6 +21,29 @@ const FIXTURES_DIR = join(__dirname, 'fixtures');
 const FIXTURES = readdirSync(FIXTURES_DIR)
   .filter((f) => f.endsWith('.mdx'))
   .sort();
+
+function ensureCalloutDispatch(): void {
+  if (getJsxDispatch('Callout') === undefined) {
+    registerJsxDispatch({
+      mdxComponent: 'Callout',
+      blockType: 'callout',
+      parse: parseCallout as unknown as JsxDispatchEntry['parse'],
+      serialize: serializeCallout as unknown as JsxDispatchEntry['serialize'],
+    });
+  }
+}
+
+function buildCalloutOptions(): MdxBridgeOptions {
+  const blockRegistry = new BlockRegistry();
+  blockRegistry.registerCore(calloutCore);
+  return { blockRegistry };
+}
+
+function optionsForFixture(file: string, source: string): MdxBridgeOptions | undefined {
+  return /^(2[2-9])-/.test(file) || source.includes('<Callout')
+    ? buildCalloutOptions()
+    : undefined;
+}
 
 /**
  * Recursively drop every `_mdast` field; simulates an editor-built doc that
@@ -26,11 +58,16 @@ function stripMdast(doc: TiptapDoc): TiptapDoc {
 }
 
 describe('MDX <-> Tiptap round-trip', () => {
+  beforeAll(() => {
+    ensureCalloutDispatch();
+  });
+
   for (const file of FIXTURES) {
     it(`round-trips ${file} byte-equivalently`, () => {
       const original = readFileSync(join(FIXTURES_DIR, file), 'utf8');
-      const doc = mdxToTiptap(original);
-      const restored = tiptapToMdx(doc);
+      const options = optionsForFixture(file, original);
+      const doc = mdxToTiptap(original, options);
+      const restored = tiptapToMdx(doc, options);
       expect(restored.trim()).toBe(original.trim());
     });
   }
@@ -38,14 +75,15 @@ describe('MDX <-> Tiptap round-trip', () => {
   for (const file of FIXTURES) {
     it(`round-trips ${file} byte-equivalently with _mdast stripped`, () => {
       const original = readFileSync(join(FIXTURES_DIR, file), 'utf8');
-      const doc = stripMdast(mdxToTiptap(original));
-      const restored = tiptapToMdx(doc);
+      const options = optionsForFixture(file, original);
+      const doc = stripMdast(mdxToTiptap(original, options));
+      const restored = tiptapToMdx(doc, options);
       expect(restored.trim()).toBe(original.trim());
     });
   }
 
-  it('finds at least 9 fixtures', () => {
-    expect(FIXTURES.length).toBeGreaterThanOrEqual(9);
+  it('finds at least 10 fixtures', () => {
+    expect(FIXTURES.length).toBeGreaterThanOrEqual(10);
   });
 });
 
