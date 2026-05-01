@@ -19,11 +19,15 @@ every Claude session what the project is, the hard rules, the agent roster, and 
 2. **Cross-file references**: every doc/code change must keep doc cross-references and
    contract files in sync (`packages/*/CONTRACT.md`, `agent-contract.md`).
 3. **Lychee link-check**: broken markdown links block merge. Run `pnpm link-check` locally.
-4. **`pnpm check` is mandatory before requesting review** (lint + typecheck + test + build + size).
-5. **No direct git from workers**: only `git-operator` may commit / branch / rebase / push.
-6. **No web access from workers**: only `researcher` may `web_search` / `web_fetch`.
-7. **No cross-package moves from workers**: only `refactorer` may reorganize packages,
-   and every reorganization requires an ADR under `docs/decisions/`.
+4. **`pnpm check` is mandatory before review** (lint + typecheck + test + build + size).
+5. **Git mutation discipline (ADR-0011 D1+D4)**: `git commit / branch / rebase / push`
+   only at D1 stage 5 (reviewer codex commit phase) or by orchestrator self for bootstrap
+   scope. Subagents (pr-writer / ux-ui-lead / refactorer / researcher) never run mutating
+   git commands.
+6. **Web access discipline (ADR-0011 D7)**: only the `researcher` Claude subagent (one-shot
+   per dispatch) may run `web_search` / `web_fetch`.
+7. **Cross-package moves (ADR-0011 D7)**: only the `refactorer` Claude subagent may
+   reorganize packages, and every reorganization requires an ADR under `docs/decisions/`.
 
 ## Commands cheat-sheet
 
@@ -38,72 +42,77 @@ every Claude session what the project is, the hard rules, the agent roster, and 
 | `pnpm generate:configs` | Re-derive everything from `agent-contract.md`         |
 | `pnpm format`           | Prettier write across the repo                        |
 
-## Review workflow (spec §3.2 + ADR-0007 D2)
+## Review workflow (ADR-0011 D1 linear pipeline; supersedes Wave 1+2 tree workflow)
+
+Per PR (PRs run strictly serial; the next PR's PLAN waits for the previous PR's ACCEPT):
 
 ```
-worker (writes code)
-   │
-   ▼
-[Bash] codex exec --profile code-reviewer  (Codex 5.3-spark, line-level rigor, cheap default)
-   │
-   ├── if high-risk (D2 rows 1/2/4/8) → [Bash] codex exec --profile pr-gate  (Codex 5.5, deep scan)
-   │
-   ▼
-pr-reviewer    (Claude, selective per ADR-0007 D2; spec match + regression + arch consistency)
-   │
-   ▼
-git-operator   (Claude, only authorized git surface, runs `pnpm check` once more)
+1. PLAN              pr-writer Claude subagent ↔ orchestrator → lock PR.md (D2 schema)
+       │
+       ▼
+2. EXECUTE           codex `generic-executor` (or specialized scaffolder; or
+                     `ux-ui-lead` Claude subagent for UI/UX). TDD-front:
+                     write tests → write impl → vitest all PASS.
+       │
+       ▼
+3. REVIEW            codex `codex-pr-reviewer-55` (5.5) — line-level + spec-match.
+                     ADR-0006 8-point checklist mandatory. PASS → next stage.
+       │
+       ├── (D2 row 1+4 hit) → 4. PRE-COMMIT CLAUDE REVIEW   orchestrator self.
+       │                          Mitigates same-model echo chamber.
+       │
+       ▼
+5. COMMIT (+ push)   reviewer codex commits. Per ADR-0006 D8 explicit-file-list
+                     staging (`git reset HEAD` → `git add <list>` →
+                     `git diff --cached --stat` verify → `git commit`).
+       │
+       ▼
+6. ACCEPT            pr-writer Claude subagent (second invocation): verify the
+                     PR's diff actually meets PR.md's `acceptance:` block.
 ```
 
-High-risk triggers per ADR-0007 D2 (4 rows +pr-gate +pr-reviewer, 4 rows +pr-reviewer only):
-- **+pr-gate +pr-reviewer** (D2 rows 1/2/4/8): contract change, package add/remove, new ADR required, CI/deploy/auth/security touch.
-- **+pr-reviewer only, skip pr-gate** (D2 rows 3/5/6/7): spec/agent-contract/ADR edit, delete/rename package, cross ≥3 packages, performance-auditor flagged.
+D2 trigger judgment (ADR-0007 D2 rows; locked by orchestrator at PLAN):
+- **D1 stage 4 PRE-COMMIT CLAUDE REVIEW fires** on D2 rows 1+4 (contract change OR new
+  ADR required). Other rows skip this stage but still go through codex review.
+- **High-risk classes** (rows 2 package add/remove, row 8 CI/deploy/auth/security) also
+  receive heightened reviewer scrutiny within stage 3 — ADR-0006 D8 staging discipline +
+  ADR-0006 8-point checklist 8th-class hunt.
 
-See [ADR-0007 D2](docs/decisions/ADR-0007-job-function-codex-heavy-execution.md).
+See [ADR-0011](docs/decisions/ADR-0011-linear-pipeline-execution-model.md) D1-D8 +
+[ADR-0007 D2](docs/decisions/ADR-0007-job-function-codex-heavy-execution.md).
 
-Codex tools (code-reviewer / pr-gate / plan-challenger / 5 scaffolders) are
-[orchestrator-direct Bash invocations](docs/runbooks/codex-tool-invocations.md) post ADR-0007 D5,
-not teammate spawns.
+Codex tools (11 patterns: 5 scaffolders + plan-challenger + codex-pr-reviewer-55 +
+4 audit/exec profiles) are
+[orchestrator-direct Bash invocations](docs/runbooks/codex-tool-invocations.md) post
+ADR-0007 D5 + ADR-0011 D6.
 
-## Claude teammates (20)
+## Claude teammates (5)
 
-| Tier            | Name                   | Role                                                       |
-| --------------- | ---------------------- | ---------------------------------------------------------- |
-| T0 Orchestrator | `orchestrator`         | 整体规划 + dispatch 工种 + 维护 docs/plans/                |
-| T1 Worker       | `api-builder`          | 写 apps/api FastAPI 后端                                   |
-| T1 Worker       | `block-foundation-eng` | 维护 block-foundation 与 content-types 包                  |
-| T1 Worker       | `editor-eng`           | 写 editor-commands 命令模式与 editor-shell                 |
-| T1 Worker       | `editor-integrator`    | 把 editor 子模块集成到 site                                |
-| T1 Worker       | `kernel-architect`     | 设计 KernelAdapter 接口与 KernelRegistry                   |
-| T1 Worker       | `kernel-pyodide-eng`   | 实现 PyodideAdapter                                        |
-| T1 Worker       | `mdx-bridge-eng`       | 维护 mdx-bridge 双向转换                                   |
-| T1 Worker       | `render-block-eng`     | 写 math / pdf 的 block 实现                                |
-| T1 Worker       | `simple-block-eng`     | 写 simple block 模板（block-callout 等）                   |
-| T1 Worker       | `ux-ui-lead`           | 视觉单一权威 — 横跨 ui-default + apps/site + editor 子模块 |
-| T1 Worker       | `viz-block-eng`        | 写可视化 block 实现 (jupyter / nn-viz / agent-flow)        |
-| T2 Process      | `git-operator`         | 唯一 git 操作权                                            |
-| T2 Process      | `pr-reviewer`          | 实现质量 + 降级风险 + 规格匹配 review                      |
-| T2 Process      | `refactorer`           | 唯一跨包重组权                                             |
-| T2 Process      | `researcher`           | 唯一外网访问权                                             |
-| T3 Audit        | `link-checker`         | markdown 链接检查                                          |
-| T3 Audit        | `mdx-doctor`           | MDX round-trip 健康守护                                    |
-| T3 Audit        | `performance-auditor`  | 性能基线 + 回归侦测                                        |
-| T3 Audit        | `structure-auditor`    | 月度结构审计                                               |
+| Tier            | Name           | Role                                                                           |
+| --------------- | -------------- | ------------------------------------------------------------------------------ |
+| T0 Orchestrator | `orchestrator` | 整体规划 + dispatch 工种 + 维护 docs/plans/ + D1 pipeline 协调                 |
+| T2 Subagent     | `pr-writer`    | PR.md 起草（PLAN 调）+ ACCEPT 验收（COMMIT 后调）                              |
+| T2 Subagent     | `refactorer`   | 唯一跨包重组权（ADR-0011 D7 沿用，按需 one-shot dispatch）                     |
+| T2 Subagent     | `researcher`   | 唯一外网访问权（ADR-0011 D7 沿用，按需 one-shot dispatch）                     |
+| T2 Subagent     | `ux-ui-lead`   | 视觉单一权威 — 横跨 ui-default + apps/site + editor 子模块（仅 UI/UX PR 触发） |
 
-## Codex tool patterns (8)
+## Codex tool patterns (11)
 
 orchestrator-direct Bash invocations (ADR-0007 D5). Full canonical bash + triggers + audit-log paths in [docs/runbooks/codex-tool-invocations.md](docs/runbooks/codex-tool-invocations.md).
 
-| Pattern                  | Profile           | Summary                                                                                            |
-| ------------------------ | ----------------- | -------------------------------------------------------------------------------------------------- |
-| `code-reviewer`          | `code-reviewer`   | 行级 review：类型 / lint / 契约同步 / 文件大小 / 风格 / 边界条件。                                 |
-| `plan-challenger`        | `plan-challenger` | lock 前挑战 orchestrator 的 wave / track plan：检查 task 大小、可测性、边界场景。                  |
-| `pr-gate`                | `pr-gate`         | 仅对**高风险 PR 中需 pr-gate 的那 4 类**启用。深度审查：漏洞 / 隐性破坏 / 跨包影响。               |
-| `codex-api-crud-builder` | `scaffolder`      | 在 apps/api 按 RESTful 风格生成 CRUD 端点骨架（Pydantic schema + 路由），                          |
-| `codex-block-generator`  | `scaffolder`      | 在 simple-block-eng / ux-ui-lead / editor-eng 提交 template 后，按模板仿造其余 block / submodule。 |
-| `codex-css-stylist`      | `scaffolder`      | 写 packages/design-tokens / packages/ui 的 design tokens（颜色 / 间距 / 字体）+                    |
-| `codex-script-builder`   | `scaffolder`      | 写 scripts/refactor-move.ts / scripts/new-block.ts / scripts/extract-pdf-text.ts 等工具。          |
-| `codex-test-scaffolder`  | `scaffolder`      | 为每个 packages/<name> 生成 src/__tests__/ 下的 vitest 套件骨架，                                  |
+| Pattern                   | Profile                | Summary                                                                                            |
+| ------------------------- | ---------------------- | -------------------------------------------------------------------------------------------------- |
+| `codex-pr-reviewer-55`    | `codex-pr-reviewer-55` | ADR-0011 D1 stage 3 默认 reviewer。replaces Wave 1+2 的 pr-gate（5.5）+                            |
+| `codex-generic-executor`  | `generic-executor`     | ADR-0011 D6 NEW Wave 3 默认 executor。gpt-5.5 + workspace-write sandbox。                          |
+| `codex-mdx-doctor`        | `mdx-doctor`           | ADR-0011 D5 + D6 NEW Wave 3 audit profile。从 Wave 1+2 Tier 3                                      |
+| `codex-perf-auditor`      | `perf-auditor`         | ADR-0011 D5 + D6 NEW Wave 3 audit profile。从 Wave 1+2 Tier 3                                      |
+| `plan-challenger`         | `plan-challenger`      | lock 前挑战 orchestrator 的 wave / track / PR plan：检查 task 大小、可测性、边界场景。             |
+| `codex-api-crud-builder`  | `scaffolder`           | 在 apps/api 按 RESTful 风格生成 CRUD 端点骨架（Pydantic schema + 路由）。                          |
+| `codex-block-generator`   | `scaffolder`           | 在 simple-block-eng / ux-ui-lead / editor-eng 提交 template 后，按模板仿造其余 block / submodule。 |
+| `codex-css-stylist`       | `scaffolder`           | 写 packages/design-tokens / packages/ui 的 design tokens（颜色 / 间距 / 字体）+                    |
+| `codex-script-builder`    | `scaffolder`           | 写 scripts/refactor-move.ts / scripts/new-block.ts / scripts/extract-pdf-text.ts 等工具。          |
+| `codex-test-scaffolder`   | `scaffolder`           | 为每个 packages/<name> 生成 src/__tests__/ 下的 vitest 套件骨架，                                  |
+| `codex-structure-auditor` | `structure-auditor`    | ADR-0011 D5 + D6 NEW Wave 3 audit profile。从 Wave 1+2 Tier 3                                      |
 
 ## Footer
 

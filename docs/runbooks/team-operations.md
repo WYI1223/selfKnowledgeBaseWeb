@@ -1,5 +1,26 @@
 # Team Operations Runbook
 
+> ⚠️ **POST-ADR-0011 PARTIALLY STALE — full rewrite pending.**
+>
+> ADR-0011 (accepted 2026-05-01) introduces a **linear-pipeline execution model**
+> (PR 串行 + codex 5.5 双角色 + pr-writer subagent + Tier 1 worker 全退役 +
+> Tier 3 audit 全 codex 化). Many references in this runbook to specific Tier 1
+> workers (`block-foundation-eng` / `simple-block-eng` / `editor-eng` / etc.),
+> Tier 2 process roles (`git-operator` / `pr-reviewer` as standalone teammates),
+> and Tier 3 audits (`structure-auditor` / `performance-auditor` / `mdx-doctor`
+> as Claude teammates) are **historical**. Wave 3+ replaces them per ADR-0011
+> D-list. Read [ADR-0011 D1-D8](../decisions/ADR-0011-linear-pipeline-execution-model.md)
+> first; treat the per-section tables in this runbook as Wave 1+2 reference until
+> a follow-up PR rewrites them.
+>
+> Active references that survive ADR-0011:
+> - 4 Claude subagents one-shot dispatch protocol (pr-writer NEW / ux-ui-lead /
+>   refactorer / researcher) — per ADR-0011 D7
+> - 11 codex tool_patterns — see
+>   [docs/runbooks/codex-tool-invocations.md](codex-tool-invocations.md) (auto-regenerated)
+> - ADR-0006 D8 explicit-file-list staging (still mandatory for all commits)
+> - ADR-0006 8-point asymmetry-audit checklist (still applies in D1 stage 3)
+
 > 这份文档由 orchestrator **前置注入** 每个 teammate 的 spawn prompt。读完它，你就懂团队协作协议。
 > 适用范围：所有 Claude Code agent team 模式下的 teammate（按 ADR-0004 工作）。
 
