@@ -5,6 +5,8 @@
 - Routes:
   - `/` — notes index
   - `/notes/<slug>` — rendered note
+- MDX component blocks: `src/components.ts` exports `componentsMap`, the static-site
+  PascalCase MDX tag map consumed by note pages.
 - Content collection schema: `src/content.config.ts` imports `frontmatterSchema` from `@skb/content-types`. apps/site MUST NOT redefine the schema inline (single-authority rule per `packages/content-types/CONTRACT.md`).
 - Theme: light / dark, controlled via `<html data-theme="dark">`. Persistent toggle button in the top-right corner of every page.
 
@@ -20,6 +22,13 @@
   2. The `try/catch` MUST wrap ONLY the `localStorage.getItem` call. `matchMedia` + DOM apply MUST run AFTER the catch handler. A wide-scope `try/catch` swallows the `matchMedia` path on Safari Private Mode / iOS WebView with storage restrictions / browsers with localStorage disabled — producing light when system pref is dark, i.e. a hydration flash.
   Both rules are enforced by `src/__tests__/fouc-script.test.ts`, which extracts the IIFE from `BaseLayout.astro` and asserts equivalence against `getInitialTheme()` for a 16-row saved-value × system-preference corpus + 2 storage-throws × system-preference rows + an explicit truthy-coerce regression assertion.
 - **Content frontmatter schema is owned by `@skb/content-types`**: apps/site imports `frontmatterSchema` and uses it directly in `defineCollection`. Inline schema redefinition is a contract break (content-types CONTRACT.md single-authority invariant). When the schema needs new optional fields, update `@skb/content-types` and let it propagate.
+- **Component-block rendering**: MDX component blocks are wired only through
+  `componentsMap` in `src/components.ts`, and `pages/notes/[...slug].astro`
+  passes that map per page via `<Content components={componentsMap} />`.
+  The map must expose exactly the 8 canonical PascalCase keys `Callout`,
+  `Code`, `Image`, `Math`, `Pdf`, `Jupyter`, `NnViz`, and `AgentFlow`.
+  Values must be the corresponding block package `*RenderView` exports,
+  never `*EditorView`, because apps/site is a read-only static renderer.
 
 ## Modifying this file
 
@@ -29,5 +38,13 @@ Update this file when changing route structure, content frontmatter shape, build
 
 - [Design spec §1.1 / §2.6](../../docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md)
 - [ADR-0003 headless / presentational split](../../docs/decisions/ADR-0003-headless-presentational-split.md) — D5 (light + dark Phase 1) / D6 (manual-only persistence)
+- [@skb/block-agent-flow contract](../../packages/block-agent-flow/CONTRACT.md)
+- [@skb/block-callout contract](../../packages/block-callout/CONTRACT.md)
+- [@skb/block-code contract](../../packages/block-code/CONTRACT.md)
+- [@skb/block-image contract](../../packages/block-image/CONTRACT.md)
+- [@skb/block-jupyter contract](../../packages/block-jupyter/CONTRACT.md)
+- [@skb/block-math contract](../../packages/block-math/CONTRACT.md)
+- [@skb/block-nn-viz contract](../../packages/block-nn-viz/CONTRACT.md)
+- [@skb/block-pdf contract](../../packages/block-pdf/CONTRACT.md)
 - [@skb/design-tokens contract](../../packages/design-tokens/CONTRACT.md)
 - [agent-contract.md `editor-integrator`](../../agent-contract.md)
