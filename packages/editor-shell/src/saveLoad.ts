@@ -14,21 +14,15 @@ export interface SaveLoadOptions {
 /** Serialize the editor's current document to MDX source. Prose-only in
  *  Stage A; component blocks throw via mdx-bridge's existing fail-loud
  *  rule until B1 extends the walker. */
-export function saveToMdx(editor: Editor, _options?: SaveLoadOptions): string {
-  void _options;
+export function saveToMdx(editor: Editor, options?: SaveLoadOptions): string {
   const doc = editor.getJSON() as TiptapDoc;
-  return tiptapToMdx(doc);
+  return tiptapToMdx(doc, options);
 }
 
 /** Replace the editor's document by parsing MDX source. Prose-only in
  *  Stage A; component-block JSX throws via mdx-bridge's existing
  *  fail-loud rule until B1. */
-export function loadFromMdx(
-  editor: Editor,
-  source: string,
-  _options?: SaveLoadOptions,
-): void {
-  void _options;
-  const doc = mdxToTiptap(source);
+export function loadFromMdx(editor: Editor, source: string, options?: SaveLoadOptions): void {
+  const doc = mdxToTiptap(source, options);
   editor.commands.setContent(doc);
 }

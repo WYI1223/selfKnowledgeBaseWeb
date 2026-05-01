@@ -3,6 +3,12 @@ import remarkParse from 'remark-parse';
 import remarkMdx from 'remark-mdx';
 import remarkFrontmatter from 'remark-frontmatter';
 import type { Root, RootContent } from 'mdast';
+import type { BlockRegistry } from '@skb/block-foundation';
+import { getJsxDispatch, type MdastJsxElement } from './dispatch-table';
+
+export interface MdxBridgeOptions {
+  blockRegistry?: BlockRegistry;
+}
 
 export interface TiptapDoc {
   type: 'doc';
@@ -22,7 +28,7 @@ export interface TiptapNode {
   marks?: TiptapMark[];
   content?: TiptapNode[];
   text?: string;
-  _mdast?: RootContent;
+  _mdast?: RootContent | MdastJsxElement;
 }
 
 export interface TiptapMark {
@@ -37,10 +43,10 @@ export interface TiptapMark {
  * the corresponding Tiptap node as `_mdast` so the serializer can round-trip
  * byte-equivalently via remark-stringify.
  *
- * Wave 1 covers prose only (paragraph / heading / list / blockquote / code /
- * inline emphasis / link). Wave 2 adds component blocks (mdxJsxFlowElement).
+ * Wave 1 covers prose (paragraph / heading / list / blockquote / code /
+ * inline emphasis / link). Wave 3 adds component blocks (mdxJsxFlowElement).
  */
-export function mdxToTiptap(source: string): TiptapDoc {
+export function mdxToTiptap(source: string, options?: MdxBridgeOptions): TiptapDoc {
   const tree: Root = unified()
     .use(remarkParse)
     .use(remarkFrontmatter, ['yaml'])
@@ -57,13 +63,16 @@ export function mdxToTiptap(source: string): TiptapDoc {
     }
   }
 
-  const content = blocks.map((node) => mdastBlockToTiptap(node));
+  const content = blocks.map((node) => mdastBlockToTiptap(node, options));
   const doc: TiptapDoc = { type: 'doc', content };
   if (frontmatter !== undefined) doc.frontmatter = frontmatter;
   return doc;
 }
 
-function mdastBlockToTiptap(node: RootContent): TiptapNode {
+function mdastBlockToTiptap(
+  node: RootContent | MdastJsxElement,
+  options?: MdxBridgeOptions,
+): TiptapNode {
   switch (node.type) {
     case 'paragraph':
       return {
@@ -87,7 +96,7 @@ function mdastBlockToTiptap(node: RootContent): TiptapNode {
         content: node.children.map((item) => ({
           type: 'listItem',
           attrs: { spread: item.spread ?? false },
-          content: item.children.map(mdastBlockToTiptap),
+          content: item.children.map((child) => mdastBlockToTiptap(child, options)),
           _mdast: item,
         })),
         _mdast: node,
@@ -96,7 +105,7 @@ function mdastBlockToTiptap(node: RootContent): TiptapNode {
     case 'blockquote':
       return {
         type: 'blockquote',
-        content: node.children.map(mdastBlockToTiptap),
+        content: node.children.map((child) => mdastBlockToTiptap(child, options)),
         _mdast: node,
       };
     case 'code':
@@ -108,12 +117,36 @@ function mdastBlockToTiptap(node: RootContent): TiptapNode {
       };
     case 'thematicBreak':
       return { type: 'horizontalRule', _mdast: node };
+    case 'mdxJsxFlowElement':
+      return mdastJsxFlowElementToTiptap(node, options);
     default:
-      throw new Error(
-        `mdx-bridge: unsupported block type "${node.type}". ` +
-          `Add a fixture and a parse + serialize case before introducing this block type.`,
-      );
+      return unsupportedBlock(node.type);
   }
+}
+
+function mdastJsxFlowElementToTiptap(
+  node: MdastJsxElement,
+  options?: MdxBridgeOptions,
+): TiptapNode {
+  if (!options?.blockRegistry) return unsupportedBlock(node.type);
+
+  const componentName = node.name ?? node.type;
+  const core = options.blockRegistry
+    .listCores()
+    .find((candidate) => candidate.mdxComponent === componentName);
+  if (!core) return unsupportedBlock(componentName);
+
+  const dispatch = getJsxDispatch(componentName);
+  if (!dispatch || dispatch.blockType !== core.name) return unsupportedBlock(componentName);
+
+  return { ...dispatch.parse(node), _mdast: node };
+}
+
+function unsupportedBlock(type: string): never {
+  throw new Error(
+    `mdx-bridge: unsupported block type "${type}". ` +
+      `Add a fixture and a parse + serialize case before introducing this block type.`,
+  );
 }
 
 /**
@@ -132,9 +165,7 @@ function mdastInlineToTiptap(
     case 'emphasis':
       return wrapChildrenWithMark((node as { children: unknown[] }).children, { type: 'italic' });
     case 'inlineCode':
-      return [
-        { type: 'text', text: (node as { value: string }).value, marks: [{ type: 'code' }] },
-      ];
+      return [{ type: 'text', text: (node as { value: string }).value, marks: [{ type: 'code' }] }];
     case 'link': {
       const linkNode = node as { url: string; title?: string | null; children: unknown[] };
       const attrs: Record<string, unknown> = { href: linkNode.url };
