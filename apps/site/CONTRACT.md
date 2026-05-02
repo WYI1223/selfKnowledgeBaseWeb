@@ -19,8 +19,21 @@
   without the underscore prefix. Wave 3 close (or a follow-up docs PR) aligns
   ADR prose to the current path; the semantic contract (post-build hook +
   build artifact) is unchanged.
-- UI scope: D2 owns build-time index emission only. D3 owns `SearchBox`, the
-  `/search` route, and any `@pagefind/default-ui` or custom UI consumption.
+- UI surface: `src/components/SearchBox.astro` renders the SSR-safe
+  `<div id="search">` mount point and lazy browser script that constructs
+  `@pagefind/default-ui` with `resetStyles: false`. The dedicated `/search`
+  route embeds that component through `BaseLayout`, and the global header links
+  to `/search`.
+- A11y guarantee: search input labeling, keyboard result navigation, and result
+  ARIA semantics come from `@pagefind/default-ui` defaults. apps/site may wrap
+  the surface, but it must not replace those defaults with a custom UI unless a
+  follow-up contract update preserves equivalent keyboard and screen-reader
+  behavior.
+- `/search` render-safety: `astro build` must emit the `/search` HTML before
+  `dist/pagefind/` exists. The page contains only the static mount point plus a
+  client-side script and stylesheet reference; the browser loads PageFind's
+  runtime and index after first paint. This satisfies ADR-0012 out-of-scope
+  #C4(a) for D3 without introducing SSR or blocking static generation.
 - Bundle-size budget: PageFind runtime + initial search-route index chunks must
   stay <= 120 kB gzip at first paint. D2 has no `/search` route yet, so D3 must
   re-measure the user-facing route after UI integration.
