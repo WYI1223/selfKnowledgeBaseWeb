@@ -10,6 +10,41 @@
 - Content collection schema: `src/content.config.ts` imports `frontmatterSchema` from `@skb/content-types`. apps/site MUST NOT redefine the schema inline (single-authority rule per `packages/content-types/CONTRACT.md`).
 - Theme: light / dark, controlled via `<html data-theme="dark">`. Persistent toggle button in the top-right corner of every page.
 
+## Search index
+
+- Stack: PageFind 1.5.0+ through `astro-pagefind` 1.8.6+. `astro.config.mjs`
+  registers the adapter so `astro build` emits `dist/pagefind/` after static
+  HTML generation. Note: ADR-0012 prose references `dist/_pagefind/`
+  (historical pagefind <1.5 default); pagefind 1.5+ emits to `dist/pagefind/`
+  without the underscore prefix. Wave 3 close (or a follow-up docs PR) aligns
+  ADR prose to the current path; the semantic contract (post-build hook +
+  build artifact) is unchanged.
+- UI scope: D2 owns build-time index emission only. D3 owns `SearchBox`, the
+  `/search` route, and any `@pagefind/default-ui` or custom UI consumption.
+- Bundle-size budget: PageFind runtime + initial search-route index chunks must
+  stay <= 120 kB gzip at first paint. D2 has no `/search` route yet, so D3 must
+  re-measure the user-facing route after UI integration.
+- Index-size budget: the complete `dist/pagefind/` directory must stay <= 30 kB
+  uncompressed for the current 2-note corpus and <= 300 kB uncompressed at the
+  100-note projection. Projection formula:
+  `ceil(current_dist_pagefind_bytes / current_note_count * 100)`.
+- Measurement commands:
+
+  ```bash
+  pnpm --filter=@skb/site build
+  test -f apps/site/dist/pagefind/pagefind-entry.json
+  du -sb apps/site/dist/pagefind
+  ```
+
+- Current D2 measurement (sample-blocks + sample-mdx-note + index = 3 indexed
+  pages): `dist/pagefind/` ~= 200 kB uncompressed (Pagefind runtime + UI
+  bundles + 3 note fragments). The index is small relative to pagefind's
+  runtime/UI assets; corpus growth dominates fragment bytes only.
+- Cache-bust mechanism: PageFind emits content-hash chunk filenames, including
+  fragment files under `dist/pagefind/fragment/`. Rebuilding after note content
+  changes produces new chunk names/bytes, so CDN or proxy stale-cache reuse of an
+  old index is avoided without client-side reindexing.
+
 ## Invariants
 
 - **Static build only** (spec §1.8 constraint #3): the project must not introduce SSR; `astro build` outputs prerendered HTML.

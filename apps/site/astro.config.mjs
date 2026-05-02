@@ -2,10 +2,11 @@ import { defineConfig } from 'astro/config';
 import mdx from '@astrojs/mdx';
 import react from '@astrojs/react';
 import tailwind from '@astrojs/tailwind';
+import pagefind from 'astro-pagefind';
 
 export default defineConfig({
   site: 'https://selfknowledgebaseweb.example.com',
-  integrations: [mdx(), react(), tailwind({ applyBaseStyles: false })],
+  integrations: [mdx(), react(), tailwind({ applyBaseStyles: false }), pagefind()],
   build: {
     format: 'directory',
   },
