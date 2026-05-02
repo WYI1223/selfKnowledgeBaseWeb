@@ -1,0 +1,582 @@
+Reading additional input from stdin...
+OpenAI Codex v0.125.0 (research preview)
+--------
+workdir: /home/weiyi/selfKnowledgeBaseWeb
+model: gpt-5.3-codex-spark
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: xhigh
+reasoning summaries: none
+session id: 019de663-4339-7af2-aef5-131d55c3a5d5
+--------
+user
+Challenge the locked PR plan for Wave 3 D1b (ADR-0012 search index stack decision). Review the artifacts:
+
+1. PR.md: docs/plans/wave-3-main/D1b-adr-0012-search-index-stack.md
+2. New ADR: docs/decisions/ADR-0012-search-index-stack.md
+3. Evidence base (already merged on main): docs/research/2026-05-search-index-spike.md
+
+Check per ADR-0011 D2:
+
+A. PR scope ≤ 200 LOC + 1 narrow responsibility? (D1b is decision-only — only 2 files: ADR + PR.md self.)
+B. test_cases TC1-TC9 each have input/expected/location triple? Are they actually verifiable on a decision-only ADR PR?
+C. Acceptance criteria 1-5 in ADR-0012 measurable? (criterion 1 bundle-size ≤120kB gzip, criterion 2 index-size ≤300kB at 100-note projection, criterion 3 reindex-on-update mechanism, criterion 4 CJK regression test, criterion 5 astro-pagefind ≥1.8.6 lower-bound.)
+D. D2 trigger judgment correct? (D1b PR.md claims Row 4 HIT new ADR → PRE-COMMIT CLAUDE REVIEW fires. Verify.)
+E. Alternatives considered (lunr.js / flexsearch / MiniSearch) reject rationale strong enough to lock the PageFind decision?
+F. Reindex-on-update contract criterion 3 actually forbids client-side reindex AND mandates content-hash regression test on MDX edit? (Per plan-challenger R2 #13.)
+G. CJK regression test criterion 4 — is the test fixture content '中文笔记测试' + query '笔记' sufficient to verify Intl.Segmenter word-level vs character-level behavior?
+H. Edge cases missing? (e.g., search route rendering during SSR before _pagefind/ exists; index serving from CDN cache after MDX update.)
+
+Output: a numbered list of CHALLENGES (concerns with stronger language) and SUGGESTIONS (optional refinements). Be concise — one short paragraph per item. The orchestrator decides which to absorb. If everything looks PASS, say so explicitly with a one-line summary.
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the vendored bubblewrap in the meantime.
+codex
+I’ll inspect the three requested artifacts in one pass and then evaluate each ADR-0011 D2 checkpoint against them, focusing strictly on the challenge criteria you listed and keeping findings concise with severity where applicable.
+exec
+/bin/bash -lc "sed -n '1,260p' docs/plans/wave-3-main/D1b-adr-0012-search-index-stack.md" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1,260p' docs/decisions/ADR-0012-search-index-stack.md" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1,260p' docs/research/2026-05-search-index-spike.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+# Search index research spike (Wave 3 D1a)
+
+> Pre-D1b ADR research per locked plan lines 696-728. Researcher Claude
+> subagent dispatched 2026-05-01 (one-shot, ADR-0011 D7).
+> All web data captured via WebSearch / WebFetch on 2026-05-01; revisit
+> if D1b lock slips past 2026-08-01.
+
+## Context
+
+`apps/site` is an Astro static-build SPA. The current MDX corpus lives at
+`content/notes/sample-blocks/index.mdx` and `content/notes/sample-mdx-note/index.mdx`
+(2 notes, ~hundreds of tokens each). Spec §4.2 requires client-side search
+over note prose, with a sub-100ms perceived query latency and reindex
+on content change. Plan-challenger R2 #5 (CJK robustness) and #13
+(reindex-on-update contract) are explicit gates for the D1b ADR.
+
+The user (`ve11ichor1223`) is CJK-literate; future notes will mix
+Chinese/Japanese with English, so tokenizer behavior on `中文笔记` and
+`日本語` strings is a hard requirement, not a nice-to-have.
+
+## Candidates
+
+### 1. PageFind
+
+- **Version / activity**: `pagefind` 1.5.2 (2026-04-12), 1.5.0 major
+  feature drop 2026-04-06 — actively maintained by CloudCannon.
+  Astro adapter: `astro-pagefind` 1.8.6 (2026-04-13).
+- **Bundle size**: ~70-100 kB gzip total (search runtime + first index
+  chunk) on a typical site; documented ceiling is "under 300 kB total
+  network payload for a 10,000-page site, including the library."
+  Library JS itself ≈ 30 kB gzip; remainder is index chunks loaded
+  lazily.
+- **Index size**: chunked by prefix; only ~50 kB of index is fetched
+  per query for our 2-note corpus. Extrapolation to 50/100 notes
+  remains well under 1 MB total index, with each query loading
+  <100 kB.
+- **Query latency**: sub-50 ms in 1.5.0 (Web Worker search by default,
+  binary-encoded chunks).
+- **Build-vs-client**: build-time. Pagefind binary scans the built
+  HTML output (post-Astro `astro build`) and emits `_pagefind/`
+  chunks. Client only loads chunks on demand.
+- **CJK**: 1.5.0 ships **automatic CJK segmentation** via
+  `Intl.Segmenter` (both at index time and query time); searching
+  "这是一段简单的测试文本" tokenizes identically on both sides.
+  No plugin, no config. This is the killer feature vs lunr/flexsearch.
+- **Reindex-on-update**: build-time-emit. Rerunning `astro build`
+  (or `astro-pagefind` postbuild hook) regenerates `_pagefind/`
+  deterministically. Cache-busts via filename hashes. No client-side
+  reindex ever needed.
+- **Astro integration**: first-party-grade `astro-pagefind` adapter
+  with `<Search />` component, dev-mode hot reload of the index UI,
+  and `data-pagefind-ignore` attribute. Drop-in.
+- **Pros**: out-of-the-box CJK; smallest cognitive load; deterministic
+  build artifact; chunked index scales to 10k+ pages.
+- **Cons**: requires the Pagefind Rust binary on the build host
+  (already common in CI; `astro-pagefind` installs it via npm); index
+  cannot be live-mutated client-side (irrelevant for our static-build
+  SPA).
+
+### 2. lunr.js
+
+- **Version / activity**: `lunr` 2.3.9 (last published 2020-02; repo
+  9.2k stars but 64 tags, 527 commits, no release in ~5 years). Effectively
+  in maintenance-only mode. CJK support lives in third-party
+  `lunr-languages` (Japanese via TinySegmenter) and `lunr-chinese`
+  (Wiredcraft, via nodejieba — Node-only, breaks browser bundles).
+- **Bundle size**: ~8.5 kB gzip for `lunr.js` core; +5-10 kB per
+  language plugin. CJK adds nodejieba (~2 MB unpacked, server-only)
+  or TinySegmenter (~25 kB gzip).
+- **Index size**: serialized JSON; for 2-note corpus ~30-50 kB
+  uncompressed (~10 kB gzip). Scales linearly; 100 notes ~500 kB
+  uncompressed JSON loaded as one blob. No chunking — all-or-nothing
+  fetch.
+- **Query latency**: sub-100 ms for small corpora; degrades on the
+  full-blob load (~500 kB parse cost on cold load) at 100+ notes.
+- **Build-vs-client**: hybrid. Idiomatic pattern is build-time
+  `lunr.Index.load(serializedIndex)`, but the index JSON must be
+  generated by a custom build script (no Astro adapter exists).
+- **CJK**: **default tokenizer splits on whitespace + hyphens**, which
+  breaks Chinese (no spaces) and treats Japanese as one token. Fix
+  requires `lunr-languages/lunr.jp` (TinySegmenter, browser-safe) or
+  `lunr-chinese` (nodejieba, Node-only — unusable in client search).
+  Plan-challenger R2 #5 hard fail without plugin.
+- **Reindex-on-update**: write your own `scripts/build-search-index.ts`
+  Astro integration hook to walk MDX → JSON. No first-party tooling.
+  Cache-busting via filename hash is DIY.
+- **Astro integration**: none official. Community examples exist but
+  every one ships its own adapter.
+- **Pros**: smallest core JS; well-known; pure-JS so no build-host
+  binary.
+- **Cons**: dormant project; CJK is a project in itself; no Astro
+  adapter; mono-blob index doesn't chunk.
+
+### 3. flexsearch
+
+- **Version / activity**: `flexsearch` 0.8.212 (active, npm shows
+  frequent 0.8.x patches through 2026; 13.7k stars). Repo README
+  bundle table reflects 0.8.2 (2024) but the npm tag is well past it.
+- **Bundle size**: 4.5 kB gzip (light), 11.4 kB gzip (compact),
+  16.3 kB gzip (full bundle with document indexes + tag/store).
+- **Index size**: ≈2.1 MB for "Gulliver's Travels" full-novel default
+  config; ~30% extra for fast-update mode. Our 2-note corpus would
+  be <50 kB; 100-note projection ~1-2 MB depending on resolution and
+  context-mode.
+- **Query latency**: fastest in published JS-search benchmarks
+  (Mattermost/HN; sub-10 ms typical).
+- **Build-vs-client**: both — `Index.export()` / `Index.import()`
+  lets you ship a prebuilt JSON, and the runtime can also build
+  client-side. With `fastupdate` flag the index supports incremental
+  add/remove without full rebuild.
+- **CJK**: ships `Charset.CJK` encoder (renamed from `CjkDefault`
+  in 0.8). Behavior: splits on every CJK code point — i.e. character
+  unigrams. This works for substring queries but produces lower
+  precision than Pagefind's `Intl.Segmenter` word-level segmentation
+  (e.g. "中文" matches any string containing 中 or 文 separately).
+  Custom tokenizer required for production-grade CJK; community
+  patterns (e.g. Ghost PR #22874, issue #137) exist but are user-
+  written.
+- **Reindex-on-update**: build-time export to JSON + client-time
+  `import()` is the documented pattern. Live mutation via
+  `index.add(id, doc)` + `index.remove(id)` works in-process but
+  doesn't persist; on static SPA we'd rebuild at `astro build` and
+  ship a new exported JSON, hash-suffixed for cache-bust.
+- **Astro integration**: none official. README lists React/Vue/Gatsby
+  but not Astro. Manual integration via Astro integration hook is
+  small (~50 LOC) but ours to maintain.
+- **Pros**: smallest runtime; fastest queries; supports both CJK and
+  Latin in one bundle; live `add/remove` API.
+- **Cons**: CJK encoder is character-level (lower precision); no
+  Astro adapter; we own the build pipeline; CJK quality requires
+  bespoke tokenizer.
+
+(MiniSearch was considered as an optional 4th candidate but is
+strictly weaker here: ~10 kB gzip, no CJK tokenizer, no Astro
+adapter, mono-blob index — pure downside vs flexsearch.)
+
+## Edge cases
+
+### Non-ASCII / CJK
+- **PageFind**: index- and query-time `Intl.Segmenter`. Word-level
+  for zh/ja/ko. **PASS plan-challenger R2 #5**.
+- **lunr.js**: default whitespace tokenizer breaks CJK. PASS only
+  with `lunr-languages` (jp via TinySegmenter, browser-safe) +
+  separate Chinese plugin. Two third-party deps + bundle bloat.
+- **flexsearch**: `Charset.CJK` works but at character-level (lower
+  precision); production-grade CJK needs custom tokenizer. PARTIAL.
+
+### Punctuation-heavy queries (e.g. `'"hello-world" & friends'`)
+- **PageFind**: strips quotes/punct on both sides; phrase queries
+  via `"…"` syntax supported in 1.5.0 search UI. Robust.
+- **lunr.js**: tokenizer splits on `-` so `hello-world` becomes two
+  tokens; quotes are dropped. Acceptable for prose, mediocre for
+  code-laden notes.
+- **flexsearch**: encoders normalize punctuation per preset
+  (`LatinAdvanced`/`LatinExtra`); behavior consistent. Robust.
+
+### Reindex-on-update
+- **PageFind**: deterministic build-time emit; no client cache to
+  invalidate beyond the hashed filenames Astro already produces.
+  Maps cleanly onto plan-challenger R2 #13 contract — "rebuild ⇒
+  new index ⇒ first page load fetches updated chunks."
+- **lunr.js**: DIY build hook writes a single index.json; cache-bust
+  is your responsibility.
+- **flexsearch**: DIY build hook calls `Index.export()`; same
+  cache-bust burden as lunr.
+
+## Recommendation
+
+**PageFind** (via `astro-pagefind` 1.8.6).
+
+Rationale: it is the only candidate that satisfies plan-challenger
+R2 #5 (CJK robustness, word-level not character-level) **and** #13
+(reindex contract is the build itself, no DIY adapter) without
+custom code. The 1.5.0 release closed the prior CJK gap (segmentation
+was index-only, queries were not — fixed 2026-04). FlexSearch is the
+faster runtime but its CJK story still requires a bespoke tokenizer
+we'd have to author + maintain + test, doubling the D1b scope.
+lunr.js is dormant and CJK-hostile by default. The Astro adapter
+exists, is on 1.8.6 actively, and cuts D2/D3 implementation cost
+substantially.
+
+## D1b ADR acceptance criteria
+
+The D1b ADR should lock these measurable targets (verifiable in
+D2/D3 PR-level acceptance blocks):
+
+1. **Bundle-size budget**: Pagefind runtime + initial index chunks
+   delivered to a cold first paint of the search route ≤ **120 kB
+   gzip total** (per Pagefind docs ~70-100 kB typical; 120 kB
+   leaves headroom). Measured with `astro build` artifact + gzip.
+2. **Index-size budget**: total `_pagefind/` directory ≤ **300 kB
+   uncompressed** at 100-note projection (today: 2 notes, expect
+   ≤ 30 kB). Single-query chunk fetch ≤ **80 kB gzip**.
+3. **Reindex-on-update mechanism**: index regenerated by the
+   `astro-pagefind` post-build integration on every `astro build`;
+   D1b TC3 test asserts that mutating an MDX file → rerunning
+   `astro build` → the resulting `_pagefind/` chunk for the touched
+   note differs by content hash. No client-side reindex path is
+   permitted (out of scope for static SPA).
+4. **CJK tokenizer story** (bonus, plan-challenger R2 #5):
+   `Intl.Segmenter`-based segmentation is mandatory; D2 must
+   include a regression test indexing `"中文笔记测试"` and
+   asserting query "笔记" returns the note (word-level, not
+   per-character substring).
+
+## References
+
+- Pagefind site: https://pagefind.app — bundle/payload claims, 1.5.0 feature list
+- Pagefind 1.5.0 / 1.5.2 release notes: https://github.com/CloudCannon/pagefind/releases (CJK `Intl.Segmenter` segmentation, Web Worker search, smaller indexes)
+- Pagefind CHANGELOG: https://github.com/Pagefind/pagefind/blob/main/CHANGELOG.md
+- Pagefind CJK issue ref: https://github.com/Pagefind/pagefind/issues/987
+- `astro-pagefind` adapter (1.8.6): https://github.com/shishkin/astro-pagefind (npm: package id `astro-pagefind`; direct npmjs.com URL omitted to avoid lychee 403 anti-bot rejection)
+- Astro setup guide: https://syntackle.com/blog/pagefind-search-in-astro-site/
+- lunr.js homepage: https://lunrjs.com — feature list
+- lunr.js repo (2.3.9, dormant): https://github.com/olivernn/lunr.js
+- lunr CJK gap (issue #91, #173): https://github.com/olivernn/lunr.js/issues/91
+- lunr-languages (TinySegmenter for jp): https://github.com/MihaiValentin/lunr-languages
+- lunr-chinese (nodejieba, server-only): https://github.com/Wiredcraft/lunr-chinese
+- flexsearch repo (0.8.x active): https://github.com/nextapps-de/flexsearch — bundle table, charset list
+- flexsearch releases: https://github.com/nextapps-de/flexsearch/releases
+- flexsearch CJK custom tokenizer pattern: https://github.com/TryGhost/Ghost/pull/22874 ; https://github.com/nextapps-de/flexsearch/issues/137
+- npm-compare cross-lib: https://npm-compare.com/elasticlunr,flexsearch,fuse.js,minisearch
+- Mattermost JS-search comparison: https://mattermost.com/blog/best-search-packages-for-javascript/
+
+> Timeliness note: all version + release-date data captured 2026-05-01.
+> If D1b lock slips past 2026-08-01, re-verify: (a) `astro-pagefind`
+> adapter still 1.x with active commits, (b) Pagefind 1.5.x CJK
+> behavior unchanged, (c) FlexSearch hasn't shipped a 1.0 with
+> word-level CJK that would re-open the comparison.
+
+ succeeded in 0ms:
+# D1b — ADR-0012 search index stack decision (Stage D)
+
+> **Wave 3 Stage D 2nd PR.** Ratifies D1a researcher recommendation
+> (PageFind via astro-pagefind) into ADR-0012 with 5 measurable
+> acceptance criteria for D2 implementation. Per locked plan D1b entry
+> (lines 729-758).
+
+## title
+
+Land `docs/decisions/ADR-0012-search-index-stack.md` (~120 LOC ADR)
+ratifying PageFind 1.5.0+ via `astro-pagefind` 1.8.6+ as Wave 3 search
+stack. Locks 5 acceptance criteria (3 from D1a research +
+2 D1b additions: CJK regression test + lib version lower-bound).
+
+## files
+
+Created (NEW — 1 ADR + 1 self-listed):
+
+- `docs/decisions/ADR-0012-search-index-stack.md` *(NEW; ~120 LOC. Cites
+  D1a research as evidence base. Locks 5 acceptance criteria for D2:
+  bundle-size budget ≤ 120 kB gzip / index-size budget ≤ 300 kB at
+  100-note projection / reindex-on-update via post-build hook + content-
+  hash regression test / CJK regression test indexing `"中文笔记测试"` +
+  query `"笔记"` / `astro-pagefind` ≥ 1.8.6 lower-bound. Documents
+  alternatives considered (lunr.js + flexsearch + MiniSearch all
+  driven from D1a evidence) with explicit reject rationales. Compliance
+  section ties to ADR-0008 D1 / ADR-0011 D7 / ADR-0009 separation.)*
+- `docs/plans/wave-3-main/D1b-adr-0012-search-index-stack.md` *(this PR.md.)*
+
+= **2 files in canonical `## files` block** (counts canonical here).
+
+**Explicitly NOT in `files:`** — D1b is decision-only:
+
+- `apps/site/package.json` — no dep added at D1b. D2 is the implementation
+  PR; `astro-pagefind` lands there.
+- `apps/site/astro.config.mjs` — no integration registered at D1b; D2's
+  scope.
+- `apps/site/CONTRACT.md` — surface change at D2 (per ADR-0012 acceptance
+  criterion 1 mandate).
+- `pnpm-lock.yaml` — no dep change at D1b; should be byte-identical to
+  main after merge.
+- `docs/plans/active.md` — left as-is; pointer to Wave 3 plan still
+  current.
+
+## test_cases
+
+Per locked plan D1b entry — ADR structural assertions:
+
+- **TC1** (ADR file structurally complete) Input: read
+  `docs/decisions/ADR-0012-search-index-stack.md`. Expected: contains
+  Status table / Context / Decision / Acceptance criteria / Consequences /
+  Alternatives considered / Compliance / Related sections (matches
+  ADR-0008/ADR-0009/ADR-0010/ADR-0011 template).
+- **TC2** (cites D1a research) Input: ADR. Expected: links to
+  `docs/research/2026-05-search-index-spike.md` (relative path) at least
+  3 times (Status table 触发 row, Context evidence subsection, Related
+  section).
+- **TC3** (≥3 D1a-locked acceptance criteria preserved) Input: ADR
+  `## Acceptance criteria` section. Expected: 3 criteria from D1a
+  research summary preserved verbatim or paraphrased equivalently
+  (bundle / index / reindex).
+- **TC4** (≥2 D1b-new acceptance criteria) Input: same section.
+  Expected: criterion 4 (CJK regression test) + criterion 5
+  (`astro-pagefind` ≥ 1.8.6) present.
+- **TC5** (`astro-pagefind` version lower-bound is concrete number)
+  Input: ADR. Expected: literal `1.8.6` string appears in acceptance
+  criterion 5.
+- **TC6** (alternatives considered ≥3 candidates) Input: ADR
+  `## Alternatives considered` section. Expected: ≥3 alternative
+  candidates documented with reject rationale (lunr.js / flexsearch /
+  MiniSearch).
+- **TC7** (reindex-on-update contract per plan-challenger R2 #13)
+  Input: ADR acceptance criterion 3. Expected: explicitly forbids
+  client-side reindex AND mandates content-hash regression test on
+  MDX edit.
+- **TC8** (root pnpm check) Input: `pnpm check`. Expected: exit 0
+  (cache-hit clean — no source change).
+- **TC9** (lychee link-check) Input: `pnpm link-check` over the new
+  ADR. Expected: 0 broken relative links.
+
+## contracts_affected
+
+None at D1b. ADR ratifies a stack decision; no `packages/*/CONTRACT.md`
+or `apps/site/CONTRACT.md` change. D2 will surface acceptance results
+in `apps/site/CONTRACT.md` per criterion 1 mandate.
+
+## adr_touched
+
+- `docs/decisions/ADR-0012-search-index-stack.md` — **NEW (created)**.
+
+## acceptance
+
+1. ADR file exists at `docs/decisions/ADR-0012-search-index-stack.md`,
+   matches template — TC1 evidence.
+2. Cites D1a research ≥ 3x — TC2 evidence.
+3. ≥3 D1a-locked criteria preserved + ≥2 D1b-new criteria added (5 total)
+   — TC3+TC4 evidence.
+4. `astro-pagefind` 1.8.6 version lower-bound concrete in criterion 5
+   — TC5 evidence.
+5. Alternatives section documents ≥3 rejected candidates — TC6 evidence.
+6. Reindex-on-update contract forbids client-side path AND mandates
+   content-hash regression test — TC7 evidence.
+7. `pnpm check` exits 0 — TC8 evidence.
+8. `pnpm link-check` over new ADR returns 0 broken links — TC9 evidence.
+9. PR.md self-listed.
+10. Protected: no source / test / config / lockfile / package.json edits;
+    verify `git diff main -- '*.ts' '*.tsx' '*.astro' 'package.json' 'pnpm-lock.yaml'`
+    returns empty.
+
+## executor
+
+- **PLAN**: orchestrator-self (small ADR; pr-writer not dispatched —
+  ADR drafting is orchestrator-canonical work, ADR-0008/0009/0010/0011
+  precedent).
+- **plan-challenger codex MUST run before lock** per ADR-0007 D5
+  (locked plan D1b explicit requirement). Challenge categories: ADR
+  template fidelity / acceptance criteria measurability / alternatives
+  rejection rationale strength / compliance section completeness.
+- **EXECUTE**: orchestrator-self drafted ADR-0012 inline (already done
+  pre-PR.md as part of D1b prep).
+- **REVIEW**: codex-pr-reviewer-55 — light scope (decision-only PR;
+  no code).
+- **PRE-COMMIT CLAUDE REVIEW**: **FIRES** per D2 row 4 (new ADR).
+  orchestrator-self executes; mitigates same-model echo chamber on the
+  ADR drafting itself.
+- **COMMIT**: orchestrator-self per ADR-0006 D8 explicit-file-list
+  staging.
+
+## D2 trigger judgment (orchestrator-locked at PLAN)
+
+- **Row 1** (CONTRACT change): NO — no contract file modified.
+- **Row 2** (package add/remove): NO — D2's scope.
+- **Row 4** (new ADR): **HIT** — ADR-0012 introduced.
+- **Row 5** (cross ≥3 packages): NO — single ADR, single concept.
+- **Row 8** (CI/build/deploy/auth/security): NO at D1b (D2 will hit).
+
+→ **D1 stage 4 PRE-COMMIT CLAUDE REVIEW FIRES** (Row 4 hit). Required.
+
+## Out-of-scope (explicitly deferred)
+
+- D2: PageFind dep + Astro adapter integration + `_pagefind/` post-build
+  output verification + 5 acceptance regression tests + CONTRACT.md
+  surface update + perf measurement scripts.
+- D3: SearchBox + /search route + visual-smoke playwright + UI styling
+  (use `@pagefind/default-ui` or hand-roll TBD by D3 PLAN).
+- Server-side / API-based search (out of Wave 3 scope; would need a
+  separate ADR if ever introduced).
+- Multi-language ranking tuning beyond PageFind defaults (defer until
+  rank quality complaint surfaces).
+
+## Related
+
+- [Wave 3 plan, D1b entry](../../superpowers/plans/2026-05-01-phase-1-wave-3-integration.md) (lines 729-758).
+- [D1a PR.md](./D1a-search-index-research.md) — predecessor research PR.
+- [D1a research spike](../../research/2026-05-search-index-spike.md) — evidence base.
+- [ADR-0012](../../decisions/ADR-0012-search-index-stack.md) — the artifact this PR lands.
+- [ADR-0011 D7](../../decisions/ADR-0011-linear-pipeline-execution-model.md) — researcher subagent dispatch boundary.
+- [spec §4.2](../../superpowers/specs/2026-04-29-self-knowledge-base-design.md) — search requirement source.
+
+ succeeded in 0ms:
+# ADR-0012: Search index stack — PageFind via astro-pagefind
+
+| 字段 | 值 |
+| ---- | --- |
+| 状态 | accepted |
+| 日期 | 2026-05-01 |
+| 作者 | orchestrator (Claude Opus 4.7 1M ctx) |
+| 触发 | Wave 3 Stage D opener — D1a research spike ([docs/research/2026-05-search-index-spike.md](../research/2026-05-search-index-spike.md)) recommends single static-search-index stack to satisfy [spec §4.2](../superpowers/specs/2026-04-29-self-knowledge-base-design.md) Wave 3 search requirement; D1a research locked 3 measurable acceptance criteria for ratification here. |
+| 替代 | 不替代；本 ADR 首次为 apps/site 引入 search index stack。 |
+
+## Context
+
+[Spec §4.2](../superpowers/specs/2026-04-29-self-knowledge-base-design.md) 要求 Wave 3 在 apps/site 提供 client-side search 能力，覆盖：
+
+- 全文 MDX content（prose + component blocks 渲染后的 inline text）。
+- 标题 / 笔记元数据 (frontmatter title, tags)。
+- 非 ASCII 内容 — 项目 user 操作语言含 CJK（plan-challenger R2 #5 explicit edge case）。
+
+D1a researcher Claude subagent (sole web-access channel per [ADR-0011 D7](ADR-0011-linear-pipeline-execution-model.md)) one-shot 调研对比 3 个候选 (PageFind / lunr.js / flexsearch) over 8 axes（version + last-commit / bundle / index size / latency / build-vs-client / CJK / reindex / Astro integration），3 个 edge case（non-ASCII, punctuation-heavy, reindex-on-update），并产出 single-candidate recommendation。
+
+D1a research evidence summary：
+
+| 候选 | CJK tokenizer | Reindex story | Astro integration |
+| --- | --- | --- | --- |
+| **PageFind 1.5.0+** | `Intl.Segmenter` 自动 word-level（2026-04-06 发布） | build-time emit；deterministic；hash-cache-busted | 官方 `astro-pagefind` 1.8.6 adapter |
+| lunr.js 2.3.9 | whitespace-only；CJK 需 `lunr-chinese` 第三方 | client-build；冷启动重建 | 无官方；手工集成 |
+| flexsearch 0.7.x | `Charset.CJK` character-level only；word-level 需手工 tokenizer | build OR client；可双模 | 无官方；手工集成 |
+
+3 个候选中只有 PageFind 同时满足 (a) word-level CJK 分词零自定义代码 (b) build-time deterministic reindex contract，因此被 D1a 推荐为 single-candidate。
+
+## Decision
+
+apps/site Wave 3 搜索索引 stack 采用：
+
+1. **Index runtime**: PageFind 1.5.0+
+2. **Astro adapter**: `astro-pagefind` 1.8.6+ (`@pagefind/default-ui` 可选 UI shell)
+3. **构建集成路径**: D2 PR 在 `apps/site/astro.config.mjs` integrations 中注册 `astroPagefind()`；post-build 阶段 `astro-pagefind` adapter 扫描 `dist/` 静态 HTML 并发出 `dist/_pagefind/` 索引产物。
+4. **UI 集成路径**: D3 PR 提供 `apps/site/src/components/SearchBox.astro` + `apps/site/src/pages/search.astro`；客户端按需 import `@pagefind/default-ui` 或调用 PageFind low-level API。
+
+## Acceptance criteria (D1a-locked, ratified here)
+
+D1b ratifies the 3 measurable criteria locked at D1a `## D1b ADR acceptance criteria` section ([docs/research/2026-05-search-index-spike.md](../research/2026-05-search-index-spike.md)):
+
+1. **Bundle-size budget**: PageFind runtime + initial index chunks at first paint of search route ≤ **120 kB gzip total**, 在 `astro build` artifact 上测量（Pagefind docs 公开数据 ~70-100 kB；120 kB 留 headroom）。D2 PR 必须在 `apps/site/CONTRACT.md` 公开测量结果 + 提交可复现的测量脚本。
+2. **Index-size budget**: 整体 `dist/_pagefind/` 目录 ≤ **300 kB uncompressed** at 100-note projection（≤ 30 kB 在今天 2-note corpus）；single-query chunk fetch ≤ **80 kB gzip**。D2 PR 必须公开当前 corpus 数值 + 100-note projection。
+3. **Reindex-on-update mechanism (TC3, plan-challenger R2 #13)**: 索引由 `astro-pagefind` post-build hook 在每次 `astro build` 重新生成；D2 必须包含 regression test：mutate 一个 MDX 文件 → re-run `astro build` → 验证 `_pagefind/` 该 note 对应 chunk 的 content-hash 变化。**禁止** client-side reindex path（runtime fetch + rebuild index in browser）— 与 build-time deterministic 契约冲突。
+
+补充 acceptance（D1b new — beyond D1a）:
+
+4. **CJK regression test**: D2 必须在 `apps/site/src/__tests__/` 或对等 location 加入 regression test，索引含 `"中文笔记测试"` 字符串的 note，断言 query `"笔记"` 命中（验证 `Intl.Segmenter` word-level 行为而非 character-level）。
+5. **`astro-pagefind` 版本 lock**: D2 PR 引入的 `astro-pagefind` 必须 ≥ 1.8.6（D1a 调研基线）。lower bound 写入 `apps/site/package.json`。
+
+## Consequences
+
+### Positive
+
+- 单一 stack 决策；零自定义 tokenizer / reindex 调度代码（PageFind + adapter 全部 cover）。
+- CJK 分词从 day-1 工作（`Intl.Segmenter` Node 18+ + 现代浏览器全量支持），不需后续追加 `lunr-chinese` 类第三方。
+- Reindex contract = build artifact 的一部分；CI / dist hashing / cache invalidation 自然继承现有 `astro build` pipeline。
+- Astro 官方 adapter `astro-pagefind` 已存在并在维护（1.8.6 / 2026 持续 commit）；不增加项目独立 integration 维护负担。
+
+### Negative
+
+- PageFind runtime + `_pagefind/` 静态目录会增加 `apps/site/dist/` 体积（criterion 1+2 cap 此影响）。
+- `Intl.Segmenter` 在极老浏览器（IE11、Safari < 14.1）不可用 — 项目浏览器 baseline 是现代 evergreen，可接受。
+- 如未来 PageFind project 进入 maintenance mode，stack 切换需要 D2 PR 等量级工作量；通过 acceptance criterion 1+2+3+5 显式记录测量基线，便于未来 swap 时基线对比。
+
+### Neutral / explicit out-of-scope
+
+- **D2** 实施 build integration + acceptance criteria 1-5 测试；D2 是独立 PR，本 ADR 仅授权 stack 选择不预言 D2 实施细节。
+- **D3** 实施 UI（SearchBox + /search route + visual-smoke playwright）；D3 决定是否使用 `@pagefind/default-ui` 还是手工 React/Vanilla UI。
+- **server-side search** （未来若引入 apps/api endpoint based search） 不受本 ADR 约束 — PageFind 是 client-side static 决策，server-side search 若发生需另写 ADR。
+- 索引 partial language detection / 多语言 ranking — D2/D3 默认按 PageFind 出厂行为；若发现 ranking 缺陷再开后续 ADR。
+
+## Alternatives considered (D1a evidence)
+
+### lunr.js — 已驳回
+
+- CJK 分词 zero-out-of-box；`lunr-chinese` (Wiredcraft) 最近活动 2018，`lunr-languages` 不覆盖 CJK；自带维护负担违反 ADR-0008 D1 dead-dep 精神（相邻 dep family）。
+- Reindex 默认 client-build；冷启动 + cold-cache 用户每次重新 tokenize + index 整 corpus，与 build-time deterministic 契约冲突。
+- 自 2.3.9 (2020) 后 dormant；timeliness 不达标。
+
+### flexsearch — 已驳回
+
+- `Charset.CJK` character-level only；word-level CJK 需自写 segmenter（plan-challenger R2 #5 fail）。
+- 0.7.x 最近 commit 活跃但 `Charset.CJK` documentation 长期未更新；社区 issue (#137) 反映 CJK 实质支持不完整（Ghost #22874 PR 公开了相同 gap）。
+- Build OR client 双模 — 灵活但选 client 时与 reindex contract 冲突，选 build 时配置复杂度高于 PageFind。
+
+### MiniSearch — 评估后未列为正式候选
+
+- 现代 (active maintenance) + 体积小，但 CJK tokenizer 同样 character-level only + 无官方 Astro adapter；与 flexsearch 同类问题且 `astro-pagefind` 提供更优 Astro integration。
+
+## Compliance
+
+- 本 ADR 满足 [ADR-0008 D1](ADR-0008-wave-2-entry-policies.md) dead-dep 政策：`astro-pagefind` 是 `apps/site` 的 runtime dep（被 `astro.config.mjs` 直接 import），不是 dead dep。
+- 本 ADR 满足 [ADR-0011 D7](ADR-0011-linear-pipeline-execution-model.md) researcher subagent 边界：D1a researcher 只产出 research doc + 推荐，不直接 mutate 代码；本 ADR 由 orchestrator-self drafting + plan-challenger codex 挑战，符合"researcher 一次性 dispatch + ADR 由 orchestrator-self 写"流程。
+- 本 ADR 不影响 [ADR-0009](ADR-0009-block-kind-union-expansion.md) BlockKind union；与 block-foundation 完全解耦。
+- 本 ADR 不引入新的 cross-package dependency；`astro-pagefind` 仅被 `apps/site` consume。
+
+## Related
+
+- [D1a research spike](../research/2026-05-search-index-spike.md) — 调研依据，本 ADR acceptance criteria 1-3 的事实基础。
+- [D1b PR.md](../plans/wave-3-main/D1b-adr-0012-search-index-stack.md) — 本 ADR 的 PR 上下文。
+- [Wave 3 plan, D1b entry](../superpowers/plans/2026-05-01-phase-1-wave-3-integration.md) — D1b plan-challenger lock 出处。
+- [spec §4.2](../superpowers/specs/2026-04-29-self-knowledge-base-design.md) — Wave 3 search 需求出处。
+- [ADR-0011](ADR-0011-linear-pipeline-execution-model.md) — pipeline 框架。
+
+codex
+I’ve now got the full PR/ADR context; next I’m validating the specific D2 checks against wording in the artifacts, especially LOC scope and whether each acceptance test is actually machine-checkable in a decision-only PR.
+exec
+/bin/bash -lc 'wc -l docs/plans/wave-3-main/D1b-adr-0012-search-index-stack.md docs/decisions/ADR-0012-search-index-stack.md' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+  158 docs/plans/wave-3-main/D1b-adr-0012-search-index-stack.md
+  106 docs/decisions/ADR-0012-search-index-stack.md
+  264 total
+
+codex
+1. **CHALLENGE**: The D1b LOC constraint is not met as written: [docs/plans/wave-3-main/D1b-adr-0012-search-index-stack.md](/home/weiyi/selfKnowledgeBaseWeb/docs/plans/wave-3-main/D1b-adr-0012-search-index-stack.md) is 158 lines and [docs/decisions/ADR-0012-search-index-stack.md](/home/weiyi/selfKnowledgeBaseWeb/docs/decisions/ADR-0012-search-index-stack.md) is 106 lines, so the combined plan+ADR change is 264 LOC, which violates a strict `≤200 LOC` gate even though responsibility is narrow.
+
+2. **CHALLENGE**: Criterion B is only partially satisfied for machine review because several TC entries (notably TC8/TC9 and parts of TC3/TC4/TC7) do not include a concrete, single-path `location` target in a strict triple format; they are largely command/section-level assertions, which is weaker for a deterministic reviewer check on a decision-only PR.
+
+3. **CHALLENGE**: CJK verification in criterion 4 is weakly specified for its own intent and risks a false-positive: the fixture `"中文笔记测试"` + query `"笔记"` in [ADR-0012](/home/weiyi/selfKnowledgeBaseWeb/docs/decisions/ADR-0012-search-index-stack.md) does not unambiguously distinguish word-level `Intl.Segmenter` behavior from character-level matching, so it may pass on a tokenizer that is still semantically too coarse.
+
+4. **CHALLENGE**: Edge-case coverage is incomplete for the contract in H: the plan/ADR does not lock behavior for `/search` SSR/render-before-index availability and does not define acceptance checks for stale `_pagefind/` assets when cached by CDN/proxy after MDX mutation, so these deployment/runtime risks are not prevented by the stated criteria.
+
+1. **SUGGESTION**: Clarify whether D1b LOC is measured as “ADR text + plan text” or “diff lines total”; if strict, trim duplication and move prose/boilerplate elsewhere to keep the decision PR under the budget.
+
+2. **SUGGESTION**: Make each test explicit in a machine-usable schema with fields `input / expected / location`, including concrete commands and expected files/paths (e.g., `apps/site/src/__tests__/search.cjk.test.ts`, `docs/decisions/ADR-0012...`) so ADR-only review can be checked without ambiguity.
+
+3. **SUGGESTION**: Upgrade criterion 4 to a stronger CJK discriminator: include at least one boundary test where character-level tokenizers produce known false positives/negatives, e.g., a query that should only match a real segmented term and a nearby unrelated phrase that should not.
+
+4. **SUGGESTION**: Add two explicit negative acceptance checks in D2 lock scope: (a) `/search` request before `_pagefind/` exists must fail safely with deterministic fallback/UX, and (b) cached `_pagefind/` chunk invalidation must be asserted after MDX edit via a stale-cache simulation (e.g., immutable URL/hash mismatch + forced re-fetch).
+2026-05-02T01:52:51.784044Z ERROR codex_core::session: failed to record rollout items: thread 019de663-4339-7af2-aef5-131d55c3a5d5 not found
+tokens used
+39,442
+1. **CHALLENGE**: The D1b LOC constraint is not met as written: [docs/plans/wave-3-main/D1b-adr-0012-search-index-stack.md](/home/weiyi/selfKnowledgeBaseWeb/docs/plans/wave-3-main/D1b-adr-0012-search-index-stack.md) is 158 lines and [docs/decisions/ADR-0012-search-index-stack.md](/home/weiyi/selfKnowledgeBaseWeb/docs/decisions/ADR-0012-search-index-stack.md) is 106 lines, so the combined plan+ADR change is 264 LOC, which violates a strict `≤200 LOC` gate even though responsibility is narrow.
+
+2. **CHALLENGE**: Criterion B is only partially satisfied for machine review because several TC entries (notably TC8/TC9 and parts of TC3/TC4/TC7) do not include a concrete, single-path `location` target in a strict triple format; they are largely command/section-level assertions, which is weaker for a deterministic reviewer check on a decision-only PR.
+
+3. **CHALLENGE**: CJK verification in criterion 4 is weakly specified for its own intent and risks a false-positive: the fixture `"中文笔记测试"` + query `"笔记"` in [ADR-0012](/home/weiyi/selfKnowledgeBaseWeb/docs/decisions/ADR-0012-search-index-stack.md) does not unambiguously distinguish word-level `Intl.Segmenter` behavior from character-level matching, so it may pass on a tokenizer that is still semantically too coarse.
+
+4. **CHALLENGE**: Edge-case coverage is incomplete for the contract in H: the plan/ADR does not lock behavior for `/search` SSR/render-before-index availability and does not define acceptance checks for stale `_pagefind/` assets when cached by CDN/proxy after MDX mutation, so these deployment/runtime risks are not prevented by the stated criteria.
+
+1. **SUGGESTION**: Clarify whether D1b LOC is measured as “ADR text + plan text” or “diff lines total”; if strict, trim duplication and move prose/boilerplate elsewhere to keep the decision PR under the budget.
+
+2. **SUGGESTION**: Make each test explicit in a machine-usable schema with fields `input / expected / location`, including concrete commands and expected files/paths (e.g., `apps/site/src/__tests__/search.cjk.test.ts`, `docs/decisions/ADR-0012...`) so ADR-only review can be checked without ambiguity.
+
+3. **SUGGESTION**: Upgrade criterion 4 to a stronger CJK discriminator: include at least one boundary test where character-level tokenizers produce known false positives/negatives, e.g., a query that should only match a real segmented term and a nearby unrelated phrase that should not.
+
+4. **SUGGESTION**: Add two explicit negative acceptance checks in D2 lock scope: (a) `/search` request before `_pagefind/` exists must fail safely with deterministic fallback/UX, and (b) cached `_pagefind/` chunk invalidation must be asserted after MDX edit via a stale-cache simulation (e.g., immutable URL/hash mismatch + forced re-fetch).
