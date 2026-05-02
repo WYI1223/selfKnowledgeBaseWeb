@@ -36,24 +36,6 @@ async function resultTexts(page: Page): Promise<string[]> {
   return page.locator('.pagefind-ui__result').allTextContents();
 }
 
-async function stableResultTexts(page: Page): Promise<string[]> {
-  const results = page.locator('.pagefind-ui__result');
-  let previousCount = -1;
-  let stableReads = 0;
-
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    await page.waitForTimeout(250);
-    const count = await results.count();
-    stableReads = count === previousCount ? stableReads + 1 : 0;
-    previousCount = count;
-    if (stableReads >= 2) {
-      return results.allTextContents();
-    }
-  }
-
-  return results.allTextContents();
-}
-
 test('a11y smoke', async ({ page }) => {
   await page.goto('/search');
   const searchInput = await focusSearchInputWithTab(page);
