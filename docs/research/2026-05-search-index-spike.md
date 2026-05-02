@@ -209,7 +209,7 @@ D2/D3 PR-level acceptance blocks):
 - Pagefind 1.5.0 / 1.5.2 release notes: https://github.com/CloudCannon/pagefind/releases (CJK `Intl.Segmenter` segmentation, Web Worker search, smaller indexes)
 - Pagefind CHANGELOG: https://github.com/Pagefind/pagefind/blob/main/CHANGELOG.md
 - Pagefind CJK issue ref: https://github.com/Pagefind/pagefind/issues/987
-- `astro-pagefind` adapter (1.8.6): https://github.com/shishkin/astro-pagefind ; npm: https://www.npmjs.com/package/astro-pagefind
+- `astro-pagefind` adapter (1.8.6): https://github.com/shishkin/astro-pagefind (npm: package id `astro-pagefind`; direct npmjs.com URL omitted to avoid lychee 403 anti-bot rejection)
 - Astro setup guide: https://syntackle.com/blog/pagefind-search-in-astro-site/
 - lunr.js homepage: https://lunrjs.com — feature list
 - lunr.js repo (2.3.9, dormant): https://github.com/olivernn/lunr.js
