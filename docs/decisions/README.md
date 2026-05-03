@@ -19,7 +19,7 @@
 | [0011](ADR-0011-linear-pipeline-execution-model.md)       | Linear-pipeline execution model (Wave 3+) + v0.1.1 SOTed-PR.md | 2026-05-01 | accepted |
 | [0012](ADR-0012-search-index-stack.md)                    | Search index stack — PageFind via astro-pagefind            | 2026-05-01 | accepted |
 | [0013](ADR-0013-wave-3-close.md)                          | Wave 3 close — 24-PR ratification + Wave 4 deferred set     | 2026-05-02 | accepted |
-| [0014](ADR-0014-heavy-block-boundary.md)                  | HeavyBlockBoundary wrapper for client:only heavy blocks     | 2026-05-03 | proposed |
+| [0014](ADR-0014-heavy-block-boundary.md)                  | HeavyBlockBoundary wrapper for client:only heavy blocks     | 2026-05-03 | accepted |
 
 ## 模板
 

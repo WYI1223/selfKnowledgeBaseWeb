@@ -3,7 +3,7 @@
 > SessionStart hook 读取此文件，把当前 wave 印在 session 起手位置。
 
 **当前 phase**: 1
-**当前 wave**: Wave 4 in progress — plan locked at [docs/superpowers/plans/2026-05-03-phase-1-wave-4-integration.md](../superpowers/plans/2026-05-03-phase-1-wave-4-integration.md) (2026-05-03; plan-challenger 15/15 absorbed). Pre-A1 + Pre-A2 + Pre-A3 + A1 + A2 + A3 + A4 + A5 + A6 + A7 done. **Stage A8 (Phase 2 chunking + perf baseline + ADR-0014 promote `proposed → accepted`; Stage A close) is the next implementation PR.**
+**当前 wave**: Wave 4 Stage A ✅ DONE (8/8 PRs merged 2026-05-03; ADR-0014 promoted `proposed → accepted` at A8). Plan locked at [docs/superpowers/plans/2026-05-03-phase-1-wave-4-integration.md](../superpowers/plans/2026-05-03-phase-1-wave-4-integration.md). **Stage B (B1: ADR-0012 amendment for PageFind query-time substring) is the next implementation PR.**
 
 **Wave 4 PR roster** (in-progress; merged 2026-05-03):
 
@@ -18,15 +18,16 @@
 | #34 | 5f360a6 | A4 | HeavyBlockBoundary CSS + a11y polish + prefers-reduced-motion + CONTRACT.md consolidation (AC#4/#12/#13/#14) |
 | #35 | 59a93c0 | A5 | apps/site dims migration via heavyBoundaryDimensions (AC#15) |
 | #36 | 95ba33b | A6 | playwright T0/T1 zero-layout-shift test (AC#5) |
-| #TBD (this) | TBD | A7 | 5×.astro variants consolidation (Wave 3 C4a/C4b carry-over) |
-| Stage A remaining | A8 (1 PR — Stage A close) | A | perf+chunking+ADR-0014 promote (A8) |
+| #37 | 87d0b32 | A7 | 5×.astro variants consolidation (Wave 3 C4a/C4b carry-over) |
+| #TBD (this) | TBD | A8 | Stage A close: perf baseline + chunking NO-OP + ADR-0014 promote `proposed→accepted` |
+| **Stage A** | ✅ **DONE** (8/8 PRs) | A | A1-A8 merged 2026-05-03; ADR-0014 promoted to accepted |
 | Stage B | B1-B4 + B5a/B5b + B6 (6 PRs) | B | ADR-0012 amend + sample-assets + intro prose + __test_cjk__ relocate + retrospective items + close-ceremony prep |
 | Stage C | open-ended | C | Phase 1 user-iteration scope (per gatekeeper directive #4 + MVP framework) |
 
-**Wave 4 mandatory scope (Wave 3 carry-overs)** — status as of Pre-A3 lock:
+**Wave 4 mandatory scope (Wave 3 carry-overs)** — status as of A8 Stage A close:
 - ✅ Codex audit-log piping fix (R7) in `docs/runbooks/codex-tool-invocations.md` — Pre-A1 closed
-- ✅ ADR-0014: heavy-block client:only + skeleton states (Jupyter/NnViz/AgentFlow runtime hydration boundary) — Pre-A2 design locked v0.2; Stage A implements + A8 promotes to accepted
-- ⏳ Stage C completion: C4a (3 missing block Astro variants math/pdf/jupyter) + C4b (2 heavy block Astro variants nn-viz/agent-flow) + C5 (Phase 2 selective chunking + perf baseline) — Stage A A7 + A8 scope
+- ✅ ADR-0014: heavy-block client:only + skeleton states (Jupyter/NnViz/AgentFlow runtime hydration boundary) — **✅ Stage A1-A7 implemented + A8 promoted to accepted (2026-05-03)**
+- ✅ Stage C completion: C4a (3 missing block Astro variants math/pdf/jupyter) + C4b (2 heavy block Astro variants nn-viz/agent-flow) + C5 (Phase 2 selective chunking + perf baseline) — **✅ A7 + A8 (Wave 4 Stage A close 2026-05-03)**
 - ⏳ ADR-0012 amendment: PageFind query-time substring finding — Stage B B1 scope
 - ⏳ Path-prose alignment in ADR-0012: `_pagefind/` → `pagefind/` — Stage B B1 scope (combined)
 
@@ -79,7 +80,7 @@ Wave 3 main pipeline PR roster (2026-05-01 → 2026-05-02, all merged via auto-m
 
 ## 起手指引（Wave 4 session 拉到此文件后开始）
 
-Wave 4 plan is **LOCKED** at [docs/superpowers/plans/2026-05-03-phase-1-wave-4-integration.md](../superpowers/plans/2026-05-03-phase-1-wave-4-integration.md). Pre-A1 + Pre-A2 + Pre-A3 + A1 + A2 + A3 + A4 + A5 + A6 + A7 done. **Stage A8 (Phase 2 chunking + perf baseline + ADR-0014 promote `proposed → accepted`; Stage A close) is the next implementation PR.**
+Wave 4 plan is **LOCKED** at [docs/superpowers/plans/2026-05-03-phase-1-wave-4-integration.md](../superpowers/plans/2026-05-03-phase-1-wave-4-integration.md). Stage A ✅ DONE (8/8 PRs merged 2026-05-03; ADR-0014 promoted `proposed → accepted` at A8). **Stage B (B1: ADR-0012 amendment for PageFind query-time substring) is the next implementation PR.**
 
 ### Pre-flight (every session start)
 

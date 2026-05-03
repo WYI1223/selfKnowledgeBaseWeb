@@ -2,7 +2,7 @@
 
 | 字段 | 值 |
 | ---- | --- |
-| 状态 | proposed |
+| 状态 | accepted |
 | 日期 | 2026-05-03 |
 | 作者 | orchestrator (Claude Opus 4.7 1M ctx) |
 | 触发 | Wave 3 C3 PR shipped 3 heavy block placeholders (`makeHeavyBlockPlaceholder` factory in `apps/site/src/components.ts`); ADR-0013 D3 deferred ADR-0014 to Wave 4 with explicit requirements (client:only wrapper + skeleton states matching SSR placeholder dimensions); gatekeeper 2026-05-02 directive strengthens design (unified wrapper + plugin-extensible + dimensions-per-kind + visual skeleton). |
@@ -552,3 +552,40 @@ verdict.
 **Lock evidence**: this absorbtion table + each verdict cross-references
 the D-list section that codifies the change. Reviewers verify by walking
 each row's "Reason" link to the corresponding D-section.
+
+## Amendments
+
+### v0.2.1 (2026-05-03) — Status promoted `proposed → accepted` at Stage A close
+
+Per Wave 4 plan Stage A close criterion #1 + gatekeeper directive
+2026-05-03 #3. The A1-A7 implementation arc was reviewed against
+ADR-0014 v0.2 D-list (D1-D9) and acceptance criteria (AC#1-#15) at A8
+(this PR); the walkthrough is recorded in
+[docs/plans/wave-4-main/A8-perf-chunking-adr-0014-promote.md](../plans/wave-4-main/A8-perf-chunking-adr-0014-promote.md)
+`## Pre-promotion review` section. All D1-D9 + AC#1-#15 satisfied; no
+inconsistencies surfaced; promotion authorized in-scope for this PR.
+
+Implementation PRs (squash HEADs):
+
+| PR | Squash HEAD | Subject |
+|---|---|---|
+| #31 | `f765968` | A1 — `@skb/heavy-block-boundary` package shell (D7 + D1 placeholder body) |
+| #32 | `1d2f324` | A2 — D3 hydration lifecycle (mount + AbortController + mount-guard); AC#1/#2/#3/#6/#10/#11 |
+| #33 | `92c8751` | A3 — D3 retry flow (retry button + maxRetries + onLoadError); AC#7/#8/#9 |
+| #34 | `5f360a6` | A4 — D6 CSS + D2 a11y polish + prefers-reduced-motion + CONTRACT.md invariants consolidated; AC#4/#12/#13/#14 |
+| #35 | `59a93c0` | A5 — D5 dimensions ownership + D8 apps/site migration; AC#15 |
+| #36 | `95ba33b` | A6 — playwright T0/T1 zero-layout-shift CI test (CI-only); AC#5 |
+| #37 | `87d0b32` | A7 — Wave 3 C4a/C4b carry-over: 5 .astro variants direct-Astro consumer page; no NEW AC |
+| #TBD | TBD | A8 — this PR: Stage A close, perf baseline, Phase 2 chunking decision, and status promotion |
+
+Stage A close gates:
+
+1. ✅ ADR-0014 status `proposed → accepted` (this Amendment + line 5 flip).
+2. ✅ A6 playwright zero-layout-shift PASS (PR #36 `95ba33b`; no A8 source regression).
+3. ✅ A2 + A3 core implementation + retry semantics stable through A4-A7.
+4. ✅ A7→A8 Pre-promotion review checkpoint completed in this PR.md; verdict: no inconsistencies.
+
+Phase 2 chunking (D10) decision at A8: **NO-OP**. Codex-perf-auditor
+baseline (2026-05-03) found no `@skb/heavy-block-boundary` leak into
+prose-only JS chunks. apps/site/astro.config.mjs unchanged. Evidence:
+[docs/audits/perf-2026-05-03.md](../audits/perf-2026-05-03.md).
