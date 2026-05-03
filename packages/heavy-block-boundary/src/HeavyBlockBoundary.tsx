@@ -1,4 +1,5 @@
 import type { CSSProperties, ComponentType, ReactElement, ReactNode } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 // These public types mirror ADR-0014 D1.
 export interface HeavyBlockKindRegistry {
@@ -31,15 +32,48 @@ export interface HeavyBlockBoundaryProps<P> {
 export function HeavyBlockBoundary<P>({
   kind,
   dims,
+  load,
   loadingText,
+  childProps,
 }: HeavyBlockBoundaryProps<P>): ReactElement {
+  const [Component, setComponent] = useState<ComponentType<P> | null>(null);
+  const [, /* attempt */] = useState<number>(1);
+  const mountedRef = useRef<boolean>(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    const controller = new AbortController();
+
+    load({ signal: controller.signal })
+      .then((mod) => {
+        if (mountedRef.current) {
+          setComponent(() => mod.default);
+        }
+      })
+      .catch((err) => {
+        // A3 wires real error UI + onLoadError telemetry + retry button.
+        // Suppress abort-driven rejections so unmount cleanup is silent.
+        if (!controller.signal.aborted) {
+          console.error(`[HeavyBlockBoundary:${kind}] load failed`, err);
+        }
+        // TODO(A3): retry button + onLoadError + errorText render
+      });
+
+    return () => {
+      mountedRef.current = false;
+      controller.abort();
+    };
+    // load + kind are intentionally omitted from deps - A2 mounts once;
+    // A3 retry path will trigger re-load via attempt-state increment.
+  }, []);
+
   const resolvedLoadingText = loadingText ?? `Loading ${kind}...`;
   const skeletonStyle: CSSProperties = {
     width: `${dims.width}px`,
     minHeight: `${dims.height}px`,
   };
 
-  // TODO(A2): implement useEffect + AbortController + retry + a11y per ADR-0014 D3
+  // TODO(A4): aria-busy toggle + CSS classes + prefers-reduced-motion
   return (
     <div
       data-block={kind}
@@ -49,11 +83,17 @@ export function HeavyBlockBoundary<P>({
       aria-busy="true"
       style={skeletonStyle}
     >
-      <div className="heavy-block-skeleton__frame" aria-hidden="true" />
-      <div className="heavy-block-skeleton__spinner" aria-hidden="true" />
-      <div className="heavy-block-skeleton__text" aria-live="polite">
-        {resolvedLoadingText}
-      </div>
+      {Component ? (
+        <Component {...(childProps as JSX.IntrinsicAttributes & P)} />
+      ) : (
+        <>
+          <div className="heavy-block-skeleton__frame" aria-hidden="true" />
+          <div className="heavy-block-skeleton__spinner" aria-hidden="true" />
+          <div className="heavy-block-skeleton__text" aria-live="polite">
+            {resolvedLoadingText}
+          </div>
+        </>
+      )}
     </div>
   );
 }
