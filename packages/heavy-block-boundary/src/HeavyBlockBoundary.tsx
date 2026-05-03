@@ -34,11 +34,22 @@ export function HeavyBlockBoundary<P>({
   dims,
   load,
   loadingText,
+  errorText,
+  retryLabel,
+  maxRetries,
   childProps,
+  onLoadError,
 }: HeavyBlockBoundaryProps<P>): ReactElement {
   const [Component, setComponent] = useState<ComponentType<P> | null>(null);
-  const [, /* attempt */] = useState<number>(1);
+  const [attempt, setAttempt] = useState<number>(1);
+  const [error, setError] = useState<unknown>(null);
   const mountedRef = useRef<boolean>(true);
+
+  const resolvedLoadingText = loadingText ?? `Loading ${kind}...`;
+  const resolvedErrorText = errorText ?? `Failed to load ${kind}`;
+  const resolvedRetryLabel = retryLabel ?? 'Retry';
+  const resolvedMaxRetries = maxRetries ?? 2;
+  const canRetry = attempt <= resolvedMaxRetries;
 
   useEffect(() => {
     mountedRef.current = true;
@@ -48,26 +59,33 @@ export function HeavyBlockBoundary<P>({
       .then((mod) => {
         if (mountedRef.current) {
           setComponent(() => mod.default);
+          setError(null);
         }
       })
       .catch((err) => {
-        // A3 wires real error UI + onLoadError telemetry + retry button.
         // Suppress abort-driven rejections so unmount cleanup is silent.
-        if (!controller.signal.aborted) {
-          console.error(`[HeavyBlockBoundary:${kind}] load failed`, err);
+        if (controller.signal.aborted) return;
+        if (mountedRef.current) {
+          setError(err);
+          onLoadError?.(err, attempt);
         }
-        // TODO(A3): retry button + onLoadError + errorText render
       });
 
     return () => {
       mountedRef.current = false;
       controller.abort();
     };
-    // load + kind are intentionally omitted from deps - A2 mounts once;
-    // A3 retry path will trigger re-load via attempt-state increment.
-  }, []);
+    // load + kind are intentionally omitted from deps - referential stability
+    // is the consumer's responsibility. attempt is included to drive retry
+    // re-runs when handleRetry increments attempt.
+  }, [attempt]);
 
-  const resolvedLoadingText = loadingText ?? `Loading ${kind}...`;
+  const handleRetry = (): void => {
+    if (!canRetry) return;
+    setError(null);
+    setAttempt((prev) => prev + 1);
+  };
+
   const skeletonStyle: CSSProperties = {
     width: `${dims.width}px`,
     minHeight: `${dims.height}px`,
@@ -85,6 +103,18 @@ export function HeavyBlockBoundary<P>({
     >
       {Component ? (
         <Component {...(childProps as JSX.IntrinsicAttributes & P)} />
+      ) : error ? (
+        <div className="heavy-block-skeleton__error" role="alert">
+          <div className="heavy-block-skeleton__error-text">{resolvedErrorText}</div>
+          <button
+            type="button"
+            onClick={handleRetry}
+            disabled={!canRetry}
+            className="heavy-block-skeleton__retry"
+          >
+            {resolvedRetryLabel}
+          </button>
+        </div>
       ) : (
         <>
           <div className="heavy-block-skeleton__frame" aria-hidden="true" />
