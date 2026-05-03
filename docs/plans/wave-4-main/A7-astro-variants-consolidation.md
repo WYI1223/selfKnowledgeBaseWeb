@@ -1060,11 +1060,11 @@ Standard ADR-0011 D1 pipeline:
   [docs/plans/active.md](../active.md) — A6 row backfill +
   A7 row + Stage A pointer flip applied here.
 - **Sister A-stage PR.md**:
-  [A1](./A1-heavy-block-boundary-package-shell.md) +
-  [A2](./A2-heavy-block-boundary-core-hydration.md) +
-  [A3](./A3-heavy-block-boundary-retry-telemetry.md) +
-  [A4](./A4-heavy-block-boundary-css-a11y-contract.md) +
-  [A5](./A5-apps-site-dims-migration.md) +
+  [A1](./A1-heavy-block-boundary-package.md) +
+  [A2](./A2-heavy-block-boundary-core.md) +
+  [A3](./A3-heavy-block-boundary-retry.md) +
+  [A4](./A4-heavy-block-boundary-css-a11y.md) +
+  [A5](./A5-apps-site-heavy-block-dims-migration.md) +
   [A6](./A6-heavy-block-playwright-layout-shift.md) (this PR.md
   follows A6's prose density + structure).
 - **ADR-0011 D1-D8 linear pipeline**:
