@@ -3,7 +3,7 @@
 > SessionStart hook 读取此文件，把当前 wave 印在 session 起手位置。
 
 **当前 phase**: 1
-**当前 wave**: Wave 4 in progress — plan locked at [docs/superpowers/plans/2026-05-03-phase-1-wave-4-integration.md](../superpowers/plans/2026-05-03-phase-1-wave-4-integration.md) (2026-05-03; plan-challenger 15/15 absorbed). Pre-A1 + Pre-A2 + Pre-A3 bootstrap + lock done; Stage A starting next session.
+**当前 wave**: Wave 4 in progress — plan locked at [docs/superpowers/plans/2026-05-03-phase-1-wave-4-integration.md](../superpowers/plans/2026-05-03-phase-1-wave-4-integration.md) (2026-05-03; plan-challenger 15/15 absorbed). Pre-A1 + Pre-A2 + Pre-A3 + A1 + A2 + A3 done. **Stage A4 (CSS + a11y polish) is the next implementation PR.**
 
 **Wave 4 PR roster** (in-progress; merged 2026-05-03):
 
@@ -11,8 +11,11 @@
 |---|---|---|---|
 | #28 | `9836d67` | Pre-A1 | codex runbook --yolo + R7 /tmp piping + pipefail |
 | #29 | `876d700` | Pre-A2 | ADR-0014 HeavyBlockBoundary wrapper design lock (12/12 plan-challenger absorbed) |
-| #30 (this) | TBD | Pre-A3 | Wave 4 plan-draft lock (15/15 plan-challenger absorbed) |
-| Stage A | A1-A8 (8 PRs) | A | HeavyBlockBoundary impl + 3-block migration + C4a/b consolidated + C5 + ADR-0014 promote |
+| #30 | `3e2a4a9` | Pre-A3 | Wave 4 plan-draft lock (15/15 plan-challenger absorbed) |
+| #31 | `f765968` | A1 | `@skb/heavy-block-boundary` package shell (D1 placeholder body + ADR-0008 D1 dead-dep evidence) |
+| #32 | `1d2f324` | A2 | HeavyBlockBoundary core hydration lifecycle (D3: useEffect + AbortController + mount-guard; AC#1/#2/#3/#6/#10/#11) |
+| #TBD (this) | TBD | A3 | HeavyBlockBoundary retry + maxRetries + onLoadError telemetry (D3 retry-flow; AC#7/#8/#9) |
+| Stage A remaining | A4-A8 (5 PRs) | A | CSS+a11y (A4) + dims+migration (A5) + playwright (A6) + .astro consolidated (A7) + perf+chunking+ADR-0014 promote (A8) |
 | Stage B | B1-B4 + B5a/B5b + B6 (6 PRs) | B | ADR-0012 amend + sample-assets + intro prose + __test_cjk__ relocate + retrospective items + close-ceremony prep |
 | Stage C | open-ended | C | Phase 1 user-iteration scope (per gatekeeper directive #4 + MVP framework) |
 
@@ -72,7 +75,7 @@ Wave 3 main pipeline PR roster (2026-05-01 → 2026-05-02, all merged via auto-m
 
 ## 起手指引（Wave 4 session 拉到此文件后开始）
 
-Wave 4 plan is **LOCKED** at [docs/superpowers/plans/2026-05-03-phase-1-wave-4-integration.md](../superpowers/plans/2026-05-03-phase-1-wave-4-integration.md). Pre-A1 + Pre-A2 + Pre-A3 done. **Stage A1 (`@skb/heavy-block-boundary` package creation) is the next implementation PR.**
+Wave 4 plan is **LOCKED** at [docs/superpowers/plans/2026-05-03-phase-1-wave-4-integration.md](../superpowers/plans/2026-05-03-phase-1-wave-4-integration.md). Pre-A1 + Pre-A2 + Pre-A3 + A1 + A2 + A3 done. **Stage A4 (CSS + a11y polish) is the next implementation PR.**
 
 ### Pre-flight (every session start)
 
