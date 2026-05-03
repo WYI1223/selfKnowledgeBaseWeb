@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
 import { cleanup, act, render, fireEvent } from '@testing-library/react';
 import { createElement, type ComponentType } from 'react';
 import { hydrateRoot } from 'react-dom/client';
@@ -264,5 +267,152 @@ describe('HeavyBlockBoundary', () => {
     });
     expect(load).toHaveBeenCalledTimes(3);
     expect(onLoadError).toHaveBeenCalledTimes(3);
+  });
+
+  it('AC#4 - exact CSS class + dim style at first paint', async () => {
+    const { container } = render(
+      createElement(HeavyBlockBoundary<Record<string, never>>, {
+        kind: 'jupyter',
+        dims: { width: 600, height: 400 },
+        load: () => new Promise<{ default: ComponentType<Record<string, never>> }>(() => {}),
+        childProps: {},
+      }),
+    );
+
+    const outer = container.querySelector('[data-block="jupyter"]') as HTMLElement;
+    expect(outer).toBeTruthy();
+    expect(outer.className).toBe('heavy-block-skeleton heavy-block-skeleton--jupyter');
+    expect(outer.style.width).toBe('600px');
+    expect(outer.style.minHeight).toBe('400px');
+
+    // Exactly 3 children in JSX order: __frame, __spinner, __text.
+    const children = Array.from(outer.children);
+    expect(children.length).toBe(3);
+    expect(children[0]?.className).toBe('heavy-block-skeleton__frame');
+    expect(children[1]?.className).toBe('heavy-block-skeleton__spinner');
+    expect(children[2]?.className).toBe('heavy-block-skeleton__text');
+
+    // Outer node stability across a microtask flush (no remount; layout-stable).
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const outerAfter = container.querySelector('[data-block="jupyter"]') as HTMLElement;
+    expect(outerAfter).toBe(outer);
+  });
+
+  it('AC#12 - a11y semantics: role/aria-busy/aria-live/aria-hidden + toggle on load + error', async () => {
+    // Phase 1: initial loading
+    let resolveFn: ((mod: { default: ComponentType<Record<string, never>> }) => void) | undefined;
+    const loadPending = () =>
+      new Promise<{ default: ComponentType<Record<string, never>> }>((r) => {
+        resolveFn = r;
+      });
+
+    const { container, unmount } = render(
+      createElement(HeavyBlockBoundary<Record<string, never>>, {
+        kind: 'jupyter',
+        dims: { width: 1, height: 1 },
+        load: loadPending,
+        childProps: {},
+      }),
+    );
+
+    const outer = container.querySelector('[data-block="jupyter"]') as HTMLElement;
+    expect(outer.getAttribute('role')).toBe('status');
+    expect(outer.getAttribute('aria-busy')).toBe('true');
+
+    const text = outer.querySelector('.heavy-block-skeleton__text');
+    expect(text?.getAttribute('aria-live')).toBe('polite');
+
+    const frame = outer.querySelector('.heavy-block-skeleton__frame');
+    const spinner = outer.querySelector('.heavy-block-skeleton__spinner');
+    expect(frame?.getAttribute('aria-hidden')).toBe('true');
+    expect(spinner?.getAttribute('aria-hidden')).toBe('true');
+
+    // Phase 2: successful load -> aria-busy='false'
+    await act(async () => {
+      resolveFn?.({ default: () => createElement('div', { 'data-loaded': 'true' }) });
+      await Promise.resolve();
+    });
+    expect(outer.getAttribute('aria-busy')).toBe('false');
+
+    unmount();
+
+    // Phase 3: error path -> aria-busy='false' + role='alert' on error div
+    const loadReject = vi.fn(() => Promise.reject(new Error('a11y-test')));
+    const { container: c2 } = render(
+      createElement(HeavyBlockBoundary<Record<string, never>>, {
+        kind: 'jupyter',
+        dims: { width: 1, height: 1 },
+        load: loadReject,
+        childProps: {},
+      }),
+    );
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    const outer2 = c2.querySelector('[data-block="jupyter"]') as HTMLElement;
+    expect(outer2.getAttribute('aria-busy')).toBe('false');
+    const errorDiv = outer2.querySelector('.heavy-block-skeleton__error');
+    expect(errorDiv?.getAttribute('role')).toBe('alert');
+  });
+
+  it('AC#13 - plugin extensibility: arbitrary string kind works through full lifecycle', async () => {
+    let capturedSignal: AbortSignal | undefined;
+    const Loaded: ComponentType<{ name: string }> = ({ name }) =>
+      createElement('div', { 'data-loaded': 'true' }, name);
+    const load = vi.fn((init?: { signal?: AbortSignal }) => {
+      capturedSignal = init?.signal;
+      return Promise.resolve({ default: Loaded });
+    });
+
+    const { container, getByText } = render(
+      createElement(HeavyBlockBoundary<{ name: string }>, {
+        kind: '3d-graph',
+        dims: { width: 400, height: 300 },
+        load,
+        childProps: { name: 'plugin-OK' },
+      }),
+    );
+
+    // Pre-resolve: skeleton renders with plugin kind class + data-block.
+    const outer = container.querySelector('[data-block="3d-graph"]') as HTMLElement;
+    expect(outer).toBeTruthy();
+    expect(outer.className).toBe('heavy-block-skeleton heavy-block-skeleton--3d-graph');
+    expect(outer.querySelector('.heavy-block-skeleton__spinner')).toBeTruthy();
+    expect(load).toHaveBeenCalledTimes(1);
+    expect(capturedSignal).toBeInstanceOf(AbortSignal);
+
+    // Flush microtask so the resolved Promise applies setComponent.
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    // Loaded component renders with childProps; outer container preserved (layout stability).
+    expect(getByText('plugin-OK')).toBeTruthy();
+    expect(container.querySelector('[data-block="3d-graph"]')).toBe(outer);
+  });
+
+  it('AC#14 - heavy-block-skeleton.css contains @media prefers-reduced-motion + animation: none', () => {
+    const cssUrl = new URL('../heavy-block-skeleton.css', import.meta.url);
+    const cssPath = fileURLToPath(
+      cssUrl.protocol === 'file:'
+        ? cssUrl
+        : new URL(
+            `file://${
+              cssUrl.pathname.startsWith('/src/')
+                ? `${process.cwd()}${cssUrl.pathname}`
+                : cssUrl.pathname
+            }`,
+          ),
+    );
+    const cssContent = readFileSync(cssPath, 'utf-8');
+    // Strict: `animation: none` must be INSIDE the @media block, not anywhere
+    // in the file. Anchored regex captures the @media block + verifies the
+    // spinner rule appears within it.
+    expect(cssContent).toMatch(
+      /@media\s*\(\s*prefers-reduced-motion\s*:\s*reduce\s*\)\s*\{[^}]*\.heavy-block-skeleton__spinner\s*\{\s*animation:\s*none/,
+    );
   });
 });
