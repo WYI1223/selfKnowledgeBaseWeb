@@ -23,6 +23,7 @@ hand-craft（不走 codex-block-generator），block-nn-viz (E2) / block-agent-f
     pattern entry（per-block isolated session + AbortSignal cleanup）
   - 类型：`KernelBridge` / `KernelBridgeOptions` / `KernelPhase`
   - `JUPYTER_TOKENS: JupyterTokens` — design-token name witnesses
+  - `heavyBoundaryDimensions: HeavyBlockDimensions` (per [ADR-0014 D5](../../docs/decisions/ADR-0014-heavy-block-boundary.md)) — initial values: width 600, height 400 (CSS px). Re-exported by `./ui-default`; consumed by `apps/site` via the SSR-safe `./ui-default/heavy-boundary-dimensions` subpath and `HeavyBlockBoundary` to size the SSR skeleton; zero layout shift on hydration.
 - `./ui-default/Jupyter.astro` — apps/site SSR consumer 直接 import 的 Astro 组件
   （静态占位：仅渲染 code，kernel 在客户端 hydration 后启动）
 - `./ui-default/jupyter.css` — 视觉规则单一来源（design-token-bound，error/fg/muted/accent

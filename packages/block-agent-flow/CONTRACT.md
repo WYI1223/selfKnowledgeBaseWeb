@@ -28,6 +28,7 @@ React Flow-backed agent topology visualization（Wave 2 Track E3）。第三个
     layout（Wave 3 dagre/elkjs swap 仅替 `computeBfsLayout`）
   - 类型：`FlowBridge` / `FlowBridgeOptions` / `FlowPhase` / `FlowLayoutDescriptor` / `LayoutFn`
   - `AGENT_FLOW_TOKENS: AgentFlowTokens` — design-token name witnesses
+  - `heavyBoundaryDimensions: HeavyBlockDimensions` (per [ADR-0014 D5](../../docs/decisions/ADR-0014-heavy-block-boundary.md)) — initial values: width 600, height 400 (CSS px). Re-exported by `./ui-default`; consumed by `apps/site` via the SSR-safe `./ui-default/heavy-boundary-dimensions` subpath and `HeavyBlockBoundary` to size the SSR skeleton; zero layout shift on hydration.
 - `./ui-default/AgentFlow.astro` — SSR Astro 组件，调 `computeFlowLayout` → SVG
   snapshot（不内嵌 geometry/validation），hydrate 后由 React island 接管
 - `./ui-default/agent-flow.css` — 视觉规则单一来源（design-token-bound，error/fg/muted/accent

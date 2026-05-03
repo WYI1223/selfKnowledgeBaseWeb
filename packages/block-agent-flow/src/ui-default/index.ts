@@ -1,4 +1,5 @@
 export { agentFlowUiDefault } from './agent-flow.ui';
+export { heavyBoundaryDimensions } from './agent-flow.ui';
 export {
   AgentFlowEditorView,
   AgentFlowRenderView,

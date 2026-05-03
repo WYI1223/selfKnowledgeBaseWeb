@@ -1,4 +1,5 @@
 export { jupyterUiDefault } from './jupyter.ui';
+export { heavyBoundaryDimensions } from './jupyter.ui';
 export {
   JupyterEditorView,
   JupyterRenderView,

@@ -31,6 +31,7 @@ viz-block consumer 模式（lifecycle + abort + error triage），E3 (block-agen
     `TopologyDescriptor` / `TopologyColumn` / `TopologyEdge` / `TopologyNeuron` /
     `ComputeTopologyOptions`
   - `NN_VIZ_TOKENS: NnVizTokens` — design-token name witnesses
+  - `heavyBoundaryDimensions: HeavyBlockDimensions` (per [ADR-0014 D5](../../docs/decisions/ADR-0014-heavy-block-boundary.md)) — initial values: width 500, height 400 (CSS px). Re-exported by `./ui-default`; consumed by `apps/site` via the SSR-safe `./ui-default/heavy-boundary-dimensions` subpath and `HeavyBlockBoundary` to size the SSR skeleton; zero layout shift on hydration.
 - `./ui-default/NnViz.astro` — apps/site SSR consumer 直接 import 的 Astro 组件
   （静态拓扑 SVG 占位：仅渲染 `computeTopology(layers)` 的输出，model 在客户端 hydration 后加载）
 - `./ui-default/nn-viz.css` — 视觉规则单一来源（design-token-bound，error/fg/muted/accent

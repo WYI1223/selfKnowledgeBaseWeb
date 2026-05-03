@@ -1,4 +1,5 @@
 export { nnVizUiDefault } from './nn-viz.ui';
+export { heavyBoundaryDimensions } from './nn-viz.ui';
 export {
   NnVizEditorView,
   NnVizRenderView,
