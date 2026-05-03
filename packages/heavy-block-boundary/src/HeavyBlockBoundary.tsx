@@ -91,14 +91,13 @@ export function HeavyBlockBoundary<P>({
     minHeight: `${dims.height}px`,
   };
 
-  // TODO(A4): aria-busy toggle + CSS classes + prefers-reduced-motion
   return (
     <div
       data-block={kind}
       data-deferred="wave-4"
       className={`heavy-block-skeleton heavy-block-skeleton--${kind}`}
       role="status"
-      aria-busy="true"
+      aria-busy={Component === null && error === null ? 'true' : 'false'}
       style={skeletonStyle}
     >
       {Component ? (

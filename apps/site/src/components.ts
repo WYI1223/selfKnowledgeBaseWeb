@@ -5,6 +5,7 @@ import { ImageRenderView } from '@skb/block-image/ui-default';
 import { MathRenderView } from '@skb/block-math/ui-default';
 import { PdfRenderView } from '@skb/block-pdf/ui-default';
 import { HeavyBlockBoundary } from '@skb/heavy-block-boundary';
+import '@skb/heavy-block-boundary/heavy-block-skeleton.css';
 
 // Type-only imports preserve ADR-0008 D1 three-way symmetry for the 3
 // heavy blocks while runtime integration is deferred to Wave 4 / ADR-0014
