@@ -4,6 +4,7 @@ import { CodeRenderView } from '@skb/block-code/ui-default';
 import { ImageRenderView } from '@skb/block-image/ui-default';
 import { MathRenderView } from '@skb/block-math/ui-default';
 import { PdfRenderView } from '@skb/block-pdf/ui-default';
+import { HeavyBlockBoundary } from '@skb/heavy-block-boundary';
 
 // Type-only imports preserve ADR-0008 D1 three-way symmetry for the 3
 // heavy blocks while runtime integration is deferred to Wave 4 / ADR-0014
@@ -11,6 +12,14 @@ import { PdfRenderView } from '@skb/block-pdf/ui-default';
 import type {} from '@skb/block-jupyter/ui-default';
 import type {} from '@skb/block-nn-viz/ui-default';
 import type {} from '@skb/block-agent-flow/ui-default';
+
+// A1 ADR-0008 D1 dead-dep evidence — runtime reference to
+// `@skb/heavy-block-boundary` that survives tree-shake. A5 substitutes
+// the 3 heavy block placeholders below with real `<HeavyBlockBoundary>`
+// calls per ADR-0014 D8; this re-export goes away then. Exported (not
+// just const) so module-level dynamic import preserves the reference
+// in production bundle.
+export const __A1_HEAVY_BLOCK_BOUNDARY_REF: typeof HeavyBlockBoundary = HeavyBlockBoundary;
 
 // MDX compiles `<Callout variant="note">body</Callout>` to flat React
 // props (`<CalloutRenderView variant="note">{body}</CalloutRenderView>`),
