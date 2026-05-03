@@ -1,0 +1,87 @@
+---
+import { createRequire as createNodeRequire } from 'node:module';
+import BaseLayout from '@layouts/BaseLayout.astro';
+import type { AgentFlowEdge, AgentFlowNode } from '@skb/block-agent-flow/core';
+import AgentFlow from '@skb/block-agent-flow/ui-default/AgentFlow.astro';
+import Jupyter from '@skb/block-jupyter/ui-default/Jupyter.astro';
+import Math from '@skb/block-math/ui-default/Math.astro';
+import Pdf from '@skb/block-pdf/ui-default/Pdf.astro';
+
+type NnVizLayer = {
+  name: string;
+  units: number;
+  activation: 'relu' | 'softmax' | 'sigmoid' | 'tanh' | 'linear';
+};
+
+const sampleAgentFlow: { nodes: AgentFlowNode[]; edges: AgentFlowEdge[] } = {
+  nodes: [
+    { id: 'start', label: 'Start', type: 'agent', position: { x: 0, y: 0 } },
+    { id: 'process', label: 'Process', type: 'tool', position: { x: 200, y: 0 } },
+    { id: 'end', label: 'End', type: 'memory', position: { x: 400, y: 0 } },
+  ],
+  edges: [
+    { id: 'e1', source: 'start', target: 'process' },
+    { id: 'e2', source: 'process', target: 'end' },
+  ],
+};
+
+const nnVizLayers: NnVizLayer[] = [
+  { name: 'input', units: 4, activation: 'linear' },
+  { name: 'hidden', units: 8, activation: 'relu' },
+  { name: 'output', units: 2, activation: 'softmax' },
+];
+
+type NodeRequire = ReturnType<typeof createNodeRequire>;
+
+const globalWithRequire = globalThis as typeof globalThis & {
+  require?: NodeRequire;
+};
+globalWithRequire.require ??= createNodeRequire(import.meta.url);
+
+// NnViz is loaded dynamically because the existing SSR chunk grouping eagerly
+// evaluates adjacent tfjs-facing UI code. Keep the shim local to this page so
+// A7 remains a consumer-only integration; producer/config cleanup can happen
+// later if a cleaner Stage B path emerges.
+const { default: NnViz } = await import('@skb/block-nn-viz/ui-default/NnViz.astro');
+---
+
+<BaseLayout title="Sample Blocks (Astro variants)">
+  <h1>Astro Variants Showcase</h1>
+  <p>
+    Direct SSR consumption of the 5 <code>.astro</code> block variants from their
+    workspace packages (Wave 3 C4a + C4b carry-over).
+  </p>
+
+  <section>
+    <h2>Math</h2>
+    <Math expression="e^{i\pi} + 1 = 0" />
+    <Math
+      expression={String.raw`\int_{-\infty}^{\infty} e^{-x^{2}} \, dx = \sqrt{\pi}`}
+      display={true}
+    />
+  </section>
+
+  <section>
+    <h2>PDF</h2>
+    <Pdf src="/sample-assets/whitepaper.pdf" page={1} />
+  </section>
+
+  <section>
+    <h2>Jupyter</h2>
+    <Jupyter
+      code={`import numpy as np
+print('hello')`}
+      showLineNumbers={true}
+    />
+  </section>
+
+  <section>
+    <h2>NN-Viz</h2>
+    <NnViz layers={nnVizLayers} />
+  </section>
+
+  <section>
+    <h2>Agent Flow</h2>
+    <AgentFlow nodes={sampleAgentFlow.nodes} edges={sampleAgentFlow.edges} />
+  </section>
+</BaseLayout>

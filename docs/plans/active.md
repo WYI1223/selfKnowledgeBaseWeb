@@ -3,7 +3,7 @@
 > SessionStart hook 读取此文件，把当前 wave 印在 session 起手位置。
 
 **当前 phase**: 1
-**当前 wave**: Wave 4 in progress — plan locked at [docs/superpowers/plans/2026-05-03-phase-1-wave-4-integration.md](../superpowers/plans/2026-05-03-phase-1-wave-4-integration.md) (2026-05-03; plan-challenger 15/15 absorbed). Pre-A1 + Pre-A2 + Pre-A3 + A1 + A2 + A3 + A4 + A5 + A6 done. **Stage A7 (5×.astro variants consolidation; Wave 3 C4a/C4b carry-over) is the next implementation PR.**
+**当前 wave**: Wave 4 in progress — plan locked at [docs/superpowers/plans/2026-05-03-phase-1-wave-4-integration.md](../superpowers/plans/2026-05-03-phase-1-wave-4-integration.md) (2026-05-03; plan-challenger 15/15 absorbed). Pre-A1 + Pre-A2 + Pre-A3 + A1 + A2 + A3 + A4 + A5 + A6 + A7 done. **Stage A8 (Phase 2 chunking + perf baseline + ADR-0014 promote `proposed → accepted`; Stage A close) is the next implementation PR.**
 
 **Wave 4 PR roster** (in-progress; merged 2026-05-03):
 
@@ -17,8 +17,9 @@
 | #33 | `92c8751` | A3 | HeavyBlockBoundary retry + maxRetries + onLoadError telemetry (D3 retry-flow; AC#7/#8/#9) |
 | #34 | 5f360a6 | A4 | HeavyBlockBoundary CSS + a11y polish + prefers-reduced-motion + CONTRACT.md consolidation (AC#4/#12/#13/#14) |
 | #35 | 59a93c0 | A5 | apps/site dims migration via heavyBoundaryDimensions (AC#15) |
-| #TBD (this) | TBD | A6 | playwright T0/T1 zero-layout-shift test (AC#5) |
-| Stage A remaining | A7-A8 (2 PRs) | A | .astro consolidated (A7) + perf+chunking+ADR-0014 promote (A8) |
+| #36 | 95ba33b | A6 | playwright T0/T1 zero-layout-shift test (AC#5) |
+| #TBD (this) | TBD | A7 | 5×.astro variants consolidation (Wave 3 C4a/C4b carry-over) |
+| Stage A remaining | A8 (1 PR — Stage A close) | A | perf+chunking+ADR-0014 promote (A8) |
 | Stage B | B1-B4 + B5a/B5b + B6 (6 PRs) | B | ADR-0012 amend + sample-assets + intro prose + __test_cjk__ relocate + retrospective items + close-ceremony prep |
 | Stage C | open-ended | C | Phase 1 user-iteration scope (per gatekeeper directive #4 + MVP framework) |
 
@@ -78,7 +79,7 @@ Wave 3 main pipeline PR roster (2026-05-01 → 2026-05-02, all merged via auto-m
 
 ## 起手指引（Wave 4 session 拉到此文件后开始）
 
-Wave 4 plan is **LOCKED** at [docs/superpowers/plans/2026-05-03-phase-1-wave-4-integration.md](../superpowers/plans/2026-05-03-phase-1-wave-4-integration.md). Pre-A1 + Pre-A2 + Pre-A3 + A1 + A2 + A3 + A4 + A5 + A6 done. **Stage A7 (5×.astro variants consolidation; Wave 3 C4a/C4b carry-over) is the next implementation PR.**
+Wave 4 plan is **LOCKED** at [docs/superpowers/plans/2026-05-03-phase-1-wave-4-integration.md](../superpowers/plans/2026-05-03-phase-1-wave-4-integration.md). Pre-A1 + Pre-A2 + Pre-A3 + A1 + A2 + A3 + A4 + A5 + A6 + A7 done. **Stage A8 (Phase 2 chunking + perf baseline + ADR-0014 promote `proposed → accepted`; Stage A close) is the next implementation PR.**
 
 ### Pre-flight (every session start)
 
