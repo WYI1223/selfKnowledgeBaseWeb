@@ -515,7 +515,7 @@ autocomplete AND plugin extensibility.
 - [Wave 3 close structure baseline §5](../audits/structure-2026-05-wave-3-close.md) — README index gap (this PR closes by adding 0011-0014 entries)
 - [apps/site/src/components.ts:32-52](../../apps/site/src/components.ts) — Wave 3 C3 placeholder being replaced
 - [packages/block-jupyter/src/ui-default/Jupyter.astro](../../packages/block-jupyter/src/ui-default/Jupyter.astro) — existing SSR variant (orphan; for direct Astro page consumers)
-- [memory `feedback_pagefind_query_substring`](../../../.claude/projects/-home-weiyi-selfKnowledgeBaseWeb/memory/feedback_pagefind_query_substring.md) — gatekeeper 2026-05-02 directive context (smoke #10 prelude)
+- memory `feedback_pagefind_query_substring` (orchestrator-local at `~/.claude/projects/-home-weiyi-selfKnowledgeBaseWeb/memory/`) — gatekeeper 2026-05-02 directive context (smoke #10 prelude)
 
 ## Plan-challenger codex absorbtion (locked at lock-time)
 
