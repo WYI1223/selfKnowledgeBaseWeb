@@ -16,6 +16,10 @@
 | [0008](ADR-0008-wave-2-entry-policies.md)                 | Wave 2 entry policies — dead-dep + block-foundation freeze | 2026-04-30 | accepted |
 | [0009](ADR-0009-block-kind-union-expansion.md)            | BlockKind union additive expansion (Wave 2)                | 2026-04-30 | accepted |
 | [0010](ADR-0010-wave-2-close.md)                          | Wave 2 close — empirical lessons + errata + WE-* process   | 2026-05-01 | accepted |
+| [0011](ADR-0011-linear-pipeline-execution-model.md)       | Linear-pipeline execution model (Wave 3+) + v0.1.1 SOTed-PR.md | 2026-05-01 | accepted |
+| [0012](ADR-0012-search-index-stack.md)                    | Search index stack — PageFind via astro-pagefind            | 2026-05-01 | accepted |
+| [0013](ADR-0013-wave-3-close.md)                          | Wave 3 close — 24-PR ratification + Wave 4 deferred set     | 2026-05-02 | accepted |
+| [0014](ADR-0014-heavy-block-boundary.md)                  | HeavyBlockBoundary wrapper for client:only heavy blocks     | 2026-05-03 | proposed |
 
 ## 模板
 
