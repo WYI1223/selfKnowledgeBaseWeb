@@ -14,7 +14,7 @@ handle stdout (parse + audit-log).
 
 > **First-time setup for every new Claude session.** Verify the user's
 > `~/.codex/config.toml` contains all 7 profiles listed below before
-> dispatching any `codex exec --profile <name>` invocation. ADR-0011 D6
+> dispatching any `codex exec --yolo --profile <name>` invocation. ADR-0011 D6
 > introduced 4 NEW profiles (`generic-executor`, `structure-auditor`,
 > `perf-auditor`, `mdx-doctor`) plus the new default reviewer
 > `codex-pr-reviewer-55` that supersedes Wave 1+2's `pr-gate` (`pr-gate`
@@ -58,19 +58,33 @@ note after Wave 3 close once all sessions are post-merge).
 - Pattern definitions: [`agent-contract.md`](../../agent-contract.md) → `tool_patterns:` block
 - Codex profile config: [`tmp/codex-profiles.toml`](../../tmp/codex-profiles.toml) (manual merge into `~/.codex/config.toml`)
 - Architecture decision: [ADR-0007](../decisions/ADR-0007-job-function-codex-heavy-execution.md) §D5
-- Audit logs: `docs/audits/codex-runs/<date>-<task>-<pattern>.txt` (orchestrator must save every invocation's stdout)
+- Audit logs (Wave 4+ R7-mitigation flow): raw stdout → `/tmp/codex-runs/<date>-<task>-<pattern>.txt` (off-workspace, sandbox-invisible) → `head -2000` truncate → `docs/audits/codex-runs/<date>-<task>-<pattern>.txt` archive (in-tree, committed). Orchestrator must save every invocation's stdout via this two-step flow.
 
 ## Universal Bash invariants
 
 ```bash
-codex exec --profile <PROFILE> "<PROMPT>" < /dev/null > <AUDIT_LOG_PATH> 2>&1
+# Mandatory: pipefail so codex's exit code surfaces past tee.
+# Without this, a failed dispatch is masked by tee's exit 0
+# (breaking the 3-strike fallback).
+set -o pipefail
+
+codex exec --yolo --profile <PROFILE> "<PROMPT>" < /dev/null \
+  2>&1 | tee /tmp/codex-runs/<date>-<task>-<pattern>.txt
+exit_code=$?  # codex's real exit code, courtesy of pipefail
+
+# After codex exits, archive the truncated tail (R7 mitigation):
+head -2000 /tmp/codex-runs/<date>-<task>-<pattern>.txt \
+  > docs/audits/codex-runs/<date>-<task>-<pattern>.txt
 ```
 
+- **`set -o pipefail` is mandatory** before the `codex exec | tee` pipeline. Without it, `tee`'s exit 0 masks codex's failure and the 3-strike fallback below silently breaks. Orchestrator must enable `pipefail` at session start OR per-dispatch (Bash subshell). Equivalent: `exit_code=${PIPESTATUS[0]}` immediately after the pipeline.
+- **`--yolo` is mandatory (Wave 4+, gatekeeper 2026-05-02 directive)**. Resolves R9 sandbox EAI_AGAIN blocking pnpm install + R4 user-dotfile mechanical-fix friction at flag level. Applies to all 11 codex profile dispatches; orchestrator-controlled (not user-input), so blast-radius is intentional.
 - **`< /dev/null` is mandatory** in non-interactive contexts. Codex CLI under Claude Code Bash blocks reading a never-closed Unix socket on fd 0 if stdin is left open. (Phase 0 regression; see memory `feedback_codex_stdin`.)
 - **`approval_policy = "never"`** is set per profile in TOML; do not pass interactive approval flags.
 - **stderr captures progress**, **stdout captures the final structured verdict**. Orchestrator parses stdout only.
-- **`timeout`-wrap long runs** (e.g. `timeout 600 codex exec --profile pr-gate ...`) to prevent hung invocations.
+- **`timeout`-wrap long runs** (e.g. `timeout 600 codex exec --yolo --profile codex-pr-reviewer-55 ...`) to prevent hung invocations.
 - **3-strike fallback**: if a pattern's invocation fails 3× consecutively, orchestrator MUST escalate (degrade to Claude per ADR-0001 fallback or surface to user).
+- **R7 self-recursion mitigation**: never `tee` codex stdout into a path inside the workspace tree (`docs/...`, `.codex-runs/...`, `packages/...`, etc.); codex's workspace-write sandbox can see and re-patch its own audit log into a 50 MB+ self-referential growth loop within 10–15 min. Pre-dispatch: pipe to `/tmp` (codex sandbox grants `/tmp` write but it is not a watched workspace path). During-dispatch: watchdog and SIGTERM if log grows past ~500 KB. Post-mortem: deliverable source files are usually intact pre-loop; truncate the audit log to its useful prefix (`head -2000` — covers prompt + executor note + key verdict). See memory `feedback_codex_audit_log_recursion` for the D3 incident (PID 1435181, 49 MB log) that codified this.
 
 ## ADR-0006 D8 reminder
 
@@ -86,7 +100,7 @@ orchestrator MUST stage `pnpm-lock.yaml` along with package.json edits in the sa
 **Canonical bash**:
 
 ```bash
-codex exec --profile codex-pr-reviewer-55 < /dev/null
+codex exec --yolo --profile codex-pr-reviewer-55 < /dev/null
 ```
 
 **Triggered by**:
@@ -100,8 +114,8 @@ codex exec --profile codex-pr-reviewer-55 < /dev/null
 **Output handling**:
 
 orchestrator 读 stdout 解析 PASS/FAIL + 问题清单 + 8th-class hunt 结果；
-stdout 落盘到 .codex-runs/<wave>/PR-<n>-pr-reviewer.txt 或
-docs/audits/codex-runs/<date>-<task>-pr-reviewer-55.txt。
+原始 stdout 落盘到 /tmp/codex-runs/<date>-<task>-pr-reviewer-55.txt（off-workspace per R7）；
+完成后 head -2000 截断到 docs/audits/codex-runs/<date>-<task>-pr-reviewer-55.txt 归档。
 
 **Description**:
 
@@ -146,7 +160,7 @@ verdict 结构应包含
 **Canonical bash**:
 
 ```bash
-codex exec --profile generic-executor < /dev/null
+codex exec --yolo --profile generic-executor < /dev/null
 ```
 
 **Triggered by**:
@@ -156,8 +170,8 @@ codex exec --profile generic-executor < /dev/null
 **Output handling**:
 
 orchestrator 读 stdout 拿创建/修改文件清单 + vitest 自跑结果；
-stdout 落盘到 .codex-runs/<wave>/PR-<n>-execute.txt 或
-docs/audits/codex-runs/<date>-<task>-execute.txt。
+原始 stdout 落盘到 /tmp/codex-runs/<date>-<task>-execute.txt（off-workspace per R7）；
+完成后 head -2000 截断到 docs/audits/codex-runs/<date>-<task>-execute.txt 归档。
 
 **Description**:
 
@@ -185,7 +199,7 @@ stage 5）。如发现 PR.md 写错 / 缺信息，停止并 SendMessage orchestr
 **Canonical bash**:
 
 ```bash
-codex exec --profile mdx-doctor < /dev/null
+codex exec --yolo --profile mdx-doctor < /dev/null
 ```
 
 **Triggered by**:
@@ -196,8 +210,9 @@ codex exec --profile mdx-doctor < /dev/null
 
 **Output handling**:
 
-orchestrator 读 stdout 拿 RTT fixture PASS/FAIL 清单；
-FAIL 阻断进入 D1 stage 5 commit；stdout 落盘到 .codex-runs/<wave>/PR-<n>-mdx-doctor.txt。
+orchestrator 读 stdout 拿 RTT fixture PASS/FAIL 清单；FAIL 阻断进入 D1 stage 5 commit；
+原始 stdout 落盘到 /tmp/codex-runs/<date>-<task>-mdx-doctor.txt（off-workspace per R7）；
+完成后 head -2000 截断到 docs/audits/codex-runs/<date>-<task>-mdx-doctor.txt 归档。
 
 **Description**:
 
@@ -218,7 +233,7 @@ mdx-doctor Claude teammate 全 codex 化。
 **Canonical bash**:
 
 ```bash
-codex exec --profile perf-auditor < /dev/null
+codex exec --yolo --profile perf-auditor < /dev/null
 ```
 
 **Triggered by**:
@@ -230,8 +245,9 @@ codex exec --profile perf-auditor < /dev/null
 **Output handling**:
 
 orchestrator 读 stdout 拿 perf baseline + 回归点清单；
-stdout 落盘到 docs/audits/perf-YYYY-MM-DD.md（Wave-close）或
-.codex-runs/<wave>/PR-<n>-perf-audit.txt（per-PR）。
+原始 stdout 落盘到 /tmp/codex-runs/<date>-<task>-perf-audit.txt（off-workspace per R7）；
+完成后 head -2000 截断到 docs/audits/codex-runs/<date>-<task>-perf-audit.txt 归档。
+Wave-close 时由 orchestrator 另写 curated summary 到 docs/audits/perf-YYYY-MM-DD.md（月度 / Wave-close 级），引用 /tmp 原始 + docs/audits 归档。
 
 **Description**:
 
@@ -252,7 +268,7 @@ performance-auditor Claude teammate 全 codex 化。
 **Canonical bash**:
 
 ```bash
-codex exec --profile plan-challenger < /dev/null
+codex exec --yolo --profile plan-challenger < /dev/null
 ```
 
 **Triggered by**:
@@ -262,8 +278,8 @@ codex exec --profile plan-challenger < /dev/null
 **Output handling**:
 
 orchestrator 读 stdout 拿建议清单（不阻塞）；
-stdout 落盘到 .codex-runs/<wave>-plan-challenge.txt 或
-docs/audits/codex-runs/<date>-<task>-plan-challenge.txt。
+原始 stdout 落盘到 /tmp/codex-runs/<date>-<task>-plan-challenge.txt（off-workspace per R7）；
+完成后 head -2000 截断到 docs/audits/codex-runs/<date>-<task>-plan-challenge.txt 归档。
 
 **Description**:
 
@@ -283,7 +299,7 @@ ADR-0011 D-list 起此 tool 还用于 PR-level plan-draft（不仅 wave-level）
 **Canonical bash**:
 
 ```bash
-codex exec --profile scaffolder < /dev/null
+codex exec --yolo --profile scaffolder < /dev/null
 ```
 
 **Triggered by**:
@@ -293,7 +309,8 @@ codex exec --profile scaffolder < /dev/null
 **Output handling**:
 
 orchestrator 读 stdout 拿创建路由清单；
-stdout 落盘到 docs/audits/codex-runs/<date>-<task>-api-crud.txt。
+原始 stdout 落盘到 /tmp/codex-runs/<date>-<task>-api-crud.txt（off-workspace per R7）；
+完成后 head -2000 截断到 docs/audits/codex-runs/<date>-<task>-api-crud.txt 归档。
 
 **Description**:
 
@@ -307,7 +324,7 @@ stdout 落盘到 docs/audits/codex-runs/<date>-<task>-api-crud.txt。
 **Canonical bash**:
 
 ```bash
-codex exec --profile scaffolder < /dev/null
+codex exec --yolo --profile scaffolder < /dev/null
 ```
 
 **Triggered by**:
@@ -319,7 +336,8 @@ codex exec --profile scaffolder < /dev/null
 **Output handling**:
 
 orchestrator 读 stdout 拿创建文件清单 + git diff；
-stdout 落盘到 docs/audits/codex-runs/<date>-<task>-block-clone.txt。
+原始 stdout 落盘到 /tmp/codex-runs/<date>-<task>-block-clone.txt（off-workspace per R7）；
+完成后 head -2000 截断到 docs/audits/codex-runs/<date>-<task>-block-clone.txt 归档。
 
 **Description**:
 
@@ -337,7 +355,7 @@ editor 子模块同 mode：editor-eng 写 toolbar template + 本 tool clone slas
 **Canonical bash**:
 
 ```bash
-codex exec --profile scaffolder < /dev/null
+codex exec --yolo --profile scaffolder < /dev/null
 ```
 
 **Triggered by**:
@@ -348,7 +366,8 @@ codex exec --profile scaffolder < /dev/null
 **Output handling**:
 
 orchestrator 读 stdout 拿创建文件清单；
-stdout 落盘到 docs/audits/codex-runs/<date>-<task>-css.txt。
+原始 stdout 落盘到 /tmp/codex-runs/<date>-<task>-css.txt（off-workspace per R7）；
+完成后 head -2000 截断到 docs/audits/codex-runs/<date>-<task>-css.txt 归档。
 
 **Description**:
 
@@ -363,7 +382,7 @@ stdout 落盘到 docs/audits/codex-runs/<date>-<task>-css.txt。
 **Canonical bash**:
 
 ```bash
-codex exec --profile scaffolder < /dev/null
+codex exec --yolo --profile scaffolder < /dev/null
 ```
 
 **Triggered by**:
@@ -373,7 +392,8 @@ codex exec --profile scaffolder < /dev/null
 **Output handling**:
 
 orchestrator 读 stdout 拿创建文件清单 + 验证 --help 输出；
-stdout 落盘到 docs/audits/codex-runs/<date>-<task>-script.txt。
+原始 stdout 落盘到 /tmp/codex-runs/<date>-<task>-script.txt（off-workspace per R7）；
+完成后 head -2000 截断到 docs/audits/codex-runs/<date>-<task>-script.txt 归档。
 
 **Description**:
 
@@ -388,7 +408,7 @@ WE-007 强制：codex-script-builder 输出后 orchestrator 必跑 pnpm lint 独
 **Canonical bash**:
 
 ```bash
-codex exec --profile scaffolder < /dev/null
+codex exec --yolo --profile scaffolder < /dev/null
 ```
 
 **Triggered by**:
@@ -399,7 +419,8 @@ codex exec --profile scaffolder < /dev/null
 **Output handling**:
 
 orchestrator 读 stdout 拿创建文件清单；
-stdout 落盘到 docs/audits/codex-runs/<date>-<task>-test-scaffold.txt。
+原始 stdout 落盘到 /tmp/codex-runs/<date>-<task>-test-scaffold.txt（off-workspace per R7）；
+完成后 head -2000 截断到 docs/audits/codex-runs/<date>-<task>-test-scaffold.txt 归档。
 
 **Description**:
 
@@ -413,7 +434,7 @@ stdout 落盘到 docs/audits/codex-runs/<date>-<task>-test-scaffold.txt。
 **Canonical bash**:
 
 ```bash
-codex exec --profile structure-auditor < /dev/null
+codex exec --yolo --profile structure-auditor < /dev/null
 ```
 
 **Triggered by**:
@@ -425,8 +446,9 @@ codex exec --profile structure-auditor < /dev/null
 **Output handling**:
 
 orchestrator 读 stdout 拿 god-file / 契约漂移 / 孤儿包 / D1 dead-dep 清单；
-Wave-close 时输出落盘到 docs/audits/structure-YYYY-MM.md（月度 / Wave-close）。
-Per-PR 速查落盘到 .codex-runs/<wave>/PR-<n>-structure-audit.txt。
+原始 stdout 落盘到 /tmp/codex-runs/<date>-<task>-structure-audit.txt（off-workspace per R7）；
+完成后 head -2000 截断到 docs/audits/codex-runs/<date>-<task>-structure-audit.txt 归档。
+Wave-close 时由 orchestrator 另写 curated summary 到 docs/audits/structure-YYYY-MM-<event>.md（月度 / Wave-close 级），引用 /tmp 原始 + docs/audits 归档。
 
 **Description**:
 

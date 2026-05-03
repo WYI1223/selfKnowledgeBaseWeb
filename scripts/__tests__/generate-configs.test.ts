@@ -239,7 +239,7 @@ describe('renderAgentsMd', () => {
     const contract = realContract();
     const out = renderAgentsMd(contract);
     expect(out).toContain('GENERATED FROM agent-contract.md');
-    expect(out).toContain('codex exec --profile');
+    expect(out).toContain('codex exec --yolo --profile');
     expect(out).toContain('< /dev/null');
     for (const tp of contract.tool_patterns) {
       expect(out).toContain(tp.name);
@@ -349,7 +349,7 @@ describe('renderCodexToolRunbook', () => {
     const contract = realContract();
     const out = renderCodexToolRunbook(contract);
     expect(out).toContain('GENERATED FROM agent-contract.md');
-    expect(out).toContain('codex exec --profile');
+    expect(out).toContain('codex exec --yolo --profile');
     for (const tp of contract.tool_patterns) {
       expect(out).toContain(`## \`${tp.name}\``);
       expect(out).toContain(tp.invocation);

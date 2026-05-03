@@ -56,7 +56,7 @@ tool_patterns:
   - name: <pattern-id>
     profile: scaffolder | plan-challenger | codex-pr-reviewer-55
            | generic-executor | structure-auditor | perf-auditor | mdx-doctor
-    invocation: <bash template, e.g. "codex exec --profile X < /dev/null">
+    invocation: <bash template, e.g. "codex exec --yolo --profile X < /dev/null">
     triggered_by: <list of orchestrator-side trigger conditions>
     output_handling: <how orchestrator parses / stores stdout, optional>
     description: |
@@ -224,14 +224,15 @@ tool_patterns:
   # ---- Tier 1 scaffolding tools (5 — ADR-0007 D5 沿用) ----
   - name: codex-block-generator
     profile: scaffolder
-    invocation: 'codex exec --profile scaffolder < /dev/null'
+    invocation: 'codex exec --yolo --profile scaffolder < /dev/null'
     triggered_by:
       - simple_block_template_committed
       - editor_submodule_template_committed
       - ui_default_template_committed
     output_handling: |
       orchestrator 读 stdout 拿创建文件清单 + git diff；
-      stdout 落盘到 docs/audits/codex-runs/<date>-<task>-block-clone.txt。
+      原始 stdout 落盘到 /tmp/codex-runs/<date>-<task>-block-clone.txt（off-workspace per R7）；
+      完成后 head -2000 截断到 docs/audits/codex-runs/<date>-<task>-block-clone.txt 归档。
     description: |
       在 simple-block-eng / ux-ui-lead / editor-eng 提交 template 后，按模板仿造其余 block / submodule。
       ADR-0007 D3 试点：ui-default 8 个由 ux-ui-lead 写 1 个 + 本 tool clone 7 个；
@@ -242,25 +243,27 @@ tool_patterns:
 
   - name: codex-test-scaffolder
     profile: scaffolder
-    invocation: 'codex exec --profile scaffolder < /dev/null'
+    invocation: 'codex exec --yolo --profile scaffolder < /dev/null'
     triggered_by:
       - new_package_added
       - vitest_skeleton_requested
     output_handling: |
       orchestrator 读 stdout 拿创建文件清单；
-      stdout 落盘到 docs/audits/codex-runs/<date>-<task>-test-scaffold.txt。
+      原始 stdout 落盘到 /tmp/codex-runs/<date>-<task>-test-scaffold.txt（off-workspace per R7）；
+      完成后 head -2000 截断到 docs/audits/codex-runs/<date>-<task>-test-scaffold.txt 归档。
     description: |
       为每个 packages/<name> 生成 src/__tests__/ 下的 vitest 套件骨架，
       含一个示例 it() + setup helpers。具体测试由各包工种 agent 填。
 
   - name: codex-script-builder
     profile: scaffolder
-    invocation: 'codex exec --profile scaffolder < /dev/null'
+    invocation: 'codex exec --yolo --profile scaffolder < /dev/null'
     triggered_by:
       - new_cli_tool_requested
     output_handling: |
       orchestrator 读 stdout 拿创建文件清单 + 验证 --help 输出；
-      stdout 落盘到 docs/audits/codex-runs/<date>-<task>-script.txt。
+      原始 stdout 落盘到 /tmp/codex-runs/<date>-<task>-script.txt（off-workspace per R7）；
+      完成后 head -2000 截断到 docs/audits/codex-runs/<date>-<task>-script.txt 归档。
     description: |
       写 scripts/refactor-move.ts / scripts/new-block.ts / scripts/extract-pdf-text.ts 等工具。
       要求 CLI 风格、有 --help、有错误处理、用 commander 或 yargs。
@@ -268,25 +271,27 @@ tool_patterns:
 
   - name: codex-api-crud-builder
     profile: scaffolder
-    invocation: 'codex exec --profile scaffolder < /dev/null'
+    invocation: 'codex exec --yolo --profile scaffolder < /dev/null'
     triggered_by:
       - new_resource_endpoint_requested
     output_handling: |
       orchestrator 读 stdout 拿创建路由清单；
-      stdout 落盘到 docs/audits/codex-runs/<date>-<task>-api-crud.txt。
+      原始 stdout 落盘到 /tmp/codex-runs/<date>-<task>-api-crud.txt（off-workspace per R7）；
+      完成后 head -2000 截断到 docs/audits/codex-runs/<date>-<task>-api-crud.txt 归档。
     description: |
       在 apps/api 按 RESTful 风格生成 CRUD 端点骨架（Pydantic schema + 路由）。
       复杂业务逻辑由 orchestrator 协调 codex-generic-executor 实现。
 
   - name: codex-css-stylist
     profile: scaffolder
-    invocation: 'codex exec --profile scaffolder < /dev/null'
+    invocation: 'codex exec --yolo --profile scaffolder < /dev/null'
     triggered_by:
       - design_token_requested
       - tailwind_class_combo_requested
     output_handling: |
       orchestrator 读 stdout 拿创建文件清单；
-      stdout 落盘到 docs/audits/codex-runs/<date>-<task>-css.txt。
+      原始 stdout 落盘到 /tmp/codex-runs/<date>-<task>-css.txt（off-workspace per R7）；
+      完成后 head -2000 截断到 docs/audits/codex-runs/<date>-<task>-css.txt 归档。
     description: |
       写 packages/design-tokens / packages/ui 的 design tokens（颜色 / 间距 / 字体）+
       各 component 的 Tailwind 类组合。Phase 2b 设计 skill 流水线启动后，
@@ -295,13 +300,13 @@ tool_patterns:
   # ---- plan-challenger (ADR-0007 D5 沿用) ----
   - name: plan-challenger
     profile: plan-challenger
-    invocation: 'codex exec --profile plan-challenger < /dev/null'
+    invocation: 'codex exec --yolo --profile plan-challenger < /dev/null'
     triggered_by:
       - orchestrator_publishes_plan
     output_handling: |
       orchestrator 读 stdout 拿建议清单（不阻塞）；
-      stdout 落盘到 .codex-runs/<wave>-plan-challenge.txt 或
-      docs/audits/codex-runs/<date>-<task>-plan-challenge.txt。
+      原始 stdout 落盘到 /tmp/codex-runs/<date>-<task>-plan-challenge.txt（off-workspace per R7）；
+      完成后 head -2000 截断到 docs/audits/codex-runs/<date>-<task>-plan-challenge.txt 归档。
     description: |
       lock 前挑战 orchestrator 的 wave / track / PR plan：检查 task 大小、可测性、边界场景。
       orchestrator 写完 plan 后，**lock 前**通过此 invocation 挑战：
@@ -315,7 +320,7 @@ tool_patterns:
   # ---- codex-pr-reviewer-55 (ADR-0011 D6 升级原 pr-gate；D1 stage 3 默认 reviewer) ----
   - name: codex-pr-reviewer-55
     profile: codex-pr-reviewer-55
-    invocation: 'codex exec --profile codex-pr-reviewer-55 < /dev/null'
+    invocation: 'codex exec --yolo --profile codex-pr-reviewer-55 < /dev/null'
     triggered_by:
       - executor_marks_ready_for_review                                 # 每 PR 默认
       - high_risk_d2_row_1_contract_change                              # 强制深扫
@@ -324,8 +329,8 @@ tool_patterns:
       - high_risk_d2_row_8_ci_or_deploy_or_auth_or_security_touch
     output_handling: |
       orchestrator 读 stdout 解析 PASS/FAIL + 问题清单 + 8th-class hunt 结果；
-      stdout 落盘到 .codex-runs/<wave>/PR-<n>-pr-reviewer.txt 或
-      docs/audits/codex-runs/<date>-<task>-pr-reviewer-55.txt。
+      原始 stdout 落盘到 /tmp/codex-runs/<date>-<task>-pr-reviewer-55.txt（off-workspace per R7）；
+      完成后 head -2000 截断到 docs/audits/codex-runs/<date>-<task>-pr-reviewer-55.txt 归档。
     description: |
       ADR-0011 D1 stage 3 默认 reviewer。replaces Wave 1+2 的 pr-gate（5.5）+
       code-reviewer（5.3-spark）双层链路。gpt-5.5（贵但严谨）。**绝不修改代码**。
@@ -364,13 +369,13 @@ tool_patterns:
   # ---- codex-generic-executor (ADR-0011 D6 NEW; D1 stage 2 默认 executor) ----
   - name: codex-generic-executor
     profile: generic-executor
-    invocation: 'codex exec --profile generic-executor < /dev/null'
+    invocation: 'codex exec --yolo --profile generic-executor < /dev/null'
     triggered_by:
       - pr_plan_locked_executor_field_set_to_generic_executor
     output_handling: |
       orchestrator 读 stdout 拿创建/修改文件清单 + vitest 自跑结果；
-      stdout 落盘到 .codex-runs/<wave>/PR-<n>-execute.txt 或
-      docs/audits/codex-runs/<date>-<task>-execute.txt。
+      原始 stdout 落盘到 /tmp/codex-runs/<date>-<task>-execute.txt（off-workspace per R7）；
+      完成后 head -2000 截断到 docs/audits/codex-runs/<date>-<task>-execute.txt 归档。
     description: |
       ADR-0011 D6 NEW Wave 3 默认 executor。gpt-5.5 + workspace-write sandbox。
 
@@ -392,15 +397,16 @@ tool_patterns:
   # ---- codex-structure-auditor (ADR-0011 D6 NEW; per-PR + Wave-close) ----
   - name: codex-structure-auditor
     profile: structure-auditor
-    invocation: 'codex exec --profile structure-auditor < /dev/null'
+    invocation: 'codex exec --yolo --profile structure-auditor < /dev/null'
     triggered_by:
       - per_pr_post_commit                          # 每 PR 跑（速查）
       - wave_close                                  # 全量审计
       - manual_dispatch
     output_handling: |
       orchestrator 读 stdout 拿 god-file / 契约漂移 / 孤儿包 / D1 dead-dep 清单；
-      Wave-close 时输出落盘到 docs/audits/structure-YYYY-MM.md（月度 / Wave-close）。
-      Per-PR 速查落盘到 .codex-runs/<wave>/PR-<n>-structure-audit.txt。
+      原始 stdout 落盘到 /tmp/codex-runs/<date>-<task>-structure-audit.txt（off-workspace per R7）；
+      完成后 head -2000 截断到 docs/audits/codex-runs/<date>-<task>-structure-audit.txt 归档。
+      Wave-close 时由 orchestrator 另写 curated summary 到 docs/audits/structure-YYYY-MM-<event>.md（月度 / Wave-close 级），引用 /tmp 原始 + docs/audits 归档。
     description: |
       ADR-0011 D5 + D6 NEW Wave 3 audit profile。从 Wave 1+2 Tier 3
       structure-auditor Claude teammate 全 codex 化。
@@ -420,15 +426,16 @@ tool_patterns:
   # ---- codex-perf-auditor (ADR-0011 D6 NEW; bundle-affecting + Wave-close) ----
   - name: codex-perf-auditor
     profile: perf-auditor
-    invocation: 'codex exec --profile perf-auditor < /dev/null'
+    invocation: 'codex exec --yolo --profile perf-auditor < /dev/null'
     triggered_by:
       - bundle_affecting_pr                         # editor-shell / block-* / search index 等
       - wave_close
       - manual_dispatch
     output_handling: |
       orchestrator 读 stdout 拿 perf baseline + 回归点清单；
-      stdout 落盘到 docs/audits/perf-YYYY-MM-DD.md（Wave-close）或
-      .codex-runs/<wave>/PR-<n>-perf-audit.txt（per-PR）。
+      原始 stdout 落盘到 /tmp/codex-runs/<date>-<task>-perf-audit.txt（off-workspace per R7）；
+      完成后 head -2000 截断到 docs/audits/codex-runs/<date>-<task>-perf-audit.txt 归档。
+      Wave-close 时由 orchestrator 另写 curated summary 到 docs/audits/perf-YYYY-MM-DD.md（月度 / Wave-close 级），引用 /tmp 原始 + docs/audits 归档。
     description: |
       ADR-0011 D5 + D6 NEW Wave 3 audit profile。从 Wave 1+2 Tier 3
       performance-auditor Claude teammate 全 codex 化。
@@ -443,14 +450,15 @@ tool_patterns:
   # ---- codex-mdx-doctor (ADR-0011 D6 NEW; mdx-bridge fixture change PR) ----
   - name: codex-mdx-doctor
     profile: mdx-doctor
-    invocation: 'codex exec --profile mdx-doctor < /dev/null'
+    invocation: 'codex exec --yolo --profile mdx-doctor < /dev/null'
     triggered_by:
       - pr_touches_mdx_bridge
       - pr_touches_block_package                    # block-* core/ 路径任意修改
       - wave_close
     output_handling: |
-      orchestrator 读 stdout 拿 RTT fixture PASS/FAIL 清单；
-      FAIL 阻断进入 D1 stage 5 commit；stdout 落盘到 .codex-runs/<wave>/PR-<n>-mdx-doctor.txt。
+      orchestrator 读 stdout 拿 RTT fixture PASS/FAIL 清单；FAIL 阻断进入 D1 stage 5 commit；
+      原始 stdout 落盘到 /tmp/codex-runs/<date>-<task>-mdx-doctor.txt（off-workspace per R7）；
+      完成后 head -2000 截断到 docs/audits/codex-runs/<date>-<task>-mdx-doctor.txt 归档。
     description: |
       ADR-0011 D5 + D6 NEW Wave 3 audit profile。从 Wave 1+2 Tier 3
       mdx-doctor Claude teammate 全 codex 化。

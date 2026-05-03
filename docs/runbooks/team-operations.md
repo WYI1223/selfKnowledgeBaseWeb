@@ -107,14 +107,14 @@ Claude Code agent team 支持两种协作模式，**本项目（SelfKnowledgeBas
 
 ### Tier 2：reviewer / process
 
-> **ADR-0007 D5 注**：`code-reviewer` / `pr-gate` / `plan-challenger` 在本 ADR 实施 PR 完工后**降级为 tool patterns**（orchestrator 直接 Bash 调 `codex exec --profile X < /dev/null`），不再以 teammate 形式 spawn。canonical bash + 触发条件 + audit 落盘见 [`docs/runbooks/codex-tool-invocations.md`](codex-tool-invocations.md)。本表保留它们为操作语义参考（行为不变；只是 invocation pattern 从 SendMessage→teammate 变为 Bash→tool）。
+> **ADR-0007 D5 注**：`code-reviewer` / `pr-gate` / `plan-challenger` 在本 ADR 实施 PR 完工后**降级为 tool patterns**（orchestrator 直接 Bash 调 `codex exec --yolo --profile X < /dev/null`，with `set -o pipefail` + `/tmp/codex-runs/` raw + `docs/audits/codex-runs/` truncated archive — see [`docs/runbooks/codex-tool-invocations.md`](codex-tool-invocations.md) "Universal Bash invariants" for the canonical Wave 4+ flow），不再以 teammate 形式 spawn。canonical bash + 触发条件 + audit 落盘见 [`docs/runbooks/codex-tool-invocations.md`](codex-tool-invocations.md)。本表保留它们为操作语义参考（行为不变；只是 invocation pattern 从 SendMessage→teammate 变为 Bash→tool）。
 >
 > **Claude `pr-reviewer` 改为选择性触发**（ADR-0007 D2 8 条触发列表）；普通 PR 由 orchestrator 扫 codex 5.3-spark 输出 + diff 自检，不再每 PR 都调 Claude pr-reviewer。
 
 | 角色                                    | 触发                                                                 | 行为                                                                                                                                                                                                                                                                                                         |
 | --------------------------------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `code-reviewer` (tool)                  | orchestrator 触发，PR ready                                          | 读 git diff；orchestrator Bash 调 `codex exec --profile code-reviewer < /dev/null`；输出 PASS / FAIL + 具体问题；stdout 落盘到 `docs/audits/codex-runs/`。**强制 [ADR-0006](../decisions/ADR-0006-asymmetry-audit-checklist.md) 8-point asymmetry-audit checklist**（每条可适用项目都要在 verdict 里给结论） |
-| `pr-gate` (tool)                        | code-reviewer pass 后，orchestrator 判断高风险触发（ADR-0007 D2 表） | orchestrator Bash 调 `codex exec --profile pr-gate < /dev/null`（5.5）；输出 PASS / FAIL。**强制 [ADR-0006](../decisions/ADR-0006-asymmetry-audit-checklist.md) 8-point asymmetry-audit checklist + 8th-class hunt**（独立验证 R1 结论 + 主动 hunt cited-fix 之外的对称性缺口）                              |
+| `code-reviewer` (tool)                  | orchestrator 触发，PR ready                                          | 读 git diff；orchestrator Bash 调 `codex exec --yolo --profile code-reviewer < /dev/null`；输出 PASS / FAIL + 具体问题；stdout 走 `/tmp/codex-runs/` + `head -2000` 截断到 `docs/audits/codex-runs/`（per Wave 4+ R7 mitigation；详见 [`codex-tool-invocations.md`](codex-tool-invocations.md) Universal Bash invariants）。**强制 [ADR-0006](../decisions/ADR-0006-asymmetry-audit-checklist.md) 8-point asymmetry-audit checklist**（每条可适用项目都要在 verdict 里给结论） |
+| `pr-gate` (tool)                        | code-reviewer pass 后，orchestrator 判断高风险触发（ADR-0007 D2 表） | orchestrator Bash 调 `codex exec --yolo --profile pr-gate < /dev/null`（5.5；with `set -o pipefail` + Wave 4+ /tmp piping per [`codex-tool-invocations.md`](codex-tool-invocations.md)）；输出 PASS / FAIL。**强制 [ADR-0006](../decisions/ADR-0006-asymmetry-audit-checklist.md) 8-point asymmetry-audit checklist + 8th-class hunt**（独立验证 R1 结论 + 主动 hunt cited-fix 之外的对称性缺口）                              |
 | `pr-reviewer` (Claude teammate, 选择性) | code-reviewer (+pr-gate if applicable) pass + ADR-0007 D2 触发命中   | 读 spec / plan / diff；输出 APPROVE / REJECT + 跨文件影响分析                                                                                                                                                                                                                                                |
 | `git-operator`                          | pr-reviewer APPROVE 后（或常规 PR 中 orchestrator 自检 PASS 后）     | 执行 `git add` / `git commit` / `git push`；不修改代码内容                                                                                                                                                                                                                                                   |
 | `refactorer`                            | structure-auditor 标记或 manual 触发                                 | 唯一被授权跨包代码移动；每次产 ADR                                                                                                                                                                                                                                                                           |
@@ -221,10 +221,13 @@ approve 后你的进程会被终止；不要主动发 `shutdown_request`（除�
 
 **ADR-0007 D5 起**，原 `code-reviewer` / `pr-gate` / `plan-challenger` / `codex-*-eng` teammate 全部降级为 tool patterns —— 由 **orchestrator** 直接 Bash 调用，不再 spawn 为 teammate。orchestrator 调用时**必须遵守**：
 
-- **stdin 必须重定向**：`codex exec --profile <name> "<prompt>" < /dev/null` —— 否则 codex 在 team 环境下可能等待非交互输入卡住（Phase 0 实测发现）
+- **stdin 必须重定向**：`codex exec --yolo --profile <name> "<prompt>" < /dev/null` —— 否则 codex 在 team 环境下可能等待非交互输入卡住（Phase 0 实测发现）
+- **`--yolo` 是 Wave 4+ 强制**（gatekeeper 2026-05-02 directive）；resolves R9 sandbox EAI_AGAIN + R4 user-dotfile mechanical-fix friction at flag level
+- **`set -o pipefail` 必启用**（per Wave 4+ Universal Bash invariants）—— `tee` 的 exit 0 会 mask codex 失败否则；equivalent: `${PIPESTATUS[0]}` after the pipeline
 - **profile 已配 `approval_policy = "never"`**：非交互运行，不要试图绕过
 - **stdout / stderr 分流**：codex 把进度走 stderr，最终输出走 stdout；review 类 agent 只用 stdout 作为最终结论
-- **超时控制**：long-running 任务用 `timeout` 包，例如 `timeout 600 codex exec --profile code-reviewer ... < /dev/null`
+- **超时控制**：long-running 任务用 `timeout` 包，例如 `timeout 600 codex exec --yolo --profile codex-pr-reviewer-55 ... < /dev/null`
+- **audit log piping (R7 mitigation)**：raw stdout `2>&1 | tee /tmp/codex-runs/<X>.txt` 然后 `head -2000` 截断到 `docs/audits/codex-runs/<X>.txt` 归档；不要直接 tee 进 workspace tree（codex sandbox 会 self-recursion patch）
 - **失败回退**：如果 codex 三次重试仍失败，向 orchestrator 报告，让其决定降级到 Claude（按 ADR-0001 降级策略）
 
 ## 失败模式与上报

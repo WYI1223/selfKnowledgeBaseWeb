@@ -23,7 +23,7 @@ handle stdout (parse + audit-log).
 
 > **First-time setup for every new Claude session.** Verify the user's
 > \`~/.codex/config.toml\` contains all 7 profiles listed below before
-> dispatching any \`codex exec --profile <name>\` invocation. ADR-0011 D6
+> dispatching any \`codex exec --yolo --profile <name>\` invocation. ADR-0011 D6
 > introduced 4 NEW profiles (\`generic-executor\`, \`structure-auditor\`,
 > \`perf-auditor\`, \`mdx-doctor\`) plus the new default reviewer
 > \`codex-pr-reviewer-55\` that supersedes Wave 1+2's \`pr-gate\` (\`pr-gate\`
@@ -67,19 +67,33 @@ note after Wave 3 close once all sessions are post-merge).
 - Pattern definitions: [\`agent-contract.md\`](../../agent-contract.md) → \`tool_patterns:\` block
 - Codex profile config: [\`tmp/codex-profiles.toml\`](../../tmp/codex-profiles.toml) (manual merge into \`~/.codex/config.toml\`)
 - Architecture decision: [ADR-0007](../decisions/ADR-0007-job-function-codex-heavy-execution.md) §D5
-- Audit logs: \`docs/audits/codex-runs/<date>-<task>-<pattern>.txt\` (orchestrator must save every invocation's stdout)
+- Audit logs (Wave 4+ R7-mitigation flow): raw stdout → \`/tmp/codex-runs/<date>-<task>-<pattern>.txt\` (off-workspace, sandbox-invisible) → \`head -2000\` truncate → \`docs/audits/codex-runs/<date>-<task>-<pattern>.txt\` archive (in-tree, committed). Orchestrator must save every invocation's stdout via this two-step flow.
 
 ## Universal Bash invariants
 
 \`\`\`bash
-codex exec --profile <PROFILE> "<PROMPT>" < /dev/null > <AUDIT_LOG_PATH> 2>&1
+# Mandatory: pipefail so codex's exit code surfaces past tee.
+# Without this, a failed dispatch is masked by tee's exit 0
+# (breaking the 3-strike fallback).
+set -o pipefail
+
+codex exec --yolo --profile <PROFILE> "<PROMPT>" < /dev/null \\
+  2>&1 | tee /tmp/codex-runs/<date>-<task>-<pattern>.txt
+exit_code=$?  # codex's real exit code, courtesy of pipefail
+
+# After codex exits, archive the truncated tail (R7 mitigation):
+head -2000 /tmp/codex-runs/<date>-<task>-<pattern>.txt \\
+  > docs/audits/codex-runs/<date>-<task>-<pattern>.txt
 \`\`\`
 
+- **\`set -o pipefail\` is mandatory** before the \`codex exec | tee\` pipeline. Without it, \`tee\`'s exit 0 masks codex's failure and the 3-strike fallback below silently breaks. Orchestrator must enable \`pipefail\` at session start OR per-dispatch (Bash subshell). Equivalent: \`exit_code=\${PIPESTATUS[0]}\` immediately after the pipeline.
+- **\`--yolo\` is mandatory (Wave 4+, gatekeeper 2026-05-02 directive)**. Resolves R9 sandbox EAI_AGAIN blocking pnpm install + R4 user-dotfile mechanical-fix friction at flag level. Applies to all 11 codex profile dispatches; orchestrator-controlled (not user-input), so blast-radius is intentional.
 - **\`< /dev/null\` is mandatory** in non-interactive contexts. Codex CLI under Claude Code Bash blocks reading a never-closed Unix socket on fd 0 if stdin is left open. (Phase 0 regression; see memory \`feedback_codex_stdin\`.)
 - **\`approval_policy = "never"\`** is set per profile in TOML; do not pass interactive approval flags.
 - **stderr captures progress**, **stdout captures the final structured verdict**. Orchestrator parses stdout only.
-- **\`timeout\`-wrap long runs** (e.g. \`timeout 600 codex exec --profile pr-gate ...\`) to prevent hung invocations.
+- **\`timeout\`-wrap long runs** (e.g. \`timeout 600 codex exec --yolo --profile codex-pr-reviewer-55 ...\`) to prevent hung invocations.
 - **3-strike fallback**: if a pattern's invocation fails 3× consecutively, orchestrator MUST escalate (degrade to Claude per ADR-0001 fallback or surface to user).
+- **R7 self-recursion mitigation**: never \`tee\` codex stdout into a path inside the workspace tree (\`docs/...\`, \`.codex-runs/...\`, \`packages/...\`, etc.); codex's workspace-write sandbox can see and re-patch its own audit log into a 50 MB+ self-referential growth loop within 10–15 min. Pre-dispatch: pipe to \`/tmp\` (codex sandbox grants \`/tmp\` write but it is not a watched workspace path). During-dispatch: watchdog and SIGTERM if log grows past ~500 KB. Post-mortem: deliverable source files are usually intact pre-loop; truncate the audit log to its useful prefix (\`head -2000\` — covers prompt + executor note + key verdict). See memory \`feedback_codex_audit_log_recursion\` for the D3 incident (PID 1435181, 49 MB log) that codified this.
 
 ## ADR-0006 D8 reminder
 

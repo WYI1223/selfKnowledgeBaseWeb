@@ -40,17 +40,22 @@ After running `pnpm generate:configs`, manually merge `tmp/codex-profiles.toml` 
 `~/.codex/config.toml`. Then invoke a profile via:
 
 ```bash
-codex exec --profile scaffolder            "scaffold packages/block-code from block-callout template" < /dev/null
-codex exec --profile plan-challenger       "challenge docs/plans/wave-3-…/plan.md before lock" < /dev/null
-codex exec --profile codex-pr-reviewer-55  "review the staged diff (D1 stage 3 default)" < /dev/null
-codex exec --profile generic-executor      "implement PR.md test_cases first then impl" < /dev/null
-codex exec --profile structure-auditor     "scan workspace topology + ADR-0008 D1 dead-dep + drift" < /dev/null
-codex exec --profile perf-auditor          "Lighthouse / size-limit / chunk-size baseline" < /dev/null
-codex exec --profile mdx-doctor            "run all RTT fixtures + parse-equiv invariants" < /dev/null
+codex exec --yolo --profile scaffolder            "scaffold packages/block-code from block-callout template" < /dev/null
+codex exec --yolo --profile plan-challenger       "challenge docs/plans/wave-3-…/plan.md before lock" < /dev/null
+codex exec --yolo --profile codex-pr-reviewer-55  "review the staged diff (D1 stage 3 default)" < /dev/null
+codex exec --yolo --profile generic-executor      "implement PR.md test_cases first then impl" < /dev/null
+codex exec --yolo --profile structure-auditor     "scan workspace topology + ADR-0008 D1 dead-dep + drift" < /dev/null
+codex exec --yolo --profile perf-auditor          "Lighthouse / size-limit / chunk-size baseline" < /dev/null
+codex exec --yolo --profile mdx-doctor            "run all RTT fixtures + parse-equiv invariants" < /dev/null
 ```
 
 `< /dev/null` is mandatory in non-interactive contexts (Phase 0 stdin-hang regression);
-see `feedback_codex_stdin` memory.
+see `feedback_codex_stdin` memory. `--yolo` is mandatory Wave 4+ (gatekeeper
+2026-05-02 directive); resolves R9 sandbox EAI_AGAIN + R4 user-dotfile mechanical-fix
+friction at flag level. Pipe stdout to `/tmp/codex-runs/` first then `head -2000`
+truncate into `docs/audits/codex-runs/` (R7 self-recursion mitigation; see
+`feedback_codex_audit_log_recursion` memory + `docs/runbooks/codex-tool-invocations.md`
+"Universal Bash invariants").
 
 The legacy `code-reviewer` (5.3-spark) and `pr-gate` profiles are deprecated post
 ADR-0011 D6 — `codex-pr-reviewer-55` is the unified Wave 3+ default reviewer.
