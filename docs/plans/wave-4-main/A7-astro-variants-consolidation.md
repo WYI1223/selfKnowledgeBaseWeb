@@ -229,7 +229,7 @@ print('hello')`} showLineNumbers={true} />
   runtime if the asset is not yet shipped to `apps/site/public/sample-assets/`
   (Wave 4 plan B-stage scope per gatekeeper smoke #8 sample-assets ship);
   the page still SSR-renders cleanly because `renderPdf` only emits an
-  `<iframe src=...>` markup string — the iframe's 404 is a runtime
+  `iframe src="..."` markup string — the iframe's 404 is a runtime
   network condition, not a build error. The playwright render smoke
   (TC3) asserts the `[data-block="pdf"]` selector resolves to the
   outer `<div>`, NOT that the iframe successfully loads — so the smoke
@@ -771,7 +771,7 @@ Per ADR-0007 D2 row mapping for A7 (verified at PLAN time):
   alongside. Row 1 + Row 4 are both NO above → Row 5 is flag-only.
 - **Row 6 (asymmetric / sibling-pattern)**: **NO.** A7 does not
   introduce any sibling-divergent pattern; the 5 variant
-  invocations follow Astro's standard `<Component prop={...} />`
+  invocations follow Astro's standard `Component prop={...}`
   shape uniformly.
 - **Row 7 (legacy doc resurrection)**: **NO.** The 5 .astro
   variants are current-Wave-2 architecture, not resurrected legacy
