@@ -1,5 +1,7 @@
 import { defineUI } from '@skb/block-foundation';
+import type { HeavyBlockDimensions } from '@skb/heavy-block-boundary';
 import { jupyterCore } from '../core/core-definition';
+import { heavyBoundaryDimensions as heavyBoundaryDimensionsValue } from './heavy-boundary-dimensions';
 import { JupyterEditorView, JupyterRenderView } from './Jupyter';
 
 /**
@@ -20,3 +22,10 @@ export const jupyterUiDefault = defineUI({
   EditorView: JupyterEditorView,
   RenderView: JupyterRenderView,
 });
+
+/**
+ * ADR-0014 D5 per-block dimensions ownership. Consumed by apps/site
+ * componentsMap to size the SSR skeleton matching the hydrated component
+ * (zero layout shift). Width/height are CSS px (min-width / min-height).
+ */
+export const heavyBoundaryDimensions: HeavyBlockDimensions = heavyBoundaryDimensionsValue;

@@ -3,7 +3,7 @@
 > SessionStart hook 读取此文件，把当前 wave 印在 session 起手位置。
 
 **当前 phase**: 1
-**当前 wave**: Wave 4 in progress — plan locked at [docs/superpowers/plans/2026-05-03-phase-1-wave-4-integration.md](../superpowers/plans/2026-05-03-phase-1-wave-4-integration.md) (2026-05-03; plan-challenger 15/15 absorbed). Pre-A1 + Pre-A2 + Pre-A3 + A1 + A2 + A3 + A4 done. **Stage A5 (apps/site dims migration via `heavyBoundaryDimensions`; AC#15) is the next implementation PR.**
+**当前 wave**: Wave 4 in progress — plan locked at [docs/superpowers/plans/2026-05-03-phase-1-wave-4-integration.md](../superpowers/plans/2026-05-03-phase-1-wave-4-integration.md) (2026-05-03; plan-challenger 15/15 absorbed). Pre-A1 + Pre-A2 + Pre-A3 + A1 + A2 + A3 + A4 + A5 done. **Stage A6 (playwright T0/T1 zero-layout-shift validation; AC#5) is the next implementation PR.**
 
 **Wave 4 PR roster** (in-progress; merged 2026-05-03):
 
@@ -15,8 +15,9 @@
 | #31 | `f765968` | A1 | `@skb/heavy-block-boundary` package shell (D1 placeholder body + ADR-0008 D1 dead-dep evidence) |
 | #32 | `1d2f324` | A2 | HeavyBlockBoundary core hydration lifecycle (D3: useEffect + AbortController + mount-guard; AC#1/#2/#3/#6/#10/#11) |
 | #33 | `92c8751` | A3 | HeavyBlockBoundary retry + maxRetries + onLoadError telemetry (D3 retry-flow; AC#7/#8/#9) |
-| #TBD (this) | TBD | A4 | HeavyBlockBoundary CSS + a11y polish + prefers-reduced-motion + CONTRACT.md consolidation (AC#4/#12/#13/#14) |
-| Stage A remaining | A5-A8 (4 PRs) | A | dims+migration (A5) + playwright (A6) + .astro consolidated (A7) + perf+chunking+ADR-0014 promote (A8) |
+| #34 | 5f360a6 | A4 | HeavyBlockBoundary CSS + a11y polish + prefers-reduced-motion + CONTRACT.md consolidation (AC#4/#12/#13/#14) |
+| #TBD (this) | TBD | A5 | apps/site dims migration via heavyBoundaryDimensions (AC#15) |
+| Stage A remaining | A6-A8 (3 PRs) | A | playwright (A6) + .astro consolidated (A7) + perf+chunking+ADR-0014 promote (A8) |
 | Stage B | B1-B4 + B5a/B5b + B6 (6 PRs) | B | ADR-0012 amend + sample-assets + intro prose + __test_cjk__ relocate + retrospective items + close-ceremony prep |
 | Stage C | open-ended | C | Phase 1 user-iteration scope (per gatekeeper directive #4 + MVP framework) |
 
@@ -76,7 +77,7 @@ Wave 3 main pipeline PR roster (2026-05-01 → 2026-05-02, all merged via auto-m
 
 ## 起手指引（Wave 4 session 拉到此文件后开始）
 
-Wave 4 plan is **LOCKED** at [docs/superpowers/plans/2026-05-03-phase-1-wave-4-integration.md](../superpowers/plans/2026-05-03-phase-1-wave-4-integration.md). Pre-A1 + Pre-A2 + Pre-A3 + A1 + A2 + A3 + A4 done. **Stage A5 (apps/site dims migration via `heavyBoundaryDimensions`; AC#15) is the next implementation PR.**
+Wave 4 plan is **LOCKED** at [docs/superpowers/plans/2026-05-03-phase-1-wave-4-integration.md](../superpowers/plans/2026-05-03-phase-1-wave-4-integration.md). Pre-A1 + Pre-A2 + Pre-A3 + A1 + A2 + A3 + A4 + A5 done. **Stage A6 (playwright T0/T1 zero-layout-shift validation; AC#5) is the next implementation PR.**
 
 ### Pre-flight (every session start)
 

@@ -4,23 +4,11 @@ import { CodeRenderView } from '@skb/block-code/ui-default';
 import { ImageRenderView } from '@skb/block-image/ui-default';
 import { MathRenderView } from '@skb/block-math/ui-default';
 import { PdfRenderView } from '@skb/block-pdf/ui-default';
+import { heavyBoundaryDimensions as jupyterDims } from '@skb/block-jupyter/ui-default/heavy-boundary-dimensions';
+import { heavyBoundaryDimensions as nnVizDims } from '@skb/block-nn-viz/ui-default/heavy-boundary-dimensions';
+import { heavyBoundaryDimensions as agentFlowDims } from '@skb/block-agent-flow/ui-default/heavy-boundary-dimensions';
 import { HeavyBlockBoundary } from '@skb/heavy-block-boundary';
 import '@skb/heavy-block-boundary/heavy-block-skeleton.css';
-
-// Type-only imports preserve ADR-0008 D1 three-way symmetry for the 3
-// heavy blocks while runtime integration is deferred to Wave 4 / ADR-0014
-// (see HeavyBlockPlaceholder below for rationale).
-import type {} from '@skb/block-jupyter/ui-default';
-import type {} from '@skb/block-nn-viz/ui-default';
-import type {} from '@skb/block-agent-flow/ui-default';
-
-// A1 ADR-0008 D1 dead-dep evidence — runtime reference to
-// `@skb/heavy-block-boundary` that survives tree-shake. A5 substitutes
-// the 3 heavy block placeholders below with real `<HeavyBlockBoundary>`
-// calls per ADR-0014 D8; this re-export goes away then. Exported (not
-// just const) so module-level dynamic import preserves the reference
-// in production bundle.
-export const __A1_HEAVY_BLOCK_BOUNDARY_REF: typeof HeavyBlockBoundary = HeavyBlockBoundary;
 
 // MDX compiles `<Callout variant="note">body</Callout>` to flat React
 // props (`<CalloutRenderView variant="note">{body}</CalloutRenderView>`),
@@ -39,30 +27,41 @@ function makeMdxAdapter(
   };
 }
 
-// 3 heavy blocks (Jupyter / NnViz / AgentFlow) cannot SSR in Astro's
-// ESM-only static build because their runtime deps (Pyodide / TF.js /
-// React Flow) use CommonJS `require()`. Phase 1 (C3): SSR a placeholder
-// element so the page builds + tests can grep block markers. Phase 2
-// (Wave 4 / ADR-0014): proper client:only wrapper components for live
-// heavy-block rendering. The placeholder includes a `data-block` marker
-// for SSR-marker tests + a `data-deferred="wave-4"` attribute for
-// runtime detection by future client wrappers.
-function makeHeavyBlockPlaceholder(blockName: string): ComponentType<FlatProps> {
-  return function HeavyBlockPlaceholder() {
-    return createElement(
-      'div',
-      {
-        'data-block': blockName,
-        'data-deferred': 'wave-4',
-        className: 'block-deferred',
-      },
-      `${blockName} block: client-side rendering deferred to Wave 4 (ADR-0014 candidate; SSR-safe heavy-block integration).`,
-    );
-  };
-}
-
 const asMdxComponent = (component: ComponentType<FlatProps>): ComponentType<unknown> =>
   component as unknown as ComponentType<unknown>;
+
+const Jupyter = (props: FlatProps): ReactNode =>
+  createElement(HeavyBlockBoundary<FlatProps>, {
+    kind: 'jupyter',
+    dims: jupyterDims,
+    load: () =>
+      import('@skb/block-jupyter/ui-default').then((m) => ({
+        default: makeMdxAdapter(m.JupyterRenderView as never),
+      })),
+    childProps: props,
+  });
+
+const NnViz = (props: FlatProps): ReactNode =>
+  createElement(HeavyBlockBoundary<FlatProps>, {
+    kind: 'nn-viz',
+    dims: nnVizDims,
+    load: () =>
+      import('@skb/block-nn-viz/ui-default').then((m) => ({
+        default: makeMdxAdapter(m.NnVizRenderView as never),
+      })),
+    childProps: props,
+  });
+
+const AgentFlow = (props: FlatProps): ReactNode =>
+  createElement(HeavyBlockBoundary<FlatProps>, {
+    kind: 'agent-flow',
+    dims: agentFlowDims,
+    load: () =>
+      import('@skb/block-agent-flow/ui-default').then((m) => ({
+        default: makeMdxAdapter(m.AgentFlowRenderView as never),
+      })),
+    childProps: props,
+  });
 
 export const componentsMap = {
   // 5 light blocks: server-rendered via prop-shape adapter
@@ -71,8 +70,8 @@ export const componentsMap = {
   Image: asMdxComponent(makeMdxAdapter(ImageRenderView as never)),
   Math: asMdxComponent(makeMdxAdapter(MathRenderView as never)),
   Pdf: asMdxComponent(makeMdxAdapter(PdfRenderView as never)),
-  // 3 heavy blocks: SSR placeholder; live rendering deferred to Wave 4
-  Jupyter: asMdxComponent(makeHeavyBlockPlaceholder('jupyter')),
-  NnViz: asMdxComponent(makeHeavyBlockPlaceholder('nn-viz')),
-  AgentFlow: asMdxComponent(makeHeavyBlockPlaceholder('agent-flow')),
+  // 3 heavy blocks: HeavyBlockBoundary wraps lazy-loaded RenderView per ADR-0014 D8
+  Jupyter: asMdxComponent(Jupyter),
+  NnViz: asMdxComponent(NnViz),
+  AgentFlow: asMdxComponent(AgentFlow),
 } satisfies Readonly<Record<string, ComponentType<unknown>>>;

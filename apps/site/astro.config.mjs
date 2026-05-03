@@ -19,6 +19,7 @@ export default defineConfig({
           // workspace deps to their realpath; without the second
           // pattern manualChunks misses post-resolution IDs.
           manualChunks: (id) => {
+            if (id.includes('heavy-boundary-dimensions')) return 'heavy-boundary-dimensions';
             if (id.includes('@skb/block-jupyter') || id.includes('/packages/block-jupyter/')) return 'block-jupyter';
             if (id.includes('@skb/block-nn-viz') || id.includes('/packages/block-nn-viz/')) return 'block-nn-viz';
             if (id.includes('@skb/block-agent-flow') || id.includes('/packages/block-agent-flow/')) return 'block-agent-flow';
