@@ -73,7 +73,7 @@
 ## Invariants
 
 - **Static build only** (spec §1.8 constraint #3): the project must not introduce SSR; `astro build` outputs prerendered HTML.
-- **Default zero JavaScript** (Astro islands): only components annotated with `client:*` hydrate. Wave 1 ships exactly one island, `ThemeToggle (client:load)`.
+- **Default zero JavaScript** (Astro islands): only components annotated with `client:*` hydrate. Wave 1 shipped `ThemeToggle (client:load)`; Wave 4 B7 adds the 3 heavy block islands below.
 - **No hand-rolled visual values** (ADR-0003 / spec §2.6 invariant #5): `tailwind.config.ts` MUST consume `@skb/design-tokens/tailwind-preset` via `presets: [...]`. Hard-coded `#hex`, `rgb(...)`, or pixel literals in any source file under `src/` are rejected by `pr-gate`.
 - **FOUC inline script ↔ design-tokens `STORAGE_KEY` literal sync**: the inline `<script is:inline>` in `BaseLayout.astro` reads `localStorage.getItem('skb-theme')` literally. The design-tokens package owns the canonical `STORAGE_KEY = 'skb-theme'` constant; renaming it requires updating BOTH packages in the same PR. The inline script cannot import the constant — it must run before any module loads to prevent FOUC.
 - **FOUC inline script must NOT write localStorage** (ADR-0003 D6): the script only reads + applies. Writes are reserved for manual user action via `useTheme.setTheme` / `toggle`. This preserves the property "system OS theme change is reflected on next visit unless the user has explicitly chosen a theme."
@@ -87,20 +87,32 @@
   passes that map per page via `<Content components={componentsMap} />`.
   The map must expose exactly the 8 canonical PascalCase keys `Callout`,
   `Code`, `Image`, `Math`, `Pdf`, `Jupyter`, `NnViz`, and `AgentFlow`.
-  Values must be the corresponding block package `*RenderView` exports,
-  never `*EditorView`, because apps/site is a read-only static renderer.
+  Values for the 5 light keys (`Callout` / `Code` / `Image` / `Math` /
+  `Pdf`) wrap the corresponding block package `*RenderView` exports via
+  the `makeMdxAdapter` from `./lib/mdx-adapter.ts`. Values for the 3
+  heavy keys (`Jupyter` / `NnViz` / `AgentFlow`) reference Astro
+  wrappers under `./components/<Kind>.astro` per ADR-0014 v0.3 D10
+  (production hydration boundary) — the wrappers render React islands
+  with `client:load` directives. Editor-only (`*EditorView`) exports
+  are never wired into componentsMap because apps/site is a
+  read-only static renderer.
 - **Chunking strategy / heavy-block taxonomy**: `src/components.ts` keeps the
   5 light blocks (`Callout`, `Code`, `Image`, `Math`, `Pdf`) eager-imported
   because their default render surfaces are small and shared by common prose
   routes. The 3 heavy blocks (`Jupyter` with Pyodide at roughly 10 MB,
   `NnViz` with TF.js at roughly 3 MB, and `AgentFlow` with React Flow at
-  roughly 500 KB) must stay behind per-call-site
-  `await import('@skb/block-*/ui-default')` boundaries in `components.ts`.
-  `astro.config.mjs` pins those heavy imports with Rollup `manualChunks`
-  names (`block-jupyter`, `block-nn-viz`, `block-agent-flow`) for stable
-  debug and regression-test filenames; the hint is not the correctness layer.
-  `src/__tests__/lazy-chunking.test.ts` is the locking bundle-grep
-  regression: prose-only route chunks must not contain `pyodide`,
+  roughly 500 KB) must stay behind the production hydration boundary codified
+  by ADR-0014 v0.3 D10: `componentsMap` maps those PascalCase keys to
+  `.astro` wrappers under `src/components/`, each wrapper renders its matching
+  React island from `src/islands/` with `client:load`, and each island
+  closure-captures its `heavyBoundaryDimensions` import plus the dynamic
+  `await import('@skb/block-*/ui-default')` load function. Heavy blocks must
+  not use `client:only`, because the SSR skeleton is part of the
+  zero-layout-shift contract. `astro.config.mjs` pins those heavy imports with Rollup
+  `manualChunks` names (`block-jupyter`, `block-nn-viz`, `block-agent-flow`)
+  for stable debug and regression-test filenames; the hint is not the
+  correctness layer. `src/__tests__/lazy-chunking.test.ts` is the locking
+  bundle-grep regression: prose-only route chunks must not contain `pyodide`,
   `tensorflow`, or `reactflow`, and the 3 heavy chunks must remain distinct.
 
 ## Modifying this file

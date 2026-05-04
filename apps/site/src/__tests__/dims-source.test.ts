@@ -6,6 +6,11 @@ import { heavyBoundaryDimensions as nnVizDims } from '@skb/block-nn-viz/ui-defau
 import { heavyBoundaryDimensions as agentFlowDims } from '@skb/block-agent-flow/ui-default/heavy-boundary-dimensions';
 
 const componentsPath = resolve('src/components.ts');
+const islandPaths = [
+  resolve('src/islands/JupyterIsland.tsx'),
+  resolve('src/islands/NnVizIsland.tsx'),
+  resolve('src/islands/AgentFlowIsland.tsx'),
+];
 
 describe('AC#15 - apps/site dims sourced from heavy block packages (not inline)', () => {
   it('jupyter dims imported from @skb/block-jupyter/ui-default/heavy-boundary-dimensions', () => {
@@ -28,14 +33,17 @@ describe('AC#15 - apps/site dims sourced from heavy block packages (not inline)'
     expect(agentFlowDims.height).toBe(400);
   });
 
-  it('apps/site components.ts source has no inline dims literals (regex check)', () => {
-    const source = readFileSync(componentsPath, 'utf-8');
+  it('apps/site heavy island sources have no inline dims literals (regex check)', () => {
+    const source = islandPaths.map((path) => readFileSync(path, 'utf-8')).join('\n');
     // Must NOT contain inline dims object literal patterns like `dims: { width: 600 ... }`
-    // The HeavyBlockBoundary call MUST reference the imported aliases (jupyterDims etc.)
-    expect(source).toMatch(/dims:\s*jupyterDims/);
-    expect(source).toMatch(/dims:\s*nnVizDims/);
-    expect(source).toMatch(/dims:\s*agentFlowDims/);
+    // The HeavyBlockBoundary calls MUST reference the imported aliases (jupyterDims etc.)
+    expect(source).toMatch(/dims=\{jupyterDims\}/);
+    expect(source).toMatch(/dims=\{nnVizDims\}/);
+    expect(source).toMatch(/dims=\{agentFlowDims\}/);
     // Defense-in-depth: no inline width:NUMBER inside dims object
     expect(source).not.toMatch(/dims:\s*\{\s*width:\s*\d+/);
+
+    const componentsSource = readFileSync(componentsPath, 'utf-8');
+    expect(componentsSource).not.toMatch(/HeavyBlockBoundary/);
   });
 });
