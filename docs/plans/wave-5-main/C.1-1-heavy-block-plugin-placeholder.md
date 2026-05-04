@@ -763,7 +763,7 @@ pr-writer; ADR-0011 D1+D4 git mutation discipline) runs:
   `HeavyBlockBoundary` + dynamic `load`; this PR (C.1-1) replaces
   that wiring with the placeholder tier (Phase 2+ may resurface B7's
   pattern as the `plugin-real-runtime` tier).
-- [Wave 4 PR #48](https://github.com/sweetstreet1/selfKnowledgeBaseWeb/pull/48)
+- [Wave 4 PR #48](https://github.com/WYI1223/selfKnowledgeBaseWeb/pull/48)
   squash HEAD `de39e07` — C-1 Pyodide jsdelivr CDN infrastructure
   preserved unchanged for Phase 2+ plugin-real-runtime tier (per
   reframe v2 memory mandate).
