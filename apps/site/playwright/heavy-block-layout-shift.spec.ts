@@ -33,7 +33,7 @@ for (const kind of HEAVY_KINDS) {
   }) => {
     await page.goto('/notes/sample-blocks');
 
-    const selector = `[data-block="${kind}"]`;
+    const selector = `[role="status"][data-block="${kind}"]`;
     const outer = page.locator(selector);
     await expect(outer).toBeVisible({ timeout: 10_000 });
 
@@ -82,7 +82,7 @@ for (const kind of HEAVY_KINDS) {
     await page.goto('/notes/sample-blocks');
     await page.waitForLoadState('load');
 
-    const selector = `[data-block="${kind}"]`;
+    const selector = `[role="status"][data-block="${kind}"]`;
     const outer = page.locator(selector);
     await expect(outer).toBeVisible({ timeout: 10_000 });
 
