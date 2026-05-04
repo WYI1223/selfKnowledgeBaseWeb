@@ -2,7 +2,7 @@
 
 | 字段 | 值 |
 | ---- | --- |
-| 状态 | **locked v0.2** (post plan-challenger 10/10 absorbtion 2026-05-04; v0.1 draft superseded) |
+| 状态 | **locked v1.0** (Pre-A5 final lock 2026-05-04; v0.2 → v1.0 with Stage C.1-C.4 per-PR breakdown post Pre-A2/3/4 ADR locks; v0.1 draft + v0.2 absorbtion superseded) |
 | Wave | Phase 1 Wave 5 |
 | 起步 HEAD | `a157168` (Wave 4 close ceremony PR #49 squash; ADR-0015 ratifying 21-PR Wave 4 + Wave 5 deferred set) |
 | 起步预备 | (Pre-A1 [this lock] is the first Wave 5 PR) |
@@ -436,6 +436,100 @@ dispatch: `codex exec --yolo --profile plan-challenger ...` (Wave 5 plan-draft v
 **Lock evidence**: this absorbtion table + each verdict cross-references the D-section / Pre-A PR / Stage C section / acceptance criterion that codifies the change. Reviewers verify by walking each row's "Reason / Locked at" link to the corresponding section.
 
 **Stage final counts (locked at v0.2)**: Pre-A = 5 (Pre-A1 [this lock] + Pre-A2/3/4 ADRs + Pre-A5 v1.0 final). Stage C.1 = 2-3 PRs. Stage C.2 = 10-12 PRs. Stage C.3 = 3-5 PRs. Stage C.4 = 3-5 PRs. **Total Wave 5 estimate**: 23-30 PRs / 3-5 sessions.
+
+## v1.0 Pre-A5 final lock amendments (2026-05-04 post Pre-A2/3/4 ADR locks)
+
+Pre-A2 (HEAD `6e2c1d9` ADR-0016 grid 数据模型) + Pre-A3 (HEAD `157a4f7` ADR-0017 drag/drop UX) + Pre-A4 (HEAD `7e487ec` ADR-0018 v2 视觉 migration + save-path 接口冻结) all merged with status proposed v0.1.1 post 12+13+14 = 39 plan-challenger challenges absorbed. Stage C.1-C.4 per-PR breakdown now lockable.
+
+### Cross-referenced absorbtion tables (Pre-A1 + Pre-A2 + Pre-A3 + Pre-A4)
+
+| Pre-A | Audit log archive | Challenges raised | Absorbed | Partial | Key impact on Stage C |
+|---|---|---|---|---|---|
+| Pre-A1 (this plan v0.1 → v0.2) | `2026-05-04-Pre-A1-plan-challenge.txt` (113 lines curated) | 10 (5 high + 5 medium) | 10 | 0 | NEW D12 scope-fence + D13 D2 escalation + D14 MVP fallback timing + D15 handoff pack |
+| Pre-A2 ADR-0016 grid | `2026-05-04-Pre-A2-plan-challenge.txt` (113 lines) | 12 (4 high + 7 medium + 1 low) | 11 | 1 | W5-1 invariant + D12 layoutEpoch + 权威矩阵 + Sister-document sync (4 sister CONTRACTs) + 转场态 FSM + SSR fallback |
+| Pre-A3 ADR-0017 drag/drop | `2026-05-04-Pre-A3-plan-challenge.txt` (118 lines) | 13 (3 high + 8 medium + 2 low) | 11 | 2 | EDGE_W=28 + tiebreak abs+velocity+spatial + outline z-index + reflow invalidation + mobile view-only + drop-pulse `--accent-success` token |
+| Pre-A4 ADR-0018 visual + save-path | `2026-05-04-Pre-A4-plan-challenge.txt` (111 lines) | 14 (3 high + 7 medium + 4 low) | 9 | 5 | OKLCH Culori fallback + 8 kind hue (3+5) + Inter privacy/self-host + .skb-prose namespace + typography CSS vars + NoteSaveAdapter @ editor-shell + LocalStorageAdapter quota+security 错误处理 |
+
+**Total**: 49 challenges across 4 plan-challenger rounds; 41 ABSORBED + 8 PARTIALLY ABSORBED. ratio 84% full absorbtion + 16% partial. Wave 4 Pre-A2 ADR-0014 12/12 + Pre-A3 plan-draft 15/15 比较 → Wave 5 absorbtion ratio 略低 (合理: Wave 5 4 个独立 plan-challenger 累积, 比 Wave 4 单 plan-draft 高度 narrow).
+
+### Stage C.1 — Cleanup PR breakdown (locked at v1.0)
+
+| PR | Subject | Files (whitelist per scope-fence D12) | Estimated LOC | Executor | D2 trigger |
+|---|---|---|---|---|---|
+| C.1-1 | Heavy block plugin placeholder + ADR-0014 v0.4 amendment | `apps/site/src/islands/{Jupyter,NnViz,AgentFlow}Island.tsx` (rewrite to plugin placeholder) + `apps/site/src/components/{Jupyter,NnViz,AgentFlow}.astro` (unchanged) + `apps/site/src/components.ts` (componentsMap) + `docs/decisions/ADR-0014-heavy-block-boundary.md` (v0.4 Amendments §) + 1 PR.md | ~300 LOC | codex-generic-executor | Row 4 (ADR amendment) + Row 1 (apps/site/CONTRACT.md may sync) |
+| C.1-2 | C-3 PDF iframe 黑屏 调查 + fix + C-4 chunk-leak measure | `packages/block-pdf/src/ui-default/Pdf.tsx` (if root cause here) OR `apps/site/src/islands/PdfIsland.tsx` (alt root cause) + `docs/audits/perf-2026-05-wave-5-c4-chunk-leak.md` (NEW perf measurement; NO-OP decision per ADR-0015 D3 if plugin placeholder makes it moot) + 1 PR.md | ~150 LOC | codex-generic-executor | Standard PR |
+| C.1-3 | `apps/site/test-results/` gitignore housekeeping (per ADR-0015 D3) | `apps/site/.gitignore` (+1 line: `test-results/`) + 1 PR.md | ~5 LOC | orchestrator-self | Standard PR |
+
+**Stage C.1 close criterion** (per Wave 5 plan v0.2 Stage C.1 section + handoff pack D15): heavy block 3 surfaces 显示 plugin placeholder; C-3 PDF iframe 不黑屏; C-4 chunk-leak measured (or moot); test-results gitignore landed. Sub-stage close = user MVP-judgment escape valve + handoff pack mandatory.
+
+### Stage C.2 — Grid + drag/drop PR breakdown (locked at v1.0; per ADR-0016 + ADR-0017 D-list)
+
+| PR | Subject | Whitelist | LOC | Executor | D2 |
+|---|---|---|---|---|---|
+| C.2-1 | mdx-bridge col/row/colSpan/rowSpan serialize | `packages/mdx-bridge/src/**/*` + `packages/mdx-bridge/CONTRACT.md` (+ W5-1 forward-pointer + serialize boundary) + RTT fixtures | ~300 LOC | codex-generic-executor | Row 1 (CONTRACT) + Row 5 (cross mdx-bridge + block-foundation + apps/site) |
+| C.2-2 | block-foundation BlockUIDefinition grid 字段 (gridDefault + rowSpanSemantic + gridKind + proseGridDefaults + grid-math.ts helpers) | `packages/block-foundation/src/types.ts` + `packages/block-foundation/src/grid-math.ts` (NEW) + `packages/block-foundation/CONTRACT.md` (W5-1 invariant 已 Pre-A2 加; 此 PR 加 helpers public surface) + tests | ~250 LOC | codex-generic-executor | Row 1 (CONTRACT) + Row 5 |
+| C.2-3 | Astro renderer grid layout + Responsive 12/6/1 | `apps/site/src/styles/grid.css` (NEW; `.skb-grid` container + `@media` breakpoints) + `apps/site/src/layouts/BaseLayout.astro` + `apps/site/CONTRACT.md` | ~200 LOC | codex-generic-executor | Row 1 + Row 5 |
+| C.2-4 | editor-shell grid 集成 + useAutoRowSpan hook (per ADR-0016 D3 两阶段稳态) | `packages/editor-shell/src/grid-container.tsx` (NEW) + `packages/editor-shell/src/use-auto-row-span.ts` (NEW) + `packages/editor-shell/CONTRACT.md` (W5-2 invariant 加 + grid container API public surface) | ~400 LOC | codex-generic-executor | Row 1 (CONTRACT W5-2 NEW) + Row 5 |
+| C.2-5 | drag/drop UX 实施 (per ADR-0017 D5 选项 1 + D3 tiebreak + D4 outline overlay) | `packages/editor-shell/src/drag-drop/{edge-rects,tiebreak,outline-overlay}.ts` (NEW) + tests | ~500 LOC | codex-generic-executor | Row 1 (CONTRACT) + Row 5 |
+| C.2-6 | resize UX 实施 (col-ruler + size-tooltip + COL_SNAPS snap; per ADR-0017 D9) | `packages/editor-shell/src/resize/{col-ruler,size-tooltip}.tsx` (NEW) + tests | ~300 LOC | codex-generic-executor | Row 1 (CONTRACT) |
+| C.2-7 | ADR-0014 v0.5 amendment (HeavyBlockBoundary dims grid context 联动 W5-1) | `docs/decisions/ADR-0014-heavy-block-boundary.md` (v0.5 Amendments §) + `packages/heavy-block-boundary/src/HeavyBlockBoundary.tsx` (consume W5-1 公式) + `packages/heavy-block-boundary/CONTRACT.md` (sister-doc-sync per ADR-0016 D9 Sister-document sync) | ~150 LOC | orchestrator-self (doc-policy ADR amendment) + codex for impl | Row 4 (ADR amendment) + Row 1 (CONTRACT sync) |
+| C.2-8 | drop-pulse 720ms + drag-ghost + 全局 Esc cancel + layoutEpoch reducer (per ADR-0017 D11+D10+D8+D12) | `packages/editor-shell/src/drag-drop/{drop-pulse,drag-ghost,esc-cancel,layout-reducer}.ts` (NEW) + tests | ~400 LOC | codex-generic-executor | Row 1 + Row 5 |
+| C.2-9 | Responsive 12/6/1 切换 + rowSpan adapt path (per ADR-0016 D5 转场态 FSM) | `packages/editor-shell/src/grid-container.tsx` (转场态 FSM) + tests | ~150 LOC | codex-generic-executor | Standard |
+| C.2-10 | playwright drag scenarios + edge-rect tiebreak fixtures (per ADR-0017 AC#1-#12) | `apps/site/playwright/grid-drag-drop.spec.ts` (NEW; 12 fixture per AC) | ~600 LOC | codex-generic-executor | Standard |
+| C.2-11 | playwright resize + responsive switch + rowSpan adapt (per ADR-0017 AC#10) | `apps/site/playwright/grid-resize-responsive.spec.ts` (NEW) | ~400 LOC | codex-generic-executor | Standard |
+| C.2-12 | Stage C.2 close: visual smoke baseline + perf budget assertion (per ADR-0017 AC#6 60fps) | `apps/site/playwright/grid-perf.spec.ts` (NEW) + visual baseline screenshots + Stage C.2 handoff pack | ~200 LOC | codex-generic-executor + orchestrator | Standard |
+
+**Stage C.2 close criterion**: editor-shell 在 12-col grid 上摆块; 4 边缘对称 drag-drop work; resize via right/bottom handles; AC#1-#12 (ADR-0017) 全 vitest + playwright covered; visual smoke baseline. Sub-stage close = user MVP-judgment escape valve + handoff pack mandatory.
+
+### Stage C.3 — v2 视觉 identity PR breakdown (locked at v1.0; per ADR-0018 D1-D7)
+
+| PR | Subject | Whitelist | LOC | Executor | D2 |
+|---|---|---|---|---|---|
+| C.3-1 | design-tokens OKLCH 14 color + 1 hex `--surface` + 3 layout + Inter/JetBrains Mono fonts (per ADR-0018 D1+D2) | `packages/design-tokens/src/tokens.css` + `packages/design-tokens/CONTRACT.md` (token additions) + `tokens-fallback.css` (NEW; OKLCH→hex via Culori build script) + tests | ~300 LOC | codex-generic-executor + ux-ui-lead subagent | Row 1 (CONTRACT) + Row 5 (cross design-tokens + apps/site + 5 light blocks + heavy-block-boundary) |
+| C.3-2 | block kind 顶 2px 彩色横条 8 kind hue (per ADR-0018 D3 locked values) | `packages/design-tokens/src/tokens.css` (8 kind hue token) + 5 light block ui-default 加 顶 2px 横条 CSS | ~200 LOC | codex-generic-executor + ux-ui-lead | Row 1 + Row 5 |
+| C.3-3 | prose customization (b-quote/b-callout/b-code/aref + .skb-prose namespace per Q5) + typography CSS vars (font-size-* per Q6) | `apps/site/src/styles/prose.css` (NEW) + `apps/site/src/layouts/BaseLayout.astro` (load) + design-tokens font-size-* tokens | ~250 LOC | codex-generic-executor + ux-ui-lead | Row 1 |
+| C.3-4 | shadow rgba(20,15,10) refresh + 8 light block CSS calibration (visual smoke baseline + screenshot 比对) | `packages/block-{callout,code,image,math,pdf}/src/ui-default/**/*.css` (5 light blocks) + `apps/site/playwright/visual-smoke.spec.ts` (baseline screenshots) | ~300 LOC | ux-ui-lead subagent (one-shot dispatch) | Row 5 (cross 5 block packages) |
+| C.3-5 | Stage C.3 close: visual smoke vs baseline diff < 5% (per ADR-0018 AC#8) + Stage C.3 handoff pack | `apps/site/playwright/visual-smoke-baseline/*.png` (commit baselines) + handoff pack | ~50 LOC + binaries | orchestrator | Standard |
+
+**Stage C.3 close criterion**: apps/site 整套界面与 v2 demo 视觉对齐; 8 light blocks OKLCH switchover collateral 通过 visual smoke; handoff pack mandatory. Sub-stage close = user MVP-judgment escape valve.
+
+### Stage C.4 — Editor-shell wire to apps/site PR breakdown (locked at v1.0; per ADR-0018 D8 接口冻结 + ADR-0016 + ADR-0017)
+
+| PR | Subject | Whitelist | LOC | Executor | D2 |
+|---|---|---|---|---|---|
+| C.4-1 | NoteSaveAdapter interface + NoteState shape + LocalStorageAdapter MVP impl (per ADR-0018 D8 接口冻结) | `packages/editor-shell/src/save-adapter.ts` (NEW) + `packages/editor-shell/CONTRACT.md` (W5-2 invariant + NoteSaveAdapter public surface section) + tests | ~250 LOC | codex-generic-executor | Row 1 (CONTRACT W5-2 + NoteSaveAdapter surface) + Row 5 |
+| C.4-2 | apps/site `/notes/[slug]/edit` route mount editor-shell + EditorShellMount wrapper | `apps/site/src/pages/notes/[slug]/edit.astro` (NEW) + `apps/site/src/components/EditorShellMount.{astro,tsx}` (NEW) + `apps/site/CONTRACT.md` (route + mount contract) | ~300 LOC | codex-generic-executor | Row 1 + Row 5 |
+| C.4-3 | BlockRegistry + KernelRegistry + mdx-bridge wire-up + palette/slash-menu/drag-handle/toolbar 组装 | editor-shell composition glue + apps/site consumption | ~400 LOC | codex-generic-executor | Row 1 + Row 5 |
+| C.4-4 | Save/load 双向 implementation (per Pre-A4 接口冻结) + layoutEpoch sync + version increment trigger | editor-shell save/load wire + LocalStorageAdapter consumer + tests | ~300 LOC | codex-generic-executor | Row 1 |
+| C.4-5 | Stage C.4 close: vitest + playwright 端到端 (load → edit → save → reload → verify content/grid intact) + Stage C.4 handoff pack = Wave 5 close 候选 | `apps/site/playwright/edit-flow-e2e.spec.ts` + handoff pack + Wave 5 close-prep readiness check | ~400 LOC | codex-generic-executor + orchestrator | Standard |
+
+**Stage C.4 close criterion**: user navigate `/notes/<slug>/edit` → mount editor-shell → load notes → edit → save → reload → content + grid intact. **Sub-stage close = user MVP-judgment escape valve = Wave 5 close 候选** (Phase 1 完成 = MVP-ready). Handoff pack mandatory.
+
+### Refined risk predictions (Pre-A5 v1.0)
+
+Updates to Pre-A1 v0.2 risk list based on Pre-A2/3/4 plan-challenger findings:
+
+7 既有 risks (per v0.2 Risk predictions section) all stand. NEW risk identified at Pre-A2/3/4:
+8. **Pre-A3 4 R-rounds + Pre-A4 6 R-rounds drift** — large multi-section ADRs accumulate internal-consistency drift across plan-challenger absorbtion + cross-section references. Mitigation: Stage C.2/C.3/C.4 实施 PR 拆分小 (per per-PR breakdown above; ≤ 500 LOC typical); Pre-A4 已得到 lesson — multi-domain ADR (visual + save-path) 增加 drift surface; Wave 5 implementation PRs follow ADR-0006 D8 explicit-file-list staging discipline.
+9. **OKLCH 6 R-rounds drift cost** — Pre-A4 内部一致性 drift 总耗 6 R-rounds; reflect Wave 4 R22 forward-fix classification: PR.md drift R-rounds (process-class) NOT implementation-defect R-rounds. Wave 5 implementation phase R-round target maintain ADR-0011 D8 ≤15%.
+
+### Wave 5 PR roster (seeded)
+
+| PR | Squash HEAD | Stage | Subject |
+|---|---|---|---|
+| #50 | `365173e` | Pre-A1 | Wave 5 plan v0.1 → v0.2 lock + plan-challenger 10/10 absorbed |
+| #51 | `6e2c1d9` | Pre-A2 | ADR-0016 grid 数据模型 + W5-1 invariant + 12/12 absorbed (R2) |
+| #52 | `157a4f7` | Pre-A3 | ADR-0017 drag/drop UX + 13/13 absorbed (R4) |
+| #53 | `7e487ec` | Pre-A4 | ADR-0018 v2 视觉 + save-path 接口冻结 + 14/14 absorbed (R6) |
+| TBD (this) | TBD | Pre-A5 | Wave 5 plan v0.2 → v1.0 final lock + Stage C.1-C.4 PR breakdown |
+| (Stage C.1 = 3 PRs) | TBD | C.1 | C.1-1 plugin placeholder + v0.4 amend / C.1-2 PDF + chunk-leak / C.1-3 gitignore |
+| (Stage C.2 = 12 PRs) | TBD | C.2 | C.2-1 mdx-bridge serialize → C.2-12 Stage C.2 close |
+| (Stage C.3 = 5 PRs) | TBD | C.3 | C.3-1 OKLCH + fonts → C.3-5 visual smoke baseline |
+| (Stage C.4 = 5 PRs) | TBD | C.4 | C.4-1 NoteSaveAdapter → C.4-5 e2e + Wave 5 close 候选 |
+
+**Wave 5 final PR count locked**: 5 Pre-A + 3 + 12 + 5 + 5 = **30 PRs total** (within Wave 5 plan v0.2 estimate 23-30 PRs). 3-5 sessions estimate maintained.
+
+**Plan v1.0 lock evidence**: Pre-A5 PR.md `## acceptance` walks each amendment + Stage C.1-C.4 per-PR table presence + Wave 5 PR roster table.
 
 ## Out-of-scope (explicitly deferred)
 
