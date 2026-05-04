@@ -1,10 +1,10 @@
 import { type BlockRegistry, type BlockUIDefinition } from '@skb/block-foundation';
 import { calloutCore } from '@skb/block-callout/core';
-import { calloutUIDefault } from '@skb/block-callout/ui-default';
+import { calloutUiDefault } from '@skb/block-callout/ui-default';
 import { codeCore } from '@skb/block-code/core';
-import { codeUIDefault } from '@skb/block-code/ui-default';
+import { codeUiDefault } from '@skb/block-code/ui-default';
 import { imageCore } from '@skb/block-image/core';
-import { imageUIDefault } from '@skb/block-image/ui-default';
+import { imageUiDefault } from '@skb/block-image/ui-default';
 import { mathCore } from '@skb/block-math/core';
 import { mathUiDefault } from '@skb/block-math/ui-default';
 import { pdfCore } from '@skb/block-pdf/core';
@@ -26,13 +26,13 @@ export function registerBlocks(registry: BlockRegistry): void {
   // directly — no cast required (ESLint's no-unnecessary-type-assertion
   // flags any cast added there as a no-op).
   registry.registerCore(calloutCore);
-  registry.registerUI(calloutUIDefault as unknown as BlockUIDefinition);
+  registry.registerUI(calloutUiDefault as unknown as BlockUIDefinition);
 
   registry.registerCore(codeCore);
-  registry.registerUI(codeUIDefault as unknown as BlockUIDefinition);
+  registry.registerUI(codeUiDefault as unknown as BlockUIDefinition);
 
   registry.registerCore(imageCore);
-  registry.registerUI(imageUIDefault as unknown as BlockUIDefinition);
+  registry.registerUI(imageUiDefault as unknown as BlockUIDefinition);
 
   // 2 render blocks (math/pdf): inference-default UiDefault still narrows
   // to the core's propsSchema via defineUI's generic; same cast required.

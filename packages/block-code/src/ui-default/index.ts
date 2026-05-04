@@ -3,7 +3,7 @@ import { codeCore } from '../core/core-definition';
 import { CodeEditorView } from './EditorView';
 import { CodeRenderView } from './RenderView';
 
-export const codeUIDefault: BlockUIDefinition<typeof codeCore.propsSchema> =
+export const codeUiDefault: BlockUIDefinition<typeof codeCore.propsSchema> =
   defineUI({
     coreName: codeCore.name,
     uiId: 'default',

@@ -113,6 +113,37 @@ dep has at least one `from '@skb/<pkg>'` source import. The 13 declared deps
 `saveLoad.ts` / `index.ts`) + 13 tsconfig references hold three-way exact-match
 symmetry.
 
+## Type variance note (Stage A A3 R3 retrospective; codified Wave 4 B4)
+
+`registerBlocks` casts 5 of 8 ui-defaults via `XxxUiDefault as unknown as BlockUIDefinition` and leaves the remaining 3 uncast. The asymmetry is structural, not historical: it traces ComponentType contravariance under `exactOptionalPropertyTypes: true`.
+
+- **5 with cast** (callout / code / image / math / pdf): each
+  package's `XxxUiDefault` is typed
+  `BlockUIDefinition<typeof XxxCore.propsSchema>` — a NARROW schema
+  via `defineUI`'s generic. The narrow schema's
+  `EditorView`/`RenderView` is `ComponentType<BlockViewProps<NarrowSchema>>`,
+  which is NOT assignable to the registry's wider
+  `ComponentType<BlockViewProps<ZodTypeAny>>` due to ComponentType
+  contravariance. The cast collapses the variance gap. ESLint's
+  `no-unnecessary-type-assertion` does NOT flag these casts because
+  the assertion is genuinely required by tsc.
+- **3 without cast** (jupyter / nn-viz / agent-flow): each package's
+  `XxxUiDefault` resolves through `defineUI` with a wider component
+  type signature that already accepts `BlockViewProps<ZodTypeAny>`
+  without contravariance issue (verified at A3 EXECUTE 2026-05-01;
+  tsc accepts the direct registration). Adding the cast here would
+  be a no-op; ESLint's `no-unnecessary-type-assertion` would flag it.
+
+**Implication**: the 5/3 split is locked-in until the underlying
+ui-default package types converge. Future blocks SHOULD pick the
+3-camp signature shape (no cast required) when authoring new
+ui-defaults; A3 R3 incident notes the asymmetry was first
+surfaced when a contributor uniformly cast all 8, which lint then
+rejected on the 3 unnecessary-cast cases. The cast-required vs
+cast-free behavior is verified at every `pnpm typecheck` run +
+`pnpm lint` run on `registerBlocks.ts`; any drift will surface
+immediately.
+
 ## Modifying this file
 
 Each A2-A5 PR Modifies this file to extend "Public surface" as exports land.

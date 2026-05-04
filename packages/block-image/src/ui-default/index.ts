@@ -3,7 +3,7 @@ import { imageCore } from '../core/core-definition';
 import { ImageEditorView } from './EditorView';
 import { ImageRenderView } from './RenderView';
 
-export const imageUIDefault: BlockUIDefinition<typeof imageCore.propsSchema> =
+export const imageUiDefault: BlockUIDefinition<typeof imageCore.propsSchema> =
   defineUI({
     coreName: imageCore.name,
     uiId: 'default',

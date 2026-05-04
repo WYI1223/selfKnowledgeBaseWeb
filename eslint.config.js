@@ -19,6 +19,18 @@ export default tseslint.config(
     rules: {
       'max-lines': ['warn', { max: 300, skipBlankLines: true, skipComments: true }],
       'no-console': ['warn', { allow: ['warn', 'error'] }],
+      // Stage A retro item 4 (Wave 4 B4): allow `_`-prefix args/vars to
+      // signal intentional unused parameters per JS/TS convention; mirror
+      // typescript-eslint defaults via explicit configuration.
+      '@typescript-eslint/no-unused-vars': [
+        'warn',
+        {
+          argsIgnorePattern: '^_',
+          varsIgnorePattern: '^_',
+          caughtErrorsIgnorePattern: '^_',
+          ignoreRestSiblings: true,
+        },
+      ],
     },
   },
 

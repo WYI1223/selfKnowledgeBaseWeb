@@ -1,0 +1,1937 @@
+Reading additional input from stdin...
+OpenAI Codex v0.125.0 (research preview)
+--------
+workdir: /home/weiyi/selfKnowledgeBaseWeb
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: danger-full-access
+reasoning effort: xhigh
+reasoning summaries: none
+session id: 019df118-e64e-7e53-a006-8175e630d24f
+--------
+user
+Wave 4 B4 REVIEW R2.
+
+R1 FAIL fixes:
+1. editor-shell/CONTRACT.md line 118 reformatted: 'ComponentType contravariance' now appears on a single line (previously split across line break). `grep -c 'ComponentType contravariance' packages/editor-shell/CONTRACT.md` → 1 (verified).
+2. docs/plans/active.md B3 row restored 'preserves PageFind coupling for B1b paired discriminator test' clause; B4 row uses '2 + 3 + 4' (per PR.md spec) not '2-4'. Both grep verified.
+
+R2 SCOPE: verify R1 fixes RESOLVED + no new regressions. OUTPUT: `REVIEW VERDICT R2: PASS` or `REVIEW VERDICT R2: FAIL`. Read-only.
+
+DO NOT git mutate.
+exec
+/bin/bash -lc "sed -n '1,220p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/3c463363/skills/using-superpowers/SKILL.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+---
+name: using-superpowers
+description: Use when starting any conversation - establishes how to find and use skills, requiring Skill tool invocation before ANY response including clarifying questions
+---
+
+<SUBAGENT-STOP>
+If you were dispatched as a subagent to execute a specific task, skip this skill.
+</SUBAGENT-STOP>
+
+<EXTREMELY-IMPORTANT>
+If you think there is even a 1% chance a skill might apply to what you are doing, you ABSOLUTELY MUST invoke the skill.
+
+IF A SKILL APPLIES TO YOUR TASK, YOU DO NOT HAVE A CHOICE. YOU MUST USE IT.
+
+This is not negotiable. This is not optional. You cannot rationalize your way out of this.
+</EXTREMELY-IMPORTANT>
+
+## Instruction Priority
+
+Superpowers skills override default system prompt behavior, but **user instructions always take precedence**:
+
+1. **User's explicit instructions** (CLAUDE.md, GEMINI.md, AGENTS.md, direct requests) — highest priority
+2. **Superpowers skills** — override default system behavior where they conflict
+3. **Default system prompt** — lowest priority
+
+If CLAUDE.md, GEMINI.md, or AGENTS.md says "don't use TDD" and a skill says "always use TDD," follow the user's instructions. The user is in control.
+
+## How to Access Skills
+
+**In Claude Code:** Use the `Skill` tool. When you invoke a skill, its content is loaded and presented to you—follow it directly. Never use the Read tool on skill files.
+
+**In Copilot CLI:** Use the `skill` tool. Skills are auto-discovered from installed plugins. The `skill` tool works the same as Claude Code's `Skill` tool.
+
+**In Gemini CLI:** Skills activate via the `activate_skill` tool. Gemini loads skill metadata at session start and activates the full content on demand.
+
+**In other environments:** Check your platform's documentation for how skills are loaded.
+
+## Platform Adaptation
+
+Skills use Claude Code tool names. Non-CC platforms: see `references/copilot-tools.md` (Copilot CLI), `references/codex-tools.md` (Codex) for tool equivalents. Gemini CLI users get the tool mapping loaded automatically via GEMINI.md.
+
+# Using Skills
+
+## The Rule
+
+**Invoke relevant or requested skills BEFORE any response or action.** Even a 1% chance a skill might apply means that you should invoke the skill to check. If an invoked skill turns out to be wrong for the situation, you don't need to use it.
+
+```dot
+digraph skill_flow {
+    "User message received" [shape=doublecircle];
+    "About to EnterPlanMode?" [shape=doublecircle];
+    "Already brainstormed?" [shape=diamond];
+    "Invoke brainstorming skill" [shape=box];
+    "Might any skill apply?" [shape=diamond];
+    "Invoke Skill tool" [shape=box];
+    "Announce: 'Using [skill] to [purpose]'" [shape=box];
+    "Has checklist?" [shape=diamond];
+    "Create TodoWrite todo per item" [shape=box];
+    "Follow skill exactly" [shape=box];
+    "Respond (including clarifications)" [shape=doublecircle];
+
+    "About to EnterPlanMode?" -> "Already brainstormed?";
+    "Already brainstormed?" -> "Invoke brainstorming skill" [label="no"];
+    "Already brainstormed?" -> "Might any skill apply?" [label="yes"];
+    "Invoke brainstorming skill" -> "Might any skill apply?";
+
+    "User message received" -> "Might any skill apply?";
+    "Might any skill apply?" -> "Invoke Skill tool" [label="yes, even 1%"];
+    "Might any skill apply?" -> "Respond (including clarifications)" [label="definitely not"];
+    "Invoke Skill tool" -> "Announce: 'Using [skill] to [purpose]'";
+    "Announce: 'Using [skill] to [purpose]'" -> "Has checklist?";
+    "Has checklist?" -> "Create TodoWrite todo per item" [label="yes"];
+    "Has checklist?" -> "Follow skill exactly" [label="no"];
+    "Create TodoWrite todo per item" -> "Follow skill exactly";
+}
+```
+
+## Red Flags
+
+These thoughts mean STOP—you're rationalizing:
+
+| Thought | Reality |
+|---------|---------|
+| "This is just a simple question" | Questions are tasks. Check for skills. |
+| "I need more context first" | Skill check comes BEFORE clarifying questions. |
+| "Let me explore the codebase first" | Skills tell you HOW to explore. Check first. |
+| "I can check git/files quickly" | Files lack conversation context. Check for skills. |
+| "Let me gather information first" | Skills tell you HOW to gather information. |
+| "This doesn't need a formal skill" | If a skill exists, use it. |
+| "I remember this skill" | Skills evolve. Read current version. |
+| "This doesn't count as a task" | Action = task. Check for skills. |
+| "The skill is overkill" | Simple things become complex. Use it. |
+| "I'll just do this one thing first" | Check BEFORE doing anything. |
+| "This feels productive" | Undisciplined action wastes time. Skills prevent this. |
+| "I know what that means" | Knowing the concept ≠ using the skill. Invoke it. |
+
+## Skill Priority
+
+When multiple skills could apply, use this order:
+
+1. **Process skills first** (brainstorming, debugging) - these determine HOW to approach the task
+2. **Implementation skills second** (frontend-design, mcp-builder) - these guide execution
+
+"Let's build X" → brainstorming first, then implementation skills.
+"Fix this bug" → debugging first, then domain-specific skills.
+
+## Skill Types
+
+**Rigid** (TDD, debugging): Follow exactly. Don't adapt away discipline.
+
+**Flexible** (patterns): Adapt principles to context.
+
+The skill itself tells you which.
+
+## User Instructions
+
+Instructions say WHAT, not HOW. "Add X" or "Fix Y" doesn't mean skip workflows.
+
+codex
+Using `superpowers:using-superpowers` for the required skill workflow, and `superpowers:verification-before-completion` before I give the R2 verdict. I’ll keep this read-only and focus on the two claimed R1 fixes plus nearby regressions.
+exec
+/bin/bash -lc "sed -n '1,220p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/3c463363/skills/verification-before-completion/SKILL.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+---
+name: verification-before-completion
+description: Use when about to claim work is complete, fixed, or passing, before committing or creating PRs - requires running verification commands and confirming output before making any success claims; evidence before assertions always
+---
+
+# Verification Before Completion
+
+## Overview
+
+Claiming work is complete without verification is dishonesty, not efficiency.
+
+**Core principle:** Evidence before claims, always.
+
+**Violating the letter of this rule is violating the spirit of this rule.**
+
+## The Iron Law
+
+```
+NO COMPLETION CLAIMS WITHOUT FRESH VERIFICATION EVIDENCE
+```
+
+If you haven't run the verification command in this message, you cannot claim it passes.
+
+## The Gate Function
+
+```
+BEFORE claiming any status or expressing satisfaction:
+
+1. IDENTIFY: What command proves this claim?
+2. RUN: Execute the FULL command (fresh, complete)
+3. READ: Full output, check exit code, count failures
+4. VERIFY: Does output confirm the claim?
+   - If NO: State actual status with evidence
+   - If YES: State claim WITH evidence
+5. ONLY THEN: Make the claim
+
+Skip any step = lying, not verifying
+```
+
+## Common Failures
+
+| Claim | Requires | Not Sufficient |
+|-------|----------|----------------|
+| Tests pass | Test command output: 0 failures | Previous run, "should pass" |
+| Linter clean | Linter output: 0 errors | Partial check, extrapolation |
+| Build succeeds | Build command: exit 0 | Linter passing, logs look good |
+| Bug fixed | Test original symptom: passes | Code changed, assumed fixed |
+| Regression test works | Red-green cycle verified | Test passes once |
+| Agent completed | VCS diff shows changes | Agent reports "success" |
+| Requirements met | Line-by-line checklist | Tests passing |
+
+## Red Flags - STOP
+
+- Using "should", "probably", "seems to"
+- Expressing satisfaction before verification ("Great!", "Perfect!", "Done!", etc.)
+- About to commit/push/PR without verification
+- Trusting agent success reports
+- Relying on partial verification
+- Thinking "just this once"
+- Tired and wanting work over
+- **ANY wording implying success without having run verification**
+
+## Rationalization Prevention
+
+| Excuse | Reality |
+|--------|---------|
+| "Should work now" | RUN the verification |
+| "I'm confident" | Confidence ≠ evidence |
+| "Just this once" | No exceptions |
+| "Linter passed" | Linter ≠ compiler |
+| "Agent said success" | Verify independently |
+| "I'm tired" | Exhaustion ≠ excuse |
+| "Partial check is enough" | Partial proves nothing |
+| "Different words so rule doesn't apply" | Spirit over letter |
+
+## Key Patterns
+
+**Tests:**
+```
+✅ [Run test command] [See: 34/34 pass] "All tests pass"
+❌ "Should pass now" / "Looks correct"
+```
+
+**Regression tests (TDD Red-Green):**
+```
+✅ Write → Run (pass) → Revert fix → Run (MUST FAIL) → Restore → Run (pass)
+❌ "I've written a regression test" (without red-green verification)
+```
+
+**Build:**
+```
+✅ [Run build] [See: exit 0] "Build passes"
+❌ "Linter passed" (linter doesn't check compilation)
+```
+
+**Requirements:**
+```
+✅ Re-read plan → Create checklist → Verify each → Report gaps or completion
+❌ "Tests pass, phase complete"
+```
+
+**Agent delegation:**
+```
+✅ Agent reports success → Check VCS diff → Verify changes → Report actual state
+❌ Trust agent report
+```
+
+## Why This Matters
+
+From 24 failure memories:
+- your human partner said "I don't believe you" - trust broken
+- Undefined functions shipped - would crash
+- Missing requirements shipped - incomplete features
+- Time wasted on false completion → redirect → rework
+- Violates: "Honesty is a core value. If you lie, you'll be replaced."
+
+## When To Apply
+
+**ALWAYS before:**
+- ANY variation of success/completion claims
+- ANY expression of satisfaction
+- ANY positive statement about work state
+- Committing, PR creation, task completion
+- Moving to next task
+- Delegating to agents
+
+**Rule applies to:**
+- Exact phrases
+- Paraphrases and synonyms
+- Implications of success
+- ANY communication suggesting completion/correctness
+
+## The Bottom Line
+
+**No shortcuts for verification.**
+
+Run the command. Read the output. THEN claim the result.
+
+This is non-negotiable.
+
+codex
+I’m checking the project-level instructions and the exact changed surfaces first, then I’ll verify the requested greps against fresh output. After that I’ll inspect the relevant plan/spec rows rather than relying only on counts.
+exec
+/bin/bash -lc "sed -n '1,220p' CLAUDE.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+# CLAUDE.md
+
+> **GENERATED FROM agent-contract.md — DO NOT EDIT BY HAND.**
+>
+> Edit `agent-contract.md` then run `pnpm generate:configs`. CI fails if drift detected.
+
+This file is the Claude Code entry point for the **SelfKnowledgeBaseWeb** monorepo. It tells
+every Claude session what the project is, the hard rules, the agent roster, and the workflow.
+
+- Spec: [docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md](docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md)
+- Active plan: [docs/plans/active.md](docs/plans/active.md)
+- Single source for agents: [agent-contract.md](agent-contract.md)
+- Codex tool invocations: [docs/runbooks/codex-tool-invocations.md](docs/runbooks/codex-tool-invocations.md)
+
+## Hard rules
+
+1. **File size**: 200 lines (target) / 300 lines (ESLint `max-lines` warn) / 500 lines
+   (`pnpm size-check` hard fail). Spec §3.6.
+2. **Cross-file references**: every doc/code change must keep doc cross-references and
+   contract files in sync (`packages/*/CONTRACT.md`, `agent-contract.md`).
+3. **Lychee link-check**: broken markdown links block merge. Run `pnpm link-check` locally.
+4. **`pnpm check` is mandatory before review** (lint + typecheck + test + build + size).
+5. **Git mutation discipline (ADR-0011 D1+D4)**: `git commit / branch / rebase / push`
+   only at D1 stage 5 (reviewer codex commit phase) or by orchestrator self for bootstrap
+   scope. Subagents (pr-writer / ux-ui-lead / refactorer / researcher) never run mutating
+   git commands.
+6. **Web access discipline (ADR-0011 D7)**: only the `researcher` Claude subagent (one-shot
+   per dispatch) may run `web_search` / `web_fetch`.
+7. **Cross-package moves (ADR-0011 D7)**: only the `refactorer` Claude subagent may
+   reorganize packages, and every reorganization requires an ADR under `docs/decisions/`.
+
+## Commands cheat-sheet
+
+| Command                 | Purpose                                               |
+| ----------------------- | ----------------------------------------------------- |
+| `pnpm install`          | Install workspace dependencies                        |
+| `pnpm dev`              | Run all `dev` scripts (parallel)                      |
+| `pnpm check`            | Lint + typecheck + test + build + size-check          |
+| `pnpm check:affected`   | Same, scoped to packages affected since `origin/main` |
+| `pnpm size-check`       | Hard 500-line limit on every source file              |
+| `pnpm link-check`       | Lychee scan over `./**/*.md`                          |
+| `pnpm generate:configs` | Re-derive everything from `agent-contract.md`         |
+| `pnpm format`           | Prettier write across the repo                        |
+
+## Review workflow (ADR-0011 D1 linear pipeline; supersedes Wave 1+2 tree workflow)
+
+Per PR (PRs run strictly serial; the next PR's PLAN waits for the previous PR's ACCEPT):
+
+```
+1. PLAN              pr-writer Claude subagent ↔ orchestrator → lock PR.md (D2 schema)
+       │
+       ▼
+2. EXECUTE           codex `generic-executor` (or specialized scaffolder; or
+                     `ux-ui-lead` Claude subagent for UI/UX). TDD-front:
+                     write tests → write impl → vitest all PASS.
+       │
+       ▼
+3. REVIEW            codex `codex-pr-reviewer-55` (5.5) — line-level + spec-match.
+                     ADR-0006 8-point checklist mandatory. PASS → next stage.
+       │
+       ├── (D2 row 1+4 hit) → 4. PRE-COMMIT CLAUDE REVIEW   orchestrator self.
+       │                          Mitigates same-model echo chamber.
+       │
+       ▼
+5. COMMIT (+ push)   reviewer codex commits. Per ADR-0006 D8 explicit-file-list
+                     staging (`git reset HEAD` → `git add <list>` →
+                     `git diff --cached --stat` verify → `git commit`).
+       │
+       ▼
+6. ACCEPT            pr-writer Claude subagent (second invocation): verify the
+                     PR's diff actually meets PR.md's `acceptance:` block.
+```
+
+D2 trigger judgment (ADR-0007 D2 rows; locked by orchestrator at PLAN):
+- **D1 stage 4 PRE-COMMIT CLAUDE REVIEW fires** on D2 rows 1+4 (contract change OR new
+  ADR required). Other rows skip this stage but still go through codex review.
+- **High-risk classes** (rows 2 package add/remove, row 8 CI/deploy/auth/security) also
+  receive heightened reviewer scrutiny within stage 3 — ADR-0006 D8 staging discipline +
+  ADR-0006 8-point checklist 8th-class hunt.
+
+See [ADR-0011](docs/decisions/ADR-0011-linear-pipeline-execution-model.md) D1-D8 +
+[ADR-0007 D2](docs/decisions/ADR-0007-job-function-codex-heavy-execution.md).
+
+Codex tools (11 patterns: 5 scaffolders + plan-challenger + codex-pr-reviewer-55 +
+4 audit/exec profiles) are
+[orchestrator-direct Bash invocations](docs/runbooks/codex-tool-invocations.md) post
+ADR-0007 D5 + ADR-0011 D6.
+
+## Claude teammates (5)
+
+| Tier            | Name           | Role                                                                           |
+| --------------- | -------------- | ------------------------------------------------------------------------------ |
+| T0 Orchestrator | `orchestrator` | 整体规划 + dispatch 工种 + 维护 docs/plans/ + D1 pipeline 协调                 |
+| T2 Subagent     | `pr-writer`    | PR.md 起草（PLAN 调）+ ACCEPT 验收（COMMIT 后调）                              |
+| T2 Subagent     | `refactorer`   | 唯一跨包重组权（ADR-0011 D7 沿用，按需 one-shot dispatch）                     |
+| T2 Subagent     | `researcher`   | 唯一外网访问权（ADR-0011 D7 沿用，按需 one-shot dispatch）                     |
+| T2 Subagent     | `ux-ui-lead`   | 视觉单一权威 — 横跨 ui-default + apps/site + editor 子模块（仅 UI/UX PR 触发） |
+
+## Codex tool patterns (11)
+
+orchestrator-direct Bash invocations (ADR-0007 D5). Full canonical bash + triggers + audit-log paths in [docs/runbooks/codex-tool-invocations.md](docs/runbooks/codex-tool-invocations.md).
+
+| Pattern                   | Profile                | Summary                                                                                            |
+| ------------------------- | ---------------------- | -------------------------------------------------------------------------------------------------- |
+| `codex-pr-reviewer-55`    | `codex-pr-reviewer-55` | ADR-0011 D1 stage 3 默认 reviewer。replaces Wave 1+2 的 pr-gate（5.5）+                            |
+| `codex-generic-executor`  | `generic-executor`     | ADR-0011 D6 NEW Wave 3 默认 executor。gpt-5.5 + workspace-write sandbox。                          |
+| `codex-mdx-doctor`        | `mdx-doctor`           | ADR-0011 D5 + D6 NEW Wave 3 audit profile。从 Wave 1+2 Tier 3                                      |
+| `codex-perf-auditor`      | `perf-auditor`         | ADR-0011 D5 + D6 NEW Wave 3 audit profile。从 Wave 1+2 Tier 3                                      |
+| `plan-challenger`         | `plan-challenger`      | lock 前挑战 orchestrator 的 wave / track / PR plan：检查 task 大小、可测性、边界场景。             |
+| `codex-api-crud-builder`  | `scaffolder`           | 在 apps/api 按 RESTful 风格生成 CRUD 端点骨架（Pydantic schema + 路由）。                          |
+| `codex-block-generator`   | `scaffolder`           | 在 simple-block-eng / ux-ui-lead / editor-eng 提交 template 后，按模板仿造其余 block / submodule。 |
+| `codex-css-stylist`       | `scaffolder`           | 写 packages/design-tokens / packages/ui 的 design tokens（颜色 / 间距 / 字体）+                    |
+| `codex-script-builder`    | `scaffolder`           | 写 scripts/refactor-move.ts / scripts/new-block.ts / scripts/extract-pdf-text.ts 等工具。          |
+| `codex-test-scaffolder`   | `scaffolder`           | 为每个 packages/<name> 生成 src/__tests__/ 下的 vitest 套件骨架，                                  |
+| `codex-structure-auditor` | `structure-auditor`    | ADR-0011 D5 + D6 NEW Wave 3 audit profile。从 Wave 1+2 Tier 3                                      |
+
+## Footer
+
+This file is GENERATED FROM `agent-contract.md`. Edits to this file will be overwritten
+on the next `pnpm generate:configs` run.
+
+exec
+/bin/bash -lc 'git status --short' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+ M docs/plans/active.md
+ M eslint.config.js
+ M packages/block-callout/CONTRACT.md
+ M packages/block-callout/src/__tests__/ui-default.test.tsx
+ M packages/block-callout/src/ui-default/index.ts
+ M packages/block-code/CONTRACT.md
+ M packages/block-code/src/__tests__/ui-default.test.tsx
+ M packages/block-code/src/ui-default/index.ts
+ M packages/block-image/CONTRACT.md
+ M packages/block-image/src/__tests__/ui-default.test.tsx
+ M packages/block-image/src/ui-default/index.ts
+ M packages/editor-shell/CONTRACT.md
+ M packages/editor-shell/src/registerBlocks.ts
+?? docs/audits/codex-runs/2026-05-03-B3-commit.txt
+?? docs/audits/codex-runs/2026-05-03-B4-pr-reviewer-55.txt
+?? docs/plans/wave-4-main/B4-stage-a-retro-items.md
+
+exec
+/bin/bash -lc "rg -n \"ComponentType contravariance|preserves PageFind coupling|2 \\+ 3 \\+ 4|2-4|B3|B4\" packages/editor-shell/CONTRACT.md docs/plans/active.md PR.md" in /home/weiyi/selfKnowledgeBaseWeb
+ exited 2 in 0ms:
+rg: PR.md: No such file or directory (os error 2)
+docs/plans/active.md:26:| #42 | `5d49240` | B3 | content/notes/__test_cjk__ relocation (notes index filter; partial impl of ADR-0013 D3; preserves PageFind coupling for B1b paired discriminator test) |
+docs/plans/active.md:27:| #TBD (this) | TBD | B4 | Stage A retro items 2 + 3 + 4 (cast asymmetry codify + UIDefault casing rename + ESLint argsIgnorePattern) |
+docs/plans/active.md:29:| Stage B | B1a + B1b + B2-B5 + B7 + B6 (**8 PRs**, re-locked 2026-05-03) | B | ADR-0012 amend (B1a doc + B1b SearchBox integration; per plan-challenger C6+C10 split) + sample-blocks cleanup (B2; merged from old B2+B3) + __test_cjk__ relocate (B3; was B4) + retrospective items 2-4 (B4; was B5a, items 5+6 Wave 3 already closed) + codex profile prefix + lychee codify (B5; was B5b + R3 absorbed) + **B7 NEW heavy block Astro hydration wiring + ADR-0014 v0.3 (CRITICAL gap)** + close-ceremony prep (B6) |
+packages/editor-shell/CONTRACT.md:116:## Type variance note (Stage A A3 R3 retrospective; codified Wave 4 B4)
+packages/editor-shell/CONTRACT.md:118:`registerBlocks` casts 5 of 8 ui-defaults via `XxxUiDefault as unknown as BlockUIDefinition` and leaves the remaining 3 uncast. The asymmetry is structural, not historical: it traces ComponentType contravariance under `exactOptionalPropertyTypes: true`.
+
+codex
+`PR.md` is not at repo root, so I’m locating the B4 plan/spec file before deciding whether the active row matches the locked wording. The working tree has broader B4 edits, so I’ll inspect changed filenames and the B4 plan context read-only.
+exec
+/bin/bash -lc "rg --files | rg '("'^|/)PR'"\\.md"'$|B4|wave-4'"'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+docs/superpowers/plans/2026-05-03-phase-1-wave-4-integration.md
+docs/plans/wave-4-main/B2-sample-blocks-cleanup.md
+docs/plans/wave-4-main/A7-astro-variants-consolidation.md
+docs/plans/wave-4-main/B1b-searchbox-integration.md
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md
+docs/plans/wave-4-main/Pre-A2-adr-0014-heavy-block-boundary.md
+docs/plans/wave-4-main/A1-heavy-block-boundary-package.md
+docs/plans/wave-4-main/Pre-A1-codex-runbook-yolo-tmp-piping.md
+docs/plans/wave-4-main/A3-heavy-block-boundary-retry.md
+docs/plans/wave-4-main/A6-heavy-block-playwright-layout-shift.md
+docs/plans/wave-4-main/Pre-A3-plan-lock.md
+docs/plans/wave-4-main/B4-stage-a-retro-items.md
+docs/plans/wave-4-main/A8-perf-chunking-adr-0014-promote.md
+docs/plans/wave-4-main/A4-heavy-block-boundary-css-a11y.md
+docs/plans/wave-4-main/B3-test-cjk-relocation.md
+docs/plans/wave-4-main/B1a-adr-0012-amendment.md
+docs/plans/wave-4-main/A2-heavy-block-boundary-core.md
+docs/plans/wave-3-main/B4-mdx-bridge-image-fixture.md
+docs/audits/codex-runs/2026-05-03-B4-pr-reviewer-55.txt
+
+exec
+/bin/bash -lc 'git diff --name-only' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+docs/plans/active.md
+eslint.config.js
+packages/block-callout/CONTRACT.md
+packages/block-callout/src/__tests__/ui-default.test.tsx
+packages/block-callout/src/ui-default/index.ts
+packages/block-code/CONTRACT.md
+packages/block-code/src/__tests__/ui-default.test.tsx
+packages/block-code/src/ui-default/index.ts
+packages/block-image/CONTRACT.md
+packages/block-image/src/__tests__/ui-default.test.tsx
+packages/block-image/src/ui-default/index.ts
+packages/editor-shell/CONTRACT.md
+packages/editor-shell/src/registerBlocks.ts
+
+exec
+/bin/bash -lc "grep -c 'ComponentType contravariance' packages/editor-shell/CONTRACT.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+1
+
+exec
+/bin/bash -lc "grep -c 'preserves PageFind coupling for B1b paired discriminator test' docs/plans/active.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+1
+
+exec
+/bin/bash -lc "grep -c 'Stage A retro items 2 + 3 + 4' docs/plans/active.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+1
+
+exec
+/bin/bash -lc "sed -n '1,220p' docs/plans/wave-4-main/B4-stage-a-retro-items.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+# B4 — Stage A retrospective items 2 + 3 + 4 (cast asymmetry codify + UIDefault casing rename + ESLint argsIgnorePattern)
+
+> **Wave 4 Stage B FIFTH implementation PR** of the re-locked 8-PR
+> sequence (B1a → B1b → B2 → B3 → **B4** → B5 → B7 → B6; see Wave 4
+> plan v0.2.1 Amendment Driver 1+2 + active.md roster). B1a (squash
+> `1aa2811`; PR #39), B1b (squash `5ec7123`; PR #40), B2 (squash
+> `317dda3`; PR #41), B3 (squash `5d49240`; PR #42) merged 2026-05-03;
+> B4 batches 3 of the 6 Stage A retrospective items (items 2 + 3 + 4;
+> items 5 + 6 already closed in Wave 3 per Wave 4 plan v0.2.1 Driver 1
+> retro roster). **D2 row 1 trigger HIT** (`packages/editor-shell/CONTRACT.md`
+> change codifying the 5/3 cast asymmetry as a first-class type-variance
+> note; `## D2 trigger judgment` below); stage 4 PRE-COMMIT CLAUDE
+> REVIEW **DOES** fire (similar to B1a + B1b structure). Out of scope:
+> see `## Out of scope (deferred)` — B5 + B7 + B6 PRs all deferred per
+> Wave 4 plan v0.2.1 roster.
+
+## title
+
+Codify Wave 3 Stage A A3 R3 / R4 / R6 retrospective items 2-4 in a
+single small batch PR:
+
+1. **Item 2 — Cast asymmetry codify (editor-shell CONTRACT.md)**:
+   the existing JSDoc on `packages/editor-shell/src/registerBlocks.ts`
+   lines 20-27 (5 cast / 3 no-cast asymmetry between the 8 block
+   ui-defaults under `exactOptionalPropertyTypes:true`) is **today
+   only documented inline at the call site**. B4 promotes this from
+   inline JSDoc to a first-class "Type variance note" section in
+   `packages/editor-shell/CONTRACT.md` so future contributors find
+   it during contract review (the canonical pattern reference that
+   all 8 block-* packages would link to). The asymmetry: 5 of 8
+   ui-defaults (`callout` / `code` / `image` / `math` / `pdf`) need
+   `XxxUiDefault as unknown as BlockUIDefinition` because their
+   `BlockUIDefinition<typeof xxxCore.propsSchema>` narrow-schema
+   ComponentType isn't assignable to `BlockUIDefinition` (wide-schema
+   `ZodTypeAny`) due to React `ComponentType` contravariance under
+   `exactOptionalPropertyTypes:true`; the remaining 3 (`jupyter` /
+   `nn-viz` / `agent-flow`) use a wider component-type signature
+   that satisfies the variance directly — no cast required (ESLint's
+   `no-unnecessary-type-assertion` would flag any cast added there
+   as a no-op). Documented as a **structural property** of the 8
+   blocks' EditorView/RenderView signatures, not a workaround.
+
+2. **Item 3 — UIDefault casing coordinated rename (3 packages →
+   majority `Ui` form)**: today the 8 block packages mix two casing
+   conventions for their default ui export — 5 use lowercase `Ui`
+   (`mathUiDefault` / `pdfUiDefault` / `jupyterUiDefault` /
+   `nnVizUiDefault` / `agentFlowUiDefault`); 3 use uppercase `UI`
+   (`calloutUIDefault` / `codeUIDefault` / `imageUIDefault`). Wave
+   3 A3 retrospective surfaced the inconsistency at R6; Wave 4 B4
+   picks the **majority `Ui` form** as the canonical casing and
+   migrates the 3 minority uppercase exports to it. Cross-package
+   coordination: 3 source `index.ts` exports + 3 block-* test files
+   (`__tests__/ui-default.test.tsx` × 3) + 3 block-* CONTRACT.md
+   prose lines + `packages/editor-shell/src/registerBlocks.ts`
+   imports + usages. Verified PLAN-time NO `apps/site` references
+   (grep returned 0) and NO `apps/api` / `scripts/` references
+   (grep returned 0). The `packages/block-foundation/src/__tests__/registry.test.ts`
+   declares a LOCAL `const calloutUIDefault = defineUI(...)` test
+   fixture (NOT a consumer of the renamed export) — out of scope;
+   stays unchanged. The `packages/block-foundation/RFC.md` is an
+   archival design doc — out of scope; stays unchanged.
+
+3. **Item 4 — ESLint `argsIgnorePattern: '^_'`**: today the root
+   `eslint.config.js` does NOT set
+   `@typescript-eslint/no-unused-vars` explicitly, falling back to
+   `tseslint.configs.recommendedTypeChecked` defaults. This means
+   common JS/TS conventions like `function fn(_unused, used) { ... }`
+   to silence intentionally-unused arg warnings do NOT work as
+   convention expects (TS no-unused-vars defaults match `_` only
+   when explicitly configured via `argsIgnorePattern: '^_'`). B4
+   adds an explicit
+   `@typescript-eslint/no-unused-vars: ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_', ignoreRestSiblings: true }]`
+   rule to the type-aware files block at `eslint.config.js`. This
+   is a **purely additive lint UX improvement** — no existing code
+   today uses `_`-prefix args (verified PLAN-time grep), so the
+   rule is forward-compatible with no migration cost.
+
+Backfill `docs/plans/active.md` B3 row (`#42 | 5d49240 | B3 |
+__test_cjk__ partial relocation (notes index filter; preserve
+PageFind coupling)`) + add B4 row. PR.md self-listed per ADR-0006
+D8 + Pre-A1 → B3 precedent.
+
+## files
+
+12 canonical files + COMMIT-time +B3-orphan-leftover (1; B3 stage 5
+commit log not committed in B3 PR per orphan-back-fill precedent
+established at B1b/B2/B3) + B4 reviewer audit archives (1-2; R1 always;
+R2 if needed); **13-14 files total at commit**. orchestrator-self
+EXECUTE for the small batch + cross-package rename + JSDoc/CONTRACT
+prose (matches B3's small-batch precedent; modest cross-package fan-out
++ no plan-challenger absorbtion needed because the brief is concrete).
+NO `package.json` / `pnpm-lock.yaml` change (no new deps; pure rename
++ ESLint rule addition + CONTRACT prose). NO `apps/site/astro.config.mjs`
+change. NO `apps/api/` change.
+
+1. `packages/editor-shell/CONTRACT.md` — **MODIFIED** (~30 LOC
+   delta; item 2). EXECUTE adds a NEW `## Type variance note`
+   section between the existing `## Public surface` and `## Wave 3
+   Stage A expansion outline` sections, codifying the 5/3 cast
+   asymmetry between the 8 block ui-defaults. Section content
+   (canonical prose; load-bearing for item 2):
+   - Lists the 5 cast-required blocks (callout / code / image /
+     math / pdf) with the canonical cast form
+     `XxxUiDefault as unknown as BlockUIDefinition`.
+   - Lists the 3 no-cast blocks (jupyter / nn-viz / agent-flow)
+     using a wider component-type signature that satisfies
+     `BlockUIDefinition<ZodTypeAny>` directly.
+   - Cites the **root cause**: React `ComponentType` contravariance
+     on the `props` parameter under `exactOptionalPropertyTypes:true`
+     — narrow-schema `BlockUIDefinition<typeof xxxCore.propsSchema>`
+     isn't structurally assignable to wide-schema
+     `BlockUIDefinition` (which uses `ZodTypeAny` per
+     `block-foundation`'s public surface).
+   - Notes the **invariant**: ESLint's
+     `no-unnecessary-type-assertion` would flag any cast added to
+     the 3 no-cast blocks as a no-op — so the 5/3 split is
+     enforced by lint, not just convention. TC8 verifies the
+     `## Type variance note` section is present + load-bearing
+     prose strings appear.
+
+2. `packages/block-callout/src/ui-default/index.ts` — **MODIFIED**
+   (item 3; ~1 LOC delta). EXECUTE renames the named export
+   `calloutUIDefault` → `calloutUiDefault` (lowercase `i`).
+   Line 6 today: `export const calloutUIDefault: BlockUIDefinition<...>=`
+   becomes `export const calloutUiDefault: BlockUIDefinition<...>=`.
+   No other file in `packages/block-callout/src/ui-default/`
+   references this export by name (verified PLAN-time;
+   `EditorView.tsx` / `RenderView.tsx` / `CalloutBody.tsx` /
+   `variant-tokens.ts` / `icons.ts` import other named exports
+   only; the const name is local to `index.ts` definition + 1
+   downstream test consumer + 1 cross-package consumer at
+   `editor-shell/registerBlocks.ts`).
+
+3. `packages/block-callout/src/__tests__/ui-default.test.tsx` —
+   **MODIFIED** (item 3 consumer; ~7 LOC delta). EXECUTE renames
+   8 in-test references to `calloutUIDefault` → `calloutUiDefault`:
+   - line 6 (named import)
+   - line 15 (describe block label)
+   - lines 17-20 (4× `calloutUIDefault.coreName` etc.)
+   - line 26 (`reg.registerUI(calloutUIDefault as unknown as ...)`)
+   - lines 27-28 (`expect(reg.getUI('callout')).toBe(calloutUIDefault)`)
+
+4. `packages/block-callout/CONTRACT.md` — **MODIFIED** (item 3
+   doc consumer; ~2 LOC delta). EXECUTE renames 2 in-CONTRACT
+   prose references:
+   - line 17 (Public surface bullet:
+     `calloutUIDefault: BlockUIDefinition<typeof calloutCore.propsSchema>` →
+     `calloutUiDefault: BlockUIDefinition<typeof calloutCore.propsSchema>`)
+   - line 53 (Invariants bullet:
+     `calloutUIDefault.uiId === 'default'` →
+     `calloutUiDefault.uiId === 'default'`)
+
+5. `packages/block-code/src/ui-default/index.ts` — **MODIFIED**
+   (item 3; ~1 LOC delta). EXECUTE renames `codeUIDefault` →
+   `codeUiDefault` at line 6.
+
+6. `packages/block-code/src/__tests__/ui-default.test.tsx` —
+   **MODIFIED** (item 3 consumer; ~7 LOC delta). EXECUTE renames
+   8 in-test references to `codeUIDefault` → `codeUiDefault`
+   (parallel structure to file #3).
+
+7. `packages/block-code/CONTRACT.md` — **MODIFIED** (item 3 doc
+   consumer; ~1 LOC delta). EXECUTE renames 1 in-CONTRACT prose
+   reference at line 16 (Public surface bullet:
+   `codeUIDefault: BlockUIDefinition<...>` →
+   `codeUiDefault: BlockUIDefinition<...>`).
+
+8. `packages/block-image/src/ui-default/index.ts` — **MODIFIED**
+   (item 3; ~1 LOC delta). EXECUTE renames `imageUIDefault` →
+   `imageUiDefault` at line 6.
+
+9. `packages/block-image/src/__tests__/ui-default.test.tsx` —
+   **MODIFIED** (item 3 consumer; ~7 LOC delta). EXECUTE renames
+   8 in-test references to `imageUIDefault` → `imageUiDefault`
+   (parallel structure to file #3).
+
+10. `packages/block-image/CONTRACT.md` — **MODIFIED** (item 3
+    doc consumer; ~2 LOC delta). EXECUTE renames 2 in-CONTRACT
+    prose references at lines 17 + 44.
+
+11. `packages/editor-shell/src/registerBlocks.ts` — **MODIFIED**
+    (item 3 cross-package consumer; ~6 LOC delta). EXECUTE renames
+    3 imports + 3 usages:
+    - line 3: `import { calloutUIDefault } from '@skb/block-callout/ui-default'`
+      → `import { calloutUiDefault } from '@skb/block-callout/ui-default'`
+    - line 5: `codeUIDefault` → `codeUiDefault`
+    - line 7: `imageUIDefault` → `imageUiDefault`
+    - line 29: `registry.registerUI(calloutUIDefault as unknown as BlockUIDefinition)`
+      → `registry.registerUI(calloutUiDefault as unknown as BlockUIDefinition)`
+    - line 32: `codeUIDefault` → `codeUiDefault`
+    - line 35: `imageUIDefault` → `imageUiDefault`
+
+12. `eslint.config.js` — **MODIFIED** (item 4; ~3 LOC delta).
+    EXECUTE adds an explicit
+    `@typescript-eslint/no-unused-vars` rule to the type-aware
+    files block (the existing `rules:` object inside the
+    `apps/**/*.{ts,tsx}` / `packages/**/*.{ts,tsx}` /
+    `scripts/**/*.ts` block, alongside `max-lines` + `no-console`):
+    ```js
+    '@typescript-eslint/no-unused-vars': ['warn', {
+      argsIgnorePattern: '^_',
+      varsIgnorePattern: '^_',
+      ignoreRestSiblings: true,
+    }],
+    ```
+    Single rule addition; no existing rule overridden; no other
+    eslint config block touched.
+
+13. `docs/plans/active.md` — **MODIFIED** (~3 LOC delta).
+    - **B3 row backfill**: existing
+      `| #TBD (this) | TBD | B3 | content/notes/__test_cjk__
+      relocation (notes index filter; partial impl of ADR-0013 D3;
+      preserves PageFind coupling for B1b paired discriminator
+      test) |` row at line 26 →
+      `| #42 | 5d49240 | B3 | content/notes/__test_cjk__ relocation
+      (notes index filter; partial impl of ADR-0013 D3; preserves
+      PageFind coupling for B1b paired discriminator test) |`
+      (B3 PR #42 squash `5d49240` per the conversation context;
+      orchestrator verifies the canonical PR# + commit-hash by
+      running `gh pr list --state merged --limit 5` + `git log
+
+exec
+/bin/bash -lc "nl -ba packages/editor-shell/CONTRACT.md | sed -n '108,124p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+   108	
+   109	[ADR-0008 D1](../../docs/decisions/ADR-0008-wave-2-entry-policies.md) dead-dep
+   110	policy is satisfied at A5 by construction: every declared `@skb/*` workspace
+   111	dep has at least one `from '@skb/<pkg>'` source import. The 13 declared deps
+   112	+ 13 source imports (across `registerBlocks.ts` / `registerKernels.ts` /
+   113	`saveLoad.ts` / `index.ts`) + 13 tsconfig references hold three-way exact-match
+   114	symmetry.
+   115	
+   116	## Type variance note (Stage A A3 R3 retrospective; codified Wave 4 B4)
+   117	
+   118	`registerBlocks` casts 5 of 8 ui-defaults via `XxxUiDefault as unknown as BlockUIDefinition` and leaves the remaining 3 uncast. The asymmetry is structural, not historical: it traces ComponentType contravariance under `exactOptionalPropertyTypes: true`.
+   119	
+   120	- **5 with cast** (callout / code / image / math / pdf): each
+   121	  package's `XxxUiDefault` is typed
+   122	  `BlockUIDefinition<typeof XxxCore.propsSchema>` — a NARROW schema
+   123	  via `defineUI`'s generic. The narrow schema's
+   124	  `EditorView`/`RenderView` is `ComponentType<BlockViewProps<NarrowSchema>>`,
+
+exec
+/bin/bash -lc "nl -ba docs/plans/active.md | sed -n '20,32p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+    20	| #36 | 95ba33b | A6 | playwright T0/T1 zero-layout-shift test (AC#5) |
+    21	| #37 | 87d0b32 | A7 | 5×.astro variants consolidation (Wave 3 C4a/C4b carry-over) |
+    22	| #38 | 4aeb279 | A8 | Stage A close: perf baseline + chunking NO-OP + ADR-0014 promote `proposed→accepted` |
+    23	| #39 | `1aa2811` | B1a | ADR-0012 v0.1.1 amendment + isWordLevelMatch utility (Stage B re-plan record) |
+    24	| #40 | `5ec7123` | B1b | SearchBox Option B-4 hybrid integration + count-fixup + paired discriminator playwright restore |
+    25	| #41 | `317dda3` | B2 | sample-blocks Wave 3 cleanup (4 sample-assets binaries + intro prose refresh; closes gatekeeper smoke #8 + #9) |
+    26	| #42 | `5d49240` | B3 | content/notes/__test_cjk__ relocation (notes index filter; partial impl of ADR-0013 D3; preserves PageFind coupling for B1b paired discriminator test) |
+    27	| #TBD (this) | TBD | B4 | Stage A retro items 2 + 3 + 4 (cast asymmetry codify + UIDefault casing rename + ESLint argsIgnorePattern) |
+    28	| **Stage A** | ✅ **DONE** (8/8 PRs) | A | A1-A8 merged 2026-05-03 (HEAD 4aeb279); ADR-0014 promoted to accepted |
+    29	| Stage B | B1a + B1b + B2-B5 + B7 + B6 (**8 PRs**, re-locked 2026-05-03) | B | ADR-0012 amend (B1a doc + B1b SearchBox integration; per plan-challenger C6+C10 split) + sample-blocks cleanup (B2; merged from old B2+B3) + __test_cjk__ relocate (B3; was B4) + retrospective items 2-4 (B4; was B5a, items 5+6 Wave 3 already closed) + codex profile prefix + lychee codify (B5; was B5b + R3 absorbed) + **B7 NEW heavy block Astro hydration wiring + ADR-0014 v0.3 (CRITICAL gap)** + close-ceremony prep (B6) |
+    30	| Stage C | open-ended | C | Phase 1 user-iteration scope (per gatekeeper directive #4 + MVP framework) |
+    31	
+    32	**Wave 4 mandatory scope (Wave 3 carry-overs)** — status as of A8 Stage A close:
+
+exec
+/bin/bash -lc 'git diff -- docs/plans/active.md packages/editor-shell/CONTRACT.md docs/plans/wave-4-main/B4-stage-a-retro-items.md' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+diff --git a/docs/plans/active.md b/docs/plans/active.md
+index 8896a86..608d014 100644
+--- a/docs/plans/active.md
++++ b/docs/plans/active.md
+@@ -23,7 +23,8 @@
+ | #39 | `1aa2811` | B1a | ADR-0012 v0.1.1 amendment + isWordLevelMatch utility (Stage B re-plan record) |
+ | #40 | `5ec7123` | B1b | SearchBox Option B-4 hybrid integration + count-fixup + paired discriminator playwright restore |
+ | #41 | `317dda3` | B2 | sample-blocks Wave 3 cleanup (4 sample-assets binaries + intro prose refresh; closes gatekeeper smoke #8 + #9) |
+-| #TBD (this) | TBD | B3 | content/notes/__test_cjk__ relocation (notes index filter; partial impl of ADR-0013 D3; preserves PageFind coupling for B1b paired discriminator test) |
++| #42 | `5d49240` | B3 | content/notes/__test_cjk__ relocation (notes index filter; partial impl of ADR-0013 D3; preserves PageFind coupling for B1b paired discriminator test) |
++| #TBD (this) | TBD | B4 | Stage A retro items 2 + 3 + 4 (cast asymmetry codify + UIDefault casing rename + ESLint argsIgnorePattern) |
+ | **Stage A** | ✅ **DONE** (8/8 PRs) | A | A1-A8 merged 2026-05-03 (HEAD 4aeb279); ADR-0014 promoted to accepted |
+ | Stage B | B1a + B1b + B2-B5 + B7 + B6 (**8 PRs**, re-locked 2026-05-03) | B | ADR-0012 amend (B1a doc + B1b SearchBox integration; per plan-challenger C6+C10 split) + sample-blocks cleanup (B2; merged from old B2+B3) + __test_cjk__ relocate (B3; was B4) + retrospective items 2-4 (B4; was B5a, items 5+6 Wave 3 already closed) + codex profile prefix + lychee codify (B5; was B5b + R3 absorbed) + **B7 NEW heavy block Astro hydration wiring + ADR-0014 v0.3 (CRITICAL gap)** + close-ceremony prep (B6) |
+ | Stage C | open-ended | C | Phase 1 user-iteration scope (per gatekeeper directive #4 + MVP framework) |
+diff --git a/packages/editor-shell/CONTRACT.md b/packages/editor-shell/CONTRACT.md
+index 90256f8..316ba2a 100644
+--- a/packages/editor-shell/CONTRACT.md
++++ b/packages/editor-shell/CONTRACT.md
+@@ -113,6 +113,37 @@ dep has at least one `from '@skb/<pkg>'` source import. The 13 declared deps
+ `saveLoad.ts` / `index.ts`) + 13 tsconfig references hold three-way exact-match
+ symmetry.
+ 
++## Type variance note (Stage A A3 R3 retrospective; codified Wave 4 B4)
++
++`registerBlocks` casts 5 of 8 ui-defaults via `XxxUiDefault as unknown as BlockUIDefinition` and leaves the remaining 3 uncast. The asymmetry is structural, not historical: it traces ComponentType contravariance under `exactOptionalPropertyTypes: true`.
++
++- **5 with cast** (callout / code / image / math / pdf): each
++  package's `XxxUiDefault` is typed
++  `BlockUIDefinition<typeof XxxCore.propsSchema>` — a NARROW schema
++  via `defineUI`'s generic. The narrow schema's
++  `EditorView`/`RenderView` is `ComponentType<BlockViewProps<NarrowSchema>>`,
++  which is NOT assignable to the registry's wider
++  `ComponentType<BlockViewProps<ZodTypeAny>>` due to ComponentType
++  contravariance. The cast collapses the variance gap. ESLint's
++  `no-unnecessary-type-assertion` does NOT flag these casts because
++  the assertion is genuinely required by tsc.
++- **3 without cast** (jupyter / nn-viz / agent-flow): each package's
++  `XxxUiDefault` resolves through `defineUI` with a wider component
++  type signature that already accepts `BlockViewProps<ZodTypeAny>`
++  without contravariance issue (verified at A3 EXECUTE 2026-05-01;
++  tsc accepts the direct registration). Adding the cast here would
++  be a no-op; ESLint's `no-unnecessary-type-assertion` would flag it.
++
++**Implication**: the 5/3 split is locked-in until the underlying
++ui-default package types converge. Future blocks SHOULD pick the
++3-camp signature shape (no cast required) when authoring new
++ui-defaults; A3 R3 incident notes the asymmetry was first
++surfaced when a contributor uniformly cast all 8, which lint then
++rejected on the 3 unnecessary-cast cases. The cast-required vs
++cast-free behavior is verified at every `pnpm typecheck` run +
++`pnpm lint` run on `registerBlocks.ts`; any drift will surface
++immediately.
++
+ ## Modifying this file
+ 
+ Each A2-A5 PR Modifies this file to extend "Public surface" as exports land.
+
+codex
+The two fresh grep checks both return `1`, and the line-numbered snippets show the intended wording in place. I’m now doing a quick pass over the non-doc diff and likely consumer references so the R2 verdict is not just a string-match check.
+exec
+/bin/bash -lc 'git diff --stat' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+ docs/plans/active.md                               |  3 ++-
+ eslint.config.js                                   | 12 +++++++++
+ packages/block-callout/CONTRACT.md                 |  4 +--
+ .../src/__tests__/ui-default.test.tsx              | 18 ++++++-------
+ packages/block-callout/src/ui-default/index.ts     |  2 +-
+ packages/block-code/CONTRACT.md                    |  2 +-
+ .../block-code/src/__tests__/ui-default.test.tsx   | 18 ++++++-------
+ packages/block-code/src/ui-default/index.ts        |  2 +-
+ packages/block-image/CONTRACT.md                   |  4 +--
+ .../block-image/src/__tests__/ui-default.test.tsx  | 18 ++++++-------
+ packages/block-image/src/ui-default/index.ts       |  2 +-
+ packages/editor-shell/CONTRACT.md                  | 31 ++++++++++++++++++++++
+ packages/editor-shell/src/registerBlocks.ts        | 12 ++++-----
+ 13 files changed, 86 insertions(+), 42 deletions(-)
+
+exec
+/bin/bash -lc 'git diff -- eslint.config.js packages/block-callout/CONTRACT.md packages/block-callout/src/__tests__/ui-default.test.tsx packages/block-callout/src/ui-default/index.ts packages/block-code/CONTRACT.md packages/block-code/src/__tests__/ui-default.test.tsx packages/block-code/src/ui-default/index.ts packages/block-image/CONTRACT.md packages/block-image/src/__tests__/ui-default.test.tsx packages/block-image/src/ui-default/index.ts packages/editor-shell/src/registerBlocks.ts' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+diff --git a/eslint.config.js b/eslint.config.js
+index b8e33dc..8c4c59e 100644
+--- a/eslint.config.js
++++ b/eslint.config.js
+@@ -19,6 +19,18 @@ export default tseslint.config(
+     rules: {
+       'max-lines': ['warn', { max: 300, skipBlankLines: true, skipComments: true }],
+       'no-console': ['warn', { allow: ['warn', 'error'] }],
++      // Stage A retro item 4 (Wave 4 B4): allow `_`-prefix args/vars to
++      // signal intentional unused parameters per JS/TS convention; mirror
++      // typescript-eslint defaults via explicit configuration.
++      '@typescript-eslint/no-unused-vars': [
++        'warn',
++        {
++          argsIgnorePattern: '^_',
++          varsIgnorePattern: '^_',
++          caughtErrorsIgnorePattern: '^_',
++          ignoreRestSiblings: true,
++        },
++      ],
+     },
+   },
+ 
+diff --git a/packages/block-callout/CONTRACT.md b/packages/block-callout/CONTRACT.md
+index 74f0f94..954ecf1 100644
+--- a/packages/block-callout/CONTRACT.md
++++ b/packages/block-callout/CONTRACT.md
+@@ -14,7 +14,7 @@
+   - `parseCallout(mdast) → TiptapNode` — mdast → Tiptap (同上)
+   - 类型: `CalloutTiptapNode` / `CalloutMdastJsxElement`
+ - `./ui-default` — presentational 层（Wave 2 Track C2）
+-  - `calloutUIDefault: BlockUIDefinition<typeof calloutCore.propsSchema>` — coreName=`'callout'` / uiId=`'default'`
++  - `calloutUiDefault: BlockUIDefinition<typeof calloutCore.propsSchema>` — coreName=`'callout'` / uiId=`'default'`
+   - `CalloutEditorView` / `CalloutRenderView` — `ComponentType<BlockViewProps<typeof calloutCore.propsSchema>>`，DOM 形状字节级一致（共享 `CalloutBody` 原语）
+   - `CalloutBody` — 视觉单一权威 primitive，editor + render 双视图都嵌入
+   - `VARIANT_TOKENS` — `Record<Variant, { label, accentToken: ColorTokenName }>` 共享视觉元数据
+@@ -50,7 +50,7 @@ block-callout 特定不变量：
+   mdx-bridge 通过 `mdxJsxFlowElement.name` 字符串路由（[block-foundation RFC §1](../block-foundation/RFC.md#1-core-side)）
+ - **Serialize / parse hook 命名**: `serializeCallout` / `parseCallout`，verb-as-prefix
+   约定（[RFC §5](../block-foundation/RFC.md#5-serialize--parse-hook-ownership-scope-clarification)）
+-- **`uiId='default'` reserved**: `calloutUIDefault.uiId === 'default'`；本包 inherit
++- **`uiId='default'` reserved**: `calloutUiDefault.uiId === 'default'`；本包 inherit
+   foundation 的 `Default UI lookup` 不变量（首注册即 default）
+ - **EditorView / RenderView byte-equivalent DOM**: 两视图都通过 `CalloutBody` 原语
+   渲染，DOM tree / class 名 / `data-callout-variant` / `role` / `aria-label`
+diff --git a/packages/block-callout/src/__tests__/ui-default.test.tsx b/packages/block-callout/src/__tests__/ui-default.test.tsx
+index 71ceb99..0b9e32b 100644
+--- a/packages/block-callout/src/__tests__/ui-default.test.tsx
++++ b/packages/block-callout/src/__tests__/ui-default.test.tsx
+@@ -3,7 +3,7 @@ import { render } from '@testing-library/react';
+ import { BlockRegistry, type BlockUIDefinition } from '@skb/block-foundation';
+ import { calloutCore } from '../core/core-definition';
+ import {
+-  calloutUIDefault,
++  calloutUiDefault,
+   CalloutEditorView,
+   CalloutRenderView,
+   VARIANT_TOKENS,
+@@ -12,20 +12,20 @@ import type { Variant } from '../ui-default';
+ 
+ const VARIANTS: readonly Variant[] = ['note', 'tip', 'warning', 'danger'];
+ 
+-describe('calloutUIDefault registration', () => {
++describe('calloutUiDefault registration', () => {
+   it('exposes the BlockUIDefinition shape with coreName + uiId="default"', () => {
+-    expect(calloutUIDefault.coreName).toBe('callout');
+-    expect(calloutUIDefault.uiId).toBe('default');
+-    expect(calloutUIDefault.EditorView).toBe(CalloutEditorView);
+-    expect(calloutUIDefault.RenderView).toBe(CalloutRenderView);
++    expect(calloutUiDefault.coreName).toBe('callout');
++    expect(calloutUiDefault.uiId).toBe('default');
++    expect(calloutUiDefault.EditorView).toBe(CalloutEditorView);
++    expect(calloutUiDefault.RenderView).toBe(CalloutRenderView);
+   });
+ 
+   it('round-trips through BlockRegistry (registerCore + registerUI)', () => {
+     const reg = new BlockRegistry();
+     reg.registerCore(calloutCore);
+-    reg.registerUI(calloutUIDefault as unknown as BlockUIDefinition);
+-    expect(reg.getUI('callout')).toBe(calloutUIDefault);
+-    expect(reg.getUI('callout', 'default')).toBe(calloutUIDefault);
++    reg.registerUI(calloutUiDefault as unknown as BlockUIDefinition);
++    expect(reg.getUI('callout')).toBe(calloutUiDefault);
++    expect(reg.getUI('callout', 'default')).toBe(calloutUiDefault);
+   });
+ });
+ 
+diff --git a/packages/block-callout/src/ui-default/index.ts b/packages/block-callout/src/ui-default/index.ts
+index 1dcddc6..eb596e7 100644
+--- a/packages/block-callout/src/ui-default/index.ts
++++ b/packages/block-callout/src/ui-default/index.ts
+@@ -3,7 +3,7 @@ import { calloutCore } from '../core/core-definition';
+ import { CalloutEditorView } from './EditorView';
+ import { CalloutRenderView } from './RenderView';
+ 
+-export const calloutUIDefault: BlockUIDefinition<typeof calloutCore.propsSchema> =
++export const calloutUiDefault: BlockUIDefinition<typeof calloutCore.propsSchema> =
+   defineUI({
+     coreName: calloutCore.name,
+     uiId: 'default',
+diff --git a/packages/block-code/CONTRACT.md b/packages/block-code/CONTRACT.md
+index af84fcc..32d1dcf 100644
+--- a/packages/block-code/CONTRACT.md
++++ b/packages/block-code/CONTRACT.md
+@@ -13,7 +13,7 @@ C5a scope：`packages/block-code/ui-default`（Wave 2 Track C5a）基于 `packag
+   - `parseCode(mdast) → TiptapNode` — mdast → Tiptap（同上）
+   - 类型: `CodeTiptapNode` / `CodeMdastJsxElement`
+ - `./ui-default` — presentational 层（Wave C5a）
+-  - `codeUIDefault: BlockUIDefinition<typeof codeCore.propsSchema>` — coreName=`'code'` / uiId=`'default'`
++  - `codeUiDefault: BlockUIDefinition<typeof codeCore.propsSchema>` — coreName=`'code'` / uiId=`'default'`
+   - `CodeEditorView` / `CodeRenderView` — `ComponentType<BlockViewProps<typeof codeCore.propsSchema>>`，DOM 形状字节级一致（共享 `CodeBody` 原语）
+   - `CodeBody` — 视觉单一权威 primitive，editor + render 双视图都嵌入
+   - `CODE_THEME_TOKENS` — `Readonly<Record<string, ColorTokenName>>` 设计令牌消费清单（typed import from `@skb/design-tokens`，see Wave 3 PR #2 + ADR-0010 D3 #7a F3 闭环）
+diff --git a/packages/block-code/src/__tests__/ui-default.test.tsx b/packages/block-code/src/__tests__/ui-default.test.tsx
+index 2e82a2a..8101f65 100644
+--- a/packages/block-code/src/__tests__/ui-default.test.tsx
++++ b/packages/block-code/src/__tests__/ui-default.test.tsx
+@@ -3,7 +3,7 @@ import { render } from '@testing-library/react';
+ import { BlockRegistry, type BlockUIDefinition } from '@skb/block-foundation';
+ import { codeCore } from '../core/core-definition';
+ import {
+-  codeUIDefault,
++  codeUiDefault,
+   CodeBody,
+   CodeEditorView,
+   CodeRenderView,
+@@ -11,20 +11,20 @@ import {
+ 
+ const LANGUAGES = ['typescript', 'python', 'bash'] as const;
+ 
+-describe('codeUIDefault registration', () => {
++describe('codeUiDefault registration', () => {
+   it('exposes the BlockUIDefinition shape with coreName + uiId="default"', () => {
+-    expect(codeUIDefault.coreName).toBe('code');
+-    expect(codeUIDefault.uiId).toBe('default');
+-    expect(codeUIDefault.EditorView).toBeDefined();
+-    expect(codeUIDefault.RenderView).toBeDefined();
++    expect(codeUiDefault.coreName).toBe('code');
++    expect(codeUiDefault.uiId).toBe('default');
++    expect(codeUiDefault.EditorView).toBeDefined();
++    expect(codeUiDefault.RenderView).toBeDefined();
+   });
+ 
+   it('round-trips through BlockRegistry (registerCore + registerUI)', () => {
+     const reg = new BlockRegistry();
+     reg.registerCore(codeCore);
+-    reg.registerUI(codeUIDefault as unknown as BlockUIDefinition);
+-    expect(reg.getUI('code')).toBe(codeUIDefault);
+-    expect(reg.getUI('code', 'default')).toBe(codeUIDefault);
++    reg.registerUI(codeUiDefault as unknown as BlockUIDefinition);
++    expect(reg.getUI('code')).toBe(codeUiDefault);
++    expect(reg.getUI('code', 'default')).toBe(codeUiDefault);
+   });
+ });
+ 
+diff --git a/packages/block-code/src/ui-default/index.ts b/packages/block-code/src/ui-default/index.ts
+index b16d2b9..ffd4ebc 100644
+--- a/packages/block-code/src/ui-default/index.ts
++++ b/packages/block-code/src/ui-default/index.ts
+@@ -3,7 +3,7 @@ import { codeCore } from '../core/core-definition';
+ import { CodeEditorView } from './EditorView';
+ import { CodeRenderView } from './RenderView';
+ 
+-export const codeUIDefault: BlockUIDefinition<typeof codeCore.propsSchema> =
++export const codeUiDefault: BlockUIDefinition<typeof codeCore.propsSchema> =
+   defineUI({
+     coreName: codeCore.name,
+     uiId: 'default',
+diff --git a/packages/block-image/CONTRACT.md b/packages/block-image/CONTRACT.md
+index 2a079c5..973e698 100644
+--- a/packages/block-image/CONTRACT.md
++++ b/packages/block-image/CONTRACT.md
+@@ -14,7 +14,7 @@
+   - `parseImage(mdast) → TiptapNode` — mdast → Tiptap
+   - 类型: `ImageTiptapNode` / `ImageMdastJsxElement`
+ - `./ui-default` — UI 定义与渲染入口
+-  - `imageUIDefault: BlockUIDefinition<typeof imageCore.propsSchema>` — default UI id = `'default'`
++  - `imageUiDefault: BlockUIDefinition<typeof imageCore.propsSchema>` — default UI id = `'default'`
+   - `ImageEditorView(props)` / `ImageRenderView(props)` — 同步的图像语义渲染层
+   - `ImageBody(props)` — 输出 `<figure><img ...><figcaption>{alt}</figcaption></figure>`，固定 `loading="lazy"`
+   - `IMAGE_THEME_TOKENS` — `Readonly<Record<string, ColorTokenName>>` 设计令牌消费清单（typed import from `@skb/design-tokens`，see Wave 3 PR #2 + ADR-0010 D3 #7a F3 闭环）
+@@ -41,7 +41,7 @@ const propsSchema = z.object({
+ - **Serialize / parse hook 命名**: `serializeImage` / `parseImage`。
+ - **Headless 自给**: `core/` 不 import 任何 React / Tiptap UI 模块；仅依赖 `@skb/block-foundation` + `zod`。
+ - **Self-validating serialize/parse**: `serializeImage` 调 `propsSchema.parse(node.attrs)`；`parseImage` 调 `propsSchema.parse(rawProps)`。
+-- **`imageUIDefault` 契约**: `uiId='default'` 且 `coreName='image'`，使用 `defineUI` 且可通过 `BlockRegistry.registerUI` 注入。
++- **`imageUiDefault` 契约**: `uiId='default'` 且 `coreName='image'`，使用 `defineUI` 且可通过 `BlockRegistry.registerUI` 注入。
+ - **语义 DOM 契约**: `ImageBody` 必须输出 `figure` 根节点并包含：
+   - `<img src, alt, loading="lazy", width?, height?>`
+   - `<figcaption>{alt}</figcaption>`
+diff --git a/packages/block-image/src/__tests__/ui-default.test.tsx b/packages/block-image/src/__tests__/ui-default.test.tsx
+index 2d98418..ac6f7c7 100644
+--- a/packages/block-image/src/__tests__/ui-default.test.tsx
++++ b/packages/block-image/src/__tests__/ui-default.test.tsx
+@@ -3,7 +3,7 @@ import { render } from '@testing-library/react';
+ import { BlockRegistry, type BlockUIDefinition } from '@skb/block-foundation';
+ import { imageCore } from '../core/core-definition';
+ import {
+-  imageUIDefault,
++  imageUiDefault,
+   ImageEditorView,
+   ImageRenderView,
+ } from '../ui-default';
+@@ -13,20 +13,20 @@ const baseProps = {
+   alt: 'hero image',
+ };
+ 
+-describe('imageUIDefault registration', () => {
++describe('imageUiDefault registration', () => {
+   it('exposes the BlockUIDefinition shape with coreName + uiId="default"', () => {
+-    expect(imageUIDefault.coreName).toBe('image');
+-    expect(imageUIDefault.uiId).toBe('default');
+-    expect(imageUIDefault.EditorView).toBe(ImageEditorView);
+-    expect(imageUIDefault.RenderView).toBe(ImageRenderView);
++    expect(imageUiDefault.coreName).toBe('image');
++    expect(imageUiDefault.uiId).toBe('default');
++    expect(imageUiDefault.EditorView).toBe(ImageEditorView);
++    expect(imageUiDefault.RenderView).toBe(ImageRenderView);
+   });
+ 
+   it('round-trips through BlockRegistry (registerCore + registerUI)', () => {
+     const reg = new BlockRegistry();
+     reg.registerCore(imageCore);
+-    reg.registerUI(imageUIDefault as unknown as BlockUIDefinition);
+-    expect(reg.getUI('image')).toBe(imageUIDefault);
+-    expect(reg.getUI('image', 'default')).toBe(imageUIDefault);
++    reg.registerUI(imageUiDefault as unknown as BlockUIDefinition);
++    expect(reg.getUI('image')).toBe(imageUiDefault);
++    expect(reg.getUI('image', 'default')).toBe(imageUiDefault);
+   });
+ });
+ 
+diff --git a/packages/block-image/src/ui-default/index.ts b/packages/block-image/src/ui-default/index.ts
+index 4cdfcd1..6dec361 100644
+--- a/packages/block-image/src/ui-default/index.ts
++++ b/packages/block-image/src/ui-default/index.ts
+@@ -3,7 +3,7 @@ import { imageCore } from '../core/core-definition';
+ import { ImageEditorView } from './EditorView';
+ import { ImageRenderView } from './RenderView';
+ 
+-export const imageUIDefault: BlockUIDefinition<typeof imageCore.propsSchema> =
++export const imageUiDefault: BlockUIDefinition<typeof imageCore.propsSchema> =
+   defineUI({
+     coreName: imageCore.name,
+     uiId: 'default',
+diff --git a/packages/editor-shell/src/registerBlocks.ts b/packages/editor-shell/src/registerBlocks.ts
+index f8feadf..734c5a6 100644
+--- a/packages/editor-shell/src/registerBlocks.ts
++++ b/packages/editor-shell/src/registerBlocks.ts
+@@ -1,10 +1,10 @@
+ import { type BlockRegistry, type BlockUIDefinition } from '@skb/block-foundation';
+ import { calloutCore } from '@skb/block-callout/core';
+-import { calloutUIDefault } from '@skb/block-callout/ui-default';
++import { calloutUiDefault } from '@skb/block-callout/ui-default';
+ import { codeCore } from '@skb/block-code/core';
+-import { codeUIDefault } from '@skb/block-code/ui-default';
++import { codeUiDefault } from '@skb/block-code/ui-default';
+ import { imageCore } from '@skb/block-image/core';
+-import { imageUIDefault } from '@skb/block-image/ui-default';
++import { imageUiDefault } from '@skb/block-image/ui-default';
+ import { mathCore } from '@skb/block-math/core';
+ import { mathUiDefault } from '@skb/block-math/ui-default';
+ import { pdfCore } from '@skb/block-pdf/core';
+@@ -26,13 +26,13 @@ export function registerBlocks(registry: BlockRegistry): void {
+   // directly — no cast required (ESLint's no-unnecessary-type-assertion
+   // flags any cast added there as a no-op).
+   registry.registerCore(calloutCore);
+-  registry.registerUI(calloutUIDefault as unknown as BlockUIDefinition);
++  registry.registerUI(calloutUiDefault as unknown as BlockUIDefinition);
+ 
+   registry.registerCore(codeCore);
+-  registry.registerUI(codeUIDefault as unknown as BlockUIDefinition);
++  registry.registerUI(codeUiDefault as unknown as BlockUIDefinition);
+ 
+   registry.registerCore(imageCore);
+-  registry.registerUI(imageUIDefault as unknown as BlockUIDefinition);
++  registry.registerUI(imageUiDefault as unknown as BlockUIDefinition);
+ 
+   // 2 render blocks (math/pdf): inference-default UiDefault still narrows
+   // to the core's propsSchema via defineUI's generic; same cast required.
+
+exec
+/bin/bash -lc 'git diff --check' in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "rg -n \"calloutUIDefault|codeUIDefault|imageUIDefault|calloutUiDefault|codeUiDefault|imageUiDefault\" packages apps scripts docs --glob '"'!docs/audits/codex-runs/**'"'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+ succeeded in 0ms:
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:1062:const calloutUIDefault = defineUI({
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:1094:    reg.registerUI(calloutUIDefault);
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:1095:    expect(reg.getUI('callout')).toBe(calloutUIDefault);
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:1100:    expect(() => reg.registerUI(calloutUIDefault)).toThrow(/unknown core/i);
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:1106:    reg.registerUI(calloutUIDefault);
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:1107:    const minimal = defineUI({ ...calloutUIDefault, uiId: 'minimal' });
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:1109:    expect(reg.getUI('callout')).toBe(calloutUIDefault);
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:1117:    reg.registerUI(calloutUIDefault);
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:1118:    expect(() => reg.registerUI(calloutUIDefault)).toThrow(/duplicate.*UI/i);
+packages/editor-shell/src/registerBlocks.ts:3:import { calloutUiDefault } from '@skb/block-callout/ui-default';
+packages/editor-shell/src/registerBlocks.ts:5:import { codeUiDefault } from '@skb/block-code/ui-default';
+packages/editor-shell/src/registerBlocks.ts:7:import { imageUiDefault } from '@skb/block-image/ui-default';
+packages/editor-shell/src/registerBlocks.ts:29:  registry.registerUI(calloutUiDefault as unknown as BlockUIDefinition);
+packages/editor-shell/src/registerBlocks.ts:32:  registry.registerUI(codeUiDefault as unknown as BlockUIDefinition);
+packages/editor-shell/src/registerBlocks.ts:35:  registry.registerUI(imageUiDefault as unknown as BlockUIDefinition);
+packages/block-foundation/RFC.md:100:export const calloutUIDefault: BlockUIDefinition<
+packages/block-foundation/RFC.md:149:import { calloutUIDefault } from '@skb/block-callout/ui-default';
+packages/block-foundation/RFC.md:153:registry.registerUI(calloutUIDefault);
+packages/block-foundation/RFC.md:156:const ui = registry.getUI('callout'); // returns calloutUIDefault (uiId='default')
+packages/block-foundation/RFC.md:176:import { calloutUIDefault } from '../ui-default';
+packages/block-foundation/RFC.md:182:    reg.registerUI(calloutUIDefault);
+packages/block-foundation/RFC.md:185:    expect(reg.getUI('callout')).toBe(calloutUIDefault);
+packages/block-foundation/RFC.md:186:    expect(reg.getUI('callout', 'default')).toBe(calloutUIDefault);
+packages/block-code/src/ui-default/index.ts:6:export const codeUiDefault: BlockUIDefinition<typeof codeCore.propsSchema> =
+packages/block-foundation/src/__tests__/registry.test.ts:19:const calloutUIDefault = defineUI({
+packages/block-foundation/src/__tests__/registry.test.ts:64:    reg.registerUI(calloutUIDefault);
+packages/block-foundation/src/__tests__/registry.test.ts:65:    expect(reg.getUI('callout')).toBe(calloutUIDefault);
+packages/block-foundation/src/__tests__/registry.test.ts:70:    expect(() => reg.registerUI(calloutUIDefault)).toThrow(/unknown core/i);
+packages/block-foundation/src/__tests__/registry.test.ts:76:    reg.registerUI(calloutUIDefault);
+packages/block-foundation/src/__tests__/registry.test.ts:77:    const minimal = defineUI({ ...calloutUIDefault, uiId: 'minimal' });
+packages/block-foundation/src/__tests__/registry.test.ts:79:    expect(reg.getUI('callout')).toBe(calloutUIDefault);
+packages/block-foundation/src/__tests__/registry.test.ts:87:    reg.registerUI(calloutUIDefault);
+packages/block-foundation/src/__tests__/registry.test.ts:88:    expect(() => reg.registerUI(calloutUIDefault)).toThrow(/duplicate.*UI/i);
+packages/block-foundation/src/__tests__/registry.test.ts:94:    reg.registerUI(calloutUIDefault);
+packages/block-foundation/src/__tests__/registry.test.ts:96:    const rogue = defineUI({ ...calloutUIDefault, uiId: 'rogue' });
+packages/block-code/src/__tests__/ui-default.test.tsx:6:  codeUiDefault,
+packages/block-code/src/__tests__/ui-default.test.tsx:14:describe('codeUiDefault registration', () => {
+packages/block-code/src/__tests__/ui-default.test.tsx:16:    expect(codeUiDefault.coreName).toBe('code');
+packages/block-code/src/__tests__/ui-default.test.tsx:17:    expect(codeUiDefault.uiId).toBe('default');
+packages/block-code/src/__tests__/ui-default.test.tsx:18:    expect(codeUiDefault.EditorView).toBeDefined();
+packages/block-code/src/__tests__/ui-default.test.tsx:19:    expect(codeUiDefault.RenderView).toBeDefined();
+packages/block-code/src/__tests__/ui-default.test.tsx:25:    reg.registerUI(codeUiDefault as unknown as BlockUIDefinition);
+packages/block-code/src/__tests__/ui-default.test.tsx:26:    expect(reg.getUI('code')).toBe(codeUiDefault);
+packages/block-code/src/__tests__/ui-default.test.tsx:27:    expect(reg.getUI('code', 'default')).toBe(codeUiDefault);
+packages/block-image/src/ui-default/index.ts:6:export const imageUiDefault: BlockUIDefinition<typeof imageCore.propsSchema> =
+packages/block-code/CONTRACT.md:16:  - `codeUiDefault: BlockUIDefinition<typeof codeCore.propsSchema>` — coreName=`'code'` / uiId=`'default'`
+packages/block-callout/CONTRACT.md:17:  - `calloutUiDefault: BlockUIDefinition<typeof calloutCore.propsSchema>` — coreName=`'callout'` / uiId=`'default'`
+packages/block-callout/CONTRACT.md:53:- **`uiId='default'` reserved**: `calloutUiDefault.uiId === 'default'`；本包 inherit
+packages/block-callout/src/ui-default/index.ts:6:export const calloutUiDefault: BlockUIDefinition<typeof calloutCore.propsSchema> =
+packages/block-image/src/__tests__/ui-default.test.tsx:6:  imageUiDefault,
+packages/block-image/src/__tests__/ui-default.test.tsx:16:describe('imageUiDefault registration', () => {
+packages/block-image/src/__tests__/ui-default.test.tsx:18:    expect(imageUiDefault.coreName).toBe('image');
+packages/block-image/src/__tests__/ui-default.test.tsx:19:    expect(imageUiDefault.uiId).toBe('default');
+packages/block-image/src/__tests__/ui-default.test.tsx:20:    expect(imageUiDefault.EditorView).toBe(ImageEditorView);
+packages/block-image/src/__tests__/ui-default.test.tsx:21:    expect(imageUiDefault.RenderView).toBe(ImageRenderView);
+packages/block-image/src/__tests__/ui-default.test.tsx:27:    reg.registerUI(imageUiDefault as unknown as BlockUIDefinition);
+packages/block-image/src/__tests__/ui-default.test.tsx:28:    expect(reg.getUI('image')).toBe(imageUiDefault);
+packages/block-image/src/__tests__/ui-default.test.tsx:29:    expect(reg.getUI('image', 'default')).toBe(imageUiDefault);
+packages/block-image/CONTRACT.md:17:  - `imageUiDefault: BlockUIDefinition<typeof imageCore.propsSchema>` — default UI id = `'default'`
+packages/block-image/CONTRACT.md:44:- **`imageUiDefault` 契约**: `uiId='default'` 且 `coreName='image'`，使用 `defineUI` 且可通过 `BlockRegistry.registerUI` 注入。
+packages/block-callout/src/__tests__/ui-default.test.tsx:6:  calloutUiDefault,
+packages/block-callout/src/__tests__/ui-default.test.tsx:15:describe('calloutUiDefault registration', () => {
+packages/block-callout/src/__tests__/ui-default.test.tsx:17:    expect(calloutUiDefault.coreName).toBe('callout');
+packages/block-callout/src/__tests__/ui-default.test.tsx:18:    expect(calloutUiDefault.uiId).toBe('default');
+packages/block-callout/src/__tests__/ui-default.test.tsx:19:    expect(calloutUiDefault.EditorView).toBe(CalloutEditorView);
+packages/block-callout/src/__tests__/ui-default.test.tsx:20:    expect(calloutUiDefault.RenderView).toBe(CalloutRenderView);
+packages/block-callout/src/__tests__/ui-default.test.tsx:26:    reg.registerUI(calloutUiDefault as unknown as BlockUIDefinition);
+packages/block-callout/src/__tests__/ui-default.test.tsx:27:    expect(reg.getUI('callout')).toBe(calloutUiDefault);
+packages/block-callout/src/__tests__/ui-default.test.tsx:28:    expect(reg.getUI('callout', 'default')).toBe(calloutUiDefault);
+docs/plans/wave-3-main/A3-editor-shell-block-registry.md:289:  exactOptionalPropertyTypes); the 5 = `calloutUIDefault`, `codeUIDefault`,
+docs/plans/wave-3-main/A3-editor-shell-block-registry.md:290:  `imageUIDefault` (annotated `BlockUIDefinition<NarrowSchema>`) + math /
+docs/plans/wave-3-main/A3-editor-shell-block-registry.md:665:  blocks (block-callout, block-code, block-image) export `calloutUIDefault`
+docs/plans/wave-3-main/A3-editor-shell-block-registry.md:666:  / `codeUIDefault` / `imageUIDefault` (all-caps "UI"); the 5 render/viz
+docs/audits/structure-2026-05.md:100:| `block-callout` | `calloutCore` (kind=`'component'`, mdxComponent=`'Callout'`), `calloutUIDefault`, `CalloutEditorView`/`CalloutRenderView`/`CalloutBody`, `VARIANT_TOKENS`/`VARIANT_ICONS`, `Variant` type, `serializeCallout`/`parseCallout` | OK — all resolved; `coreName='callout'` literal at `core/core-definition.ts`; mdxComponent='Callout' verified |
+docs/audits/structure-2026-05.md:101:| `block-code` | `codeCore` (kind=`'component'`, mdxComponent=`'Code'`), `codeUIDefault`, `CodeEditorView`/`CodeRenderView`/`CodeBody`, `serializeCode`/`parseCode` | OK — codex-clone of callout structure; kind/mdxComponent/serialize-parse verb-prefix all match |
+docs/audits/structure-2026-05.md:102:| `block-image` | `imageCore` (kind=`'component'`, mdxComponent=`'Image'`), `imageUIDefault`, `ImageEditorView`/`ImageRenderView`/`ImageBody`, `serializeImage`/`parseImage` | OK — codex-clone; same shape |
+docs/plans/wave-4-main/B4-stage-a-retro-items.md:48:   (`calloutUIDefault` / `codeUIDefault` / `imageUIDefault`). Wave
+docs/plans/wave-4-main/B4-stage-a-retro-items.md:58:   declares a LOCAL `const calloutUIDefault = defineUI(...)` test
+docs/plans/wave-4-main/B4-stage-a-retro-items.md:123:   `calloutUIDefault` → `calloutUiDefault` (lowercase `i`).
+docs/plans/wave-4-main/B4-stage-a-retro-items.md:124:   Line 6 today: `export const calloutUIDefault: BlockUIDefinition<...>=`
+docs/plans/wave-4-main/B4-stage-a-retro-items.md:125:   becomes `export const calloutUiDefault: BlockUIDefinition<...>=`.
+docs/plans/wave-4-main/B4-stage-a-retro-items.md:136:   8 in-test references to `calloutUIDefault` → `calloutUiDefault`:
+docs/plans/wave-4-main/B4-stage-a-retro-items.md:139:   - lines 17-20 (4× `calloutUIDefault.coreName` etc.)
+docs/plans/wave-4-main/B4-stage-a-retro-items.md:140:   - line 26 (`reg.registerUI(calloutUIDefault as unknown as ...)`)
+docs/plans/wave-4-main/B4-stage-a-retro-items.md:141:   - lines 27-28 (`expect(reg.getUI('callout')).toBe(calloutUIDefault)`)
+docs/plans/wave-4-main/B4-stage-a-retro-items.md:147:     `calloutUIDefault: BlockUIDefinition<typeof calloutCore.propsSchema>` →
+docs/plans/wave-4-main/B4-stage-a-retro-items.md:148:     `calloutUiDefault: BlockUIDefinition<typeof calloutCore.propsSchema>`)
+docs/plans/wave-4-main/B4-stage-a-retro-items.md:150:     `calloutUIDefault.uiId === 'default'` →
+docs/plans/wave-4-main/B4-stage-a-retro-items.md:151:     `calloutUiDefault.uiId === 'default'`)
+docs/plans/wave-4-main/B4-stage-a-retro-items.md:154:   (item 3; ~1 LOC delta). EXECUTE renames `codeUIDefault` →
+docs/plans/wave-4-main/B4-stage-a-retro-items.md:155:   `codeUiDefault` at line 6.
+docs/plans/wave-4-main/B4-stage-a-retro-items.md:159:   8 in-test references to `codeUIDefault` → `codeUiDefault`
+docs/plans/wave-4-main/B4-stage-a-retro-items.md:165:   `codeUIDefault: BlockUIDefinition<...>` →
+docs/plans/wave-4-main/B4-stage-a-retro-items.md:166:   `codeUiDefault: BlockUIDefinition<...>`).
+docs/plans/wave-4-main/B4-stage-a-retro-items.md:169:   (item 3; ~1 LOC delta). EXECUTE renames `imageUIDefault` →
+docs/plans/wave-4-main/B4-stage-a-retro-items.md:170:   `imageUiDefault` at line 6.
+docs/plans/wave-4-main/B4-stage-a-retro-items.md:174:   8 in-test references to `imageUIDefault` → `imageUiDefault`
+docs/plans/wave-4-main/B4-stage-a-retro-items.md:184:    - line 3: `import { calloutUIDefault } from '@skb/block-callout/ui-default'`
+docs/plans/wave-4-main/B4-stage-a-retro-items.md:185:      → `import { calloutUiDefault } from '@skb/block-callout/ui-default'`
+docs/plans/wave-4-main/B4-stage-a-retro-items.md:186:    - line 5: `codeUIDefault` → `codeUiDefault`
+docs/plans/wave-4-main/B4-stage-a-retro-items.md:187:    - line 7: `imageUIDefault` → `imageUiDefault`
+docs/plans/wave-4-main/B4-stage-a-retro-items.md:188:    - line 29: `registry.registerUI(calloutUIDefault as unknown as BlockUIDefinition)`
+docs/plans/wave-4-main/B4-stage-a-retro-items.md:189:      → `registry.registerUI(calloutUiDefault as unknown as BlockUIDefinition)`
+docs/plans/wave-4-main/B4-stage-a-retro-items.md:190:    - line 32: `codeUIDefault` → `codeUiDefault`
+docs/plans/wave-4-main/B4-stage-a-retro-items.md:191:    - line 35: `imageUIDefault` → `imageUiDefault`
+docs/plans/wave-4-main/B4-stage-a-retro-items.md:274:  `grep -rn "calloutUIDefault\|codeUIDefault\|imageUIDefault"
+docs/plans/wave-4-main/B4-stage-a-retro-items.md:281:  `grep -rn "calloutUiDefault\|codeUiDefault\|imageUiDefault"
+docs/plans/wave-4-main/B4-stage-a-retro-items.md:323:  unchanged (its local `calloutUIDefault` test fixture is
+docs/plans/wave-4-main/B4-stage-a-retro-items.md:413:  stay byte-unchanged (their `calloutUIDefault` references are
+docs/plans/wave-4-main/B4-stage-a-retro-items.md:587:     `calloutUIDefault` → `calloutUiDefault`
+docs/plans/wave-4-main/B4-stage-a-retro-items.md:589:     `codeUIDefault` → `codeUiDefault`
+docs/plans/wave-4-main/B4-stage-a-retro-items.md:591:     `imageUIDefault` → `imageUiDefault`
+docs/plans/wave-4-main/B4-stage-a-retro-items.md:731:   `grep -rn "calloutUIDefault\|codeUIDefault\|imageUIDefault"
+docs/plans/wave-4-main/B4-stage-a-retro-items.md:937:  uppercase `calloutUIDefault` references — RFC was authored
+docs/plans/wave-4-main/B4-stage-a-retro-items.md:943:  `const calloutUIDefault = defineUI(...)` — independent of the
+
+codex
+One thing surfaced during the consumer scan: old uppercase names remain in archival/plan docs and a structure audit table. The B4 plan explicitly calls some archival references out of scope, so I’m checking whether `docs/audits/structure-2026-05.md` is also exempt or whether this is a contract/reference drift issue.
+exec
+/bin/bash -lc 'rg -n "structure-2026|audits/structure|archival|out of scope|calloutUIDefault|codeUIDefault|imageUIDefault|grep -rn" docs/plans/wave-4-main/B4-stage-a-retro-items.md' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+48:   (`calloutUIDefault` / `codeUIDefault` / `imageUIDefault`). Wave
+58:   declares a LOCAL `const calloutUIDefault = defineUI(...)` test
+59:   fixture (NOT a consumer of the renamed export) — out of scope;
+61:   archival design doc — out of scope; stays unchanged.
+123:   `calloutUIDefault` → `calloutUiDefault` (lowercase `i`).
+124:   Line 6 today: `export const calloutUIDefault: BlockUIDefinition<...>=`
+136:   8 in-test references to `calloutUIDefault` → `calloutUiDefault`:
+139:   - lines 17-20 (4× `calloutUIDefault.coreName` etc.)
+140:   - line 26 (`reg.registerUI(calloutUIDefault as unknown as ...)`)
+141:   - lines 27-28 (`expect(reg.getUI('callout')).toBe(calloutUIDefault)`)
+147:     `calloutUIDefault: BlockUIDefinition<typeof calloutCore.propsSchema>` →
+150:     `calloutUIDefault.uiId === 'default'` →
+154:   (item 3; ~1 LOC delta). EXECUTE renames `codeUIDefault` →
+159:   8 in-test references to `codeUIDefault` → `codeUiDefault`
+165:   `codeUIDefault: BlockUIDefinition<...>` →
+169:   (item 3; ~1 LOC delta). EXECUTE renames `imageUIDefault` →
+174:   8 in-test references to `imageUIDefault` → `imageUiDefault`
+184:    - line 3: `import { calloutUIDefault } from '@skb/block-callout/ui-default'`
+186:    - line 5: `codeUIDefault` → `codeUiDefault`
+187:    - line 7: `imageUIDefault` → `imageUiDefault`
+188:    - line 29: `registry.registerUI(calloutUIDefault as unknown as BlockUIDefinition)`
+190:    - line 32: `codeUIDefault` → `codeUiDefault`
+191:    - line 35: `imageUIDefault` → `imageUiDefault`
+274:  `grep -rn "calloutUIDefault\|codeUIDefault\|imageUIDefault"
+281:  `grep -rn "calloutUiDefault\|codeUiDefault\|imageUiDefault"
+323:  unchanged (its local `calloutUIDefault` test fixture is
+324:  out of scope; the rename does NOT touch
+413:  stay byte-unchanged (their `calloutUIDefault` references are
+414:  archival doc / local test fixture respectively, both
+415:  intentionally out of scope per `## title` item 3 framing).
+549:  title` item 3 framing (archival doc, out of scope).
+587:     `calloutUIDefault` → `calloutUiDefault`
+589:     `codeUIDefault` → `codeUiDefault`
+591:     `imageUIDefault` → `imageUiDefault`
+731:   `grep -rn "calloutUIDefault\|codeUIDefault\|imageUIDefault"
+734:   which are intentionally out of scope per `## title` item 3).
+738:   `block-foundation/RFC.md` (archival; line 100 + 149 + 153 +
+743:   `docs/audits/structure-2026-05.md` (archival audit; line 100
+747:   (archival reviewer transcripts — stay unchanged). Verified
+748:   PLAN-time these 5 archival/test-fixture/structure-audit files
+935:- **`packages/block-foundation/RFC.md`** (archival design doc;
+937:  uppercase `calloutUIDefault` references — RFC was authored
+943:  `const calloutUIDefault = defineUI(...)` — independent of the
+948:- **`docs/audits/structure-2026-05.md`** (archival audit
+955:  (archival reviewer transcripts from Wave 2 era; references
+958:  list — but explicitly out of scope. Touching the archival
+
+exec
+/bin/bash -lc "nl -ba docs/audits/structure-2026-05.md | sed -n '92,106p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+    92	## §3. Contract drift detection
+    93	
+    94	Methodology: per CONTRACT.md "Public surface" claim, verify every documented export resolves to an actual source export. Cross-package canaries (frontmatterSchema, editBlockInputSchema, getInitialTheme, BlockKind 4-way) traced to all consumers.
+    95	
+    96	### Per-package verification (Wave 2 new packages)
+    97	
+    98	| Package | Surface claim | Status |
+    99	|---|---|:---:|
+   100	| `block-callout` | `calloutCore` (kind=`'component'`, mdxComponent=`'Callout'`), `calloutUIDefault`, `CalloutEditorView`/`CalloutRenderView`/`CalloutBody`, `VARIANT_TOKENS`/`VARIANT_ICONS`, `Variant` type, `serializeCallout`/`parseCallout` | OK — all resolved; `coreName='callout'` literal at `core/core-definition.ts`; mdxComponent='Callout' verified |
+   101	| `block-code` | `codeCore` (kind=`'component'`, mdxComponent=`'Code'`), `codeUIDefault`, `CodeEditorView`/`CodeRenderView`/`CodeBody`, `serializeCode`/`parseCode` | OK — codex-clone of callout structure; kind/mdxComponent/serialize-parse verb-prefix all match |
+   102	| `block-image` | `imageCore` (kind=`'component'`, mdxComponent=`'Image'`), `imageUIDefault`, `ImageEditorView`/`ImageRenderView`/`ImageBody`, `serializeImage`/`parseImage` | OK — codex-clone; same shape |
+   103	| `block-math` | `mathCore` (kind=`'render'`), `mathUIDefault`, `MathEditorView`/`MathRenderView`, `renderMath` (single-source KaTeX wrapper) | OK — kind=`'render'` matches ADR-0009 D1 row 3 |
+   104	| `block-pdf` | `pdfCore` (kind=`'render'`), `pdfUIDefault`, iframe-based render path | OK — kind=`'render'`; **no pdfjs-dist runtime dep** (iframe + browser native viewer per ADR-0009 D1 prose); build-time `scripts/extract-pdf-text.ts` covered |
+   105	| `block-jupyter` | `jupyterCore` (kind=`'viz'`), `jupyterUIDefault`, `JupyterView` (NodeView), `kernelBridge` machinery | OK — kind=`'viz'`; first real consumer of `kernel-pyodide` (verified via `Jupyter.tsx:4`) |
+   106	| `block-nn-viz` | `nnVizCore` (kind=`'viz'`), `nnVizUIDefault`, `NnVizView` + `topology` + `tfjs-bridge` | OK — kind=`'viz'`; TF.js consumer |
+
+exec
+/bin/bash -lc "rg -n \"calloutUIDefault|codeUIDefault|imageUIDefault\" --glob '"'!docs/plans/**'"' --glob '"'!docs/superpowers/**'"' --glob '"'!packages/block-foundation/RFC.md'"' --glob '"'!packages/block-foundation/src/__tests__/registry.test.ts'"' --glob '"'!docs/audits/codex-runs/**'"' ." in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+./docs/audits/structure-2026-05.md:100:| `block-callout` | `calloutCore` (kind=`'component'`, mdxComponent=`'Callout'`), `calloutUIDefault`, `CalloutEditorView`/`CalloutRenderView`/`CalloutBody`, `VARIANT_TOKENS`/`VARIANT_ICONS`, `Variant` type, `serializeCallout`/`parseCallout` | OK — all resolved; `coreName='callout'` literal at `core/core-definition.ts`; mdxComponent='Callout' verified |
+./docs/audits/structure-2026-05.md:101:| `block-code` | `codeCore` (kind=`'component'`, mdxComponent=`'Code'`), `codeUIDefault`, `CodeEditorView`/`CodeRenderView`/`CodeBody`, `serializeCode`/`parseCode` | OK — codex-clone of callout structure; kind/mdxComponent/serialize-parse verb-prefix all match |
+./docs/audits/structure-2026-05.md:102:| `block-image` | `imageCore` (kind=`'component'`, mdxComponent=`'Image'`), `imageUIDefault`, `ImageEditorView`/`ImageRenderView`/`ImageBody`, `serializeImage`/`parseImage` | OK — codex-clone; same shape |
+
+exec
+/bin/bash -lc "nl -ba docs/plans/wave-4-main/B4-stage-a-retro-items.md | sed -n '720,752p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+   720	HIT; stage 4 PRE-COMMIT CLAUDE REVIEW fires). Four B4-specific
+   721	risks documented:
+   722	
+   723	1. **Cross-package rename incompleteness — orphan uppercase
+   724	   reference left behind**. The rename touches 4 packages × 3
+   725	   surfaces (source / test / CONTRACT) = 12 named-export sites
+   726	   plus 6 cross-package consumer sites in `editor-shell/registerBlocks.ts`.
+   727	   Risk: orchestrator misses one site → typecheck fails (TC2)
+   728	   OR test fails (TC4) OR — worst case — a stale reference
+   729	   lingers in CONTRACT prose only and TC1 misses it. **Mitigation**:
+   730	   TC1 grep is **conjunctive** (negative-form positive-form pair):
+   731	   `grep -rn "calloutUIDefault\|codeUIDefault\|imageUIDefault"
+   732	   packages/` → expected 0 matches across `src/` + `*/CONTRACT.md`
+   733	   (excluding `block-foundation/RFC.md` + `block-foundation/registry.test.ts`
+   734	   which are intentionally out of scope per `## title` item 3).
+   735	   The `pnpm typecheck` + `pnpm test` + `pnpm lint` triple-check
+   736	   in TC2-TC4 catches any missed import + any in-string reference
+   737	   (test descriptions). PLAN-time-recorded out-of-scope set:
+   738	   `block-foundation/RFC.md` (archival; line 100 + 149 + 153 +
+   739	   156 + 176 + 182 + 185 + 186 = 8 references — stay unchanged)
+   740	   AND `block-foundation/src/__tests__/registry.test.ts` (local
+   741	   test fixture at line 19; lines 19, 64, 65, 70, 76, 77, 79,
+   742	   87, 88, 94, 96 = 11 references — stay unchanged) AND
+   743	   `docs/audits/structure-2026-05.md` (archival audit; line 100
+   744	   + 101 + 102 = 3 references — stay unchanged) AND
+   745	   `docs/audits/codex-runs/2026-04-30-task-C2-code-review.txt`
+   746	   + `docs/audits/codex-runs/2026-04-30-task-C3-code-review.txt`
+   747	   (archival reviewer transcripts — stay unchanged). Verified
+   748	   PLAN-time these 5 archival/test-fixture/structure-audit files
+   749	   contain ALL the remaining uppercase references; the workspace-wide
+   750	   substantive rename touches **only** the 4 packages' src/ +
+   751	   tests + CONTRACT prose listed in `## files`.
+   752	
+
+exec
+/bin/bash -lc "nl -ba docs/plans/wave-4-main/B4-stage-a-retro-items.md | sed -n '930,960p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+   930	- **Stage A retro items 5 + 6** (already closed in Wave 3 per
+   931	  Wave 4 plan v0.2.1 Driver 1 retro roster — items 5 + 6 were
+   932	  closed as part of Wave 3 D-stage; B4 only batches the
+   933	  remaining 3 of 6 items).
+   934	
+   935	- **`packages/block-foundation/RFC.md`** (archival design doc;
+   936	  line 100 + 149 + 153 + 156 + 176 + 182 + 185 + 186 contain 8
+   937	  uppercase `calloutUIDefault` references — RFC was authored
+   938	  pre-rename and stays unchanged as historical record). TC10
+   939	  verifies byte-unchanged.
+   940	
+   941	- **`packages/block-foundation/src/__tests__/registry.test.ts`**
+   942	  (local test fixture at line 19 declares its OWN
+   943	  `const calloutUIDefault = defineUI(...)` — independent of the
+   944	  3 cross-package renamed exports; the test verifies the
+   945	  registry behavior with a locally-named fixture, not the
+   946	  cross-package consumer surface). TC10 verifies byte-unchanged.
+   947	
+   948	- **`docs/audits/structure-2026-05.md`** (archival audit
+   949	  baseline; lines 100 + 101 + 102 reference uppercase exports
+   950	  as the historical state). Snapshot of the pre-rename
+   951	  workspace; intentionally not renamed because the audit is
+   952	  a historical diff target. TC10 verifies byte-unchanged.
+   953	
+   954	- **`docs/audits/codex-runs/2026-04-30-task-C{2,3}-code-review.txt`**
+   955	  (archival reviewer transcripts from Wave 2 era; references
+   956	  uppercase exports as the historical state). TC10 transitively
+   957	  verifies via `docs/audits/` not appearing in the diff guard
+   958	  list — but explicitly out of scope. Touching the archival
+   959	  reviewer transcripts would defeat their value as immutable
+   960	  historical records.
+
+exec
+/bin/bash -lc 'rg -n "acceptance|TC8|typecheck|lint|no new|R1" docs/plans/wave-4-main/B4-stage-a-retro-items.md' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+64:   `eslint.config.js` does NOT set
+65:   `@typescript-eslint/no-unused-vars` explicitly, falling back to
+66:   `tseslint.configs.recommendedTypeChecked` defaults. This means
+72:   `@typescript-eslint/no-unused-vars: ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_', ignoreRestSiblings: true }]`
+73:   rule to the type-aware files block at `eslint.config.js`. This
+74:   is a **purely additive lint UX improvement** — no existing code
+87:established at B1b/B2/B3) + B4 reviewer audit archives (1-2; R1 always;
+92:NO `package.json` / `pnpm-lock.yaml` change (no new deps; pure rename
+117:     enforced by lint, not just convention. TC8 verifies the
+193:12. `eslint.config.js` — **MODIFIED** (item 4; ~3 LOC delta).
+195:    `@typescript-eslint/no-unused-vars` rule to the type-aware
+200:    '@typescript-eslint/no-unused-vars': ['warn', {
+207:    eslint config block touched.
+244:> COMMIT adds 1-2 audit archives (B4 reviewer R1; R2 if needed)
+248:> R1 push-back ("if you renamed the const, also rename the doc
+262:+ **typecheck workspace-wide validates cross-package import
+264:→ TC2-TC3 type/lint workspace-wide → TC4 test all packages → TC5
+288:- **TC2** (apps/site + workspace typecheck clean — load-bearing
+289:  for cross-package import resolution): Input: `pnpm typecheck`
+303:- **TC3** (workspace lint clean — verifies item 4 ESLint rule
+304:  addition compiles + no new violations + no unused-vars
+305:  regression on existing code): Input: `pnpm lint`. Expected:
+307:  `@typescript-eslint/no-unused-vars` rule loads + parses without
+308:  error (the `eslint.config.js` syntax accepts the rule object);
+315:  `// eslint-disable-next-line @typescript-eslint/no-unused-vars`
+341:  (lint + typecheck + test + build + size-check workspace-wide;
+366:- **TC8** (CONTRACT.md `## Type variance note` section presence
+428:  cat > /tmp/B4-eslint-probe.ts <<'EOF'
+433:  pnpm exec eslint --no-eslintrc \
+434:    --config ../../eslint.config.js /tmp/B4-eslint-probe.ts
+443:  syntactically present in `eslint.config.js`.
+445:- **TC13** (lint workspace-wide stays clean post-rule-addition —
+446:  no existing code regresses): Input: `pnpm lint`. Expected:
+451:  OR add inline `// eslint-disable-next-line` with prose.
+459:  change). TC8 verifies presence of the section + load-bearing
+497:  ESLint argsIgnorePattern rule is a **lint UX improvement**, not
+498:  an architectural decision — root `eslint.config.js` is the
+528:  package-local / convention / lint-UX, not architectural.
+553:  ESLint rule addition is a **dev-time lint config**, not a
+554:  CI/build pipeline change (the CI job command `pnpm lint`
+569:## acceptance
+580:   `no-unnecessary-type-assertion` lint invariant for the 3
+581:   no-cast blocks. TC8 evidence (≥ 4 grep hits on load-bearing
+602:   TC1 evidence covers; TC8 indirectly verifies via the
+609:6. **Item 4 ESLint rule added**: `eslint.config.js` type-aware
+611:   `@typescript-eslint/no-unused-vars: ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_', ignoreRestSiblings: true }]`.
+615:7. **Workspace typecheck clean**: `pnpm typecheck` → exit 0. The
+619:8. **Workspace lint clean**: `pnpm lint` → exit 0. The new ESLint
+659:    Reviewer iterations expected: R1 + 0-1 forward-fix; risk
+671:    predictable reviewer R1 push-back") + the rename-consistency
+704:    eslint.config.js
+727:   Risk: orchestrator misses one site → typecheck fails (TC2)
+735:   The `pnpm typecheck` + `pnpm test` + `pnpm lint` triple-check
+760:   semantic content change; TC8 grep can be rewritten to match
+763:   orchestrator accepts the rename and re-runs TC8 with adjusted
+767:   The new `@typescript-eslint/no-unused-vars` rule **upgrades**
+769:   `tseslint.configs.recommendedTypeChecked` default (which IS
+771:   `pnpm lint` baseline is exit 0). Risk: a hidden unused arg
+777:   level). TC3 + TC13 verify `pnpm lint` exit 0 post-rule
+780:   inline `// eslint-disable-next-line` with prose justification.
+826:    `packages/editor-shell/CONTRACT.md` → verify TC8 grep returns
+840:    `@typescript-eslint/no-unused-vars` rule to type-aware
+841:    files block in `eslint.config.js`.
+845:  - **B4.H** TC2 `pnpm typecheck` → exit 0.
+846:  - **B4.I** TC3 `pnpm lint` → exit 0.
+857:  - **B4.P** reviewer codex commits per `## acceptance`
+904:  the 17 acceptance bullets against the actual diff; residue
+998:  package-local / convention / lint-UX, not architectural.
+
+exec
+/bin/bash -lc "sed -n '1,220p' package.json" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+{
+  "name": "self-knowledge-base-web",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "pnpm@9.12.0",
+  "type": "module",
+  "engines": {
+    "node": ">=22",
+    "pnpm": ">=9"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev --parallel",
+    "lint": "eslint .",
+    "lint:packages": "turbo run lint",
+    "typecheck": "tsc -b",
+    "typecheck:packages": "turbo run typecheck",
+    "test": "vitest run",
+    "test:packages": "turbo run test",
+    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm size-check && pnpm lint:packages && pnpm typecheck:packages && pnpm test:packages",
+    "check:affected": "turbo run lint typecheck test --filter=...[origin/main]",
+    "size-check": "node scripts/check-size-limits.mjs",
+    "link-check": "lychee --config .lychee.toml './**/*.md'",
+    "generate:configs": "tsx scripts/generate-configs.ts",
+    "format": "prettier --write \"**/*.{ts,tsx,js,mjs,cjs,json,md,yaml,yml}\""
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "@types/node": "^22.0.0",
+    "commander": "^11.1.0",
+    "eslint": "^9.0.0",
+    "globals": "^15.0.0",
+    "pdfjs-dist": "^4.7.0",
+    "prettier": "^3.0.0",
+    "turbo": "^2.0.0",
+    "ts-morph": "^28.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "~5.6.0",
+    "typescript-eslint": "^8.0.0",
+    "vitest": "^4.1.5",
+    "yaml": "^2.8.3",
+    "zod": "^3.23.0"
+  }
+}
+
+exec
+/bin/bash -lc "find . -maxdepth 3 -name package.json -not -path './node_modules/*' -print" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+./packages/block-nn-viz/package.json
+./packages/kernel-adapter/package.json
+./packages/block-callout/package.json
+./packages/block-agent-flow/package.json
+./packages/heavy-block-boundary/package.json
+./packages/mdx-bridge/package.json
+./packages/block-image/package.json
+./packages/block-foundation/package.json
+./packages/kernel-registry/package.json
+./packages/editor-toolbar/package.json
+./packages/editor-drag-handle/package.json
+./packages/block-math/package.json
+./packages/design-tokens/package.json
+./packages/editor-slash-menu/package.json
+./packages/block-code/package.json
+./packages/kernel-pyodide/package.json
+./packages/block-pdf/package.json
+./packages/agent-tools/package.json
+./packages/editor-commands/package.json
+./packages/content-types/package.json
+./packages/block-jupyter/package.json
+./packages/editor-shell/package.json
+./package.json
+./apps/site/package.json
+
+codex
+The remaining uppercase references are covered by the B4 plan’s explicit archival/test-fixture exceptions, including `docs/audits/structure-2026-05.md`. I’m running the main read-only verification commands now because the rename and ESLint rule can regress typecheck/lint even when the text fixes are correct.
+exec
+/bin/bash -lc 'pnpm typecheck' in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc 'pnpm lint' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 781ms:
+
+> self-knowledge-base-web@0.0.0 typecheck /home/weiyi/selfKnowledgeBaseWeb
+> tsc -b
+
+
+ succeeded in 25157ms:
+
+> self-knowledge-base-web@0.0.0 lint /home/weiyi/selfKnowledgeBaseWeb
+> eslint .
+
+
+/home/weiyi/selfKnowledgeBaseWeb/scripts/check-size-limits.mjs
+  38:1  warning  Unexpected console statement. Only these console methods are allowed: warn, error  no-console
+
+/home/weiyi/selfKnowledgeBaseWeb/scripts/generate-configs.ts
+  107:3  warning  Unexpected console statement. Only these console methods are allowed: warn, error  no-console
+
+/home/weiyi/selfKnowledgeBaseWeb/scripts/new-block.ts
+  269:9  warning  Unexpected console statement. Only these console methods are allowed: warn, error  no-console
+
+/home/weiyi/selfKnowledgeBaseWeb/scripts/refactor-move.ts
+  249:9  warning  Unexpected console statement. Only these console methods are allowed: warn, error  no-console
+
+✖ 4 problems (0 errors, 4 warnings)
+
+
+codex
+`pnpm typecheck` exited 0. `pnpm lint` exited 0 with four existing `no-console` warnings in scripts, none in the touched files. I’m adding the changed ui-default test files as targeted runtime coverage before the verdict.
+exec
+/bin/bash -lc 'pnpm test packages/block-callout/src/__tests__/ui-default.test.tsx packages/block-code/src/__tests__/ui-default.test.tsx packages/block-image/src/__tests__/ui-default.test.tsx' in /home/weiyi/selfKnowledgeBaseWeb
+ exited 1 in 670ms:
+
+> self-knowledge-base-web@0.0.0 test /home/weiyi/selfKnowledgeBaseWeb
+> vitest run "packages/block-callout/src/__tests__/ui-default.test.tsx" "packages/block-code/src/__tests__/ui-default.test.tsx" "packages/block-image/src/__tests__/ui-default.test.tsx"
+
+
+ RUN  v4.1.5 /home/weiyi/selfKnowledgeBaseWeb
+
+No test files found, exiting with code 1
+
+filter: packages/block-callout/src/__tests__/ui-default.test.tsx, packages/block-code/src/__tests__/ui-default.test.tsx, packages/block-image/src/__tests__/ui-default.test.tsx
+include: scripts/__tests__/**/*.test.ts
+exclude:  **/node_modules/**, **/.git/**
+
+ ELIFECYCLE  Test failed. See above for more details.
+
+codex
+The root Vitest config only includes `scripts/__tests__/**/*.test.ts`, so passing package test file paths to the root script does not discover them. I’m switching to the package-level test scripts for the three renamed exports.
+exec
+/bin/bash -lc "sed -n '1,120p' packages/block-callout/package.json" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+{
+  "name": "@skb/block-callout",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./core": "./src/core/index.ts",
+    "./ui-default": "./src/ui-default/index.ts",
+    "./ui-default/callout.css": "./src/ui-default/callout.css"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@skb/block-foundation": "workspace:*",
+    "@skb/design-tokens": "workspace:*",
+    "zod": "^3.23.0"
+  },
+  "peerDependencies": {
+    "react": "^18.3.0 || ^19.0.0"
+  },
+  "devDependencies": {
+    "@testing-library/react": "^16.0.0",
+    "@types/react": "^18.3.0",
+    "happy-dom": "^15.0.0",
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0",
+    "typescript": "~5.6.0",
+    "vitest": "^4.1.5"
+  }
+}
+
+exec
+/bin/bash -lc "sed -n '1,120p' packages/block-code/package.json" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+{
+  "name": "@skb/block-code",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./core": "./src/core/index.ts",
+    "./ui-default": "./src/ui-default/index.ts",
+    "./ui-default/code.css": "./src/ui-default/code.css"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@skb/block-foundation": "workspace:*",
+    "@skb/design-tokens": "workspace:*",
+    "zod": "^3.23.0"
+  },
+  "peerDependencies": {
+    "react": "^18.3.0 || ^19.0.0"
+  },
+  "devDependencies": {
+    "@testing-library/react": "^16.0.0",
+    "@types/react": "^18.3.0",
+    "happy-dom": "^15.0.0",
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0",
+    "typescript": "~5.6.0",
+    "vitest": "^4.1.5"
+  }
+}
+
+exec
+/bin/bash -lc "sed -n '1,120p' packages/block-image/package.json" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+{
+  "name": "@skb/block-image",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./core": "./src/core/index.ts",
+    "./ui-default": "./src/ui-default/index.ts",
+    "./ui-default/image.css": "./src/ui-default/image.css"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@skb/block-foundation": "workspace:*",
+    "@skb/design-tokens": "workspace:*",
+    "zod": "^3.23.0"
+  },
+  "peerDependencies": {
+    "react": "^18.3.0 || ^19.0.0"
+  },
+  "devDependencies": {
+    "@testing-library/react": "^16.0.0",
+    "@types/react-dom": "^18.3.0",
+    "@types/react": "^18.3.0",
+    "happy-dom": "^15.0.0",
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0",
+    "typescript": "~5.6.0",
+    "vitest": "^4.1.5"
+  }
+}
+
+exec
+/bin/bash -lc "rg -n \"include:|test:\" vitest.config.* packages -g 'vitest.config.*' -g 'package.json'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+vitest.config.ts:4:  test: {
+vitest.config.ts:5:    include: ['scripts/__tests__/**/*.test.ts'],
+packages/editor-shell/vitest.config.ts:4:  test: {
+packages/editor-shell/vitest.config.ts:5:    include: ['src/**/*.test.{ts,tsx}'],
+packages/block-jupyter/vitest.config.ts:4:  test: {
+packages/block-jupyter/vitest.config.ts:5:    include: ['src/**/*.test.{ts,tsx}'],
+packages/content-types/vitest.config.ts:4:  test: {
+packages/content-types/vitest.config.ts:5:    include: ['src/**/*.test.ts'],
+packages/editor-commands/vitest.config.ts:4:  test: {
+packages/editor-commands/vitest.config.ts:5:    include: ['src/**/*.test.ts'],
+packages/agent-tools/vitest.config.ts:4:  test: {
+packages/agent-tools/vitest.config.ts:5:    include: ['src/**/*.test.ts'],
+packages/block-pdf/vitest.config.ts:4:  test: {
+packages/block-pdf/vitest.config.ts:5:    include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
+packages/mdx-bridge/vitest.config.ts:4:  test: {
+packages/mdx-bridge/vitest.config.ts:5:    include: ['src/**/*.test.ts'],
+packages/kernel-pyodide/vitest.config.ts:4:  test: {
+packages/kernel-pyodide/vitest.config.ts:5:    include: ['src/**/*.test.ts'],
+packages/heavy-block-boundary/vitest.config.ts:4:  test: {
+packages/heavy-block-boundary/vitest.config.ts:5:    include: ['src/**/*.test.{ts,tsx}'],
+packages/editor-drag-handle/vitest.config.ts:4:  test: {
+packages/editor-drag-handle/vitest.config.ts:5:    include: ['src/**/*.test.ts'],
+packages/block-math/vitest.config.ts:4:  test: {
+packages/block-math/vitest.config.ts:5:    include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
+packages/kernel-registry/vitest.config.ts:4:  test: {
+packages/kernel-registry/vitest.config.ts:5:    include: ['src/**/*.test.ts'],
+packages/block-agent-flow/vitest.config.ts:4:  test: {
+packages/block-agent-flow/vitest.config.ts:5:    include: ['src/**/*.test.{ts,tsx}'],
+packages/block-image/vitest.config.ts:4:  test: {
+packages/block-image/vitest.config.ts:5:    include: ['src/**/*.test.{ts,tsx}'],
+packages/design-tokens/vitest.config.ts:4:  test: {
+packages/design-tokens/vitest.config.ts:6:    include: ['src/**/__tests__/**/*.test.{ts,tsx}'],
+packages/kernel-adapter/vitest.config.ts:4:  test: {
+packages/kernel-adapter/vitest.config.ts:5:    include: ['src/**/*.test.ts'],
+packages/block-foundation/vitest.config.ts:4:  test: {
+packages/block-foundation/vitest.config.ts:5:    include: ['src/**/*.test.ts'],
+packages/editor-toolbar/vitest.config.ts:4:  test: {
+packages/editor-toolbar/vitest.config.ts:5:    include: ['src/**/*.test.ts'],
+packages/editor-slash-menu/vitest.config.ts:4:  test: {
+packages/editor-slash-menu/vitest.config.ts:5:    include: ['src/**/*.test.ts'],
+packages/block-callout/vitest.config.ts:4:  test: {
+packages/block-callout/vitest.config.ts:5:    include: ['src/**/*.test.{ts,tsx}'],
+packages/block-nn-viz/vitest.config.ts:4:  test: {
+packages/block-nn-viz/vitest.config.ts:5:    include: ['src/**/*.test.{ts,tsx}'],
+packages/block-code/vitest.config.ts:4:  test: {
+packages/block-code/vitest.config.ts:5:    include: ['src/**/*.test.{ts,tsx}'],
+
+exec
+/bin/bash -lc 'pnpm --filter @skb/block-callout test' in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc 'pnpm --filter @skb/block-code test' in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc 'pnpm --filter @skb/block-image test' in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc 'pnpm --filter @skb/editor-shell test' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 2268ms:
+
+> @skb/block-image@0.0.0 test /home/weiyi/selfKnowledgeBaseWeb/packages/block-image
+> vitest run
+
+
+ RUN  v4.1.5 /home/weiyi/selfKnowledgeBaseWeb/packages/block-image
+
+
+ Test Files  4 passed (4)
+      Tests  19 passed (19)
+   Start at  23:49:40
+   Duration  1.41s (transform 457ms, setup 0ms, import 1.45s, tests 128ms, environment 2.29s)
+
+
+ succeeded in 2346ms:
+
+> @skb/block-code@0.0.0 test /home/weiyi/selfKnowledgeBaseWeb/packages/block-code
+> vitest run
+
+
+ RUN  v4.1.5 /home/weiyi/selfKnowledgeBaseWeb/packages/block-code
+
+
+ Test Files  4 passed (4)
+      Tests  19 passed (19)
+   Start at  23:49:40
+   Duration  1.54s (transform 555ms, setup 0ms, import 1.73s, tests 107ms, environment 2.37s)
+
+
+ succeeded in 2396ms:
+
+> @skb/block-callout@0.0.0 test /home/weiyi/selfKnowledgeBaseWeb/packages/block-callout
+> vitest run
+
+
+ RUN  v4.1.5 /home/weiyi/selfKnowledgeBaseWeb/packages/block-callout
+
+
+ Test Files  3 passed (3)
+      Tests  15 passed (15)
+   Start at  23:49:40
+   Duration  1.58s (transform 260ms, setup 0ms, import 1.06s, tests 78ms, environment 1.91s)
+
+
+ succeeded in 2978ms:
+
+> @skb/editor-shell@0.0.0 test /home/weiyi/selfKnowledgeBaseWeb/packages/editor-shell
+> vitest run
+
+
+ RUN  v4.1.5 /home/weiyi/selfKnowledgeBaseWeb/packages/editor-shell
+
+
+ Test Files  5 passed (5)
+      Tests  14 passed (14)
+   Start at  23:49:40
+   Duration  2.18s (transform 1.51s, setup 0ms, import 3.89s, tests 277ms, environment 3.17s)
+
+
+codex
+Package-level tests for callout, code, image, and editor-shell all passed. I’m doing the final acceptance-style greps now: no substantive stale uppercase exports in package source/contracts, and the R1 doc strings remain present exactly once.
+exec
+/bin/bash -lc "rg -n \"calloutUIDefault|codeUIDefault|imageUIDefault\" packages --glob '"'!block-foundation/RFC.md'"' --glob '"'!block-foundation/src/__tests__/registry.test.ts'"'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+packages/block-foundation/RFC.md:100:export const calloutUIDefault: BlockUIDefinition<
+packages/block-foundation/RFC.md:149:import { calloutUIDefault } from '@skb/block-callout/ui-default';
+packages/block-foundation/RFC.md:153:registry.registerUI(calloutUIDefault);
+packages/block-foundation/RFC.md:156:const ui = registry.getUI('callout'); // returns calloutUIDefault (uiId='default')
+packages/block-foundation/RFC.md:176:import { calloutUIDefault } from '../ui-default';
+packages/block-foundation/RFC.md:182:    reg.registerUI(calloutUIDefault);
+packages/block-foundation/RFC.md:185:    expect(reg.getUI('callout')).toBe(calloutUIDefault);
+packages/block-foundation/RFC.md:186:    expect(reg.getUI('callout', 'default')).toBe(calloutUIDefault);
+packages/block-foundation/src/__tests__/registry.test.ts:19:const calloutUIDefault = defineUI({
+packages/block-foundation/src/__tests__/registry.test.ts:64:    reg.registerUI(calloutUIDefault);
+packages/block-foundation/src/__tests__/registry.test.ts:65:    expect(reg.getUI('callout')).toBe(calloutUIDefault);
+packages/block-foundation/src/__tests__/registry.test.ts:70:    expect(() => reg.registerUI(calloutUIDefault)).toThrow(/unknown core/i);
+packages/block-foundation/src/__tests__/registry.test.ts:76:    reg.registerUI(calloutUIDefault);
+packages/block-foundation/src/__tests__/registry.test.ts:77:    const minimal = defineUI({ ...calloutUIDefault, uiId: 'minimal' });
+packages/block-foundation/src/__tests__/registry.test.ts:79:    expect(reg.getUI('callout')).toBe(calloutUIDefault);
+packages/block-foundation/src/__tests__/registry.test.ts:87:    reg.registerUI(calloutUIDefault);
+packages/block-foundation/src/__tests__/registry.test.ts:88:    expect(() => reg.registerUI(calloutUIDefault)).toThrow(/duplicate.*UI/i);
+packages/block-foundation/src/__tests__/registry.test.ts:94:    reg.registerUI(calloutUIDefault);
+packages/block-foundation/src/__tests__/registry.test.ts:96:    const rogue = defineUI({ ...calloutUIDefault, uiId: 'rogue' });
+
+exec
+/bin/bash -lc 'rg -n "calloutUiDefault|codeUiDefault|imageUiDefault" packages/block-callout packages/block-code packages/block-image packages/editor-shell/src/registerBlocks.ts packages/block-callout/CONTRACT.md packages/block-code/CONTRACT.md packages/block-image/CONTRACT.md' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+packages/block-image/CONTRACT.md:17:  - `imageUiDefault: BlockUIDefinition<typeof imageCore.propsSchema>` — default UI id = `'default'`
+packages/block-image/CONTRACT.md:44:- **`imageUiDefault` 契约**: `uiId='default'` 且 `coreName='image'`，使用 `defineUI` 且可通过 `BlockRegistry.registerUI` 注入。
+packages/block-code/CONTRACT.md:16:  - `codeUiDefault: BlockUIDefinition<typeof codeCore.propsSchema>` — coreName=`'code'` / uiId=`'default'`
+packages/block-callout/CONTRACT.md:17:  - `calloutUiDefault: BlockUIDefinition<typeof calloutCore.propsSchema>` — coreName=`'callout'` / uiId=`'default'`
+packages/block-callout/CONTRACT.md:53:- **`uiId='default'` reserved**: `calloutUiDefault.uiId === 'default'`；本包 inherit
+packages/editor-shell/src/registerBlocks.ts:3:import { calloutUiDefault } from '@skb/block-callout/ui-default';
+packages/editor-shell/src/registerBlocks.ts:5:import { codeUiDefault } from '@skb/block-code/ui-default';
+packages/editor-shell/src/registerBlocks.ts:7:import { imageUiDefault } from '@skb/block-image/ui-default';
+packages/editor-shell/src/registerBlocks.ts:29:  registry.registerUI(calloutUiDefault as unknown as BlockUIDefinition);
+packages/editor-shell/src/registerBlocks.ts:32:  registry.registerUI(codeUiDefault as unknown as BlockUIDefinition);
+packages/editor-shell/src/registerBlocks.ts:35:  registry.registerUI(imageUiDefault as unknown as BlockUIDefinition);
+packages/block-image/src/ui-default/index.ts:6:export const imageUiDefault: BlockUIDefinition<typeof imageCore.propsSchema> =
+packages/block-image/src/__tests__/ui-default.test.tsx:6:  imageUiDefault,
+packages/block-image/src/__tests__/ui-default.test.tsx:16:describe('imageUiDefault registration', () => {
+packages/block-image/src/__tests__/ui-default.test.tsx:18:    expect(imageUiDefault.coreName).toBe('image');
+packages/block-image/src/__tests__/ui-default.test.tsx:19:    expect(imageUiDefault.uiId).toBe('default');
+packages/block-image/src/__tests__/ui-default.test.tsx:20:    expect(imageUiDefault.EditorView).toBe(ImageEditorView);
+packages/block-image/src/__tests__/ui-default.test.tsx:21:    expect(imageUiDefault.RenderView).toBe(ImageRenderView);
+packages/block-image/src/__tests__/ui-default.test.tsx:27:    reg.registerUI(imageUiDefault as unknown as BlockUIDefinition);
+packages/block-image/src/__tests__/ui-default.test.tsx:28:    expect(reg.getUI('image')).toBe(imageUiDefault);
+packages/block-image/src/__tests__/ui-default.test.tsx:29:    expect(reg.getUI('image', 'default')).toBe(imageUiDefault);
+packages/block-code/CONTRACT.md:16:  - `codeUiDefault: BlockUIDefinition<typeof codeCore.propsSchema>` — coreName=`'code'` / uiId=`'default'`
+packages/block-image/CONTRACT.md:17:  - `imageUiDefault: BlockUIDefinition<typeof imageCore.propsSchema>` — default UI id = `'default'`
+packages/block-image/CONTRACT.md:44:- **`imageUiDefault` 契约**: `uiId='default'` 且 `coreName='image'`，使用 `defineUI` 且可通过 `BlockRegistry.registerUI` 注入。
+packages/block-callout/src/ui-default/index.ts:6:export const calloutUiDefault: BlockUIDefinition<typeof calloutCore.propsSchema> =
+packages/block-code/src/ui-default/index.ts:6:export const codeUiDefault: BlockUIDefinition<typeof codeCore.propsSchema> =
+packages/block-callout/CONTRACT.md:17:  - `calloutUiDefault: BlockUIDefinition<typeof calloutCore.propsSchema>` — coreName=`'callout'` / uiId=`'default'`
+packages/block-callout/CONTRACT.md:53:- **`uiId='default'` reserved**: `calloutUiDefault.uiId === 'default'`；本包 inherit
+packages/block-code/src/__tests__/ui-default.test.tsx:6:  codeUiDefault,
+packages/block-code/src/__tests__/ui-default.test.tsx:14:describe('codeUiDefault registration', () => {
+packages/block-code/src/__tests__/ui-default.test.tsx:16:    expect(codeUiDefault.coreName).toBe('code');
+packages/block-code/src/__tests__/ui-default.test.tsx:17:    expect(codeUiDefault.uiId).toBe('default');
+packages/block-code/src/__tests__/ui-default.test.tsx:18:    expect(codeUiDefault.EditorView).toBeDefined();
+packages/block-code/src/__tests__/ui-default.test.tsx:19:    expect(codeUiDefault.RenderView).toBeDefined();
+packages/block-code/src/__tests__/ui-default.test.tsx:25:    reg.registerUI(codeUiDefault as unknown as BlockUIDefinition);
+packages/block-code/src/__tests__/ui-default.test.tsx:26:    expect(reg.getUI('code')).toBe(codeUiDefault);
+packages/block-code/src/__tests__/ui-default.test.tsx:27:    expect(reg.getUI('code', 'default')).toBe(codeUiDefault);
+packages/block-callout/src/__tests__/ui-default.test.tsx:6:  calloutUiDefault,
+packages/block-callout/src/__tests__/ui-default.test.tsx:15:describe('calloutUiDefault registration', () => {
+packages/block-callout/src/__tests__/ui-default.test.tsx:17:    expect(calloutUiDefault.coreName).toBe('callout');
+packages/block-callout/src/__tests__/ui-default.test.tsx:18:    expect(calloutUiDefault.uiId).toBe('default');
+packages/block-callout/src/__tests__/ui-default.test.tsx:19:    expect(calloutUiDefault.EditorView).toBe(CalloutEditorView);
+packages/block-callout/src/__tests__/ui-default.test.tsx:20:    expect(calloutUiDefault.RenderView).toBe(CalloutRenderView);
+packages/block-callout/src/__tests__/ui-default.test.tsx:26:    reg.registerUI(calloutUiDefault as unknown as BlockUIDefinition);
+packages/block-callout/src/__tests__/ui-default.test.tsx:27:    expect(reg.getUI('callout')).toBe(calloutUiDefault);
+packages/block-callout/src/__tests__/ui-default.test.tsx:28:    expect(reg.getUI('callout', 'default')).toBe(calloutUiDefault);
+
+exec
+/bin/bash -lc "grep -n 'ComponentType contravariance' packages/editor-shell/CONTRACT.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+118:`registerBlocks` casts 5 of 8 ui-defaults via `XxxUiDefault as unknown as BlockUIDefinition` and leaves the remaining 3 uncast. The asymmetry is structural, not historical: it traces ComponentType contravariance under `exactOptionalPropertyTypes: true`.
+
+exec
+/bin/bash -lc "grep -n 'preserves PageFind coupling for B1b paired discriminator test' docs/plans/active.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+26:| #42 | `5d49240` | B3 | content/notes/__test_cjk__ relocation (notes index filter; partial impl of ADR-0013 D3; preserves PageFind coupling for B1b paired discriminator test) |
+
+exec
+/bin/bash -lc "grep -n '| #TBD (this) | TBD | B4 | Stage A retro items 2 + 3 + 4' docs/plans/active.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+27:| #TBD (this) | TBD | B4 | Stage A retro items 2 + 3 + 4 (cast asymmetry codify + UIDefault casing rename + ESLint argsIgnorePattern) |
+
+exec
+/bin/bash -lc 'rg -n "calloutUIDefault|codeUIDefault|imageUIDefault" packages/block-callout packages/block-code packages/block-image packages/editor-shell/src/registerBlocks.ts' in /home/weiyi/selfKnowledgeBaseWeb
+ exited 1 in 0ms:
+codex
+REVIEW VERDICT R2: PASS
+2026-05-04T03:50:37.962934Z ERROR codex_core::session: failed to record rollout items: thread 019df118-e64e-7e53-a006-8175e630d24f not found
+tokens used
+56,514
+REVIEW VERDICT R2: PASS

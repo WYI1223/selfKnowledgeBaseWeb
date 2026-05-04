@@ -3,7 +3,7 @@ import { render } from '@testing-library/react';
 import { BlockRegistry, type BlockUIDefinition } from '@skb/block-foundation';
 import { imageCore } from '../core/core-definition';
 import {
-  imageUIDefault,
+  imageUiDefault,
   ImageEditorView,
   ImageRenderView,
 } from '../ui-default';
@@ -13,20 +13,20 @@ const baseProps = {
   alt: 'hero image',
 };
 
-describe('imageUIDefault registration', () => {
+describe('imageUiDefault registration', () => {
   it('exposes the BlockUIDefinition shape with coreName + uiId="default"', () => {
-    expect(imageUIDefault.coreName).toBe('image');
-    expect(imageUIDefault.uiId).toBe('default');
-    expect(imageUIDefault.EditorView).toBe(ImageEditorView);
-    expect(imageUIDefault.RenderView).toBe(ImageRenderView);
+    expect(imageUiDefault.coreName).toBe('image');
+    expect(imageUiDefault.uiId).toBe('default');
+    expect(imageUiDefault.EditorView).toBe(ImageEditorView);
+    expect(imageUiDefault.RenderView).toBe(ImageRenderView);
   });
 
   it('round-trips through BlockRegistry (registerCore + registerUI)', () => {
     const reg = new BlockRegistry();
     reg.registerCore(imageCore);
-    reg.registerUI(imageUIDefault as unknown as BlockUIDefinition);
-    expect(reg.getUI('image')).toBe(imageUIDefault);
-    expect(reg.getUI('image', 'default')).toBe(imageUIDefault);
+    reg.registerUI(imageUiDefault as unknown as BlockUIDefinition);
+    expect(reg.getUI('image')).toBe(imageUiDefault);
+    expect(reg.getUI('image', 'default')).toBe(imageUiDefault);
   });
 });
 

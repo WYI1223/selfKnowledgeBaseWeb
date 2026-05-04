@@ -14,7 +14,7 @@
   - `parseImage(mdast) → TiptapNode` — mdast → Tiptap
   - 类型: `ImageTiptapNode` / `ImageMdastJsxElement`
 - `./ui-default` — UI 定义与渲染入口
-  - `imageUIDefault: BlockUIDefinition<typeof imageCore.propsSchema>` — default UI id = `'default'`
+  - `imageUiDefault: BlockUIDefinition<typeof imageCore.propsSchema>` — default UI id = `'default'`
   - `ImageEditorView(props)` / `ImageRenderView(props)` — 同步的图像语义渲染层
   - `ImageBody(props)` — 输出 `<figure><img ...><figcaption>{alt}</figcaption></figure>`，固定 `loading="lazy"`
   - `IMAGE_THEME_TOKENS` — `Readonly<Record<string, ColorTokenName>>` 设计令牌消费清单（typed import from `@skb/design-tokens`，see Wave 3 PR #2 + ADR-0010 D3 #7a F3 闭环）
@@ -41,7 +41,7 @@ const propsSchema = z.object({
 - **Serialize / parse hook 命名**: `serializeImage` / `parseImage`。
 - **Headless 自给**: `core/` 不 import 任何 React / Tiptap UI 模块；仅依赖 `@skb/block-foundation` + `zod`。
 - **Self-validating serialize/parse**: `serializeImage` 调 `propsSchema.parse(node.attrs)`；`parseImage` 调 `propsSchema.parse(rawProps)`。
-- **`imageUIDefault` 契约**: `uiId='default'` 且 `coreName='image'`，使用 `defineUI` 且可通过 `BlockRegistry.registerUI` 注入。
+- **`imageUiDefault` 契约**: `uiId='default'` 且 `coreName='image'`，使用 `defineUI` 且可通过 `BlockRegistry.registerUI` 注入。
 - **语义 DOM 契约**: `ImageBody` 必须输出 `figure` 根节点并包含：
   - `<img src, alt, loading="lazy", width?, height?>`
   - `<figcaption>{alt}</figcaption>`

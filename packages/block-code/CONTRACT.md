@@ -13,7 +13,7 @@ C5a scope：`packages/block-code/ui-default`（Wave 2 Track C5a）基于 `packag
   - `parseCode(mdast) → TiptapNode` — mdast → Tiptap（同上）
   - 类型: `CodeTiptapNode` / `CodeMdastJsxElement`
 - `./ui-default` — presentational 层（Wave C5a）
-  - `codeUIDefault: BlockUIDefinition<typeof codeCore.propsSchema>` — coreName=`'code'` / uiId=`'default'`
+  - `codeUiDefault: BlockUIDefinition<typeof codeCore.propsSchema>` — coreName=`'code'` / uiId=`'default'`
   - `CodeEditorView` / `CodeRenderView` — `ComponentType<BlockViewProps<typeof codeCore.propsSchema>>`，DOM 形状字节级一致（共享 `CodeBody` 原语）
   - `CodeBody` — 视觉单一权威 primitive，editor + render 双视图都嵌入
   - `CODE_THEME_TOKENS` — `Readonly<Record<string, ColorTokenName>>` 设计令牌消费清单（typed import from `@skb/design-tokens`，see Wave 3 PR #2 + ADR-0010 D3 #7a F3 闭环）
