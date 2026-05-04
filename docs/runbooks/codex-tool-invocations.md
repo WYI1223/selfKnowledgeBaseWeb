@@ -15,8 +15,8 @@ handle stdout (parse + audit-log).
 > **First-time setup for every new Claude session.** Verify the user's
 > `~/.codex/config.toml` contains all 7 profiles listed below before
 > dispatching any `codex exec --yolo --profile <name>` invocation. ADR-0011 D6
-> introduced 4 NEW profiles (`generic-executor`, `structure-auditor`,
-> `perf-auditor`, `mdx-doctor`) plus the new default reviewer
+> introduced 4 NEW profiles (`codex-generic-executor`, `codex-structure-auditor`,
+> `codex-perf-auditor`, `codex-mdx-doctor`) plus the new default reviewer
 > `codex-pr-reviewer-55` that supersedes Wave 1+2's `pr-gate` (`pr-gate`
 > is kept as a transitional alias in user-local TOMLs and may stay until
 > Wave 3 close). Wave 1+2 era `~/.codex/config.toml` files typically only
@@ -40,13 +40,13 @@ grep '^\[profiles\.' ~/.codex/config.toml | sort
 Expected output (all 7 profile names from `tmp/codex-profiles.toml`,
 sorted):
 
+- `[profiles.codex-generic-executor]`
+- `[profiles.codex-mdx-doctor]`
+- `[profiles.codex-perf-auditor]`
 - `[profiles.codex-pr-reviewer-55]`
-- `[profiles.generic-executor]`
-- `[profiles.mdx-doctor]`
-- `[profiles.perf-auditor]`
+- `[profiles.codex-structure-auditor]`
 - `[profiles.plan-challenger]`
 - `[profiles.scaffolder]`
-- `[profiles.structure-auditor]`
 
 If any are missing, complete the merge before invoking the corresponding
 pattern below. Until merged, reviewer dispatches may transitionally fall
@@ -92,6 +92,114 @@ When invocation outputs become inputs to a commit (e.g. scaffolder writes new fi
 orchestrator MUST stage `pnpm-lock.yaml` along with package.json edits in the same bundle
 (commit `e15ec36` extension to D8: lockfile is generated-from-authority artifact).
 
+
+## `codex-generic-executor`
+
+**Profile**: `codex-generic-executor`
+
+**Canonical bash**:
+
+```bash
+codex exec --yolo --profile codex-generic-executor < /dev/null
+```
+
+**Triggered by**:
+
+- `pr_plan_locked_executor_field_set_to_generic_executor`
+
+**Output handling**:
+
+orchestrator 读 stdout 拿创建/修改文件清单 + vitest 自跑结果；
+原始 stdout 落盘到 /tmp/codex-runs/<date>-<task>-execute.txt（off-workspace per R7）；
+完成后 head -2000 截断到 docs/audits/codex-runs/<date>-<task>-execute.txt 归档。
+
+**Description**:
+
+ADR-0011 D6 NEW Wave 3 默认 executor。gpt-5.5 + workspace-write sandbox。
+
+D1 stage 2 标准流程：
+1. 读 PR.md（locked at stage 1）：files / test_cases / contracts_affected /
+   adr_touched / acceptance
+2. **TDD 前置**：先按 test_cases 字段写 vitest 测试（input/expected/location
+   三元组逐一落到 src/__tests__/）
+3. 实现代码满足测试（限制在 PR.md `files:` 白名单内；超出 = scope creep）
+4. 自跑 `pnpm test --filter=<package>` 全部 PASS（不 PASS 不进 stage 3）
+5. 自跑 `pnpm lint --filter=<package>` + `pnpm typecheck --filter=<package>`
+   clean（per WE-007）
+6. 写 commit-ready summary 报 orchestrator；orchestrator dispatch
+   codex-pr-reviewer-55 进 stage 3
+
+你**不**调用其他 codex tool；不 git mutate（commit 由 reviewer 兼任，per D1
+stage 5）。如发现 PR.md 写错 / 缺信息，停止并 SendMessage orchestrator 修订。
+
+## `codex-mdx-doctor`
+
+**Profile**: `codex-mdx-doctor`
+
+**Canonical bash**:
+
+```bash
+codex exec --yolo --profile codex-mdx-doctor < /dev/null
+```
+
+**Triggered by**:
+
+- `pr_touches_mdx_bridge`
+- `pr_touches_block_package`
+- `wave_close`
+
+**Output handling**:
+
+orchestrator 读 stdout 拿 RTT fixture PASS/FAIL 清单；FAIL 阻断进入 D1 stage 5 commit；
+原始 stdout 落盘到 /tmp/codex-runs/<date>-<task>-mdx-doctor.txt（off-workspace per R7）；
+完成后 head -2000 截断到 docs/audits/codex-runs/<date>-<task>-mdx-doctor.txt 归档。
+
+**Description**:
+
+ADR-0011 D5 + D6 NEW Wave 3 audit profile。从 Wave 1+2 Tier 3
+mdx-doctor Claude teammate 全 codex 化。
+
+执行内容：
+- 跑全部 RTT (round-trip test) fixture：mdxToTiptap → tiptapToMdx 字节等价
+- 跑 stripMdast 路径下的同等价（编辑器构建 doc 不依赖 _mdast 字段）
+- 任一 fail 阻断所有 mdx-bridge / block-* PR 进 stage 5
+- Wave 3 起补足 8 component-block fixture (callout/code/image/math/pdf/jupyter/
+  nn-viz/agent-flow) × 2 invariants × 1 fixture per block
+
+## `codex-perf-auditor`
+
+**Profile**: `codex-perf-auditor`
+
+**Canonical bash**:
+
+```bash
+codex exec --yolo --profile codex-perf-auditor < /dev/null
+```
+
+**Triggered by**:
+
+- `bundle_affecting_pr`
+- `wave_close`
+- `manual_dispatch`
+
+**Output handling**:
+
+orchestrator 读 stdout 拿 perf baseline + 回归点清单；
+原始 stdout 落盘到 /tmp/codex-runs/<date>-<task>-perf-audit.txt（off-workspace per R7）；
+完成后 head -2000 截断到 docs/audits/codex-runs/<date>-<task>-perf-audit.txt 归档。
+Wave-close 时由 orchestrator 另写 curated summary 到 docs/audits/perf-YYYY-MM-DD.md（月度 / Wave-close 级），引用 /tmp 原始 + docs/audits 归档。
+
+**Description**:
+
+ADR-0011 D5 + D6 NEW Wave 3 audit profile。从 Wave 1+2 Tier 3
+performance-auditor Claude teammate 全 codex 化。
+
+执行内容：
+- Lighthouse CI 跑 apps/site
+- size-limit / Astro --analyze（heavy block 包重点关注：block-jupyter Pyodide
+  ~10MB / block-nn-viz TF.js ~3MB / block-agent-flow React Flow ~500KB）
+- Playwright traces（关键交互延迟 / FCP / LCP / TTI）
+- 若 baseline 比上次差 > 20%，开 issue 阻断新功能直到修复
 
 ## `codex-pr-reviewer-55`
 
@@ -153,113 +261,45 @@ verdict 结构应包含
 → `git add <PR.md files: list>` → `git diff --cached --stat` 验证 → `git commit`
 → `git push`）。orchestrator 不另起 git-operator subagent。
 
-## `codex-generic-executor`
+## `codex-structure-auditor`
 
-**Profile**: `generic-executor`
-
-**Canonical bash**:
-
-```bash
-codex exec --yolo --profile generic-executor < /dev/null
-```
-
-**Triggered by**:
-
-- `pr_plan_locked_executor_field_set_to_generic_executor`
-
-**Output handling**:
-
-orchestrator 读 stdout 拿创建/修改文件清单 + vitest 自跑结果；
-原始 stdout 落盘到 /tmp/codex-runs/<date>-<task>-execute.txt（off-workspace per R7）；
-完成后 head -2000 截断到 docs/audits/codex-runs/<date>-<task>-execute.txt 归档。
-
-**Description**:
-
-ADR-0011 D6 NEW Wave 3 默认 executor。gpt-5.5 + workspace-write sandbox。
-
-D1 stage 2 标准流程：
-1. 读 PR.md（locked at stage 1）：files / test_cases / contracts_affected /
-   adr_touched / acceptance
-2. **TDD 前置**：先按 test_cases 字段写 vitest 测试（input/expected/location
-   三元组逐一落到 src/__tests__/）
-3. 实现代码满足测试（限制在 PR.md `files:` 白名单内；超出 = scope creep）
-4. 自跑 `pnpm test --filter=<package>` 全部 PASS（不 PASS 不进 stage 3）
-5. 自跑 `pnpm lint --filter=<package>` + `pnpm typecheck --filter=<package>`
-   clean（per WE-007）
-6. 写 commit-ready summary 报 orchestrator；orchestrator dispatch
-   codex-pr-reviewer-55 进 stage 3
-
-你**不**调用其他 codex tool；不 git mutate（commit 由 reviewer 兼任，per D1
-stage 5）。如发现 PR.md 写错 / 缺信息，停止并 SendMessage orchestrator 修订。
-
-## `codex-mdx-doctor`
-
-**Profile**: `mdx-doctor`
+**Profile**: `codex-structure-auditor`
 
 **Canonical bash**:
 
 ```bash
-codex exec --yolo --profile mdx-doctor < /dev/null
+codex exec --yolo --profile codex-structure-auditor < /dev/null
 ```
 
 **Triggered by**:
 
-- `pr_touches_mdx_bridge`
-- `pr_touches_block_package`
-- `wave_close`
-
-**Output handling**:
-
-orchestrator 读 stdout 拿 RTT fixture PASS/FAIL 清单；FAIL 阻断进入 D1 stage 5 commit；
-原始 stdout 落盘到 /tmp/codex-runs/<date>-<task>-mdx-doctor.txt（off-workspace per R7）；
-完成后 head -2000 截断到 docs/audits/codex-runs/<date>-<task>-mdx-doctor.txt 归档。
-
-**Description**:
-
-ADR-0011 D5 + D6 NEW Wave 3 audit profile。从 Wave 1+2 Tier 3
-mdx-doctor Claude teammate 全 codex 化。
-
-执行内容：
-- 跑全部 RTT (round-trip test) fixture：mdxToTiptap → tiptapToMdx 字节等价
-- 跑 stripMdast 路径下的同等价（编辑器构建 doc 不依赖 _mdast 字段）
-- 任一 fail 阻断所有 mdx-bridge / block-* PR 进 stage 5
-- Wave 3 起补足 8 component-block fixture (callout/code/image/math/pdf/jupyter/
-  nn-viz/agent-flow) × 2 invariants × 1 fixture per block
-
-## `codex-perf-auditor`
-
-**Profile**: `perf-auditor`
-
-**Canonical bash**:
-
-```bash
-codex exec --yolo --profile perf-auditor < /dev/null
-```
-
-**Triggered by**:
-
-- `bundle_affecting_pr`
+- `per_pr_post_commit`
 - `wave_close`
 - `manual_dispatch`
 
 **Output handling**:
 
-orchestrator 读 stdout 拿 perf baseline + 回归点清单；
-原始 stdout 落盘到 /tmp/codex-runs/<date>-<task>-perf-audit.txt（off-workspace per R7）；
-完成后 head -2000 截断到 docs/audits/codex-runs/<date>-<task>-perf-audit.txt 归档。
-Wave-close 时由 orchestrator 另写 curated summary 到 docs/audits/perf-YYYY-MM-DD.md（月度 / Wave-close 级），引用 /tmp 原始 + docs/audits 归档。
+orchestrator 读 stdout 拿 god-file / 契约漂移 / 孤儿包 / D1 dead-dep 清单；
+原始 stdout 落盘到 /tmp/codex-runs/<date>-<task>-structure-audit.txt（off-workspace per R7）；
+完成后 head -2000 截断到 docs/audits/codex-runs/<date>-<task>-structure-audit.txt 归档。
+Wave-close 时由 orchestrator 另写 curated summary 到 docs/audits/structure-YYYY-MM-<event>.md（月度 / Wave-close 级），引用 /tmp 原始 + docs/audits 归档。
 
 **Description**:
 
 ADR-0011 D5 + D6 NEW Wave 3 audit profile。从 Wave 1+2 Tier 3
-performance-auditor Claude teammate 全 codex 化。
+structure-auditor Claude teammate 全 codex 化。
 
 执行内容：
-- Lighthouse CI 跑 apps/site
-- size-limit / Astro --analyze（heavy block 包重点关注：block-jupyter Pyodide
-  ~10MB / block-nn-viz TF.js ~3MB / block-agent-flow React Flow ~500KB）
-- Playwright traces（关键交互延迟 / FCP / LCP / TTI）
-- 若 baseline 比上次差 > 20%，开 issue 阻断新功能直到修复
+- 候选 god-file（接近或超过 500 行；ESLint 300 warn）
+- 契约漂移（CONTRACT.md 与实际接口不一致）
+- 孤儿包（无 importers + 无 documented 消费路径）
+- **ADR-0008 D1 dead-dep mechanical scan**：每个 packages/*/package.json
+  中的 `@skb/*` 工作区依赖必对应至少一个 `from '@skb/<pkg>'` 源码 import
+- **ADR-0011 D8 监控指标**：长期 Claude session 数 ≤ 1；clone 模板 byte-equiv
+  审计
+
+候选重构由 refactorer Claude subagent 接手（per D7 触发条件
+`codex_structure_auditor_flags`）。
 
 ## `plan-challenger`
 
@@ -426,46 +466,6 @@ orchestrator 读 stdout 拿创建文件清单；
 
 为每个 packages/<name> 生成 src/__tests__/ 下的 vitest 套件骨架，
 含一个示例 it() + setup helpers。具体测试由各包工种 agent 填。
-
-## `codex-structure-auditor`
-
-**Profile**: `structure-auditor`
-
-**Canonical bash**:
-
-```bash
-codex exec --yolo --profile structure-auditor < /dev/null
-```
-
-**Triggered by**:
-
-- `per_pr_post_commit`
-- `wave_close`
-- `manual_dispatch`
-
-**Output handling**:
-
-orchestrator 读 stdout 拿 god-file / 契约漂移 / 孤儿包 / D1 dead-dep 清单；
-原始 stdout 落盘到 /tmp/codex-runs/<date>-<task>-structure-audit.txt（off-workspace per R7）；
-完成后 head -2000 截断到 docs/audits/codex-runs/<date>-<task>-structure-audit.txt 归档。
-Wave-close 时由 orchestrator 另写 curated summary 到 docs/audits/structure-YYYY-MM-<event>.md（月度 / Wave-close 级），引用 /tmp 原始 + docs/audits 归档。
-
-**Description**:
-
-ADR-0011 D5 + D6 NEW Wave 3 audit profile。从 Wave 1+2 Tier 3
-structure-auditor Claude teammate 全 codex 化。
-
-执行内容：
-- 候选 god-file（接近或超过 500 行；ESLint 300 warn）
-- 契约漂移（CONTRACT.md 与实际接口不一致）
-- 孤儿包（无 importers + 无 documented 消费路径）
-- **ADR-0008 D1 dead-dep mechanical scan**：每个 packages/*/package.json
-  中的 `@skb/*` 工作区依赖必对应至少一个 `from '@skb/<pkg>'` 源码 import
-- **ADR-0011 D8 监控指标**：长期 Claude session 数 ≤ 1；clone 模板 byte-equiv
-  审计
-
-候选重构由 refactorer Claude subagent 接手（per D7 触发条件
-`codex_structure_auditor_flags`）。
 
 ## Related
 

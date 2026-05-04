@@ -2,8 +2,8 @@
  * Renders tmp/codex-profiles.toml — manual merge into ~/.codex/config.toml.
  *
  * Spec §3.12 baseline (4 profiles) extended by ADR-0011 D6 to 7 active profiles:
- * scaffolder / plan-challenger / codex-pr-reviewer-55 / generic-executor /
- * structure-auditor / perf-auditor / mdx-doctor. The legacy `code-reviewer`
+ * scaffolder / plan-challenger / codex-pr-reviewer-55 / codex-generic-executor /
+  * codex-structure-auditor / codex-perf-auditor / codex-mdx-doctor. The legacy `code-reviewer`
  * (5.3-spark) and `pr-gate` profiles are removed (deprecated per ADR-0011 D6 —
  * codex-pr-reviewer-55 is the unified default reviewer at D1 stage 3).
  *
@@ -43,22 +43,22 @@ model = "gpt-5.5"
 sandbox_mode = "workspace-write"
 approval_policy = "never"
 
-[profiles.generic-executor]
+[profiles.codex-generic-executor]
 model = "gpt-5.5"
 sandbox_mode = "workspace-write"
 approval_policy = "never"
 
-[profiles.structure-auditor]
+[profiles.codex-structure-auditor]
 model = "gpt-5.3-codex-spark"
 sandbox_mode = "read-only"
 approval_policy = "never"
 
-[profiles.perf-auditor]
+[profiles.codex-perf-auditor]
 model = "gpt-5.3-codex-spark"
 sandbox_mode = "read-only"
 approval_policy = "never"
 
-[profiles.mdx-doctor]
+[profiles.codex-mdx-doctor]
 model = "gpt-5.3-codex-spark"
 sandbox_mode = "read-only"
 approval_policy = "never"

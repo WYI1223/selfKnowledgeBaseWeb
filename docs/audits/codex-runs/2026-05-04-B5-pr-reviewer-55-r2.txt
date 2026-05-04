@@ -1,0 +1,2000 @@
+Reading additional input from stdin...
+OpenAI Codex v0.125.0 (research preview)
+--------
+workdir: /home/weiyi/selfKnowledgeBaseWeb
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: danger-full-access
+reasoning effort: xhigh
+reasoning summaries: none
+session id: 019df133-5e39-7ed0-9d3c-a686735d7c66
+--------
+user
+Wave 4 B5 REVIEW R2.
+
+R1 FAIL fixes applied:
+1. Regen drift fixed: scripts/render/codex-profiles-toml.ts hardcoded TOML literals + scripts/render/agents-md.ts AGENTS.md prose + scripts/render/codex-tool-runbook.ts runbook prose + scripts/render/claude-md.ts CLAUDE.md prose all updated to use codex- prefix names. tmp/codex-profiles.toml regenerated. AGENTS.md regenerated. docs/runbooks/codex-tool-invocations.md regenerated. CLAUDE.md regenerated.
+2. Test fixture line 311-314 now expects [profiles.codex-generic-executor] etc. (the asserted output of renderCodexProfilesToml). pnpm test passes.
+3. PR.md autolink-in-backticks violations on lines 50, 172, 190 fixed: '--profile <name>' → '--profile NAME literal flag'; '--profile codex-<name>' → '--profile codex-NAME literal'; '<word> patterns inside backticks' → 'angle-bracket-wrapped placeholder patterns inside backticks'. `grep -nE '\`[^\`]*<\w+>[^\`]*\`' docs/plans/wave-4-main/B5-codex-prefix-lychee-memory.md` → 0 matches.
+
+VERIFICATION: pnpm check 40/40 PASS (fully cached); pnpm generate:configs exit 0.
+
+WORKING-TREE: 12 modified + 3 untracked = 15 in-scope files at COMMIT. PR.md original '## files' had canonical 10 + audits, but actual COMMIT-time 15 reflects the regen-script source updates needed to fix R1 issue 1 (3 additional scripts/render/*.ts files + 1 tmp/codex-profiles.toml regen output beyond the original 10). The PR.md needs an inline note acknowledging this expanded scope; orchestrator will update at commit time.
+
+R2 SCOPE: verify R1 issues 1 + 2 + 3 RESOLVED; verify no new regressions.
+
+OUTPUT: `REVIEW VERDICT R2: PASS` or `REVIEW VERDICT R2: FAIL`. Read-only.
+
+DO NOT git mutate.
+codex
+I’ll use `superpowers:using-superpowers` for the required skill workflow, then review the local diff read-only against the three R1 findings and look for regressions.
+exec
+/bin/bash -lc "sed -n '1,220p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/3c463363/skills/using-superpowers/SKILL.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+---
+name: using-superpowers
+description: Use when starting any conversation - establishes how to find and use skills, requiring Skill tool invocation before ANY response including clarifying questions
+---
+
+<SUBAGENT-STOP>
+If you were dispatched as a subagent to execute a specific task, skip this skill.
+</SUBAGENT-STOP>
+
+<EXTREMELY-IMPORTANT>
+If you think there is even a 1% chance a skill might apply to what you are doing, you ABSOLUTELY MUST invoke the skill.
+
+IF A SKILL APPLIES TO YOUR TASK, YOU DO NOT HAVE A CHOICE. YOU MUST USE IT.
+
+This is not negotiable. This is not optional. You cannot rationalize your way out of this.
+</EXTREMELY-IMPORTANT>
+
+## Instruction Priority
+
+Superpowers skills override default system prompt behavior, but **user instructions always take precedence**:
+
+1. **User's explicit instructions** (CLAUDE.md, GEMINI.md, AGENTS.md, direct requests) — highest priority
+2. **Superpowers skills** — override default system behavior where they conflict
+3. **Default system prompt** — lowest priority
+
+If CLAUDE.md, GEMINI.md, or AGENTS.md says "don't use TDD" and a skill says "always use TDD," follow the user's instructions. The user is in control.
+
+## How to Access Skills
+
+**In Claude Code:** Use the `Skill` tool. When you invoke a skill, its content is loaded and presented to you—follow it directly. Never use the Read tool on skill files.
+
+**In Copilot CLI:** Use the `skill` tool. Skills are auto-discovered from installed plugins. The `skill` tool works the same as Claude Code's `Skill` tool.
+
+**In Gemini CLI:** Skills activate via the `activate_skill` tool. Gemini loads skill metadata at session start and activates the full content on demand.
+
+**In other environments:** Check your platform's documentation for how skills are loaded.
+
+## Platform Adaptation
+
+Skills use Claude Code tool names. Non-CC platforms: see `references/copilot-tools.md` (Copilot CLI), `references/codex-tools.md` (Codex) for tool equivalents. Gemini CLI users get the tool mapping loaded automatically via GEMINI.md.
+
+# Using Skills
+
+## The Rule
+
+**Invoke relevant or requested skills BEFORE any response or action.** Even a 1% chance a skill might apply means that you should invoke the skill to check. If an invoked skill turns out to be wrong for the situation, you don't need to use it.
+
+```dot
+digraph skill_flow {
+    "User message received" [shape=doublecircle];
+    "About to EnterPlanMode?" [shape=doublecircle];
+    "Already brainstormed?" [shape=diamond];
+    "Invoke brainstorming skill" [shape=box];
+    "Might any skill apply?" [shape=diamond];
+    "Invoke Skill tool" [shape=box];
+    "Announce: 'Using [skill] to [purpose]'" [shape=box];
+    "Has checklist?" [shape=diamond];
+    "Create TodoWrite todo per item" [shape=box];
+    "Follow skill exactly" [shape=box];
+    "Respond (including clarifications)" [shape=doublecircle];
+
+    "About to EnterPlanMode?" -> "Already brainstormed?";
+    "Already brainstormed?" -> "Invoke brainstorming skill" [label="no"];
+    "Already brainstormed?" -> "Might any skill apply?" [label="yes"];
+    "Invoke brainstorming skill" -> "Might any skill apply?";
+
+    "User message received" -> "Might any skill apply?";
+    "Might any skill apply?" -> "Invoke Skill tool" [label="yes, even 1%"];
+    "Might any skill apply?" -> "Respond (including clarifications)" [label="definitely not"];
+    "Invoke Skill tool" -> "Announce: 'Using [skill] to [purpose]'";
+    "Announce: 'Using [skill] to [purpose]'" -> "Has checklist?";
+    "Has checklist?" -> "Create TodoWrite todo per item" [label="yes"];
+    "Has checklist?" -> "Follow skill exactly" [label="no"];
+    "Create TodoWrite todo per item" -> "Follow skill exactly";
+}
+```
+
+## Red Flags
+
+These thoughts mean STOP—you're rationalizing:
+
+| Thought | Reality |
+|---------|---------|
+| "This is just a simple question" | Questions are tasks. Check for skills. |
+| "I need more context first" | Skill check comes BEFORE clarifying questions. |
+| "Let me explore the codebase first" | Skills tell you HOW to explore. Check first. |
+| "I can check git/files quickly" | Files lack conversation context. Check for skills. |
+| "Let me gather information first" | Skills tell you HOW to gather information. |
+| "This doesn't need a formal skill" | If a skill exists, use it. |
+| "I remember this skill" | Skills evolve. Read current version. |
+| "This doesn't count as a task" | Action = task. Check for skills. |
+| "The skill is overkill" | Simple things become complex. Use it. |
+| "I'll just do this one thing first" | Check BEFORE doing anything. |
+| "This feels productive" | Undisciplined action wastes time. Skills prevent this. |
+| "I know what that means" | Knowing the concept ≠ using the skill. Invoke it. |
+
+## Skill Priority
+
+When multiple skills could apply, use this order:
+
+1. **Process skills first** (brainstorming, debugging) - these determine HOW to approach the task
+2. **Implementation skills second** (frontend-design, mcp-builder) - these guide execution
+
+"Let's build X" → brainstorming first, then implementation skills.
+"Fix this bug" → debugging first, then domain-specific skills.
+
+## Skill Types
+
+**Rigid** (TDD, debugging): Follow exactly. Don't adapt away discipline.
+
+**Flexible** (patterns): Adapt principles to context.
+
+The skill itself tells you which.
+
+## User Instructions
+
+Instructions say WHAT, not HOW. "Add X" or "Fix Y" doesn't mean skip workflows.
+
+codex
+I’m also applying `superpowers:verification-before-completion` because the requested output is a pass/fail claim; I’ll base that on concrete local evidence, not the prior summary alone.
+exec
+/bin/bash -lc "sed -n '1,240p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/3c463363/skills/verification-before-completion/SKILL.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+---
+name: verification-before-completion
+description: Use when about to claim work is complete, fixed, or passing, before committing or creating PRs - requires running verification commands and confirming output before making any success claims; evidence before assertions always
+---
+
+# Verification Before Completion
+
+## Overview
+
+Claiming work is complete without verification is dishonesty, not efficiency.
+
+**Core principle:** Evidence before claims, always.
+
+**Violating the letter of this rule is violating the spirit of this rule.**
+
+## The Iron Law
+
+```
+NO COMPLETION CLAIMS WITHOUT FRESH VERIFICATION EVIDENCE
+```
+
+If you haven't run the verification command in this message, you cannot claim it passes.
+
+## The Gate Function
+
+```
+BEFORE claiming any status or expressing satisfaction:
+
+1. IDENTIFY: What command proves this claim?
+2. RUN: Execute the FULL command (fresh, complete)
+3. READ: Full output, check exit code, count failures
+4. VERIFY: Does output confirm the claim?
+   - If NO: State actual status with evidence
+   - If YES: State claim WITH evidence
+5. ONLY THEN: Make the claim
+
+Skip any step = lying, not verifying
+```
+
+## Common Failures
+
+| Claim | Requires | Not Sufficient |
+|-------|----------|----------------|
+| Tests pass | Test command output: 0 failures | Previous run, "should pass" |
+| Linter clean | Linter output: 0 errors | Partial check, extrapolation |
+| Build succeeds | Build command: exit 0 | Linter passing, logs look good |
+| Bug fixed | Test original symptom: passes | Code changed, assumed fixed |
+| Regression test works | Red-green cycle verified | Test passes once |
+| Agent completed | VCS diff shows changes | Agent reports "success" |
+| Requirements met | Line-by-line checklist | Tests passing |
+
+## Red Flags - STOP
+
+- Using "should", "probably", "seems to"
+- Expressing satisfaction before verification ("Great!", "Perfect!", "Done!", etc.)
+- About to commit/push/PR without verification
+- Trusting agent success reports
+- Relying on partial verification
+- Thinking "just this once"
+- Tired and wanting work over
+- **ANY wording implying success without having run verification**
+
+## Rationalization Prevention
+
+| Excuse | Reality |
+|--------|---------|
+| "Should work now" | RUN the verification |
+| "I'm confident" | Confidence ≠ evidence |
+| "Just this once" | No exceptions |
+| "Linter passed" | Linter ≠ compiler |
+| "Agent said success" | Verify independently |
+| "I'm tired" | Exhaustion ≠ excuse |
+| "Partial check is enough" | Partial proves nothing |
+| "Different words so rule doesn't apply" | Spirit over letter |
+
+## Key Patterns
+
+**Tests:**
+```
+✅ [Run test command] [See: 34/34 pass] "All tests pass"
+❌ "Should pass now" / "Looks correct"
+```
+
+**Regression tests (TDD Red-Green):**
+```
+✅ Write → Run (pass) → Revert fix → Run (MUST FAIL) → Restore → Run (pass)
+❌ "I've written a regression test" (without red-green verification)
+```
+
+**Build:**
+```
+✅ [Run build] [See: exit 0] "Build passes"
+❌ "Linter passed" (linter doesn't check compilation)
+```
+
+**Requirements:**
+```
+✅ Re-read plan → Create checklist → Verify each → Report gaps or completion
+❌ "Tests pass, phase complete"
+```
+
+**Agent delegation:**
+```
+✅ Agent reports success → Check VCS diff → Verify changes → Report actual state
+❌ Trust agent report
+```
+
+## Why This Matters
+
+From 24 failure memories:
+- your human partner said "I don't believe you" - trust broken
+- Undefined functions shipped - would crash
+- Missing requirements shipped - incomplete features
+- Time wasted on false completion → redirect → rework
+- Violates: "Honesty is a core value. If you lie, you'll be replaced."
+
+## When To Apply
+
+**ALWAYS before:**
+- ANY variation of success/completion claims
+- ANY expression of satisfaction
+- ANY positive statement about work state
+- Committing, PR creation, task completion
+- Moving to next task
+- Delegating to agents
+
+**Rule applies to:**
+- Exact phrases
+- Paraphrases and synonyms
+- Implications of success
+- ANY communication suggesting completion/correctness
+
+## The Bottom Line
+
+**No shortcuts for verification.**
+
+Run the command. Read the output. THEN claim the result.
+
+This is non-negotiable.
+
+codex
+I’ll first map the working tree and the exact changed files, then inspect the generator, generated outputs, fixture expectations, and the PR markdown pattern fixes.
+exec
+/bin/bash -lc 'git status --short' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+ M AGENTS.md
+ M CLAUDE.md
+ M agent-contract.md
+ M docs/plans/active.md
+ M docs/runbooks/codex-tool-invocations.md
+ M scripts/__tests__/generate-configs.test.ts
+ M scripts/render/agents-md.ts
+ M scripts/render/claude-md.ts
+ M scripts/render/codex-profiles-toml.ts
+ M scripts/render/codex-tool-runbook.ts
+ M scripts/render/types.ts
+ M tmp/codex-profiles.toml
+?? docs/audits/codex-runs/2026-05-03-B4-commit.txt
+?? docs/audits/codex-runs/2026-05-04-B5-pr-reviewer-55.txt
+?? docs/plans/wave-4-main/B5-codex-prefix-lychee-memory.md
+
+exec
+/bin/bash -lc 'git diff --name-status' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+M	AGENTS.md
+M	CLAUDE.md
+M	agent-contract.md
+M	docs/plans/active.md
+M	docs/runbooks/codex-tool-invocations.md
+M	scripts/__tests__/generate-configs.test.ts
+M	scripts/render/agents-md.ts
+M	scripts/render/claude-md.ts
+M	scripts/render/codex-profiles-toml.ts
+M	scripts/render/codex-tool-runbook.ts
+M	scripts/render/types.ts
+M	tmp/codex-profiles.toml
+
+exec
+/bin/bash -lc 'git diff --stat' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+ AGENTS.md                                  |  56 ++++----
+ CLAUDE.md                                  |  28 ++--
+ agent-contract.md                          |  16 +--
+ docs/plans/active.md                       |   3 +-
+ docs/runbooks/codex-tool-invocations.md    | 224 ++++++++++++++---------------
+ scripts/__tests__/generate-configs.test.ts |  10 +-
+ scripts/render/agents-md.ts                |  20 +--
+ scripts/render/claude-md.ts                |   2 +-
+ scripts/render/codex-profiles-toml.ts      |  12 +-
+ scripts/render/codex-tool-runbook.ts       |  12 +-
+ scripts/render/types.ts                    |   8 +-
+ tmp/codex-profiles.toml                    |   8 +-
+ 12 files changed, 200 insertions(+), 199 deletions(-)
+
+exec
+/bin/bash -lc 'rg -n "codex-generic-executor|generic-executor|codex-pr-reviewer-55|pr-reviewer-55|codex-structure-auditor|structure-auditor|codex-perf-auditor|perf-auditor|codex-mdx-doctor|mdx-doctor" scripts/render tmp/codex-profiles.toml AGENTS.md CLAUDE.md docs/runbooks/codex-tool-invocations.md docs/plans/wave-4-main/B5-codex-prefix-lychee-memory.md tests 2>/dev/null' in /home/weiyi/selfKnowledgeBaseWeb
+ exited 2 in 0ms:
+docs/plans/wave-4-main/B5-codex-prefix-lychee-memory.md:17:fields (`generic-executor → codex-generic-executor`,
+docs/plans/wave-4-main/B5-codex-prefix-lychee-memory.md:18:`structure-auditor → codex-structure-auditor`,
+docs/plans/wave-4-main/B5-codex-prefix-lychee-memory.md:19:`perf-auditor → codex-perf-auditor`,
+docs/plans/wave-4-main/B5-codex-prefix-lychee-memory.md:20:`mdx-doctor → codex-mdx-doctor`) matching the canonical names
+docs/plans/wave-4-main/B5-codex-prefix-lychee-memory.md:47:  in `tool_patterns:` block: `profile: generic-executor` →
+docs/plans/wave-4-main/B5-codex-prefix-lychee-memory.md:48:  `profile: codex-generic-executor` (+ same for `structure-auditor`,
+docs/plans/wave-4-main/B5-codex-prefix-lychee-memory.md:49:  `perf-auditor`, `mdx-doctor`); the `invocation:` field for each
+docs/plans/wave-4-main/B5-codex-prefix-lychee-memory.md:54:  `codex-pr-reviewer-55` (already has codex- prefix; matches local
+docs/plans/wave-4-main/B5-codex-prefix-lychee-memory.md:62:  `'generic-executor'` updates to `'codex-generic-executor'`.
+docs/plans/wave-4-main/B5-codex-prefix-lychee-memory.md:69:  ~12-20 LOC delta; 4 sections (`codex-generic-executor`,
+docs/plans/wave-4-main/B5-codex-prefix-lychee-memory.md:70:  `codex-structure-auditor`, `codex-perf-auditor`, `codex-mdx-doctor`)
+docs/plans/wave-4-main/B5-codex-prefix-lychee-memory.md:81:  `docs/audits/codex-runs/2026-05-04-B5-pr-reviewer-55.txt`
+docs/plans/wave-4-main/B5-codex-prefix-lychee-memory.md:101:  Input: `grep -cE 'profile: codex-(generic-executor|structure-auditor|perf-auditor|mdx-doctor)' agent-contract.md`.
+docs/plans/wave-4-main/B5-codex-prefix-lychee-memory.md:104:  `grep -cE 'profile: (generic-executor|structure-auditor|perf-auditor|mdx-doctor)$' agent-contract.md`.
+docs/plans/wave-4-main/B5-codex-prefix-lychee-memory.md:107:  `grep -cE "'codex-(generic-executor|structure-auditor|perf-auditor|mdx-doctor)'" scripts/render/types.ts`.
+docs/plans/wave-4-main/B5-codex-prefix-lychee-memory.md:110:  `grep -c "'codex-generic-executor'" scripts/__tests__/generate-configs.test.ts`.
+docs/plans/wave-4-main/B5-codex-prefix-lychee-memory.md:119:  `grep -cE 'codex-(generic-executor|structure-auditor|perf-auditor|mdx-doctor)' CLAUDE.md`.
+docs/plans/wave-4-main/B5-codex-prefix-lychee-memory.md:122:  `grep -cE 'codex-(generic-executor|structure-auditor|perf-auditor|mdx-doctor)' docs/runbooks/codex-tool-invocations.md`.
+docs/plans/wave-4-main/B5-codex-prefix-lychee-memory.md:169:   substitutions: `codex-generic-executor`, `codex-structure-auditor`,
+docs/plans/wave-4-main/B5-codex-prefix-lychee-memory.md:170:   `codex-perf-auditor`, `codex-mdx-doctor`. TC1 + TC2 evidence.
+docs/plans/wave-4-main/B5-codex-prefix-lychee-memory.md:175:   `scaffolder`, `plan-challenger`, `codex-pr-reviewer-55`).
+docs/plans/wave-4-main/B5-codex-prefix-lychee-memory.md:178:   updated to expect `'codex-generic-executor'`. TC4 evidence.
+docs/plans/wave-4-main/B5-codex-prefix-lychee-memory.md:272:  docs/audits/codex-runs/2026-05-04-B5-pr-reviewer-55.txt
+CLAUDE.md:53:2. EXECUTE           codex `codex-generic-executor` (or specialized scaffolder; or
+CLAUDE.md:58:3. REVIEW            codex `codex-pr-reviewer-55` (5.5) — line-level + spec-match.
+CLAUDE.md:84:Codex tools (11 patterns: 5 scaffolders + plan-challenger + codex-pr-reviewer-55 +
+CLAUDE.md:105:| `codex-generic-executor`  | `codex-generic-executor`  | ADR-0011 D6 NEW Wave 3 默认 executor。gpt-5.5 + workspace-write sandbox。                          |
+CLAUDE.md:106:| `codex-mdx-doctor`        | `codex-mdx-doctor`        | ADR-0011 D5 + D6 NEW Wave 3 audit profile。从 Wave 1+2 Tier 3                                      |
+CLAUDE.md:107:| `codex-perf-auditor`      | `codex-perf-auditor`      | ADR-0011 D5 + D6 NEW Wave 3 audit profile。从 Wave 1+2 Tier 3                                      |
+CLAUDE.md:108:| `codex-pr-reviewer-55`    | `codex-pr-reviewer-55`    | ADR-0011 D1 stage 3 默认 reviewer。replaces Wave 1+2 的 pr-gate（5.5）+                            |
+CLAUDE.md:109:| `codex-structure-auditor` | `codex-structure-auditor` | ADR-0011 D5 + D6 NEW Wave 3 audit profile。从 Wave 1+2 Tier 3                                      |
+docs/runbooks/codex-tool-invocations.md:18:> introduced 4 NEW profiles (`codex-generic-executor`, `codex-structure-auditor`,
+docs/runbooks/codex-tool-invocations.md:19:> `codex-perf-auditor`, `codex-mdx-doctor`) plus the new default reviewer
+docs/runbooks/codex-tool-invocations.md:20:> `codex-pr-reviewer-55` that supersedes Wave 1+2's `pr-gate` (`pr-gate`
+docs/runbooks/codex-tool-invocations.md:43:- `[profiles.codex-generic-executor]`
+docs/runbooks/codex-tool-invocations.md:44:- `[profiles.codex-mdx-doctor]`
+docs/runbooks/codex-tool-invocations.md:45:- `[profiles.codex-perf-auditor]`
+docs/runbooks/codex-tool-invocations.md:46:- `[profiles.codex-pr-reviewer-55]`
+docs/runbooks/codex-tool-invocations.md:47:- `[profiles.codex-structure-auditor]`
+docs/runbooks/codex-tool-invocations.md:85:- **`timeout`-wrap long runs** (e.g. `timeout 600 codex exec --yolo --profile codex-pr-reviewer-55 ...`) to prevent hung invocations.
+docs/runbooks/codex-tool-invocations.md:96:## `codex-generic-executor`
+docs/runbooks/codex-tool-invocations.md:98:**Profile**: `codex-generic-executor`
+docs/runbooks/codex-tool-invocations.md:103:codex exec --yolo --profile codex-generic-executor < /dev/null
+docs/runbooks/codex-tool-invocations.md:130:   codex-pr-reviewer-55 进 stage 3
+docs/runbooks/codex-tool-invocations.md:135:## `codex-mdx-doctor`
+docs/runbooks/codex-tool-invocations.md:137:**Profile**: `codex-mdx-doctor`
+docs/runbooks/codex-tool-invocations.md:142:codex exec --yolo --profile codex-mdx-doctor < /dev/null
+docs/runbooks/codex-tool-invocations.md:154:原始 stdout 落盘到 /tmp/codex-runs/<date>-<task>-mdx-doctor.txt（off-workspace per R7）；
+docs/runbooks/codex-tool-invocations.md:155:完成后 head -2000 截断到 docs/audits/codex-runs/<date>-<task>-mdx-doctor.txt 归档。
+docs/runbooks/codex-tool-invocations.md:160:mdx-doctor Claude teammate 全 codex 化。
+docs/runbooks/codex-tool-invocations.md:169:## `codex-perf-auditor`
+docs/runbooks/codex-tool-invocations.md:171:**Profile**: `codex-perf-auditor`
+docs/runbooks/codex-tool-invocations.md:176:codex exec --yolo --profile codex-perf-auditor < /dev/null
+docs/runbooks/codex-tool-invocations.md:204:## `codex-pr-reviewer-55`
+docs/runbooks/codex-tool-invocations.md:206:**Profile**: `codex-pr-reviewer-55`
+docs/runbooks/codex-tool-invocations.md:211:codex exec --yolo --profile codex-pr-reviewer-55 < /dev/null
+docs/runbooks/codex-tool-invocations.md:225:原始 stdout 落盘到 /tmp/codex-runs/<date>-<task>-pr-reviewer-55.txt（off-workspace per R7）；
+docs/runbooks/codex-tool-invocations.md:226:完成后 head -2000 截断到 docs/audits/codex-runs/<date>-<task>-pr-reviewer-55.txt 归档。
+docs/runbooks/codex-tool-invocations.md:264:## `codex-structure-auditor`
+docs/runbooks/codex-tool-invocations.md:266:**Profile**: `codex-structure-auditor`
+docs/runbooks/codex-tool-invocations.md:271:codex exec --yolo --profile codex-structure-auditor < /dev/null
+docs/runbooks/codex-tool-invocations.md:290:structure-auditor Claude teammate 全 codex 化。
+docs/runbooks/codex-tool-invocations.md:358:复杂业务逻辑由 orchestrator 协调 codex-generic-executor 实现。
+tmp/codex-profiles.toml:14:[profiles.codex-pr-reviewer-55]
+tmp/codex-profiles.toml:23:[profiles.codex-generic-executor]
+tmp/codex-profiles.toml:28:[profiles.codex-structure-auditor]
+tmp/codex-profiles.toml:33:[profiles.codex-perf-auditor]
+tmp/codex-profiles.toml:38:[profiles.codex-mdx-doctor]
+AGENTS.md:23:   scope. Codex tool invocations (scaffolder / codex-generic-executor / codex-structure-auditor /
+AGENTS.md:24:   codex-perf-auditor / codex-mdx-doctor / plan-challenger) MUST NOT call git mutating commands at
+AGENTS.md:45:codex exec --yolo --profile codex-pr-reviewer-55  "review the staged diff (D1 stage 3 default)" < /dev/null
+AGENTS.md:46:codex exec --yolo --profile codex-generic-executor      "implement PR.md test_cases first then impl" < /dev/null
+AGENTS.md:47:codex exec --yolo --profile codex-structure-auditor     "scan workspace topology + ADR-0008 D1 dead-dep + drift" < /dev/null
+AGENTS.md:48:codex exec --yolo --profile codex-perf-auditor          "Lighthouse / size-limit / chunk-size baseline" < /dev/null
+AGENTS.md:49:codex exec --yolo --profile codex-mdx-doctor            "run all RTT fixtures + parse-equiv invariants" < /dev/null
+AGENTS.md:61:ADR-0011 D6 — `codex-pr-reviewer-55` is the unified Wave 3+ default reviewer.
+AGENTS.md:67:| `codex-pr-reviewer-55`    | gpt-5.5             | read-only       | D1 stage 3 default reviewer (replaces pr-gate; ADR-0011 D6) |
+AGENTS.md:68:| `codex-generic-executor`  | gpt-5.5             | workspace-write | D1 stage 2 default executor (NEW Wave 3)                    |
+AGENTS.md:69:| `codex-structure-auditor` | gpt-5.3-codex-spark | read-only       | Per-PR + Wave-close audit (NEW Wave 3)                      |
+AGENTS.md:70:| `codex-perf-auditor`      | gpt-5.3-codex-spark | read-only       | Bundle-affecting PR + Wave-close (NEW Wave 3)               |
+AGENTS.md:71:| `codex-mdx-doctor`        | gpt-5.3-codex-spark | read-only       | mdx-bridge fixture change PR (NEW Wave 3)                   |
+AGENTS.md:77:| `codex-generic-executor`  | `codex-generic-executor`  | pr_plan_locked_executor_field_set_to_generic_executor                | ADR-0011 D6 NEW Wave 3 默认 executor。gpt-5.5 + workspace-write sandbox。                          |
+AGENTS.md:78:| `codex-mdx-doctor`        | `codex-mdx-doctor`        | pr_touches_mdx_bridge, pr_touches_block_package                      | ADR-0011 D5 + D6 NEW Wave 3 audit profile。从 Wave 1+2 Tier 3                                      |
+AGENTS.md:79:| `codex-perf-auditor`      | `codex-perf-auditor`      | bundle_affecting_pr, wave_close                                      | ADR-0011 D5 + D6 NEW Wave 3 audit profile。从 Wave 1+2 Tier 3                                      |
+AGENTS.md:80:| `codex-pr-reviewer-55`    | `codex-pr-reviewer-55`    | executor_marks_ready_for_review, high_risk_d2_row_1_contract_change  | ADR-0011 D1 stage 3 默认 reviewer。replaces Wave 1+2 的 pr-gate（5.5）+                            |
+AGENTS.md:81:| `codex-structure-auditor` | `codex-structure-auditor` | per_pr_post_commit, wave_close                                       | ADR-0011 D5 + D6 NEW Wave 3 audit profile。从 Wave 1+2 Tier 3                                      |
+scripts/render/agents-md.ts:34:   scope. Codex tool invocations (scaffolder / codex-generic-executor / codex-structure-auditor /
+scripts/render/agents-md.ts:35:   codex-perf-auditor / codex-mdx-doctor / plan-challenger) MUST NOT call git mutating commands at
+scripts/render/agents-md.ts:54:    ['`codex-pr-reviewer-55`', 'gpt-5.5', 'read-only', 'D1 stage 3 default reviewer (replaces pr-gate; ADR-0011 D6)'],
+scripts/render/agents-md.ts:55:    ['`codex-generic-executor`', 'gpt-5.5', 'workspace-write', 'D1 stage 2 default executor (NEW Wave 3)'],
+scripts/render/agents-md.ts:56:    ['`codex-structure-auditor`', 'gpt-5.3-codex-spark', 'read-only', 'Per-PR + Wave-close audit (NEW Wave 3)'],
+scripts/render/agents-md.ts:57:    ['`codex-perf-auditor`', 'gpt-5.3-codex-spark', 'read-only', 'Bundle-affecting PR + Wave-close (NEW Wave 3)'],
+scripts/render/agents-md.ts:58:    ['`codex-mdx-doctor`', 'gpt-5.3-codex-spark', 'read-only', 'mdx-bridge fixture change PR (NEW Wave 3)'],
+scripts/render/agents-md.ts:70:codex exec --yolo --profile codex-pr-reviewer-55  "review the staged diff (D1 stage 3 default)" < /dev/null
+scripts/render/agents-md.ts:71:codex exec --yolo --profile codex-generic-executor      "implement PR.md test_cases first then impl" < /dev/null
+scripts/render/agents-md.ts:72:codex exec --yolo --profile codex-structure-auditor     "scan workspace topology + ADR-0008 D1 dead-dep + drift" < /dev/null
+scripts/render/agents-md.ts:73:codex exec --yolo --profile codex-perf-auditor          "Lighthouse / size-limit / chunk-size baseline" < /dev/null
+scripts/render/agents-md.ts:74:codex exec --yolo --profile codex-mdx-doctor            "run all RTT fixtures + parse-equiv invariants" < /dev/null
+scripts/render/agents-md.ts:86:ADR-0011 D6 — \`codex-pr-reviewer-55\` is the unified Wave 3+ default reviewer.
+scripts/render/codex-tool-runbook.ts:27:> introduced 4 NEW profiles (\`codex-generic-executor\`, \`codex-structure-auditor\`,
+scripts/render/codex-tool-runbook.ts:28:> \`codex-perf-auditor\`, \`codex-mdx-doctor\`) plus the new default reviewer
+scripts/render/codex-tool-runbook.ts:29:> \`codex-pr-reviewer-55\` that supersedes Wave 1+2's \`pr-gate\` (\`pr-gate\`
+scripts/render/codex-tool-runbook.ts:52:- \`[profiles.codex-generic-executor]\`
+scripts/render/codex-tool-runbook.ts:53:- \`[profiles.codex-mdx-doctor]\`
+scripts/render/codex-tool-runbook.ts:54:- \`[profiles.codex-perf-auditor]\`
+scripts/render/codex-tool-runbook.ts:55:- \`[profiles.codex-pr-reviewer-55]\`
+scripts/render/codex-tool-runbook.ts:56:- \`[profiles.codex-structure-auditor]\`
+scripts/render/codex-tool-runbook.ts:94:- **\`timeout\`-wrap long runs** (e.g. \`timeout 600 codex exec --yolo --profile codex-pr-reviewer-55 ...\`) to prevent hung invocations.
+scripts/render/types.ts:7: * ADR-0011 D6: profile enum extended with codex-pr-reviewer-55 (replaces pr-gate)
+scripts/render/types.ts:8: * + 4 NEW (generic-executor / structure-auditor / perf-auditor / mdx-doctor).
+scripts/render/types.ts:10: * per ADR-0011 D6; codex-pr-reviewer-55 is the unified Wave 3+ default reviewer).
+scripts/render/types.ts:30:    'codex-pr-reviewer-55',
+scripts/render/types.ts:31:    'codex-generic-executor',
+scripts/render/types.ts:32:    'codex-structure-auditor',
+scripts/render/types.ts:33:    'codex-perf-auditor',
+scripts/render/types.ts:34:    'codex-mdx-doctor',
+scripts/render/codex-profiles-toml.ts:5: * scaffolder / plan-challenger / codex-pr-reviewer-55 / codex-generic-executor /
+scripts/render/codex-profiles-toml.ts:6:  * codex-structure-auditor / codex-perf-auditor / codex-mdx-doctor. The legacy `code-reviewer`
+scripts/render/codex-profiles-toml.ts:8: * codex-pr-reviewer-55 is the unified default reviewer at D1 stage 3).
+scripts/render/codex-profiles-toml.ts:37:[profiles.codex-pr-reviewer-55]
+scripts/render/codex-profiles-toml.ts:46:[profiles.codex-generic-executor]
+scripts/render/codex-profiles-toml.ts:51:[profiles.codex-structure-auditor]
+scripts/render/codex-profiles-toml.ts:56:[profiles.codex-perf-auditor]
+scripts/render/codex-profiles-toml.ts:61:[profiles.codex-mdx-doctor]
+scripts/render/review-checklist.ts:11:Shared rubric for the ADR-0011 D1 linear pipeline review stage 3 (codex-pr-reviewer-55)
+scripts/render/review-checklist.ts:31:## ADR-0006 asymmetry-audit checklist (mandatory for codex-pr-reviewer-55)
+scripts/render/review-checklist.ts:44:\`codex-pr-reviewer-55\` MUST additionally hunt for an 8th-class instance beyond the cited fix (Wave 1+2 evidence: 5.5-deep review caught one extra asymmetry per round on every high-risk PR).
+scripts/render/review-checklist.ts:46:## For \`codex-pr-reviewer-55\` (Codex 5.5, D1 stage 3 default reviewer)
+scripts/render/claude-md.ts:69:2. EXECUTE           codex \`codex-generic-executor\` (or specialized scaffolder; or
+scripts/render/claude-md.ts:74:3. REVIEW            codex \`codex-pr-reviewer-55\` (5.5) — line-level + spec-match.
+scripts/render/claude-md.ts:100:Codex tools (11 patterns: 5 scaffolders + plan-challenger + codex-pr-reviewer-55 +
+
+codex
+The working tree matches the reported 12 tracked modifications plus 3 untracked files. One search returned a nonzero status because the target set included unmatched paths/conditions, but it still produced the relevant profile-name hits; I’m narrowing to the diffs now.
+exec
+/bin/bash -lc 'git diff -- scripts/render/codex-profiles-toml.ts scripts/render/agents-md.ts scripts/render/codex-tool-runbook.ts scripts/render/claude-md.ts scripts/render/types.ts' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+diff --git a/scripts/render/agents-md.ts b/scripts/render/agents-md.ts
+index e671104..7049a59 100644
+--- a/scripts/render/agents-md.ts
++++ b/scripts/render/agents-md.ts
+@@ -31,8 +31,8 @@ These three invariants come from \`agent-contract.md\` and apply to every Codex
+ 
+ 1. **Git mutation discipline (ADR-0011 D1+D4)**: \`git commit / branch / rebase / push\`
+    only at D1 stage 5 (reviewer codex commit phase) or by orchestrator self for bootstrap
+-   scope. Codex tool invocations (scaffolder / generic-executor / structure-auditor /
+-   perf-auditor / mdx-doctor / plan-challenger) MUST NOT call git mutating commands at
++   scope. Codex tool invocations (scaffolder / codex-generic-executor / codex-structure-auditor /
++   codex-perf-auditor / codex-mdx-doctor / plan-challenger) MUST NOT call git mutating commands at
+    any other point. Hand the diff back to the orchestrator.
+ 2. **Web access discipline (ADR-0011 D7)**: only the \`researcher\` Claude subagent
+    (one-shot per dispatch) may run \`web_search\` / \`web_fetch\`. If a Codex tool needs
+@@ -52,10 +52,10 @@ const PROFILE_TABLE = mdTable(
+     ['`scaffolder`', 'gpt-5.3-codex-spark', 'workspace-write', 'Cheap, fast scaffolding (5 patterns)'],
+     ['`plan-challenger`', 'gpt-5.3-codex-spark', 'read-only', 'Challenge plans before lock'],
+     ['`codex-pr-reviewer-55`', 'gpt-5.5', 'read-only', 'D1 stage 3 default reviewer (replaces pr-gate; ADR-0011 D6)'],
+-    ['`generic-executor`', 'gpt-5.5', 'workspace-write', 'D1 stage 2 default executor (NEW Wave 3)'],
+-    ['`structure-auditor`', 'gpt-5.3-codex-spark', 'read-only', 'Per-PR + Wave-close audit (NEW Wave 3)'],
+-    ['`perf-auditor`', 'gpt-5.3-codex-spark', 'read-only', 'Bundle-affecting PR + Wave-close (NEW Wave 3)'],
+-    ['`mdx-doctor`', 'gpt-5.3-codex-spark', 'read-only', 'mdx-bridge fixture change PR (NEW Wave 3)'],
++    ['`codex-generic-executor`', 'gpt-5.5', 'workspace-write', 'D1 stage 2 default executor (NEW Wave 3)'],
++    ['`codex-structure-auditor`', 'gpt-5.3-codex-spark', 'read-only', 'Per-PR + Wave-close audit (NEW Wave 3)'],
++    ['`codex-perf-auditor`', 'gpt-5.3-codex-spark', 'read-only', 'Bundle-affecting PR + Wave-close (NEW Wave 3)'],
++    ['`codex-mdx-doctor`', 'gpt-5.3-codex-spark', 'read-only', 'mdx-bridge fixture change PR (NEW Wave 3)'],
+   ],
+ );
+ 
+@@ -68,10 +68,10 @@ After running \`pnpm generate:configs\`, manually merge \`tmp/codex-profiles.tom
+ codex exec --yolo --profile scaffolder            "scaffold packages/block-code from block-callout template" < /dev/null
+ codex exec --yolo --profile plan-challenger       "challenge docs/plans/wave-3-…/plan.md before lock" < /dev/null
+ codex exec --yolo --profile codex-pr-reviewer-55  "review the staged diff (D1 stage 3 default)" < /dev/null
+-codex exec --yolo --profile generic-executor      "implement PR.md test_cases first then impl" < /dev/null
+-codex exec --yolo --profile structure-auditor     "scan workspace topology + ADR-0008 D1 dead-dep + drift" < /dev/null
+-codex exec --yolo --profile perf-auditor          "Lighthouse / size-limit / chunk-size baseline" < /dev/null
+-codex exec --yolo --profile mdx-doctor            "run all RTT fixtures + parse-equiv invariants" < /dev/null
++codex exec --yolo --profile codex-generic-executor      "implement PR.md test_cases first then impl" < /dev/null
++codex exec --yolo --profile codex-structure-auditor     "scan workspace topology + ADR-0008 D1 dead-dep + drift" < /dev/null
++codex exec --yolo --profile codex-perf-auditor          "Lighthouse / size-limit / chunk-size baseline" < /dev/null
++codex exec --yolo --profile codex-mdx-doctor            "run all RTT fixtures + parse-equiv invariants" < /dev/null
+ \`\`\`
+ 
+ \`< /dev/null\` is mandatory in non-interactive contexts (Phase 0 stdin-hang regression);
+diff --git a/scripts/render/claude-md.ts b/scripts/render/claude-md.ts
+index 5f7f7fa..2483ac7 100644
+--- a/scripts/render/claude-md.ts
++++ b/scripts/render/claude-md.ts
+@@ -66,7 +66,7 @@ Per PR (PRs run strictly serial; the next PR's PLAN waits for the previous PR's
+ 1. PLAN              pr-writer Claude subagent ↔ orchestrator → lock PR.md (D2 schema)
+        │
+        ▼
+-2. EXECUTE           codex \`generic-executor\` (or specialized scaffolder; or
++2. EXECUTE           codex \`codex-generic-executor\` (or specialized scaffolder; or
+                      \`ux-ui-lead\` Claude subagent for UI/UX). TDD-front:
+                      write tests → write impl → vitest all PASS.
+        │
+diff --git a/scripts/render/codex-profiles-toml.ts b/scripts/render/codex-profiles-toml.ts
+index f3e5405..99081e1 100644
+--- a/scripts/render/codex-profiles-toml.ts
++++ b/scripts/render/codex-profiles-toml.ts
+@@ -2,8 +2,8 @@
+  * Renders tmp/codex-profiles.toml — manual merge into ~/.codex/config.toml.
+  *
+  * Spec §3.12 baseline (4 profiles) extended by ADR-0011 D6 to 7 active profiles:
+- * scaffolder / plan-challenger / codex-pr-reviewer-55 / generic-executor /
+- * structure-auditor / perf-auditor / mdx-doctor. The legacy `code-reviewer`
++ * scaffolder / plan-challenger / codex-pr-reviewer-55 / codex-generic-executor /
++  * codex-structure-auditor / codex-perf-auditor / codex-mdx-doctor. The legacy `code-reviewer`
+  * (5.3-spark) and `pr-gate` profiles are removed (deprecated per ADR-0011 D6 —
+  * codex-pr-reviewer-55 is the unified default reviewer at D1 stage 3).
+  *
+@@ -43,22 +43,22 @@ model = "gpt-5.5"
+ sandbox_mode = "workspace-write"
+ approval_policy = "never"
+ 
+-[profiles.generic-executor]
++[profiles.codex-generic-executor]
+ model = "gpt-5.5"
+ sandbox_mode = "workspace-write"
+ approval_policy = "never"
+ 
+-[profiles.structure-auditor]
++[profiles.codex-structure-auditor]
+ model = "gpt-5.3-codex-spark"
+ sandbox_mode = "read-only"
+ approval_policy = "never"
+ 
+-[profiles.perf-auditor]
++[profiles.codex-perf-auditor]
+ model = "gpt-5.3-codex-spark"
+ sandbox_mode = "read-only"
+ approval_policy = "never"
+ 
+-[profiles.mdx-doctor]
++[profiles.codex-mdx-doctor]
+ model = "gpt-5.3-codex-spark"
+ sandbox_mode = "read-only"
+ approval_policy = "never"
+diff --git a/scripts/render/codex-tool-runbook.ts b/scripts/render/codex-tool-runbook.ts
+index 9d188c2..b3f4944 100644
+--- a/scripts/render/codex-tool-runbook.ts
++++ b/scripts/render/codex-tool-runbook.ts
+@@ -24,8 +24,8 @@ handle stdout (parse + audit-log).
+ > **First-time setup for every new Claude session.** Verify the user's
+ > \`~/.codex/config.toml\` contains all 7 profiles listed below before
+ > dispatching any \`codex exec --yolo --profile <name>\` invocation. ADR-0011 D6
+-> introduced 4 NEW profiles (\`generic-executor\`, \`structure-auditor\`,
+-> \`perf-auditor\`, \`mdx-doctor\`) plus the new default reviewer
++> introduced 4 NEW profiles (\`codex-generic-executor\`, \`codex-structure-auditor\`,
++> \`codex-perf-auditor\`, \`codex-mdx-doctor\`) plus the new default reviewer
+ > \`codex-pr-reviewer-55\` that supersedes Wave 1+2's \`pr-gate\` (\`pr-gate\`
+ > is kept as a transitional alias in user-local TOMLs and may stay until
+ > Wave 3 close). Wave 1+2 era \`~/.codex/config.toml\` files typically only
+@@ -49,13 +49,13 @@ grep '^\\[profiles\\.' ~/.codex/config.toml | sort
+ Expected output (all 7 profile names from \`tmp/codex-profiles.toml\`,
+ sorted):
+ 
++- \`[profiles.codex-generic-executor]\`
++- \`[profiles.codex-mdx-doctor]\`
++- \`[profiles.codex-perf-auditor]\`
+ - \`[profiles.codex-pr-reviewer-55]\`
+-- \`[profiles.generic-executor]\`
+-- \`[profiles.mdx-doctor]\`
+-- \`[profiles.perf-auditor]\`
++- \`[profiles.codex-structure-auditor]\`
+ - \`[profiles.plan-challenger]\`
+ - \`[profiles.scaffolder]\`
+-- \`[profiles.structure-auditor]\`
+ 
+ If any are missing, complete the merge before invoking the corresponding
+ pattern below. Until merged, reviewer dispatches may transitionally fall
+diff --git a/scripts/render/types.ts b/scripts/render/types.ts
+index f43ebb0..9757abf 100644
+--- a/scripts/render/types.ts
++++ b/scripts/render/types.ts
+@@ -28,10 +28,10 @@ export const ToolPatternSchema = z.object({
+     'scaffolder',
+     'plan-challenger',
+     'codex-pr-reviewer-55',
+-    'generic-executor',
+-    'structure-auditor',
+-    'perf-auditor',
+-    'mdx-doctor',
++    'codex-generic-executor',
++    'codex-structure-auditor',
++    'codex-perf-auditor',
++    'codex-mdx-doctor',
+   ]),
+   invocation: z.string(),
+   triggered_by: z.array(z.string()),
+
+exec
+/bin/bash -lc 'git diff -- scripts/__tests__/generate-configs.test.ts' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+diff --git a/scripts/__tests__/generate-configs.test.ts b/scripts/__tests__/generate-configs.test.ts
+index 3d1edb0..736dd54 100644
+--- a/scripts/__tests__/generate-configs.test.ts
++++ b/scripts/__tests__/generate-configs.test.ts
+@@ -39,7 +39,7 @@ describe('parseAgentContract', () => {
+       'scaffolder',
+     );
+     expect(result.tool_patterns.find((tp) => tp.name === 'codex-generic-executor')?.profile).toBe(
+-      'generic-executor',
++      'codex-generic-executor',
+     );
+     expect(result.agents.find((a) => a.name === 'researcher')?.permissions).toContain('web_search');
+   });
+@@ -308,10 +308,10 @@ describe('renderCodexProfilesToml', () => {
+     expect(out).toContain('[profiles.scaffolder]');
+     expect(out).toContain('[profiles.plan-challenger]');
+     expect(out).toContain('[profiles.codex-pr-reviewer-55]');
+-    expect(out).toContain('[profiles.generic-executor]');
+-    expect(out).toContain('[profiles.structure-auditor]');
+-    expect(out).toContain('[profiles.perf-auditor]');
+-    expect(out).toContain('[profiles.mdx-doctor]');
++    expect(out).toContain('[profiles.codex-generic-executor]');
++    expect(out).toContain('[profiles.codex-structure-auditor]');
++    expect(out).toContain('[profiles.codex-perf-auditor]');
++    expect(out).toContain('[profiles.codex-mdx-doctor]');
+     expect(out).toContain('model = "gpt-5.3-codex-spark"');
+     expect(out).toContain('model = "gpt-5.5"');
+   });
+
+exec
+/bin/bash -lc 'git diff -- AGENTS.md CLAUDE.md docs/runbooks/codex-tool-invocations.md tmp/codex-profiles.toml' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+diff --git a/AGENTS.md b/AGENTS.md
+index 423702e..25b017b 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -20,8 +20,8 @@ These three invariants come from `agent-contract.md` and apply to every Codex to
+ 
+ 1. **Git mutation discipline (ADR-0011 D1+D4)**: `git commit / branch / rebase / push`
+    only at D1 stage 5 (reviewer codex commit phase) or by orchestrator self for bootstrap
+-   scope. Codex tool invocations (scaffolder / generic-executor / structure-auditor /
+-   perf-auditor / mdx-doctor / plan-challenger) MUST NOT call git mutating commands at
++   scope. Codex tool invocations (scaffolder / codex-generic-executor / codex-structure-auditor /
++   codex-perf-auditor / codex-mdx-doctor / plan-challenger) MUST NOT call git mutating commands at
+    any other point. Hand the diff back to the orchestrator.
+ 2. **Web access discipline (ADR-0011 D7)**: only the `researcher` Claude subagent
+    (one-shot per dispatch) may run `web_search` / `web_fetch`. If a Codex tool needs
+@@ -43,10 +43,10 @@ After running `pnpm generate:configs`, manually merge `tmp/codex-profiles.toml`
+ codex exec --yolo --profile scaffolder            "scaffold packages/block-code from block-callout template" < /dev/null
+ codex exec --yolo --profile plan-challenger       "challenge docs/plans/wave-3-…/plan.md before lock" < /dev/null
+ codex exec --yolo --profile codex-pr-reviewer-55  "review the staged diff (D1 stage 3 default)" < /dev/null
+-codex exec --yolo --profile generic-executor      "implement PR.md test_cases first then impl" < /dev/null
+-codex exec --yolo --profile structure-auditor     "scan workspace topology + ADR-0008 D1 dead-dep + drift" < /dev/null
+-codex exec --yolo --profile perf-auditor          "Lighthouse / size-limit / chunk-size baseline" < /dev/null
+-codex exec --yolo --profile mdx-doctor            "run all RTT fixtures + parse-equiv invariants" < /dev/null
++codex exec --yolo --profile codex-generic-executor      "implement PR.md test_cases first then impl" < /dev/null
++codex exec --yolo --profile codex-structure-auditor     "scan workspace topology + ADR-0008 D1 dead-dep + drift" < /dev/null
++codex exec --yolo --profile codex-perf-auditor          "Lighthouse / size-limit / chunk-size baseline" < /dev/null
++codex exec --yolo --profile codex-mdx-doctor            "run all RTT fixtures + parse-equiv invariants" < /dev/null
+ ```
+ 
+ `< /dev/null` is mandatory in non-interactive contexts (Phase 0 stdin-hang regression);
+@@ -60,31 +60,31 @@ truncate into `docs/audits/codex-runs/` (R7 self-recursion mitigation; see
+ The legacy `code-reviewer` (5.3-spark) and `pr-gate` profiles are deprecated post
+ ADR-0011 D6 — `codex-pr-reviewer-55` is the unified Wave 3+ default reviewer.
+ 
+-| Profile                | Model               | Sandbox         | Use case                                                    |
+-| ---------------------- | ------------------- | --------------- | ----------------------------------------------------------- |
+-| `scaffolder`           | gpt-5.3-codex-spark | workspace-write | Cheap, fast scaffolding (5 patterns)                        |
+-| `plan-challenger`      | gpt-5.3-codex-spark | read-only       | Challenge plans before lock                                 |
+-| `codex-pr-reviewer-55` | gpt-5.5             | read-only       | D1 stage 3 default reviewer (replaces pr-gate; ADR-0011 D6) |
+-| `generic-executor`     | gpt-5.5             | workspace-write | D1 stage 2 default executor (NEW Wave 3)                    |
+-| `structure-auditor`    | gpt-5.3-codex-spark | read-only       | Per-PR + Wave-close audit (NEW Wave 3)                      |
+-| `perf-auditor`         | gpt-5.3-codex-spark | read-only       | Bundle-affecting PR + Wave-close (NEW Wave 3)               |
+-| `mdx-doctor`           | gpt-5.3-codex-spark | read-only       | mdx-bridge fixture change PR (NEW Wave 3)                   |
++| Profile                   | Model               | Sandbox         | Use case                                                    |
++| ------------------------- | ------------------- | --------------- | ----------------------------------------------------------- |
++| `scaffolder`              | gpt-5.3-codex-spark | workspace-write | Cheap, fast scaffolding (5 patterns)                        |
++| `plan-challenger`         | gpt-5.3-codex-spark | read-only       | Challenge plans before lock                                 |
++| `codex-pr-reviewer-55`    | gpt-5.5             | read-only       | D1 stage 3 default reviewer (replaces pr-gate; ADR-0011 D6) |
++| `codex-generic-executor`  | gpt-5.5             | workspace-write | D1 stage 2 default executor (NEW Wave 3)                    |
++| `codex-structure-auditor` | gpt-5.3-codex-spark | read-only       | Per-PR + Wave-close audit (NEW Wave 3)                      |
++| `codex-perf-auditor`      | gpt-5.3-codex-spark | read-only       | Bundle-affecting PR + Wave-close (NEW Wave 3)               |
++| `codex-mdx-doctor`        | gpt-5.3-codex-spark | read-only       | mdx-bridge fixture change PR (NEW Wave 3)                   |
+ 
+ ## Tool patterns (11)
+ 
+-| Name                      | Profile                | Top triggers                                                         | Summary                                                                                            |
+-| ------------------------- | ---------------------- | -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+-| `codex-pr-reviewer-55`    | `codex-pr-reviewer-55` | executor_marks_ready_for_review, high_risk_d2_row_1_contract_change  | ADR-0011 D1 stage 3 默认 reviewer。replaces Wave 1+2 的 pr-gate（5.5）+                            |
+-| `codex-generic-executor`  | `generic-executor`     | pr_plan_locked_executor_field_set_to_generic_executor                | ADR-0011 D6 NEW Wave 3 默认 executor。gpt-5.5 + workspace-write sandbox。                          |
+-| `codex-mdx-doctor`        | `mdx-doctor`           | pr_touches_mdx_bridge, pr_touches_block_package                      | ADR-0011 D5 + D6 NEW Wave 3 audit profile。从 Wave 1+2 Tier 3                                      |
+-| `codex-perf-auditor`      | `perf-auditor`         | bundle_affecting_pr, wave_close                                      | ADR-0011 D5 + D6 NEW Wave 3 audit profile。从 Wave 1+2 Tier 3                                      |
+-| `plan-challenger`         | `plan-challenger`      | orchestrator_publishes_plan                                          | lock 前挑战 orchestrator 的 wave / track / PR plan：检查 task 大小、可测性、边界场景。             |
+-| `codex-api-crud-builder`  | `scaffolder`           | new_resource_endpoint_requested                                      | 在 apps/api 按 RESTful 风格生成 CRUD 端点骨架（Pydantic schema + 路由）。                          |
+-| `codex-block-generator`   | `scaffolder`           | simple_block_template_committed, editor_submodule_template_committed | 在 simple-block-eng / ux-ui-lead / editor-eng 提交 template 后，按模板仿造其余 block / submodule。 |
+-| `codex-css-stylist`       | `scaffolder`           | design_token_requested, tailwind_class_combo_requested               | 写 packages/design-tokens / packages/ui 的 design tokens（颜色 / 间距 / 字体）+                    |
+-| `codex-script-builder`    | `scaffolder`           | new_cli_tool_requested                                               | 写 scripts/refactor-move.ts / scripts/new-block.ts / scripts/extract-pdf-text.ts 等工具。          |
+-| `codex-test-scaffolder`   | `scaffolder`           | new_package_added, vitest_skeleton_requested                         | 为每个 packages/<name> 生成 src/__tests__/ 下的 vitest 套件骨架，                                  |
+-| `codex-structure-auditor` | `structure-auditor`    | per_pr_post_commit, wave_close                                       | ADR-0011 D5 + D6 NEW Wave 3 audit profile。从 Wave 1+2 Tier 3                                      |
++| Name                      | Profile                   | Top triggers                                                         | Summary                                                                                            |
++| ------------------------- | ------------------------- | -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
++| `codex-generic-executor`  | `codex-generic-executor`  | pr_plan_locked_executor_field_set_to_generic_executor                | ADR-0011 D6 NEW Wave 3 默认 executor。gpt-5.5 + workspace-write sandbox。                          |
++| `codex-mdx-doctor`        | `codex-mdx-doctor`        | pr_touches_mdx_bridge, pr_touches_block_package                      | ADR-0011 D5 + D6 NEW Wave 3 audit profile。从 Wave 1+2 Tier 3                                      |
++| `codex-perf-auditor`      | `codex-perf-auditor`      | bundle_affecting_pr, wave_close                                      | ADR-0011 D5 + D6 NEW Wave 3 audit profile。从 Wave 1+2 Tier 3                                      |
++| `codex-pr-reviewer-55`    | `codex-pr-reviewer-55`    | executor_marks_ready_for_review, high_risk_d2_row_1_contract_change  | ADR-0011 D1 stage 3 默认 reviewer。replaces Wave 1+2 的 pr-gate（5.5）+                            |
++| `codex-structure-auditor` | `codex-structure-auditor` | per_pr_post_commit, wave_close                                       | ADR-0011 D5 + D6 NEW Wave 3 audit profile。从 Wave 1+2 Tier 3                                      |
++| `plan-challenger`         | `plan-challenger`         | orchestrator_publishes_plan                                          | lock 前挑战 orchestrator 的 wave / track / PR plan：检查 task 大小、可测性、边界场景。             |
++| `codex-api-crud-builder`  | `scaffolder`              | new_resource_endpoint_requested                                      | 在 apps/api 按 RESTful 风格生成 CRUD 端点骨架（Pydantic schema + 路由）。                          |
++| `codex-block-generator`   | `scaffolder`              | simple_block_template_committed, editor_submodule_template_committed | 在 simple-block-eng / ux-ui-lead / editor-eng 提交 template 后，按模板仿造其余 block / submodule。 |
++| `codex-css-stylist`       | `scaffolder`              | design_token_requested, tailwind_class_combo_requested               | 写 packages/design-tokens / packages/ui 的 design tokens（颜色 / 间距 / 字体）+                    |
++| `codex-script-builder`    | `scaffolder`              | new_cli_tool_requested                                               | 写 scripts/refactor-move.ts / scripts/new-block.ts / scripts/extract-pdf-text.ts 等工具。          |
++| `codex-test-scaffolder`   | `scaffolder`              | new_package_added, vitest_skeleton_requested                         | 为每个 packages/<name> 生成 src/__tests__/ 下的 vitest 套件骨架，                                  |
+ 
+ ## Footer
+ 
+diff --git a/CLAUDE.md b/CLAUDE.md
+index e2ec575..8760a4e 100644
+--- a/CLAUDE.md
++++ b/CLAUDE.md
+@@ -50,7 +50,7 @@ Per PR (PRs run strictly serial; the next PR's PLAN waits for the previous PR's
+ 1. PLAN              pr-writer Claude subagent ↔ orchestrator → lock PR.md (D2 schema)
+        │
+        ▼
+-2. EXECUTE           codex `generic-executor` (or specialized scaffolder; or
++2. EXECUTE           codex `codex-generic-executor` (or specialized scaffolder; or
+                      `ux-ui-lead` Claude subagent for UI/UX). TDD-front:
+                      write tests → write impl → vitest all PASS.
+        │
+@@ -100,19 +100,19 @@ ADR-0007 D5 + ADR-0011 D6.
+ 
+ orchestrator-direct Bash invocations (ADR-0007 D5). Full canonical bash + triggers + audit-log paths in [docs/runbooks/codex-tool-invocations.md](docs/runbooks/codex-tool-invocations.md).
+ 
+-| Pattern                   | Profile                | Summary                                                                                            |
+-| ------------------------- | ---------------------- | -------------------------------------------------------------------------------------------------- |
+-| `codex-pr-reviewer-55`    | `codex-pr-reviewer-55` | ADR-0011 D1 stage 3 默认 reviewer。replaces Wave 1+2 的 pr-gate（5.5）+                            |
+-| `codex-generic-executor`  | `generic-executor`     | ADR-0011 D6 NEW Wave 3 默认 executor。gpt-5.5 + workspace-write sandbox。                          |
+-| `codex-mdx-doctor`        | `mdx-doctor`           | ADR-0011 D5 + D6 NEW Wave 3 audit profile。从 Wave 1+2 Tier 3                                      |
+-| `codex-perf-auditor`      | `perf-auditor`         | ADR-0011 D5 + D6 NEW Wave 3 audit profile。从 Wave 1+2 Tier 3                                      |
+-| `plan-challenger`         | `plan-challenger`      | lock 前挑战 orchestrator 的 wave / track / PR plan：检查 task 大小、可测性、边界场景。             |
+-| `codex-api-crud-builder`  | `scaffolder`           | 在 apps/api 按 RESTful 风格生成 CRUD 端点骨架（Pydantic schema + 路由）。                          |
+-| `codex-block-generator`   | `scaffolder`           | 在 simple-block-eng / ux-ui-lead / editor-eng 提交 template 后，按模板仿造其余 block / submodule。 |
+-| `codex-css-stylist`       | `scaffolder`           | 写 packages/design-tokens / packages/ui 的 design tokens（颜色 / 间距 / 字体）+                    |
+-| `codex-script-builder`    | `scaffolder`           | 写 scripts/refactor-move.ts / scripts/new-block.ts / scripts/extract-pdf-text.ts 等工具。          |
+-| `codex-test-scaffolder`   | `scaffolder`           | 为每个 packages/<name> 生成 src/__tests__/ 下的 vitest 套件骨架，                                  |
+-| `codex-structure-auditor` | `structure-auditor`    | ADR-0011 D5 + D6 NEW Wave 3 audit profile。从 Wave 1+2 Tier 3                                      |
++| Pattern                   | Profile                   | Summary                                                                                            |
++| ------------------------- | ------------------------- | -------------------------------------------------------------------------------------------------- |
++| `codex-generic-executor`  | `codex-generic-executor`  | ADR-0011 D6 NEW Wave 3 默认 executor。gpt-5.5 + workspace-write sandbox。                          |
++| `codex-mdx-doctor`        | `codex-mdx-doctor`        | ADR-0011 D5 + D6 NEW Wave 3 audit profile。从 Wave 1+2 Tier 3                                      |
++| `codex-perf-auditor`      | `codex-perf-auditor`      | ADR-0011 D5 + D6 NEW Wave 3 audit profile。从 Wave 1+2 Tier 3                                      |
++| `codex-pr-reviewer-55`    | `codex-pr-reviewer-55`    | ADR-0011 D1 stage 3 默认 reviewer。replaces Wave 1+2 的 pr-gate（5.5）+                            |
++| `codex-structure-auditor` | `codex-structure-auditor` | ADR-0011 D5 + D6 NEW Wave 3 audit profile。从 Wave 1+2 Tier 3                                      |
++| `plan-challenger`         | `plan-challenger`         | lock 前挑战 orchestrator 的 wave / track / PR plan：检查 task 大小、可测性、边界场景。             |
++| `codex-api-crud-builder`  | `scaffolder`              | 在 apps/api 按 RESTful 风格生成 CRUD 端点骨架（Pydantic schema + 路由）。                          |
++| `codex-block-generator`   | `scaffolder`              | 在 simple-block-eng / ux-ui-lead / editor-eng 提交 template 后，按模板仿造其余 block / submodule。 |
++| `codex-css-stylist`       | `scaffolder`              | 写 packages/design-tokens / packages/ui 的 design tokens（颜色 / 间距 / 字体）+                    |
++| `codex-script-builder`    | `scaffolder`              | 写 scripts/refactor-move.ts / scripts/new-block.ts / scripts/extract-pdf-text.ts 等工具。          |
++| `codex-test-scaffolder`   | `scaffolder`              | 为每个 packages/<name> 生成 src/__tests__/ 下的 vitest 套件骨架，                                  |
+ 
+ ## Footer
+ 
+diff --git a/docs/runbooks/codex-tool-invocations.md b/docs/runbooks/codex-tool-invocations.md
+index 7708970..4b05a87 100644
+--- a/docs/runbooks/codex-tool-invocations.md
++++ b/docs/runbooks/codex-tool-invocations.md
+@@ -15,8 +15,8 @@ handle stdout (parse + audit-log).
+ > **First-time setup for every new Claude session.** Verify the user's
+ > `~/.codex/config.toml` contains all 7 profiles listed below before
+ > dispatching any `codex exec --yolo --profile <name>` invocation. ADR-0011 D6
+-> introduced 4 NEW profiles (`generic-executor`, `structure-auditor`,
+-> `perf-auditor`, `mdx-doctor`) plus the new default reviewer
++> introduced 4 NEW profiles (`codex-generic-executor`, `codex-structure-auditor`,
++> `codex-perf-auditor`, `codex-mdx-doctor`) plus the new default reviewer
+ > `codex-pr-reviewer-55` that supersedes Wave 1+2's `pr-gate` (`pr-gate`
+ > is kept as a transitional alias in user-local TOMLs and may stay until
+ > Wave 3 close). Wave 1+2 era `~/.codex/config.toml` files typically only
+@@ -40,13 +40,13 @@ grep '^\[profiles\.' ~/.codex/config.toml | sort
+ Expected output (all 7 profile names from `tmp/codex-profiles.toml`,
+ sorted):
+ 
++- `[profiles.codex-generic-executor]`
++- `[profiles.codex-mdx-doctor]`
++- `[profiles.codex-perf-auditor]`
+ - `[profiles.codex-pr-reviewer-55]`
+-- `[profiles.generic-executor]`
+-- `[profiles.mdx-doctor]`
+-- `[profiles.perf-auditor]`
++- `[profiles.codex-structure-auditor]`
+ - `[profiles.plan-challenger]`
+ - `[profiles.scaffolder]`
+-- `[profiles.structure-auditor]`
+ 
+ If any are missing, complete the merge before invoking the corresponding
+ pattern below. Until merged, reviewer dispatches may transitionally fall
+@@ -93,74 +93,14 @@ orchestrator MUST stage `pnpm-lock.yaml` along with package.json edits in the sa
+ (commit `e15ec36` extension to D8: lockfile is generated-from-authority artifact).
+ 
+ 
+-## `codex-pr-reviewer-55`
+-
+-**Profile**: `codex-pr-reviewer-55`
+-
+-**Canonical bash**:
+-
+-```bash
+-codex exec --yolo --profile codex-pr-reviewer-55 < /dev/null
+-```
+-
+-**Triggered by**:
+-
+-- `executor_marks_ready_for_review`
+-- `high_risk_d2_row_1_contract_change`
+-- `high_risk_d2_row_2_package_add_remove`
+-- `high_risk_d2_row_4_adr_required`
+-- `high_risk_d2_row_8_ci_or_deploy_or_auth_or_security_touch`
+-
+-**Output handling**:
+-
+-orchestrator 读 stdout 解析 PASS/FAIL + 问题清单 + 8th-class hunt 结果；
+-原始 stdout 落盘到 /tmp/codex-runs/<date>-<task>-pr-reviewer-55.txt（off-workspace per R7）；
+-完成后 head -2000 截断到 docs/audits/codex-runs/<date>-<task>-pr-reviewer-55.txt 归档。
+-
+-**Description**:
+-
+-ADR-0011 D1 stage 3 默认 reviewer。replaces Wave 1+2 的 pr-gate（5.5）+
+-code-reviewer（5.3-spark）双层链路。gpt-5.5（贵但严谨）。**绝不修改代码**。
+-
+-执行内容：
+-- 行级 review（类型 / lint / 契约同步 / 文件大小 / 风格 / 边界条件）
+-- 漏洞扫（injection / XSS / SSRF / 反序列化 sink / secret leak）
+-- 跨包影响（block-foundation / mdx-bridge / kernel-adapter consumer 影响）
+-- 供应链（新 dep maintenance / license / transitive risk）
+-- lockfile 完整性（pnpm-lock.yaml 与 package.json diff 一致）
+-- PR.md `acceptance:` 块条目逐条对照 diff 验证（spec match）
+-
+-**强制：ADR-0006 8-point asymmetry-audit checklist**（见 `docs/decisions/ADR-0006-asymmetry-audit-checklist.md`）必须按可适用项目逐条审查；每条 verdict 给结论。8 项概要：
+-(1) 字段/属性新增 → 审 comparator/序列化；
+-(2) 状态码新增 → 审同 status 的所有 handler（RFC 7235 等强制头）；
+-(3) `.strict()` 加于一层 → 审所有嵌套 ZodObject；
+-(4) single-authority schema → 审所有 consumer 是否复刻定义；
+-(5) 算法 + 运行时常量复刻 → 审 consumer 端字节等价 + 注册回归测试；
+-(6) 一份 CONTRACT.md 改动 → 审 sister CONTRACT.md 是否同步；
+-(7) try/catch 范围 → narrow vs wide 在 happy-path 等价时仍可异常分流；
+-(8) authority 文档（ADR/agent-contract/runbook/CONVENTIONS）改动 → 审
+-   generated/consumed surface（`.claude/agents/*`、`docs/review-checklist.md`、
+-   `team-operations.md`、`docs/runbooks/codex-tool-invocations.md`、
+-   Codex profiles、**pnpm-lock.yaml**）是否在同一 commit 里同步
+-   （commit `e15ec36` 教训：lockfile 也属 generated-from-authority artifact）。
+-
+-verdict 结构应包含
+-`asymmetry-audit applied: items {1..8} verdicts: ...` 与（如适用）
+-`8th-class hunt: <findings>`。
+-
+-**D1 stage 5 commit 兼任**：PASS verdict 后由本 profile 在同一 invocation 内
+-执行 commit + push（per ADR-0006 D8 explicit-file-list staging：`git reset HEAD`
+-→ `git add <PR.md files: list>` → `git diff --cached --stat` 验证 → `git commit`
+-→ `git push`）。orchestrator 不另起 git-operator subagent。
+-
+ ## `codex-generic-executor`
+ 
+-**Profile**: `generic-executor`
++**Profile**: `codex-generic-executor`
+ 
+ **Canonical bash**:
+ 
+ ```bash
+-codex exec --yolo --profile generic-executor < /dev/null
++codex exec --yolo --profile codex-generic-executor < /dev/null
+ ```
+ 
+ **Triggered by**:
+@@ -194,12 +134,12 @@ stage 5）。如发现 PR.md 写错 / 缺信息，停止并 SendMessage orchestr
+ 
+ ## `codex-mdx-doctor`
+ 
+-**Profile**: `mdx-doctor`
++**Profile**: `codex-mdx-doctor`
+ 
+ **Canonical bash**:
+ 
+ ```bash
+-codex exec --yolo --profile mdx-doctor < /dev/null
++codex exec --yolo --profile codex-mdx-doctor < /dev/null
+ ```
+ 
+ **Triggered by**:
+@@ -228,12 +168,12 @@ mdx-doctor Claude teammate 全 codex 化。
+ 
+ ## `codex-perf-auditor`
+ 
+-**Profile**: `perf-auditor`
++**Profile**: `codex-perf-auditor`
+ 
+ **Canonical bash**:
+ 
+ ```bash
+-codex exec --yolo --profile perf-auditor < /dev/null
++codex exec --yolo --profile codex-perf-auditor < /dev/null
+ ```
+ 
+ **Triggered by**:
+@@ -261,6 +201,106 @@ performance-auditor Claude teammate 全 codex 化。
+ - Playwright traces（关键交互延迟 / FCP / LCP / TTI）
+ - 若 baseline 比上次差 > 20%，开 issue 阻断新功能直到修复
+ 
++## `codex-pr-reviewer-55`
++
++**Profile**: `codex-pr-reviewer-55`
++
++**Canonical bash**:
++
++```bash
++codex exec --yolo --profile codex-pr-reviewer-55 < /dev/null
++```
++
++**Triggered by**:
++
++- `executor_marks_ready_for_review`
++- `high_risk_d2_row_1_contract_change`
++- `high_risk_d2_row_2_package_add_remove`
++- `high_risk_d2_row_4_adr_required`
++- `high_risk_d2_row_8_ci_or_deploy_or_auth_or_security_touch`
++
++**Output handling**:
++
++orchestrator 读 stdout 解析 PASS/FAIL + 问题清单 + 8th-class hunt 结果；
++原始 stdout 落盘到 /tmp/codex-runs/<date>-<task>-pr-reviewer-55.txt（off-workspace per R7）；
++完成后 head -2000 截断到 docs/audits/codex-runs/<date>-<task>-pr-reviewer-55.txt 归档。
++
++**Description**:
++
++ADR-0011 D1 stage 3 默认 reviewer。replaces Wave 1+2 的 pr-gate（5.5）+
++code-reviewer（5.3-spark）双层链路。gpt-5.5（贵但严谨）。**绝不修改代码**。
++
++执行内容：
++- 行级 review（类型 / lint / 契约同步 / 文件大小 / 风格 / 边界条件）
++- 漏洞扫（injection / XSS / SSRF / 反序列化 sink / secret leak）
++- 跨包影响（block-foundation / mdx-bridge / kernel-adapter consumer 影响）
++- 供应链（新 dep maintenance / license / transitive risk）
++- lockfile 完整性（pnpm-lock.yaml 与 package.json diff 一致）
++- PR.md `acceptance:` 块条目逐条对照 diff 验证（spec match）
++
++**强制：ADR-0006 8-point asymmetry-audit checklist**（见 `docs/decisions/ADR-0006-asymmetry-audit-checklist.md`）必须按可适用项目逐条审查；每条 verdict 给结论。8 项概要：
++(1) 字段/属性新增 → 审 comparator/序列化；
++(2) 状态码新增 → 审同 status 的所有 handler（RFC 7235 等强制头）；
++(3) `.strict()` 加于一层 → 审所有嵌套 ZodObject；
++(4) single-authority schema → 审所有 consumer 是否复刻定义；
++(5) 算法 + 运行时常量复刻 → 审 consumer 端字节等价 + 注册回归测试；
++(6) 一份 CONTRACT.md 改动 → 审 sister CONTRACT.md 是否同步；
++(7) try/catch 范围 → narrow vs wide 在 happy-path 等价时仍可异常分流；
++(8) authority 文档（ADR/agent-contract/runbook/CONVENTIONS）改动 → 审
++   generated/consumed surface（`.claude/agents/*`、`docs/review-checklist.md`、
++   `team-operations.md`、`docs/runbooks/codex-tool-invocations.md`、
++   Codex profiles、**pnpm-lock.yaml**）是否在同一 commit 里同步
++   （commit `e15ec36` 教训：lockfile 也属 generated-from-authority artifact）。
++
++verdict 结构应包含
++`asymmetry-audit applied: items {1..8} verdicts: ...` 与（如适用）
++`8th-class hunt: <findings>`。
++
++**D1 stage 5 commit 兼任**：PASS verdict 后由本 profile 在同一 invocation 内
++执行 commit + push（per ADR-0006 D8 explicit-file-list staging：`git reset HEAD`
++→ `git add <PR.md files: list>` → `git diff --cached --stat` 验证 → `git commit`
++→ `git push`）。orchestrator 不另起 git-operator subagent。
++
++## `codex-structure-auditor`
++
++**Profile**: `codex-structure-auditor`
++
++**Canonical bash**:
++
++```bash
++codex exec --yolo --profile codex-structure-auditor < /dev/null
++```
++
++**Triggered by**:
++
++- `per_pr_post_commit`
++- `wave_close`
++- `manual_dispatch`
++
++**Output handling**:
++
++orchestrator 读 stdout 拿 god-file / 契约漂移 / 孤儿包 / D1 dead-dep 清单；
++原始 stdout 落盘到 /tmp/codex-runs/<date>-<task>-structure-audit.txt（off-workspace per R7）；
++完成后 head -2000 截断到 docs/audits/codex-runs/<date>-<task>-structure-audit.txt 归档。
++Wave-close 时由 orchestrator 另写 curated summary 到 docs/audits/structure-YYYY-MM-<event>.md（月度 / Wave-close 级），引用 /tmp 原始 + docs/audits 归档。
++
++**Description**:
++
++ADR-0011 D5 + D6 NEW Wave 3 audit profile。从 Wave 1+2 Tier 3
++structure-auditor Claude teammate 全 codex 化。
++
++执行内容：
++- 候选 god-file（接近或超过 500 行；ESLint 300 warn）
++- 契约漂移（CONTRACT.md 与实际接口不一致）
++- 孤儿包（无 importers + 无 documented 消费路径）
++- **ADR-0008 D1 dead-dep mechanical scan**：每个 packages/*/package.json
++  中的 `@skb/*` 工作区依赖必对应至少一个 `from '@skb/<pkg>'` 源码 import
++- **ADR-0011 D8 监控指标**：长期 Claude session 数 ≤ 1；clone 模板 byte-equiv
++  审计
++
++候选重构由 refactorer Claude subagent 接手（per D7 触发条件
++`codex_structure_auditor_flags`）。
++
+ ## `plan-challenger`
+ 
+ **Profile**: `plan-challenger`
+@@ -427,46 +467,6 @@ orchestrator 读 stdout 拿创建文件清单；
+ 为每个 packages/<name> 生成 src/__tests__/ 下的 vitest 套件骨架，
+ 含一个示例 it() + setup helpers。具体测试由各包工种 agent 填。
+ 
+-## `codex-structure-auditor`
+-
+-**Profile**: `structure-auditor`
+-
+-**Canonical bash**:
+-
+-```bash
+-codex exec --yolo --profile structure-auditor < /dev/null
+-```
+-
+-**Triggered by**:
+-
+-- `per_pr_post_commit`
+-- `wave_close`
+-- `manual_dispatch`
+-
+-**Output handling**:
+-
+-orchestrator 读 stdout 拿 god-file / 契约漂移 / 孤儿包 / D1 dead-dep 清单；
+-原始 stdout 落盘到 /tmp/codex-runs/<date>-<task>-structure-audit.txt（off-workspace per R7）；
+-完成后 head -2000 截断到 docs/audits/codex-runs/<date>-<task>-structure-audit.txt 归档。
+-Wave-close 时由 orchestrator 另写 curated summary 到 docs/audits/structure-YYYY-MM-<event>.md（月度 / Wave-close 级），引用 /tmp 原始 + docs/audits 归档。
+-
+-**Description**:
+-
+-ADR-0011 D5 + D6 NEW Wave 3 audit profile。从 Wave 1+2 Tier 3
+-structure-auditor Claude teammate 全 codex 化。
+-
+-执行内容：
+-- 候选 god-file（接近或超过 500 行；ESLint 300 warn）
+-- 契约漂移（CONTRACT.md 与实际接口不一致）
+-- 孤儿包（无 importers + 无 documented 消费路径）
+-- **ADR-0008 D1 dead-dep mechanical scan**：每个 packages/*/package.json
+-  中的 `@skb/*` 工作区依赖必对应至少一个 `from '@skb/<pkg>'` 源码 import
+-- **ADR-0011 D8 监控指标**：长期 Claude session 数 ≤ 1；clone 模板 byte-equiv
+-  审计
+-
+-候选重构由 refactorer Claude subagent 接手（per D7 触发条件
+-`codex_structure_auditor_flags`）。
+-
+ ## Related
+ 
+ - [`agent-contract.md`](../../agent-contract.md) — `tool_patterns:` source of truth
+diff --git a/tmp/codex-profiles.toml b/tmp/codex-profiles.toml
+index c08be15..4bf61a9 100644
+--- a/tmp/codex-profiles.toml
++++ b/tmp/codex-profiles.toml
+@@ -20,22 +20,22 @@ model = "gpt-5.5"
+ sandbox_mode = "workspace-write"
+ approval_policy = "never"
+ 
+-[profiles.generic-executor]
++[profiles.codex-generic-executor]
+ model = "gpt-5.5"
+ sandbox_mode = "workspace-write"
+ approval_policy = "never"
+ 
+-[profiles.structure-auditor]
++[profiles.codex-structure-auditor]
+ model = "gpt-5.3-codex-spark"
+ sandbox_mode = "read-only"
+ approval_policy = "never"
+ 
+-[profiles.perf-auditor]
++[profiles.codex-perf-auditor]
+ model = "gpt-5.3-codex-spark"
+ sandbox_mode = "read-only"
+ approval_policy = "never"
+ 
+-[profiles.mdx-doctor]
++[profiles.codex-mdx-doctor]
+ model = "gpt-5.3-codex-spark"
+ sandbox_mode = "read-only"
+ approval_policy = "never"
+
+exec
+/bin/bash -lc 'git diff -- docs/plans/wave-4-main/B5-codex-prefix-lychee-memory.md agent-contract.md docs/plans/active.md' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+diff --git a/agent-contract.md b/agent-contract.md
+index e8540b0..8cefa5c 100644
+--- a/agent-contract.md
++++ b/agent-contract.md
+@@ -368,8 +368,8 @@ tool_patterns:
+ 
+   # ---- codex-generic-executor (ADR-0011 D6 NEW; D1 stage 2 默认 executor) ----
+   - name: codex-generic-executor
+-    profile: generic-executor
+-    invocation: 'codex exec --yolo --profile generic-executor < /dev/null'
++    profile: codex-generic-executor
++    invocation: 'codex exec --yolo --profile codex-generic-executor < /dev/null'
+     triggered_by:
+       - pr_plan_locked_executor_field_set_to_generic_executor
+     output_handling: |
+@@ -396,8 +396,8 @@ tool_patterns:
+ 
+   # ---- codex-structure-auditor (ADR-0011 D6 NEW; per-PR + Wave-close) ----
+   - name: codex-structure-auditor
+-    profile: structure-auditor
+-    invocation: 'codex exec --yolo --profile structure-auditor < /dev/null'
++    profile: codex-structure-auditor
++    invocation: 'codex exec --yolo --profile codex-structure-auditor < /dev/null'
+     triggered_by:
+       - per_pr_post_commit                          # 每 PR 跑（速查）
+       - wave_close                                  # 全量审计
+@@ -425,8 +425,8 @@ tool_patterns:
+ 
+   # ---- codex-perf-auditor (ADR-0011 D6 NEW; bundle-affecting + Wave-close) ----
+   - name: codex-perf-auditor
+-    profile: perf-auditor
+-    invocation: 'codex exec --yolo --profile perf-auditor < /dev/null'
++    profile: codex-perf-auditor
++    invocation: 'codex exec --yolo --profile codex-perf-auditor < /dev/null'
+     triggered_by:
+       - bundle_affecting_pr                         # editor-shell / block-* / search index 等
+       - wave_close
+@@ -449,8 +449,8 @@ tool_patterns:
+ 
+   # ---- codex-mdx-doctor (ADR-0011 D6 NEW; mdx-bridge fixture change PR) ----
+   - name: codex-mdx-doctor
+-    profile: mdx-doctor
+-    invocation: 'codex exec --yolo --profile mdx-doctor < /dev/null'
++    profile: codex-mdx-doctor
++    invocation: 'codex exec --yolo --profile codex-mdx-doctor < /dev/null'
+     triggered_by:
+       - pr_touches_mdx_bridge
+       - pr_touches_block_package                    # block-* core/ 路径任意修改
+diff --git a/docs/plans/active.md b/docs/plans/active.md
+index 608d014..64666a7 100644
+--- a/docs/plans/active.md
++++ b/docs/plans/active.md
+@@ -24,7 +24,8 @@
+ | #40 | `5ec7123` | B1b | SearchBox Option B-4 hybrid integration + count-fixup + paired discriminator playwright restore |
+ | #41 | `317dda3` | B2 | sample-blocks Wave 3 cleanup (4 sample-assets binaries + intro prose refresh; closes gatekeeper smoke #8 + #9) |
+ | #42 | `5d49240` | B3 | content/notes/__test_cjk__ relocation (notes index filter; partial impl of ADR-0013 D3; preserves PageFind coupling for B1b paired discriminator test) |
+-| #TBD (this) | TBD | B4 | Stage A retro items 2 + 3 + 4 (cast asymmetry codify + UIDefault casing rename + ESLint argsIgnorePattern) |
++| #43 | `dc216ab` | B4 | Stage A retro items 2 + 3 + 4 (cast asymmetry codify + UIDefault casing rename + ESLint argsIgnorePattern) |
++| #TBD (this) | TBD | B5 | codex profile prefix R3 (agent-contract.md + regen) + lychee autolink-in-backticks memory codify (`feedback_lychee_autolink_in_backticks.md`) |
+ | **Stage A** | ✅ **DONE** (8/8 PRs) | A | A1-A8 merged 2026-05-03 (HEAD 4aeb279); ADR-0014 promoted to accepted |
+ | Stage B | B1a + B1b + B2-B5 + B7 + B6 (**8 PRs**, re-locked 2026-05-03) | B | ADR-0012 amend (B1a doc + B1b SearchBox integration; per plan-challenger C6+C10 split) + sample-blocks cleanup (B2; merged from old B2+B3) + __test_cjk__ relocate (B3; was B4) + retrospective items 2-4 (B4; was B5a, items 5+6 Wave 3 already closed) + codex profile prefix + lychee codify (B5; was B5b + R3 absorbed) + **B7 NEW heavy block Astro hydration wiring + ADR-0014 v0.3 (CRITICAL gap)** + close-ceremony prep (B6) |
+ | Stage C | open-ended | C | Phase 1 user-iteration scope (per gatekeeper directive #4 + MVP framework) |
+
+codex
+The source-of-truth diffs now show the four unprefixed profiles converted in `agent-contract.md`, parser schema, TOML renderer, AGENTS/CLAUDE/runbook renderers, and generated outputs. I’m checking the untracked PR file and drift/placeholder patterns next, since untracked files do not appear in `git diff` by default.
+exec
+/bin/bash -lc "sed -n '1,340p' docs/plans/wave-4-main/B5-codex-prefix-lychee-memory.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+# B5 — codex profile prefix R3 consistency + lychee autolink-in-backticks memory codify
+
+> **Wave 4 Stage B 6th PR** (re-locked roster: B1a → B1b → B2 → B3 → B4 → **B5** → B7 → B6).
+> Closes Wave 3 retrospective item R3 (codex profile prefix consistency
+> per ADR-0013 D4 R3) by adding the `codex-` prefix to 4 profile fields
+> in `agent-contract.md` `tool_patterns:` (the 4 NEW Wave 3 D6 profiles
+> that already use the prefix in `~/.codex/config.toml` user-side TOML).
+> Codifies a NEW orchestrator-local memory entry
+> `feedback_lychee_autolink_in_backticks.md` capturing the systemic
+> 5-R-round lychee autolink-inside-backticks pattern (Wave 3 + Wave 4)
+> that previously cost forward-fix rounds. Standard-pipeline PR with
+> Row 1 + Row 8 trigger judgment per `## D2 trigger judgment`.
+
+## title
+
+Apply `codex-` prefix to 4 `agent-contract.md` `tool_patterns:` profile
+fields (`generic-executor → codex-generic-executor`,
+`structure-auditor → codex-structure-auditor`,
+`perf-auditor → codex-perf-auditor`,
+`mdx-doctor → codex-mdx-doctor`) matching the canonical names
+already in user-side `~/.codex/config.toml`. Update
+`scripts/render/types.ts` Zod `ToolPatternSchema.profile` enum + the
+test fixture in `scripts/__tests__/generate-configs.test.ts` to
+expect the new canonical name. Regenerate downstream surfaces via
+`pnpm generate:configs`: `CLAUDE.md` (root entrypoint),
+`AGENTS.md` (tool-pattern roster), `docs/runbooks/codex-tool-invocations.md`
+(per-pattern bash invocations + R7 truncation paths). Bookkeep
+`docs/plans/active.md` B4 row backfill (`#43 / dc216ab`) + B5 TBD
+row addition. Memory entry
+`~/.claude/projects/-home-weiyi-selfKnowledgeBaseWeb/memory/feedback_lychee_autolink_in_backticks.md`
+authored at orchestrator-local memory store
+(NOT git-tracked) + index entry added to
+`~/.claude/projects/.../memory/MEMORY.md`. PR.md self-listed per
+ADR-0006 D8 strict-whitelist + Pre-A1+...+B4 precedent.
+
+## files
+
+10 canonical files + COMMIT-time +1-2 reviewer audit archives;
+**11-12 files total at commit**. orchestrator-self EXECUTE for the
+agent-contract.md substitution + Zod schema + test fixture
++ regen + active.md + memory codify (orchestrator-local). NO
+`package.json` / `pnpm-lock.yaml` change. NO new ADR (R3 is a
+retrospective-item closure, not an architectural change). PR.md
+self-listed per Pre-A2+...+B4 precedent.
+
+- `agent-contract.md` — **MODIFIED** (~8 LOC delta). 4 substitutions
+  in `tool_patterns:` block: `profile: generic-executor` →
+  `profile: codex-generic-executor` (+ same for `structure-auditor`,
+  `perf-auditor`, `mdx-doctor`); the `invocation:` field for each
+  also updates the `--profile NAME` literal flag to match. The 3 remaining profile
+  names already use the canonical form: `scaffolder` (5 scaffolders
+  share this no-prefix name; intentional — the local TOML also uses
+  `scaffolder`); `plan-challenger` (no-prefix; matches local TOML);
+  `codex-pr-reviewer-55` (already has codex- prefix; matches local
+  TOML).
+- `scripts/render/types.ts` — **MODIFIED** (~4 LOC delta). The
+  Zod `ToolPatternSchema.profile` enum literal list extends to accept
+  the 4 new canonical names alongside the 3 unchanged ones. NO source
+  semantic change beyond the enum.
+- `scripts/__tests__/generate-configs.test.ts` — **MODIFIED**
+  (~1 LOC delta). The fixture assertion at line 41-43 expecting
+  `'generic-executor'` updates to `'codex-generic-executor'`.
+- `CLAUDE.md` — **MODIFIED** (~6 LOC delta). Generated from
+  agent-contract.md by `pnpm generate:configs`; the 11-pattern
+  table at "Codex tool patterns (11)" updates 4 rows' Profile
+  column to the prefixed name + table column-width re-flow.
+- `AGENTS.md` — **MODIFIED** (regen-driven; ~4-8 LOC delta).
+- `docs/runbooks/codex-tool-invocations.md` — **MODIFIED** (regen-driven;
+  ~12-20 LOC delta; 4 sections (`codex-generic-executor`,
+  `codex-structure-auditor`, `codex-perf-auditor`, `codex-mdx-doctor`)
+  update both their `**Profile**:` field + `**Canonical bash**:`
+  block to use the prefixed name).
+- `docs/plans/active.md` — **MODIFIED** (~3 LOC delta). B4 row
+  backfilled (`#43 | dc216ab | B4 | ...`); B5 TBD row added.
+- `docs/plans/wave-4-main/B5-codex-prefix-lychee-memory.md` — **NEW**
+  (this PR.md, self-listed). ~500 LOC.
+- `docs/audits/codex-runs/2026-05-03-B4-commit.txt` — **NEW**
+  (B4-orphan-leftover commit log; back-fill per B1b/B2/B3/B4
+  precedent of orphan audit-archive consolidation in next PR).
+- COMMIT-time additions: B5 reviewer R1 audit archive at
+  `docs/audits/codex-runs/2026-05-04-B5-pr-reviewer-55.txt`
+  (R2 if needed at +1 archive).
+
+**Memory entry (NOT in this PR; orchestrator-local memory store)**:
+`/home/weiyi/.claude/projects/-home-weiyi-selfKnowledgeBaseWeb/memory/feedback_lychee_autolink_in_backticks.md`
+authored at EXECUTE-time + indexed in
+`/home/weiyi/.claude/projects/.../memory/MEMORY.md`. The memory
+file is intentionally NOT committed to the repo per the memory
+protocol (orchestrator-local persistence; cross-session reference
+without VCS coupling).
+
+## test_cases
+
+10 test cases (TC1-TC10). orchestrator-self EXECUTE pattern is
+substitute → regen → run check; no new vitest tests authored
+(downstream regen is functionally validated by existing
+`scripts/__tests__/generate-configs.test.ts` which already
+exercises the post-amendment Zod schema + parser).
+
+- **TC1** (agent-contract.md profile renames, 4-way verification):
+  Input: `grep -cE 'profile: codex-(generic-executor|structure-auditor|perf-auditor|mdx-doctor)' agent-contract.md`.
+  Expected: `4`. Location: shell at repo root.
+- **TC2** (agent-contract.md no-prefix-residue check): Input:
+  `grep -cE 'profile: (generic-executor|structure-auditor|perf-auditor|mdx-doctor)$' agent-contract.md`.
+  Expected: `0`. Location: same.
+- **TC3** (`scripts/render/types.ts` Zod enum updated): Input:
+  `grep -cE "'codex-(generic-executor|structure-auditor|perf-auditor|mdx-doctor)'" scripts/render/types.ts`.
+  Expected: `4`. Location: same.
+- **TC4** (`generate-configs.test.ts` fixture updated): Input:
+  `grep -c "'codex-generic-executor'" scripts/__tests__/generate-configs.test.ts`.
+  Expected: `≥ 2` (one for `tp.name` lookup + one for `.profile`
+  assertion). Location: same.
+- **TC5** (workspace test pass): Input: `pnpm test`. Expected:
+  exit 0; `scripts/__tests__/generate-configs.test.ts` PASS;
+  no other regression.
+- **TC6** (workspace check pass): Input: `pnpm check`. Expected:
+  exit 0; 40/40 tasks PASS.
+- **TC7** (CLAUDE.md regen valid): Input:
+  `grep -cE 'codex-(generic-executor|structure-auditor|perf-auditor|mdx-doctor)' CLAUDE.md`.
+  Expected: `≥ 4`. Location: same.
+- **TC8** (runbook regen valid): Input:
+  `grep -cE 'codex-(generic-executor|structure-auditor|perf-auditor|mdx-doctor)' docs/runbooks/codex-tool-invocations.md`.
+  Expected: `≥ 4`. Location: same.
+- **TC9** (memory entry authored at orchestrator-local store):
+  Input: `test -f /home/weiyi/.claude/projects/-home-weiyi-selfKnowledgeBaseWeb/memory/feedback_lychee_autolink_in_backticks.md`.
+  Expected: file exists. Location: same. NOTE: this file is
+  orchestrator-local + NOT git-tracked; TC9 is verified at
+  EXECUTE-time, not in CI.
+- **TC10** (PR.md self-listed): Input:
+  `grep -c 'B5-codex-prefix-lychee-memory.md' docs/plans/wave-4-main/B5-codex-prefix-lychee-memory.md`.
+  Expected: `≥ 2`. Location: same.
+
+Byte-unchanged guards (TC11-TC15):
+- **TC11** lockfile (`git diff main -- pnpm-lock.yaml` 0 lines)
+- **TC12** B1a/B1b/B2/B3/B4 shipped files byte-unchanged
+- **TC13** B7-scope (apps/site/src/components.ts; heavy block packages)
+- **TC14** ADR files byte-unchanged
+- **TC15** Wave 4 plan doc byte-unchanged
+
+## contracts_affected
+
+- NONE. agent-contract.md is the contract source for downstream
+  generation, but B5 only renames profile field values WITHOUT
+  changing the underlying contract semantics or tool definitions.
+
+## adr_touched
+
+- NONE. R3 retrospective-item closure does not require an ADR
+  amendment; the original ADR-0011 D6 already mandated codex- prefix
+  as canonical (Wave 3 R3 noted runbook still referenced unprefixed
+  names in places — this PR completes the cleanup).
+
+## D2 trigger judgment
+
+- **Row 1 (CONTRACT change)**: NO (no `packages/*/CONTRACT.md` or
+  `apps/site/CONTRACT.md` change).
+- **Row 4 (new ADR)**: NO.
+- **Row 8 (CI/build/deploy/auth/security)**: BORDERLINE — CLAUDE.md
+  + AGENTS.md are not CI workflow files; runbook update changes
+  per-pattern bash invocations but the actual `~/.codex/config.toml`
+  user-side already uses canonical names (this PR aligns docs to
+  user-side reality, not the other way). Conservative interpretation:
+  NOT a CI/auth/security touch. STANDARD PR.
+- → STANDARD PR; D1 stage 4 NOT triggered.
+
+## acceptance
+
+1. agent-contract.md `tool_patterns:` block has 4 `profile:` field
+   substitutions: `codex-generic-executor`, `codex-structure-auditor`,
+   `codex-perf-auditor`, `codex-mdx-doctor`. TC1 + TC2 evidence.
+2. agent-contract.md `tool_patterns:` block has 4 corresponding
+   `invocation:` field updates: `--profile codex-NAME` literal. TC1 + TC2 evidence.
+3. `scripts/render/types.ts` `ToolPatternSchema.profile` z.enum
+   accepts the 4 new canonical names (alongside the 3 unchanged:
+   `scaffolder`, `plan-challenger`, `codex-pr-reviewer-55`).
+   TC3 evidence.
+4. `scripts/__tests__/generate-configs.test.ts` fixture assertion
+   updated to expect `'codex-generic-executor'`. TC4 evidence.
+5. `pnpm generate:configs` exit 0 + downstream regen produces:
+   - CLAUDE.md table at "Codex tool patterns (11)" 4 rows updated.
+   - AGENTS.md tool-pattern roster updated.
+   - `docs/runbooks/codex-tool-invocations.md` 4 sections updated
+     in Profile + Canonical bash blocks.
+   TC7 + TC8 evidence.
+6. `pnpm test` exit 0 (`generate-configs.test.ts` PASS post-fixture
+   update; no other regression). TC5 evidence.
+7. `pnpm check` (full workspace) exit 0; 40/40 tasks PASS. TC6 evidence.
+8. `pnpm link-check` BLOCKED locally (lychee binary not on dev WSL2;
+   CI canonical per B1a/B1b/B2/B3/B4 precedent). Pre-commit
+   discipline check: no angle-bracket-wrapped placeholder patterns inside backticks per the
+   newly-codified memory `feedback_lychee_autolink_in_backticks.md`.
+9. `docs/plans/active.md` B4 row backfilled (`#43 / dc216ab`); B5
+   TBD row added.
+10. PR.md self-listed (TC10).
+11. Memory entry `feedback_lychee_autolink_in_backticks.md` exists at
+    orchestrator-local store; MEMORY.md index entry added.
+    TC9 evidence.
+12-16. Byte-unchanged guards (TC11-TC15).
+17. NO scope creep: the 10 canonical + 1 audit-archive + 1 reviewer
+    audit archive = 12 files at commit. Lockfile + package.json
+    byte-unchanged.
+
+## Plan-challenger absorbtion
+
+NOT dispatched (small standard-PR scope; agent-contract.md
+substitution mechanics + Zod schema enum extension are deterministic,
+no design ambiguity to challenge). B5's role in Wave 4 plan v0.2.1
+Stage B sequence is fixed by Stage B re-plan + ADR-0013 D4 R3
+retrospective directive.
+
+## Risk register
+
+1. **Regen drift between agent-contract.md and downstream artifacts**:
+   if the substitution misses a field, regen produces inconsistent
+   output. Mitigation: TC1 + TC2 grep verify; pnpm generate:configs
+   exit 0 verify; post-regen TC7 + TC8 grep verify on the regenerated
+   files.
+2. **Zod schema enum + parser drift**: if the schema accepts new
+   names but the parser logic still expects old names elsewhere,
+   schema mismatch surfaces in test failure. Mitigation: TC4 fixture
+   update aligns the test expectation; TC5 + TC6 catch any other
+   parser site that hard-codes the old name.
+3. **User-side TOML mismatch (low)**: user's `~/.codex/config.toml`
+   already uses the canonical `codex-` prefix per Step 0 verification
+   at session start. If a future user has the old unprefixed names
+   in their local TOML, they will need to merge the canonical names
+   per the runbook's "Profile TOML merge" section.
+
+## executor
+
+orchestrator-self per Wave 4 plan v0.2.1 Stage B B5 row + small-batch
+deterministic substitution + regen. No codex tool dispatch needed
+beyond the standard reviewer codex at D1 stage 3 + commit at D1 stage 5.
+
+## Out of scope (deferred)
+
+- ADR amendment: R3 closure is retrospective-item, not architectural.
+- block-foundation/RFC.md or registry.test.ts cleanup: archival /
+  local-fixture per B4's intentional out-of-scope decision.
+- B7-scope (heavy block Astro hydration): separate next PR.
+- B6-scope (Wave 4 close ceremony prep): separate next PR.
+- Wave 4 plan doc Amendment: NOT needed (B5 fits Stage B re-plan
+  exactly as v0.2.1 Driver 1 + Driver 2 already lock).
+- Repo-side memory entry: orchestrator-local memory by design.
+
+## Related
+
+- ADR-0011 D6 — codex profile naming canonical (with codex- prefix
+  for the 4 new Wave 3 profiles)
+- ADR-0013 D4 R3 — codex profile prefix consistency retrospective
+- Wave 4 plan v0.2.1 Stage B B5 row (was B5b in original plan; R3
+  absorbed into a single PR per user directive 2026-05-04)
+- Memory `feedback_lychee_autolink_in_backticks.md` (orchestrator-local;
+  authored at this PR's EXECUTE)
+- Memory `feedback_codex_profile_prefix.md` (Wave 3 R3 capture
+  prior to closure)
+
+## Codex commit (D1 stage 5) staging
+
+Per ADR-0006 D8 explicit-file-list staging: reviewer codex commits
+12 files (10 canonical + 1 B4-orphan-leftover + 1 B5 reviewer R1
+audit; +1 if R2):
+
+```
+git reset HEAD
+git add agent-contract.md scripts/render/types.ts \
+  scripts/__tests__/generate-configs.test.ts \
+  CLAUDE.md AGENTS.md docs/runbooks/codex-tool-invocations.md \
+  docs/plans/active.md \
+  docs/plans/wave-4-main/B5-codex-prefix-lychee-memory.md \
+  docs/audits/codex-runs/2026-05-03-B4-commit.txt \
+  docs/audits/codex-runs/2026-05-04-B5-pr-reviewer-55.txt
+git diff --cached --stat
+git commit -m "..."
+```
+
+Lockfile + package.json byte-unchanged.
+
+exec
+/bin/bash -lc "rg -n '"'`[''^`]*<'"\\w+>["'^`]*`'"' docs/plans/wave-4-main/B5-codex-prefix-lychee-memory.md" in /home/weiyi/selfKnowledgeBaseWeb
+ exited 1 in 0ms:
+exec
+/bin/bash -lc "rg -n '"'`[''^`]*<'"\\w+>["'^`]*`'"' AGENTS.md CLAUDE.md agent-contract.md docs/runbooks/codex-tool-invocations.md docs/plans/active.md docs/plans/wave-4-main/B5-codex-prefix-lychee-memory.md scripts/render scripts/__tests__/generate-configs.test.ts tmp/codex-profiles.toml 2>/dev/null" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+docs/plans/active.md:101:Same as Wave 3 (ADR-0011 D1 KEPT) — PLAN → EXECUTE → REVIEW → PRE-COMMIT → COMMIT → ACCEPT. Wave 4 codifies operational discipline at Pre-A1: every codex dispatch uses `codex exec --yolo --profile <X>` with `set -o pipefail` + `2>&1 | tee /tmp/codex-runs/<X>.txt` raw + `head -2000 > docs/audits/codex-runs/<X>.txt` truncated archive (canonical "Universal Bash invariants" in [`docs/runbooks/codex-tool-invocations.md`](../runbooks/codex-tool-invocations.md)).
+docs/runbooks/codex-tool-invocations.md:17:> dispatching any `codex exec --yolo --profile <name>` invocation. ADR-0011 D6
+docs/runbooks/codex-tool-invocations.md:27:`[profiles.<name>]` block in the tmp file that is absent from the user
+docs/runbooks/codex-tool-invocations.md:61:- Audit logs (Wave 4+ R7-mitigation flow): raw stdout → `/tmp/codex-runs/<date>-<task>-<pattern>.txt` (off-workspace, sandbox-invisible) → `head -2000` truncate → `docs/audits/codex-runs/<date>-<task>-<pattern>.txt` archive (in-tree, committed). Orchestrator must save every invocation's stdout via this two-step flow.
+docs/runbooks/codex-tool-invocations.md:126:4. 自跑 `pnpm test --filter=<package>` 全部 PASS（不 PASS 不进 stage 3）
+docs/runbooks/codex-tool-invocations.md:127:5. 自跑 `pnpm lint --filter=<package>` + `pnpm typecheck --filter=<package>`
+docs/runbooks/codex-tool-invocations.md:257:`8th-class hunt: <findings>`。
+docs/runbooks/codex-tool-invocations.md:297:  中的 `@skb/*` 工作区依赖必对应至少一个 `from '@skb/<pkg>'` 源码 import
+agent-contract.md:362:      `8th-class hunt: <findings>`。
+agent-contract.md:388:      4. 自跑 `pnpm test --filter=<package>` 全部 PASS（不 PASS 不进 stage 3）
+agent-contract.md:389:      5. 自跑 `pnpm lint --filter=<package>` + `pnpm typecheck --filter=<package>`
+agent-contract.md:419:        中的 `@skb/*` 工作区依赖必对应至少一个 `from '@skb/<pkg>'` 源码 import
+CLAUDE.md:66:                     staging (`git reset HEAD` → `git add <list>` →
+scripts/render/claude-md.ts:82:                     staging (\`git reset HEAD\` → \`git add <list>\` →
+scripts/render/codex-tool-runbook.ts:26:> dispatching any \`codex exec --yolo --profile <name>\` invocation. ADR-0011 D6
+scripts/render/codex-tool-runbook.ts:36:\`[profiles.<name>]\` block in the tmp file that is absent from the user
+scripts/render/codex-tool-runbook.ts:70:- Audit logs (Wave 4+ R7-mitigation flow): raw stdout → \`/tmp/codex-runs/<date>-<task>-<pattern>.txt\` (off-workspace, sandbox-invisible) → \`head -2000\` truncate → \`docs/audits/codex-runs/<date>-<task>-<pattern>.txt\` archive (in-tree, committed). Orchestrator must save every invocation's stdout via this two-step flow.
+
+exec
+/bin/bash -lc 'rg -n "profile: (generic-executor|structure-auditor|perf-auditor|mdx-doctor)$|--profile (generic-executor|structure-auditor|perf-auditor|mdx-doctor)('"\\s|"'$)|'"\\[profiles\\.(generic-executor|structure-auditor|perf-auditor|mdx-doctor)\\]\" agent-contract.md AGENTS.md CLAUDE.md docs/runbooks/codex-tool-invocations.md scripts/render scripts/__tests__/generate-configs.test.ts tmp/codex-profiles.toml docs/plans/wave-4-main/B5-codex-prefix-lychee-memory.md" in /home/weiyi/selfKnowledgeBaseWeb
+ exited 1 in 0ms:
+codex
+The PR markdown no longer has the specific `` `<word>` `` placeholder pattern from R1, and the old profile literals are absent from the changed authoritative surfaces. I’m now doing a non-writing generated-output comparison so I can verify the regen drift fix without touching files.
+exec
+/bin/bash -lc "sed -n '1,240p' scripts/generate-configs.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+#!/usr/bin/env tsx
+/**
+ * Derives from agent-contract.md:
+ *   - CLAUDE.md / AGENTS.md (root)
+ *   - .claude/agents/<name>.md × N (Claude teammates only post ADR-0007 D5)
+ *   - .claude/settings.json
+ *   - tmp/codex-profiles.toml (manual merge into ~/.codex/config.toml)
+ *   - docs/review-checklist.md
+ *   - docs/runbooks/codex-tool-invocations.md (ADR-0007 D5 — codex tool patterns)
+ *
+ * Spec: docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md §3.13
+ *
+ * Idempotent: running twice produces no diff. CI in
+ * .github/workflows/agent-contract-check.yml fails on drift.
+ */
+import { readFileSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+import { parse as parseYaml } from 'yaml';
+import { ContractSchema, type AgentContract } from './render/types.ts';
+import { renderClaudeAgent } from './render/claude-agent.ts';
+import { renderClaudeMd } from './render/claude-md.ts';
+import { renderAgentsMd } from './render/agents-md.ts';
+import { renderSettingsJson } from './render/settings-json.ts';
+import { renderCodexProfilesToml } from './render/codex-profiles-toml.ts';
+import { renderReviewChecklist } from './render/review-checklist.ts';
+import { renderCodexToolRunbook } from './render/codex-tool-runbook.ts';
+
+export type { Agent, ToolPattern, AgentContract } from './render/types.ts';
+export { renderClaudeAgent } from './render/claude-agent.ts';
+export { renderClaudeMd } from './render/claude-md.ts';
+export { renderAgentsMd } from './render/agents-md.ts';
+export { renderSettingsJson } from './render/settings-json.ts';
+export { renderCodexProfilesToml } from './render/codex-profiles-toml.ts';
+export { renderReviewChecklist } from './render/review-checklist.ts';
+export { renderCodexToolRunbook } from './render/codex-tool-runbook.ts';
+
+const PLACEHOLDER_PATTERN = /<[^>]+>/;
+
+export function parseAgentContract(markdown: string): AgentContract {
+  const matches = [...markdown.matchAll(/```yaml\n([\s\S]*?)\n```/g)];
+  if (matches.length === 0) {
+    throw new Error('No YAML fenced block in agent-contract.md');
+  }
+
+  for (const m of matches) {
+    const raw = m[1];
+    if (!raw) continue;
+    let candidate: unknown;
+    try {
+      candidate = parseYaml(raw);
+    } catch {
+      // Pseudo-YAML schema-example blocks may not parse; skip them.
+      continue;
+    }
+    if (
+      candidate &&
+      typeof candidate === 'object' &&
+      'agents' in candidate &&
+      Array.isArray(candidate.agents)
+    ) {
+      const agents = candidate.agents as Array<{ name?: unknown }>;
+      const tps =
+        'tool_patterns' in candidate && Array.isArray(candidate.tool_patterns)
+          ? (candidate.tool_patterns as Array<{ name?: unknown }>)
+          : [];
+      const namesWithPlaceholder = [...agents, ...tps].some(
+        (a) => typeof a?.name === 'string' && PLACEHOLDER_PATTERN.test(a.name),
+      );
+      if (!namesWithPlaceholder) {
+        return ContractSchema.parse(candidate);
+      }
+    }
+  }
+  throw new Error('No authoritative YAML block with agents found (placeholder block was skipped)');
+}
+
+export function generateClaudeAgents(contract: AgentContract): void {
+  const dir = '.claude/agents';
+  rmSync(dir, { recursive: true, force: true });
+  mkdirSync(dir, { recursive: true });
+  const sorted = [...contract.agents].sort((a, b) => a.name.localeCompare(b.name));
+  for (const agent of sorted) {
+    writeFileSync(join(dir, `${agent.name}.md`), renderClaudeAgent(agent));
+  }
+}
+
+function main(): void {
+  const contract = parseAgentContract(readFileSync('agent-contract.md', 'utf8'));
+
+  generateClaudeAgents(contract);
+
+  writeFileSync('CLAUDE.md', renderClaudeMd(contract));
+  writeFileSync('AGENTS.md', renderAgentsMd(contract));
+
+  mkdirSync('.claude', { recursive: true });
+  writeFileSync('.claude/settings.json', renderSettingsJson());
+
+  mkdirSync('tmp', { recursive: true });
+  writeFileSync('tmp/codex-profiles.toml', renderCodexProfilesToml());
+
+  mkdirSync('docs', { recursive: true });
+  writeFileSync('docs/review-checklist.md', renderReviewChecklist());
+
+  mkdirSync('docs/runbooks', { recursive: true });
+  writeFileSync('docs/runbooks/codex-tool-invocations.md', renderCodexToolRunbook(contract));
+
+  console.log(
+    `Generated configs from agent-contract.md (${contract.agents.length} teammates + ${contract.tool_patterns.length} tool_patterns).`,
+  );
+}
+
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main();
+}
+
+exec
+/bin/bash -lc "sed -n '1,220p' scripts/render/index.ts 2>/dev/null || true" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+exec
+/bin/bash -lc 'rg -n "renderAgentsMd|renderClaudeMd|renderCodexProfilesToml|renderCodexToolRunbook|writeFile|generate:configs|parseAgentContract" scripts package.json' in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1,160p' package.json" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+{
+  "name": "self-knowledge-base-web",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "pnpm@9.12.0",
+  "type": "module",
+  "engines": {
+    "node": ">=22",
+    "pnpm": ">=9"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev --parallel",
+    "lint": "eslint .",
+    "lint:packages": "turbo run lint",
+    "typecheck": "tsc -b",
+    "typecheck:packages": "turbo run typecheck",
+    "test": "vitest run",
+    "test:packages": "turbo run test",
+    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm size-check && pnpm lint:packages && pnpm typecheck:packages && pnpm test:packages",
+    "check:affected": "turbo run lint typecheck test --filter=...[origin/main]",
+    "size-check": "node scripts/check-size-limits.mjs",
+    "link-check": "lychee --config .lychee.toml './**/*.md'",
+    "generate:configs": "tsx scripts/generate-configs.ts",
+    "format": "prettier --write \"**/*.{ts,tsx,js,mjs,cjs,json,md,yaml,yml}\""
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "@types/node": "^22.0.0",
+    "commander": "^11.1.0",
+    "eslint": "^9.0.0",
+    "globals": "^15.0.0",
+    "pdfjs-dist": "^4.7.0",
+    "prettier": "^3.0.0",
+    "turbo": "^2.0.0",
+    "ts-morph": "^28.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "~5.6.0",
+    "typescript-eslint": "^8.0.0",
+    "vitest": "^4.1.5",
+    "yaml": "^2.8.3",
+    "zod": "^3.23.0"
+  }
+}
+
+ succeeded in 0ms:
+package.json:24:    "generate:configs": "tsx scripts/generate-configs.ts",
+scripts/generate-configs.ts:16:import { readFileSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
+scripts/generate-configs.ts:21:import { renderClaudeMd } from './render/claude-md.ts';
+scripts/generate-configs.ts:22:import { renderAgentsMd } from './render/agents-md.ts';
+scripts/generate-configs.ts:24:import { renderCodexProfilesToml } from './render/codex-profiles-toml.ts';
+scripts/generate-configs.ts:26:import { renderCodexToolRunbook } from './render/codex-tool-runbook.ts';
+scripts/generate-configs.ts:30:export { renderClaudeMd } from './render/claude-md.ts';
+scripts/generate-configs.ts:31:export { renderAgentsMd } from './render/agents-md.ts';
+scripts/generate-configs.ts:33:export { renderCodexProfilesToml } from './render/codex-profiles-toml.ts';
+scripts/generate-configs.ts:35:export { renderCodexToolRunbook } from './render/codex-tool-runbook.ts';
+scripts/generate-configs.ts:39:export function parseAgentContract(markdown: string): AgentContract {
+scripts/generate-configs.ts:83:    writeFileSync(join(dir, `${agent.name}.md`), renderClaudeAgent(agent));
+scripts/generate-configs.ts:88:  const contract = parseAgentContract(readFileSync('agent-contract.md', 'utf8'));
+scripts/generate-configs.ts:92:  writeFileSync('CLAUDE.md', renderClaudeMd(contract));
+scripts/generate-configs.ts:93:  writeFileSync('AGENTS.md', renderAgentsMd(contract));
+scripts/generate-configs.ts:96:  writeFileSync('.claude/settings.json', renderSettingsJson());
+scripts/generate-configs.ts:99:  writeFileSync('tmp/codex-profiles.toml', renderCodexProfilesToml());
+scripts/generate-configs.ts:102:  writeFileSync('docs/review-checklist.md', renderReviewChecklist());
+scripts/generate-configs.ts:105:  writeFileSync('docs/runbooks/codex-tool-invocations.md', renderCodexToolRunbook(contract));
+scripts/new-block.ts:8:  writeFileSync,
+scripts/new-block.ts:109:  writeFileSync(filePath, replaced, 'utf8');
+scripts/new-block.ts:151:    writeFileSync(tsconfigPath, `${JSON.stringify(tsconfig, null, 2)}\n`, 'utf8');
+scripts/extract-pdf-text.ts:4:import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+scripts/extract-pdf-text.ts:106:    writeFileSync(outputPath, cleanText, 'utf8');
+scripts/render/agents-md.ts:15:> Edit \`agent-contract.md\` then run \`pnpm generate:configs\`. CI fails if drift detected.
+scripts/render/agents-md.ts:64:After running \`pnpm generate:configs\`, manually merge \`tmp/codex-profiles.toml\` into
+scripts/render/agents-md.ts:111:on the next \`pnpm generate:configs\` run.
+scripts/render/agents-md.ts:114:export function renderAgentsMd(contract: AgentContract): string {
+scripts/render/codex-tool-runbook.ts:14:> Edit \`agent-contract.md\` then run \`pnpm generate:configs\`.
+scripts/render/codex-tool-runbook.ts:35:\`pnpm generate:configs\`) and \`~/.codex/config.toml\` side by side. For each
+scripts/render/codex-tool-runbook.ts:149:\`pnpm generate:configs\` run.
+scripts/render/codex-tool-runbook.ts:152:export function renderCodexToolRunbook(contract: AgentContract): string {
+scripts/__tests__/generate-configs.test.ts:4:  parseAgentContract,
+scripts/__tests__/generate-configs.test.ts:6:  renderClaudeMd,
+scripts/__tests__/generate-configs.test.ts:7:  renderAgentsMd,
+scripts/__tests__/generate-configs.test.ts:9:  renderCodexProfilesToml,
+scripts/__tests__/generate-configs.test.ts:11:  renderCodexToolRunbook,
+scripts/__tests__/generate-configs.test.ts:18:describe('parseAgentContract', () => {
+scripts/__tests__/generate-configs.test.ts:20:    const result = parseAgentContract(FIXTURE_VALID_MIN);
+scripts/__tests__/generate-configs.test.ts:29:    const result = parseAgentContract(real);
+scripts/__tests__/generate-configs.test.ts:49:    const result = parseAgentContract(real);
+scripts/__tests__/generate-configs.test.ts:112:    expect(() => parseAgentContract(md)).toThrow(/no.*authoritative.*yaml.*block/i);
+scripts/__tests__/generate-configs.test.ts:117:    expect(() => parseAgentContract(md)).toThrow(/total_teammates.*equal.*agents\.length/);
+scripts/__tests__/generate-configs.test.ts:122:    expect(() => parseAgentContract(md)).toThrow(
+scripts/__tests__/generate-configs.test.ts:129:    expect(() => parseAgentContract(md)).toThrow(/duplicate agent name: foo/);
+scripts/__tests__/generate-configs.test.ts:134:    expect(() => parseAgentContract(md)).toThrow(/name collision.*foo/);
+scripts/__tests__/generate-configs.test.ts:139:    expect(() => parseAgentContract(md)).toThrow(/duplicate tool_pattern name: bar/);
+scripts/__tests__/generate-configs.test.ts:144:    const result = parseAgentContract(real);
+scripts/__tests__/generate-configs.test.ts:165:  parseAgentContract(readFileSync('agent-contract.md', 'utf8'));
+scripts/__tests__/generate-configs.test.ts:206:describe('renderClaudeMd', () => {
+scripts/__tests__/generate-configs.test.ts:209:    const out = renderClaudeMd(contract);
+scripts/__tests__/generate-configs.test.ts:219:    const out = renderClaudeMd(contract);
+scripts/__tests__/generate-configs.test.ts:229:    const out = renderClaudeMd(contract);
+scripts/__tests__/generate-configs.test.ts:237:describe('renderAgentsMd', () => {
+scripts/__tests__/generate-configs.test.ts:240:    const out = renderAgentsMd(contract);
+scripts/__tests__/generate-configs.test.ts:251:    const out = renderAgentsMd(contract);
+scripts/__tests__/generate-configs.test.ts:305:describe('renderCodexProfilesToml', () => {
+scripts/__tests__/generate-configs.test.ts:307:    const out = renderCodexProfilesToml();
+scripts/__tests__/generate-configs.test.ts:320:    const out = renderCodexProfilesToml();
+scripts/__tests__/generate-configs.test.ts:326:    const out = renderCodexProfilesToml();
+scripts/__tests__/generate-configs.test.ts:347:describe('renderCodexToolRunbook', () => {
+scripts/__tests__/generate-configs.test.ts:350:    const out = renderCodexToolRunbook(contract);
+scripts/__tests__/generate-configs.test.ts:364:    const out = renderCodexToolRunbook(contract);
+scripts/render/review-checklist.ts:9:> Edit \`agent-contract.md\` then run \`pnpm generate:configs\`.
+scripts/render/review-checklist.ts:42:- [ ] **#8 Authority-document → generated/consumed surface audit**: When updating an authority document (ADR, spec, \`agent-contract.md\`, runbook, CONVENTIONS) that mandates downstream behavior, audit every consumer-side replica/generated artifact in the same commit; regenerate codegen outputs (\`pnpm generate:configs\`); cross-link runbooks; embed in subagent prompts.
+scripts/__tests__/extract-pdf-text.test.ts:6:  writeFileSync,
+scripts/__tests__/extract-pdf-text.test.ts:109:  writeFileSync(pdfPath, buildPdfBuffer(pageLines));
+scripts/__tests__/extract-pdf-text.test.ts:157:    writeFileSync(corruptPath, Buffer.from('%PDF-1.4\n<<<not-a-real-pdf-body>>>'));
+scripts/__tests__/extract-pdf-text.test.ts:169:    writeFileSync(textPath, 'not a pdf');
+scripts/render/codex-profiles-toml.ts:25:# Manual merge into ~/.codex/config.toml (run after pnpm generate:configs).
+scripts/render/codex-profiles-toml.ts:67:export function renderCodexProfilesToml(): string {
+scripts/render/claude-md.ts:16:> Edit \`agent-contract.md\` then run \`pnpm generate:configs\`. CI fails if drift detected.
+scripts/render/claude-md.ts:54:    ['`pnpm generate:configs`', 'Re-derive everything from `agent-contract.md`'],
+scripts/render/claude-md.ts:145:on the next \`pnpm generate:configs\` run.
+scripts/render/claude-md.ts:148:export function renderClaudeMd(contract: AgentContract): string {
+
+exec
+/bin/bash -lc "pnpm exec tsx -e \"import { readFileSync } from 'node:fs'; import { parseAgentContract, renderClaudeMd, renderAgentsMd, renderCodexProfilesToml, renderCodexToolRunbook } from './scripts/generate-configs.ts'; const contract = parseAgentContract(readFileSync('agent-contract.md', 'utf8')); const checks = [['CLAUDE.md', renderClaudeMd(contract)], ['AGENTS.md', renderAgentsMd(contract)], ['tmp/codex-profiles.toml', renderCodexProfilesToml()], ['docs/runbooks/codex-tool-invocations.md', renderCodexToolRunbook(contract)]]; let failed = false; for (const [path, expected] of checks) { const actual = readFileSync(path, 'utf8'); if (actual "'!== expected) { console.log('"'DRIFT ' + path); failed = true; } else { console.log('OK ' + path); } } if (failed) process.exit(1);\"" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 683ms:
+OK CLAUDE.md
+OK AGENTS.md
+OK tmp/codex-profiles.toml
+OK docs/runbooks/codex-tool-invocations.md
+
+codex
+The non-writing renderer comparison reports no drift for `CLAUDE.md`, `AGENTS.md`, `tmp/codex-profiles.toml`, or the codex runbook. I’m running the relevant test fixture and then the full workspace check for fresh verification evidence.
+exec
+/bin/bash -lc "grep -cE 'profile: codex-(generic-executor|structure-auditor|perf-auditor|mdx-doctor)' agent-contract.md && grep -cE 'profile: (generic-executor|structure-auditor|perf-auditor|mdx-doctor)"'$'"' agent-contract.md && grep -cE \"'codex-(generic-executor|structure-auditor|perf-auditor|mdx-doctor)'\" scripts/render/types.ts && grep -c \"'codex-generic-executor'\" scripts/__tests__/generate-configs.test.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ exited 1 in 0ms:
+4
+0
+
+exec
+/bin/bash -lc 'pnpm test -- scripts/__tests__/generate-configs.test.ts' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 991ms:
+
+> self-knowledge-base-web@0.0.0 test /home/weiyi/selfKnowledgeBaseWeb
+> vitest run "scripts/__tests__/generate-configs.test.ts"
+
+
+ RUN  v4.1.5 /home/weiyi/selfKnowledgeBaseWeb
+
+
+ Test Files  1 passed (1)
+      Tests  28 passed (28)
+   Start at  00:18:08
+   Duration  369ms (transform 100ms, setup 0ms, import 158ms, tests 99ms, environment 0ms)
+
+
+codex
+The targeted generator test passed: 1 file, 28 tests. One grep bundle stopped after correctly printing the expected zero residue count, so I’m replacing it with a single read-only count script that doesn’t short-circuit on zero matches.
+exec
+/bin/bash -lc "node -e \"const fs=require('fs'); const checks=[['TC1 profile codex count','agent-contract.md',/profile: codex-(generic-executor|structure-auditor|perf-auditor|mdx-doctor)/g],['TC2 old profile residue','agent-contract.md',/profile: (generic-executor|structure-auditor|perf-auditor|mdx-doctor)"'$/gm],['"'TC3 zod enum count','scripts\\/render\\/types.ts',/'codex-(generic-executor|structure-auditor|perf-auditor|mdx-doctor)'/g],['TC4 fixture count','scripts\\/__tests__\\/generate-configs.test.ts',/'codex-generic-executor'/g],['TC7 CLAUDE count','CLAUDE.md',/codex-(generic-executor|structure-auditor|perf-auditor|mdx-doctor)/g],['TC8 runbook count','docs\\/runbooks\\/codex-tool-invocations.md',/codex-(generic-executor|structure-auditor|perf-auditor|mdx-doctor)/g]]; for (const [label,path,re] of checks){ const s=fs.readFileSync(path,'utf8'); const n=(s.match(re)||[]).length; console.log(label + ': ' + n); }\"" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+TC1 profile codex count: 4
+TC2 old profile residue: 0
+TC3 zod enum count: 4
+TC4 fixture count: 3
+TC7 CLAUDE count: 9
+TC8 runbook count: 21
+
+exec
+/bin/bash -lc "node -e \"const fs=require('fs'); const files=['agent-contract.md','AGENTS.md','CLAUDE.md','docs/runbooks/codex-tool-invocations.md','scripts/render/agents-md.ts','scripts/render/claude-md.ts','scripts/render/codex-profiles-toml.ts','scripts/render/codex-tool-runbook.ts','scripts/render/types.ts','scripts/__tests__/generate-configs.test.ts','tmp/codex-profiles.toml']; const re=/(profile: (generic-executor|structure-auditor|perf-auditor|mdx-doctor)"'$|--profile (generic-executor|structure-auditor|perf-auditor|mdx-doctor)('"\\s|"'$)|'"\\[profiles\\.(generic-executor|structure-auditor|perf-auditor|mdx-doctor)\\])/gm; let total=0; for(const f of files){const s=fs.readFileSync(f,'utf8'); const m=s.match(re)||[]; if(m.length){ total+=m.length; console.log(f+': '+m.join(' | '));}} console.log('old actionable profile references: '+total); if(total) process.exit(1);\"" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+old actionable profile references: 0
+
+exec
+/bin/bash -lc "node -e \"const fs=require('fs'); const path='docs/plans/wave-4-main/B5-codex-prefix-lychee-memory.md'; const s=fs.readFileSync(path,'utf8'); const matches=s.match(/"'`[''^`]*<'"\\w+>["'^`]*`/g)||[]; console.log('"'PR.md backtick-angle-word matches: '+matches.length); if(matches.length){ for(const m of matches) console.log(m); process.exit(1); }\"" in /home/weiyi/selfKnowledgeBaseWeb
+ exited 1 in 127ms:
+[eval]:1
+const fs=require('fs'); const path='docs/plans/wave-4-main/B5-codex-prefix-lychee-memory.md'; const s=fs.readFileSync(path,'utf8'); const matches=s.match(/]*<\w+>[^/g)||[]; console.log('PR.md backtick-angle-word matches: '+matches.length); if(matches.length){ for(const m of matches) console.log(m); process.exit(1); }
+                                                                                                                                                          ^
+Unterminated regexp literal
+
+SyntaxError: Invalid regular expression: missing /
+    at makeContextifyScript (node:internal/vm:185:14)
+    at compileScript (node:internal/process/execution:383:10)
+    at evalTypeScript (node:internal/process/execution:256:22)
+    at node:internal/main/eval_string:74:3
+
+Node.js v22.22.2
+
+codex
+The count script confirms TC1-TC4/TC7-TC8 and no actionable old unprefixed profile references. One placeholder check failed because shell command substitution ate literal backticks in the inline script; I’m rerunning that check with escaped construction, then the full check.
+exec
+/bin/bash -lc "node -e 'const fs=require(\"fs\"); const tick=String.fromCharCode(96); const re=new RegExp(tick+\"["'^"+tick+"]*<'"\\\\w+>["'^"+tick+"]*"+tick,"g"); const path="docs/plans/wave-4-main/B5-codex-prefix-lychee-memory.md"; const s=fs.readFileSync(path,"utf8"); const matches=s.match(re)||[]; console.log("PR.md backtick-angle-word matches: "+matches.length); if(matches.length){ for(const m of matches) console.log(m); process.exit(1); }'"'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+PR.md backtick-angle-word matches: 0
+
+exec
+/bin/bash -lc 'pnpm check' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 28582ms:
+
+> self-knowledge-base-web@0.0.0 check /home/weiyi/selfKnowledgeBaseWeb
+> pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm size-check && pnpm lint:packages && pnpm typecheck:packages && pnpm test:packages
+
+
+> self-knowledge-base-web@0.0.0 lint /home/weiyi/selfKnowledgeBaseWeb
+> eslint .
+
+
+/home/weiyi/selfKnowledgeBaseWeb/scripts/check-size-limits.mjs
+  38:1  warning  Unexpected console statement. Only these console methods are allowed: warn, error  no-console
+
+/home/weiyi/selfKnowledgeBaseWeb/scripts/generate-configs.ts
+  107:3  warning  Unexpected console statement. Only these console methods are allowed: warn, error  no-console
+
+/home/weiyi/selfKnowledgeBaseWeb/scripts/new-block.ts
+  269:9  warning  Unexpected console statement. Only these console methods are allowed: warn, error  no-console
+
+/home/weiyi/selfKnowledgeBaseWeb/scripts/refactor-move.ts
+  249:9  warning  Unexpected console statement. Only these console methods are allowed: warn, error  no-console
+
+✖ 4 problems (0 errors, 4 warnings)
+
+
+> self-knowledge-base-web@0.0.0 typecheck /home/weiyi/selfKnowledgeBaseWeb
+> tsc -b
+
+
+> self-knowledge-base-web@0.0.0 test /home/weiyi/selfKnowledgeBaseWeb
+> vitest run
+
+
+ RUN  v4.1.5 /home/weiyi/selfKnowledgeBaseWeb
+
+
+ Test Files  4 passed (4)
+      Tests  45 passed (45)
+   Start at  00:19:03
+   Duration  654ms (transform 323ms, setup 0ms, import 901ms, tests 441ms, environment 0ms)
+
+
+> self-knowledge-base-web@0.0.0 build /home/weiyi/selfKnowledgeBaseWeb
+> turbo run build
+
+• turbo 2.9.6
+
+   • Packages in scope: @skb/agent-tools, @skb/block-agent-flow, @skb/block-callout, @skb/block-code, @skb/block-foundation, @skb/block-image, @skb/block-jupyter, @skb/block-math, @skb/block-nn-viz, @skb/block-pdf, @skb/content-types, @skb/design-tokens, @skb/editor-commands, @skb/editor-drag-handle, @skb/editor-shell, @skb/editor-slash-menu, @skb/editor-toolbar, @skb/heavy-block-boundary, @skb/kernel-adapter, @skb/kernel-pyodide, @skb/kernel-registry, @skb/mdx-bridge, @skb/site
+   • Running build in 23 packages
+   • Remote caching disabled
+
+@skb/block-foundation:build: cache hit, replaying logs face83e8171f8b54
+@skb/content-types:build: cache hit, replaying logs 137ce0b28ad8f7dc
+@skb/content-types:build: 
+@skb/content-types:build: > @skb/content-types@0.0.0 build /home/weiyi/selfKnowledgeBaseWeb/packages/content-types
+@skb/content-types:build: > tsc -b
+@skb/content-types:build: 
+@skb/block-foundation:build: 
+@skb/block-foundation:build: > @skb/block-foundation@0.0.0 build /home/weiyi/selfKnowledgeBaseWeb/packages/block-foundation
+@skb/block-foundation:build: > tsc -b
+@skb/block-foundation:build: 
+@skb/design-tokens:build: cache hit, replaying logs 14222cfce72e091a
+@skb/design-tokens:build: 
+@skb/design-tokens:build: > @skb/design-tokens@0.0.0 build /home/weiyi/selfKnowledgeBaseWeb/packages/design-tokens
+@skb/design-tokens:build: > tsc -b
+@skb/design-tokens:build: 
+@skb/kernel-adapter:build: cache hit, replaying logs 1d5dd4f7fef2ff5e
+@skb/kernel-adapter:build: 
+@skb/kernel-adapter:build: > @skb/kernel-adapter@0.0.0 build /home/weiyi/selfKnowledgeBaseWeb/packages/kernel-adapter
+@skb/kernel-adapter:build: > tsc -b
+@skb/kernel-adapter:build: 
+@skb/editor-commands:build: cache hit, replaying logs a481c035ad242aae
+@skb/editor-commands:build: 
+@skb/editor-commands:build: > @skb/editor-commands@0.0.0 build /home/weiyi/selfKnowledgeBaseWeb/packages/editor-commands
+@skb/editor-commands:build: > tsc -b
+@skb/editor-commands:build: 
+@skb/heavy-block-boundary:build: cache hit, replaying logs 6f76e284bfd83061
+@skb/heavy-block-boundary:build: 
+@skb/heavy-block-boundary:build: > @skb/heavy-block-boundary@0.1.0 build /home/weiyi/selfKnowledgeBaseWeb/packages/heavy-block-boundary
+@skb/heavy-block-boundary:build: > tsc -b
+@skb/heavy-block-boundary:build: 
+@skb/block-math:build: cache hit, replaying logs 400e6bfeb4025d3c
+@skb/block-math:build: 
+@skb/block-math:build: > @skb/block-math@0.0.0 build /home/weiyi/selfKnowledgeBaseWeb/packages/block-math
+@skb/block-math:build: > tsc -b
+@skb/block-math:build: 
+@skb/block-image:build: cache hit, replaying logs c23c117b9a526782
+@skb/block-image:build: 
+@skb/block-image:build: > @skb/block-image@0.0.0 build /home/weiyi/selfKnowledgeBaseWeb/packages/block-image
+@skb/block-image:build: > tsc -b
+@skb/block-image:build: 
+@skb/block-pdf:build: cache hit, replaying logs 56848e63768e17e0
+@skb/block-pdf:build: 
+@skb/block-pdf:build: > @skb/block-pdf@0.0.0 build /home/weiyi/selfKnowledgeBaseWeb/packages/block-pdf
+@skb/block-pdf:build: > tsc -b
+@skb/block-pdf:build: 
+@skb/block-code:build: cache hit, replaying logs 9b633ceebdd6ad2e
+@skb/block-code:build: 
+@skb/block-code:build: > @skb/block-code@0.0.0 build /home/weiyi/selfKnowledgeBaseWeb/packages/block-code
+@skb/block-code:build: > tsc -b
+@skb/block-code:build: 
+@skb/kernel-pyodide:build: cache hit, replaying logs c8be4824bad79368
+@skb/kernel-pyodide:build: 
+@skb/kernel-pyodide:build: > @skb/kernel-pyodide@0.0.0 build /home/weiyi/selfKnowledgeBaseWeb/packages/kernel-pyodide
+@skb/kernel-pyodide:build: > tsc -b
+@skb/kernel-pyodide:build: 
+@skb/block-callout:build: cache hit, replaying logs ad619097bb04d7df
+@skb/block-callout:build: 
+@skb/block-callout:build: > @skb/block-callout@0.0.0 build /home/weiyi/selfKnowledgeBaseWeb/packages/block-callout
+@skb/block-callout:build: > tsc -b
+@skb/block-callout:build: 
+@skb/kernel-registry:build: cache hit, replaying logs 856bdbfa0101f9a0
+@skb/kernel-registry:build: 
+@skb/kernel-registry:build: > @skb/kernel-registry@0.0.0 build /home/weiyi/selfKnowledgeBaseWeb/packages/kernel-registry
+@skb/kernel-registry:build: > tsc -b
+@skb/kernel-registry:build: 
+@skb/agent-tools:build: cache hit, replaying logs 5ccac1144c87b81a
+@skb/agent-tools:build: 
+@skb/agent-tools:build: > @skb/agent-tools@0.0.0 build /home/weiyi/selfKnowledgeBaseWeb/packages/agent-tools
+@skb/agent-tools:build: > tsc -b
+@skb/agent-tools:build: 
+@skb/editor-drag-handle:build: cache hit, replaying logs ce05d743e553838a
+@skb/editor-drag-handle:build: 
+@skb/editor-drag-handle:build: > @skb/editor-drag-handle@0.0.0 build /home/weiyi/selfKnowledgeBaseWeb/packages/editor-drag-handle
+@skb/editor-drag-handle:build: > tsc -b
+@skb/editor-drag-handle:build: 
+@skb/editor-toolbar:build: cache hit, replaying logs 75c1a7fc209f4dd6
+@skb/editor-toolbar:build: 
+@skb/editor-toolbar:build: > @skb/editor-toolbar@0.0.0 build /home/weiyi/selfKnowledgeBaseWeb/packages/editor-toolbar
+@skb/editor-toolbar:build: > tsc -b
+@skb/editor-toolbar:build: 
+@skb/editor-slash-menu:build: cache hit, replaying logs 809db26d60178d81
+@skb/editor-slash-menu:build: 
+@skb/editor-slash-menu:build: > @skb/editor-slash-menu@0.0.0 build /home/weiyi/selfKnowledgeBaseWeb/packages/editor-slash-menu
+@skb/editor-slash-menu:build: > tsc -b
+@skb/editor-slash-menu:build: 
+@skb/block-nn-viz:build: cache hit, replaying logs 7069ae5d902c5071
+@skb/block-jupyter:build: cache hit, replaying logs eae79a8d4b7d4af8
+@skb/block-nn-viz:build: 
+@skb/block-jupyter:build: 
+@skb/block-nn-viz:build: > @skb/block-nn-viz@0.0.0 build /home/weiyi/selfKnowledgeBaseWeb/packages/block-nn-viz
+@skb/block-jupyter:build: > @skb/block-jupyter@0.0.0 build /home/weiyi/selfKnowledgeBaseWeb/packages/block-jupyter
+@skb/block-agent-flow:build: cache hit, replaying logs efa556ba8091add6
+@skb/block-nn-viz:build: > tsc -b
+@skb/block-agent-flow:build: 
+@skb/block-agent-flow:build: > @skb/block-agent-flow@0.0.0 build /home/weiyi/selfKnowledgeBaseWeb/packages/block-agent-flow
+@skb/block-agent-flow:build: > tsc -b
+@skb/block-agent-flow:build: 
+@skb/block-nn-viz:build: 
+@skb/block-jupyter:build: > tsc -b
+@skb/block-jupyter:build: 
+@skb/site:build: cache hit, replaying logs 4803e03ac383aa19
+@skb/site:build: 
+@skb/site:build: > @skb/site@0.0.0 build /home/weiyi/selfKnowledgeBaseWeb/apps/site
+@skb/site:build: > astro build
+@skb/site:build: 
+@skb/site:build: 23:42:24 [content] Syncing content
+@skb/site:build: 23:42:24 [content] Synced content
+@skb/site:build: 23:42:24 [types] Generated 430ms
+@skb/site:build: 23:42:24 [build] output: "static"
+@skb/site:build: 23:42:24 [build] mode: "static"
+@skb/site:build: 23:42:24 [build] directory: /home/weiyi/selfKnowledgeBaseWeb/apps/site/dist/
+@skb/site:build: 23:42:24 [build] Collecting build info...
+@skb/site:build: 23:42:24 [build] ✓ Completed in 478ms.

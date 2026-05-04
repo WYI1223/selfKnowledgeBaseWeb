@@ -24,7 +24,8 @@
 | #40 | `5ec7123` | B1b | SearchBox Option B-4 hybrid integration + count-fixup + paired discriminator playwright restore |
 | #41 | `317dda3` | B2 | sample-blocks Wave 3 cleanup (4 sample-assets binaries + intro prose refresh; closes gatekeeper smoke #8 + #9) |
 | #42 | `5d49240` | B3 | content/notes/__test_cjk__ relocation (notes index filter; partial impl of ADR-0013 D3; preserves PageFind coupling for B1b paired discriminator test) |
-| #TBD (this) | TBD | B4 | Stage A retro items 2 + 3 + 4 (cast asymmetry codify + UIDefault casing rename + ESLint argsIgnorePattern) |
+| #43 | `dc216ab` | B4 | Stage A retro items 2 + 3 + 4 (cast asymmetry codify + UIDefault casing rename + ESLint argsIgnorePattern) |
+| #TBD (this) | TBD | B5 | codex profile prefix R3 (agent-contract.md + regen) + lychee autolink-in-backticks memory codify (`feedback_lychee_autolink_in_backticks.md`) |
 | **Stage A** | ✅ **DONE** (8/8 PRs) | A | A1-A8 merged 2026-05-03 (HEAD 4aeb279); ADR-0014 promoted to accepted |
 | Stage B | B1a + B1b + B2-B5 + B7 + B6 (**8 PRs**, re-locked 2026-05-03) | B | ADR-0012 amend (B1a doc + B1b SearchBox integration; per plan-challenger C6+C10 split) + sample-blocks cleanup (B2; merged from old B2+B3) + __test_cjk__ relocate (B3; was B4) + retrospective items 2-4 (B4; was B5a, items 5+6 Wave 3 already closed) + codex profile prefix + lychee codify (B5; was B5b + R3 absorbed) + **B7 NEW heavy block Astro hydration wiring + ADR-0014 v0.3 (CRITICAL gap)** + close-ceremony prep (B6) |
 | Stage C | open-ended | C | Phase 1 user-iteration scope (per gatekeeper directive #4 + MVP framework) |
