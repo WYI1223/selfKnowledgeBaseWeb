@@ -3,7 +3,7 @@
 > SessionStart hook 读取此文件，把当前 wave 印在 session 起手位置。
 
 **当前 phase**: 1
-**当前 wave**: Wave 4 Stage A ✅ DONE (8/8 PRs merged 2026-05-03; ADR-0014 promoted `proposed → accepted` at A8). Plan locked at [docs/superpowers/plans/2026-05-03-phase-1-wave-4-integration.md](../superpowers/plans/2026-05-03-phase-1-wave-4-integration.md). **Stage B (B1: ADR-0012 amendment for PageFind query-time substring) is the next implementation PR.**
+**当前 wave**: Wave 4 Stage A ✅ DONE (8/8 PRs merged 2026-05-03; ADR-0014 promoted `proposed → accepted` at A8). Plan locked at [docs/superpowers/plans/2026-05-03-phase-1-wave-4-integration.md](../superpowers/plans/2026-05-03-phase-1-wave-4-integration.md). Stage B opened 2026-05-03 with **plan re-lock to 8 PRs** (B1 split per plan-challenger C6+C10 → B1a + B1b; new B7 added for CRITICAL Astro hydration gap missed in ADR-0014 v0.2 + plan-challenger 12/12, surfaced by gatekeeper 2026-05-03 smoke). **B1a (ADR-0012 amendment doc + `isWordLevelMatch` utility + Stage B re-plan record) is the next implementation PR.**
 
 **Wave 4 PR roster** (in-progress; merged 2026-05-03):
 
@@ -19,17 +19,18 @@
 | #35 | 59a93c0 | A5 | apps/site dims migration via heavyBoundaryDimensions (AC#15) |
 | #36 | 95ba33b | A6 | playwright T0/T1 zero-layout-shift test (AC#5) |
 | #37 | 87d0b32 | A7 | 5×.astro variants consolidation (Wave 3 C4a/C4b carry-over) |
-| #TBD (this) | TBD | A8 | Stage A close: perf baseline + chunking NO-OP + ADR-0014 promote `proposed→accepted` |
-| **Stage A** | ✅ **DONE** (8/8 PRs) | A | A1-A8 merged 2026-05-03; ADR-0014 promoted to accepted |
-| Stage B | B1-B4 + B5a/B5b + B6 (6 PRs) | B | ADR-0012 amend + sample-assets + intro prose + __test_cjk__ relocate + retrospective items + close-ceremony prep |
+| #38 | 4aeb279 | A8 | Stage A close: perf baseline + chunking NO-OP + ADR-0014 promote `proposed→accepted` |
+| #TBD (this) | TBD | B1a | ADR-0012 v0.1.1 amendment (PageFind query-time substring + path-prose alignment) + `isWordLevelMatch` utility + Stage B re-plan record (Wave 4 plan v0.2.1 Amendment) |
+| **Stage A** | ✅ **DONE** (8/8 PRs) | A | A1-A8 merged 2026-05-03 (HEAD 4aeb279); ADR-0014 promoted to accepted |
+| Stage B | B1a + B1b + B2-B5 + B7 + B6 (**8 PRs**, re-locked 2026-05-03) | B | ADR-0012 amend (B1a doc + B1b SearchBox integration; per plan-challenger C6+C10 split) + sample-blocks cleanup (B2; merged from old B2+B3) + __test_cjk__ relocate (B3; was B4) + retrospective items 2-4 (B4; was B5a, items 5+6 Wave 3 already closed) + codex profile prefix + lychee codify (B5; was B5b + R3 absorbed) + **B7 NEW heavy block Astro hydration wiring + ADR-0014 v0.3 (CRITICAL gap)** + close-ceremony prep (B6) |
 | Stage C | open-ended | C | Phase 1 user-iteration scope (per gatekeeper directive #4 + MVP framework) |
 
 **Wave 4 mandatory scope (Wave 3 carry-overs)** — status as of A8 Stage A close:
 - ✅ Codex audit-log piping fix (R7) in `docs/runbooks/codex-tool-invocations.md` — Pre-A1 closed
 - ✅ ADR-0014: heavy-block client:only + skeleton states (Jupyter/NnViz/AgentFlow runtime hydration boundary) — **✅ Stage A1-A7 implemented + A8 promoted to accepted (2026-05-03)**
 - ✅ Stage C completion: C4a (3 missing block Astro variants math/pdf/jupyter) + C4b (2 heavy block Astro variants nn-viz/agent-flow) + C5 (Phase 2 selective chunking + perf baseline) — **✅ A7 + A8 (Wave 4 Stage A close 2026-05-03)**
-- ⏳ ADR-0012 amendment: PageFind query-time substring finding — Stage B B1 scope
-- ⏳ Path-prose alignment in ADR-0012: `_pagefind/` → `pagefind/` — Stage B B1 scope (combined)
+- ✅ ADR-0012 amendment: PageFind query-time substring finding — **B1a v0.1.1 (this PR; criterion 4 mitigation locked path (b) custom query parser; runtime-vs-index-time二分 codified)**
+- ✅ Path-prose alignment in ADR-0012: `_pagefind/` → `pagefind/` — **B1a (this PR; 5 occurrences flipped + apps/site/CONTRACT.md stale-note removed)**
 
 **Wave 4 NEW scope** (locked at Pre-A3 with plan-challenger codex 15/15 absorbtion):
 - ADR-0015 explicitly out-of-scope for Stage A/B/C lock; close-ceremony work begins AFTER Stage C closes (per plan-challenger C9 absorbtion)

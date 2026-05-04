@@ -563,6 +563,88 @@ truncated archive.
 
 **Stage final counts (locked)**: Stage A = 8 PRs (A1-A8). Stage B = 6 PRs (B1-B4 + B5a + B5b + B6). Stage C = open-ended (no lock count per gatekeeper directive #4 + Q4 absorbtion).
 
+**Stage B re-locked at v0.2.1 (2026-05-03)**: Stage B = 8 PRs (B1a + B1b + B2 + B3 + B4 + B5 + B7 + B6). See `## Amendments` below.
+
+## Amendments
+
+### v0.2.1 (2026-05-03; Wave 4 Stage B mid-stage re-plan)
+
+Stage B count revised from **6 PRs** (B1-B4 + B5a + B5b + B6) to **8 PRs** (B1a + B1b + B2 + B3 + B4 + B5 + B7 + B6) post Stage A close (HEAD `4aeb279`). Two drivers:
+
+**Driver 1 — B1 split per plan-challenger codex round on B1 implementation feasibility (path (b) custom query parser; user-locked path; orchestrator dispatched plan-challenger 2026-05-03 for impl-feasibility-only challenge)**:
+
+The plan-challenger absorbtion (verdicts captured at [`docs/audits/codex-runs/2026-05-03-B1-plan-challenge.txt`](../../audits/codex-runs/2026-05-03-B1-plan-challenge.txt)) recommended **C6 NOT ABSORBED** (combined ADR amendment + path-prose + isWordLevelMatch util + SearchBox integration exceeds ADR-0011 D2 ≤200 LOC + ≤1 narrow responsibility; recommend split) **+ C10 ABSORBED** (split B1a doc-only + B1b code-integration is safer sequencing). Verdicts also locked **C1 → Option B-4 hybrid** (PagefindUI processTerm short-circuit + processResult mark + DOM hide + count-fixup observer) **+ C4 ABSORBED conditionally** (count-fix MANDATORY because PagefindUI count is `searchResult.results.length`-driven and stays stale under CSS-only hide) **+ C2 NOT ABSORBED standalone** (verified via PagefindUI source `node_modules/.pnpm/@pagefind+default-ui@1.5.2/.../ui-core.js` + `result.svelte`: `process_result` mutates payload only, never `results` array; full-pagefind-result filtering is non-native) **+ C3 NOT ABSORBED** (single `zh-Hans` locale too narrow; need locale-aware policy + mixed-content fixtures: CJK+ASCII, punctuation, ASCII-only) **+ C7 NOT ABSORBED-as-stated** (Row 1 fires on any `apps/site/CONTRACT.md` change including path-prose stale-note removal, not solely Option B-2 wholesale rewrite).
+
+Split structure:
+
+| PR | Subject | Scope | Executor |
+|---|---|---|---|
+| B1a | ADR-0012 amendment + path-prose + `isWordLevelMatch` utility + Stage B re-plan record | doc + util only; ~250 LOC: ADR-0012 Amendments § v0.1.1 (~80 LOC) + path-prose `_pagefind/` → `pagefind/` 5 occurrences in main prose (~10 LOC) + `apps/site/src/lib/word-level-match.ts` Intl.Segmenter pure utility with locale-aware policy (~40 LOC) + `apps/site/src/__tests__/word-level-match.test.ts` unit corpus CJK+mixed+ASCII+punctuation (~80 LOC) + `apps/site/CONTRACT.md` path-prose stale-note removal (~10 LOC) + `docs/plans/active.md` re-plan bookkeeping (~10 LOC) + Wave 4 plan doc Amendment v0.2.1 (this entry; ~150 LOC) | orchestrator-self (doc-flavored ADR amendment + simple utility; matches Pre-A2 + ADR-0014 v0.2.1 doc-only precedent) |
+| B1b | SearchBox integration with Option B-4 hybrid + count-fix + playwright paired discriminator | code; ~200 LOC: `apps/site/src/components/SearchBox.astro` PagefindUI processTerm + processResult callbacks + DOM-level mismatch hide + count-fixup MutationObserver (~80 LOC) + `apps/site/playwright/search.spec.ts` restore inverse assertion + rename "positive-only" → "paired discriminator" (~40 LOC) + inline test comments per plan-challenger C11 (~10 LOC) + risk register section in PR.md per C9 (PagefindUI internal markup drift + async race + locale gaps + bundle/paint cost) + risk-mitigation tests (~60 LOC) | `codex-generic-executor` |
+
+**B1a D2 trigger**: Row 4 (ADR-0012 amendment) HIT + Row 1 (apps/site/CONTRACT.md path-prose stale-note removal) HIT → stage 4 PRE-COMMIT CLAUDE REVIEW fires.
+
+**B1b D2 trigger**: standard PR (no ADR/CONTRACT touch).
+
+**Driver 2 — NEW B7 (CRITICAL): heavy block Astro hydration wiring + ADR-0014 v0.3 amendment, gatekeeper-surfaced 2026-05-03 post-Stage-A**:
+
+Gatekeeper smoke 2026-05-03 (post Stage A close at HEAD `4aeb279`) found that all Stage A PRs A1-A8 satisfied AC#1-#15 but ADR-0014 v0.2 D-list **missed** the Astro production hydration wiring layer. Evidence (4 independent):
+
+1. `apps/site/src` global `grep client:` returns **only 1 hit** (`ThemeToggle.astro:5 client:load`); the 3 heavy block entries in `componentsMap` carry **no Astro hydration directive**.
+2. `apps/site/src/components.ts` (post-A5 merge, HEAD `4aeb279`) maps `Jupyter / NnViz / AgentFlow` to **pure React functional components** that return `createElement(HeavyBlockBoundary, ...)`; Astro's MDX integration renders these SSR-only by default — no `client:*` directive means `useEffect` never runs in browser.
+3. The 3 heavy block `.astro` variants (`packages/block-{jupyter,nn-viz,agent-flow}/src/ui-default/{Jupyter,NnViz,AgentFlow}.astro`) emit **static SVG/HTML placeholders** (per their own docstrings: "Astro is a pre-render path; the kernel/model runs CLIENT-SIDE only" + "the editor / NodeView hydrates against this placeholder"). They **do not** wrap React with `client:only="react"`. A7's `apps/site/src/pages/sample-blocks-astro.astro` consumes these directly without `client:*` directives — it is the static-Astro-consumer route, not the MDX-componentsMap-hydration route.
+4. AC#1-#15 are all vitest/jsdom unit + 1 playwright (A6 `heavy-block-layout-shift.spec.ts`) which compares `getBoundingClientRect()` T0 vs T1 on the SSR HTML — but the test asserts width identical + height delta ≤ 5px **regardless of whether hydration triggers**, because the SSR skeleton is what's rendered both at T0 and T1 in the missing-directive state. Production-hydration-correct assertion (`data-loaded='true'` attribute appearing post-hydration with real component rendered) is **not in AC#1-#15**.
+
+Gatekeeper smoke playwright observation: at runtime in browser the 3 heavy block surfaces "永远 loading" (forever showing skeleton) — MVP-blocking visual disaster.
+
+**B7 scope** (locked per user directive 2026-05-03 + accepted orchestrator proposal):
+
+- 3 NEW `apps/site/src/components/{Jupyter,NnViz,AgentFlow}.astro` Astro wrappers, each rendering the corresponding per-kind React island with `client:load` directive (NOT `client:only` — preserves SSR skeleton + AC#5 zero-layout-shift)
+- 3 NEW `apps/site/src/islands/{Jupyter,NnViz,AgentFlow}Island.tsx` React islands, each closing over its kind-specific `load` function + `dims` import + `kind` literal so the Astro wrapper passes only JSON-serializable props (Astro island prop-serialization constraint: function props cannot cross island boundary)
+  - **Location decision per user**: islands live in `apps/site/src/islands/` (apps-local), NOT in `@skb/heavy-block-boundary` package — keeps boundary package generic + extensible to future plugin blocks without binding it to apps/site's specific block roster
+- `apps/site/src/components.ts` componentsMap update: 3 heavy entries (`Jupyter`, `NnViz`, `AgentFlow`) now reference the Astro wrappers; the 5 light blocks (`Callout`, `Code`, `Image`, `Math`, `Pdf`) stay as React MdxAdapter pattern unchanged
+- ADR-0014 **v0.3 amendment** with NEW D10 "Production Astro hydration integration" section + NEW AC#16 "componentsMap heavy entries are Astro islands using `client:load`; HeavyBlockBoundary `useEffect` runs in browser; `load()` invoked; real `<Kind>RenderView` replaces skeleton with `data-loaded='true'` attribute"
+- `apps/site/playwright/heavy-block-layout-shift.spec.ts` (A6 spec): keep existing T0/T1 layout-shift assertion + ADD AC#16 end-to-end assertion polling `data-loaded='true'` with real-component-rendered verification (note WSL2 chromium skip pattern preserved per memory `feedback_wsl2_chromium_launch.md`; CI-only execution)
+- `apps/site/CONTRACT.md` heavy block taxonomy section: APPEND clause specifying that componentsMap entries for heavy kinds are Astro wrappers using `client:load`; per-kind island wrappers in `apps/site/src/islands/` own the dynamic import + dims closure
+
+**B7 size estimate**: ~250-350 LOC across:
+- 3 Astro wrappers ~30 LOC (10 each)
+- 3 React island wrappers ~90 LOC (30 each, including JSDoc)
+- componentsMap update ~30 LOC
+- ADR-0014 v0.3 amendment prose ~80 LOC
+- playwright AC#16 spec ~40 LOC
+- apps/site/CONTRACT.md update ~10 LOC
+- PR.md self-listed ~400 LOC
+
+May exceed soft ≤200 LOC ADR-0011 D2 target but **single narrow responsibility** = production hydration wiring across the 3 heavy kinds + same-PR ADR amendment per the v0.2.1 (ADR-0014) precedent (status flip + Amendments § same PR is canonical when the amendment ratifies the implementation that ships in the PR).
+
+**B7 D2 trigger**: Row 1 (`apps/site/CONTRACT.md` change) + Row 4 (ADR-0014 v0.3 amendment) → stage 4 PRE-COMMIT CLAUDE REVIEW fires.
+
+**B7 executor split**: orchestrator-self drafts the ADR-0014 v0.3 amendment language + new D10 section + new AC#16 (doc-policy work matches Pre-A2 + A8 v0.2.1 precedent); `codex-generic-executor` handles the 3 Astro wrappers + 3 React island wrappers + componentsMap update + apps/site/CONTRACT.md update + playwright spec + active.md bookkeeping.
+
+**B7 position in Stage B sequence (per accepted orchestrator proposal + user "Stage B 末" directive)**: B7 lands BETWEEN B5 and B6 (i.e., B5 → B7 → B6), NOT after B6. Rationale: B6 is Wave 4 close-ceremony preparation that dispatches structure-auditor + perf-auditor + mdx-doctor codex audits to baseline the FINAL Wave 4 state. If B7 ships AFTER B6, those audits baseline a still-broken (forever-loading) state and the Wave 4 close ADR (ADR-0015 in the next session) would reference incorrect data.
+
+**Re-locked Stage B sequence (8 PRs)**:
+
+| Position | PR | Subject |
+|---|---|---|
+| 1 | B1a | ADR-0012 amendment doc + `isWordLevelMatch` util + Stage B re-plan record (this Amendment ships as part of B1a per scope above) |
+| 2 | B1b | SearchBox Option B-4 hybrid integration + count-fix + paired discriminator |
+| 3 | B2 | sample-blocks Wave 3 cleanup (4 binary sample-assets + intro prose; merged from old B2+B3 per gatekeeper directive 2026-05-03 #5) |
+| 4 | B3 | content/notes/__test_cjk__ relocation (was old B4) |
+| 5 | B4 | Stage A retrospective items 2-4 (cast asymmetry codify + UIDefault casing + ESLint argsIgnorePattern; was old B5a; items 5+6 Wave 3 already closed → skipped) |
+| 6 | B5 | codex profile prefix R3 + lychee autolink memory codify (was old B5b + R3 absorbed into single PR per user directive) |
+| 7 | **B7 (NEW)** | Heavy block Astro hydration wiring + ADR-0014 v0.3 amendment (CRITICAL gap) |
+| 8 | B6 | Wave 4 close-ceremony preparation (structure/perf/mdx audits + retro items verification + PR roster summary) |
+
+**Stage B updated final count**: 8 PRs.
+
+**Stage A final count unchanged**: 8 PRs (A1-A8 merged 2026-05-03).
+
+**Stage C unchanged**: open-ended.
+
+**Why an Amendments § instead of overwriting the original Stage B prose at lines 320-440**: per ADR-0011 v0.1.1 + ADR-0014 v0.2.1 amendment precedent, plan documents preserve historical record (the original 6-PR Stage B lock was a valid plan-state at Pre-A3 plan-lock 2026-05-03; this v0.2.1 records the mid-stage re-plan rather than rewriting history). Reviewers reading the original Stage B section (B1-B4 + B5a + B5b + B6) should expect this Amendments § on top of it.
+
 ## Related
 
 - [ADR-0011 D1 linear pipeline execution model](../../decisions/ADR-0011-linear-pipeline-execution-model.md)

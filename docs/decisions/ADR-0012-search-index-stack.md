@@ -34,7 +34,7 @@ apps/site Wave 3 搜索索引 stack 采用：
 
 1. **Index runtime**: PageFind 1.5.0+
 2. **Astro adapter**: `astro-pagefind` 1.8.6+ (`@pagefind/default-ui` 可选 UI shell)
-3. **构建集成路径**: D2 PR 在 `apps/site/astro.config.mjs` integrations 中注册 `astroPagefind()`；post-build 阶段 `astro-pagefind` adapter 扫描 `dist/` 静态 HTML 并发出 `dist/_pagefind/` 索引产物。
+3. **构建集成路径**: D2 PR 在 `apps/site/astro.config.mjs` integrations 中注册 `astroPagefind()`；post-build 阶段 `astro-pagefind` adapter 扫描 `dist/` 静态 HTML 并发出 `dist/pagefind/` 索引产物。
 4. **UI 集成路径**: D3 PR 提供 `apps/site/src/components/SearchBox.astro` + `apps/site/src/pages/search.astro`；客户端按需 import `@pagefind/default-ui` 或调用 PageFind low-level API。
 
 ## Acceptance criteria (D1a-locked, ratified here)
@@ -42,8 +42,8 @@ apps/site Wave 3 搜索索引 stack 采用：
 D1b ratifies the 3 measurable criteria locked at D1a `## D1b ADR acceptance criteria` section ([docs/research/2026-05-search-index-spike.md](../research/2026-05-search-index-spike.md)):
 
 1. **Bundle-size budget**: PageFind runtime + initial index chunks at first paint of search route ≤ **120 kB gzip total**, 在 `astro build` artifact 上测量（Pagefind docs 公开数据 ~70-100 kB；120 kB 留 headroom）。D2 PR 必须在 `apps/site/CONTRACT.md` 公开测量结果 + 提交可复现的测量脚本。
-2. **Index-size budget**: 整体 `dist/_pagefind/` 目录 ≤ **300 kB uncompressed** at 100-note projection（≤ 30 kB 在今天 2-note corpus）；single-query chunk fetch ≤ **80 kB gzip**。D2 PR 必须公开当前 corpus 数值 + 100-note projection。
-3. **Reindex-on-update mechanism (TC3, plan-challenger R2 #13)**: 索引由 `astro-pagefind` post-build hook 在每次 `astro build` 重新生成；D2 必须包含 regression test：mutate 一个 MDX 文件 → re-run `astro build` → 验证 `_pagefind/` 该 note 对应 chunk 的 content-hash 变化。**禁止** client-side reindex path（runtime fetch + rebuild index in browser）— 与 build-time deterministic 契约冲突。CDN/proxy stale-cache 风险通过 PageFind 出厂的 content-hash 文件名（每个 chunk 文件名含内容哈希）天然 cache-bust — D2 PR 应在 CONTRACT 描述中显式记录此机制（plan-challenger D1b #C4(b) absorbed）。
+2. **Index-size budget**: 整体 `dist/pagefind/` 目录 ≤ **300 kB uncompressed** at 100-note projection（≤ 30 kB 在今天 2-note corpus）；single-query chunk fetch ≤ **80 kB gzip**。D2 PR 必须公开当前 corpus 数值 + 100-note projection。
+3. **Reindex-on-update mechanism (TC3, plan-challenger R2 #13)**: 索引由 `astro-pagefind` post-build hook 在每次 `astro build` 重新生成；D2 必须包含 regression test：mutate 一个 MDX 文件 → re-run `astro build` → 验证 `pagefind/` 该 note 对应 chunk 的 content-hash 变化。**禁止** client-side reindex path（runtime fetch + rebuild index in browser）— 与 build-time deterministic 契约冲突。CDN/proxy stale-cache 风险通过 PageFind 出厂的 content-hash 文件名（每个 chunk 文件名含内容哈希）天然 cache-bust — D2 PR 应在 CONTRACT 描述中显式记录此机制（plan-challenger D1b #C4(b) absorbed）。
 
 补充 acceptance（D1b new — beyond D1a）:
 
@@ -73,7 +73,7 @@ D1b ratifies the 3 measurable criteria locked at D1a `## D1b ADR acceptance crit
 
 ### Negative
 
-- PageFind runtime + `_pagefind/` 静态目录会增加 `apps/site/dist/` 体积（criterion 1+2 cap 此影响）。
+- PageFind runtime + `pagefind/` 静态目录会增加 `apps/site/dist/` 体积（criterion 1+2 cap 此影响）。
 - `Intl.Segmenter` 在极老浏览器（IE11、Safari < 14.1）不可用 — 项目浏览器 baseline 是现代 evergreen，可接受。
 - 如未来 PageFind project 进入 maintenance mode，stack 切换需要 D2 PR 等量级工作量；通过 acceptance criterion 1+2+3+5 显式记录测量基线，便于未来 swap 时基线对比。
 
@@ -83,7 +83,7 @@ D1b ratifies the 3 measurable criteria locked at D1a `## D1b ADR acceptance crit
 - **D3** 实施 UI（SearchBox + /search route + visual-smoke playwright）；D3 决定是否使用 `@pagefind/default-ui` 还是手工 React/Vanilla UI。
 - **server-side search** （未来若引入 apps/api endpoint based search） 不受本 ADR 约束 — PageFind 是 client-side static 决策，server-side search 若发生需另写 ADR。
 - 索引 partial language detection / 多语言 ranking — D2/D3 默认按 PageFind 出厂行为；若发现 ranking 缺陷再开后续 ADR。
-- **`/search` route SSR-before-index render-safety** — D3 范畴。astro-pagefind post-build hook 在 `astro build` HTML emit 之后才生成 `dist/_pagefind/`；理论上 `/search` 静态 HTML 在打包过程中无法引用尚未存在的索引。D3 PLAN 必须 lock：(a) `/search` 客户端脚本 lazy-load PageFind runtime + index，HTML 静态壳允许 fallback 文案 "搜索就绪中" 在 fetch 完成前显示；(b) 静态预渲染期间不调用 PageFind API。本 ADR 不预言 D3 实现细节（plan-challenger D1b #C4(a) noted as out-of-scope）。
+- **`/search` route SSR-before-index render-safety** — D3 范畴。astro-pagefind post-build hook 在 `astro build` HTML emit 之后才生成 `dist/pagefind/`；理论上 `/search` 静态 HTML 在打包过程中无法引用尚未存在的索引。D3 PLAN 必须 lock：(a) `/search` 客户端脚本 lazy-load PageFind runtime + index，HTML 静态壳允许 fallback 文案 "搜索就绪中" 在 fetch 完成前显示；(b) 静态预渲染期间不调用 PageFind API。本 ADR 不预言 D3 实现细节（plan-challenger D1b #C4(a) noted as out-of-scope）。
 
 ## Alternatives considered (D1a evidence)
 
@@ -109,6 +109,27 @@ D1b ratifies the 3 measurable criteria locked at D1a `## D1b ADR acceptance crit
 - 本 ADR 满足 [ADR-0011 D7](ADR-0011-linear-pipeline-execution-model.md) researcher subagent 边界：D1a researcher 只产出 research doc + 推荐，不直接 mutate 代码；本 ADR 由 orchestrator-self drafting + plan-challenger codex 挑战，符合"researcher 一次性 dispatch + ADR 由 orchestrator-self 写"流程。
 - 本 ADR 不影响 [ADR-0009](ADR-0009-block-kind-union-expansion.md) BlockKind union；与 block-foundation 完全解耦。
 - 本 ADR 不引入新的 cross-package dependency；`astro-pagefind` 仅被 `apps/site` consume。
+
+## Amendments
+
+### v0.1.1 (2026-05-03; Wave 4 Stage B B1a) — PageFind 1.5+ query-time substring fallback finding + criterion 4 mitigation path lock + dist path-prose alignment to PageFind 1.5+ artifact directory (`dist/pagefind/`)
+
+PageFind 1.5+ segments at INDEX time via `Intl.Segmenter`（per `## Decision` §1 + `## Acceptance criteria` 4 D1a evidence — `笔记本电脑` 拆为 `['笔记本', '电脑']`），但其 RUNTIME query parser 对 indexed tokens 仍应用 partial-substring matching：query `"记本"` 命中 `"笔记本电脑"` note，因为 `"记本"` 是 `"笔记本"` segment 的子串。这是 PageFind 原生 runtime 行为（与 PageFind 跨语言 fuzzy-match 哲学一致），**不是项目缺陷**。Wave 3 Stage D D3 vitest `search-cjk.test.ts` 在 CI 2026-05-01 首次发现该 inverse-discriminator runtime 不成立，详细评估见 memory `feedback_pagefind_query_substring.md`，并在 [ADR-0013](ADR-0013-wave-3-close.md) D3 列为 Wave 4 mandatory 携带项。
+
+**`## Acceptance criteria` 4 (CJK regression test) 修订**：原 inverse 断言（`"记本"` MUST NOT match `"笔记本电脑"`）作 **index-tokenizer 层** discriminator 仍然有效（保持 word-level 与 char-level tokenizer 选型分辨；ADR-0013 D3 仍以此区分 PageFind ≥1.5 vs flexsearch `Charset.CJK`）。但 **runtime 层** 的 inverse 断言不可由 PageFind 单方面强制 —— `pagefind.search("记本")` 会返回包含 `"笔记本电脑"` 片段的结果集。项目 Wave 4 mitigation **锁路径 (b) 自定义 query parser**（apps/site 客户端 word-level 过滤层；PageFind 索引产物不变，只在结果展示前过滤）。**path (a) waive** 的方案 user-gatekeeper 已驳回（CJK 笔记 UX 期望 word-level，substring 兜底视为缺陷）。
+
+**Mitigation surface**:
+
+- **B1a (this PR)** ships pure utility `apps/site/src/lib/word-level-match.ts` 导出 `isWordLevelMatch(query, content, locale?)`：基于 `Intl.Segmenter` `granularity: 'word'`，根据 content 自动检测 locale（CJK Han 字符 → `zh-Hans`；ASCII letters → `en`；混合 → 双 locale union match；显式 `locale` 入参覆盖检测），ASCII 段使用大小写不敏感比对 + hyphen/`_`/`/` compound 边界拆分。corpus（12 cases）覆盖纯 CJK 正反例、纯 ASCII 正反例、混合 CJK+ASCII、标点边界、空值、大小写、显式 locale。Plan-challenger 2026-05-03 B1 round 的 C3 NOT-ABSORBED verdict 推动 corpus 从单一 `zh-Hans` 扩展为 locale-aware policy + 混合内容矩阵。该工具是 pure utility，本 PR 不引入 SearchBox 集成。
+- **B1b (next PR; deferred per plan-challenger C6+C10 split-recommendation)** ships SearchBox 集成（`apps/site/src/components/SearchBox.astro`）：Option B-4 hybrid（PagefindUI `processTerm` short-circuit + `processResult` 标记 mismatch + DOM-level hide + count-fixup MutationObserver），并恢复 `apps/site/playwright/search.spec.ts` paired discriminator inverse 断言（Wave 3 D3 暂时移除，Wave 4 B1b 复原）。Plan-challenger C2 verdict（验证 PagefindUI `process_result` 仅 mutate payload、不能 filter `results` array）锁定 hide-via-DOM 路径而非 wholesale UI 替换；plan-challenger C8 verdict（B-2 wholesale 需 `apps/site/CONTRACT.md` a11y 改动）解释 Option B-4 选型避免了 a11y CONTRACT 大改。
+
+**Path-prose alignment**: `## Decision` §3 + `## Acceptance criteria` 2 + 3 + `## Consequences` Negative 1 + `## Neutral / explicit out-of-scope` 末项原引用的 PageFind &lt;1.5 历史下划线前缀 dist 路径已统一改为 `dist/pagefind/`（5 处；PageFind 1.5+ 输出路径无下划线前缀，与 `apps/site/dist/pagefind/` 实际产物对齐）。语义契约不变 —— post-build hook + dist artifact + content-hash chunk filenames 保持 PageFind 出厂默认。`apps/site/CONTRACT.md` 在同一 PR 同步移除原 stale-note 段（B1a scope）。
+
+**Compliance**:
+- 不修改 [ADR-0008](ADR-0008-wave-2-entry-policies.md) D1 dead-dep（B1a 不增 dep；`Intl.Segmenter` 是 Node 18+ 内置 + 现代浏览器 evergreen 全量支持，无需 polyfill）
+- 不修改 [ADR-0011](ADR-0011-linear-pipeline-execution-model.md) D-list（B1a 走 D1 标准 pipeline；orchestrator-self EXECUTE 匹配 doc-amendment 性质）
+- 不修改本 ADR 的 acceptance criteria 1 / 2 / 3 / 5（仍为 build-time deterministic + bundle/index 预算 + version pin），仅 4 添加 runtime-vs-index-time 二分语境
+- B1a 同 PR 的 [`docs/plans/active.md`](../plans/active.md) + Wave 4 plan v0.2.1 Amendment 共同 codify Stage B 中场 re-plan（B1 split + B7 NEW）
 
 ## Related
 
