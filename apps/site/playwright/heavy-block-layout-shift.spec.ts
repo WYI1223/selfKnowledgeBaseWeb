@@ -74,3 +74,32 @@ for (const kind of HEAVY_KINDS) {
     expect(t1Rect!.height).toBeLessThanOrEqual(t0Rect!.height + 200);
   });
 }
+
+for (const kind of HEAVY_KINDS) {
+  test(`AC#16 — ${kind} boundary hydrates client:load (aria-busy false or data-loaded true)`, async ({
+    page,
+  }) => {
+    await page.goto('/notes/sample-blocks');
+    await page.waitForLoadState('load');
+
+    const selector = `[data-block="${kind}"]`;
+    const outer = page.locator(selector);
+    await expect(outer).toBeVisible({ timeout: 10_000 });
+
+    await expect
+      .poll(
+        async () => {
+          const ariaBusy = await outer.getAttribute('aria-busy');
+          const outerLoaded = await outer.getAttribute('data-loaded');
+          const loadedDescendants = await outer.locator('[data-loaded="true"]').count();
+
+          return ariaBusy === 'false' || outerLoaded === 'true' || loadedDescendants > 0;
+        },
+        {
+          message: `${kind} should leave the SSR-only skeleton state after client hydration`,
+          timeout: 20_000,
+        },
+      )
+      .toBe(true);
+  });
+}

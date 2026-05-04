@@ -585,7 +585,56 @@ Stage A close gates:
 3. ✅ A2 + A3 core implementation + retry semantics stable through A4-A7.
 4. ✅ A7→A8 Pre-promotion review checkpoint completed in this PR.md; verdict: no inconsistencies.
 
-Phase 2 chunking (D10) decision at A8: **NO-OP**. Codex-perf-auditor
+Phase 2 chunking decision at A8 (informational; no D-list change): **NO-OP**. Codex-perf-auditor
 baseline (2026-05-03) found no `@skb/heavy-block-boundary` leak into
 prose-only JS chunks. apps/site/astro.config.mjs unchanged. Evidence:
 [docs/audits/perf-2026-05-03.md](../audits/perf-2026-05-03.md).
+
+### v0.3 (2026-05-04; Wave 4 Stage B B7) — Production Astro hydration integration (NEW D10 + AC#16); closes the AC#1-#15 vitest-only coverage gap
+
+**Gap surfaced post-Stage-A** (gatekeeper smoke 2026-05-03; verified by 4 independent evidence pieces): Stage A delivered AC#1-#15 (all vitest/jsdom unit tests + 1 playwright comparing SSR-skeleton T0 vs T1 on the same skeleton state) but missed the **production Astro hydration wiring**. The 3 heavy block entries in `apps/site/src/components.ts` componentsMap were pure React functions returning `createElement(HeavyBlockBoundary, ...)`. Astro's MDX integration renders these SSR-only by default — without an Astro `client:*` directive on each consumer site, the React tree never hydrates → `useEffect` never fires → `load()` never invokes → `<LoadedComponent>` never replaces the skeleton → **forever-loading skeleton** at runtime.
+
+**Why ADR-0014 v0.2 missed this**: D8 specified the *import* wiring (componentsMap consumes `XxxRenderView` via dynamic import) but did NOT specify *which Astro directive* the componentsMap entry must use. AC#1-#15 verified the React component contract in isolation; no AC required end-to-end Astro page → MDX → componentsMap → React island → useEffect → load() → real-component-rendered chain. The 12/12 plan-challenger absorbtion at Pre-A2 focused on React API + a11y + plugin extensibility; no challenge surfaced the Astro integration layer.
+
+**Mitigation locked at B7** (per user-accepted orchestrator proposal 2026-05-04):
+
+- 3 NEW per-kind React island wrappers at `apps/site/src/islands/{JupyterIsland,NnVizIsland,AgentFlowIsland}.tsx` — each closure-captures its kind literal + `dims` import + `load` arrow function dynamic-importing the corresponding `XxxRenderView`. The closure pattern keeps `load` (a function value) inside the island module so it does NOT cross the Astro island prop-serialization boundary (Astro island props are JSON-serialized).
+- 3 NEW Astro wrappers at `apps/site/src/components/{Jupyter,NnViz,AgentFlow}.astro` — each renders `<JupyterIsland client:load {...Astro.props} />` etc. The `client:load` directive (NOT `client:only`) is correct because:
+  - SSR HTML still emits the D2 skeleton (preserves zero-layout-shift AC#5 baseline)
+  - Client hydrates the same React tree → useEffect runs → load() invokes
+  - `client:only="react"` would have skipped SSR entirely — breaks AC#5
+- `apps/site/src/components.ts` componentsMap heavy-kind entries (Jupyter / NnViz / AgentFlow) now reference the 3 NEW Astro wrappers. The 5 light blocks (Callout / Code / Image / Math / Pdf) continue with the React MdxAdapter pattern unchanged. `makeMdxAdapter` re-exported so islands can wrap their respective RenderViews.
+- Per-kind island location in `apps/site/src/islands/` is **apps-local** (not added to `@skb/heavy-block-boundary` package) per user directive — keeps the boundary package generic + extensible to future plugin blocks without binding it to apps/site's specific block roster.
+
+### D10 — Production Astro hydration integration (NEW; ADR-0014 v0.3)
+
+componentsMap entries for the 3 heavy kinds (Jupyter / NnViz / AgentFlow) MUST be Astro wrappers using `client:load` directives, with per-kind React island wrappers in `apps/site/src/islands/` owning the dynamic `import()` + `dims` + `kind` literal closure. Direct React-function entries are forbidden for heavy kinds because Astro's MDX integration renders them SSR-only without `client:*`, breaking the hydration boundary that ADR-0014 D3 specifies.
+
+The `client:load` directive is canonical (NOT `client:only`) because:
+- D2 SSR skeleton must emit byte-identical to client first paint (AC#3) — `client:load` preserves SSR; `client:only` skips it
+- AC#5 zero-layout-shift requires SSR skeleton dimensions match post-hydration content — `client:load` allows the comparison
+
+Future heavy block packages adding Astro hydration must follow this pattern: ship `apps/site/src/islands/<Kind>Island.tsx` + `apps/site/src/components/<Kind>.astro` consumers in apps/site, OR (alternative path; deferred to future ADR) ship pre-wrapped Astro consumers in the heavy block package itself.
+
+### AC#16 (NEW; ADR-0014 v0.3) — Production hydration end-to-end assertion
+
+**Production hydration integration**: playwright spec exercising the live `apps/site/notes/sample-blocks` route (or sample-blocks-astro consumer if that's the integration surface) MUST poll for evidence of hydration completion on each heavy block surface — either `aria-busy='false'` (HeavyBlockBoundary clears the skeleton's busy state on successful load) OR `data-loaded='true'` (if a future load-completion attribute lands) OR equivalent ARIA / data-attribute signal. The spec MUST fail if any heavy block surface remains in the SSR skeleton state past a reasonable timeout (e.g., 30 seconds for slow Pyodide / TF.js / React Flow loads).
+
+WSL2 chromium skip pattern (per memory `feedback_wsl2_chromium_launch.md`) preserved — AC#16 runs CI-only.
+
+**Implementation evidence** (B7 squash HEAD TBD; this Amendment ratifies):
+
+| Item | File | Verification |
+|---|---|---|
+| 3 React islands | `apps/site/src/islands/{Jupyter,NnViz,AgentFlow}Island.tsx` | grep export default per file |
+| 3 Astro wrappers | `apps/site/src/components/{Jupyter,NnViz,AgentFlow}.astro` | grep `client:load` per file |
+| componentsMap rewired | `apps/site/src/components.ts` | grep 3 imports from `'../components/Jupyter.astro'` etc. |
+| AC#16 playwright spec | `apps/site/playwright/heavy-block-layout-shift.spec.ts` | grep `aria-busy` polling assertion |
+| apps/site CONTRACT clause | `apps/site/CONTRACT.md` | grep "production hydration boundary" |
+
+**Stage A close gates re-evaluation**: gates 1-4 verified at A8 PR.md remain valid; B7 closes the production-runtime gate that was implicit but not explicitly listed. ADR-0014 status remains `accepted` (no status flip; substantive Amendment per B1a v0.1.1 precedent + Pre-A3 plan-challenger Q5 absorbtion that distinguishes substantive Amendments from pure status flips at Row 4 trigger).
+
+**Compliance cross-checks**:
+- ADR-0008 D1 dead-dep: 3 NEW island files + 3 NEW Astro wrappers all consume existing workspace deps (`@skb/heavy-block-boundary` + `@skb/block-{jupyter,nn-viz,agent-flow}/ui-default`); no new dep additions.
+- ADR-0011 D6 + D7: this Amendment is bootstrap-flavored doc-only by orchestrator (matches Pre-B1 + ADR-0014 v0.2.1 + B1a v0.1.1 precedent); code parts handled by codex-generic-executor.
+- block-foundation/CONTRACT.md W4-1 invariant: scope unchanged (MDX componentsMap consumption); D10 codifies the Astro wrapper layer that mediates between componentsMap and the React boundary.
