@@ -3,7 +3,15 @@
 > SessionStart hook 读取此文件，把当前 wave 印在 session 起手位置。
 
 **当前 phase**: 1
-**当前 wave**: Wave 4 ✅ **CLOSED** 2026-05-04 (HEAD `de39e07`, 21 PRs across Pre-A + 3 stages) by [ADR-0015](../decisions/ADR-0015-wave-4-close.md). Wave 5 plan-draft **PENDING fresh session** per gatekeeper 2026-05-04 directive: Wave 5 plan-draft from scratch with reframe v2 content (heavy block plugin tier + grid forward + v2 视觉 forward + editor-shell wire-up; see memory `project_wave4_reframe_v2.md`) as INPUT + per-ADR plan-challenger 4-round (ADR-0016 grid + ADR-0017 drag/drop + ADR-0018 v2 视觉) + lock v1.0 before Wave 5 implementation.
+**当前 wave**: **Wave 5 in progress** (Pre-A1 done 2026-05-04 — plan-draft v0.x locked at [Wave 5 plan v0.x](../superpowers/plans/2026-05-04-phase-1-wave-5-integration.md); Pre-A2 ADR-0016 grid 数据模型 next). MVP target = v2 demo 整体体验 functional minimum (heavy block plugin placeholder + grid + drag/drop + v2 视觉 + editor-shell wire to apps/site). 5 Pre-A PRs (Pre-A1 + Pre-A2/3/4 ADRs + Pre-A5 v1.0 final lock) + Stage C 4 子阶段 (C.1 cleanup + C.2 grid+drag + C.3 v2 视觉 + C.4 editor-wire). Per-stage MVP-judgment escape valve. R14 discipline enforced (mid-Wave reframe via plan amendment PR; memory-only forbidden). Wave 4 ✅ closed 2026-05-04 (HEAD `de39e07` substance + `a157168` close-ceremony) by [ADR-0015](../decisions/ADR-0015-wave-4-close.md) — 21 PRs across Pre-A + 3 stages.
+
+**Wave 5 PR roster** (in progress; opened 2026-05-04):
+
+| PR | Squash HEAD | Stage | Subject |
+|---|---|---|---|
+| #TBD (this) | TBD | Pre-A1 | Wave 5 plan-draft v0.1 + plan-challenger absorbtion → v0.x lock + active.md repoint + Wave 4 close residue audit log archive bundle |
+| (Pre-A2-A5) | (TBD) | Pre-A | Pre-A2 ADR-0016 grid 数据模型 → Pre-A3 ADR-0017 drag/drop UX → Pre-A4 ADR-0018 v2 视觉 migration → Pre-A5 plan v1.0 final lock |
+| (Stage C.1-C.4) | (TBD) | Stage C | C.1 cleanup (~2-3 PRs) → C.2 grid+drag (~10-12 PRs) → C.3 v2 视觉 (~3-5 PRs) → C.4 editor-shell wire (~3-5 PRs); per-PR breakdown locked at Pre-A5 v1.0 |
 
 **Wave 4 PR roster** (in-progress; merged 2026-05-03):
 
@@ -96,31 +104,33 @@ Wave 3 main pipeline PR roster (2026-05-01 → 2026-05-02, all merged via auto-m
 
 ---
 
-## 起手指引（Wave 5 plan-draft session start; per ADR-0015 D6 hand-off）
+## 起手指引（Wave 5 implementation; Pre-A1 done — Pre-A2 ADR-0016 next）
 
-Wave 4 ✅ closed by [ADR-0015](../decisions/ADR-0015-wave-4-close.md). **Wave 5 plan-draft is the next session's main task** — NOT Wave 4 implementation continuation.
+Wave 5 plan v0.x ✅ locked at Pre-A1 ([Wave 5 plan](../superpowers/plans/2026-05-04-phase-1-wave-5-integration.md)). **Next session = Pre-A2 ADR-0016 grid 数据模型 design lock + plan-challenger 4-round**.
 
-### Pre-flight (Wave 5 plan-draft session start)
+### Pre-flight (Pre-A2 session start)
 
-1. 读 [ADR-0015 Wave 4 close](../decisions/ADR-0015-wave-4-close.md) — D1 21-PR roster + D3 Wave 5 deferred items (binding) + D4 retrospective items (R14 mid-wave reframe drift = key Wave 5 起手 discipline) + D6 Wave 5 plan-draft handoff
-2. 读 memory `project_wave4_reframe_v2.md` — Wave 5 INPUT (heavy block plugin tier + grid forward + v2 visual forward + editor-shell wire-up)
-3. 读 granularity doc `/mnt/d/download/web/v2-design-granularity.md` v0.3.3 (572 LOC; user gatekeeper-side scratch; 权威设计意图; NOT in git)
-4. 读 v2 demo files `/mnt/d/download/web/{proto-app,proto-canvas,proto-markdown}.jsx` + `proto-styles.css` + `drag-storyboard.css` + `filled-content.jsx` (sampling; full read at Wave 5 ADR design-lock time)
-5. 读 [ADR-0011 D1-D8](../decisions/ADR-0011-linear-pipeline-execution-model.md) — execution model (KEPT for Wave 5 per ADR-0015 D5)
-6. 读 [ADR-0013 Wave 3 close](../decisions/ADR-0013-wave-3-close.md) — close-ceremony precedent
+1. 读 [Wave 5 plan v0.x](../superpowers/plans/2026-05-04-phase-1-wave-5-integration.md) — Pre-A roadmap + Stage C.1-C.4 high-level scope + MVP Framework Notes + R14 discipline + D-list summary + plan-challenger absorbtion table (Pre-A1)
+2. 读 [ADR-0015 Wave 4 close](../decisions/ADR-0015-wave-4-close.md) — D3 Wave 5 deferred items (binding) + D4 R14 mid-wave reframe drift discipline + D6 Wave 5 plan-draft handoff
+3. 读 memory `project_wave4_reframe_v2.md` — Wave 5 INPUT (preserved across sessions; reframe v2 design intent)
+4. 读 granularity doc `/mnt/d/download/web/v2-design-granularity.md` v0.3.4 — ADR-0016 design 权威 (gatekeeper-side scratch; NOT in git)
+5. 读 v2 demo files `/mnt/d/download/web/{proto-app,proto-canvas,proto-markdown}.jsx` + `proto-styles.css` + `drag-storyboard.css` — full read at Pre-A2 ADR design-lock time (Pre-A1 sampled only)
+6. 读 [ADR-0014 HeavyBlockBoundary](../decisions/ADR-0014-heavy-block-boundary.md) — v0.4 amendment scope in Stage C.1 (plugin placeholder vs plugin-real-runtime split); ADR-0016 grid context dimensions 联动 ADR-0014 v0.5 amendment in Stage C.2
+7. 读 [Wave 4 Pre-A2 PR.md](wave-4-main/Pre-A2-adr-0014-heavy-block-boundary.md) — most recent ADR design-lock precedent (12/12 plan-challenger absorbed); Pre-A2 of Wave 5 follows this pattern
+8. 读 [ADR-0011 D1-D8](../decisions/ADR-0011-linear-pipeline-execution-model.md) — execution model (KEPT for Wave 5 per ADR-0015 D5)
 
-### Wave 5 plan-draft Pre-A scope (recommended per ADR-0015 D6)
+### Wave 5 Pre-A roadmap (locked at Pre-A1)
 
-- Pre-A1: Wave 5 plan-draft authoring + plan-challenger 4-round (challenge granularity / sub-stage scope / per-PR estimates / reframe absorbtion path)
-- Pre-A2: ADR-0016 grid 数据模型 design lock + plan-challenger
-- Pre-A3: ADR-0017 drag/drop UX design lock + plan-challenger
-- Pre-A4: ADR-0018 v2 视觉 migration design lock + plan-challenger
-- Pre-A5: Wave 5 plan v1.0 lock (plan-challenger absorbtion table)
+- ✅ Pre-A1 (this PR): Wave 5 plan-draft v0.1 + plan-challenger → v0.x lock
+- Pre-A2: ADR-0016 grid 数据模型 design lock + plan-challenger 4-round
+- Pre-A3: ADR-0017 drag/drop UX design lock + plan-challenger 4-round
+- Pre-A4: ADR-0018 v2 视觉 migration design lock + plan-challenger 4-round
+- Pre-A5: Wave 5 plan v1.0 final lock (Stage C.1-C.4 per-PR breakdown + risk predictions + cross-referenced absorbtion tables)
 
 ### R14 discipline (Wave 5 enforce)
 
-Per ADR-0015 R14: gatekeeper directive → orchestrator opens "Wave N plan v0.X amendment PR" → plan-challenger round → lock → THEN implementation. **Memory entries are session-scoped reads; plan amendments are spec-locked decisions**. Mid-Wave reframe (if any in Wave 5) MUST go through D1 pipeline plan amendment, NOT memory-only.
+Per ADR-0015 R14: gatekeeper directive → orchestrator opens "Wave 5 plan v0.X amendment PR" → plan-challenger round → lock → THEN implementation. **Memory entries are session-scoped reads; plan amendments are spec-locked decisions**. Mid-Wave reframe (if any in Wave 5) MUST go through D1 pipeline plan amendment, NOT memory-only.
 
 ### D1 pipeline (KEPT)
 
-Same as Wave 3+4 (ADR-0011 D1 KEPT) — PLAN → EXECUTE → REVIEW → PRE-COMMIT → COMMIT → ACCEPT. Operational discipline at Pre-A1 (Wave 4): `codex exec --yolo --profile <X>` + `set -o pipefail` + `/tmp` piping + `head -2000` archive (per [`docs/runbooks/codex-tool-invocations.md`](../runbooks/codex-tool-invocations.md)). R21 extension: post-hoc grep-for-verdict-shaped-lines for codex logs > 500 KB.
+Same as Wave 3+4 (ADR-0011 D1 KEPT) — PLAN → EXECUTE → REVIEW → PRE-COMMIT → COMMIT → ACCEPT. Operational discipline (Wave 4 Pre-A1 codified): `codex exec --yolo --profile <X>` + `set -o pipefail` + `/tmp` piping + `head -2000` archive (per [`docs/runbooks/codex-tool-invocations.md`](../runbooks/codex-tool-invocations.md)). R21 extension: post-hoc grep-for-verdict-shaped-lines for codex logs > 500 KB.
