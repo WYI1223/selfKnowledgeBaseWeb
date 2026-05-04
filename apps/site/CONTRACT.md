@@ -23,11 +23,24 @@
   `@pagefind/default-ui` with `resetStyles: false`. The dedicated `/search`
   route embeds that component through `BaseLayout`, and the global header links
   to `/search`.
+- Word-level result filter: `apps/site/src/lib/word-level-match.ts` exposes
+  `isWordLevelMatch(query, content, locale?)`; `SearchBox.astro` wires it via
+  `@pagefind/default-ui` `processTerm` + `processResult` callbacks plus a
+  `MutationObserver` that applies `[data-skb-word-level-mismatch="true"]` to
+  substring-only-match `<li>` ancestors (CSS `display: none`) and patches the
+  `.pagefind-ui__message` count display. This restores the ADR-0012 v0.1.1
+  criterion 4 paired discriminator at runtime; PagefindUI's index-time
+  tokenization is unchanged.
 - A11y guarantee: search input labeling, keyboard result navigation, and result
   ARIA semantics come from `@pagefind/default-ui` defaults. apps/site may wrap
   the surface, but it must not replace those defaults with a custom UI unless a
   follow-up contract update preserves equivalent keyboard and screen-reader
-  behavior.
+  behavior. The B1b word-level wrapper is post-render result filtering only
+  (DOM `data-*` attribute + CSS `display: none`); it does not replace any
+  `@pagefind/default-ui` ARIA, keyboard, or screen-reader behavior. Hidden
+  mismatched results are removed from the visible result count via
+  `.pagefind-ui__message` text replacement so screen readers do not announce
+  stale totals.
 - `/search` render-safety: `astro build` must emit the `/search` HTML before
   `dist/pagefind/` exists. The page contains only the static mount point plus a
   client-side script and stylesheet reference; the browser loads PageFind's

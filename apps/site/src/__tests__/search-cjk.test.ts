@@ -2,19 +2,20 @@
 // Per-file env override: pure Node integration test (filesystem +
 // PageFind CLI invocation) — happy-dom (apps/site default) is unnecessary.
 //
-// SCOPE NOTE (D2): this test verifies PageFind successfully indexes
-// CJK content under the temp corpus and emits the canonical 1.5+
-// artifact set (pagefind-entry.json + at least one .pf_meta + at least
-// one fragment file). The full ADR-0012 criterion 4 word-level vs
-// character-level RUNTIME discriminator (querying '笔记' must match
-// '中文笔记测试' but '记本' must NOT match '笔记本电脑') requires
-// pagefind.js's browser fetch() runtime which is fragile under
-// Node + happy-dom + file:// + mock HTTP server. The runtime
-// discriminator assertion is **deferred to D3's playwright spec**
-// (real browser, real fetch, exercising the /search route end-to-end).
-// D2's gate here is "PageFind ran on CJK content + emitted index" —
-// strictly weaker than ADR-0012 criterion 4 but the strongest D2 can
-// give without serving the browser stack.
+// SCOPE NOTE (D2; updated Wave 4 Stage B B1b 2026-05-03): this test
+// verifies PageFind successfully indexes CJK content under the temp
+// corpus and emits the canonical 1.5+ artifact set (pagefind-entry.json
+// + at least one .pf_meta + at least one fragment file). The full
+// ADR-0012 criterion 4 word-level discriminator (querying '笔记' must
+// match '中文笔记测试' AND '记本' must NOT match '笔记本电脑') is enforced
+// app-side by apps/site/src/lib/word-level-match.ts (Wave 4 B1a) wired
+// into apps/site/src/components/SearchBox.astro (Wave 4 B1b; Option B-4
+// hybrid PagefindUI processResult callback + DOM MutationObserver). The
+// runtime discriminator assertion lives in apps/site/playwright/search.spec.ts
+// (paired discriminator test) — real browser, real fetch, exercising
+// /search end-to-end. D2's gate here is "PageFind ran on CJK content +
+// emitted index" — strictly weaker than ADR-0012 criterion 4 but the
+// strongest D2 can give without serving the browser stack.
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
