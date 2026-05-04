@@ -1,0 +1,113 @@
+Reading additional input from stdin...
+OpenAI Codex v0.125.0 (research preview)
+--------
+workdir: /home/weiyi/selfKnowledgeBaseWeb
+model: gpt-5.3-codex-spark
+provider: openai
+approval: never
+sandbox: danger-full-access
+reasoning effort: xhigh
+reasoning summaries: none
+session id: 019df39f-4ead-7322-a271-32e47910608a
+--------
+user
+你正在挑战 Wave 5 Pre-A2 ADR-0016 grid 数据模型 design-lock (lock 前). 4-round style.
+
+任务: 读 docs/decisions/ADR-0016-grid-data-model.md (~450 LOC, status proposed) 并挑战. 背景上下文按需深入:
+- packages/block-foundation/CONTRACT.md (W5-1 invariant 新增; W4-1 precedent for HeavyBlockBoundary)
+- docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md (Wave 5 plan v0.2; Pre-A2 scope + ADR 编号映射表 + Risk matrix C.2 行)
+- docs/decisions/ADR-0014-heavy-block-boundary.md (HeavyBlockBoundary; v0.5 amendment 将消费 W5-1)
+- docs/decisions/ADR-0011-linear-pipeline-execution-model.md (D1-D8; D2 trigger row 1+4)
+- docs/decisions/ADR-0006-asymmetry-audit-checklist.md (8-point audit; items #5+#6+#8)
+- docs/superpowers/plans/2026-05-03-phase-1-wave-4-integration.md (Wave 4 Pre-A2 ADR-0014 12/12 absorbed precedent)
+
+挑战范围 (ADR-0007 D5 + ADR-0011 D2 v0.1.1 + R13 + Wave 4 Pre-A2 12/12 precedent):
+
+1. **D-list granularity 与 内部一致性**: D1-D11 拆分是否合理? 有合并 / 拆分余地? D7 (MDX serialize) 与 D8 (Astro renderer) + D11 (Tiptap inside / grid outside) 的 boundary 是否清晰?
+2. **公式 precision**: D2 effectiveRowSpan / D3 useAutoRowSpan ResizeObserver 公式 / D4 height(px) = rowSpan*62-14 / D9 W5-1 invariant 公式 (width = colSpan*(1fr) + (colSpan-1)*gap) 是否数学正确? 边界 (rowSpan=1 → height=48; rowSpan=2 → height=110; rowSpan=N → 公式) 是否 well-defined?
+3. **markdown rowSpan='auto' 不对称 (D3+D4)**: 持久化与 rendering-derived 的边界场景 (empty md / paste-large-md / ResizeObserver race / unmount leak / rate-limit rAF / 切换 viewport 1-col 时 mobile rowSpan adapt 的不对称) 是否覆盖完整? D5 的 mobile 强制 rowSpan='auto' 不改持久化值 (rendering override) 与 markdown 的 rowSpan='auto' 不入持久化 (schema-level) 是否会混淆?
+4. **COL_SNAPS [2,3,4,6,8,12] (D6)**: viewport 平板 6-col 时 effective COL_SNAPS [2,3,6] 是否正确? (= 1/3, 1/2, full of 6-col grid). 1-col 时 COL_SNAPS 退化路径? non-snap 拒绝 (1, 5, 7, 9, 10, 11) 边界 (e.g., user resize 拖到 1.5 col 触发 snap 怎么决?). 各 effective COL_SNAPS 是否需要在 D6 显式列出?
+5. **Responsive (D5+D8)**: 响应式 12/6/1 切换的瞬态行为 (resize browser 跨 breakpoint 时 grid layout 如何 re-flow?). 1-col mobile 路径 'rowSpan adapt' (rendering override 不改持久化) 与 桌面/平板 path 的不对称是否会引发用户认知冲突 (user 在 mobile 设的 height 切回 desktop 后是 用户原值 还是 mobile-derived?). matchMedia listeners 的 cleanup / SSR flicker?
+6. **W5-1 invariant (D9)**: 公式 width = colSpan*(1fr) + (colSpan-1)*gap 中 1fr 是 dynamic (依 viewport + 12/6/1 当前 state). 在 SSR (无 viewport) / 1-col mobile / Astro static build 时 1fr 是什么? HeavyBlockBoundary dims pre-hydration 用 fallback (per ADR-0014 W4-1 D5 预设值) 与 grid context dims (W5-1) 切换时机 (post-grid-mount vs at-render?) 是否清楚?
+7. **MDX serialize (D7)**: tiptapToMdx 的 markdown 不写 rowSpan / 其他 block 写 rowSpan 二分判定: 怎么 distinguish 'markdown' 块 (mdxComponent='Markdown' OR kind='prose')? prose blocks (Wave 1 default) 与 component-mdx 块 (Wave 1 'Callout/Code/Image' kind='component') 与 render/viz 块的 rowSpan serialize 行为是否覆盖完整? 'row' 字段 serialize 'auto-place' (省略) vs 显式整数 的判定 trigger?
+8. **BlockUIDefinition gridDefault + rowSpanSemantic (D10)**: 'rowSpanSemantic' = 'auto' 仅适用 markdown (granularity 共识); 但数据上是 BlockUIDefinition 的字段, 不是 prose-extension 的字段 (markdown 在 block-foundation proseExtensions, NOT 独立 BlockUIDefinition). 当前数据模型如何让 prose-extension 表达 rowSpanSemantic='auto'?
+9. **Tiptap inside / grid outside (D11)**: NodeView attrs 作 '被动数据' — block grid 移动 / resize / drag 经 grid container 调用 NodeView attr-set API. 但 Tiptap state mutation (e.g., user 编辑 markdown 内容触发 ResizeObserver → useAutoRowSpan rowSpan 变化) 与 grid context state mutation (e.g., user 拖 block resize handle → colSpan 变化) 在两个 mutation pipeline 之间是否会 race? collaborative editing 假设 (是否 single-user 假设)?
+10. **W4-1 vs W5-1 sister-CONTRACT-sync (ADR-0006 #6)**: W5-1 invariant 加在 block-foundation/CONTRACT.md, 但 HeavyBlockBoundary 的 CONTRACT.md (, 假设存在) + mdx-bridge CONTRACT.md 是否需要 forward-pointer 同 commit sync? 当前 Pre-A2 仅触 block-foundation; 是否漏 sister-doc-sync?
+11. **AC list testability (Q2-class)**: AC#1-#11 是否每条都映射到 vitest/playwright/visual-smoke + 可执行通过条件? AC#5 ResizeObserver hook 4 fixture 是否覆盖 ResizeObserver leak 边界 (jsdom mock vs real?)? AC#8 (mobile rowSpan adapt) vitest 是否能模拟 viewport 切换 (matchMedia mock 缺 ResizeObserver mock 的协同)?
+12. **D2 trigger 准确性**: Pre-A2 D2 row 1+4 双 HIT 判定是否准确? Row 5 (cross ≥3 packages) 是否潜在 HIT (Stage C.2 实施时跨 mdx-bridge + block-foundation + apps/site + ADR-0014; 但 Pre-A2 仅 doc-class 单 package CONTRACT touch)?
+
+每条挑战输出格式:
+- 'Q<N>: <问题>'
+- 严重度: high / medium / low
+- 推荐: <orchestrator 应吸收的具体改动 OR 'no change' rationale>
+
+最后输出 'Verdict: <total challenges> challenges raised; recommend orchestrator absorb <N> high + <M> medium; <K> low advisory'.
+
+不修改任何文件; 只输出文本挑战.
+codex
+我先只做阅读工作：并行抓取你列出的 ADR/plan/CONTRACT 文件的关键段落（不改文件），先把每条挑战点的依据对齐后直接输出可执行的 challenge 列表。
+exec
+/bin/bash -lc "sed -n '1,280p' docs/decisions/ADR-0016-grid-data-model.md" in /home/weiyi/selfKnowledgeBaseWeb
+
+--- [orchestrator R21 post-hoc verdict extraction; raw log 4267 lines / 289198 bytes] ---
+
+4179:推荐: 在 D5 增补“转场态有限状态机”（切断点事件顺序、是否 preserve colSpan、何时冻结 rowSpan、何时立即重算），并要求在 320ms 内完成一次稳定过渡。
+4181:Q6: `D9/W5-1` 在 SSR/SSR fallback 上仍有计算歧义：公式依赖 `1fr`，但 `1fr` 需容器宽度；`D9` 又提到 fallback 到 W4-1 固定 dims。当前仅对 heavy-blocks 提供固定 `heavyBoundaryDimensions`，若其他块无 colSpan/rowSpan 时 fallback 时机会影响 CLS。  
+4182:严重度: high  
+4183:推荐: 明确 `W5-1` 的“SSR vs hydration 阶段策略”：SSR 必须输出可验证的 fallback 语义（含来源标签），hydration 后按首次测得列宽一次性替换为真实 dims，并在 docs/contract 中给出替换点。
+4185:Q7: `D7` 的 markdown 判断条件“`mdxComponent='Markdown' OR kind='prose'”存在语义风险：当前 prose block 并无 `BlockUIDefinition`，而 renderer/序列化层要靠 `blockRegistry` / `mdxComponent` 反查，缺少统一的“语义标签路径”。`row=auto-place` 与 `rowSpan` 行为也未与 `row`/`col` 缺失态绑定。  
+4186:严重度: medium  
+4187:推荐: 在 `BlockUIDefinition`/序列化层增加显式 `isGridRowAuto` 或 `gridKind` 枚举（`prose|component|render|viz`）并统一用于 mdx serialize/parse 判定，避免仅靠 heuristic。
+4189:Q8: `D10` 把 `rowSpanSemantic` 放在 `BlockUIDefinition`，但 markdown（`prose`）并非该结构承载者，文中自己又承认 `markdown` 在 `proseExtensions`，导致“模型语义来源不一致”。这会让“markdown=auto”语义在不同入口重复实现。  
+4190:严重度: medium  
+4191:推荐: 引入 `proseGridDefaults`（可在 editor-shell/mdx-bridge 共同消费）作为 prose 块的独立、显式 schema，或把 `rowSpanSemantic` 提升为独立顶层 `GridNodeMetadata` 规则，统一供 prose 与组件块共享。
+4193:Q9: `D11` 声称 NodeView attrs 是“被动数据”，但 `useAutoRowSpan`（markdown）与拖拽/resize（外层 container）都可能在同一帧竞争 `rowSpan`。在 `rowSpan=auto` 与持久化整型并行场景未定义写入仲裁，协同/多人编辑也未声明。  
+4194:严重度: high  
+4195:推荐: 增加单一源提交通道与版本戳（例如 `layoutEpoch`），外层 grid mutation 与 markdown auto-measure mutation 都通过同一 reducer 入队，冲突时按来源优先级与时间戳解决，至少注明单用户假设边界。
+4197:Q10: `ADR-0016 D9` 的 W5-1 只落在 `block-foundation/CONTRACT.md`，但用户强调的姊妹文档前置未闭环：`ADR-0014`、`mdx-bridge`、`apps/site`（及 heavy-block 子 contract）未在同一节位点同步新公式与后续变体。`ADR-0006` #6 已要求这类同步。  
+4198:严重度: medium  
+4199:推荐: 加一个“sister-document sync”检查清单到三个相关文档和执行清单：`block-foundation`、`apps/site`、`mdx-bridge`、`heavy-block-boundary`（并列到 block-* contracts）都要引用并解释 W5-1 及其版本化公式。
+4201:Q11: AC 映射存在可测性空洞：`AC#5`/`AC#8` 都是可测，但未覆盖“ResizeObserver + matchMedia + breakpoint 组合”的端到端行为；`AC#5` 也缺少 jsdom 与真实渲染器一致性断言。`AC#11` 仅做 grep 不能证明语义正确。  
+4202:严重度: low  
+4203:推荐: 增补测试分层：  
+4208:Q12: `D2` 触发在 Pre-A2 被写成 `row 4 + row 1`，但该文档本身承认 `Stage C.2` 预期触碰 `mdx-bridge + block-foundation + editor-shell + apps/site + heavy-boundary` 跨域。如果后续实现沿 Pre-A2 路径继续提交，可能会误把跨包状态当成单包补丁，触发面不足。  
+4209:严重度: medium  
+4210:推荐: 在 ADR 明确“Pre-A2 lock 与 Stage C.2 实施触发面分离”：预锁定保持 row1+row4；但任何触及 ≥3 包的执行 PR（含 `mdx-bridge`/`editor-shell`/`apps/site`）必须标记 row5 并执行 D2 Stage4。
+4212:Verdict: 12 challenges raised; recommend orchestrator absorb 4 high + 7 medium + 1 low advisory.
+4216:Q1: ADR 的 D-list 里“模型粒度 + 层边界”仍有模糊交界：`D2/D3/D4` 定义网格数据，`D7` 定义序列化字段，`D8` 定义渲染落点，而 `D11` 同时要求 Tiptap 仅读取 attrs、由外层网格容器写入，尚未明确“字段归属/校验权威”与冲突优先级（如拖拽/resize 与 content-driven rowSpan 同时触发时，谁最终胜出）。  
+4217:严重度: medium  
+4218:推荐: 在 ADR 增加“权威矩阵 + 冲突仲裁规则”补充一节（属性解析、校验、归一化、写入者优先级、冲突时序）。
+4220:Q2: `D2` 的精度边界对“列宽/行高公式”有隐含耦合：`height(px)=rowSpan*62-14` 与 `D4` 中 rowSpan=2→110、rowSpan=1→48 自洽，但该公式把 `row-h=48`、`gap=14` 硬编码到语义约束，`D9` 又把 `1fr` 与断点联动。若主题 token 或容器基准尺寸变化，公式会漂移。  
+4221:严重度: medium  
+4222:推荐: no change 的建议不适用。建议将高度/宽度公式抽到设计 token 或单一 runtime 常量，所有实现通过 `effectiveCellHeight/Gap/Cols` helper 计算，且在 `D10/D11` 中写明单位换算闭环（含测试）。
+4224:Q3: `D3`/`D4` 的 markdown 行高自适应覆盖边界不全：`D3` 关注了空段落、粘贴大段、unmount leak、rAF rate-limit，但没有规定字体加载、图片/代码 fence 增高、或连续粘贴导致“多次 RO 事件”时的抖动收敛策略；`D5` 又说 mobile 强制 rowSpan adaptive 不入持久化，跨场景切换时用户感知容易抖动。  
+4225:严重度: high  
+4226:推荐: 增补“两阶段稳态”规则：首次 RO 仅建立初值，第二次微任务/raf 后再固化；字体/图片加载后复算；每次测量前后差值小于阈值则复用旧值，避免连跳。
+4228:Q4: `D6` 给了 `COL_SNAPS = [2,3,4,6,8,12]` 与 6 列降级 `[2,3,6]`，但未定义 `6-col`/`1-col` 下“有效值集合 + 非 snap 回退策略”可见协议。`Q4` 提到的“拖到 1.5col 时四舍五入方向”未显式。  
+4229:严重度: medium  
+4230:推荐: 增加 `effectiveColSnaps(viewportCols)` 明示映射：12 列/6 列/1 列分别返回完整集合，并要求任何非法目标值必须用“最近 snap + 方向记录”规约，不可静默抛弃到旧值。
+4232:Q5: `D5` 的响应式切换只给了目标网格列和行为总结，缺少“跨断点瞬态”顺序规范：在 `12↔6↔1` 切换时，是先重算 `colSpan` 后重算 `rowSpan`，还是先重排再测量？`rowSpan adapt` 在 mobile 下覆盖渲染但不改持久化，很容易在切回桌面看到用户认知跳变。  
+4233:严重度: high  
+4234:推荐: 在 D5 增补“转场态有限状态机”（切断点事件顺序、是否 preserve colSpan、何时冻结 rowSpan、何时立即重算），并要求在 320ms 内完成一次稳定过渡。
+4236:Q6: `D9/W5-1` 在 SSR/SSR fallback 上仍有计算歧义：公式依赖 `1fr`，但 `1fr` 需容器宽度；`D9` 又提到 fallback 到 W4-1 固定 dims。当前仅对 heavy-blocks 提供固定 `heavyBoundaryDimensions`，若其他块无 colSpan/rowSpan 时 fallback 时机会影响 CLS。  
+4237:严重度: high  
+4238:推荐: 明确 `W5-1` 的“SSR vs hydration 阶段策略”：SSR 必须输出可验证的 fallback 语义（含来源标签），hydration 后按首次测得列宽一次性替换为真实 dims，并在 docs/contract 中给出替换点。
+4240:Q7: `D7` 的 markdown 判断条件“`mdxComponent='Markdown' OR kind='prose'”存在语义风险：当前 prose block 并无 `BlockUIDefinition`，而 renderer/序列化层要靠 `blockRegistry` / `mdxComponent` 反查，缺少统一的“语义标签路径”。`row=auto-place` 与 `rowSpan` 行为也未与 `row`/`col` 缺失态绑定。  
+4241:严重度: medium  
+4242:推荐: 在 `BlockUIDefinition`/序列化层增加显式 `isGridRowAuto` 或 `gridKind` 枚举（`prose|component|render|viz`）并统一用于 mdx serialize/parse 判定，避免仅靠 heuristic。
+4244:Q8: `D10` 把 `rowSpanSemantic` 放在 `BlockUIDefinition`，但 markdown（`prose`）并非该结构承载者，文中自己又承认 `markdown` 在 `proseExtensions`，导致“模型语义来源不一致”。这会让“markdown=auto”语义在不同入口重复实现。  
+4245:严重度: medium  
+4246:推荐: 引入 `proseGridDefaults`（可在 editor-shell/mdx-bridge 共同消费）作为 prose 块的独立、显式 schema，或把 `rowSpanSemantic` 提升为独立顶层 `GridNodeMetadata` 规则，统一供 prose 与组件块共享。
+4248:Q9: `D11` 声称 NodeView attrs 是“被动数据”，但 `useAutoRowSpan`（markdown）与拖拽/resize（外层 container）都可能在同一帧竞争 `rowSpan`。在 `rowSpan=auto` 与持久化整型并行场景未定义写入仲裁，协同/多人编辑也未声明。  
+4249:严重度: high  
+4250:推荐: 增加单一源提交通道与版本戳（例如 `layoutEpoch`），外层 grid mutation 与 markdown auto-measure mutation 都通过同一 reducer 入队，冲突时按来源优先级与时间戳解决，至少注明单用户假设边界。
+4252:Q10: `ADR-0016 D9` 的 W5-1 只落在 `block-foundation/CONTRACT.md`，但用户强调的姊妹文档前置未闭环：`ADR-0014`、`mdx-bridge`、`apps/site`（及 heavy-block 子 contract）未在同一节位点同步新公式与后续变体。`ADR-0006` #6 已要求这类同步。  
+4253:严重度: medium  
+4254:推荐: 加一个“sister-document sync”检查清单到三个相关文档和执行清单：`block-foundation`、`apps/site`、`mdx-bridge`、`heavy-block-boundary`（并列到 block-* contracts）都要引用并解释 W5-1 及其版本化公式。
+4256:Q11: AC 映射存在可测性空洞：`AC#5`/`AC#8` 都是可测，但未覆盖“ResizeObserver + matchMedia + breakpoint 组合”的端到端行为；`AC#5` 也缺少 jsdom 与真实渲染器一致性断言。`AC#11` 仅做 grep 不能证明语义正确。  
+4257:严重度: low  
+4258:推荐: 增补测试分层：  
+4263:Q12: `D2` 触发在 Pre-A2 被写成 `row 4 + row 1`，但该文档本身承认 `Stage C.2` 预期触碰 `mdx-bridge + block-foundation + editor-shell + apps/site + heavy-boundary` 跨域。如果后续实现沿 Pre-A2 路径继续提交，可能会误把跨包状态当成单包补丁，触发面不足。  
+4264:严重度: medium  
+4265:推荐: 在 ADR 明确“Pre-A2 lock 与 Stage C.2 实施触发面分离”：预锁定保持 row1+row4；但任何触及 ≥3 包的执行 PR（含 `mdx-bridge`/`editor-shell`/`apps/site`）必须标记 row5 并执行 D2 Stage4。
+4267:Verdict: 12 challenges raised; recommend orchestrator absorb 4 high + 7 medium + 1 low advisory.
