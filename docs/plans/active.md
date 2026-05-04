@@ -28,14 +28,16 @@
 | #44 | `794cd5d` | B5 | codex profile prefix R3 (agent-contract.md + regen) + lychee autolink-in-backticks memory codify (`feedback_lychee_autolink_in_backticks.md`) |
 | #45 | `8b6e2d8` | B7 | heavy block Astro hydration wiring + ADR-0014 v0.3 (CRITICAL gap; closes AC#1-#15-vitest-only coverage gap; chunk-leak deferred to Stage C per Wave 4 plan A8 D10) |
 | #46 | `525e6c2` | B6 | Wave 4 close-ceremony preparation (3 audit codex dispatches + 3 curated summaries + Stage A+B PR roster) |
-| #TBD (this) | TBD | C-2 | NnViz `mlp-mnist.json` hot-load fixture ship (Stage C.1 gatekeeper smoke cleanup; warm-up) |
+| #47 | `49557d2` | C-2 | NnViz `mlp-mnist.json` hot-load fixture ship (Stage C.1 gatekeeper smoke cleanup; warm-up) |
+| #TBD (this) | TBD | C-1 | Pyodide `indexURL` jsdelivr CDN configuration (Jupyter MVP unblock; HIGH; lock path-(a) post plan-challenger 15-Q absorbtion) |
 | **Stage A** | ✅ **DONE** (8/8 PRs) | A | A1-A8 merged 2026-05-03 (HEAD 4aeb279); ADR-0014 promoted to accepted |
 | **Stage B** | ✅ **DONE** (8/8 PRs) | B | B1a-B6 merged 2026-05-03/04 (HEAD `525e6c2` from PR #46); audit-on-close artifacts shipped at B6; ADR-0012 amended to v0.1.1 (B1a) + ADR-0014 amended to v0.3 (B7) |
 | Stage C | open-ended | C | Phase 1 user-iteration scope (per gatekeeper directive #4 + MVP framework); C-2 (this) is the warm-up |
 
 **Stage C PRs** (open-ended; one-at-a-time per plan-challenger Q4 absorbtion):
-- **C-2** (this) — NnViz `mlp-mnist.json` hot-load fixture ship; closes gatekeeper smoke residue from B2.
-- **C-1 / C-3 / C-4** — tracked in orchestrator session backlog (Pyodide indexURL config + PDF iframe black-screen + B7 chunk-leak optimization), NOT pre-locked here. Each PR opens on demand.
+- **C-2** ✅ merged 2026-05-04 (HEAD `49557d2`, PR #47) — NnViz `mlp-mnist.json` hot-load fixture ship; closed gatekeeper smoke residue from B2.
+- **C-1** (this PR; in-flight) — Pyodide `indexURL` jsdelivr CDN configuration; Jupyter MVP unblock; lock path-(a) CDN post plan-challenger 15-Q absorbtion.
+- **C-3 / C-4** — tracked in orchestrator session backlog (PDF iframe black-screen investigation + B7 chunk-leak optimization), NOT pre-locked here. Each PR opens on demand after C-1 closes.
 
 **Wave 4 mandatory scope (Wave 3 carry-overs)** — status as of A8 Stage A close:
 - ✅ Codex audit-log piping fix (R7) in `docs/runbooks/codex-tool-invocations.md` — Pre-A1 closed

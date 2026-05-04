@@ -96,7 +96,7 @@ export function JupyterView({ props, adapter }: JupyterViewProps): JSX.Element {
 
   const adapterRef = useRef<KernelAdapter | null>(null);
   if (adapterRef.current === null) {
-    adapterRef.current = adapter ?? new PyodideAdapter({ boot: { libraries: props.libraries } });
+    adapterRef.current = adapter ?? new PyodideAdapter({ boot: { libraries: props.libraries, indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.27.7/full/' } });
   }
   const liveAdapter = adapterRef.current;
   const runOnLoadAtMount = useRef(props.runOnLoad);
