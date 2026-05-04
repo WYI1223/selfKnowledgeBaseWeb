@@ -23,6 +23,7 @@
 | [0015](ADR-0015-wave-4-close.md)                          | Wave 4 close — 21-PR ratification + Wave 5 deferred set     | 2026-05-04 | accepted |
 | [0016](ADR-0016-grid-data-model.md)                       | Grid 数据模型与流动 (12-col grid + row flow + COL_SNAPS + 响应式) | 2026-05-04 | proposed |
 | [0017](ADR-0017-drag-drop-ux.md)                          | Drag/Drop UX (4 边缘对称 + outline overlay 方案 A + edge rects + lift) | 2026-05-04 | proposed |
+| [0018](ADR-0018-v2-visual-migration.md)                   | v2 视觉 migration + save-path 接口冻结 (OKLCH + Inter/JetBrains Mono + 顶 2px 横条 + LocalStorageAdapter MVP) | 2026-05-04 | proposed |
 
 ## 模板
 
