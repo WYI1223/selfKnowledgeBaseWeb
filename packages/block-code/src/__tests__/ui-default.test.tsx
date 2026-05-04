@@ -3,7 +3,7 @@ import { render } from '@testing-library/react';
 import { BlockRegistry, type BlockUIDefinition } from '@skb/block-foundation';
 import { codeCore } from '../core/core-definition';
 import {
-  codeUIDefault,
+  codeUiDefault,
   CodeBody,
   CodeEditorView,
   CodeRenderView,
@@ -11,20 +11,20 @@ import {
 
 const LANGUAGES = ['typescript', 'python', 'bash'] as const;
 
-describe('codeUIDefault registration', () => {
+describe('codeUiDefault registration', () => {
   it('exposes the BlockUIDefinition shape with coreName + uiId="default"', () => {
-    expect(codeUIDefault.coreName).toBe('code');
-    expect(codeUIDefault.uiId).toBe('default');
-    expect(codeUIDefault.EditorView).toBeDefined();
-    expect(codeUIDefault.RenderView).toBeDefined();
+    expect(codeUiDefault.coreName).toBe('code');
+    expect(codeUiDefault.uiId).toBe('default');
+    expect(codeUiDefault.EditorView).toBeDefined();
+    expect(codeUiDefault.RenderView).toBeDefined();
   });
 
   it('round-trips through BlockRegistry (registerCore + registerUI)', () => {
     const reg = new BlockRegistry();
     reg.registerCore(codeCore);
-    reg.registerUI(codeUIDefault as unknown as BlockUIDefinition);
-    expect(reg.getUI('code')).toBe(codeUIDefault);
-    expect(reg.getUI('code', 'default')).toBe(codeUIDefault);
+    reg.registerUI(codeUiDefault as unknown as BlockUIDefinition);
+    expect(reg.getUI('code')).toBe(codeUiDefault);
+    expect(reg.getUI('code', 'default')).toBe(codeUiDefault);
   });
 });
 

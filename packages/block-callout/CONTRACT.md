@@ -14,7 +14,7 @@
   - `parseCallout(mdast) → TiptapNode` — mdast → Tiptap (同上)
   - 类型: `CalloutTiptapNode` / `CalloutMdastJsxElement`
 - `./ui-default` — presentational 层（Wave 2 Track C2）
-  - `calloutUIDefault: BlockUIDefinition<typeof calloutCore.propsSchema>` — coreName=`'callout'` / uiId=`'default'`
+  - `calloutUiDefault: BlockUIDefinition<typeof calloutCore.propsSchema>` — coreName=`'callout'` / uiId=`'default'`
   - `CalloutEditorView` / `CalloutRenderView` — `ComponentType<BlockViewProps<typeof calloutCore.propsSchema>>`，DOM 形状字节级一致（共享 `CalloutBody` 原语）
   - `CalloutBody` — 视觉单一权威 primitive，editor + render 双视图都嵌入
   - `VARIANT_TOKENS` — `Record<Variant, { label, accentToken: ColorTokenName }>` 共享视觉元数据
@@ -50,7 +50,7 @@ block-callout 特定不变量：
   mdx-bridge 通过 `mdxJsxFlowElement.name` 字符串路由（[block-foundation RFC §1](../block-foundation/RFC.md#1-core-side)）
 - **Serialize / parse hook 命名**: `serializeCallout` / `parseCallout`，verb-as-prefix
   约定（[RFC §5](../block-foundation/RFC.md#5-serialize--parse-hook-ownership-scope-clarification)）
-- **`uiId='default'` reserved**: `calloutUIDefault.uiId === 'default'`；本包 inherit
+- **`uiId='default'` reserved**: `calloutUiDefault.uiId === 'default'`；本包 inherit
   foundation 的 `Default UI lookup` 不变量（首注册即 default）
 - **EditorView / RenderView byte-equivalent DOM**: 两视图都通过 `CalloutBody` 原语
   渲染，DOM tree / class 名 / `data-callout-variant` / `role` / `aria-label`

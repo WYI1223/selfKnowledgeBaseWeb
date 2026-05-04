@@ -3,7 +3,7 @@ import { calloutCore } from '../core/core-definition';
 import { CalloutEditorView } from './EditorView';
 import { CalloutRenderView } from './RenderView';
 
-export const calloutUIDefault: BlockUIDefinition<typeof calloutCore.propsSchema> =
+export const calloutUiDefault: BlockUIDefinition<typeof calloutCore.propsSchema> =
   defineUI({
     coreName: calloutCore.name,
     uiId: 'default',

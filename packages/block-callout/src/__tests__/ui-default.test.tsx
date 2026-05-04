@@ -3,7 +3,7 @@ import { render } from '@testing-library/react';
 import { BlockRegistry, type BlockUIDefinition } from '@skb/block-foundation';
 import { calloutCore } from '../core/core-definition';
 import {
-  calloutUIDefault,
+  calloutUiDefault,
   CalloutEditorView,
   CalloutRenderView,
   VARIANT_TOKENS,
@@ -12,20 +12,20 @@ import type { Variant } from '../ui-default';
 
 const VARIANTS: readonly Variant[] = ['note', 'tip', 'warning', 'danger'];
 
-describe('calloutUIDefault registration', () => {
+describe('calloutUiDefault registration', () => {
   it('exposes the BlockUIDefinition shape with coreName + uiId="default"', () => {
-    expect(calloutUIDefault.coreName).toBe('callout');
-    expect(calloutUIDefault.uiId).toBe('default');
-    expect(calloutUIDefault.EditorView).toBe(CalloutEditorView);
-    expect(calloutUIDefault.RenderView).toBe(CalloutRenderView);
+    expect(calloutUiDefault.coreName).toBe('callout');
+    expect(calloutUiDefault.uiId).toBe('default');
+    expect(calloutUiDefault.EditorView).toBe(CalloutEditorView);
+    expect(calloutUiDefault.RenderView).toBe(CalloutRenderView);
   });
 
   it('round-trips through BlockRegistry (registerCore + registerUI)', () => {
     const reg = new BlockRegistry();
     reg.registerCore(calloutCore);
-    reg.registerUI(calloutUIDefault as unknown as BlockUIDefinition);
-    expect(reg.getUI('callout')).toBe(calloutUIDefault);
-    expect(reg.getUI('callout', 'default')).toBe(calloutUIDefault);
+    reg.registerUI(calloutUiDefault as unknown as BlockUIDefinition);
+    expect(reg.getUI('callout')).toBe(calloutUiDefault);
+    expect(reg.getUI('callout', 'default')).toBe(calloutUiDefault);
   });
 });
 
