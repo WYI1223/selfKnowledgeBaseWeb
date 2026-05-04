@@ -1,20 +1,31 @@
 import type { ReactElement } from 'react';
 import { heavyBoundaryDimensions as jupyterDims } from '@skb/block-jupyter/ui-default/heavy-boundary-dimensions';
-import { HeavyBlockBoundary } from '@skb/heavy-block-boundary';
-import { makeMdxAdapter, type FlatProps } from '../lib/mdx-adapter';
+import type { FlatProps } from '../lib/mdx-adapter';
 
-const loadJupyter = () =>
-  import('@skb/block-jupyter/ui-default').then((m) => ({
-    default: makeMdxAdapter(m.JupyterRenderView as never),
-  }));
-
-export default function JupyterIsland(props: FlatProps): ReactElement {
+function JupyterPlaceholder({
+  dims,
+}: {
+  readonly dims: typeof jupyterDims;
+}): ReactElement {
   return (
-    <HeavyBlockBoundary<FlatProps>
-      kind="jupyter"
-      dims={jupyterDims}
-      load={loadJupyter}
-      childProps={props}
-    />
+    <div
+      role="status"
+      data-block="jupyter"
+      aria-busy="false"
+      data-loaded="true"
+      className="heavy-block-skeleton heavy-block-skeleton--jupyter heavy-block-skeleton--placeholder"
+      style={{ width: dims.width, minHeight: dims.height }}
+    >
+      <span aria-hidden="true" className="heavy-block-placeholder__icon">
+        🔌
+      </span>
+      <span className="heavy-block-placeholder__label">
+        Jupyter · plugin runtime (Phase 2+)
+      </span>
+    </div>
   );
+}
+
+export default function JupyterIsland(_props: FlatProps): ReactElement {
+  return <JupyterPlaceholder dims={jupyterDims} />;
 }
