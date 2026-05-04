@@ -1,0 +1,118 @@
+Reading additional input from stdin...
+OpenAI Codex v0.125.0 (research preview)
+--------
+workdir: /home/weiyi/selfKnowledgeBaseWeb
+model: gpt-5.3-codex-spark
+provider: openai
+approval: never
+sandbox: danger-full-access
+reasoning effort: xhigh
+reasoning summaries: none
+session id: 019df3d7-94e3-75e0-af80-52e9c4d43e40
+--------
+user
+你正在挑战 Wave 5 Pre-A3 ADR-0017 drag/drop UX design-lock (lock 前). 4-round style.
+
+任务: 读 docs/decisions/ADR-0017-drag-drop-ux.md (~530 LOC, status proposed) 并挑战. 背景上下文按需深入:
+- docs/decisions/ADR-0016-grid-data-model.md (Pre-A2 lock; W5-1 invariant + D12 layoutEpoch reducer + COL_SNAPS + effectiveColSnaps + D3 useAutoRowSpan 两阶段稳态; ADR-0017 consumes 这些)
+- packages/block-foundation/CONTRACT.md (W4-1 + W5-1 invariants)
+- docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md (Wave 5 plan v0.2; Pre-A3 scope + ADR 编号映射表 + Risk matrix C.2 行 + D2 escalation D13)
+- docs/decisions/ADR-0014-heavy-block-boundary.md (HeavyBlockBoundary; drag transit 留 Stage C.2 实施)
+- docs/decisions/ADR-0011-linear-pipeline-execution-model.md (D1-D8; D2 trigger row 4)
+- docs/decisions/ADR-0006-asymmetry-audit-checklist.md (8-point audit; items #5 + #8)
+- docs/superpowers/plans/2026-05-03-phase-1-wave-4-integration.md (Wave 4 Pre-A2 ADR-0014 12/12 + Wave 5 Pre-A2 ADR-0016 12/12 absorbed precedent)
+
+挑战范围 (ADR-0007 D5 + ADR-0011 D2 v0.1.1 + R13):
+1. **D-list granularity 与 内部一致性**: D1-D12 拆分是否合理? D9 (col-ruler/size-tooltip) + D10 (drag-ghost) + D11 (drop-pulse) 是否可合并 (都是 visual reflection class)?
+2. **EDGE_W = 28 = 2*GAP=14 数学对应 (D2)**: 紧贴 blocks gap 区域 cursor 重叠命中 (D3 tiebreak) 的 boundary case 全否覆盖? (cursor 在 block 内深度 14px 边界; cursor 在 gap 中心 ±0; cursor 在 block 外 14px+gap=28px 边界 → empty 触发 OR 'none'?)
+3. **tiebreak 距离公式 (D3)**: 0-velocity cursor 中心命中规则 (默认左侧 host wins 按字典序 OR 最早 mounted 先 wins?) 是否 well-defined? cursor velocity 方向优先 (D3 prose 提了但未公式化) 是否需要更 precise rule?
+4. **静态底层 + outline overlay 方案 A (D4)**: 3 类 outline (new + host + shifted-block) 同步显示时 z-index / opacity 顺序? 多个 shifted-block 同时下移时各自 outline 是否 overlap (per ADR-0016 D5 转场态 FSM 是否相关)?
+5. **命中算法选项 1 (D5)**: edge rects 计算 in drag-start; drag 中若 grid container resize (e.g., user 拖 viewport / responsive 切换) edge rects 失效 — 重算时机?
+6. **源块 lift 模式 (D6)**: drag-cancel 时源块 unlift; 但 drag-end-OUTSIDE-grid (e.g., user 拖出 grid container 释放) 是 cancel 还是 'no-op-fall-back-to-source-pos'? 未定义.
+7. **useAutoRowSpan integration (D7)**: drop 落定 markdown 块时 layoutMutation 仅 mutate col/colSpan/row; rowSpan='auto' 由 ResizeObserver 重新测. 但 drop 瞬间 outline 显示的 row span 与 实际 ResizeObserver 落定后 rowSpan 可能不同 (markdown 内容驱动). 视觉跳跃风险?
+8. **全局 Esc (D8)**: drag 中按 Esc — focus 在 textarea 内时 (e.g., user 在 markdown 块内编辑然后开始 drag block) Esc 是 cancel drag 还是 blur textarea? Conflict with native ESC behavior.
+9. **col-ruler + size-tooltip (D9)**: resize 拖 right handle 时 col-ruler 显示 effective COL_SNAPS; viewport 切 6-col 时 col-ruler 改 [2,3,6]; 但 viewport 切 1-col mobile 时 resize 怎么操作? mobile path resize 是否 disabled?
+10. **drag-ghost per-kind 着色 (D10)**: kind 'prose' (markdown) 应该有 ghost 着色吗? 还是中性灰? D10 提了 .ghost-markdown 中性灰; 但 markdown 是 prose path NOT BlockUIDefinition (per ADR-0016 D10 proseGridDefaults); 决策来源 一致?
+11. **drop-pulse hue 145° (D11)**: 720ms 绿 halo; 但 ADR-0018 (Pre-A4) 锁 v2 视觉; drop-pulse hue 是否应该 token-driven (--accent-success) 而非 hardcode 145°? 与 ADR-0014 Block kind 顶 2px 横条 hue 145° (runnable) 同色冲突?
+12. **layoutEpoch + drag (D12)**: drag-start 时 epoch unchanged or N→N+1? D12 prose 留了 implementation choice; ADR 应该锁哪种? 历史 undo 视角: drag-cancel 应 rollback to drag-start snapshot (epoch unchanged); drag-end-success 应 epoch+1 (新 commit). drag-start 中间期 epoch state 不清.
+13. **D2 trigger 准确性**: Pre-A3 row 4 only HIT, row 1 NO. 但 ADR-0017 D2+D3 公式 (EDGE_W = 28 + tiebreak distance) 实施 PR 时必 single-source export from @skb/editor-shell — 是否需要 W5-2 invariant 加入 editor-shell/CONTRACT.md (if 创建)? Pre-A3 不创建 CONTRACT 是 explicit 决策 (per Wave 5 plan v0.2 D12 scope-fence); 但 sister-doc-sync 时机是否清晰?
+
+每条挑战输出格式:
+- 'Q<N>: <问题>'
+- 严重度: high / medium / low
+- 推荐: <orchestrator 应吸收的具体改动 OR 'no change' rationale>
+
+最后输出 'Verdict: <total challenges> challenges raised; recommend orchestrator absorb <N> high + <M> medium; <K> low advisory'.
+
+不修改任何文件; 只输出文本挑战.
+codex
+我会先逐条读取你指定的 ADR/契约/计划文件，聚焦你列出的 13 个问题点的文本证据与接口约束，再只输出挑战清单（不改文件）。我会直接给出每条 `Q<N>` 的严重度与是否建议吸收的精确改动。
+exec
+
+--- [orchestrator R21 post-hoc verdict extraction; raw log 2607 lines / 211199 bytes] ---
+
+2519:Q6: D6 说明了 drag-cancel 恢复源块；但 `drag-end` 落在网格外释放时语义未定义（cancel 还是 no-op 回退）。
+2520:严重度: medium
+2521:推荐: Absorb 明确定义“网格外松手 = no-op = 取消”：不执行任何 `layoutMutation`，`source` 不增 epoch，ghost 清理 + lifted 撤销 + 视觉回滚。
+2523:Q7: D7 对 markdown 走 `rowSpan='auto'` 只在落位后测量，可能导致 outline（基于预览几何）与最终落位高度差异，出现瞬时跳跃。
+2524:严重度: medium
+2525:推荐: Absorb 加“markdown 预览几何契约”：drag 中 outline 使用“当前快照 rowSpan”进行 preview（或 `useAutoRowSpan` 的冻结版本），drag-end 后沿 D12 两阶段流程重测并动画过渡，避免视觉跳变。
+2527:Q8: D8 全局 Esc 取消：当焦点在 textarea/prose 编辑态时，Esc 常见会用于内容取消/退出编辑或 blur，当前策略未定义冲突优先级。
+2528:严重度: medium
+2529:推荐: Absorb 明确冲突策略（拖拽活动态下 Esc 先取消 drag，并 `preventDefault/stopPropagation`；不主动触发焦点失效，保持 textarea 原状态，结束后恢复最近焦点）。
+2531:Q9: D9 在移动端/1-col 响应路径未说明 resize 交互：若仍显示右边框并触发 col-ruler，`COL_SNAPS=[1]` 会让行为退化且误导。
+2532:严重度: medium
+2533:推荐: Absorb 定义移动端禁用策略（`effectiveCols===1` 时禁用右手柄/size-tooltip/col-ruler，仅保留纵向自适应语义）；必要时给出禁用提示。
+2535:Q10: D10 markdown/`ghost-markdown` 用中性灰，且 prose 是 `proseExtensions` 路径而非 `BlockUIDefinition`，是否存在来源冲突。
+2536:严重度: low
+2537:推荐: no change（与 ADR-0016 的 `proseGridDefaults`/`rowSpanSemantic` 一致可接受；建议只补充一句“颜色映射由 block kind 源于 `gridKind/prose` 标签，不依赖 BlockUIDefinition 全写路径”）
+2539:Q11: D11 drop-pulse 固定 `hue 145°`，但 ADR-0018/主题 token 可能变更；与 runnable 顶条同 hue，存在“状态色 vs 组件色”冲突与主题漂移风险。
+2540:严重度: medium
+2541:推荐: Absorb 为 token 化（改为 `var(--accent-success)` 或 ADR-0018 对应成功 token）并回归兼容（带 fallback），避免 hardcode 固定色。
+2543:Q12: D12 对 `drag-start` 的 epoch 处理留“implementation choice（unchanged or N+1）”，与 rollback/undo 语义不闭环。
+2544:严重度: high
+2545:推荐: Absorb 明确唯一策略：`drag-start` 不改 epoch，`drag-over` 不改，`drag-end-success` 一次性 `epoch+1`，`drag-cancel/外部释放` 不改，所有 rollback 都走快照恢复，避免中间态污染历史链。
+2547:Q13: D2 触发精度：当前 Pre-A3 认定 row4 HIT row1 NO，但实现阶段若 editor-shell 作为 single-source（`layout`/命中算法）尚未在合同中固化，阶段 C.2 实施 PR 可能触发 D2 row1 漏判。
+2548:严重度: medium
+2549:推荐: Absorb 在 Stage C.2 实施计划里把 `editor-shell` 的 single-source 输出与命中算法入口写入 `packages/editor-shell/CONTRACT.md`（或明确在 `Stage C.2 PR` 中把 row1 纳入 D2 trigger），以保证跨 PR 的触发一致性。
+2551:Verdict: 13 challenges raised; recommend orchestrator absorb 3 high + 8 medium; 2 low advisory.
+2555:Q1: `D-list` 把 D1-D12 全部拆到独立条目，且把 D9（col-ruler/size-tooltip）、D10（drag-ghost）、D11（drop-pulse）分成 3 个条目，是否应合并为统一“视觉反射层”小节？
+2556:严重度: low
+2557:推荐: no change（不必合并；但建议补一段在 D4/D9/D10/D11 之间的“视觉反射统一约束层”，定义统一样式 token、展示状态机与禁用条件，避免后续实现者重复理解口径。）
+2559:Q2: `EDGE_W=28=2*GAP` 的边界在 gap 与 block 内外过渡是否完整定义？尤其 cursor 在 block 内 `|x|=14`、在 gap `x=14+14`、以及“无 host 命中”是否是 `empty` 还是 `none`。
+2560:严重度: medium
+2561:推荐: no change with clarifying normalization（补充到 D1/D2 AC#2：`none` 只用于“悬停于块内非边缘”；`empty` 统一用于“任意块外/空白区内无 edge 命中”。边界建议明示 `EDGE_W/2=14` 为闭区间 `≤` 触发，`>14` 退化为空白/none判定。）
+2563:Q3: D3 的 `tiebreak` 公式未形式化 velocity 方向优先，且示例代码用 `distance`（签名为 signed）做 `<` 比较，未写 `abs`，与文本“abs ≤ 14 + 同 distance 时方向优先”存在实现歧义。
+2564:严重度: high
+2565:推荐: Absorb 明确规则（`distance` 必须定义为 `signedScalar = cursorEdgeOffset`，并比较 `abs(distance)`；同 `abs` 时按主运动轴/速度方向优先；若速度模长 `<= ε` 再按字典序/最早挂载作为最终稳定 tiebreak。并加 `velocity=0.5px/frame` 抖动抑制阈值与单元测试。）
+2567:Q4: D4 仅定义 3 类 outline 与样式，但未定义可见层级（`z-index`）与叠加策略；当 `split-top/bottom` 同时推移多个块时，`shifted-block outline` 重叠边界可能遮挡与“new/host”判读。
+2568:严重度: medium
+2569:推荐: Absorb 增加 outline 图层优先级（如 `new block outline` > `host outline` > `shifted outline`，同层按行序/文档顺序稳定排布），并约束 `pointer-events:none` + `opacity` 在重叠时是否“保底可读”。
+2571:Q5: D5 预计算 edge rects 在 drag-start；若 drag 过程中 grid container 尺寸变化（窗口拖动、响应式断点切换）未重算会造成命中偏差。
+2572:严重度: high
+2573:推荐: Absorb 增加 reflow/resize invalidation（`ResizeObserver` 标记 `dirty`，下一帧重建 edge rects；若发生 `effectiveCols` 改变则立即重算且可继续拖拽不中断）。与性能预算联动：仅在尺寸变更时 O(n) 重算。
+2575:Q6: D6 说明了 drag-cancel 恢复源块；但 `drag-end` 落在网格外释放时语义未定义（cancel 还是 no-op 回退）。
+2576:严重度: medium
+2577:推荐: Absorb 明确定义“网格外松手 = no-op = 取消”：不执行任何 `layoutMutation`，`source` 不增 epoch，ghost 清理 + lifted 撤销 + 视觉回滚。
+2579:Q7: D7 对 markdown 走 `rowSpan='auto'` 只在落位后测量，可能导致 outline（基于预览几何）与最终落位高度差异，出现瞬时跳跃。
+2580:严重度: medium
+2581:推荐: Absorb 加“markdown 预览几何契约”：drag 中 outline 使用“当前快照 rowSpan”进行 preview（或 `useAutoRowSpan` 的冻结版本），drag-end 后沿 D12 两阶段流程重测并动画过渡，避免视觉跳变。
+2583:Q8: D8 全局 Esc 取消：当焦点在 textarea/prose 编辑态时，Esc 常见会用于内容取消/退出编辑或 blur，当前策略未定义冲突优先级。
+2584:严重度: medium
+2585:推荐: Absorb 明确冲突策略（拖拽活动态下 Esc 先取消 drag，并 `preventDefault/stopPropagation`；不主动触发焦点失效，保持 textarea 原状态，结束后恢复最近焦点）。
+2587:Q9: D9 在移动端/1-col 响应路径未说明 resize 交互：若仍显示右边框并触发 col-ruler，`COL_SNAPS=[1]` 会让行为退化且误导。
+2588:严重度: medium
+2589:推荐: Absorb 定义移动端禁用策略（`effectiveCols===1` 时禁用右手柄/size-tooltip/col-ruler，仅保留纵向自适应语义）；必要时给出禁用提示。
+2591:Q10: D10 markdown/`ghost-markdown` 用中性灰，且 prose 是 `proseExtensions` 路径而非 `BlockUIDefinition`，是否存在来源冲突。
+2592:严重度: low
+2593:推荐: no change（与 ADR-0016 的 `proseGridDefaults`/`rowSpanSemantic` 一致可接受；建议只补充一句“颜色映射由 block kind 源于 `gridKind/prose` 标签，不依赖 BlockUIDefinition 全写路径”）
+2595:Q11: D11 drop-pulse 固定 `hue 145°`，但 ADR-0018/主题 token 可能变更；与 runnable 顶条同 hue，存在“状态色 vs 组件色”冲突与主题漂移风险。
+2596:严重度: medium
+2597:推荐: Absorb 为 token 化（改为 `var(--accent-success)` 或 ADR-0018 对应成功 token）并回归兼容（带 fallback），避免 hardcode 固定色。
+2599:Q12: D12 对 `drag-start` 的 epoch 处理留“implementation choice（unchanged or N+1）”，与 rollback/undo 语义不闭环。
+2600:严重度: high
+2601:推荐: Absorb 明确唯一策略：`drag-start` 不改 epoch，`drag-over` 不改，`drag-end-success` 一次性 `epoch+1`，`drag-cancel/外部释放` 不改，所有 rollback 都走快照恢复，避免中间态污染历史链。
+2603:Q13: D2 触发精度：当前 Pre-A3 认定 row4 HIT row1 NO，但实现阶段若 editor-shell 作为 single-source（`layout`/命中算法）尚未在合同中固化，阶段 C.2 实施 PR 可能触发 D2 row1 漏判。
+2604:严重度: medium
+2605:推荐: Absorb 在 Stage C.2 实施计划里把 `editor-shell` 的 single-source 输出与命中算法入口写入 `packages/editor-shell/CONTRACT.md`（或明确在 `Stage C.2 PR` 中把 row1 纳入 D2 trigger），以保证跨 PR 的触发一致性。
+2607:Verdict: 13 challenges raised; recommend orchestrator absorb 3 high + 8 medium; 2 low advisory.
