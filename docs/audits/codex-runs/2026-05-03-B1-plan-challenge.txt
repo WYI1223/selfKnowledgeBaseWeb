@@ -1,0 +1,2000 @@
+Reading additional input from stdin...
+OpenAI Codex v0.125.0 (research preview)
+--------
+workdir: /home/weiyi/selfKnowledgeBaseWeb
+model: gpt-5.3-codex-spark
+provider: openai
+approval: never
+sandbox: danger-full-access
+reasoning effort: xhigh
+reasoning summaries: none
+session id: 019df05c-2866-7730-a81e-448abf1069d8
+--------
+user
+Wave 4 Stage B B1 plan-draft (PRE-LOCK; orchestrator publishes for plan-challenger review).
+
+==== CONTEXT ====
+
+Wave 4 Stage A closed 2026-05-03 (HEAD 4aeb279, ADR-0014 promoted to accepted). Stage B opens with B1 = combined ADR-0012 amendment (PageFind 1.5+ query-time substring finding, ADR-0013 D3 carry-over) + path-prose alignment (\`_pagefind/\` → \`pagefind/\`) + custom query parser implementation in apps/site.
+
+USER GATEKEEPER LOCKED PATH (b) for the ADR amendment. Path (a)-vs-(b) decision is OUT OF SCOPE for this challenge.
+- (a) waive inverse assertion: REJECTED by user
+- (b) custom query parser for word-level CJK matching: LOCKED
+
+This dispatch challenges the IMPLEMENTATION FEASIBILITY of path (b) ONLY.
+
+==== BACKGROUND FACTS (verified PLAN-time) ====
+
+1. PageFind 1.5.2 runtime: indexes CJK via Intl.Segmenter (segments \`笔记本电脑\` to \`['笔记本','电脑']\`) but query parser applies partial-SUBSTRING matching against indexed tokens. \`记本\` matches \`笔记本\` segment (substring) → returns laptop fragment unwantedly. (memory feedback_pagefind_query_substring.md)
+
+2. Current SearchBox surface (apps/site/src/components/SearchBox.astro): minimal 8-line wrapper; uses \`new PagefindUI({ element: '#search', baseUrl: '/', resetStyles: false })\` with default rendering. NOT customized.
+
+3. CRITICAL A11Y CONTRACT (apps/site/CONTRACT.md lines 27-31):
+   > 'A11y guarantee: search input labeling, keyboard result navigation, and result ARIA semantics come from @pagefind/default-ui defaults. apps/site may wrap the surface, BUT IT MUST NOT REPLACE THOSE DEFAULTS WITH A CUSTOM UI UNLESS A FOLLOW-UP CONTRACT UPDATE PRESERVES EQUIVALENT KEYBOARD AND SCREEN-READER BEHAVIOR.'
+
+4. Existing tests:
+   - apps/site/src/__tests__/search-cjk.test.ts (Node integration; PageFind CLI; D2 structural gate; no runtime discriminator)
+   - apps/site/src/__tests__/search-ui.test.ts (asserts dist/search/index.html has \`<div id=\"search\"\` + \`pagefind-ui\` refs + NO \`_pagefind/\`)
+   - apps/site/playwright/search.spec.ts (POSITIVE-ONLY: \`笔记\` matches \`中文笔记测试\`. Inverse assertion REMOVED at Wave 3 D3, commented as deferred to Wave 4 amendment = THIS PR)
+
+5. PagefindUI public callback API (training-knowledge; verify):
+   - processTerm(term): pre-process query before search
+   - processResult(result): per-result mutation hook (cannot filter; cannot remove)
+   - No native filter/skip callback
+
+==== B1 PROPOSED DELIVERABLES ====
+
+(a) ADR-0012 amendment: new \`## Amendments\` section with \`### v0.1.1 (2026-05-03; Wave 4 Stage B B1)\` per ADR-0011 v0.1.1 + ADR-0014 v0.2.1 precedent. Path-prose \`_pagefind/\` → \`pagefind/\` at 5 occurrences in main prose. Criterion 4 prose update: clarify substring fallback + specify path-(b) custom query parser as apps/site mitigation. Cross-reference new apps/site impl files. ~80-120 LOC ADR delta.
+
+(b) Custom query parser implementation in apps/site:
+- Pure utility: apps/site/src/lib/word-level-match.ts — \`function isWordLevelMatch(query: string, content: string, locale?: string): boolean\`. Uses \`Intl.Segmenter\` (granularity: word). Returns true iff query is COMPLETE segment in content (NOT substring of segment).
+- SearchBox integration — implementation choice IS THE CHALLENGE TARGET:
+  - Option B-1: PagefindUI \`processResult\` callback marks mismatches + CSS hides them. Result count display goes wrong (UI says '10 matches' but only 3 visible).
+  - Option B-2: Replace PagefindUI with thin custom UI on \`pagefind.js\` low-level API. Requires CONTRACT.md a11y update enumerating equivalent keyboard + ARIA. Major surface change.
+  - Option B-3: Wrap PagefindUI + DOM MutationObserver to remove non-matches post-render. Fragile to PagefindUI internal markup changes.
+  - Option B-4: Hybrid PagefindUI processTerm short-circuit + processResult mark + CSS hide + count-fixup observer.
+
+(c) Tests:
+- apps/site/src/__tests__/word-level-match.test.ts (unit; Intl.Segmenter; reject \`记本\` vs \`笔记本电脑\`; accept \`笔记\` vs \`中文笔记测试\`)
+- Update apps/site/playwright/search.spec.ts: restore inverse assertion. Rename test 'positive-only' → 'paired discriminator'.
+
+(d) Path-prose alignment:
+- ADR-0012 (5 occurrences in main prose)
+- apps/site/CONTRACT.md line 17-21 stale note (legacy '_pagefind/' explanation now resolved)
+
+(e) D2 trigger judgment:
+- Row 4 (ADR amendment): HIT
+- Row 1 (CONTRACT change): HIT iff Option B-2 chosen (CONTRACT.md a11y update). Otherwise possibly HIT for line 17-21 path-prose stale note removal.
+- Stage 4 PRE-COMMIT CLAUDE REVIEW fires.
+
+==== CHALLENGE QUESTIONS ====
+
+Plan-challenger codex MUST give a verdict (ABSORBED/NOT ABSORBED + rationale) on each:
+
+C1. Implementation option choice: Of B-1 / B-2 / B-3 / B-4, which is most viable? Any option not listed?
+
+C2. PagefindUI callback verification: Does \`processResult\` actually allow reliable mismatch marking? Inspect node_modules/.vite/deps/@pagefind_default-ui.js or @pagefind/default-ui dist. Is full UI replacement inevitable?
+
+C3. Intl.Segmenter locale handling: 'zh-Hans' for CJK; what about mixed English+CJK notes? Single-locale or per-content? Test corpus needed?
+
+C4. Result count accuracy: Hiding via CSS makes count wrong. Acceptable UX? Or must ship count-fixup?
+
+C5. Test coverage: isWordLevelMatch unit + playwright integration sufficient? Need separate vitest for SearchBox callback layer?
+
+C6. Scope size: Fits ADR-0011 D2 ≤200 LOC + ≤1 narrow responsibility? Or split (B1a ADR-amend-only + B1b implementation)?
+
+C7. D2 trigger sensitivity: Confirm Row 1 fires only if Option B-2 + path-prose CONTRACT touch. Otherwise only Row 4. Stage 4 fires either way?
+
+C8. A11y CONTRACT line 27-31: If B-2 chosen, CONTRACT update enumerates keyboard nav + ARIA. In-scope for B1 or split?
+
+C9. Forward-fix risk: Most likely breakage modes? PagefindUI version bump? Intl.Segmenter locale gaps? Async result-rendering races?
+
+C10. Alternative decoupling: Could B1 ship ADR + filter-function-only, deferring SearchBox integration to B1b PR? Lets ADR amendment land safely while integration risks isolate.
+
+==== DELIVERABLE ====
+
+Verdict per challenge (C1..C10): ABSORBED / NOT ABSORBED with concrete rationale + recommendation. Plan-challenger should ALSO surface any challenge orchestrator missed (C11+ if applicable).
+
+Output to stdout. Final block: a plan-lock recommendation summary.
+codex
+I’ll validate feasibility on the provided options by checking the current ADR/test/SearchBox implementation references and the Pagefind UI callback surface in the checked-in dependency artifacts, then return an ABSORBED/NOT ABSORBED verdict for C1–C10 and a lock recommendation.
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && rg -n \"ADR-0012|_pagefind/|pagefind/|SearchBox|pagefind-ui|processTerm|processResult|a11y|keyboard|ARIA|search\" docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md docs/ -g 'ADR-0012*' -g 'CONTRACT.md' -g 'SearchBox.astro' -g 'search-cjk.test.ts' -g 'search-ui.test.ts' -g 'search.spec.ts'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+docs/decisions/ADR-0012-search-index-stack.md:1:# ADR-0012: Search index stack — PageFind via astro-pagefind
+docs/decisions/ADR-0012-search-index-stack.md:8:| 触发 | Wave 3 Stage D opener — D1a research spike ([docs/research/2026-05-search-index-spike.md](../research/2026-05-search-index-spike.md)) recommends single static-search-index stack to satisfy [spec §4.2](../superpowers/specs/2026-04-29-self-knowledge-base-design.md) Wave 3 search requirement; D1a research locked 3 measurable acceptance criteria for ratification here. |
+docs/decisions/ADR-0012-search-index-stack.md:9:| 替代 | 不替代；本 ADR 首次为 apps/site 引入 search index stack。 |
+docs/decisions/ADR-0012-search-index-stack.md:13:[Spec §4.2](../superpowers/specs/2026-04-29-self-knowledge-base-design.md) 要求 Wave 3 在 apps/site 提供 client-side search 能力，覆盖：
+docs/decisions/ADR-0012-search-index-stack.md:19:D1a researcher Claude subagent (sole web-access channel per [ADR-0011 D7](ADR-0011-linear-pipeline-execution-model.md)) one-shot 调研对比 3 个候选 (PageFind / lunr.js / flexsearch) over 8 axes（version + last-commit / bundle / index size / latency / build-vs-client / CJK / reindex / Astro integration），3 个 edge case（non-ASCII, punctuation-heavy, reindex-on-update），并产出 single-candidate recommendation。
+docs/decisions/ADR-0012-search-index-stack.md:21:D1a research evidence summary：
+docs/decisions/ADR-0012-search-index-stack.md:27:| flexsearch 0.7.x | `Charset.CJK` character-level only；word-level 需手工 tokenizer | build OR client；可双模 | 无官方；手工集成 |
+docs/decisions/ADR-0012-search-index-stack.md:36:2. **Astro adapter**: `astro-pagefind` 1.8.6+ (`@pagefind/default-ui` 可选 UI shell)
+docs/decisions/ADR-0012-search-index-stack.md:37:3. **构建集成路径**: D2 PR 在 `apps/site/astro.config.mjs` integrations 中注册 `astroPagefind()`；post-build 阶段 `astro-pagefind` adapter 扫描 `dist/` 静态 HTML 并发出 `dist/_pagefind/` 索引产物。
+docs/decisions/ADR-0012-search-index-stack.md:38:4. **UI 集成路径**: D3 PR 提供 `apps/site/src/components/SearchBox.astro` + `apps/site/src/pages/search.astro`；客户端按需 import `@pagefind/default-ui` 或调用 PageFind low-level API。
+docs/decisions/ADR-0012-search-index-stack.md:42:D1b ratifies the 3 measurable criteria locked at D1a `## D1b ADR acceptance criteria` section ([docs/research/2026-05-search-index-spike.md](../research/2026-05-search-index-spike.md)):
+docs/decisions/ADR-0012-search-index-stack.md:44:1. **Bundle-size budget**: PageFind runtime + initial index chunks at first paint of search route ≤ **120 kB gzip total**, 在 `astro build` artifact 上测量（Pagefind docs 公开数据 ~70-100 kB；120 kB 留 headroom）。D2 PR 必须在 `apps/site/CONTRACT.md` 公开测量结果 + 提交可复现的测量脚本。
+docs/decisions/ADR-0012-search-index-stack.md:45:2. **Index-size budget**: 整体 `dist/_pagefind/` 目录 ≤ **300 kB uncompressed** at 100-note projection（≤ 30 kB 在今天 2-note corpus）；single-query chunk fetch ≤ **80 kB gzip**。D2 PR 必须公开当前 corpus 数值 + 100-note projection。
+docs/decisions/ADR-0012-search-index-stack.md:46:3. **Reindex-on-update mechanism (TC3, plan-challenger R2 #13)**: 索引由 `astro-pagefind` post-build hook 在每次 `astro build` 重新生成；D2 必须包含 regression test：mutate 一个 MDX 文件 → re-run `astro build` → 验证 `_pagefind/` 该 note 对应 chunk 的 content-hash 变化。**禁止** client-side reindex path（runtime fetch + rebuild index in browser）— 与 build-time deterministic 契约冲突。CDN/proxy stale-cache 风险通过 PageFind 出厂的 content-hash 文件名（每个 chunk 文件名含内容哈希）天然 cache-bust — D2 PR 应在 CONTRACT 描述中显式记录此机制（plan-challenger D1b #C4(b) absorbed）。
+docs/decisions/ADR-0012-search-index-stack.md:59:     不是任一 segment 因此不命中；character-level tokenizer (flexsearch
+docs/decisions/ADR-0012-search-index-stack.md:76:- PageFind runtime + `_pagefind/` 静态目录会增加 `apps/site/dist/` 体积（criterion 1+2 cap 此影响）。
+docs/decisions/ADR-0012-search-index-stack.md:83:- **D3** 实施 UI（SearchBox + /search route + visual-smoke playwright）；D3 决定是否使用 `@pagefind/default-ui` 还是手工 React/Vanilla UI。
+docs/decisions/ADR-0012-search-index-stack.md:84:- **server-side search** （未来若引入 apps/api endpoint based search） 不受本 ADR 约束 — PageFind 是 client-side static 决策，server-side search 若发生需另写 ADR。
+docs/decisions/ADR-0012-search-index-stack.md:86:- **`/search` route SSR-before-index render-safety** — D3 范畴。astro-pagefind post-build hook 在 `astro build` HTML emit 之后才生成 `dist/_pagefind/`；理论上 `/search` 静态 HTML 在打包过程中无法引用尚未存在的索引。D3 PLAN 必须 lock：(a) `/search` 客户端脚本 lazy-load PageFind runtime + index，HTML 静态壳允许 fallback 文案 "搜索就绪中" 在 fetch 完成前显示；(b) 静态预渲染期间不调用 PageFind API。本 ADR 不预言 D3 实现细节（plan-challenger D1b #C4(a) noted as out-of-scope）。
+docs/decisions/ADR-0012-search-index-stack.md:96:### flexsearch — 已驳回
+docs/decisions/ADR-0012-search-index-stack.md:104:- 现代 (active maintenance) + 体积小，但 CJK tokenizer 同样 character-level only + 无官方 Astro adapter；与 flexsearch 同类问题且 `astro-pagefind` 提供更优 Astro integration。
+docs/decisions/ADR-0012-search-index-stack.md:109:- 本 ADR 满足 [ADR-0011 D7](ADR-0011-linear-pipeline-execution-model.md) researcher subagent 边界：D1a researcher 只产出 research doc + 推荐，不直接 mutate 代码；本 ADR 由 orchestrator-self drafting + plan-challenger codex 挑战，符合"researcher 一次性 dispatch + ADR 由 orchestrator-self 写"流程。
+docs/decisions/ADR-0012-search-index-stack.md:115:- [D1a research spike](../research/2026-05-search-index-spike.md) — 调研依据，本 ADR acceptance criteria 1-3 的事实基础。
+docs/decisions/ADR-0012-search-index-stack.md:116:- [D1b PR.md](../plans/wave-3-main/D1b-adr-0012-search-index-stack.md) — 本 ADR 的 PR 上下文。
+docs/decisions/ADR-0012-search-index-stack.md:118:- [spec §4.2](../superpowers/specs/2026-04-29-self-knowledge-base-design.md) — Wave 3 search 需求出处。
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:366:│   └── search-index/                        # 构建时全文索引（含 PDF）
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:402:| **桥接包**（敏感） | `mdx-bridge` · `api-client`（生成）· `search-index` | 改动牵动两端，需 round-trip 测试守护 | `mdx-bridge-eng` |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:474:    │  └─ search
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:538:  T3.3  search-index + Pagefind 全站索引
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:578:  └─ researcher     ── 唯一外网访问权
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:629:| `researcher` | 唯一外网权（WebSearch / WebFetch）；接收其他 agent 的调研请求 |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:1083:| T0.1 环境决策 + setup 文档（WSL2 + 工具链 + Codex 安装） | orchestrator + researcher（如需调研 WSL2 Codex 兼容性） | `docs/runbooks/setup-wsl2.md` 完整 |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:1150:| search-index + Pagefind | editor-integrator | 全站搜索（含 PDF 文本）可用 |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:1192:| Custom tools 实现（read_page / write_page / create_block / edit_block / move_block / search / get_editor_state） | api-builder |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:1223:| Codex CLI 调用失败率 > 5% | 暂停 codex worker，调研问题（researcher） |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:1286:| 2026-04-29 | `researcher` agent 独占外网访问权 | 其他 agent 不直接上网，避免噪音与不可重现 |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:366:│   └── search-index/                        # 构建时全文索引（含 PDF）
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:402:| **桥接包**（敏感） | `mdx-bridge` · `api-client`（生成）· `search-index` | 改动牵动两端，需 round-trip 测试守护 | `mdx-bridge-eng` |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:474:    │  └─ search
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:538:  T3.3  search-index + Pagefind 全站索引
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:578:  └─ researcher     ── 唯一外网访问权
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:629:| `researcher` | 唯一外网权（WebSearch / WebFetch）；接收其他 agent 的调研请求 |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:1083:| T0.1 环境决策 + setup 文档（WSL2 + 工具链 + Codex 安装） | orchestrator + researcher（如需调研 WSL2 Codex 兼容性） | `docs/runbooks/setup-wsl2.md` 完整 |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:1150:| search-index + Pagefind | editor-integrator | 全站搜索（含 PDF 文本）可用 |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:1192:| Custom tools 实现（read_page / write_page / create_block / edit_block / move_block / search / get_editor_state） | api-builder |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:1223:| Codex CLI 调用失败率 > 5% | 暂停 codex worker，调研问题（researcher） |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:1286:| 2026-04-29 | `researcher` agent 独占外网访问权 | 其他 agent 不直接上网，避免噪音与不可重现 |
+
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && sed -n '1,220p' docs/decisions/ADR-0012-search-index-stack.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+# ADR-0012: Search index stack — PageFind via astro-pagefind
+
+| 字段 | 值 |
+| ---- | --- |
+| 状态 | accepted |
+| 日期 | 2026-05-01 |
+| 作者 | orchestrator (Claude Opus 4.7 1M ctx) |
+| 触发 | Wave 3 Stage D opener — D1a research spike ([docs/research/2026-05-search-index-spike.md](../research/2026-05-search-index-spike.md)) recommends single static-search-index stack to satisfy [spec §4.2](../superpowers/specs/2026-04-29-self-knowledge-base-design.md) Wave 3 search requirement; D1a research locked 3 measurable acceptance criteria for ratification here. |
+| 替代 | 不替代；本 ADR 首次为 apps/site 引入 search index stack。 |
+
+## Context
+
+[Spec §4.2](../superpowers/specs/2026-04-29-self-knowledge-base-design.md) 要求 Wave 3 在 apps/site 提供 client-side search 能力，覆盖：
+
+- 全文 MDX content（prose + component blocks 渲染后的 inline text）。
+- 标题 / 笔记元数据 (frontmatter title, tags)。
+- 非 ASCII 内容 — 项目 user 操作语言含 CJK（plan-challenger R2 #5 explicit edge case）。
+
+D1a researcher Claude subagent (sole web-access channel per [ADR-0011 D7](ADR-0011-linear-pipeline-execution-model.md)) one-shot 调研对比 3 个候选 (PageFind / lunr.js / flexsearch) over 8 axes（version + last-commit / bundle / index size / latency / build-vs-client / CJK / reindex / Astro integration），3 个 edge case（non-ASCII, punctuation-heavy, reindex-on-update），并产出 single-candidate recommendation。
+
+D1a research evidence summary：
+
+| 候选 | CJK tokenizer | Reindex story | Astro integration |
+| --- | --- | --- | --- |
+| **PageFind 1.5.0+** | `Intl.Segmenter` 自动 word-level（2026-04-06 发布） | build-time emit；deterministic；hash-cache-busted | 官方 `astro-pagefind` 1.8.6 adapter |
+| lunr.js 2.3.9 | whitespace-only；CJK 需 `lunr-chinese` 第三方 | client-build；冷启动重建 | 无官方；手工集成 |
+| flexsearch 0.7.x | `Charset.CJK` character-level only；word-level 需手工 tokenizer | build OR client；可双模 | 无官方；手工集成 |
+
+3 个候选中只有 PageFind 同时满足 (a) word-level CJK 分词零自定义代码 (b) build-time deterministic reindex contract，因此被 D1a 推荐为 single-candidate。
+
+## Decision
+
+apps/site Wave 3 搜索索引 stack 采用：
+
+1. **Index runtime**: PageFind 1.5.0+
+2. **Astro adapter**: `astro-pagefind` 1.8.6+ (`@pagefind/default-ui` 可选 UI shell)
+3. **构建集成路径**: D2 PR 在 `apps/site/astro.config.mjs` integrations 中注册 `astroPagefind()`；post-build 阶段 `astro-pagefind` adapter 扫描 `dist/` 静态 HTML 并发出 `dist/_pagefind/` 索引产物。
+4. **UI 集成路径**: D3 PR 提供 `apps/site/src/components/SearchBox.astro` + `apps/site/src/pages/search.astro`；客户端按需 import `@pagefind/default-ui` 或调用 PageFind low-level API。
+
+## Acceptance criteria (D1a-locked, ratified here)
+
+D1b ratifies the 3 measurable criteria locked at D1a `## D1b ADR acceptance criteria` section ([docs/research/2026-05-search-index-spike.md](../research/2026-05-search-index-spike.md)):
+
+1. **Bundle-size budget**: PageFind runtime + initial index chunks at first paint of search route ≤ **120 kB gzip total**, 在 `astro build` artifact 上测量（Pagefind docs 公开数据 ~70-100 kB；120 kB 留 headroom）。D2 PR 必须在 `apps/site/CONTRACT.md` 公开测量结果 + 提交可复现的测量脚本。
+2. **Index-size budget**: 整体 `dist/_pagefind/` 目录 ≤ **300 kB uncompressed** at 100-note projection（≤ 30 kB 在今天 2-note corpus）；single-query chunk fetch ≤ **80 kB gzip**。D2 PR 必须公开当前 corpus 数值 + 100-note projection。
+3. **Reindex-on-update mechanism (TC3, plan-challenger R2 #13)**: 索引由 `astro-pagefind` post-build hook 在每次 `astro build` 重新生成；D2 必须包含 regression test：mutate 一个 MDX 文件 → re-run `astro build` → 验证 `_pagefind/` 该 note 对应 chunk 的 content-hash 变化。**禁止** client-side reindex path（runtime fetch + rebuild index in browser）— 与 build-time deterministic 契约冲突。CDN/proxy stale-cache 风险通过 PageFind 出厂的 content-hash 文件名（每个 chunk 文件名含内容哈希）天然 cache-bust — D2 PR 应在 CONTRACT 描述中显式记录此机制（plan-challenger D1b #C4(b) absorbed）。
+
+补充 acceptance（D1b new — beyond D1a）:
+
+4. **CJK regression test (word-level vs character-level discriminator,
+   plan-challenger D1b #C3 absorbed)**: D2 必须在 `apps/site/src/__tests__/`
+   或对等 location 加入 regression test 套件，需要包含 ≥2 断言以
+   不仅验证"匹配存在"还要验证"分词层级正确"：
+   - **正向断言**: 索引含 `"中文笔记测试"` 的 note；query `"笔记"` 命中
+     该 note。
+   - **反向断言（discriminator）**: 索引含 `"笔记本电脑"` 的 note；query
+     `"记本"` 必须 **NOT** 命中。原理：`Intl.Segmenter` word-level
+     tokenizer 将 `"笔记本电脑"` 分为 `["笔记本", "电脑"]`，`"记本"`
+     不是任一 segment 因此不命中；character-level tokenizer (flexsearch
+     `Charset.CJK`) 会跨 segment 子串匹配 `"记本"` 因此命中。
+     反向断言失败 ⇒ tokenizer 实为 character-level，PageFind 1.5+
+     CJK contract 违反。
+5. **`astro-pagefind` 版本 lock**: D2 PR 引入的 `astro-pagefind` 必须 ≥ 1.8.6（D1a 调研基线）。lower bound 写入 `apps/site/package.json`。
+
+## Consequences
+
+### Positive
+
+- 单一 stack 决策；零自定义 tokenizer / reindex 调度代码（PageFind + adapter 全部 cover）。
+- CJK 分词从 day-1 工作（`Intl.Segmenter` Node 18+ + 现代浏览器全量支持），不需后续追加 `lunr-chinese` 类第三方。
+- Reindex contract = build artifact 的一部分；CI / dist hashing / cache invalidation 自然继承现有 `astro build` pipeline。
+- Astro 官方 adapter `astro-pagefind` 已存在并在维护（1.8.6 / 2026 持续 commit）；不增加项目独立 integration 维护负担。
+
+### Negative
+
+- PageFind runtime + `_pagefind/` 静态目录会增加 `apps/site/dist/` 体积（criterion 1+2 cap 此影响）。
+- `Intl.Segmenter` 在极老浏览器（IE11、Safari < 14.1）不可用 — 项目浏览器 baseline 是现代 evergreen，可接受。
+- 如未来 PageFind project 进入 maintenance mode，stack 切换需要 D2 PR 等量级工作量；通过 acceptance criterion 1+2+3+5 显式记录测量基线，便于未来 swap 时基线对比。
+
+### Neutral / explicit out-of-scope
+
+- **D2** 实施 build integration + acceptance criteria 1-5 测试；D2 是独立 PR，本 ADR 仅授权 stack 选择不预言 D2 实施细节。
+- **D3** 实施 UI（SearchBox + /search route + visual-smoke playwright）；D3 决定是否使用 `@pagefind/default-ui` 还是手工 React/Vanilla UI。
+- **server-side search** （未来若引入 apps/api endpoint based search） 不受本 ADR 约束 — PageFind 是 client-side static 决策，server-side search 若发生需另写 ADR。
+- 索引 partial language detection / 多语言 ranking — D2/D3 默认按 PageFind 出厂行为；若发现 ranking 缺陷再开后续 ADR。
+- **`/search` route SSR-before-index render-safety** — D3 范畴。astro-pagefind post-build hook 在 `astro build` HTML emit 之后才生成 `dist/_pagefind/`；理论上 `/search` 静态 HTML 在打包过程中无法引用尚未存在的索引。D3 PLAN 必须 lock：(a) `/search` 客户端脚本 lazy-load PageFind runtime + index，HTML 静态壳允许 fallback 文案 "搜索就绪中" 在 fetch 完成前显示；(b) 静态预渲染期间不调用 PageFind API。本 ADR 不预言 D3 实现细节（plan-challenger D1b #C4(a) noted as out-of-scope）。
+
+## Alternatives considered (D1a evidence)
+
+### lunr.js — 已驳回
+
+- CJK 分词 zero-out-of-box；`lunr-chinese` (Wiredcraft) 最近活动 2018，`lunr-languages` 不覆盖 CJK；自带维护负担违反 ADR-0008 D1 dead-dep 精神（相邻 dep family）。
+- Reindex 默认 client-build；冷启动 + cold-cache 用户每次重新 tokenize + index 整 corpus，与 build-time deterministic 契约冲突。
+- 自 2.3.9 (2020) 后 dormant；timeliness 不达标。
+
+### flexsearch — 已驳回
+
+- `Charset.CJK` character-level only；word-level CJK 需自写 segmenter（plan-challenger R2 #5 fail）。
+- 0.7.x 最近 commit 活跃但 `Charset.CJK` documentation 长期未更新；社区 issue (#137) 反映 CJK 实质支持不完整（Ghost #22874 PR 公开了相同 gap）。
+- Build OR client 双模 — 灵活但选 client 时与 reindex contract 冲突，选 build 时配置复杂度高于 PageFind。
+
+### MiniSearch — 评估后未列为正式候选
+
+- 现代 (active maintenance) + 体积小，但 CJK tokenizer 同样 character-level only + 无官方 Astro adapter；与 flexsearch 同类问题且 `astro-pagefind` 提供更优 Astro integration。
+
+## Compliance
+
+- 本 ADR 满足 [ADR-0008 D1](ADR-0008-wave-2-entry-policies.md) dead-dep 政策：`astro-pagefind` 是 `apps/site` 的 runtime dep（被 `astro.config.mjs` 直接 import），不是 dead dep。
+- 本 ADR 满足 [ADR-0011 D7](ADR-0011-linear-pipeline-execution-model.md) researcher subagent 边界：D1a researcher 只产出 research doc + 推荐，不直接 mutate 代码；本 ADR 由 orchestrator-self drafting + plan-challenger codex 挑战，符合"researcher 一次性 dispatch + ADR 由 orchestrator-self 写"流程。
+- 本 ADR 不影响 [ADR-0009](ADR-0009-block-kind-union-expansion.md) BlockKind union；与 block-foundation 完全解耦。
+- 本 ADR 不引入新的 cross-package dependency；`astro-pagefind` 仅被 `apps/site` consume。
+
+## Related
+
+- [D1a research spike](../research/2026-05-search-index-spike.md) — 调研依据，本 ADR acceptance criteria 1-3 的事实基础。
+- [D1b PR.md](../plans/wave-3-main/D1b-adr-0012-search-index-stack.md) — 本 ADR 的 PR 上下文。
+- [Wave 3 plan, D1b entry](../superpowers/plans/2026-05-01-phase-1-wave-3-integration.md) — D1b plan-challenger lock 出处。
+- [spec §4.2](../superpowers/specs/2026-04-29-self-knowledge-base-design.md) — Wave 3 search 需求出处。
+- [ADR-0011](ADR-0011-linear-pipeline-execution-model.md) — pipeline 框架。
+
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && sed -n '1,260p' apps/site/CONTRACT.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+# apps/site Contract
+
+## Public surface
+
+- Routes:
+  - `/` — notes index
+  - `/notes/<slug>` — rendered note
+- MDX component blocks: `src/components.ts` exports `componentsMap`, the static-site
+  PascalCase MDX tag map consumed by note pages.
+- Content collection schema: `src/content.config.ts` imports `frontmatterSchema` from `@skb/content-types`. apps/site MUST NOT redefine the schema inline (single-authority rule per `packages/content-types/CONTRACT.md`).
+- Theme: light / dark, controlled via `<html data-theme="dark">`. Persistent toggle button in the top-right corner of every page.
+
+## Search index
+
+- Stack: PageFind 1.5.0+ through `astro-pagefind` 1.8.6+. `astro.config.mjs`
+  registers the adapter so `astro build` emits `dist/pagefind/` after static
+  HTML generation. Note: ADR-0012 prose references `dist/_pagefind/`
+  (historical pagefind <1.5 default); pagefind 1.5+ emits to `dist/pagefind/`
+  without the underscore prefix. Wave 3 close (or a follow-up docs PR) aligns
+  ADR prose to the current path; the semantic contract (post-build hook +
+  build artifact) is unchanged.
+- UI surface: `src/components/SearchBox.astro` renders the SSR-safe
+  `<div id="search">` mount point and lazy browser script that constructs
+  `@pagefind/default-ui` with `resetStyles: false`. The dedicated `/search`
+  route embeds that component through `BaseLayout`, and the global header links
+  to `/search`.
+- A11y guarantee: search input labeling, keyboard result navigation, and result
+  ARIA semantics come from `@pagefind/default-ui` defaults. apps/site may wrap
+  the surface, but it must not replace those defaults with a custom UI unless a
+  follow-up contract update preserves equivalent keyboard and screen-reader
+  behavior.
+- `/search` render-safety: `astro build` must emit the `/search` HTML before
+  `dist/pagefind/` exists. The page contains only the static mount point plus a
+  client-side script and stylesheet reference; the browser loads PageFind's
+  runtime and index after first paint. This satisfies ADR-0012 out-of-scope
+  #C4(a) for D3 without introducing SSR or blocking static generation.
+- Bundle-size budget: PageFind runtime + initial search-route index chunks must
+  stay <= 120 kB gzip at first paint. D2 has no `/search` route yet, so D3 must
+  re-measure the user-facing route after UI integration.
+- Index-size budget: the complete `dist/pagefind/` directory must stay <= 30 kB
+  uncompressed for the current 2-note corpus and <= 300 kB uncompressed at the
+  100-note projection. Projection formula:
+  `ceil(current_dist_pagefind_bytes / current_note_count * 100)`.
+- Measurement commands:
+
+  ```bash
+  pnpm --filter=@skb/site build
+  test -f apps/site/dist/pagefind/pagefind-entry.json
+  du -sb apps/site/dist/pagefind
+  ```
+
+- Current D2 measurement (sample-blocks + sample-mdx-note + index = 3 indexed
+  pages): `dist/pagefind/` ~= 200 kB uncompressed (Pagefind runtime + UI
+  bundles + 3 note fragments). The index is small relative to pagefind's
+  runtime/UI assets; corpus growth dominates fragment bytes only.
+- Cache-bust mechanism: PageFind emits content-hash chunk filenames, including
+  fragment files under `dist/pagefind/fragment/`. Rebuilding after note content
+  changes produces new chunk names/bytes, so CDN or proxy stale-cache reuse of an
+  old index is avoided without client-side reindexing.
+
+## Invariants
+
+- **Static build only** (spec §1.8 constraint #3): the project must not introduce SSR; `astro build` outputs prerendered HTML.
+- **Default zero JavaScript** (Astro islands): only components annotated with `client:*` hydrate. Wave 1 ships exactly one island, `ThemeToggle (client:load)`.
+- **No hand-rolled visual values** (ADR-0003 / spec §2.6 invariant #5): `tailwind.config.ts` MUST consume `@skb/design-tokens/tailwind-preset` via `presets: [...]`. Hard-coded `#hex`, `rgb(...)`, or pixel literals in any source file under `src/` are rejected by `pr-gate`.
+- **FOUC inline script ↔ design-tokens `STORAGE_KEY` literal sync**: the inline `<script is:inline>` in `BaseLayout.astro` reads `localStorage.getItem('skb-theme')` literally. The design-tokens package owns the canonical `STORAGE_KEY = 'skb-theme'` constant; renaming it requires updating BOTH packages in the same PR. The inline script cannot import the constant — it must run before any module loads to prevent FOUC.
+- **FOUC inline script must NOT write localStorage** (ADR-0003 D6): the script only reads + applies. Writes are reserved for manual user action via `useTheme.setTheme` / `toggle`. This preserves the property "system OS theme change is reflected on next visit unless the user has explicitly chosen a theme."
+- **FOUC boot-theme algorithm MUST be byte-equivalent to `getInitialTheme()`** from `@skb/design-tokens` in BOTH happy-path AND exception handling:
+  1. STRICT-whitelist saved value (`saved === 'light' || saved === 'dark'`); fall through to `matchMedia('(prefers-color-scheme: dark)')` otherwise. A truthy-coerce check (e.g. `saved ? saved === 'dark' : ...`) diverges for invalid / case-mismatched / legacy localStorage values and produces a hydration flash on first paint.
+  2. The `try/catch` MUST wrap ONLY the `localStorage.getItem` call. `matchMedia` + DOM apply MUST run AFTER the catch handler. A wide-scope `try/catch` swallows the `matchMedia` path on Safari Private Mode / iOS WebView with storage restrictions / browsers with localStorage disabled — producing light when system pref is dark, i.e. a hydration flash.
+  Both rules are enforced by `src/__tests__/fouc-script.test.ts`, which extracts the IIFE from `BaseLayout.astro` and asserts equivalence against `getInitialTheme()` for a 16-row saved-value × system-preference corpus + 2 storage-throws × system-preference rows + an explicit truthy-coerce regression assertion.
+- **Content frontmatter schema is owned by `@skb/content-types`**: apps/site imports `frontmatterSchema` and uses it directly in `defineCollection`. Inline schema redefinition is a contract break (content-types CONTRACT.md single-authority invariant). When the schema needs new optional fields, update `@skb/content-types` and let it propagate.
+- **Component-block rendering**: MDX component blocks are wired only through
+  `componentsMap` in `src/components.ts`, and `pages/notes/[...slug].astro`
+  passes that map per page via `<Content components={componentsMap} />`.
+  The map must expose exactly the 8 canonical PascalCase keys `Callout`,
+  `Code`, `Image`, `Math`, `Pdf`, `Jupyter`, `NnViz`, and `AgentFlow`.
+  Values must be the corresponding block package `*RenderView` exports,
+  never `*EditorView`, because apps/site is a read-only static renderer.
+- **Chunking strategy / heavy-block taxonomy**: `src/components.ts` keeps the
+  5 light blocks (`Callout`, `Code`, `Image`, `Math`, `Pdf`) eager-imported
+  because their default render surfaces are small and shared by common prose
+  routes. The 3 heavy blocks (`Jupyter` with Pyodide at roughly 10 MB,
+  `NnViz` with TF.js at roughly 3 MB, and `AgentFlow` with React Flow at
+  roughly 500 KB) must stay behind per-call-site
+  `await import('@skb/block-*/ui-default')` boundaries in `components.ts`.
+  `astro.config.mjs` pins those heavy imports with Rollup `manualChunks`
+  names (`block-jupyter`, `block-nn-viz`, `block-agent-flow`) for stable
+  debug and regression-test filenames; the hint is not the correctness layer.
+  `src/__tests__/lazy-chunking.test.ts` is the locking bundle-grep
+  regression: prose-only route chunks must not contain `pyodide`,
+  `tensorflow`, or `reactflow`, and the 3 heavy chunks must remain distinct.
+
+## Modifying this file
+
+Update this file when changing route structure, content frontmatter shape, build output format, or the theme-control mechanism. Any modification to this file triggers `pr-gate` 5.5 review (CONTRACT.md is a high-risk surface per the agent-contract).
+
+## Related
+
+- [Design spec §1.1 / §2.6](../../docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md)
+- [ADR-0003 headless / presentational split](../../docs/decisions/ADR-0003-headless-presentational-split.md) — D5 (light + dark Phase 1) / D6 (manual-only persistence)
+- [@skb/block-agent-flow contract](../../packages/block-agent-flow/CONTRACT.md)
+- [@skb/block-callout contract](../../packages/block-callout/CONTRACT.md)
+- [@skb/block-code contract](../../packages/block-code/CONTRACT.md)
+- [@skb/block-image contract](../../packages/block-image/CONTRACT.md)
+- [@skb/block-jupyter contract](../../packages/block-jupyter/CONTRACT.md)
+- [@skb/block-math contract](../../packages/block-math/CONTRACT.md)
+- [@skb/block-nn-viz contract](../../packages/block-nn-viz/CONTRACT.md)
+- [@skb/block-pdf contract](../../packages/block-pdf/CONTRACT.md)
+- [@skb/design-tokens contract](../../packages/design-tokens/CONTRACT.md)
+- [agent-contract.md `editor-integrator`](../../agent-contract.md)
+
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && sed -n '1,220p' apps/site/src/components/SearchBox.astro" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+<link rel="stylesheet" href="/pagefind/pagefind-ui.css" />
+<div id="search" class="skb-search"></div>
+
+<script>
+  import { PagefindUI } from '@pagefind/default-ui';
+
+  new PagefindUI({ element: '#search', baseUrl: '/', resetStyles: false });
+</script>
+
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && sed -n '1,260p' apps/site/src/__tests__/search-ui.test.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+import { existsSync, readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { describe, expect, it } from 'vitest';
+
+const appRoot = resolve(import.meta.dirname, '../..');
+const searchHtmlPath = resolve(appRoot, 'dist/search/index.html');
+
+describe('/search PageFind UI shell', () => {
+  it('emits the PageFind mount point and canonical runtime references', () => {
+    expect(existsSync(searchHtmlPath)).toBe(true);
+    const html = readFileSync(searchHtmlPath, 'utf8');
+
+    expect(html).toContain('<div id="search"');
+    expect(html).toMatch(/\/pagefind\/(?:pagefind-ui|pagefind\.js)/);
+    expect(html).not.toContain('/_pagefind/');
+  }, 120_000);
+});
+
+codex
+I’m checking existing tests and the actual `@pagefind/default-ui` callback hooks now, then I’ll make the feasibility judgment against your ten challenge points.
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && sed -n '1,260p' apps/site/src/__tests__/search-cjk.test.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+// @vitest-environment node
+// Per-file env override: pure Node integration test (filesystem +
+// PageFind CLI invocation) — happy-dom (apps/site default) is unnecessary.
+//
+// SCOPE NOTE (D2): this test verifies PageFind successfully indexes
+// CJK content under the temp corpus and emits the canonical 1.5+
+// artifact set (pagefind-entry.json + at least one .pf_meta + at least
+// one fragment file). The full ADR-0012 criterion 4 word-level vs
+// character-level RUNTIME discriminator (querying '笔记' must match
+// '中文笔记测试' but '记本' must NOT match '笔记本电脑') requires
+// pagefind.js's browser fetch() runtime which is fragile under
+// Node + happy-dom + file:// + mock HTTP server. The runtime
+// discriminator assertion is **deferred to D3's playwright spec**
+// (real browser, real fetch, exercising the /search route end-to-end).
+// D2's gate here is "PageFind ran on CJK content + emitted index" —
+// strictly weaker than ADR-0012 criterion 4 but the strongest D2 can
+// give without serving the browser stack.
+import { execFileSync } from 'node:child_process';
+import { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+
+const appRoot = resolve(import.meta.dirname, '../..');
+const isCi = process.env.CI === '1' || process.env.CI === 'true';
+
+type CliCommand = {
+  argsPrefix: string[];
+  cmd: string;
+};
+
+function commandWorks(command: CliCommand): boolean {
+  try {
+    execFileSync(command.cmd, [...command.argsPrefix, '--version'], {
+      cwd: appRoot,
+      stdio: 'ignore',
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function findPagefindCli(): CliCommand | null {
+  const override = process.env.PAGEFIND_BIN;
+  if (override) {
+    return { cmd: override, argsPrefix: [] };
+  }
+
+  // pagefind is a transitive dep of astro-pagefind (not direct in
+  // apps/site), so .bin/pagefind isn't symlinked into apps/site/node_modules.
+  // Use node's require.resolve against the platform-specific binary
+  // optional-dep that pagefind's own wrapper uses (lib/resolveBinary.js).
+  // pagefind ships pagefind_extended (CJK + lang) per platform; fall back
+  // to plain pagefind binary if extended isn't present.
+  try {
+    const require = createRequire(import.meta.url);
+    const platform = process.platform === 'win32' ? 'windows' : process.platform;
+    const arch = process.arch;
+    const ext = platform === 'windows' ? '.exe' : '';
+    for (const execname of ['pagefind_extended', 'pagefind']) {
+      try {
+        const resolved = require.resolve(`@pagefind/${platform}-${arch}/bin/${execname}${ext}`);
+        return { cmd: resolved, argsPrefix: [] };
+      } catch {
+        // try next execname
+      }
+    }
+  } catch {
+    // createRequire / resolve failed — fall through to PATH probe
+  }
+
+  const candidates = [
+    { cmd: 'pagefind', argsPrefix: [] },
+    { cmd: 'pnpm', argsPrefix: ['exec', 'pagefind'] },
+  ];
+  return candidates.find(commandWorks) ?? null;
+}
+
+const pagefindCli = findPagefindCli();
+const runIfPagefind = pagefindCli || isCi ? describe : describe.skip;
+
+function requirePagefindCli(): CliCommand {
+  if (!pagefindCli) {
+    throw new Error('PageFind binary is required on CI; set PAGEFIND_BIN or install pagefind.');
+  }
+  return pagefindCli;
+}
+
+function writePage(root: string, slug: string, title: string, body: string): void {
+  const pageDir = join(root, slug);
+  mkdirSync(pageDir, { recursive: true });
+  writeFileSync(
+    join(pageDir, 'index.html'),
+    `<!doctype html>
+<html lang="zh">
+  <head><title>${title}</title><meta name="title" content="${title}"></head>
+  <body><main data-pagefind-body><h1>${title}</h1><p>${body}</p></main></body>
+</html>`,
+  );
+}
+
+function runPagefind(siteRoot: string): void {
+  const command = requirePagefindCli();
+  execFileSync(command.cmd, [...command.argsPrefix, '--site', siteRoot], {
+    cwd: appRoot,
+    env: { ...process.env, CI: '1' },
+    stdio: 'pipe',
+  });
+}
+
+runIfPagefind('PageFind CJK indexing (D2 structural gate; D3 playwright runs full word-level discriminator)', () => {
+  let siteRoot: string;
+
+  beforeAll(() => {
+    siteRoot = mkdtempSync(join(tmpdir(), 'skb-pagefind-cjk-'));
+    writePage(siteRoot, 'zh-note', '中文笔记测试', '这是一段中文笔记测试内容。');
+    writePage(siteRoot, 'laptop', '笔记本电脑', '这是一段关于笔记本电脑的内容。');
+    runPagefind(siteRoot);
+  }, 60_000);
+
+  afterAll(() => {
+    rmSync(siteRoot, { recursive: true, force: true });
+  });
+
+  it('emits canonical PageFind 1.5+ artifact set on CJK corpus', () => {
+    const pagefindDir = join(siteRoot, 'pagefind');
+    expect(existsSync(pagefindDir)).toBe(true);
+
+    const entryPath = join(pagefindDir, 'pagefind-entry.json');
+    expect(existsSync(entryPath)).toBe(true);
+    const entry = JSON.parse(readFileSync(entryPath, 'utf8')) as { version: string };
+    expect(entry.version).toMatch(/^1\.5\./);
+
+    const fragmentDir = join(pagefindDir, 'fragment');
+    expect(existsSync(fragmentDir)).toBe(true);
+    const fragments = readdirSync(fragmentDir).filter((n) => n.endsWith('.pf_fragment'));
+    expect(fragments.length).toBeGreaterThanOrEqual(2);
+
+    const metaFiles = readdirSync(pagefindDir).filter((n) => n.endsWith('.pf_meta'));
+    expect(metaFiles.length).toBeGreaterThanOrEqual(1);
+  });
+});
+
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && sed -n '1,260p' apps/site/playwright/search.spec.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+import { execFileSync } from 'node:child_process';
+import os from 'node:os';
+import { expect, test, type Page } from '@playwright/test';
+
+function isWsl2(): boolean {
+  if (/microsoft|wsl/i.test(os.release())) {
+    return true;
+  }
+
+  try {
+    return /microsoft|wsl/i.test(execFileSync('uname', ['-r'], { encoding: 'utf8' }));
+  } catch {
+    return false;
+  }
+}
+
+test.skip(isWsl2(), 'Chromium launch is unreliable under WSL2 in this repo');
+
+async function focusSearchInputWithTab(page: Page) {
+  const searchInput = page.locator('#search input[type="text"], #search input[type="search"]');
+  await expect(searchInput).toBeVisible({ timeout: 10_000 });
+
+  for (let index = 0; index < 8; index += 1) {
+    await page.keyboard.press('Tab');
+    const focusedSearch = await searchInput.evaluate((input) => document.activeElement === input);
+    if (focusedSearch) {
+      return searchInput;
+    }
+  }
+
+  throw new Error('Search input was not reachable via Tab');
+}
+
+async function resultTexts(page: Page): Promise<string[]> {
+  await expect(page.locator('.pagefind-ui__result').first()).toBeVisible({ timeout: 10_000 });
+  return page.locator('.pagefind-ui__result').allTextContents();
+}
+
+test('a11y smoke', async ({ page }) => {
+  await page.goto('/search');
+  const searchInput = await focusSearchInputWithTab(page);
+
+  await searchInput.pressSequentially('callout');
+
+  await expect(page.locator('.pagefind-ui__result').first()).toBeVisible({ timeout: 10_000 });
+});
+
+test('CJK indexing — positive query (ADR-0012 criterion 4 partial; runtime D3 finding amends inverse)', async ({ page }) => {
+  // ADR-0012 criterion 4 originally specified a paired discriminator:
+  // positive (`笔记` matches `中文笔记测试`) AND inverse (`记本` MUST NOT
+  // match `笔记本电脑`). The inverse was based on the assumption that
+  // PageFind's `Intl.Segmenter`-driven indexing would reject sub-token
+  // queries at search time. D3 runtime CI revealed a real finding:
+  // PageFind 1.5+ index-time tokenizes CJK with `Intl.Segmenter`
+  // (segments `笔记本电脑` to ['笔记本','电脑']) but query-time still
+  // applies partial-substring matching against tokens, so '记本' matches
+  // the segment '笔记本' as a substring → returns the laptop fragment.
+  // The inverse assertion is therefore not enforceable as a runtime
+  // discriminator on PageFind 1.5+ alone; D2 structural gate (pagefind
+  // 1.5+ artifacts emit on CJK content) + this positive runtime
+  // assertion are the practical D3 verification of CJK index emission.
+  // Wave 4 may amend ADR-0012 criterion 4 with a query parser that
+  // exposes a true word-level mode, OR document the substring fallback
+  // as part of the contract.
+  await page.goto('/search');
+  const searchInput = await focusSearchInputWithTab(page);
+
+  await searchInput.pressSequentially('笔记');
+  await expect
+    .poll(async () => (await resultTexts(page)).join('\n'), { timeout: 10_000 })
+    .toContain('中文笔记测试');
+});
+
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && sed -n '1,260p' apps/site/package.json" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+{
+  "name": "@skb/site",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "typecheck": "astro check && tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:visual": "playwright test"
+  },
+  "dependencies": {
+    "@astrojs/mdx": "^4.0.0",
+    "@astrojs/react": "^4.0.0",
+    "@astrojs/tailwind": "^6.0.0",
+    "@pagefind/default-ui": "^1.5.2",
+    "@skb/block-agent-flow": "workspace:*",
+    "@skb/block-callout": "workspace:*",
+    "@skb/block-code": "workspace:*",
+    "@skb/block-image": "workspace:*",
+    "@skb/block-jupyter": "workspace:*",
+    "@skb/block-math": "workspace:*",
+    "@skb/block-nn-viz": "workspace:*",
+    "@skb/block-pdf": "workspace:*",
+    "@skb/content-types": "workspace:*",
+    "@skb/design-tokens": "workspace:*",
+    "@skb/heavy-block-boundary": "workspace:*",
+    "astro": "^5.0.0",
+    "astro-pagefind": "^1.8.6",
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0",
+    "tailwindcss": "^3.4.0"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.0",
+    "@playwright/test": "1.49.0",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "happy-dom": "^15.0.0",
+    "typescript": "~5.6.0",
+    "vitest": "^4.1.5"
+  }
+}
+
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && node -e \"const fs=require('fs'); const p='node_modules/@pagefind/default-ui/dist/default-ui.js'; try{ const t=fs.readFileSync(p,'utf8'); console.log(t.includes('processTerm')? 'has processTerm':'no processTerm'); console.log(t.includes('processResult')? 'has processResult':'no processResult'); console.log(t.slice(t.indexOf('processTerm')-120,t.indexOf('processTerm')+420)); }catch(e){console.error(e.message)}\"" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+ENOENT: no such file or directory, open 'node_modules/@pagefind/default-ui/dist/default-ui.js'
+
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && rg -n \"processTerm|processResult|new PagefindUI|default-ui\" node_modules/.vite/deps/@pagefind_default-ui.js apps/site/node_modules/.vite/deps/@pagefind_default-ui.js node_modules/@pagefind -g '*.js' | head -n 40" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+rg: node_modules/.vite/deps/@pagefind_default-ui.js: No such file or directory (os error 2)
+rg: node_modules/@pagefind: No such file or directory (os error 2)
+apps/site/node_modules/.vite/deps/@pagefind_default-ui.js:5:// ../../node_modules/.pnpm/@pagefind+default-ui@1.5.2/node_modules/@pagefind/default-ui/npm_dist/mjs/ui-core.mjs
+apps/site/node_modules/.vite/deps/@pagefind_default-ui.js:6076:    let processResult = opts.processResult ?? null;
+apps/site/node_modules/.vite/deps/@pagefind_default-ui.js:6077:    let processTerm = opts.processTerm ?? null;
+apps/site/node_modules/.vite/deps/@pagefind_default-ui.js:6093:    delete opts["processResult"];
+apps/site/node_modules/.vite/deps/@pagefind_default-ui.js:6094:    delete opts["processTerm"];
+apps/site/node_modules/.vite/deps/@pagefind_default-ui.js:6114:          process_result: processResult,
+apps/site/node_modules/.vite/deps/@pagefind_default-ui.js:6115:          process_term: processTerm,
+apps/site/node_modules/.vite/deps/@pagefind_default-ui.js:6154://# sourceMappingURL=@pagefind_default-ui.js.map
+
+codex
+I found the dependency artifacts under `apps/site/node_modules`; next I’ll inspect the relevant callback wiring in that bundle and then finalize the plan-challenger verdicts with concrete risks and acceptance impacts.
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && sed -n '6050,6125p' apps/site/node_modules/.vite/deps/@pagefind_default-ui.js" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+      null,
+      [-1, -1]
+    );
+  }
+};
+var ui_default = Ui;
+var scriptBundlePath;
+try {
+  if ((document == null ? void 0 : document.currentScript) && document.currentScript.tagName.toUpperCase() === "SCRIPT") {
+    scriptBundlePath = new URL(document.currentScript.src).pathname.match(
+      /^(.*\/)(?:pagefind-)?ui.js.*$/
+    )[1];
+  }
+} catch (e) {
+  scriptBundlePath = "/pagefind/";
+}
+var PagefindUI = class {
+  constructor(opts) {
+    this._pfs = null;
+    let selector = opts.element ?? "[data-pagefind-ui]";
+    let bundlePath = opts.bundlePath ?? scriptBundlePath;
+    let pageSize = opts.pageSize ?? 5;
+    let resetStyles = opts.resetStyles ?? true;
+    let showImages = opts.showImages ?? true;
+    let showSubResults = opts.showSubResults ?? false;
+    let excerptLength = opts.excerptLength ?? 0;
+    let processResult = opts.processResult ?? null;
+    let processTerm = opts.processTerm ?? null;
+    let showEmptyFilters = opts.showEmptyFilters ?? true;
+    let openFilters = opts.openFilters ?? [];
+    let debounceTimeoutMs = opts.debounceTimeoutMs ?? 300;
+    let mergeIndex = opts.mergeIndex ?? [];
+    let translations = opts.translations ?? [];
+    let autofocus = opts.autofocus ?? false;
+    let focusOnSlash = opts.focusOnSlash ?? false;
+    let sort = opts.sort ?? null;
+    delete opts["element"];
+    delete opts["bundlePath"];
+    delete opts["pageSize"];
+    delete opts["resetStyles"];
+    delete opts["showImages"];
+    delete opts["showSubResults"];
+    delete opts["excerptLength"];
+    delete opts["processResult"];
+    delete opts["processTerm"];
+    delete opts["showEmptyFilters"];
+    delete opts["openFilters"];
+    delete opts["debounceTimeoutMs"];
+    delete opts["mergeIndex"];
+    delete opts["translations"];
+    delete opts["autofocus"];
+    delete opts["focusOnSlash"];
+    delete opts["sort"];
+    const dom = selector instanceof HTMLElement ? selector : document.querySelector(selector);
+    if (dom) {
+      this._pfs = new ui_default({
+        target: dom,
+        props: {
+          base_path: bundlePath,
+          page_size: pageSize,
+          reset_styles: resetStyles,
+          show_images: showImages,
+          show_sub_results: showSubResults,
+          excerpt_length: excerptLength,
+          process_result: processResult,
+          process_term: processTerm,
+          show_empty_filters: showEmptyFilters,
+          open_filters: openFilters,
+          debounce_timeout_ms: debounceTimeoutMs,
+          merge_index: mergeIndex,
+          translations,
+          autofocus,
+          focus_on_slash: focusOnSlash,
+          sort,
+          pagefind_options: opts
+        }
+
+exec
+/bin/bash -lc 'cd /home/weiyi/selfKnowledgeBaseWeb && rg -n "process_result|processResult|results" apps/site/node_modules/.vite/deps/@pagefind_default-ui.js | head -n 30' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+1467:  let { process_result = null } = $$props;
+1486:    $$invalidate(1, data = (process_result == null ? void 0 : process_result(data)) ?? data);
+1503:    if ("process_result" in $$props2) $$invalidate(4, process_result = $$props2.process_result);
+1512:  return [show_images, data, meta, placeholder, process_result, result];
+1519:      process_result: 4,
+1619:    /*non_root_sub_results*/
+1713:      if (dirty & /*non_root_sub_results*/
+1716:          /*non_root_sub_results*/
+1929:      if (dirty & /*non_root_sub_results*/
+1932:      if (dirty & /*non_root_sub_results*/
+1937:      if (dirty & /*non_root_sub_results*/
+2106:  let { process_result = null } = $$props;
+2114:  let non_root_sub_results = [];
+2116:  const thin_sub_results = (results, limit) => {
+2117:    if (results.length <= limit) {
+2118:      return results;
+2120:    const top_results = [...results].sort((a, b) => b.locations.length - a.locations.length).slice(0, 3).map((r) => r.url);
+2121:    return results.filter((r) => top_results.includes(r.url));
+2126:    $$invalidate(1, data = (process_result == null ? void 0 : process_result(data)) ?? data);
+2128:    if (Array.isArray(data.sub_results)) {
+2129:      $$invalidate(4, has_root_sub_result = ((_b = (_a = data.sub_results) == null ? void 0 : _a[0]) == null ? void 0 : _b.url) === (((_c = data.meta) == null ? void 0 : _c.url) || data.url));
+2131:        $$invalidate(3, non_root_sub_results = thin_sub_results(data.sub_results.slice(1), 3));
+2133:        $$invalidate(3, non_root_sub_results = thin_sub_results([...data.sub_results], 3));
+2142:    if ("process_result" in $$props2) $$invalidate(6, process_result = $$props2.process_result);
+2155:    non_root_sub_results,
+2158:    process_result,
+2167:      process_result: 6,
+2718:  zero_results: "Geen resultate vir [SEARCH_TERM]",
+2719:  many_results: "[COUNT] resultate vir [SEARCH_TERM]",
+2721:  total_zero_results: "Geen resultate",
+
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && sed -n '1420,1535p' apps/site/node_modules/.vite/deps/@pagefind_default-ui.js && sed -n '2060,2148p' apps/site/node_modules/.vite/deps/@pagefind_default-ui.js" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+}
+function create_fragment(ctx) {
+  let li;
+  function select_block_type(ctx2, dirty) {
+    if (
+      /*data*/
+      ctx2[1]
+    ) return create_if_block;
+    return create_else_block;
+  }
+  let current_block_type = select_block_type(ctx, -1);
+  let if_block = current_block_type(ctx);
+  return {
+    c() {
+      li = element("li");
+      if_block.c();
+      attr(li, "class", "pagefind-ui__result svelte-j9e30");
+    },
+    m(target, anchor) {
+      insert(target, li, anchor);
+      if_block.m(li, null);
+    },
+    p(ctx2, [dirty]) {
+      if (current_block_type === (current_block_type = select_block_type(ctx2, dirty)) && if_block) {
+        if_block.p(ctx2, dirty);
+      } else {
+        if_block.d(1);
+        if_block = current_block_type(ctx2);
+        if (if_block) {
+          if_block.c();
+          if_block.m(li, null);
+        }
+      }
+    },
+    i: noop,
+    o: noop,
+    d(detaching) {
+      if (detaching) {
+        detach(li);
+      }
+      if_block.d();
+    }
+  };
+}
+var func = (c) => c.toLocaleUpperCase();
+function instance($$self, $$props, $$invalidate) {
+  let { show_images = true } = $$props;
+  let { process_result = null } = $$props;
+  let { result = {
+    data: async () => {
+    }
+  } } = $$props;
+  const skipMeta = ["title", "image", "image_alt", "url"];
+  let data;
+  let meta = [];
+  const resolveImageUrl = (src, pageUrl) => {
+    if (!src || /^[a-z][a-z0-9+.-]*:/i.test(src) || /^\/\//.test(src) || src.startsWith("/")) return src;
+    try {
+      return new URL(src, new URL(pageUrl || "/", "https://p")).pathname;
+    } catch {
+      return src;
+    }
+  };
+  const load = async (r) => {
+    var _a;
+    $$invalidate(1, data = await r.data());
+    $$invalidate(1, data = (process_result == null ? void 0 : process_result(data)) ?? data);
+    if ((_a = data.meta) == null ? void 0 : _a.image) {
+      $$invalidate(1, data = {
+        ...data,
+        meta: {
+          ...data.meta,
+          image: resolveImageUrl(data.meta.image, data.meta.url || data.url)
+        }
+      });
+    }
+    $$invalidate(2, meta = Object.entries(data.meta).filter(([key]) => !skipMeta.includes(key)));
+  };
+  const placeholder = (max = 30) => {
+    return ". ".repeat(Math.floor(10 + Math.random() * max));
+  };
+  $$self.$$set = ($$props2) => {
+    if ("show_images" in $$props2) $$invalidate(0, show_images = $$props2.show_images);
+    if ("process_result" in $$props2) $$invalidate(4, process_result = $$props2.process_result);
+    if ("result" in $$props2) $$invalidate(5, result = $$props2.result);
+  };
+  $$self.$$.update = () => {
+    if ($$self.$$.dirty & /*result*/
+    32) {
+      $: load(result);
+    }
+  };
+  return [show_images, data, meta, placeholder, process_result, result];
+}
+var Result = class extends SvelteComponent {
+  constructor(options) {
+    super();
+    init(this, options, instance, create_fragment, safe_not_equal, {
+      show_images: 0,
+      process_result: 4,
+      result: 5
+    });
+  }
+};
+var result_default = Result;
+function get_each_context2(ctx, list, i) {
+  const child_ctx = ctx.slice();
+  child_ctx[11] = list[i][0];
+  child_ctx[12] = list[i][1];
+  return child_ctx;
+}
+function get_each_context_1(ctx, list, i) {
+  const child_ctx = ctx.slice();
+  child_ctx[15] = list[i];
+  return child_ctx;
+}
+function create_fragment2(ctx) {
+  let li;
+  function select_block_type(ctx2, dirty) {
+    if (
+      /*data*/
+      ctx2[1]
+    ) return create_if_block2;
+    return create_else_block2;
+  }
+  let current_block_type = select_block_type(ctx, -1);
+  let if_block = current_block_type(ctx);
+  return {
+    c() {
+      li = element("li");
+      if_block.c();
+      attr(li, "class", "pagefind-ui__result svelte-4xnkmf");
+    },
+    m(target, anchor) {
+      insert(target, li, anchor);
+      if_block.m(li, null);
+    },
+    p(ctx2, [dirty]) {
+      if (current_block_type === (current_block_type = select_block_type(ctx2, dirty)) && if_block) {
+        if_block.p(ctx2, dirty);
+      } else {
+        if_block.d(1);
+        if_block = current_block_type(ctx2);
+        if (if_block) {
+          if_block.c();
+          if_block.m(li, null);
+        }
+      }
+    },
+    i: noop,
+    o: noop,
+    d(detaching) {
+      if (detaching) {
+        detach(li);
+      }
+      if_block.d();
+    }
+  };
+}
+var func2 = (c) => c.toLocaleUpperCase();
+function instance2($$self, $$props, $$invalidate) {
+  let { show_images = true } = $$props;
+  let { process_result = null } = $$props;
+  let { result = {
+    data: async () => {
+    }
+  } } = $$props;
+  const skipMeta = ["title", "image", "image_alt", "url"];
+  let data;
+  let meta = [];
+  let non_root_sub_results = [];
+  let has_root_sub_result = false;
+  const thin_sub_results = (results, limit) => {
+    if (results.length <= limit) {
+      return results;
+    }
+    const top_results = [...results].sort((a, b) => b.locations.length - a.locations.length).slice(0, 3).map((r) => r.url);
+    return results.filter((r) => top_results.includes(r.url));
+  };
+  const load = async (r) => {
+    var _a, _b, _c;
+    $$invalidate(1, data = await r.data());
+    $$invalidate(1, data = (process_result == null ? void 0 : process_result(data)) ?? data);
+    $$invalidate(2, meta = Object.entries(data.meta).filter(([key]) => !skipMeta.includes(key)));
+    if (Array.isArray(data.sub_results)) {
+      $$invalidate(4, has_root_sub_result = ((_b = (_a = data.sub_results) == null ? void 0 : _a[0]) == null ? void 0 : _b.url) === (((_c = data.meta) == null ? void 0 : _c.url) || data.url));
+      if (has_root_sub_result) {
+        $$invalidate(3, non_root_sub_results = thin_sub_results(data.sub_results.slice(1), 3));
+      } else {
+        $$invalidate(3, non_root_sub_results = thin_sub_results([...data.sub_results], 3));
+      }
+    }
+  };
+  const placeholder = (max = 30) => {
+    return ". ".repeat(Math.floor(10 + Math.random() * max));
+  };
+  $$self.$$set = ($$props2) => {
+    if ("show_images" in $$props2) $$invalidate(0, show_images = $$props2.show_images);
+    if ("process_result" in $$props2) $$invalidate(6, process_result = $$props2.process_result);
+    if ("result" in $$props2) $$invalidate(7, result = $$props2.result);
+  };
+  $$self.$$.update = () => {
+    if ($$self.$$.dirty & /*result*/
+    128) {
+      $: load(result);
+
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && rg -n \"process_term|processTerm|searchTerm|search\\(|new Pagefind|search_\" apps/site/node_modules/.vite/deps/@pagefind_default-ui.js | head -n 30" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+2716:  search_label: "Soek hierdie webwerf",
+2725:  search_suggestion: "Geen resultate vir [SEARCH_TERM]. Probeer eerder een van die volgende terme:",
+2760:  search_label: "ابحث في هذا الموقع",
+2769:  search_suggestion: "لا توجد نتائج ل [SEARCH_TERM]. جرب أحد عمليات البحث التالية:",
+2804:  search_label: "এই ওয়েবসাইটে অনুসন্ধান করুন",
+2813:  search_suggestion: "কোন কিছু খুঁজে পাওয়া যায়নি [SEARCH_TERM] এর বিষয়ে. নিন্মের বিষয়বস্তু খুঁজে দেখুন:",
+2848:  search_label: "Cerca en aquest lloc",
+2857:  search_suggestion: "No es van trobar resultats per [SEARCH_TERM]. Proveu una de les cerques següents:",
+2892:  search_label: "Prohledat tuto stránku",
+2901:  search_suggestion: "Žádné výsledky pro [SEARCH_TERM]. Související výsledky hledání:",
+2936:  search_label: "Søg på dette website",
+2945:  search_suggestion: "Ingen resultater for [SEARCH_TERM]. Prøv et af disse søgeord i stedet:",
+2980:  search_label: "Suche diese Seite",
+2989:  search_suggestion: "Keine Ergebnisse für [SEARCH_TERM]. Versuchen Sie eine der folgenden Suchen:",
+3024:  search_label: "Αναζήτηση σε αυτόν τον ιστότοπο",
+3033:  search_suggestion: "Δεν βρέθηκαν αποτελέσματα για [SEARCH_TERM]. Δοκιμάστε μία από τις παρακάτω αναζητήσεις:",
+3068:  search_label: "Search this site",
+3077:  search_suggestion: "No results for [SEARCH_TERM]. Try one of the following searches:",
+3112:  search_label: "Buscar en este sitio",
+3121:  search_suggestion: "No se encontraron resultados para [SEARCH_TERM]. Prueba una de las siguientes búsquedas:",
+3156:  search_label: "Bilatu",
+3165:  search_suggestion: "Ez dago emaitzarik [SEARCH_TERM] bilaketarentzat. Saiatu hauetako beste bateikin:",
+3200:  search_label: "جستجو در سایت",
+3209:  search_suggestion: "نتیجه‌ای برای [SEARCH_TERM] یافت نشد. یکی از جستجوهای زیر را امتحان کنید:",
+3244:  search_label: "Hae tältä sivustolta",
+3253:  search_suggestion: "Ei tuloksia haulle [SEARCH_TERM]. Kokeile jotain seuraavista:",
+3288:  search_label: "Recherche sur ce site",
+3297:  search_suggestion: "Pas de résultat pour [SEARCH_TERM]. Essayer une des recherches suivantes:",
+3332:  search_label: "Buscar neste sitio",
+3341:  search_suggestion: "Non se atoparon resultados para [SEARCH_TERM]. Probe unha das seguintes pesquisas:",
+
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && rg -n \"process_term|processResult|processResult|process_term|processTerm|process_term\" apps/site/node_modules/.pnpm/@pagefind+default-ui@1.5.2/node_modules/@pagefind/default-ui/npm_dist -g '*.mjs' -g '*.js' | head -n 80" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+rg: apps/site/node_modules/.pnpm/@pagefind+default-ui@1.5.2/node_modules/@pagefind/default-ui/npm_dist: IO error for operation on apps/site/node_modules/.pnpm/@pagefind+default-ui@1.5.2/node_modules/@pagefind/default-ui/npm_dist: No such file or directory (os error 2)
+
+exec
+/bin/bash -lc 'cd /home/weiyi/selfKnowledgeBaseWeb && ls apps/site/node_modules/.pnpm | rg "@pagefind" | head -n 20' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+ls: cannot access 'apps/site/node_modules/.pnpm': No such file or directory
+
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && rg -n \"@pagefind/default-ui|npm_dist|process_term\" apps/site/node_modules -g 'package.json' -g '*.js' | head -n 80" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+codex
+I verified callback hooks are present in the built UI bundle. I’ll grab one more artifact from the actual installed package source (if available) to confirm whether `processTerm` is transformed pre-search or only post-search term normalizer.
+exec
+/bin/bash -lc 'cd /home/weiyi/selfKnowledgeBaseWeb && ls -la apps/site/node_modules | head -n 80 && ls -la apps/site/node_modules/.vite/deps | rg pagefind' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+total 72
+drwxr-xr-x 11 weiyi weiyi 4096 May  1 23:01 .
+drwxr-xr-x  8 weiyi weiyi 4096 May  3 17:56 ..
+drwxr-xr-x  2 weiyi weiyi 4096 May  1 23:03 .astro
+drwxr-xr-x  2 weiyi weiyi 4096 May  3 16:24 .bin
+drwxr-xr-x  4 weiyi weiyi 4096 May  3 20:09 .vite
+drwxr-xr-x  2 weiyi weiyi 4096 May  3 17:55 .vite-temp
+drwxr-xr-x  2 weiyi weiyi 4096 Apr 29 20:33 @astrojs
+drwxr-xr-x  2 weiyi weiyi 4096 May  1 23:01 @pagefind
+drwxr-xr-x  2 weiyi weiyi 4096 Apr 30 13:21 @playwright
+drwxr-xr-x  2 weiyi weiyi 4096 May  3 11:01 @skb
+drwxr-xr-x  2 weiyi weiyi 4096 Apr 29 20:33 @types
+lrwxrwxrwx  1 weiyi weiyi  165 Apr 29 20:33 astro -> ../../../node_modules/.pnpm/astro@5.18.1_@types+node@22.19.17_jiti@1.21.7_lightningcss@1.32.0_rollup@4.60.2_tsx@4.21.0_typescript@5.6.3_yaml@2.8.3/node_modules/astro
+lrwxrwxrwx  1 weiyi weiyi  176 May  1 22:26 astro-pagefind -> ../../../node_modules/.pnpm/astro-pagefind@1.8.6_astro@5.18.1_@types+node@22.19.17_jiti@1.21.7_lightningcss@1.32.0_rollup_37smwvwrshh7dv7kqjvwpfi4va/node_modules/astro-pagefind
+lrwxrwxrwx  1 weiyi weiyi   68 Apr 30 01:56 happy-dom -> ../../../node_modules/.pnpm/happy-dom@15.11.7/node_modules/happy-dom
+lrwxrwxrwx  1 weiyi weiyi   59 Apr 29 20:33 react -> ../../../node_modules/.pnpm/react@18.3.1/node_modules/react
+lrwxrwxrwx  1 weiyi weiyi   80 Apr 29 20:33 react-dom -> ../../../node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom
+lrwxrwxrwx  1 weiyi weiyi   93 Apr 29 20:33 tailwindcss -> ../../../node_modules/.pnpm/tailwindcss@3.4.19_tsx@4.21.0_yaml@2.8.3/node_modules/tailwindcss
+lrwxrwxrwx  1 weiyi weiyi   68 Apr 29 20:33 typescript -> ../../../node_modules/.pnpm/typescript@5.6.3/node_modules/typescript
+lrwxrwxrwx  1 weiyi weiyi  168 Apr 29 20:33 vitest -> ../../../node_modules/.pnpm/vitest@4.1.5_@types+node@22.19.17_happy-dom@15.11.7_vite@6.4.2_@types+node@22.19.17_jiti@1.21_g3bl6pf2la4lfikrqa23fo7ylq/node_modules/vitest
+-rw-r--r-- 1 weiyi weiyi  191803 May  3 20:09 @pagefind_default-ui.js
+-rw-r--r-- 1 weiyi weiyi  337850 May  3 20:09 @pagefind_default-ui.js.map
+
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && ls -la apps/site/node_modules/@pagefind && rg -n \"process_term|processTerm|dist|npm_dist|ui-core\" apps/site/node_modules/@pagefind -g '*.js' -g '*.mjs' | head -n 60" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+total 12
+drwxr-xr-x  2 weiyi weiyi 4096 May  1 23:01 .
+drwxr-xr-x 11 weiyi weiyi 4096 May  1 23:01 ..
+lrwxrwxrwx  1 weiyi weiyi   91 May  1 23:01 default-ui -> ../../../../node_modules/.pnpm/@pagefind+default-ui@1.5.2/node_modules/@pagefind/default-ui
+
+codex
+I’ll now inspect the source module under the pnpm store path (where comments/constants are preserved) to confirm exact behavior of `processTerm` and whether it is only preprocessor or has filtering capability.
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && ls -la node_modules/.pnpm/@pagefind+default-ui@1.5.2/node_modules/@pagefind/default-ui && find node_modules/.pnpm/@pagefind+default-ui@1.5.2/node_modules/@pagefind/default-ui -maxdepth 3 -type f | sed -n '1,120p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+total 36
+drwxr-xr-x 5 weiyi weiyi 4096 May  1 22:26 .
+drwxr-xr-x 3 weiyi weiyi 4096 May  1 22:26 ..
+-rw-r--r-- 2 weiyi weiyi 1107 May  1 22:26 README.md
+drwxr-xr-x 2 weiyi weiyi 4096 May  1 22:26 css
+drwxr-xr-x 4 weiyi weiyi 4096 May  1 22:26 npm_dist
+-rw-r--r-- 2 weiyi weiyi  709 May  1 22:26 package.json
+drwxr-xr-x 2 weiyi weiyi 4096 May  1 22:26 svelte
+-rw-r--r-- 2 weiyi weiyi 3431 May  1 22:26 ui-core.js
+-rw-r--r-- 2 weiyi weiyi   72 May  1 22:26 ui.js
+node_modules/.pnpm/@pagefind+default-ui@1.5.2/node_modules/@pagefind/default-ui/ui.js
+node_modules/.pnpm/@pagefind+default-ui@1.5.2/node_modules/@pagefind/default-ui/npm_dist/cjs/ui-core.css
+node_modules/.pnpm/@pagefind+default-ui@1.5.2/node_modules/@pagefind/default-ui/npm_dist/cjs/ui-core.cjs
+node_modules/.pnpm/@pagefind+default-ui@1.5.2/node_modules/@pagefind/default-ui/npm_dist/mjs/ui-core.css
+node_modules/.pnpm/@pagefind+default-ui@1.5.2/node_modules/@pagefind/default-ui/npm_dist/mjs/ui-core.mjs
+node_modules/.pnpm/@pagefind+default-ui@1.5.2/node_modules/@pagefind/default-ui/package.json
+node_modules/.pnpm/@pagefind+default-ui@1.5.2/node_modules/@pagefind/default-ui/ui-core.js
+node_modules/.pnpm/@pagefind+default-ui@1.5.2/node_modules/@pagefind/default-ui/css/ui.css
+node_modules/.pnpm/@pagefind+default-ui@1.5.2/node_modules/@pagefind/default-ui/svelte/ui.svelte
+node_modules/.pnpm/@pagefind+default-ui@1.5.2/node_modules/@pagefind/default-ui/svelte/result.svelte
+node_modules/.pnpm/@pagefind+default-ui@1.5.2/node_modules/@pagefind/default-ui/svelte/filters.svelte
+node_modules/.pnpm/@pagefind+default-ui@1.5.2/node_modules/@pagefind/default-ui/svelte/result_with_subs.svelte
+node_modules/.pnpm/@pagefind+default-ui@1.5.2/node_modules/@pagefind/default-ui/svelte/reset.svelte
+node_modules/.pnpm/@pagefind+default-ui@1.5.2/node_modules/@pagefind/default-ui/README.md
+
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && sed -n '1,280p' node_modules/.pnpm/@pagefind+default-ui@1.5.2/node_modules/@pagefind/default-ui/ui.js && sed -n '1,260p' node_modules/.pnpm/@pagefind+default-ui@1.5.2/node_modules/@pagefind/default-ui/ui-core.js" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+import { PagefindUI } from "./ui-core";
+
+window.PagefindUI = PagefindUI;import PagefindSvelte from "./svelte/ui.svelte";
+
+let scriptBundlePath;
+try {
+  // Important: Check that the element is indeed a <script> node, to avoid a DOM clobbering vulnerability
+  if (document?.currentScript && document.currentScript.tagName.toUpperCase() === 'SCRIPT') {
+    scriptBundlePath = new URL(document.currentScript.src).pathname.match(
+      /^(.*\/)(?:pagefind-)?ui.js.*$/
+    )[1];
+  }
+} catch (e) {
+  scriptBundlePath = "/pagefind/";
+}
+
+export class PagefindUI {
+  constructor(opts) {
+    this._pfs = null;
+
+    let selector = opts.element ?? "[data-pagefind-ui]";
+    let bundlePath = opts.bundlePath ?? scriptBundlePath;
+    let pageSize = opts.pageSize ?? 5;
+    let resetStyles = opts.resetStyles ?? true;
+    let showImages = opts.showImages ?? true;
+    let showSubResults = opts.showSubResults ?? false;
+    let excerptLength = opts.excerptLength ?? 0;
+    let processResult = opts.processResult ?? null;
+    let processTerm = opts.processTerm ?? null;
+    let showEmptyFilters = opts.showEmptyFilters ?? true;
+    let openFilters = opts.openFilters ?? [];
+    let debounceTimeoutMs = opts.debounceTimeoutMs ?? 300;
+    let mergeIndex = opts.mergeIndex ?? [];
+    let translations = opts.translations ?? [];
+    let autofocus = opts.autofocus ?? false;
+    let focusOnSlash = opts.focusOnSlash ?? false;
+    let sort = opts.sort ?? null;
+
+    // Remove the UI-specific config before passing it along to the Pagefind backend
+    delete opts["element"];
+    delete opts["bundlePath"];
+    delete opts["pageSize"];
+    delete opts["resetStyles"];
+    delete opts["showImages"];
+    delete opts["showSubResults"];
+    delete opts["excerptLength"];
+    delete opts["processResult"];
+    delete opts["processTerm"];
+    delete opts["showEmptyFilters"];
+    delete opts["openFilters"];
+    delete opts["debounceTimeoutMs"];
+    delete opts["mergeIndex"];
+    delete opts["translations"];
+    delete opts["autofocus"];
+    delete opts["focusOnSlash"];
+    delete opts["sort"];
+
+    const dom =
+      selector instanceof HTMLElement
+        ? selector
+        : document.querySelector(selector);
+    if (dom) {
+      this._pfs = new PagefindSvelte({
+        target: dom,
+        props: {
+          base_path: bundlePath,
+          page_size: pageSize,
+          reset_styles: resetStyles,
+          show_images: showImages,
+          show_sub_results: showSubResults,
+          excerpt_length: excerptLength,
+          process_result: processResult,
+          process_term: processTerm,
+          show_empty_filters: showEmptyFilters,
+          open_filters: openFilters,
+          debounce_timeout_ms: debounceTimeoutMs,
+          merge_index: mergeIndex,
+          translations,
+          autofocus,
+          focus_on_slash: focusOnSlash,
+          sort,
+          pagefind_options: opts,
+        },
+      });
+    } else {
+      console.error(`Pagefind UI couldn't find the selector ${selector}`);
+    }
+  }
+
+  triggerSearch(term) {
+    this._pfs.$$set({ trigger_search_term: term });
+  }
+
+  triggerFilters(filters) {
+    let selected_filters = {};
+    for (let [filter, key] of Object.entries(filters)) {
+      if (Array.isArray(key)) {
+        for (let val of key) {
+          selected_filters[`${filter}:${val}`] = true;
+        }
+      } else {
+        selected_filters[`${filter}:${key}`] = true;
+      }
+    }
+    this._pfs.$$set({ selected_filters });
+  }
+
+  destroy() {
+    this._pfs.$destroy();
+  }
+}
+
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && rg -n \"process_term|processTerm|search\\(|query|_pfs|results\" node_modules/.pnpm/@pagefind+default-ui@1.5.2/node_modules/@pagefind/default-ui/svelte/ui.svelte node_modules/.pnpm/@pagefind+default-ui@1.5.2/node_modules/@pagefind/default-ui/ui-core.js node_modules/.pnpm/@pagefind+default-ui@1.5.2/node_modules/@pagefind/default-ui/svelte/result.svelte | head -n 120" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+node_modules/.pnpm/@pagefind+default-ui@1.5.2/node_modules/@pagefind/default-ui/ui-core.js:17:    this._pfs = null;
+node_modules/.pnpm/@pagefind+default-ui@1.5.2/node_modules/@pagefind/default-ui/ui-core.js:27:    let processTerm = opts.processTerm ?? null;
+node_modules/.pnpm/@pagefind+default-ui@1.5.2/node_modules/@pagefind/default-ui/ui-core.js:46:    delete opts["processTerm"];
+node_modules/.pnpm/@pagefind+default-ui@1.5.2/node_modules/@pagefind/default-ui/ui-core.js:59:        : document.querySelector(selector);
+node_modules/.pnpm/@pagefind+default-ui@1.5.2/node_modules/@pagefind/default-ui/ui-core.js:61:      this._pfs = new PagefindSvelte({
+node_modules/.pnpm/@pagefind+default-ui@1.5.2/node_modules/@pagefind/default-ui/ui-core.js:68:          show_sub_results: showSubResults,
+node_modules/.pnpm/@pagefind+default-ui@1.5.2/node_modules/@pagefind/default-ui/ui-core.js:71:          process_term: processTerm,
+node_modules/.pnpm/@pagefind+default-ui@1.5.2/node_modules/@pagefind/default-ui/ui-core.js:89:    this._pfs.$$set({ trigger_search_term: term });
+node_modules/.pnpm/@pagefind+default-ui@1.5.2/node_modules/@pagefind/default-ui/ui-core.js:103:    this._pfs.$$set({ selected_filters });
+node_modules/.pnpm/@pagefind+default-ui@1.5.2/node_modules/@pagefind/default-ui/ui-core.js:107:    this._pfs.$destroy();
+node_modules/.pnpm/@pagefind+default-ui@1.5.2/node_modules/@pagefind/default-ui/svelte/ui.svelte:27:  export let show_sub_results = false;
+node_modules/.pnpm/@pagefind+default-ui@1.5.2/node_modules/@pagefind/default-ui/svelte/ui.svelte:30:  export let process_term = null;
+node_modules/.pnpm/@pagefind+default-ui@1.5.2/node_modules/@pagefind/default-ui/svelte/ui.svelte:89:      document?.querySelector?.("html")?.getAttribute?.("lang") || "en";
+node_modules/.pnpm/@pagefind+default-ui@1.5.2/node_modules/@pagefind/default-ui/svelte/ui.svelte:149:        excerpt_length = show_sub_results ? 12 : 30;
+node_modules/.pnpm/@pagefind+default-ui@1.5.2/node_modules/@pagefind/default-ui/svelte/ui.svelte:200:    const executeSearchFunc = () => search(term, filters);
+node_modules/.pnpm/@pagefind+default-ui@1.5.2/node_modules/@pagefind/default-ui/svelte/ui.svelte:222:    if (typeof process_term === "function") {
+node_modules/.pnpm/@pagefind+default-ui@1.5.2/node_modules/@pagefind/default-ui/svelte/ui.svelte:223:      term = process_term(term);
+node_modules/.pnpm/@pagefind+default-ui@1.5.2/node_modules/@pagefind/default-ui/svelte/ui.svelte:235:    const results = await pagefind.search(term, search_options);
+node_modules/.pnpm/@pagefind+default-ui@1.5.2/node_modules/@pagefind/default-ui/svelte/ui.svelte:237:      if (results.filters && Object.keys(results.filters)?.length) {
+node_modules/.pnpm/@pagefind+default-ui@1.5.2/node_modules/@pagefind/default-ui/svelte/ui.svelte:238:        available_filters = results.filters;
+node_modules/.pnpm/@pagefind+default-ui@1.5.2/node_modules/@pagefind/default-ui/svelte/ui.svelte:240:      searchResult = results;
+node_modules/.pnpm/@pagefind+default-ui@1.5.2/node_modules/@pagefind/default-ui/svelte/ui.svelte:322:        <div class="pagefind-ui__results-area">
+node_modules/.pnpm/@pagefind+default-ui@1.5.2/node_modules/@pagefind/default-ui/svelte/ui.svelte:335:              {#if searchResult.results.length === 0}
+node_modules/.pnpm/@pagefind+default-ui@1.5.2/node_modules/@pagefind/default-ui/svelte/ui.svelte:337:                  "zero_results",
+node_modules/.pnpm/@pagefind+default-ui@1.5.2/node_modules/@pagefind/default-ui/svelte/ui.svelte:341:              {:else if searchResult.results.length === 1}
+node_modules/.pnpm/@pagefind+default-ui@1.5.2/node_modules/@pagefind/default-ui/svelte/ui.svelte:349:                {translate("many_results", automatic_translations, translations)
+node_modules/.pnpm/@pagefind+default-ui@1.5.2/node_modules/@pagefind/default-ui/svelte/ui.svelte:354:                      searchResult.results.length
+node_modules/.pnpm/@pagefind+default-ui@1.5.2/node_modules/@pagefind/default-ui/svelte/ui.svelte:359:            <ol class="pagefind-ui__results">
+node_modules/.pnpm/@pagefind+default-ui@1.5.2/node_modules/@pagefind/default-ui/svelte/ui.svelte:360:              {#each searchResult.results.slice(0, show) as result (result.id)}
+node_modules/.pnpm/@pagefind+default-ui@1.5.2/node_modules/@pagefind/default-ui/svelte/ui.svelte:361:                {#if show_sub_results}
+node_modules/.pnpm/@pagefind+default-ui@1.5.2/node_modules/@pagefind/default-ui/svelte/ui.svelte:368:            {#if searchResult.results.length > show}
+node_modules/.pnpm/@pagefind+default-ui@1.5.2/node_modules/@pagefind/default-ui/svelte/ui.svelte:473:  .pagefind-ui__results-area {
+node_modules/.pnpm/@pagefind+default-ui@1.5.2/node_modules/@pagefind/default-ui/svelte/ui.svelte:478:  .pagefind-ui__results {
+
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && sed -n '200,270p' node_modules/.pnpm/@pagefind+default-ui@1.5.2/node_modules/@pagefind/default-ui/svelte/ui.svelte && sed -n '330,380p' node_modules/.pnpm/@pagefind+default-ui@1.5.2/node_modules/@pagefind/default-ui/svelte/ui.svelte" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+    const executeSearchFunc = () => search(term, filters);
+
+    if (debounce_timeout_ms > 0 && term) {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(executeSearchFunc, debounce_timeout_ms);
+      await waitForApiInit();
+      pagefind.preload(term, { filters });
+    } else {
+      executeSearchFunc();
+    }
+    updateForButtonWidth();
+  };
+
+  const waitForApiInit = async () => {
+    while (!pagefind) {
+      init();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+  };
+
+  const search = async (term, filters) => {
+    search_term = term || "";
+    if (typeof process_term === "function") {
+      term = process_term(term);
+    }
+    loading = true;
+    searched = true;
+    await waitForApiInit();
+
+    const local_search_id = ++search_id;
+
+    const search_options = { filters };
+    if (sort && typeof sort === "object") {
+      search_options.sort = sort;
+    }
+    const results = await pagefind.search(term, search_options);
+    if (search_id === local_search_id) {
+      if (results.filters && Object.keys(results.filters)?.length) {
+        available_filters = results.filters;
+      }
+      searchResult = results;
+      loading = false;
+      show = page_size;
+    }
+  };
+
+  const updateForButtonWidth = () => {
+    const width = clear_el.offsetWidth;
+    if (width != clear_width) {
+      input_el.style.paddingRight = `${width + 2}px`;
+    }
+  };
+
+  const showMore = (e) => {
+    e?.preventDefault();
+    show += page_size;
+  };
+</script>
+
+<div class="pagefind-ui" class:pagefind-ui--reset={reset_styles}>
+  <form
+    class="pagefind-ui__form"
+    role="search"
+    aria-label={translate("search_label", automatic_translations, translations)}
+    action="javascript:void(0);"
+    on:submit={(e) => e.preventDefault()}
+  >
+    <input
+      class="pagefind-ui__search-input"
+      on:focus={init}
+      on:keydown={(e) => {
+                ).replace(/\[SEARCH_TERM\]/, search_term)}
+              </p>
+            {/if}
+          {:else}
+            <p class="pagefind-ui__message">
+              {#if searchResult.results.length === 0}
+                {translate(
+                  "zero_results",
+                  automatic_translations,
+                  translations
+                ).replace(/\[SEARCH_TERM\]/, search_term)}
+              {:else if searchResult.results.length === 1}
+                {translate("one_result", automatic_translations, translations)
+                  .replace(/\[SEARCH_TERM\]/, search_term)
+                  .replace(
+                    /\[COUNT\]/,
+                    new Intl.NumberFormat(translations.language || automatic_translations.language).format(1)
+                  )}
+              {:else}
+                {translate("many_results", automatic_translations, translations)
+                  .replace(/\[SEARCH_TERM\]/, search_term)
+                  .replace(
+                    /\[COUNT\]/,
+                    new Intl.NumberFormat(translations.language || automatic_translations.language).format(
+                      searchResult.results.length
+                    )
+                  )}
+              {/if}
+            </p>
+            <ol class="pagefind-ui__results">
+              {#each searchResult.results.slice(0, show) as result (result.id)}
+                {#if show_sub_results}
+                  <ResultWithSubs {show_images} {process_result} {result} />
+                {:else}
+                  <Result {show_images} {process_result} {result} />
+                {/if}
+              {/each}
+            </ol>
+            {#if searchResult.results.length > show}
+              <button
+                type="button"
+                class="pagefind-ui__button"
+                on:click={showMore}
+                >{translate(
+                  "load_more",
+                  automatic_translations,
+                  translations
+                )}</button
+              >
+            {/if}
+          {/if}
+
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && echo 'ADR-0012 _pagefind occurrences:'; rg -n \"_pagefind/\" docs/decisions/ADR-0012-search-index-stack.md | wc -l; echo 'ADR-0012 pagefind/ occurrences:'; rg -n \"dist/pagefind/|_pagefind/\" docs/decisions/ADR-0012-search-index-stack.md | wc -l; echo 'CONTRACT path note line:'; rg -n \"_pagefind/|dist/pagefind/|path\" apps/site/CONTRACT.md | head -n 30" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+ADR-0012 _pagefind occurrences:
+5
+ADR-0012 pagefind/ occurrences:
+5
+CONTRACT path note line:
+16:  registers the adapter so `astro build` emits `dist/pagefind/` after static
+17:  HTML generation. Note: ADR-0012 prose references `dist/_pagefind/`
+18:  (historical pagefind <1.5 default); pagefind 1.5+ emits to `dist/pagefind/`
+20:  ADR prose to the current path; the semantic contract (post-build hook +
+33:  `dist/pagefind/` exists. The page contains only the static mount point plus a
+40:- Index-size budget: the complete `dist/pagefind/` directory must stay <= 30 kB
+48:  test -f apps/site/dist/pagefind/pagefind-entry.json
+53:  pages): `dist/pagefind/` ~= 200 kB uncompressed (Pagefind runtime + UI
+57:  fragment files under `dist/pagefind/fragment/`. Rebuilding after note content
+68:- **FOUC boot-theme algorithm MUST be byte-equivalent to `getInitialTheme()`** from `@skb/design-tokens` in BOTH happy-path AND exception handling:
+70:  2. The `try/catch` MUST wrap ONLY the `localStorage.getItem` call. `matchMedia` + DOM apply MUST run AFTER the catch handler. A wide-scope `try/catch` swallows the `matchMedia` path on Safari Private Mode / iOS WebView with storage restrictions / browsers with localStorage disabled — producing light when system pref is dark, i.e. a hydration flash.
+
+exec
+/bin/bash -lc 'cd /home/weiyi/selfKnowledgeBaseWeb && rg -n "D2 trigger|Row 1|Row 4|contract change|ADR amendment|search-box|a11y" docs agent-contract.md | head -n 120' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+docs/review-checklist.md:68:Triggered only when ADR-0007 D2 row 1 (contract change) OR row 4 (new ADR required) hits.
+docs/plans/wave-3-prep/PR-1-agent-contract.md:104:- **PRE-COMMIT CLAUDE REVIEW (D2 row 1+4)**: orchestrator (myself); contract change
+docs/plans/wave-3-prep/PR-1-agent-contract.md:112:## D2 trigger judgment (orchestrator-locked at PLAN)
+docs/plans/wave-3-prep/PR-1-agent-contract.md:114:- Row 1 (contract change in `agent-contract.md` + every `CONTRACT.md` consumer
+docs/plans/wave-3-prep/PR-1-agent-contract.md:116:- Row 4 (new ADR refs — ADR-0011 D-list implementation + ADR-0006 D8 invariant
+docs/plans/wave-3-prep/PR-3-viz-test-corpus.md:107:## D2 trigger judgment (orchestrator-locked at PLAN)
+docs/plans/wave-3-prep/PR-3-viz-test-corpus.md:109:- Row 1 (CONTRACT change in 3 packages): **HIT**.
+docs/plans/wave-3-prep/PR-3-viz-test-corpus.md:110:- Row 4 (new ADR): NOT HIT.
+docs/plans/wave-3-prep/PR-3-viz-test-corpus.md:114:  scrutiny". Row 1 hit DOES fire stage 4 — orchestrator runs pre-commit
+docs/plans/wave-3-prep/PR-2-f3-typed-tokens.md:119:## D2 trigger judgment (orchestrator-locked at PLAN)
+docs/plans/wave-3-prep/PR-2-f3-typed-tokens.md:121:- Row 1 (CONTRACT change in `block-code/CONTRACT.md` + `block-image/CONTRACT.md`):
+docs/plans/wave-3-prep/PR-2-f3-typed-tokens.md:123:- Row 4 (new ADR required): NOT HIT. F3 was deferred from ADR-0010 with
+docs/plans/active.md:18:| #34 | 5f360a6 | A4 | HeavyBlockBoundary CSS + a11y polish + prefers-reduced-motion + CONTRACT.md consolidation (AC#4/#12/#13/#14) |
+docs/plans/wave-3-main/Pre-B1-adr-0011-v0.1.1-amend.md:75:  See `## D2 trigger judgment` for row 4 verdict (canonical).
+docs/plans/wave-3-main/Pre-B1-adr-0011-v0.1.1-amend.md:87:   shape, D2 trigger row state) explicitly so reviewers can pattern-match
+docs/plans/wave-3-main/Pre-B1-adr-0011-v0.1.1-amend.md:105:   (section ordering claims), `## D2 trigger judgment` (row state +
+docs/plans/wave-3-main/Pre-B1-adr-0011-v0.1.1-amend.md:135:## D2 trigger judgment (orchestrator-locked at PLAN)
+docs/plans/wave-3-main/Pre-B1-adr-0011-v0.1.1-amend.md:137:- **Row 1** (CONTRACT/ADR change): **HIT** — ADR-0011 D2 section
+docs/plans/wave-3-main/Pre-B1-adr-0011-v0.1.1-amend.md:140:- **Row 4** (new ADR required): NO — amendment to existing ADR; `## Amendments`
+docs/plans/wave-3-main/Pre-B1-adr-0011-v0.1.1-amend.md:145:→ **D1 stage 4 PRE-COMMIT CLAUDE REVIEW fires** (Row 1; mitigates
+docs/superpowers/plans/2026-05-03-phase-1-wave-4-integration.md:100:- **D2 trigger judgment** (per gatekeeper 2026-05-03 #1 + plan-challenger
+docs/superpowers/plans/2026-05-03-phase-1-wave-4-integration.md:101:  Q5 absorbtion — Stage 4 = Row 1/4-driven only per ADR-0011 D1; not
+docs/superpowers/plans/2026-05-03-phase-1-wave-4-integration.md:103:  - **Row 1** (CONTRACT change): **HIT** — `packages/heavy-block-boundary/CONTRACT.md`
+docs/superpowers/plans/2026-05-03-phase-1-wave-4-integration.md:108:    `## D2 trigger judgment` for codex-pr-reviewer-55 + ADR-0008 D1
+docs/superpowers/plans/2026-05-03-phase-1-wave-4-integration.md:110:  - **Row 4** (new ADR): NO — ADR-0014 already locked at Pre-A2
+docs/superpowers/plans/2026-05-03-phase-1-wave-4-integration.md:111:  - → **D1 stage 4 PRE-COMMIT CLAUDE REVIEW fires** (Row 1 HIT, NEW
+docs/superpowers/plans/2026-05-03-phase-1-wave-4-integration.md:127:explicitly lists ADR-0014; PR.md `## D2 trigger judgment` explicitly
+docs/superpowers/plans/2026-05-03-phase-1-wave-4-integration.md:143:- **D2 trigger judgment**: Row 1 (CONTRACT — new public surface in own
+docs/superpowers/plans/2026-05-03-phase-1-wave-4-integration.md:159:- **D2 trigger judgment**: standard PR
+docs/superpowers/plans/2026-05-03-phase-1-wave-4-integration.md:165:#### A4 — Skeleton CSS + a11y semantics (D6 + D2 a11y refinements)
+docs/superpowers/plans/2026-05-03-phase-1-wave-4-integration.md:172:  / AC#12 (a11y semantics: `role=status` + `aria-busy` toggling +
+docs/superpowers/plans/2026-05-03-phase-1-wave-4-integration.md:178:- **D2 trigger judgment**: Row 1 (CONTRACT minor — CSS class names
+docs/superpowers/plans/2026-05-03-phase-1-wave-4-integration.md:180:- **acceptance**: CSS asset exported + classes match D6 names; a11y
+docs/superpowers/plans/2026-05-03-phase-1-wave-4-integration.md:200:- **D2 trigger judgment** (per plan-challenger Q5 absorbtion — Row 1
+docs/superpowers/plans/2026-05-03-phase-1-wave-4-integration.md:202:  - **Row 1** (CONTRACT): HIT — A5 MUST update each heavy block
+docs/superpowers/plans/2026-05-03-phase-1-wave-4-integration.md:209:  - → D1 stage 4 PRE-COMMIT CLAUDE REVIEW fires (Row 1, multiple
+docs/superpowers/plans/2026-05-03-phase-1-wave-4-integration.md:230:- **D2 trigger judgment**: standard PR
+docs/superpowers/plans/2026-05-03-phase-1-wave-4-integration.md:247:- **D2 trigger judgment** (per plan-challenger Q5 absorbtion — Row 5
+docs/superpowers/plans/2026-05-03-phase-1-wave-4-integration.md:249:  - **Row 1** (CONTRACT): possibly — apps/site CONTRACT.md may add
+docs/superpowers/plans/2026-05-03-phase-1-wave-4-integration.md:299:- **D2 trigger judgment** (per plan-challenger Q5 absorbtion):
+docs/superpowers/plans/2026-05-03-phase-1-wave-4-integration.md:300:  - **Row 1** (CONTRACT): NO (apps/site CONTRACT.md not changed unless
+docs/superpowers/plans/2026-05-03-phase-1-wave-4-integration.md:302:  - **Row 4** (new ADR): NO — promoting existing ADR is not
+docs/superpowers/plans/2026-05-03-phase-1-wave-4-integration.md:340:- **executor**: orchestrator-self (doc-only ADR amendment)
+docs/superpowers/plans/2026-05-03-phase-1-wave-4-integration.md:341:- **D2 trigger judgment**: Row 4 (ADR amendment) — same precedent as
+docs/superpowers/plans/2026-05-03-phase-1-wave-4-integration.md:356:- **D2 trigger judgment**: standard PR (no CONTRACT/ADR touch)
+docs/superpowers/plans/2026-05-03-phase-1-wave-4-integration.md:372:- **D2 trigger judgment**: standard PR
+docs/superpowers/plans/2026-05-03-phase-1-wave-4-integration.md:385:- **D2 trigger judgment**: standard PR
+docs/superpowers/plans/2026-05-03-phase-1-wave-4-integration.md:402:- **D2 trigger judgment**: Row 1 likely HIT (cast asymmetry implies
+docs/superpowers/plans/2026-05-03-phase-1-wave-4-integration.md:403:  registerBlocks contract narrowing); Stage 4 fires if Row 1 confirmed
+docs/superpowers/plans/2026-05-03-phase-1-wave-4-integration.md:421:- **D2 trigger judgment**: Row 1 HIT (agent-contract.md = authority
+docs/superpowers/plans/2026-05-03-phase-1-wave-4-integration.md:437:- **D2 trigger judgment**: standard
+docs/superpowers/plans/2026-05-03-phase-1-wave-4-integration.md:504:| D1 | **Stage A = 8 PRs** (locked post plan-challenger Q1+Q2; A1 package + A2 core + A3 retry + A4 CSS/a11y + A5 dims+migration + A6 playwright + A7 5×.astro consolidated + A8 perf+chunking+ADR-promote) | Plan-challenger Q1: option (a) consolidated A7 with per-variant smoke checks. Q2: keep A2/A3/A4 split (separate contracts, easier validation) |
+docs/superpowers/plans/2026-05-03-phase-1-wave-4-integration.md:508:| D5 | Stage A A1 (`@skb/heavy-block-boundary` package creation) D2 trigger = Row 1 (NEW CONTRACT.md) → stage 4 fires; Row 2 (package add) is flag-only | Per gatekeeper directive #1 + plan-challenger Q5 absorbtion (Stage 4 = Row 1/4-driven only per ADR-0011 D1; Row 2/5 alone don't fire) |
+docs/superpowers/plans/2026-05-03-phase-1-wave-4-integration.md:548:| Q5 | D2 trigger judgments per PR (A1/A5/A7/A8 reclass) | **ABSORBED** | Stage 4 = Row 1/4-driven ONLY per ADR-0011 D1. Row 2/5 alone do NOT fire Stage 4. A1 trigger is Row 1 (NEW CONTRACT.md), not Row 2. A5 trigger is Row 1 (each heavy block CONTRACT.md adds export doc), not Row 5. A7 standard PR (Row 5 alone). A8 orchestrator-self minimum. B1 Row 4 hit. Locked across A1-A8 + B1 sections. |
+docs/plans/wave-3-main/B6-mdx-bridge-pdf-fixture.md:76:## D2 trigger judgment
+docs/plans/wave-3-main/B6-mdx-bridge-pdf-fixture.md:78:- Row 1: **HIT**.
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:915:3. web-design-guidelines：Vercel-style 终审（a11y / 字号比 / 移动端 layout）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:920:(消费 design-tokens preset；4 variants 用 4 套 token hue；hover/focus state 走 design-tokens shadow + ring；a11y `role="note"` + `aria-label`)
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:924:- [ ] **Step 5: ui-default.test.tsx**（render + variant snapshot + a11y attrs）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:941:- a11y: role + aria-label 必填
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1009:- ux-ui-lead 在每个 block ui-default PR 上做**视觉一致性审**（仅审：颜色用 design-tokens var / spacing 用 token / 字号比例 / a11y 属性 / 移动端 layout / hover/focus state；**不**审 KaTeX/PDF.js/JupyterLite/Canvas/ReactFlow 等领域专属交互逻辑）
+docs/superpowers/plans/2026-04-30-phase-1-wave-2-implementation.md:1020:- [ ] a11y: role + aria-label 或语义 HTML
+docs/plans/wave-4-main/A7-astro-variants-consolidation.md:62:> a single demo page — see `## D2 trigger judgment` below).
+docs/plans/wave-4-main/A7-astro-variants-consolidation.md:411:a11y + CONTRACT consolidation).
+docs/plans/wave-4-main/A7-astro-variants-consolidation.md:473:  itself are the documentation). See `## D2 trigger judgment` for
+docs/plans/wave-4-main/A7-astro-variants-consolidation.md:598:  is self-documenting per `## D2 trigger judgment`; no `## Astro
+docs/plans/wave-4-main/A7-astro-variants-consolidation.md:668:  a new `## Astro variants` section is documented in `## D2 trigger
+docs/plans/wave-4-main/A7-astro-variants-consolidation.md:670:  (Row 1 conditional — verified NO at PLAN time). TC15 verifies
+docs/plans/wave-4-main/A7-astro-variants-consolidation.md:711:- **No new ADR is required for A7.** D2 Row 4 (new ADR required)
+docs/plans/wave-4-main/A7-astro-variants-consolidation.md:726:## D2 trigger judgment
+docs/plans/wave-4-main/A7-astro-variants-consolidation.md:730:- **Row 1 (CONTRACT.md change)**: **NO.** Wave 4 plan A7 § lines
+docs/plans/wave-4-main/A7-astro-variants-consolidation.md:759:- **Row 4 (new ADR required)**: **NO.** No new design decision
+docs/plans/wave-4-main/A7-astro-variants-consolidation.md:770:  CLAUDE REVIEW; the trigger requires Row 1 OR Row 4 to be hit
+docs/plans/wave-4-main/A7-astro-variants-consolidation.md:771:  alongside. Row 1 + Row 4 are both NO above → Row 5 is flag-only.
+docs/plans/wave-4-main/A7-astro-variants-consolidation.md:939:13. NO modifications to `apps/site/CONTRACT.md` (per `## D2 trigger
+docs/plans/wave-4-main/A7-astro-variants-consolidation.md:940:    judgment` Row 1 NO verdict; the new page is self-documenting
+docs/plans/wave-4-main/A7-astro-variants-consolidation.md:1014:  D2 no-row hit (see `## D2 trigger judgment` above). SKIPPED.
+docs/plans/wave-4-main/A7-astro-variants-consolidation.md:1048:  - `apps/site/CONTRACT.md` (TC15 — per Row 1 NO verdict).
+docs/plans/wave-4-main/A7-astro-variants-consolidation.md:1066:  [A4](./A4-heavy-block-boundary-css-a11y.md) +
+docs/plans/wave-4-main/A7-astro-variants-consolidation.md:1072:- **ADR-0007 D2 trigger rows**:
+docs/plans/wave-3-main/D2-search-index-build-integration.md:40:  Row 2 D2 trigger hit.)
+docs/plans/wave-3-main/D2-search-index-build-integration.md:153:- **PRE-COMMIT CLAUDE REVIEW**: NOT FIRED (D2 trigger has no Row 1 / no
+docs/plans/wave-3-main/D2-search-index-build-integration.md:154:  Row 4; only Rows 1+4 fire stage 4 per ADR-0011 D1).
+docs/plans/wave-3-main/D2-search-index-build-integration.md:158:## D2 trigger judgment (orchestrator-locked at PLAN)
+docs/plans/wave-3-main/D2-search-index-build-integration.md:160:- **Row 1** (CONTRACT change): NO — apps/site/CONTRACT.md is
+docs/plans/wave-3-main/D2-search-index-build-integration.md:161:  surface-only growth; not a foundation contract change.
+docs/plans/wave-3-main/D2-search-index-build-integration.md:163:- **Row 4** (new ADR): NO — ADR-0012 ratified at D1b.
+docs/plans/wave-3-main/C3-sample-blocks-page-live.md:171:## D2 trigger judgment (orchestrator-locked at PLAN)
+docs/plans/wave-3-main/C3-sample-blocks-page-live.md:173:- **Row 1** (CONTRACT change): NO — content frontmatter, not contract surface.
+docs/plans/wave-3-main/C3-sample-blocks-page-live.md:175:- **Row 4** (new ADR): NO.
+docs/plans/wave-3-main/B2-mdx-bridge-callout-fixture.md:234:  requiring contract change. Verify at review per same.
+docs/plans/wave-3-main/B2-mdx-bridge-callout-fixture.md:467:    row 1 hit — see `## D2 trigger judgment` for canonical
+docs/plans/wave-3-main/B2-mdx-bridge-callout-fixture.md:469:    "D2 trigger: Row 1 (CONTRACT.md fixture table change).
+docs/plans/wave-3-main/B2-mdx-bridge-callout-fixture.md:474:## D2 trigger judgment
+docs/plans/wave-3-main/B2-mdx-bridge-callout-fixture.md:478:`## D2 trigger judgment`"):
+docs/plans/wave-3-main/B2-mdx-bridge-callout-fixture.md:482:| Row 1 (CONTRACT.md change — high-value authority) | **HIT** | mdx-bridge/CONTRACT.md edited per `## files` (3 coordinated edits: fixture-count prose bump + table row + new section). |
+docs/plans/wave-3-main/B2-mdx-bridge-callout-fixture.md:485:| Row 4 (new ADR required) | NO | Design preserves block-foundation surface AND mdx-bridge runtime-dep policy; per `## adr_touched` rationale. |
+docs/plans/wave-3-main/B2-mdx-bridge-callout-fixture.md:493:- Row 1 HIT → **D1 stage 4 PRE-COMMIT CLAUDE REVIEW MUST
+docs/plans/wave-3-main/B2-mdx-bridge-callout-fixture.md:519:  plan B-stage template — see `## D2 trigger judgment`
+docs/plans/wave-3-main/B2-mdx-bridge-callout-fixture.md:522:  `## D2 trigger judgment` row 1 hit): orchestrator
+docs/superpowers/plans/2026-05-01-phase-1-wave-3-integration.md:99:**D2 trigger:** Row 1 (runbook prose change but it's a generated
+docs/superpowers/plans/2026-05-01-phase-1-wave-3-integration.md:146:**D2 trigger:** Row 1 (CONTRACT.md NEW) + Row 2 (package add). D1 stage 4
+docs/superpowers/plans/2026-05-01-phase-1-wave-3-integration.md:185:**D2 trigger:** Row 1 (CONTRACT change). D1 stage 4 fires.
+docs/superpowers/plans/2026-05-01-phase-1-wave-3-integration.md:226:**D2 trigger:** Row 1 + Row 5 (cross ≥ 3 packages — touches editor-shell
+docs/superpowers/plans/2026-05-01-phase-1-wave-3-integration.md:227:+ all 8 block-* + block-foundation = 10 packages). Row 1 → D1 stage 4
+docs/superpowers/plans/2026-05-01-phase-1-wave-3-integration.md:275:**D2 trigger:** Row 1 (CONTRACT change). D1 stage 4 fires.
+docs/superpowers/plans/2026-05-01-phase-1-wave-3-integration.md:314:**D2 trigger:** Row 1. D1 stage 4 fires.
+docs/superpowers/plans/2026-05-01-phase-1-wave-3-integration.md:387:**D2 trigger:** Row 1 (mdx-bridge CONTRACT.md change — high-value
+docs/superpowers/plans/2026-05-01-phase-1-wave-3-integration.md:389:8 indirect block consumers). Row 1 → D1 stage 4 fires; row 5 → heightened
+docs/superpowers/plans/2026-05-01-phase-1-wave-3-integration.md:439:**D2 trigger:** Row 1 (CONTRACT.md fixture table change). D1 stage 4
+docs/superpowers/plans/2026-05-01-phase-1-wave-3-integration.md:505:**D2 trigger:** Row 1 + Row 5 (cross ≥ 3 packages: apps/site + 8
+docs/superpowers/plans/2026-05-01-phase-1-wave-3-integration.md:506:block-* = 9). Row 1 → D1 stage 4 fires; row 5 → heightened codex stage 3.
+docs/superpowers/plans/2026-05-01-phase-1-wave-3-integration.md:541:**D2 trigger:** Row 1 + Row 8 (CI/build/deploy touch — chunking strategy
+docs/superpowers/plans/2026-05-01-phase-1-wave-3-integration.md:542:affects build output). Row 1 → D1 stage 4 fires; row 8 → heightened
+docs/superpowers/plans/2026-05-01-phase-1-wave-3-integration.md:578:**D2 trigger:** Row 8 (CI/deploy/build affecting). NOT Row 1 (no
+docs/superpowers/plans/2026-05-01-phase-1-wave-3-integration.md:616:**D2 trigger:** Row 1 + Row 5 (3 packages). D1 stage 4 fires.
+docs/superpowers/plans/2026-05-01-phase-1-wave-3-integration.md:648:**D2 trigger:** Row 1 + Row 5 (4 packages). D1 stage 4 fires.
+docs/superpowers/plans/2026-05-01-phase-1-wave-3-integration.md:677:**D2 trigger:** Row 1. D1 stage 4 fires. codex-perf-auditor MUST run
+docs/superpowers/plans/2026-05-01-phase-1-wave-3-integration.md:719:**D2 trigger:** None for D1a (research doc only). D1 stage 4 NOT fires
+docs/superpowers/plans/2026-05-01-phase-1-wave-3-integration.md:753:**D2 trigger:** Row 4 (new ADR). D1 stage 4 fires. plan-challenger codex
+
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && sed -n '50,130p' docs/review-checklist.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+- [ ] **Contracts**: any change to `packages/*/CONTRACT.md` matches the implementation
+      in the same PR (no orphan interface drift).
+- [ ] **Module boundaries**: imports respect package boundaries (no reaching into another
+      package's `src/internal/`); no circular deps introduced.
+- [ ] **Style**: prettier-clean; no commented-out blocks; no leftover `console.log`.
+- [ ] **Vulnerabilities**: no obvious injection / XSS / SSRF / deserialization sinks; secrets
+      never read from request bodies; HTTP responses don't leak internal state.
+- [ ] **Cross-package side effects**: changes to one package don't silently break another
+      (especially `block-foundation`, `mdx-bridge`, `kernel-adapter` consumers).
+- [ ] **Supply chain**: any new dependency vetted for maintenance status, license, and
+      transitive risk; no abandoned forks.
+- [ ] **Lockfile integrity**: `pnpm-lock.yaml` change is consistent with `package.json`
+      diffs; no unexplained version churn; no peer-dep warnings worsened.
+- [ ] **Auth / boundary**: no permission expanded silently (e.g. router exposing previously
+      private route); CSRF / SameSite still enforced; no `eval` / `Function` constructor.
+
+## For Claude pre-commit review (orchestrator self, D1 stage 4)
+
+Triggered only when ADR-0007 D2 row 1 (contract change) OR row 4 (new ADR required) hits.
+Mitigates same-model echo chamber when stages 2+3 are both codex 5.5. Output APPROVE /
+REJECT + reasoning.
+
+- [ ] **Spec compliance**: implementation matches the locked design spec (cite section).
+- [ ] **Regression risk**: existing tests still cover the affected paths; no behavior change
+      that would break a downstream package or doc snippet.
+- [ ] **Architectural consistency**: change matches existing patterns; new patterns have an
+      ADR under `docs/decisions/` if cross-cutting.
+- [ ] **Cross-file impact**: every doc / cross-reference updated (`agent-contract.md` →
+      regenerate; `CONTRACT.md` ↔ implementation; `docs/plans/` reflects status).
+- [ ] **Tests**: `vitest` / `pytest` coverage for new behavior; no flaky timing-dependent
+      assertions.
+- [ ] **PR.md `acceptance:` block** (ADR-0011 D2): every item observable in the diff;
+      no scope creep beyond `files:` whitelist.
+
+## Related
+
+- [Review workflow — spec §3.2](superpowers/specs/2026-04-29-self-knowledge-base-design.md)
+- [agent-contract.md — single source](../agent-contract.md)
+
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && sed -n '1,240p' node_modules/.pnpm/@pagefind+default-ui@1.5.2/node_modules/@pagefind/default-ui/svelte/result.svelte" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+<script>
+    export let show_images = true;
+    export let process_result = null;
+    export let result = { data: async () => {} };
+
+    const skipMeta = ["title", "image", "image_alt", "url"];
+
+    let data;
+    let meta = [];
+
+    const resolveImageUrl = (src, pageUrl) => {
+        if (!src || /^[a-z][a-z0-9+.-]*:/i.test(src) || /^\/\//.test(src) || src.startsWith("/")) return src;
+        try {
+            return new URL(src, new URL(pageUrl || "/", "https://p")).pathname;
+        } catch {
+            return src;
+        }
+    };
+
+    const load = async (r) => {
+        data = await r.data();
+        data = process_result?.(data) ?? data;
+        if (data.meta?.image) {
+            data = { ...data, meta: { ...data.meta, image: resolveImageUrl(data.meta.image, data.meta.url || data.url) } };
+        }
+        meta = Object.entries(data.meta).filter(
+            ([key]) => !skipMeta.includes(key),
+        );
+    };
+    $: load(result);
+
+    const placeholder = (max = 30) => {
+        return ". ".repeat(Math.floor(10 + Math.random() * max));
+    };
+</script>
+
+<li class="pagefind-ui__result">
+    {#if data}
+        {#if show_images}
+            <div class="pagefind-ui__result-thumb">
+                {#if data.meta.image}
+                    <img
+                        class="pagefind-ui__result-image"
+                        src={data.meta?.image}
+                        alt={data.meta?.image_alt || data.meta?.title}
+                    />
+                {/if}
+            </div>
+        {/if}
+        <div class="pagefind-ui__result-inner">
+            <p class="pagefind-ui__result-title">
+                <a
+                    class="pagefind-ui__result-link"
+                    href={data.meta?.url || data.url}>{data.meta?.title}</a
+                >
+            </p>
+            <p class="pagefind-ui__result-excerpt">{@html data.excerpt}</p>
+            {#if meta.length}
+                <ul class="pagefind-ui__result-tags">
+                    {#each meta as [metaTitle, metaValue]}
+                        <li
+                            class="pagefind-ui__result-tag"
+                            data-pagefind-ui-meta={metaTitle}
+                        >
+                            {metaTitle.replace(/^(\w)/, (c) =>
+                                c.toLocaleUpperCase(),
+                            )}: {metaValue}
+                        </li>
+                    {/each}
+                </ul>
+            {/if}
+        </div>
+    {:else}
+        {#if show_images}
+            <div class="pagefind-ui__result-thumb pagefind-ui__loading" />
+        {/if}
+        <div class="pagefind-ui__result-inner">
+            <p class="pagefind-ui__result-title pagefind-ui__loading">
+                {placeholder(30)}
+            </p>
+            <p class="pagefind-ui__result-excerpt pagefind-ui__loading">
+                {placeholder(40)}
+            </p>
+        </div>
+    {/if}
+</li>
+
+<style>
+    .pagefind-ui__result {
+        list-style-type: none;
+        display: flex;
+        align-items: flex-start;
+        gap: min(calc(40px * var(--pagefind-ui-scale)), 3%);
+        padding: calc(30px * var(--pagefind-ui-scale)) 0
+            calc(40px * var(--pagefind-ui-scale));
+        border-top: solid var(--pagefind-ui-border-width)
+            var(--pagefind-ui-border);
+    }
+    .pagefind-ui__result:last-of-type {
+        border-bottom: solid var(--pagefind-ui-border-width)
+            var(--pagefind-ui-border);
+    }
+    .pagefind-ui__result-thumb {
+        width: min(
+            30%,
+            calc((30% - (100px * var(--pagefind-ui-scale))) * 100000)
+        );
+        max-width: calc(120px * var(--pagefind-ui-scale));
+        margin-top: calc(10px * var(--pagefind-ui-scale));
+        aspect-ratio: var(--pagefind-ui-image-box-ratio);
+        position: relative;
+    }
+    .pagefind-ui__result-image {
+        display: block;
+        position: absolute;
+        left: 50%;
+        transform: translateX(-50%);
+        font-size: 0;
+        width: auto;
+        height: auto;
+        max-width: 100%;
+        max-height: 100%;
+        border-radius: var(--pagefind-ui-image-border-radius);
+    }
+    .pagefind-ui__result-inner {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        margin-top: calc(10px * var(--pagefind-ui-scale));
+    }
+    .pagefind-ui__result-title {
+        display: inline-block;
+        font-weight: 700;
+        font-size: calc(21px * var(--pagefind-ui-scale));
+        margin-top: 0;
+        margin-bottom: 0;
+    }
+    .pagefind-ui__result-title .pagefind-ui__result-link {
+        color: var(--pagefind-ui-text);
+        text-decoration: none;
+    }
+    .pagefind-ui__result-title .pagefind-ui__result-link:hover {
+        text-decoration: underline;
+    }
+    .pagefind-ui__result-excerpt {
+        display: inline-block;
+        font-weight: 400;
+        font-size: calc(16px * var(--pagefind-ui-scale));
+        margin-top: calc(4px * var(--pagefind-ui-scale));
+        margin-bottom: 0;
+        min-width: calc(250px * var(--pagefind-ui-scale));
+    }
+    .pagefind-ui__loading {
+        color: var(--pagefind-ui-text);
+        background-color: var(--pagefind-ui-text);
+        border-radius: var(--pagefind-ui-border-radius);
+        opacity: 0.1;
+        pointer-events: none;
+    }
+    .pagefind-ui__result-tags {
+        list-style-type: none;
+        padding: 0;
+        display: flex;
+        gap: calc(20px * var(--pagefind-ui-scale));
+        flex-wrap: wrap;
+        margin-top: calc(20px * var(--pagefind-ui-scale));
+    }
+    .pagefind-ui__result-tag {
+        padding: calc(4px * var(--pagefind-ui-scale))
+            calc(8px * var(--pagefind-ui-scale));
+        font-size: calc(14px * var(--pagefind-ui-scale));
+        border-radius: var(--pagefind-ui-border-radius);
+        background-color: var(--pagefind-ui-tag);
+    }
+</style>
+
+exec
+/bin/bash -lc 'cd /home/weiyi/selfKnowledgeBaseWeb && rg -n "word-level-match|isWordLevelMatch|processTerm|SearchBox" apps/site/src | head -n 80' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+apps/site/src/pages/search.astro:3:import SearchBox from '../components/SearchBox.astro';
+apps/site/src/pages/search.astro:8:  <SearchBox />
+
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && sed -n '1,160p' apps/site/src/pages/search.astro" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+---
+import BaseLayout from '@layouts/BaseLayout.astro';
+import SearchBox from '../components/SearchBox.astro';
+---
+
+<BaseLayout title="Search — Self Knowledge Base">
+  <h1>Search</h1>
+  <SearchBox />
+</BaseLayout>
+
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && rg -n \"interface Result|data\\(\\):|search\\(|raw_content|word|locations\" node_modules/.pnpm/pagefind* -g '*.d.ts' -g '*.ts' -g '*.js' | head -n 120" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && ls node_modules/.pnpm | rg '"'^pagefind|''^'"\\@pagefind' | head -n 50" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+@pagefind+default-ui@1.5.2
+@pagefind+linux-x64@1.5.2
+pagefind@1.5.2
+
+codex
+I also checked installed pagefind runtime typings to verify whether per-result payload contains enough text for robust filtering, so we can judge whether callback-only filtering is technically meaningful.
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && ls -la node_modules/.pnpm/pagefind@1.5.2/node_modules/pagefind && sed -n '1,260p' node_modules/.pnpm/pagefind@1.5.2/node_modules/pagefind/dist/browser/search.js | head -n 220" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+total 44
+drwxr-xr-x 7 weiyi weiyi 4096 May  1 22:26 .
+drwxr-xr-x 4 weiyi weiyi 4096 May  1 22:26 ..
+drwxr-xr-x 2 weiyi weiyi 4096 May  1 22:26 LICENSE
+-rw-r--r-- 2 weiyi weiyi 1678 May  1 22:26 README.md
+drwxr-xr-x 2 weiyi weiyi 4096 May  1 22:26 checksums
+-rw-r--r-- 2 weiyi weiyi  117 May  1 22:26 jsconfig.json
+drwxr-xr-x 3 weiyi weiyi 4096 May  1 22:26 lib
+drwxr-xr-x 3 weiyi weiyi 4096 May  1 22:26 node_modules
+-rw-r--r-- 2 weiyi weiyi 1052 May  1 22:26 package.json
+-rw-r--r-- 2 weiyi weiyi  574 May  1 22:26 tsconfig.json
+drwxr-xr-x 2 weiyi weiyi 4096 May  1 22:26 types
+sed: can't read node_modules/.pnpm/pagefind@1.5.2/node_modules/pagefind/dist/browser/search.js: No such file or directory
+
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && find node_modules/.pnpm/pagefind@1.5.2/node_modules/pagefind -maxdepth 3 -type f | sed -n '1,200p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+node_modules/.pnpm/pagefind@1.5.2/node_modules/pagefind/package.json
+node_modules/.pnpm/pagefind@1.5.2/node_modules/pagefind/node_modules/.bin/pagefind
+node_modules/.pnpm/pagefind@1.5.2/node_modules/pagefind/types/internal.d.ts
+node_modules/.pnpm/pagefind@1.5.2/node_modules/pagefind/types/index.d.ts
+node_modules/.pnpm/pagefind@1.5.2/node_modules/pagefind/tsconfig.json
+node_modules/.pnpm/pagefind@1.5.2/node_modules/pagefind/jsconfig.json
+node_modules/.pnpm/pagefind@1.5.2/node_modules/pagefind/README.md
+node_modules/.pnpm/pagefind@1.5.2/node_modules/pagefind/lib/service.js
+node_modules/.pnpm/pagefind@1.5.2/node_modules/pagefind/lib/encoding.js
+node_modules/.pnpm/pagefind@1.5.2/node_modules/pagefind/lib/index.js
+node_modules/.pnpm/pagefind@1.5.2/node_modules/pagefind/lib/runner/bin.cjs
+node_modules/.pnpm/pagefind@1.5.2/node_modules/pagefind/lib/resolveBinary.js
+node_modules/.pnpm/pagefind@1.5.2/node_modules/pagefind/checksums/pagefind_extended-v1.5.2-aarch64-apple-darwin.tar.gz.sha256
+node_modules/.pnpm/pagefind@1.5.2/node_modules/pagefind/checksums/pagefind-v1.5.2-x86_64-apple-darwin.tar.gz.sha256
+node_modules/.pnpm/pagefind@1.5.2/node_modules/pagefind/checksums/pagefind-v1.5.2-x86_64-unknown-freebsd.tar.gz.sha256
+node_modules/.pnpm/pagefind@1.5.2/node_modules/pagefind/checksums/pagefind-v1.5.2-aarch64-unknown-linux-musl.tar.gz.sha256
+node_modules/.pnpm/pagefind@1.5.2/node_modules/pagefind/checksums/pagefind-v1.5.2-aarch64-apple-darwin.tar.gz.sha256
+node_modules/.pnpm/pagefind@1.5.2/node_modules/pagefind/checksums/pagefind_extended-v1.5.2-x86_64-apple-darwin.tar.gz.sha256
+node_modules/.pnpm/pagefind@1.5.2/node_modules/pagefind/checksums/pagefind_extended-v1.5.2-aarch64-unknown-linux-musl.tar.gz.sha256
+node_modules/.pnpm/pagefind@1.5.2/node_modules/pagefind/checksums/pagefind-v1.5.2-x86_64-pc-windows-msvc.tar.gz.sha256
+node_modules/.pnpm/pagefind@1.5.2/node_modules/pagefind/checksums/pagefind_extended-v1.5.2-aarch64-pc-windows-msvc.tar.gz.sha256
+node_modules/.pnpm/pagefind@1.5.2/node_modules/pagefind/checksums/pagefind-v1.5.2-aarch64-pc-windows-msvc.tar.gz.sha256
+node_modules/.pnpm/pagefind@1.5.2/node_modules/pagefind/checksums/pagefind_extended-v1.5.2-x86_64-unknown-freebsd.tar.gz.sha256
+node_modules/.pnpm/pagefind@1.5.2/node_modules/pagefind/checksums/pagefind_extended-v1.5.2-x86_64-unknown-linux-musl.tar.gz.sha256
+node_modules/.pnpm/pagefind@1.5.2/node_modules/pagefind/checksums/pagefind_extended-v1.5.2-x86_64-pc-windows-msvc.tar.gz.sha256
+node_modules/.pnpm/pagefind@1.5.2/node_modules/pagefind/checksums/pagefind-v1.5.2-x86_64-unknown-linux-musl.tar.gz.sha256
+node_modules/.pnpm/pagefind@1.5.2/node_modules/pagefind/LICENSE/LICENSE-vscode-ripgrep
+node_modules/.pnpm/pagefind@1.5.2/node_modules/pagefind/LICENSE/LICENSE
+
+exec
+/bin/bash -lc "cd /home/weiyi/selfKnowledgeBaseWeb && sed -n '1,260p' node_modules/.pnpm/pagefind@1.5.2/node_modules/pagefind/types/index.d.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+/**
+ * Create a new Pagefind index that files can be added to
+ */
+export function createIndex(config?: PagefindServiceConfig): Promise<NewIndexResponse>;
+
+/**
+ * Close the Pagefind service and clean up, stopping the binary altogether.
+ * 
+ * Service _will_ be restarted if any new calls are made to any other function.
+ * 
+ * Calling functions on an existing index after calling close() is undefined behavior,
+ * as that index may map to a new index after the service has restarted.
+ */
+export function close(): Promise<null>;
+
+export interface PagefindServiceConfig {
+    /** 
+     * The element Pagefind should treat as the root of the document, defaults to `html`.
+     * Usually you will want to use the data-pagefind-body attribute instead.
+     * @example ".my-html-outer"
+     */
+    rootSelector?: string,
+    /** 
+     * Custom selectors that Pagefind should ignore when indexing.
+     * Usually you will want to use the data-pagefind-ignore attribute instead.
+     * @example ["svg", ".my-code-blocks"]
+     */
+    excludeSelectors?: string[],
+    /**
+     * Ignore any detected languages and index the whole site as a single language.
+     * Expects an ISO 639-1 code.
+     */
+    forceLanguage?: string,
+    /**
+     * Print verbose logging while indexing the site. Does not impact the web-facing search.
+     * When running as a service, only impacts the logfile (if present).
+     */
+    verbose?: boolean,
+    /**
+     * Path to a logfile to write to. Will replace the file on each run.
+     */
+    logfile?: string,
+    /**
+     * Keep `index.html` at the end of search result paths.
+     * Defaults to false, stripping `index.html`.
+     */
+    keepIndexUrl?: boolean,
+    /**
+     * When writing or outputting files, also write the Pagefind playground to /pagefind/playground/.
+     * Defaults to false, ensuring the playground isn't available on a live site.
+     */
+    writePlayground?: boolean,
+    /**
+     * Include these characters when indexing and searching words.
+     * Useful for sites documenting technical topics such as programming languages.
+     * @example "<>$"
+     */
+    includeCharacters?: string,
+}
+
+
+export interface NewIndexResponse {
+    errors: string[],
+    index?: PagefindIndex
+}
+
+/**
+ * A Pagefind index that exists in the backend service before being built
+ */
+export interface PagefindIndex {
+    addHTMLFile: typeof addHTMLFile,
+    addCustomRecord: typeof addCustomRecord,
+    addDirectory: typeof addDirectory,
+    writeFiles: typeof writeFiles,
+    getFiles: typeof getFiles,
+    deleteIndex: typeof deleteIndex,
+}
+
+/**
+ * Index an HTML file that isn't on disk
+ */
+declare function addHTMLFile(file: HTMLFile): Promise<NewFileResponse>;
+/**
+ * Index a custom record that isn't backed by an HTML file
+ */
+declare function addCustomRecord(record: CustomRecord): Promise<NewFileResponse>;
+/**
+ * Index a directory of HTML files from disk
+ */
+declare function addDirectory(path: SiteDirectory): Promise<IndexingResponse>;
+
+/**
+ * The data required for Pagefind to index an HTML file that isn't on disk
+ * @example
+ * {
+ *   sourcePath: "about/index.html",
+ *   content: "<html lang='en'><body><h1>Meet the team</h1></body></html>"
+ * }
+ */
+export interface HTMLFile {
+    /** 
+     * The source path of the HTML file if it were to exist on disk.
+     * Must be a relative path, or an absolute path within the current working directory.
+     * Pagefind will compute the result URL from this path.
+     * 
+     * If not supplied, url must be supplied.
+     * 
+     * @example "about/index.html"
+     * @example "/Users/user/Documents/site/about/index.html"
+     */
+    sourcePath?: string,
+    /** 
+     * An explicit URL to use, instead of having Pagefind
+     * compute the URL based on the sourcePath.
+     * 
+     * If not supplied, sourcePath must be supplied.
+     * 
+     * @example "/about/"

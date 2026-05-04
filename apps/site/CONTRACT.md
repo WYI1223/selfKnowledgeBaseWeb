@@ -14,11 +14,10 @@
 
 - Stack: PageFind 1.5.0+ through `astro-pagefind` 1.8.6+. `astro.config.mjs`
   registers the adapter so `astro build` emits `dist/pagefind/` after static
-  HTML generation. Note: ADR-0012 prose references `dist/_pagefind/`
-  (historical pagefind <1.5 default); pagefind 1.5+ emits to `dist/pagefind/`
-  without the underscore prefix. Wave 3 close (or a follow-up docs PR) aligns
-  ADR prose to the current path; the semantic contract (post-build hook +
-  build artifact) is unchanged.
+  HTML generation. ADR-0012 prose was aligned to the current `dist/pagefind/`
+  path (without the historical `_` prefix) at v0.1.1 amendment 2026-05-03
+  (Wave 4 Stage B B1a); the semantic contract (post-build hook + build
+  artifact) is unchanged.
 - UI surface: `src/components/SearchBox.astro` renders the SSR-safe
   `<div id="search">` mount point and lazy browser script that constructs
   `@pagefind/default-ui` with `resetStyles: false`. The dedicated `/search`
