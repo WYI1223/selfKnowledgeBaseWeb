@@ -3,7 +3,7 @@
 > SessionStart hook 读取此文件，把当前 wave 印在 session 起手位置。
 
 **当前 phase**: 1
-**当前 wave**: Wave 4 Stage A ✅ DONE (8/8 PRs merged 2026-05-03; ADR-0014 promoted `proposed → accepted` at A8). Plan locked at [docs/superpowers/plans/2026-05-03-phase-1-wave-4-integration.md](../superpowers/plans/2026-05-03-phase-1-wave-4-integration.md). Stage B opened 2026-05-03 with **plan re-lock to 8 PRs** (B1 split per plan-challenger C6+C10 → B1a + B1b; new B7 added for CRITICAL Astro hydration gap missed in ADR-0014 v0.2 + plan-challenger 12/12, surfaced by gatekeeper 2026-05-03 smoke). **B1a (ADR-0012 amendment doc + `isWordLevelMatch` utility + Stage B re-plan record) is the next implementation PR.**
+**当前 wave**: Wave 4 ✅ **CLOSED** 2026-05-04 (HEAD `de39e07`, 21 PRs across Pre-A + 3 stages) by [ADR-0015](../decisions/ADR-0015-wave-4-close.md). Wave 5 plan-draft **PENDING fresh session** per gatekeeper 2026-05-04 directive: Wave 5 plan-draft from scratch with reframe v2 content (heavy block plugin tier + grid forward + v2 视觉 forward + editor-shell wire-up; see memory `project_wave4_reframe_v2.md`) as INPUT + per-ADR plan-challenger 4-round (ADR-0016 grid + ADR-0017 drag/drop + ADR-0018 v2 视觉) + lock v1.0 before Wave 5 implementation.
 
 **Wave 4 PR roster** (in-progress; merged 2026-05-03):
 
@@ -29,15 +29,16 @@
 | #45 | `8b6e2d8` | B7 | heavy block Astro hydration wiring + ADR-0014 v0.3 (CRITICAL gap; closes AC#1-#15-vitest-only coverage gap; chunk-leak deferred to Stage C per Wave 4 plan A8 D10) |
 | #46 | `525e6c2` | B6 | Wave 4 close-ceremony preparation (3 audit codex dispatches + 3 curated summaries + Stage A+B PR roster) |
 | #47 | `49557d2` | C-2 | NnViz `mlp-mnist.json` hot-load fixture ship (Stage C.1 gatekeeper smoke cleanup; warm-up) |
-| #TBD (this) | TBD | C-1 | Pyodide `indexURL` jsdelivr CDN configuration (Jupyter MVP unblock; HIGH; lock path-(a) post plan-challenger 15-Q absorbtion) |
+| #48 | `de39e07` | C-1 | Pyodide `indexURL` jsdelivr CDN configuration (Jupyter MVP unblock; HIGH; lock path-(a) post plan-challenger 15-Q absorbtion) |
+| #TBD (this) | TBD | Wave 4 close | ADR-0015 Wave 4 close + active.md repoint to Wave 5 plan-draft pending + 3 audit close addendums |
 | **Stage A** | ✅ **DONE** (8/8 PRs) | A | A1-A8 merged 2026-05-03 (HEAD 4aeb279); ADR-0014 promoted to accepted |
 | **Stage B** | ✅ **DONE** (8/8 PRs) | B | B1a-B6 merged 2026-05-03/04 (HEAD `525e6c2` from PR #46); audit-on-close artifacts shipped at B6; ADR-0012 amended to v0.1.1 (B1a) + ADR-0014 amended to v0.3 (B7) |
-| Stage C | open-ended | C | Phase 1 user-iteration scope (per gatekeeper directive #4 + MVP framework); C-2 (this) is the warm-up |
+| **Stage C** | ✅ **TRUNCATED at 2/4** | C | C-1 + C-2 merged 2026-05-04; C-3 (PDF iframe) + C-4 (chunk-leak) deferred to Wave 5 per gatekeeper 2026-05-04 path correction (mid-Wave reframe drift + Wave 5 plan-draft from scratch handles all deferred + reframe items) |
 
-**Stage C PRs** (open-ended; one-at-a-time per plan-challenger Q4 absorbtion):
+**Stage C 实际 PRs** (truncated at 2/4 by gatekeeper reframe; full close roster in [ADR-0015 D1](../decisions/ADR-0015-wave-4-close.md)):
 - **C-2** ✅ merged 2026-05-04 (HEAD `49557d2`, PR #47) — NnViz `mlp-mnist.json` hot-load fixture ship; closed gatekeeper smoke residue from B2.
-- **C-1** (this PR; in-flight) — Pyodide `indexURL` jsdelivr CDN configuration; Jupyter MVP unblock; lock path-(a) CDN post plan-challenger 15-Q absorbtion.
-- **C-3 / C-4** — tracked in orchestrator session backlog (PDF iframe black-screen investigation + B7 chunk-leak optimization), NOT pre-locked here. Each PR opens on demand after C-1 closes.
+- **C-1** ✅ merged 2026-05-04 (HEAD `de39e07`, PR #48) — Pyodide `indexURL` jsdelivr CDN configuration; Jupyter MVP unblock; lock path-(a) CDN post plan-challenger 15-Q absorbtion.
+- **C-3 / C-4** — DEFERRED to Wave 5 per ADR-0015 D3 Stage C residue.
 
 **Wave 4 mandatory scope (Wave 3 carry-overs)** — status as of A8 Stage A close:
 - ✅ Codex audit-log piping fix (R7) in `docs/runbooks/codex-tool-invocations.md` — Pre-A1 closed
@@ -55,7 +56,8 @@
 
 Wave 1 ✅ closed (2026-04-30, HEAD `b5e7217`) by [ADR-0002](../decisions/ADR-0002-wave-1-close.md);
 Wave 2 ✅ closed (2026-05-01, HEAD `51789a1`) by [ADR-0010](../decisions/ADR-0010-wave-2-close.md) — 17 main tracks + 33 commits + 9 new packages + 6 cross-package single-authority invariants + 11 WE-* process learnings codified;
-Wave 3 ✅ closed (2026-05-02, HEAD `4deb5cb`) by [ADR-0013](../decisions/ADR-0013-wave-3-close.md) — 24 main PRs across Pre-A + 4 stages, single long-term Claude orchestrator session validating ADR-0011 D1 linear pipeline at scale.
+Wave 3 ✅ closed (2026-05-02, HEAD `4deb5cb`) by [ADR-0013](../decisions/ADR-0013-wave-3-close.md) — 24 main PRs across Pre-A + 4 stages, single long-term Claude orchestrator session validating ADR-0011 D1 linear pipeline at scale;
+Wave 4 ✅ closed (2026-05-04, HEAD `de39e07`) by [ADR-0015](../decisions/ADR-0015-wave-4-close.md) — 21 main PRs across Pre-A + 3 stages (A=8, B=8, C=2 truncated), 3 Claude orchestrator sessions over 2 days, ADR-0014 ratified through proposed → accepted + 2 substantive amendments (v0.2.1 + v0.3) + ADR-0012 v0.1.1 amendment, 9 NEW retrospective items (R14-R22) + 13 carry-forward (R1-R13).
 
 Wave 3 main pipeline PR roster (2026-05-01 → 2026-05-02, all merged via auto-merge per user authorization):
 
@@ -85,7 +87,8 @@ Wave 3 main pipeline PR roster (2026-05-01 → 2026-05-02, all merged via auto-m
 - [ADR-0011](../decisions/ADR-0011-linear-pipeline-execution-model.md) Linear-pipeline execution model
 - [ADR-0012](../decisions/ADR-0012-search-index-stack.md) Search index stack
 - [ADR-0013](../decisions/ADR-0013-wave-3-close.md) Wave 3 close
-- [ADR-0014](../decisions/ADR-0014-heavy-block-boundary.md) HeavyBlockBoundary wrapper (proposed → accepted at Stage A close)
+- [ADR-0014](../decisions/ADR-0014-heavy-block-boundary.md) HeavyBlockBoundary wrapper (proposed → accepted at Stage A close; v0.3 amended at B7 with NEW D10 production hydration + AC#16)
+- [ADR-0015](../decisions/ADR-0015-wave-4-close.md) Wave 4 close — 21-PR ratification + Wave 5 deferred set + ADR-0011 D1 empirical evaluation (continuation)
 
 **结构 baseline**: [docs/audits/structure-2026-05.md](../audits/structure-2026-05.md). Wave 4 next sweep target: re-baseline against 24-PR Wave 3 work (apps/site search UI + content/notes/__test_cjk__ test fixtures + 8 block-* package consumption surface stable).
 **Wave 索引**: [docs/plans/phase-1/plan.md](phase-1/plan.md)
@@ -93,20 +96,31 @@ Wave 3 main pipeline PR roster (2026-05-01 → 2026-05-02, all merged via auto-m
 
 ---
 
-## 起手指引（Wave 4 session 拉到此文件后开始）
+## 起手指引（Wave 5 plan-draft session start; per ADR-0015 D6 hand-off）
 
-Wave 4 plan is **LOCKED** at [docs/superpowers/plans/2026-05-03-phase-1-wave-4-integration.md](../superpowers/plans/2026-05-03-phase-1-wave-4-integration.md). Stage A ✅ DONE (8/8 PRs merged 2026-05-03; ADR-0014 promoted `proposed → accepted` at A8). **Stage B (B1: ADR-0012 amendment for PageFind query-time substring) is the next implementation PR.**
+Wave 4 ✅ closed by [ADR-0015](../decisions/ADR-0015-wave-4-close.md). **Wave 5 plan-draft is the next session's main task** — NOT Wave 4 implementation continuation.
 
-### Pre-flight (every session start)
+### Pre-flight (Wave 5 plan-draft session start)
 
-1. 读 [Wave 4 plan locked](../superpowers/plans/2026-05-03-phase-1-wave-4-integration.md) — Stage A/B/C breakdown + 11 D-list items + 15/15 plan-challenger absorbtion table
-2. 读 [ADR-0014 HeavyBlockBoundary](../decisions/ADR-0014-heavy-block-boundary.md) — Stage A implementation target (9 D-list sections + 15 acceptance criteria; status `proposed` → `accepted` at A8)
-3. 读 [ADR-0011 D1-D8](../decisions/ADR-0011-linear-pipeline-execution-model.md) — execution model (KEPT for Wave 4 unchanged; Pre-A1 codified Wave 4+ runbook discipline `--yolo` + pipefail + R7 /tmp piping)
-4. 读 [ADR-0013 Wave 3 close](../decisions/ADR-0013-wave-3-close.md) — Wave 3 retrospective (5 mandatory carry-overs; 2 closed at Pre-A1+Pre-A2)
-5. 读 most recent gatekeeper directives (per orchestrator session memory; not git-tracked)
+1. 读 [ADR-0015 Wave 4 close](../decisions/ADR-0015-wave-4-close.md) — D1 21-PR roster + D3 Wave 5 deferred items (binding) + D4 retrospective items (R14 mid-wave reframe drift = key Wave 5 起手 discipline) + D6 Wave 5 plan-draft handoff
+2. 读 memory `project_wave4_reframe_v2.md` — Wave 5 INPUT (heavy block plugin tier + grid forward + v2 visual forward + editor-shell wire-up)
+3. 读 granularity doc `/mnt/d/download/web/v2-design-granularity.md` v0.3.3 (572 LOC; user gatekeeper-side scratch; 权威设计意图; NOT in git)
+4. 读 v2 demo files `/mnt/d/download/web/{proto-app,proto-canvas,proto-markdown}.jsx` + `proto-styles.css` + `drag-storyboard.css` + `filled-content.jsx` (sampling; full read at Wave 5 ADR design-lock time)
+5. 读 [ADR-0011 D1-D8](../decisions/ADR-0011-linear-pipeline-execution-model.md) — execution model (KEPT for Wave 5 per ADR-0015 D5)
+6. 读 [ADR-0013 Wave 3 close](../decisions/ADR-0013-wave-3-close.md) — close-ceremony precedent
 
-### Wave 4 D1 pipeline execution (per PR)
+### Wave 5 plan-draft Pre-A scope (recommended per ADR-0015 D6)
 
-Same as Wave 3 (ADR-0011 D1 KEPT) — PLAN → EXECUTE → REVIEW → PRE-COMMIT → COMMIT → ACCEPT. Wave 4 codifies operational discipline at Pre-A1: every codex dispatch uses `codex exec --yolo --profile <X>` with `set -o pipefail` + `2>&1 | tee /tmp/codex-runs/<X>.txt` raw + `head -2000 > docs/audits/codex-runs/<X>.txt` truncated archive (canonical "Universal Bash invariants" in [`docs/runbooks/codex-tool-invocations.md`](../runbooks/codex-tool-invocations.md)).
+- Pre-A1: Wave 5 plan-draft authoring + plan-challenger 4-round (challenge granularity / sub-stage scope / per-PR estimates / reframe absorbtion path)
+- Pre-A2: ADR-0016 grid 数据模型 design lock + plan-challenger
+- Pre-A3: ADR-0017 drag/drop UX design lock + plan-challenger
+- Pre-A4: ADR-0018 v2 视觉 migration design lock + plan-challenger
+- Pre-A5: Wave 5 plan v1.0 lock (plan-challenger absorbtion table)
 
-Stage A onwards uses standard D1 stage 5 reviewer-codex-commit pattern (per plan-challenger C6 absorbtion at Pre-A3); orchestrator-self commit was Pre-A1+Pre-A2+Pre-A3 bootstrap-flavored exception only.
+### R14 discipline (Wave 5 enforce)
+
+Per ADR-0015 R14: gatekeeper directive → orchestrator opens "Wave N plan v0.X amendment PR" → plan-challenger round → lock → THEN implementation. **Memory entries are session-scoped reads; plan amendments are spec-locked decisions**. Mid-Wave reframe (if any in Wave 5) MUST go through D1 pipeline plan amendment, NOT memory-only.
+
+### D1 pipeline (KEPT)
+
+Same as Wave 3+4 (ADR-0011 D1 KEPT) — PLAN → EXECUTE → REVIEW → PRE-COMMIT → COMMIT → ACCEPT. Operational discipline at Pre-A1 (Wave 4): `codex exec --yolo --profile <X>` + `set -o pipefail` + `/tmp` piping + `head -2000` archive (per [`docs/runbooks/codex-tool-invocations.md`](../runbooks/codex-tool-invocations.md)). R21 extension: post-hoc grep-for-verdict-shaped-lines for codex logs > 500 KB.
