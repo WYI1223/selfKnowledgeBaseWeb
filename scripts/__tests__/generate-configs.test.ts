@@ -39,7 +39,7 @@ describe('parseAgentContract', () => {
       'scaffolder',
     );
     expect(result.tool_patterns.find((tp) => tp.name === 'codex-generic-executor')?.profile).toBe(
-      'generic-executor',
+      'codex-generic-executor',
     );
     expect(result.agents.find((a) => a.name === 'researcher')?.permissions).toContain('web_search');
   });
@@ -308,10 +308,10 @@ describe('renderCodexProfilesToml', () => {
     expect(out).toContain('[profiles.scaffolder]');
     expect(out).toContain('[profiles.plan-challenger]');
     expect(out).toContain('[profiles.codex-pr-reviewer-55]');
-    expect(out).toContain('[profiles.generic-executor]');
-    expect(out).toContain('[profiles.structure-auditor]');
-    expect(out).toContain('[profiles.perf-auditor]');
-    expect(out).toContain('[profiles.mdx-doctor]');
+    expect(out).toContain('[profiles.codex-generic-executor]');
+    expect(out).toContain('[profiles.codex-structure-auditor]');
+    expect(out).toContain('[profiles.codex-perf-auditor]');
+    expect(out).toContain('[profiles.codex-mdx-doctor]');
     expect(out).toContain('model = "gpt-5.3-codex-spark"');
     expect(out).toContain('model = "gpt-5.5"');
   });

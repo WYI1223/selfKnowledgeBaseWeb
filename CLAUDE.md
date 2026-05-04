@@ -50,7 +50,7 @@ Per PR (PRs run strictly serial; the next PR's PLAN waits for the previous PR's 
 1. PLAN              pr-writer Claude subagent ↔ orchestrator → lock PR.md (D2 schema)
        │
        ▼
-2. EXECUTE           codex `generic-executor` (or specialized scaffolder; or
+2. EXECUTE           codex `codex-generic-executor` (or specialized scaffolder; or
                      `ux-ui-lead` Claude subagent for UI/UX). TDD-front:
                      write tests → write impl → vitest all PASS.
        │
@@ -100,19 +100,19 @@ ADR-0007 D5 + ADR-0011 D6.
 
 orchestrator-direct Bash invocations (ADR-0007 D5). Full canonical bash + triggers + audit-log paths in [docs/runbooks/codex-tool-invocations.md](docs/runbooks/codex-tool-invocations.md).
 
-| Pattern                   | Profile                | Summary                                                                                            |
-| ------------------------- | ---------------------- | -------------------------------------------------------------------------------------------------- |
-| `codex-pr-reviewer-55`    | `codex-pr-reviewer-55` | ADR-0011 D1 stage 3 默认 reviewer。replaces Wave 1+2 的 pr-gate（5.5）+                            |
-| `codex-generic-executor`  | `generic-executor`     | ADR-0011 D6 NEW Wave 3 默认 executor。gpt-5.5 + workspace-write sandbox。                          |
-| `codex-mdx-doctor`        | `mdx-doctor`           | ADR-0011 D5 + D6 NEW Wave 3 audit profile。从 Wave 1+2 Tier 3                                      |
-| `codex-perf-auditor`      | `perf-auditor`         | ADR-0011 D5 + D6 NEW Wave 3 audit profile。从 Wave 1+2 Tier 3                                      |
-| `plan-challenger`         | `plan-challenger`      | lock 前挑战 orchestrator 的 wave / track / PR plan：检查 task 大小、可测性、边界场景。             |
-| `codex-api-crud-builder`  | `scaffolder`           | 在 apps/api 按 RESTful 风格生成 CRUD 端点骨架（Pydantic schema + 路由）。                          |
-| `codex-block-generator`   | `scaffolder`           | 在 simple-block-eng / ux-ui-lead / editor-eng 提交 template 后，按模板仿造其余 block / submodule。 |
-| `codex-css-stylist`       | `scaffolder`           | 写 packages/design-tokens / packages/ui 的 design tokens（颜色 / 间距 / 字体）+                    |
-| `codex-script-builder`    | `scaffolder`           | 写 scripts/refactor-move.ts / scripts/new-block.ts / scripts/extract-pdf-text.ts 等工具。          |
-| `codex-test-scaffolder`   | `scaffolder`           | 为每个 packages/<name> 生成 src/__tests__/ 下的 vitest 套件骨架，                                  |
-| `codex-structure-auditor` | `structure-auditor`    | ADR-0011 D5 + D6 NEW Wave 3 audit profile。从 Wave 1+2 Tier 3                                      |
+| Pattern                   | Profile                   | Summary                                                                                            |
+| ------------------------- | ------------------------- | -------------------------------------------------------------------------------------------------- |
+| `codex-generic-executor`  | `codex-generic-executor`  | ADR-0011 D6 NEW Wave 3 默认 executor。gpt-5.5 + workspace-write sandbox。                          |
+| `codex-mdx-doctor`        | `codex-mdx-doctor`        | ADR-0011 D5 + D6 NEW Wave 3 audit profile。从 Wave 1+2 Tier 3                                      |
+| `codex-perf-auditor`      | `codex-perf-auditor`      | ADR-0011 D5 + D6 NEW Wave 3 audit profile。从 Wave 1+2 Tier 3                                      |
+| `codex-pr-reviewer-55`    | `codex-pr-reviewer-55`    | ADR-0011 D1 stage 3 默认 reviewer。replaces Wave 1+2 的 pr-gate（5.5）+                            |
+| `codex-structure-auditor` | `codex-structure-auditor` | ADR-0011 D5 + D6 NEW Wave 3 audit profile。从 Wave 1+2 Tier 3                                      |
+| `plan-challenger`         | `plan-challenger`         | lock 前挑战 orchestrator 的 wave / track / PR plan：检查 task 大小、可测性、边界场景。             |
+| `codex-api-crud-builder`  | `scaffolder`              | 在 apps/api 按 RESTful 风格生成 CRUD 端点骨架（Pydantic schema + 路由）。                          |
+| `codex-block-generator`   | `scaffolder`              | 在 simple-block-eng / ux-ui-lead / editor-eng 提交 template 后，按模板仿造其余 block / submodule。 |
+| `codex-css-stylist`       | `scaffolder`              | 写 packages/design-tokens / packages/ui 的 design tokens（颜色 / 间距 / 字体）+                    |
+| `codex-script-builder`    | `scaffolder`              | 写 scripts/refactor-move.ts / scripts/new-block.ts / scripts/extract-pdf-text.ts 等工具。          |
+| `codex-test-scaffolder`   | `scaffolder`              | 为每个 packages/<name> 生成 src/__tests__/ 下的 vitest 套件骨架，                                  |
 
 ## Footer
 

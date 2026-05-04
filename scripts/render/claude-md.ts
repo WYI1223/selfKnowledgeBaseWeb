@@ -66,7 +66,7 @@ Per PR (PRs run strictly serial; the next PR's PLAN waits for the previous PR's 
 1. PLAN              pr-writer Claude subagent ↔ orchestrator → lock PR.md (D2 schema)
        │
        ▼
-2. EXECUTE           codex \`generic-executor\` (or specialized scaffolder; or
+2. EXECUTE           codex \`codex-generic-executor\` (or specialized scaffolder; or
                      \`ux-ui-lead\` Claude subagent for UI/UX). TDD-front:
                      write tests → write impl → vitest all PASS.
        │

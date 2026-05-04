@@ -368,8 +368,8 @@ tool_patterns:
 
   # ---- codex-generic-executor (ADR-0011 D6 NEW; D1 stage 2 默认 executor) ----
   - name: codex-generic-executor
-    profile: generic-executor
-    invocation: 'codex exec --yolo --profile generic-executor < /dev/null'
+    profile: codex-generic-executor
+    invocation: 'codex exec --yolo --profile codex-generic-executor < /dev/null'
     triggered_by:
       - pr_plan_locked_executor_field_set_to_generic_executor
     output_handling: |
@@ -396,8 +396,8 @@ tool_patterns:
 
   # ---- codex-structure-auditor (ADR-0011 D6 NEW; per-PR + Wave-close) ----
   - name: codex-structure-auditor
-    profile: structure-auditor
-    invocation: 'codex exec --yolo --profile structure-auditor < /dev/null'
+    profile: codex-structure-auditor
+    invocation: 'codex exec --yolo --profile codex-structure-auditor < /dev/null'
     triggered_by:
       - per_pr_post_commit                          # 每 PR 跑（速查）
       - wave_close                                  # 全量审计
@@ -425,8 +425,8 @@ tool_patterns:
 
   # ---- codex-perf-auditor (ADR-0011 D6 NEW; bundle-affecting + Wave-close) ----
   - name: codex-perf-auditor
-    profile: perf-auditor
-    invocation: 'codex exec --yolo --profile perf-auditor < /dev/null'
+    profile: codex-perf-auditor
+    invocation: 'codex exec --yolo --profile codex-perf-auditor < /dev/null'
     triggered_by:
       - bundle_affecting_pr                         # editor-shell / block-* / search index 等
       - wave_close
@@ -449,8 +449,8 @@ tool_patterns:
 
   # ---- codex-mdx-doctor (ADR-0011 D6 NEW; mdx-bridge fixture change PR) ----
   - name: codex-mdx-doctor
-    profile: mdx-doctor
-    invocation: 'codex exec --yolo --profile mdx-doctor < /dev/null'
+    profile: codex-mdx-doctor
+    invocation: 'codex exec --yolo --profile codex-mdx-doctor < /dev/null'
     triggered_by:
       - pr_touches_mdx_bridge
       - pr_touches_block_package                    # block-* core/ 路径任意修改

@@ -24,8 +24,8 @@ handle stdout (parse + audit-log).
 > **First-time setup for every new Claude session.** Verify the user's
 > \`~/.codex/config.toml\` contains all 7 profiles listed below before
 > dispatching any \`codex exec --yolo --profile <name>\` invocation. ADR-0011 D6
-> introduced 4 NEW profiles (\`generic-executor\`, \`structure-auditor\`,
-> \`perf-auditor\`, \`mdx-doctor\`) plus the new default reviewer
+> introduced 4 NEW profiles (\`codex-generic-executor\`, \`codex-structure-auditor\`,
+> \`codex-perf-auditor\`, \`codex-mdx-doctor\`) plus the new default reviewer
 > \`codex-pr-reviewer-55\` that supersedes Wave 1+2's \`pr-gate\` (\`pr-gate\`
 > is kept as a transitional alias in user-local TOMLs and may stay until
 > Wave 3 close). Wave 1+2 era \`~/.codex/config.toml\` files typically only
@@ -49,13 +49,13 @@ grep '^\\[profiles\\.' ~/.codex/config.toml | sort
 Expected output (all 7 profile names from \`tmp/codex-profiles.toml\`,
 sorted):
 
+- \`[profiles.codex-generic-executor]\`
+- \`[profiles.codex-mdx-doctor]\`
+- \`[profiles.codex-perf-auditor]\`
 - \`[profiles.codex-pr-reviewer-55]\`
-- \`[profiles.generic-executor]\`
-- \`[profiles.mdx-doctor]\`
-- \`[profiles.perf-auditor]\`
+- \`[profiles.codex-structure-auditor]\`
 - \`[profiles.plan-challenger]\`
 - \`[profiles.scaffolder]\`
-- \`[profiles.structure-auditor]\`
 
 If any are missing, complete the merge before invoking the corresponding
 pattern below. Until merged, reviewer dispatches may transitionally fall

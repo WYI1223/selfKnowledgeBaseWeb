@@ -31,8 +31,8 @@ These three invariants come from \`agent-contract.md\` and apply to every Codex 
 
 1. **Git mutation discipline (ADR-0011 D1+D4)**: \`git commit / branch / rebase / push\`
    only at D1 stage 5 (reviewer codex commit phase) or by orchestrator self for bootstrap
-   scope. Codex tool invocations (scaffolder / generic-executor / structure-auditor /
-   perf-auditor / mdx-doctor / plan-challenger) MUST NOT call git mutating commands at
+   scope. Codex tool invocations (scaffolder / codex-generic-executor / codex-structure-auditor /
+   codex-perf-auditor / codex-mdx-doctor / plan-challenger) MUST NOT call git mutating commands at
    any other point. Hand the diff back to the orchestrator.
 2. **Web access discipline (ADR-0011 D7)**: only the \`researcher\` Claude subagent
    (one-shot per dispatch) may run \`web_search\` / \`web_fetch\`. If a Codex tool needs
@@ -52,10 +52,10 @@ const PROFILE_TABLE = mdTable(
     ['`scaffolder`', 'gpt-5.3-codex-spark', 'workspace-write', 'Cheap, fast scaffolding (5 patterns)'],
     ['`plan-challenger`', 'gpt-5.3-codex-spark', 'read-only', 'Challenge plans before lock'],
     ['`codex-pr-reviewer-55`', 'gpt-5.5', 'read-only', 'D1 stage 3 default reviewer (replaces pr-gate; ADR-0011 D6)'],
-    ['`generic-executor`', 'gpt-5.5', 'workspace-write', 'D1 stage 2 default executor (NEW Wave 3)'],
-    ['`structure-auditor`', 'gpt-5.3-codex-spark', 'read-only', 'Per-PR + Wave-close audit (NEW Wave 3)'],
-    ['`perf-auditor`', 'gpt-5.3-codex-spark', 'read-only', 'Bundle-affecting PR + Wave-close (NEW Wave 3)'],
-    ['`mdx-doctor`', 'gpt-5.3-codex-spark', 'read-only', 'mdx-bridge fixture change PR (NEW Wave 3)'],
+    ['`codex-generic-executor`', 'gpt-5.5', 'workspace-write', 'D1 stage 2 default executor (NEW Wave 3)'],
+    ['`codex-structure-auditor`', 'gpt-5.3-codex-spark', 'read-only', 'Per-PR + Wave-close audit (NEW Wave 3)'],
+    ['`codex-perf-auditor`', 'gpt-5.3-codex-spark', 'read-only', 'Bundle-affecting PR + Wave-close (NEW Wave 3)'],
+    ['`codex-mdx-doctor`', 'gpt-5.3-codex-spark', 'read-only', 'mdx-bridge fixture change PR (NEW Wave 3)'],
   ],
 );
 
@@ -68,10 +68,10 @@ After running \`pnpm generate:configs\`, manually merge \`tmp/codex-profiles.tom
 codex exec --yolo --profile scaffolder            "scaffold packages/block-code from block-callout template" < /dev/null
 codex exec --yolo --profile plan-challenger       "challenge docs/plans/wave-3-…/plan.md before lock" < /dev/null
 codex exec --yolo --profile codex-pr-reviewer-55  "review the staged diff (D1 stage 3 default)" < /dev/null
-codex exec --yolo --profile generic-executor      "implement PR.md test_cases first then impl" < /dev/null
-codex exec --yolo --profile structure-auditor     "scan workspace topology + ADR-0008 D1 dead-dep + drift" < /dev/null
-codex exec --yolo --profile perf-auditor          "Lighthouse / size-limit / chunk-size baseline" < /dev/null
-codex exec --yolo --profile mdx-doctor            "run all RTT fixtures + parse-equiv invariants" < /dev/null
+codex exec --yolo --profile codex-generic-executor      "implement PR.md test_cases first then impl" < /dev/null
+codex exec --yolo --profile codex-structure-auditor     "scan workspace topology + ADR-0008 D1 dead-dep + drift" < /dev/null
+codex exec --yolo --profile codex-perf-auditor          "Lighthouse / size-limit / chunk-size baseline" < /dev/null
+codex exec --yolo --profile codex-mdx-doctor            "run all RTT fixtures + parse-equiv invariants" < /dev/null
 \`\`\`
 
 \`< /dev/null\` is mandatory in non-interactive contexts (Phase 0 stdin-hang regression);
