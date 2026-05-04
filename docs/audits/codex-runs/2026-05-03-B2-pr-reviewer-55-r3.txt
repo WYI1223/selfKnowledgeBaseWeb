@@ -1,0 +1,1028 @@
+Reading additional input from stdin...
+OpenAI Codex v0.125.0 (research preview)
+--------
+workdir: /home/weiyi/selfKnowledgeBaseWeb
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: danger-full-access
+reasoning effort: xhigh
+reasoning summaries: none
+session id: 019df0df-49ea-71e3-b58f-90a6fd274710
+--------
+user
+Wave 4 Stage B B2 REVIEW R3 (D1 stage 3 third pass).
+
+R2 FAIL (MEDIUM): PR.md line 693 implementation sequence said `pnpm link-check` clean (TC20), conflicting with amended TC20+bullet 13 (CI canonical lychee).
+
+R2 FIX: PR.md line 693 reworded to: 'B2.G `pnpm link-check` BLOCKED on dev WSL2 (lychee binary not installed; CI canonical per amended TC20 + acceptance bullet 13 + B1a/B1b precedent); pre-commit substitute = file-target-exists `test -f` for the 2 new MDX prose cross-references'
+
+R3 SCOPE: verify R2 issue RESOLVED + no new regressions.
+
+OUTPUT: `REVIEW VERDICT R3: PASS` or `REVIEW VERDICT R3: FAIL`. Read-only.
+
+DO NOT git mutate.
+codex
+Using `superpowers:using-superpowers` to satisfy the session workflow, then I’ll do a read-only check of `PR.md` around TC20, acceptance bullet 13, and the implementation sequence.
+exec
+/bin/bash -lc "sed -n '1,220p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/3c463363/skills/using-superpowers/SKILL.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+---
+name: using-superpowers
+description: Use when starting any conversation - establishes how to find and use skills, requiring Skill tool invocation before ANY response including clarifying questions
+---
+
+<SUBAGENT-STOP>
+If you were dispatched as a subagent to execute a specific task, skip this skill.
+</SUBAGENT-STOP>
+
+<EXTREMELY-IMPORTANT>
+If you think there is even a 1% chance a skill might apply to what you are doing, you ABSOLUTELY MUST invoke the skill.
+
+IF A SKILL APPLIES TO YOUR TASK, YOU DO NOT HAVE A CHOICE. YOU MUST USE IT.
+
+This is not negotiable. This is not optional. You cannot rationalize your way out of this.
+</EXTREMELY-IMPORTANT>
+
+## Instruction Priority
+
+Superpowers skills override default system prompt behavior, but **user instructions always take precedence**:
+
+1. **User's explicit instructions** (CLAUDE.md, GEMINI.md, AGENTS.md, direct requests) — highest priority
+2. **Superpowers skills** — override default system behavior where they conflict
+3. **Default system prompt** — lowest priority
+
+If CLAUDE.md, GEMINI.md, or AGENTS.md says "don't use TDD" and a skill says "always use TDD," follow the user's instructions. The user is in control.
+
+## How to Access Skills
+
+**In Claude Code:** Use the `Skill` tool. When you invoke a skill, its content is loaded and presented to you—follow it directly. Never use the Read tool on skill files.
+
+**In Copilot CLI:** Use the `skill` tool. Skills are auto-discovered from installed plugins. The `skill` tool works the same as Claude Code's `Skill` tool.
+
+**In Gemini CLI:** Skills activate via the `activate_skill` tool. Gemini loads skill metadata at session start and activates the full content on demand.
+
+**In other environments:** Check your platform's documentation for how skills are loaded.
+
+## Platform Adaptation
+
+Skills use Claude Code tool names. Non-CC platforms: see `references/copilot-tools.md` (Copilot CLI), `references/codex-tools.md` (Codex) for tool equivalents. Gemini CLI users get the tool mapping loaded automatically via GEMINI.md.
+
+# Using Skills
+
+## The Rule
+
+**Invoke relevant or requested skills BEFORE any response or action.** Even a 1% chance a skill might apply means that you should invoke the skill to check. If an invoked skill turns out to be wrong for the situation, you don't need to use it.
+
+```dot
+digraph skill_flow {
+    "User message received" [shape=doublecircle];
+    "About to EnterPlanMode?" [shape=doublecircle];
+    "Already brainstormed?" [shape=diamond];
+    "Invoke brainstorming skill" [shape=box];
+    "Might any skill apply?" [shape=diamond];
+    "Invoke Skill tool" [shape=box];
+    "Announce: 'Using [skill] to [purpose]'" [shape=box];
+    "Has checklist?" [shape=diamond];
+    "Create TodoWrite todo per item" [shape=box];
+    "Follow skill exactly" [shape=box];
+    "Respond (including clarifications)" [shape=doublecircle];
+
+    "About to EnterPlanMode?" -> "Already brainstormed?";
+    "Already brainstormed?" -> "Invoke brainstorming skill" [label="no"];
+    "Already brainstormed?" -> "Might any skill apply?" [label="yes"];
+    "Invoke brainstorming skill" -> "Might any skill apply?";
+
+    "User message received" -> "Might any skill apply?";
+    "Might any skill apply?" -> "Invoke Skill tool" [label="yes, even 1%"];
+    "Might any skill apply?" -> "Respond (including clarifications)" [label="definitely not"];
+    "Invoke Skill tool" -> "Announce: 'Using [skill] to [purpose]'";
+    "Announce: 'Using [skill] to [purpose]'" -> "Has checklist?";
+    "Has checklist?" -> "Create TodoWrite todo per item" [label="yes"];
+    "Has checklist?" -> "Follow skill exactly" [label="no"];
+    "Create TodoWrite todo per item" -> "Follow skill exactly";
+}
+```
+
+## Red Flags
+
+These thoughts mean STOP—you're rationalizing:
+
+| Thought | Reality |
+|---------|---------|
+| "This is just a simple question" | Questions are tasks. Check for skills. |
+| "I need more context first" | Skill check comes BEFORE clarifying questions. |
+| "Let me explore the codebase first" | Skills tell you HOW to explore. Check first. |
+| "I can check git/files quickly" | Files lack conversation context. Check for skills. |
+| "Let me gather information first" | Skills tell you HOW to gather information. |
+| "This doesn't need a formal skill" | If a skill exists, use it. |
+| "I remember this skill" | Skills evolve. Read current version. |
+| "This doesn't count as a task" | Action = task. Check for skills. |
+| "The skill is overkill" | Simple things become complex. Use it. |
+| "I'll just do this one thing first" | Check BEFORE doing anything. |
+| "This feels productive" | Undisciplined action wastes time. Skills prevent this. |
+| "I know what that means" | Knowing the concept ≠ using the skill. Invoke it. |
+
+## Skill Priority
+
+When multiple skills could apply, use this order:
+
+1. **Process skills first** (brainstorming, debugging) - these determine HOW to approach the task
+2. **Implementation skills second** (frontend-design, mcp-builder) - these guide execution
+
+"Let's build X" → brainstorming first, then implementation skills.
+"Fix this bug" → debugging first, then domain-specific skills.
+
+## Skill Types
+
+**Rigid** (TDD, debugging): Follow exactly. Don't adapt away discipline.
+
+**Flexible** (patterns): Adapt principles to context.
+
+The skill itself tells you which.
+
+## User Instructions
+
+Instructions say WHAT, not HOW. "Add X" or "Fix Y" doesn't mean skip workflows.
+
+codex
+I’m also applying `superpowers:verification-before-completion` because the requested output is a pass/fail claim; I’ll anchor that verdict in read-only checks rather than inference.
+exec
+/bin/bash -lc "sed -n '1,240p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/3c463363/skills/verification-before-completion/SKILL.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+---
+name: verification-before-completion
+description: Use when about to claim work is complete, fixed, or passing, before committing or creating PRs - requires running verification commands and confirming output before making any success claims; evidence before assertions always
+---
+
+# Verification Before Completion
+
+## Overview
+
+Claiming work is complete without verification is dishonesty, not efficiency.
+
+**Core principle:** Evidence before claims, always.
+
+**Violating the letter of this rule is violating the spirit of this rule.**
+
+## The Iron Law
+
+```
+NO COMPLETION CLAIMS WITHOUT FRESH VERIFICATION EVIDENCE
+```
+
+If you haven't run the verification command in this message, you cannot claim it passes.
+
+## The Gate Function
+
+```
+BEFORE claiming any status or expressing satisfaction:
+
+1. IDENTIFY: What command proves this claim?
+2. RUN: Execute the FULL command (fresh, complete)
+3. READ: Full output, check exit code, count failures
+4. VERIFY: Does output confirm the claim?
+   - If NO: State actual status with evidence
+   - If YES: State claim WITH evidence
+5. ONLY THEN: Make the claim
+
+Skip any step = lying, not verifying
+```
+
+## Common Failures
+
+| Claim | Requires | Not Sufficient |
+|-------|----------|----------------|
+| Tests pass | Test command output: 0 failures | Previous run, "should pass" |
+| Linter clean | Linter output: 0 errors | Partial check, extrapolation |
+| Build succeeds | Build command: exit 0 | Linter passing, logs look good |
+| Bug fixed | Test original symptom: passes | Code changed, assumed fixed |
+| Regression test works | Red-green cycle verified | Test passes once |
+| Agent completed | VCS diff shows changes | Agent reports "success" |
+| Requirements met | Line-by-line checklist | Tests passing |
+
+## Red Flags - STOP
+
+- Using "should", "probably", "seems to"
+- Expressing satisfaction before verification ("Great!", "Perfect!", "Done!", etc.)
+- About to commit/push/PR without verification
+- Trusting agent success reports
+- Relying on partial verification
+- Thinking "just this once"
+- Tired and wanting work over
+- **ANY wording implying success without having run verification**
+
+## Rationalization Prevention
+
+| Excuse | Reality |
+|--------|---------|
+| "Should work now" | RUN the verification |
+| "I'm confident" | Confidence ≠ evidence |
+| "Just this once" | No exceptions |
+| "Linter passed" | Linter ≠ compiler |
+| "Agent said success" | Verify independently |
+| "I'm tired" | Exhaustion ≠ excuse |
+| "Partial check is enough" | Partial proves nothing |
+| "Different words so rule doesn't apply" | Spirit over letter |
+
+## Key Patterns
+
+**Tests:**
+```
+✅ [Run test command] [See: 34/34 pass] "All tests pass"
+❌ "Should pass now" / "Looks correct"
+```
+
+**Regression tests (TDD Red-Green):**
+```
+✅ Write → Run (pass) → Revert fix → Run (MUST FAIL) → Restore → Run (pass)
+❌ "I've written a regression test" (without red-green verification)
+```
+
+**Build:**
+```
+✅ [Run build] [See: exit 0] "Build passes"
+❌ "Linter passed" (linter doesn't check compilation)
+```
+
+**Requirements:**
+```
+✅ Re-read plan → Create checklist → Verify each → Report gaps or completion
+❌ "Tests pass, phase complete"
+```
+
+**Agent delegation:**
+```
+✅ Agent reports success → Check VCS diff → Verify changes → Report actual state
+❌ Trust agent report
+```
+
+## Why This Matters
+
+From 24 failure memories:
+- your human partner said "I don't believe you" - trust broken
+- Undefined functions shipped - would crash
+- Missing requirements shipped - incomplete features
+- Time wasted on false completion → redirect → rework
+- Violates: "Honesty is a core value. If you lie, you'll be replaced."
+
+## When To Apply
+
+**ALWAYS before:**
+- ANY variation of success/completion claims
+- ANY expression of satisfaction
+- ANY positive statement about work state
+- Committing, PR creation, task completion
+- Moving to next task
+- Delegating to agents
+
+**Rule applies to:**
+- Exact phrases
+- Paraphrases and synonyms
+- Implications of success
+- ANY communication suggesting completion/correctness
+
+## The Bottom Line
+
+**No shortcuts for verification.**
+
+Run the command. Read the output. THEN claim the result.
+
+This is non-negotiable.
+
+codex
+I’m reading only `PR.md` and searching the relevant anchors: TC20, acceptance bullet 13, the B2.G implementation line, and prior B1a/B1b wording.
+exec
+/bin/bash -lc "nl -ba PR.md | sed -n '660,710p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+nl: PR.md: No such file or directory
+
+exec
+/bin/bash -lc "rg -n \"TC20|acceptance bullet 13|bullet 13|B2\\.G|link-check|lychee|B1a|B1b\" PR.md" in /home/weiyi/selfKnowledgeBaseWeb
+ exited 2 in 0ms:
+rg: PR.md: IO error for operation on PR.md: No such file or directory (os error 2)
+
+exec
+/bin/bash -lc "nl -ba PR.md | sed -n '1,180p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+nl: PR.md: No such file or directory
+
+codex
+`PR.md` is not at the repository root in this workspace, so I’m locating the file before reviewing the referenced lines.
+exec
+/bin/bash -lc pwd in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+/home/weiyi/selfKnowledgeBaseWeb
+
+exec
+/bin/bash -lc ls in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "rg --files -g 'PR.md' -g '*PR*.md'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+AGENTS.md
+CLAUDE.md
+LICENSE
+agent-contract.md
+apps
+claude+codex.md
+codex.md
+content
+docs
+eslint.config.js
+node_modules
+opencode.json
+package.json
+packages
+pnpm-lock.yaml
+pnpm-workspace.yaml
+prettier.config.cjs
+scripts
+skills-lock.json
+tmp
+tsconfig.base.json
+tsconfig.json
+turbo.json
+vitest.config.ts
+
+ succeeded in 0ms:
+docs/plans/wave-3-prep/PR-1-agent-contract.md
+docs/plans/wave-3-prep/PR-2-f3-typed-tokens.md
+docs/plans/wave-3-prep/PR-3-viz-test-corpus.md
+
+codex
+The exact filename isn’t present at root; I’m searching by the unique B2.G and TC20 text to identify the active PR document.
+exec
+/bin/bash -lc "rg --files docs tmp | rg 'PR|pr|wave|plan'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+tmp/codex-profiles.toml
+
+exec
+/bin/bash -lc "rg -n \"B2\\.G|TC20|lychee binary|CI canonical|file-target-exists\"" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+docs/audits/codex-runs/2026-05-03-B1a-accept.txt:39:AC4 — ADR-0012 file size below ESLint warn target (TC20)
+docs/audits/codex-runs/2026-05-03-Pre-A1-pr-reviewer-55.txt:432:  on push to feature branch (lychee binary is CI-only via
+docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:222:→ TC20 `pnpm link-check` → TC21 `pnpm check` workspace-wide.
+docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:355:- **TC20** (lychee link-check; CI canonical per B1a + B1b precedent):
+docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:356:  `pnpm link-check` runs in CI workflow (lychee binary not on local
+docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:519:13. **link-check (lychee) — CI canonical per B1a + B1b precedent**:
+docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:522:    step. Local `pnpm link-check` BLOCKED on dev WSL2 (lychee binary
+docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:528:    links). TC20 evidence.
+docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:692:  → B2.F byte-unchanged guards verify (TC12-TC18) → B2.G
+docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:693:  `pnpm link-check` BLOCKED on dev WSL2 (lychee binary not installed;
+docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:694:  CI canonical per amended TC20 + acceptance bullet 13 + B1a/B1b
+docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:695:  precedent); pre-commit substitute = file-target-exists `test -f`
+docs/plans/wave-4-main/A7-astro-variants-consolidation.md:492:  parallel route. TC20 verifies empty diff.
+docs/plans/wave-4-main/A7-astro-variants-consolidation.md:615:- **TC20** (`content/notes/sample-blocks/index.mdx` byte-unchanged)
+docs/plans/wave-4-main/B1b-searchbox-integration.md:618:- **TC20** ADR-0012 byte-unchanged: `git diff main --
+docs/plans/wave-4-main/B1b-searchbox-integration.md:690:  but does NOT re-amend the ADR. TC20 verifies ADR-0012 empty diff.
+docs/plans/wave-4-main/B1b-searchbox-integration.md:727:  implementation. TC20 verifies ADR-0012 byte-unchanged.
+docs/plans/wave-4-main/B1b-searchbox-integration.md:1121:**B1b explicitly does NOT touch** (also enforced by TC20, TC21,
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:1028:- **TC20** (apps/site `components.ts` size + lint + typecheck post-rewire)
+docs/plans/wave-4-main/Pre-A1-codex-runbook-yolo-tmp-piping.md:177:  on push to feature branch (lychee binary is CI-only via
+docs/plans/wave-4-main/A6-heavy-block-playwright-layout-shift.md:392:- **TC20** (`docs/plans/active.md` updated correctly) Input (a):
+docs/plans/wave-4-main/A6-heavy-block-playwright-layout-shift.md:578:    the top-line phase summary append "+ A6". TC20 evidence. All
+docs/plans/wave-4-main/A8-perf-chunking-adr-0014-promote.md:649:  (the index), NOT in the A7 PR.md body. TC20 verifies empty diff.
+docs/plans/wave-4-main/A8-perf-chunking-adr-0014-promote.md:802:- **TC20** (prior PR.md files byte-unchanged) Input: `git diff main
+docs/plans/wave-4-main/A8-perf-chunking-adr-0014-promote.md:1618:  - Prior PR.md files A1-A7 + Pre-A1/A2/A3 (TC20 — bookkeeping
+docs/plans/wave-4-main/A4-heavy-block-boundary-css-a11y.md:320:  pointer flip + Wave 4 plan A5 doc cite sufficient (TC20 lists this
+docs/plans/wave-4-main/A4-heavy-block-boundary-css-a11y.md:789:- **TC20** (TODO marker for A4 removed; TODO(A5) presence is
+docs/plans/wave-4-main/A4-heavy-block-boundary-css-a11y.md:896:   the A3 `// TODO(A4)` defer marker REMOVED — TC20a evidence.
+docs/plans/wave-4-main/B1a-adr-0012-amendment.md:435:- **TC20** ADR-0012 size below ESLint warn: `wc -l docs/decisions/ADR-0012-search-index-stack.md`
+docs/plans/wave-4-main/B1a-adr-0012-amendment.md:647:   file ≤ 200 LOC (PLAN-time projection ~189 LOC; safe). TC20
+docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55-r2.txt:18:R2 after R1 returned FAIL with 1 HIGH issue: PR.md TC20 + acceptance bullet 13 required local `pnpm link-check` exit 0, but lychee binary not on dev WSL2. Orchestrator amended PR.md to align with B1a + B1b precedent (CI canonical for lychee; local pre-commit check = file-target-exists + memory disciplines).
+docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55-r2.txt:22:PR.md TC20 + acceptance bullet 13 reworded to:
+docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55-r2.txt:23:- TC20: 'lychee link-check; CI canonical per B1a + B1b precedent. Local pnpm link-check exits 1 with lychee not found — accepted dev-env state. Pre-commit memory disciplines followed.'
+docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55-r2.txt:24:- Acceptance bullet 13: 'link-check (lychee) — CI canonical per B1a + B1b precedent. Local pnpm link-check BLOCKED on dev WSL2; pre-commit verification = ensure linked file targets exist via test -f and follow lychee disciplines.'
+docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55-r2.txt:34:1. R1 issue RESOLVED: PR.md TC20 + bullet 13 no longer require local lychee exit 0; acceptance now matches B1a/B1b precedent.
+docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55-r2.txt:342:/bin/bash -lc 'rg -n "TC20|link-check|lychee|Acceptance|ADR-0014|heavy-block-boundary|CONTRACT" PR.md content/notes/sample-blocks/index.mdx' in /home/weiyi/selfKnowledgeBaseWeb
+docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55-r2.txt:367:/bin/bash -lc "rg -n \"TC20|local pnpm link-check|lychee link-check|acceptance bullet 13|link-check \\(lychee\\)|CI canonical|dev WSL2|B1a|B1b\" ." in /home/weiyi/selfKnowledgeBaseWeb
+docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55-r2.txt:378:./docs/plans/wave-4-main/A6-heavy-block-playwright-layout-shift.md:392:- **TC20** (`docs/plans/active.md` updated correctly) Input (a):
+docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55-r2.txt:379:./docs/plans/wave-4-main/A6-heavy-block-playwright-layout-shift.md:578:    the top-line phase summary append "+ A6". TC20 evidence. All
+docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55-r2.txt:381:./docs/plans/wave-4-main/A8-perf-chunking-adr-0014-promote.md:649:  (the index), NOT in the A7 PR.md body. TC20 verifies empty diff.
+docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55-r2.txt:382:./docs/plans/wave-4-main/A8-perf-chunking-adr-0014-promote.md:802:- **TC20** (prior PR.md files byte-unchanged) Input: `git diff main
+docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55-r2.txt:383:./docs/plans/wave-4-main/A8-perf-chunking-adr-0014-promote.md:1618:  - Prior PR.md files A1-A7 + Pre-A1/A2/A3 (TC20 — bookkeeping
+docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55-r2.txt:384:./docs/plans/wave-4-main/A4-heavy-block-boundary-css-a11y.md:320:  pointer flip + Wave 4 plan A5 doc cite sufficient (TC20 lists this
+docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55-r2.txt:385:./docs/plans/wave-4-main/A4-heavy-block-boundary-css-a11y.md:789:- **TC20** (TODO marker for A4 removed; TODO(A5) presence is
+docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55-r2.txt:386:./docs/plans/wave-4-main/A4-heavy-block-boundary-css-a11y.md:896:   the A3 `// TODO(A4)` defer marker REMOVED — TC20a evidence.
+docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55-r2.txt:403:./docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:222:→ TC20 `pnpm link-check` → TC21 `pnpm check` workspace-wide.
+docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55-r2.txt:409:./docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:355:- **TC20** (lychee link-check; CI canonical per B1a + B1b precedent):
+docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55-r2.txt:414:./docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:519:13. **link-check (lychee) — CI canonical per B1a + B1b precedent**:
+docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55-r2.txt:415:./docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:522:    step. Local `pnpm link-check` BLOCKED on dev WSL2 (lychee binary
+docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55-r2.txt:416:./docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:528:    links). TC20 evidence.
+docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55-r2.txt:422:./docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:693:  `pnpm link-check` clean (TC20) → B2.H `pnpm check` workspace-wide
+docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55-r2.txt:429:./docs/plans/wave-4-main/A7-astro-variants-consolidation.md:492:  parallel route. TC20 verifies empty diff.
+docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55-r2.txt:430:./docs/plans/wave-4-main/A7-astro-variants-consolidation.md:615:- **TC20** (`content/notes/sample-blocks/index.mdx` byte-unchanged)
+docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55-r2.txt:461:./docs/plans/wave-4-main/B1a-adr-0012-amendment.md:435:- **TC20** ADR-0012 size below ESLint warn: `wc -l docs/decisions/ADR-0012-search-index-stack.md`
+docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55-r2.txt:487:./docs/plans/wave-4-main/B1a-adr-0012-amendment.md:647:   file ≤ 200 LOC (PLAN-time projection ~189 LOC; safe). TC20
+docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55-r2.txt:602:./docs/plans/wave-4-main/B1b-searchbox-integration.md:618:- **TC20** ADR-0012 byte-unchanged: `git diff main --
+docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55-r2.txt:616:./docs/plans/wave-4-main/B1b-searchbox-integration.md:690:  but does NOT re-amend the ADR. TC20 verifies ADR-0012 empty diff.
+docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55-r2.txt:626:./docs/plans/wave-4-main/B1b-searchbox-integration.md:727:  implementation. TC20 verifies ADR-0012 byte-unchanged.
+docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55-r2.txt:683:./docs/plans/wave-4-main/B1b-searchbox-integration.md:1121:**B1b explicitly does NOT touch** (also enforced by TC20, TC21,
+docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55-r2.txt:702:./docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:1028:- **TC20** (apps/site `components.ts` size + lint + typecheck post-rewire)
+docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55-r2.txt:726:./docs/audits/codex-runs/2026-05-03-B1a-accept.txt:39:AC4 — ADR-0012 file size below ESLint warn target (TC20)
+docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55-r2.txt:988:./docs/audits/codex-runs/2026-05-03-B1b-pr-reviewer-55.txt:31:- pnpm link-check → BLOCKED (lychee not on local WSL2; CI canonical)
+docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55-r2.txt:1063:./docs/audits/codex-runs/2026-05-03-B1b-pr-reviewer-55.txt:1011:- **TC20** ADR-0012 byte-unchanged: `git diff main --
+docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55-r2.txt:1077:./docs/audits/codex-runs/2026-05-03-B1b-pr-reviewer-55.txt:1083:  but does NOT re-amend the ADR. TC20 verifies ADR-0012 empty diff.
+docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55-r2.txt:1087:./docs/audits/codex-runs/2026-05-03-B1b-pr-reviewer-55.txt:1120:  implementation. TC20 verifies ADR-0012 byte-unchanged.
+docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55-r2.txt:1142:./docs/audits/codex-runs/2026-05-03-B1b-pr-reviewer-55.txt:1514:**B1b explicitly does NOT touch** (also enforced by TC20, TC21,
+docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55-r2.txt:1199:./docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55.txt:483:→ TC20 `pnpm link-check` → TC21 `pnpm check` workspace-wide.
+docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55-r2.txt:1310:./docs/audits/codex-runs/2026-05-03-B1a-pr-reviewer-55.txt:799:- **TC20** ADR-0012 size below ESLint warn: `wc -l docs/decisions/ADR-0012-search-index-stack.md`
+docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55-r2.txt:1337:./docs/audits/codex-runs/2026-05-03-B1a-pr-reviewer-55.txt:1015:   file ≤ 200 LOC (PLAN-time projection ~189 LOC; safe). TC20
+docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55-r2.txt:1447:./docs/audits/codex-runs/2026-05-03-B1a-commit.txt:112:- [ ] CI lychee link-check green (local skipped — lychee binary not on dev WSL2; CI canonical)
+docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55-r2.txt:1463:./docs/audits/codex-runs/2026-05-03-B1a-commit.txt:618:- [ ] CI lychee link-check green (local skipped — lychee binary not on dev WSL2; CI canonical)
+docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55-r2.txt:1470:./docs/audits/codex-runs/2026-05-03-B1b-execute.txt:62:8. **DO NOT** run playwright locally (WSL2 chromium broken; CI canonical per memory `feedback_wsl2_chromium_launch.md`).
+docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55-r2.txt:1526:./docs/audits/codex-runs/2026-05-03-B1b-execute.txt:1306:- **TC20** ADR-0012 byte-unchanged: `git diff main --
+docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55-r2.txt:1540:./docs/audits/codex-runs/2026-05-03-B1b-execute.txt:1378:  but does NOT re-amend the ADR. TC20 verifies ADR-0012 empty diff.
+docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55-r2.txt:1550:./docs/audits/codex-runs/2026-05-03-B1b-execute.txt:1415:  implementation. TC20 verifies ADR-0012 byte-unchanged.
+docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55-r2.txt:1605:./docs/audits/codex-runs/2026-05-03-B1b-execute.txt:1809:**B1b explicitly does NOT touch** (also enforced by TC20, TC21,
+docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55-r2.txt:1631:The B2 plan file is `docs/plans/wave-4-main/B2-sample-blocks-cleanup.md`; the amended text is there, not in a root `PR.md`. I’m reading the exact TC20 and acceptance areas now, including nearby references that could conflict with the new CI-canonical wording.
+docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55-r2.txt:1647:   222	→ TC20 `pnpm link-check` → TC21 `pnpm check` workspace-wide.
+docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55-r2.txt:1667:   355	- **TC20** (lychee link-check; CI canonical per B1a + B1b precedent):
+docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55-r2.txt:1668:   356	  `pnpm link-check` runs in CI workflow (lychee binary not on local
+docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55-r2.txt:1690:   519	13. **link-check (lychee) — CI canonical per B1a + B1b precedent**:
+docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55-r2.txt:1693:   522	    step. Local `pnpm link-check` BLOCKED on dev WSL2 (lychee binary
+docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55-r2.txt:1699:   528	    links). TC20 evidence.
+docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55-r2.txt:1714:   692	  → B2.F byte-unchanged guards verify (TC12-TC18) → B2.G
+docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55-r2.txt:1715:   693	  `pnpm link-check` clean (TC20) → B2.H `pnpm check` workspace-wide
+docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55-r2.txt:1725:/bin/bash -lc "rg -n \"pnpm link-check.*exit 0|link-check.*exit 0|lychee link-check|link-check \\(lychee\\)|pnpm link-check clean|Local "'`pnpm link-check`|BLOCKED|CI canonical|file targets|file-target" docs/plans/wave-4-main/B2-sample-blocks-cleanup.md' in /home/weiyi/selfKnowledgeBaseWeb
+docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55-r2.txt:1734:TC20 and acceptance bullet 13 contain the amended CI-canonical/local-blocked language. I also found a nearby execution-order sentence that still says “`pnpm link-check` clean”; I’m checking whether that is the only conflicting occurrence before deciding whether it blocks R2.
+docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55-r2.txt:1736:/bin/bash -lc "rg -n 'pnpm link-check|link-check|lychee|CI canonical|BLOCKED|exit 0|clean' docs/plans/wave-4-main/B2-sample-blocks-cleanup.md" in /home/weiyi/selfKnowledgeBaseWeb
+docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55-r2.txt:1744:222:→ TC20 `pnpm link-check` → TC21 `pnpm check` workspace-wide.
+docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55-r2.txt:1754:355:- **TC20** (lychee link-check; CI canonical per B1a + B1b precedent):
+docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55-r2.txt:1755:356:  `pnpm link-check` runs in CI workflow (lychee binary not on local
+docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55-r2.txt:1769:519:13. **link-check (lychee) — CI canonical per B1a + B1b precedent**:
+docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55-r2.txt:1771:522:    step. Local `pnpm link-check` BLOCKED on dev WSL2 (lychee binary
+docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55-r2.txt:1782:693:  `pnpm link-check` clean (TC20) → B2.H `pnpm check` workspace-wide
+docs/audits/codex-runs/2026-05-03-B1a-commit.txt:112:- [ ] CI lychee link-check green (local skipped — lychee binary not on dev WSL2; CI canonical)
+docs/audits/codex-runs/2026-05-03-B1a-commit.txt:618:- [ ] CI lychee link-check green (local skipped — lychee binary not on dev WSL2; CI canonical)
+docs/audits/codex-runs/2026-05-03-B1b-execute.txt:62:8. **DO NOT** run playwright locally (WSL2 chromium broken; CI canonical per memory `feedback_wsl2_chromium_launch.md`).
+docs/audits/codex-runs/2026-05-03-B1b-execute.txt:1306:- **TC20** ADR-0012 byte-unchanged: `git diff main --
+docs/audits/codex-runs/2026-05-03-B1b-execute.txt:1378:  but does NOT re-amend the ADR. TC20 verifies ADR-0012 empty diff.
+docs/audits/codex-runs/2026-05-03-B1b-execute.txt:1415:  implementation. TC20 verifies ADR-0012 byte-unchanged.
+docs/audits/codex-runs/2026-05-03-B1b-execute.txt:1809:**B1b explicitly does NOT touch** (also enforced by TC20, TC21,
+docs/audits/codex-runs/2026-05-03-B1a-pr-reviewer-55.txt:56:- `pnpm link-check` → SKIPPED (lychee binary not on local WSL2; CI verifies)
+docs/audits/codex-runs/2026-05-03-B1a-pr-reviewer-55.txt:799:- **TC20** ADR-0012 size below ESLint warn: `wc -l docs/decisions/ADR-0012-search-index-stack.md`
+docs/audits/codex-runs/2026-05-03-B1a-pr-reviewer-55.txt:1015:   file ≤ 200 LOC (PLAN-time projection ~189 LOC; safe). TC20
+docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55.txt:483:→ TC20 `pnpm link-check` → TC21 `pnpm check` workspace-wide.
+docs/audits/codex-runs/2026-05-03-B1b-pr-reviewer-55.txt:31:- pnpm link-check → BLOCKED (lychee not on local WSL2; CI canonical)
+docs/audits/codex-runs/2026-05-03-B1b-pr-reviewer-55.txt:1011:- **TC20** ADR-0012 byte-unchanged: `git diff main --
+docs/audits/codex-runs/2026-05-03-B1b-pr-reviewer-55.txt:1083:  but does NOT re-amend the ADR. TC20 verifies ADR-0012 empty diff.
+docs/audits/codex-runs/2026-05-03-B1b-pr-reviewer-55.txt:1120:  implementation. TC20 verifies ADR-0012 byte-unchanged.
+docs/audits/codex-runs/2026-05-03-B1b-pr-reviewer-55.txt:1514:**B1b explicitly does NOT touch** (also enforced by TC20, TC21,
+
+codex
+The active document is `docs/plans/wave-4-main/B2-sample-blocks-cleanup.md`. I’m checking the amended sections and scanning the B2 plan for leftover “link-check clean” or local `exit 0` wording.
+exec
+/bin/bash -lc "nl -ba docs/plans/wave-4-main/B2-sample-blocks-cleanup.md | sed -n '210,230p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+   210	SSR markers, including
+   211	`src="/sample-assets/diagram-small.png"` for the Image block — so
+   212	binary placement closes a long-standing implicit flake risk on
+   213	that test). TDD-front discipline (per ADR-0011 D1 stage 2 + memory
+   214	`feedback_soted_pr_md_discipline`) for binary placement does not
+   215	mean writing a new test before the binary; it means **verifying
+   216	the existing test passes with the new binary in place** before
+   217	committing. Order: TC1-TC4 binary verification grep+`file`-magic checks
+   218	→ TC5-TC8 MDX prose grep checks → TC9 active.md grep
+   219	→ TC10 `pnpm --filter @skb/site test` exit 0 (existing 11
+   220	corpora unchanged + GREEN) → TC11 `pnpm --filter @skb/site build`
+   221	exit 0 → TC12-TC18 byte-unchanged guards → TC19 `pnpm size-check`
+   222	→ TC20 `pnpm link-check` → TC21 `pnpm check` workspace-wide.
+   223	
+   224	Test verification triplets (input → expected → location):
+   225	
+   226	- **TC1** (diagram-small.png placement): Input:
+   227	  `test -f apps/site/public/sample-assets/diagram-small.png &&
+   228	  file apps/site/public/sample-assets/diagram-small.png`. Expected:
+   229	  exit 0 + output contains `'PNG image data, 320 x 180'` (PIL emits
+   230	  this signature). Location: shell at repo root.
+
+exec
+/bin/bash -lc "nl -ba docs/plans/wave-4-main/B2-sample-blocks-cleanup.md | sed -n '345,370p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+   345	  + deferred to Stage C user-iteration if needed for true NnViz
+   346	  hydration end-to-end smoke.
+   347	- **TC18** (8 block packages + heavy-block-boundary byte-unchanged):
+   348	  `git diff main -- packages/heavy-block-boundary/ packages/block-callout/
+   349	  packages/block-code/ packages/block-image/ packages/block-math/
+   350	  packages/block-pdf/ packages/block-jupyter/ packages/block-nn-viz/
+   351	  packages/block-agent-flow/` → empty diff.
+   352	- **TC19** (size-check workspace-wide): `pnpm size-check` → exit
+   353	  0 (no source file > 500 LOC; binaries are not source files; PR.md
+   354	  is exempt). Sample-blocks MDX post-edit ~150 LOC, well below.
+   355	- **TC20** (lychee link-check; CI canonical per B1a + B1b precedent):
+   356	  `pnpm link-check` runs in CI workflow (lychee binary not on local
+   357	  WSL2 dev env; `pnpm link-check` locally exits 1 with `lychee: not
+   358	  found` — accepted dev-env state). Pre-commit memory disciplines
+   359	  followed: `feedback_lychee_line_anchor` no `:line` suffix on
+   360	  relative file links; `feedback_lychee_user_local_paths` no
+   361	  `~/.claude/...` links; `feedback_lychee_npmjs_403` no
+   362	  `npmjs.com/package/...` links. The intro prose refresh cites
+   363	  ADR-0014 + ADR-0009 by repo-relative paths
+   364	  (`../../docs/decisions/ADR-0014-heavy-block-boundary.md` from
+   365	  `content/notes/sample-blocks/index.mdx`); verify these resolve in
+   366	  CI lychee step (canonical) AND verify the file targets exist
+   367	  pre-commit (sufficient local check given binary unavailability).
+   368	- **TC21** (workspace-wide regression): `pnpm check` → exit 0
+   369	  (lint + typecheck + test + build + size-check all PASS). B2's
+   370	  binary placement + MDX prose change is additive; no existing
+
+exec
+/bin/bash -lc "nl -ba docs/plans/wave-4-main/B2-sample-blocks-cleanup.md | sed -n '510,535p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+   510	    byte-identical copy mechanism). TC11 evidence.
+   511	
+   512	12. **`docs/plans/active.md` B1b row backfill applied** + **NEW
+   513	    B2 row added**: B1b `#TBD | TBD` → `#40 | 5ec7123`; new B2
+   514	    row appended with subject "sample-blocks Wave 3 cleanup
+   515	    (4 binary sample-assets + intro prose refresh; merged from
+   516	    old B2+B3 per gatekeeper directive 2026-05-03 #5)" + `#TBD
+   517	    (this) | TBD | B2 | ...`. TC9 evidence.
+   518	
+   519	13. **link-check (lychee) — CI canonical per B1a + B1b precedent**:
+   520	    all cross-references from the refreshed MDX intro prose +
+   521	    active.md updates + PR.md self-references resolve in CI lychee
+   522	    step. Local `pnpm link-check` BLOCKED on dev WSL2 (lychee binary
+   523	    not installed); pre-commit verification = ensure linked file
+   524	    targets exist via `test -f` and follow lychee disciplines
+   525	    (`feedback_lychee_line_anchor.md` no `:line` suffix on relative
+   526	    links; `feedback_lychee_user_local_paths.md` no `~/.claude/...`
+   527	    links; `feedback_lychee_npmjs_403.md` no `npmjs.com/package/...`
+   528	    links). TC20 evidence.
+   529	
+   530	14. **`pnpm size-check` workspace-wide clean**: no source file
+   531	    exceeds 500 LOC hard cap; sample-blocks MDX post-edit ~150
+   532	    LOC; PR.md exempt. TC19 evidence.
+   533	
+   534	15. **`pnpm check` exit 0 globally** — workspace-wide regression
+   535	    baseline. B2's binary placement + MDX prose change is additive;
+
+exec
+/bin/bash -lc "nl -ba docs/plans/wave-4-main/B2-sample-blocks-cleanup.md | sed -n '685,702p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+   685	  verify TC1-TC4 magic-byte + dimension checks → B2.B MDX prose
+   686	  refresh (`content/notes/sample-blocks/index.mdx`) — intro
+   687	  paragraph rewrite + obsolete "draft: true" paragraph removal
+   688	  + Callout warning body refresh; verify TC5-TC8 grep checks →
+   689	  B2.C `pnpm --filter @skb/site test` → exit 0 (TC10) → B2.D
+   690	  `pnpm --filter @skb/site build` → exit 0 + binary copy verify
+   691	  (TC11) → B2.E active.md B1b backfill + B2 row insertion (TC9)
+   692	  → B2.F byte-unchanged guards verify (TC12-TC18) → B2.G
+   693	  `pnpm link-check` BLOCKED on dev WSL2 (lychee binary not installed;
+   694	  CI canonical per amended TC20 + acceptance bullet 13 + B1a/B1b
+   695	  precedent); pre-commit substitute = file-target-exists `test -f`
+   696	  for the 2 new MDX prose cross-references (ADR-0014 + heavy-block-boundary
+   697	  CONTRACT.md) → B2.H `pnpm check` workspace-wide clean (TC21) →
+   698	  reviewer codex commits per `## acceptance` bullet 23.
+   699	
+   700	- **REVIEW (D1 stage 3)**: `codex-pr-reviewer-55` (`--yolo
+   701	  --profile codex-pr-reviewer-55`). ADR-0006 8-point checklist +
+   702	  ADR-0006 D8 explicit-file-list staging mandatory. Reviewer reads
+
+exec
+/bin/bash -lc 'rg -n "pnpm link-check.*clean|link-check.*clean|pnpm link-check.*exit 0|link-check.*exit 0|lychee.*exit 0|BLOCKED|CI canonical|file-target-exists|file targets" docs/plans/wave-4-main/B2-sample-blocks-cleanup.md' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+355:- **TC20** (lychee link-check; CI canonical per B1a + B1b precedent):
+366:  CI lychee step (canonical) AND verify the file targets exist
+519:13. **link-check (lychee) — CI canonical per B1a + B1b precedent**:
+522:    step. Local `pnpm link-check` BLOCKED on dev WSL2 (lychee binary
+693:  `pnpm link-check` BLOCKED on dev WSL2 (lychee binary not installed;
+694:  CI canonical per amended TC20 + acceptance bullet 13 + B1a/B1b
+695:  precedent); pre-commit substitute = file-target-exists `test -f`
+
+codex
+The amended B2.G line now matches the R2 fix text. I’m verifying the two referenced MDX file targets because the amended line explicitly makes those local checks the substitute for local lychee.
+exec
+/bin/bash -lc "rg -n \"ADR-0014|heavy-block-boundary|CONTRACT\\.md|decisions\" content/notes/sample-blocks/index.mdx" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+14:[`@skb/heavy-block-boundary`](../../../packages/heavy-block-boundary/CONTRACT.md) wrapper per
+15:[ADR-0014](../../../docs/decisions/ADR-0014-heavy-block-boundary.md) v0.2 (status accepted at
+38:  ADR-0014 D2 zero-layout-shift) then hydrate the real component on first mount via the
+
+exec
+/bin/bash -lc 'test -f docs/decisions/ADR-0014-heavy-block-boundary.md' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+exec
+/bin/bash -lc 'test -f packages/heavy-block-boundary/CONTRACT.md' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+exec
+/bin/bash -lc 'test -f content/docs/decisions/ADR-0014-heavy-block-boundary.md' in /home/weiyi/selfKnowledgeBaseWeb
+ exited 1 in 0ms:
+codex
+The actual MDX links use `../../../...` and both target files exist from repo root. I spotted older TC20 prose mentioning ADR-0009 and a `../../docs/...` example, so I’m checking whether that creates a live contradiction in the B2 plan or is only stale explanatory prose.
+exec
+/bin/bash -lc "rg -n \"ADR-0009|ADR-0014|CONTRACT\\.md|\\.\\./\\.\\./docs|\\.\\./\\.\\./\\.\\./docs|\\.\\./\\.\\./packages|\\.\\./\\.\\./\\.\\./packages\" docs/plans/wave-4-main/B2-sample-blocks-cleanup.md content/notes/sample-blocks/index.mdx" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+content/notes/sample-blocks/index.mdx:14:[`@skb/heavy-block-boundary`](../../../packages/heavy-block-boundary/CONTRACT.md) wrapper per
+content/notes/sample-blocks/index.mdx:15:[ADR-0014](../../../docs/decisions/ADR-0014-heavy-block-boundary.md) v0.2 (status accepted at
+content/notes/sample-blocks/index.mdx:38:  ADR-0014 D2 zero-layout-shift) then hydrate the real component on first mount via the
+docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:122:    `useEffect` in browser. Cite ADR-0014 (heavy-block-boundary)
+docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:123:    + ADR-0009 (BlockKind 4-way union). Keep "this page is the
+docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:319:  apps/site/CONTRACT.md docs/decisions/ADR-0012-search-index-stack.md` →
+docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:363:  ADR-0014 + ADR-0009 by repo-relative paths
+docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:364:  (`../../docs/decisions/ADR-0014-heavy-block-boundary.md` from
+docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:379:- **NONE.** B2 modifies no `*/CONTRACT.md` file. The 8 block
+docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:380:  packages + heavy-block-boundary CONTRACT.md files all stay
+docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:381:  byte-unchanged (TC18 verifies). `apps/site/CONTRACT.md` stays
+docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:388:  intro prose refresh **cites** ADR-0014 + ADR-0009 by repo-relative
+docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:399:- **Row 1 (CONTRACT.md change)**: **NO.** B2 touches no
+docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:400:  `*/CONTRACT.md` file. TC13 + TC18 verify empty diff across all
+docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:409:  intro prose cites existing ADR-0014 + ADR-0009 by markdown link
+docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:470:   hydration for 3 heavy blocks); cites ADR-0014 + ADR-0009 by
+docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:552:    `apps/site/CONTRACT.md` + `docs/decisions/ADR-0012-search-index-stack.md`
+docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:572:    wording — reviewer may request tighter cite to ADR-0009 vs
+docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:573:    ADR-0014 priorities (orchestrator-self iterates within the
+docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:628:   ADR-0009 + Wave 3 mdx-bridge, but its rendering depends only
+docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:673:  ADR-0014 design-lock + B1a doc-flavored amendment precedent).
+docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:696:  for the 2 new MDX prose cross-references (ADR-0014 + heavy-block-boundary
+docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:697:  CONTRACT.md) → B2.H `pnpm check` workspace-wide clean (TC21) →
+docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:743:  AC#16 expansion + ADR-0014 v0.3 amendment + `apps/site/CONTRACT.md`
+docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:752:  `apps/site/CONTRACT.md` + `docs/decisions/ADR-0012-search-index-stack.md`
+docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:754:- **All ADR files** (B2 cites ADR-0014 + ADR-0009 by markdown link
+docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:776:- [ADR-0014 HeavyBlockBoundary wrapper](../../decisions/ADR-0014-heavy-block-boundary.md) — Wave 4 Stage A architectural ADR (cited in refreshed MDX intro prose; promoted at A8; B7 will ship v0.3 amendment)
+docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:777:- [ADR-0009 BlockKind 4-way union](../../decisions/ADR-0009-block-kind-union-expansion.md) — 4-way kind taxonomy (cited in refreshed MDX intro prose for the 5 light + 3 heavy block split)
+
+exec
+/bin/bash -lc "nl -ba content/notes/sample-blocks/index.mdx | sed -n '1,50p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	---
+     2	title: Wave 2 Block Sampler
+     3	slug: sample-blocks
+     4	tags: [smoke-test, wave-2, sample-blocks]
+     5	date: 2026-04-30
+     6	draft: false
+     7	---
+     8	
+     9	This page is the Wave 2 close acceptance criterion (Z0). It exercises every component-block
+    10	package shipped in Wave 2 by instantiating one or more concrete examples with PascalCase MDX
+    11	components, and now serves as the live integration smoke for Wave 3 + Wave 4: Wave 3
+    12	`mdx-bridge` shipped the BlockRegistry → MDX componentsMap routing in `apps/site`, and Wave 4
+    13	Stage A wired the 3 heavy blocks (Jupyter / NnViz / AgentFlow) through the
+    14	[`@skb/heavy-block-boundary`](../../../packages/heavy-block-boundary/CONTRACT.md) wrapper per
+    15	[ADR-0014](../../../docs/decisions/ADR-0014-heavy-block-boundary.md) v0.2 (status accepted at
+    16	Stage A close). All 5 light blocks (Callout / Code / Image / Math / Pdf) render synchronously;
+    17	the 3 heavy blocks render the SSR skeleton then hydrate the real component on first mount.
+    18	Sample assets ship at `/sample-assets/{diagram-small.png, figure-1.png, whitepaper.pdf}`
+    19	(Wave 4 Stage B B2 placeholder binaries — replace with real content per future iteration).
+    20	
+    21	## Callout
+    22	
+    23	`@skb/block-callout` — variants: `note | tip | warning | danger`. Each variant is an
+    24	independent semantic flavor; `title` is optional.
+    25	
+    26	{/* fixture-13: callout note */}
+    27	<Callout variant="note" title="Sampler scope">
+    28	  This is the Wave 2 sampler page. Eight component-block packages are exercised below.
+    29	</Callout>
+    30	
+    31	<Callout variant="tip">
+    32	  Tip variants drop the title to verify the optional prop path.
+    33	</Callout>
+    34	
+    35	{/* fixture-14: callout warning + danger pair */}
+    36	<Callout variant="warning" title="Heavy blocks hydrate client-side">
+    37	  The 3 heavy blocks (Jupyter / NnViz / AgentFlow) below render an SSR skeleton (per
+    38	  ADR-0014 D2 zero-layout-shift) then hydrate the real component on first mount via the
+    39	  HeavyBlockBoundary wrapper. The 5 light blocks render synchronously without hydration.
+    40	</Callout>
+    41	
+    42	<Callout variant="danger" title="Strict props">
+    43	  Every block uses `.strict()` zod schemas; unknown props will fail validation once routed.
+    44	</Callout>
+    45	
+    46	## Code
+    47	
+    48	`@skb/block-code` — `language` is required, `code` is the source string, `showLineNumbers`
+    49	defaults `true`. The block is `.strict()`, so the code body is passed as a prop, not as MDX
+    50	children.
+
+exec
+/bin/bash -lc 'rg -n "draft: true|prose refresh|intro prose|cross-reference|cross-references" docs/plans/wave-4-main/B2-sample-blocks-cleanup.md' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+1:# B2 — sample-blocks Wave 3 cleanup (4 binary sample-assets + intro prose refresh)
+6:> (sample-assets ship) + #9 (sample-blocks intro prose) — merged
+25:sample-blocks MDX intro prose to reflect the **current** Wave 3 mdx-bridge
+28:hydrate via HeavyBlockBoundary in browser; the obsolete "draft: true"
+103:  draft: true" paragraph removal + Callout warning body refresh).
+126:  - **Lines 14-17 (obsolete "Note on draft: true" paragraph)**:
+135:    ~5 LOC net removal. TC5 verifies `grep -c 'Note on \`draft: true\`'`
+183:    (4 binary sample-assets + intro prose refresh; merged from
+253:- **TC5** (intro prose refreshed; obsolete "draft: true" paragraph
+254:  removed): Input: `grep -c 'Note on \`draft: true\`'
+362:  `npmjs.com/package/...` links. The intro prose refresh cites
+388:  intro prose refresh **cites** ADR-0014 + ADR-0009 by repo-relative
+407:  + MDX prose refresh + bookkeeping; no existing files refactored.
+409:  intro prose cites existing ADR-0014 + ADR-0009 by markdown link
+424:- **Row 7 (legacy doc resurrection)**: **NO.** The MDX prose refresh
+425:  REMOVES obsolete language (the "draft: true" paragraph + the
+475:6. **Obsolete "Note on `draft: true`" paragraph removed** from
+515:    (4 binary sample-assets + intro prose refresh; merged from
+520:    all cross-references from the refreshed MDX intro prose +
+571:    a backup `pdfminer` snippet if available); (b) MDX intro prose
+600:B2's risk surface is small (binary placement + MDX prose refresh
+672:  + MDX prose refresh + bookkeeping; matches Pre-A2 doc-only
+678:  alignment + ADR cross-reference correctness. Standard ADR-0011
+687:  paragraph rewrite + obsolete "draft: true" paragraph removal
+696:  for the 2 new MDX prose cross-references (ADR-0014 + heavy-block-boundary
+776:- [ADR-0014 HeavyBlockBoundary wrapper](../../decisions/ADR-0014-heavy-block-boundary.md) — Wave 4 Stage A architectural ADR (cited in refreshed MDX intro prose; promoted at A8; B7 will ship v0.3 amendment)
+777:- [ADR-0009 BlockKind 4-way union](../../decisions/ADR-0009-block-kind-union-expansion.md) — 4-way kind taxonomy (cited in refreshed MDX intro prose for the 5 light + 3 heavy block split)
+785:- memory `feedback_lychee_line_anchor.md` + `feedback_lychee_user_local_paths.md` + `feedback_lychee_npmjs_403.md` — lychee discipline applied to PR.md cross-references + MDX intro prose ADR cites
+
+codex
+I’m checking the current diff read-only to separate the R2 amendment from older plan wording, since the verdict should be about the third-pass scope rather than unrelated historical text.
+exec
+/bin/bash -lc 'git status --short' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+ M content/notes/sample-blocks/index.mdx
+ M docs/plans/active.md
+?? apps/site/public/
+?? docs/audits/codex-runs/2026-05-03-B1b-accept.txt
+?? docs/audits/codex-runs/2026-05-03-B1b-commit.txt
+?? docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55-r2.txt
+?? docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55.txt
+?? docs/plans/wave-4-main/B2-sample-blocks-cleanup.md
+
+exec
+/bin/bash -lc 'git diff -- docs/plans/wave-4-main/B2-sample-blocks-cleanup.md' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+exec
+/bin/bash -lc 'git diff -- content/notes/sample-blocks/index.mdx' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+diff --git a/content/notes/sample-blocks/index.mdx b/content/notes/sample-blocks/index.mdx
+index 2211e2f..b2c60b0 100644
+--- a/content/notes/sample-blocks/index.mdx
++++ b/content/notes/sample-blocks/index.mdx
+@@ -8,13 +8,15 @@ draft: false
+ 
+ This page is the Wave 2 close acceptance criterion (Z0). It exercises every component-block
+ package shipped in Wave 2 by instantiating one or more concrete examples with PascalCase MDX
+-components. Routing of MDX → React components is Wave 3 `mdx-bridge` work; here we author
+-content that conforms to each block's `propsSchema` exactly.
+-
+-**Note on `draft: true`**: this fixture authors block-component MDX content but Astro cannot
+-yet resolve the 8 PascalCase components (AgentFlow / NnViz / Jupyter / Pdf / Math / Image /
+-Code / Callout). Wave 3 mdx-bridge integration will register the BlockRegistry → MDX component
+-map in `apps/site`, after which `draft` flips back to `false`. See ADR-0010 D7 deferred #2.
++components, and now serves as the live integration smoke for Wave 3 + Wave 4: Wave 3
++`mdx-bridge` shipped the BlockRegistry → MDX componentsMap routing in `apps/site`, and Wave 4
++Stage A wired the 3 heavy blocks (Jupyter / NnViz / AgentFlow) through the
++[`@skb/heavy-block-boundary`](../../../packages/heavy-block-boundary/CONTRACT.md) wrapper per
++[ADR-0014](../../../docs/decisions/ADR-0014-heavy-block-boundary.md) v0.2 (status accepted at
++Stage A close). All 5 light blocks (Callout / Code / Image / Math / Pdf) render synchronously;
++the 3 heavy blocks render the SSR skeleton then hydrate the real component on first mount.
++Sample assets ship at `/sample-assets/{diagram-small.png, figure-1.png, whitepaper.pdf}`
++(Wave 4 Stage B B2 placeholder binaries — replace with real content per future iteration).
+ 
+ ## Callout
+ 
+@@ -31,9 +33,10 @@ independent semantic flavor; `title` is optional.
+ </Callout>
+ 
+ {/* fixture-14: callout warning + danger pair */}
+-<Callout variant="warning" title="Wave 3 deferred">
+-  apps/site cannot yet render these components — the BlockRegistry → MDX integration lands
+-  with `mdx-bridge` in Wave 3.
++<Callout variant="warning" title="Heavy blocks hydrate client-side">
++  The 3 heavy blocks (Jupyter / NnViz / AgentFlow) below render an SSR skeleton (per
++  ADR-0014 D2 zero-layout-shift) then hydrate the real component on first mount via the
++  HeavyBlockBoundary wrapper. The 5 light blocks render synchronously without hydration.
+ </Callout>
+ 
+ <Callout variant="danger" title="Strict props">
+
+codex
+Because the B2 plan file is untracked, there is no tracked base diff for it. I’m using the previous R2 audit transcript as read-only context to confirm the only recorded R2 blocker was the stale B2.G wording.
+exec
+/bin/bash -lc "sed -n '1,80p' docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55-r2.txt" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+Reading additional input from stdin...
+OpenAI Codex v0.125.0 (research preview)
+--------
+workdir: /home/weiyi/selfKnowledgeBaseWeb
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: danger-full-access
+reasoning effort: xhigh
+reasoning summaries: none
+session id: 019df0db-8865-76c3-bc70-a8d08e4598aa
+--------
+user
+Wave 4 Stage B B2 REVIEW R2 (D1 stage 3 second pass).
+
+==== ROLE ====
+
+R2 after R1 returned FAIL with 1 HIGH issue: PR.md TC20 + acceptance bullet 13 required local `pnpm link-check` exit 0, but lychee binary not on dev WSL2. Orchestrator amended PR.md to align with B1a + B1b precedent (CI canonical for lychee; local pre-commit check = file-target-exists + memory disciplines).
+
+==== R1 FIX APPLIED ====
+
+PR.md TC20 + acceptance bullet 13 reworded to:
+- TC20: 'lychee link-check; CI canonical per B1a + B1b precedent. Local pnpm link-check exits 1 with lychee not found — accepted dev-env state. Pre-commit memory disciplines followed.'
+- Acceptance bullet 13: 'link-check (lychee) — CI canonical per B1a + B1b precedent. Local pnpm link-check BLOCKED on dev WSL2; pre-commit verification = ensure linked file targets exist via test -f and follow lychee disciplines.'
+
+Verified pre-commit:
+- `test -f docs/decisions/ADR-0014-heavy-block-boundary.md` → exists
+- `test -f packages/heavy-block-boundary/CONTRACT.md` → exists
+- Both referenced in content/notes/sample-blocks/index.mdx new intro lines 14-15
+
+==== R2 SCOPE ====
+
+Verify only:
+1. R1 issue RESOLVED: PR.md TC20 + bullet 13 no longer require local lychee exit 0; acceptance now matches B1a/B1b precedent.
+2. NO NEW REGRESSIONS introduced by the PR.md edits.
+3. All other R1 PASS verdicts (binary integrity, MDX prose, byte-unchanged guards, asymmetry-audit) carry forward unchanged — orchestrator only edited PR.md acceptance text, no source/binary/test change.
+
+==== OUTPUT ====
+
+Final line:
+`REVIEW VERDICT R2: PASS` or `REVIEW VERDICT R2: FAIL`
+
+Pre-verdict:
+- 'R1 issue resolution: <RESOLVED|UNRESOLVED>'
+- 'New regressions hunt: <findings or none>'
+- Issue list (file:line; severity) if any remaining
+
+If PASS: orchestrator runs stage 5 commit (codex-pr-reviewer-55 commit + push + gh pr create).
+If FAIL: list issues. Orchestrator returns to executor for further revision.
+
+DO NOT git mutate. Read-only review only.
+codex
+I’ll do this as a read-only review pass and check the local diff around `PR.md` plus the referenced file targets. I’m using the required Superpowers startup skill first, then I’ll keep the scope tight to the R2 criteria.
+exec
+/bin/bash -lc "sed -n '1,220p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/3c463363/skills/using-superpowers/SKILL.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+---
+name: using-superpowers
+description: Use when starting any conversation - establishes how to find and use skills, requiring Skill tool invocation before ANY response including clarifying questions
+---
+
+<SUBAGENT-STOP>
+If you were dispatched as a subagent to execute a specific task, skip this skill.
+</SUBAGENT-STOP>
+
+<EXTREMELY-IMPORTANT>
+If you think there is even a 1% chance a skill might apply to what you are doing, you ABSOLUTELY MUST invoke the skill.
+
+IF A SKILL APPLIES TO YOUR TASK, YOU DO NOT HAVE A CHOICE. YOU MUST USE IT.
+
+This is not negotiable. This is not optional. You cannot rationalize your way out of this.
+</EXTREMELY-IMPORTANT>
+
+## Instruction Priority
+
+Superpowers skills override default system prompt behavior, but **user instructions always take precedence**:
+
+1. **User's explicit instructions** (CLAUDE.md, GEMINI.md, AGENTS.md, direct requests) — highest priority
+2. **Superpowers skills** — override default system behavior where they conflict
+3. **Default system prompt** — lowest priority
+
+exec
+/bin/bash -lc 'tail -80 docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55-r2.txt' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+- content/notes/sample-blocks/index.mdx (modified intro + fixture-14)
+- docs/plans/active.md (modified B1b row backfill + B2 TBD)
+
+Plus: B2 PR.md self-listed (untracked: docs/plans/wave-4-main/B2-sample-blocks-cleanup.md)
+
+Plus: 2 B1b leftover audit logs untracked (ACCEPT + COMMIT) — per PR.md COMMIT-time +3 audit clause + B1b precedent.
+
+After this REVIEW dispatch, your audit log lands at /tmp/codex-runs/2026-05-03-B2-pr-reviewer-55.txt → docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55.txt; orchestrator stages all 10 at stage 5.
+
+==== ACCEPTANCE BULLETS ====
+
+Per PR.md `## acceptance` 23 bullets:
+1-4. 4 binary placements with valid magic bytes + dimensions
+5-6. intro paragraph rewrite + obsolete 'draft: true' note removed
+7. Callout fixture-14 body refreshed
+8. frontmatter byte-unchanged
+9. 8 PascalCase fixture tags byte-unchanged
+10-11. workspace tests + build pass
+12. active.md backfill verified
+13-15. lychee + size-check + workspace check
+16-19. byte-unchanged guards (no MLP JSON / B7-scope / B1a+B1b regression / ADR drift)
+20-23. PR.md self-listed + lockfile invariance + standard pipeline + 7-file commit
+
+==== REVIEW SCOPE ====
+
+1. Verify 4 binaries are valid PNG/PDF/ICO (check magic bytes + structure)
+2. PDF page count = 3 (verify /Count 3 + /Kids array length)
+3. PNG dimensions match acceptance (320x180 for diagram-small; 600x400 for figure-1)
+4. ICO 16x16
+5. content/notes/sample-blocks/index.mdx grep:
+   - 'Note on \`draft: true\`' should NOT match (removed)
+   - 'apps/site cannot yet render' should NOT match (replaced)
+   - new prose mentions Wave 3 mdx-bridge + Wave 4 ADR-0014 + heavy-block-boundary
+   - frontmatter unchanged: 'title: Wave 2 Block Sampler' + 'draft: false'
+   - 8 fixture tags present: <Callout x4 (incl variants), <Code x1, <Image x2, <Math x2, <Pdf x2, <Jupyter x1, <NnViz x1, <AgentFlow x1
+6. active.md: B1a row '#39 / 1aa2811' + B1b row '#40 / 5ec7123' + B2 TBD row
+7. Byte-unchanged guards:
+   - lockfile (`git diff main -- pnpm-lock.yaml` 0)
+   - apps/site/package.json (0)
+   - all ADR files (0)
+   - Wave 4 plan doc (0)
+   - B1a + B1b shipped files (utility / SearchBox / search.spec.ts / search-cjk.test.ts / apps/site/CONTRACT.md / B1a + B1b PR.md)
+   - B7-scope (apps/site/src/components.ts; heavy block packages)
+   - sample-blocks-page.test.ts byte-unchanged (existing test should not need update for B2's binary placement)
+
+==== ADR-0006 8-POINT CHECKLIST ====
+
+1. 字段/属性新增 → N/A (binary + prose)
+2. 状态码 → N/A
+3. .strict() → N/A
+4. single-authority → MDX prose mentions paths /sample-assets/...; fixtures already reference these paths; verify alignment
+5. 算法+常量复刻 → N/A
+6. CONTRACT.md sister sync → N/A (no CONTRACT touch)
+7. try/catch → N/A
+8. authority document → docs/plans/active.md changed (Stage B roster pointer); no generated downstream
+
+==== HIGH-RISK CLASS HUNT ====
+
+- Binary file integrity: confirm PNG can be opened by PIL + dimensions match (`python3 -c 'from PIL import Image; img=Image.open(\"...\"); print(img.size)'`)
+- PDF integrity: 3 pages valid + magic bytes %PDF-1.4
+- ICO format: 16x16 single-image
+- MDX render regression: `pnpm --filter @skb/site build` succeeds + dist/notes/sample-blocks/index.html contains the 3 binary references resolving to dist/sample-assets/
+- Out of scope: NO MLP JSON file created; NO heavy block hydration touched; NO B7-scope file touched
+
+==== OUTPUT ====
+
+Final line:
+`REVIEW VERDICT: PASS` or `REVIEW VERDICT: FAIL`
+
+Pre-verdict:
+- 'asymmetry-audit applied: items {1..8} verdicts: ...'
+- 'high-risk class hunt: <findings or none>'
+- Issue list (file:line; severity)
+
+If PASS: orchestrator runs stage 5 commit (no stage 4 since standard PR; stage 5 = codex-pr-reviewer-55 commit + push + gh pr create as separate dispatch).
+If FAIL: list issues. Orchestrator returns to executor for revision.
+
+DO NOT git mutate. Read-only review only.
+codex
+I’ll use `superpowers:using-superpowers` for the required skill workflow, then run a read-only review against the requested artifacts and guards.
+
+exec
+/bin/bash -lc "rg -n \"REVIEW VERDICT|FAIL|MEDIUM|HIGH|line 693|pnpm link-check clean|B2\\.G\" docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55-r2.txt" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+18:R2 after R1 returned FAIL with 1 HIGH issue: PR.md TC20 + acceptance bullet 13 required local `pnpm link-check` exit 0, but lychee binary not on dev WSL2. Orchestrator amended PR.md to align with B1a + B1b precedent (CI canonical for lychee; local pre-commit check = file-target-exists + memory disciplines).
+41:`REVIEW VERDICT R2: PASS` or `REVIEW VERDICT R2: FAIL`
+49:If FAIL: list issues. Orchestrator returns to executor for further revision.
+263:✅ Write → Run (pass) → Revert fix → Run (MUST FAIL) → Restore → Run (pass)
+762:./docs/audits/codex-runs/2026-05-03-B1a-pr-reviewer-55-r2.txt:18:You are codex-pr-reviewer-55 invoked by orchestrator at D1 stage 3 (R2 — second pass) of B1a after R1 returned FAIL with 3 BLOCKING issues. Orchestrator has applied fixes; your R2 job is to verify the fixes resolve all R1 issues + check for any new regressions introduced by the fixes. **OUTPUT VERDICT ONLY.** Do NOT commit, do NOT push, do NOT git mutate.
+763:./docs/audits/codex-runs/2026-05-03-B1a-pr-reviewer-55-r2.txt:22:R1 archived at `docs/audits/codex-runs/2026-05-03-B1a-pr-reviewer-55.txt` (head -2000 truncate already done; full at /tmp). R1 verdict: FAIL with 3 BLOCKING issues.
+948:./docs/audits/codex-runs/2026-05-03-B1a-pr-reviewer-55-r2.txt:1065:/bin/bash -lc "rg -n 'BLOCKING|REVIEW VERDICT|_pagefind|7 files|feedback_pagefind_query_substring' docs/audits/codex-runs/2026-05-03-B1a-pr-reviewer-55.txt" in /home/weiyi/selfKnowledgeBaseWeb
+1714:   692	  → B2.F byte-unchanged guards verify (TC12-TC18) → B2.G
+1725:/bin/bash -lc "rg -n \"pnpm link-check.*exit 0|link-check.*exit 0|lychee link-check|link-check \\(lychee\\)|pnpm link-check clean|Local "'`pnpm link-check`|BLOCKED|CI canonical|file targets|file-target" docs/plans/wave-4-main/B2-sample-blocks-cleanup.md' in /home/weiyi/selfKnowledgeBaseWeb
+1977:==== HIGH-RISK CLASS HUNT ====
+1988:`REVIEW VERDICT: PASS` or `REVIEW VERDICT: FAIL`
+1996:If FAIL: list issues. Orchestrator returns to executor for revision.
+
+exec
+/bin/bash -lc 'tail -40 docs/audits/codex-runs/2026-05-03-B2-pr-reviewer-55-r2.txt' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+   - Wave 4 plan doc (0)
+   - B1a + B1b shipped files (utility / SearchBox / search.spec.ts / search-cjk.test.ts / apps/site/CONTRACT.md / B1a + B1b PR.md)
+   - B7-scope (apps/site/src/components.ts; heavy block packages)
+   - sample-blocks-page.test.ts byte-unchanged (existing test should not need update for B2's binary placement)
+
+==== ADR-0006 8-POINT CHECKLIST ====
+
+1. 字段/属性新增 → N/A (binary + prose)
+2. 状态码 → N/A
+3. .strict() → N/A
+4. single-authority → MDX prose mentions paths /sample-assets/...; fixtures already reference these paths; verify alignment
+5. 算法+常量复刻 → N/A
+6. CONTRACT.md sister sync → N/A (no CONTRACT touch)
+7. try/catch → N/A
+8. authority document → docs/plans/active.md changed (Stage B roster pointer); no generated downstream
+
+==== HIGH-RISK CLASS HUNT ====
+
+- Binary file integrity: confirm PNG can be opened by PIL + dimensions match (`python3 -c 'from PIL import Image; img=Image.open(\"...\"); print(img.size)'`)
+- PDF integrity: 3 pages valid + magic bytes %PDF-1.4
+- ICO format: 16x16 single-image
+- MDX render regression: `pnpm --filter @skb/site build` succeeds + dist/notes/sample-blocks/index.html contains the 3 binary references resolving to dist/sample-assets/
+- Out of scope: NO MLP JSON file created; NO heavy block hydration touched; NO B7-scope file touched
+
+==== OUTPUT ====
+
+Final line:
+`REVIEW VERDICT: PASS` or `REVIEW VERDICT: FAIL`
+
+Pre-verdict:
+- 'asymmetry-audit applied: items {1..8} verdicts: ...'
+- 'high-risk class hunt: <findings or none>'
+- Issue list (file:line; severity)
+
+If PASS: orchestrator runs stage 5 commit (no stage 4 since standard PR; stage 5 = codex-pr-reviewer-55 commit + push + gh pr create as separate dispatch).
+If FAIL: list issues. Orchestrator returns to executor for revision.
+
+DO NOT git mutate. Read-only review only.
+codex
+I’ll use `superpowers:using-superpowers` for the required skill workflow, then run a read-only review against the requested artifacts and guards.
+
+codex
+REVIEW VERDICT R3: PASS
+2026-05-04T02:46:48.941764Z ERROR codex_core::session: failed to record rollout items: thread 019df0df-49ea-71e3-b58f-90a6fd274710 not found
+tokens used
+39,662
+REVIEW VERDICT R3: PASS
