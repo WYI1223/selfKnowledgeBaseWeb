@@ -21,7 +21,8 @@
 | #37 | 87d0b32 | A7 | 5×.astro variants consolidation (Wave 3 C4a/C4b carry-over) |
 | #38 | 4aeb279 | A8 | Stage A close: perf baseline + chunking NO-OP + ADR-0014 promote `proposed→accepted` |
 | #39 | `1aa2811` | B1a | ADR-0012 v0.1.1 amendment + isWordLevelMatch utility (Stage B re-plan record) |
-| #TBD (this) | TBD | B1b | SearchBox Option B-4 hybrid integration + count-fixup + paired discriminator playwright restore |
+| #40 | `5ec7123` | B1b | SearchBox Option B-4 hybrid integration + count-fixup + paired discriminator playwright restore |
+| #TBD (this) | TBD | B2 | sample-blocks Wave 3 cleanup (4 sample-assets binaries + intro prose refresh; closes gatekeeper smoke #8 + #9) |
 | **Stage A** | ✅ **DONE** (8/8 PRs) | A | A1-A8 merged 2026-05-03 (HEAD 4aeb279); ADR-0014 promoted to accepted |
 | Stage B | B1a + B1b + B2-B5 + B7 + B6 (**8 PRs**, re-locked 2026-05-03) | B | ADR-0012 amend (B1a doc + B1b SearchBox integration; per plan-challenger C6+C10 split) + sample-blocks cleanup (B2; merged from old B2+B3) + __test_cjk__ relocate (B3; was B4) + retrospective items 2-4 (B4; was B5a, items 5+6 Wave 3 already closed) + codex profile prefix + lychee codify (B5; was B5b + R3 absorbed) + **B7 NEW heavy block Astro hydration wiring + ADR-0014 v0.3 (CRITICAL gap)** + close-ceremony prep (B6) |
 | Stage C | open-ended | C | Phase 1 user-iteration scope (per gatekeeper directive #4 + MVP framework) |

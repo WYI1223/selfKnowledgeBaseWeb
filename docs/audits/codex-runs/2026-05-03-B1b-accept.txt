@@ -1,0 +1,263 @@
+Wave 4 Stage B B1b — ACCEPT verification (D1 stage 6; pr-writer second invocation)
+Date: 2026-05-03
+PR: #40 — Wave 4 B1b — SearchBox word-level filter + count-fix + paired discriminator
+Branch: wave-4-b1b-searchbox-integration
+HEAD commit: 425e604b87dbefc6d8b2a261927b733d4c2b08dc
+PR.md: docs/plans/wave-4-main/B1b-searchbox-integration.md (1153 LOC)
+Acceptance bullets: 23 (PR.md ## acceptance lines 756-929)
+Permissions per ADR-0011 D7: read-only (no code edit, no git mutation, no codex dispatch).
+
+================================================================================
+VERDICT: ACCEPT VERDICT: PASS
+================================================================================
+
+All 23 acceptance bullets honored. Zero residue. Diff envelope matches the
+canonical 10-file COMMIT staging block. CI: 8/8 SUCCESS.
+
+--------------------------------------------------------------------------------
+BULLET-BY-BULLET VERIFICATION
+--------------------------------------------------------------------------------
+
+Bullet 1  PASS — `apps/site/src/components/SearchBox.astro` line 6:
+            `import { isWordLevelMatch } from '../lib/word-level-match';`
+            (TC2 evidence: grep ≥ 1).
+
+Bullet 2  PASS — SearchBox.astro lines 35 + 41 register PagefindUI with
+            `processTerm: (term: string) => { ... }` and
+            `processResult: (result: PagefindResultPayload) => { ... }`.
+            (TC3(a) + TC3(b) evidence: each grep ≥ 1).
+
+Bullet 3  PASS — SearchBox.astro lines 56-60 install
+            `new MutationObserver(() => { ... })` on `searchRoot`,
+            invoking `scheduleResultReconciliation()` (lines 73-79) which
+            calls `requestAnimationFrame` and then `reconcileResults`
+            (lines 82-92). The reconciler applies/removes
+            `data-skb-word-level-mismatch="true"` on `<li>` ancestors based
+            on the sentinel-class hint and re-derives the visible count
+            into `.pagefind-ui__message` text (lines 94-111).
+            Selector `.pagefind-ui__message` confirmed against PagefindUI
+            1.5.2 per R1 reviewer attestation. (TC3(c)+(d) PASS.)
+
+Bullet 4  PASS — SearchBox.astro lines 145-149:
+              <style is:global>
+                #search [data-skb-word-level-mismatch="true"] {
+                  display: none !important;
+                }
+              </style>
+            Executor strengthened with `!important` and scoped to `#search`;
+            functionally equivalent to (and stricter than) PR.md's projected
+            global rule. is:global directive PRESENT, attribute selector
+            PRESENT. (TC1 evidence honored — rule survives Astro compile.)
+
+Bullet 5  PASS — playwright spec rename verified:
+            - `grep -c 'paired discriminator'` apps/site/playwright/search.spec.ts → 2
+            - `grep -c 'positive query (ADR-0012 criterion 4 partial'` → 0
+            - `grep -c 'ADR-0012 v0.1.1'` → 2
+
+Bullet 6  PASS — search.spec.ts lines 71-77:
+              await searchInput.fill('');
+              await searchInput.pressSequentially('记本');
+              await expect.poll(... timeout: 10_000).toBeGreaterThan(0);
+              await expect.poll(... timeout: 10_000).not.toContain('笔记本电脑');
+            Inverse assertion present; same `test()` block as positive
+            assertion; pressSequentially '记本' present.
+
+Bullet 7  PASS — search.spec.ts lines 79-92 wrap the count-display assertion
+            in expect.poll over message text containing
+            `${visibleCount}/${totalCount}`, where:
+              - visibleCount = `#search li.pagefind-ui__result:not([data-skb-word-level-mismatch="true"])`
+              - totalCount   = `#search li.pagefind-ui__result`
+              - messageText  = `#search .pagefind-ui__message`
+            All three selectors match the acceptance contract.
+
+Bullet 8  PASS — apps/site/src/__tests__/search-cjk.test.ts diff is
+            comment-only (lines 5-17 SCOPE NOTE block):
+              (a) `Wave 4 Stage B B1b 2026-05-03` token PRESENT
+              (b) stale `deferred to D3` text REMOVED
+              (c) `apps/site/src/lib/word-level-match.ts` PRESENT
+              (d) `word-level discriminator` token PRESENT
+            Imports + 12 vitest invocations + temp-corpus fixture +
+            PageFind CLI invocation + artifact-set assertions
+            BYTE-IDENTICAL (diff hunks confined to comment block; no
+            test logic touched).
+
+Bullet 9  PASS — apps/site/CONTRACT.md additive extension verified:
+              (a) `Word-level result filter` PRESENT (new bullet inserted
+                  after existing UI surface paragraph, before A11y
+                  guarantee paragraph)
+              (b) `isWordLevelMatch` PRESENT
+              (c) `data-skb-word-level-mismatch` PRESENT
+              (d) "must not replace those defaults with a custom UI"
+                  invariant PRESERVED in the existing A11y paragraph
+              (e) "B1b word-level wrapper is post-render" extension
+                  PRESENT (appended to A11y paragraph)
+            All other prose lines 1-22 + 36-end byte-unchanged. Diff is
+            +13 / -1 (purely additive; the `-1` is the period→space
+            continuation join with the new prose, not a removal).
+
+Bullet 10 PASS — `pnpm test --filter=@skb/site` proxied via CI workflow
+            "ci / test" job: SUCCESS at 2026-05-04T02:09:12Z
+            (run 25297575607). All vitest suites green.
+
+Bullet 11 PASS — `pnpm typecheck --filter=@skb/site` proxied via CI
+            workflow "ci / typecheck": SUCCESS at 2026-05-04T02:08:41Z.
+            Note: executor chose closure-captured `lastSearchTerm` rather
+            than `window.__skbLastSearchTerm`; eliminates the global
+            augmentation requirement entirely. typecheck still clean.
+
+Bullet 12 PASS — `pnpm lint --filter=@skb/site` proxied via CI workflow
+            "ci / lint": SUCCESS at 2026-05-04T02:11:01Z. SearchBox.astro
+            150 LOC < 200 max-lines target; search.spec.ts 88 LOC < 200.
+
+Bullet 13 PASS — `pnpm check` workspace-wide GREEN: lint + typecheck +
+            test + build + size-check all SUCCESS in CI workflow run
+            25297575607 (8/8 jobs).
+
+Bullet 14 PASS — `pnpm link-check` (lychee canonical) SUCCESS at
+            2026-05-04T02:06:57Z (workflow link-check run 25297575597).
+
+Bullet 15 PASS — CI playwright workflow GREEN: ci / visual-smoke
+            SUCCESS at 2026-05-04T02:14:25Z. WSL2 skip preserved at
+            search.spec.ts line 17 (test.skip(isWsl2(), ...)). The 3
+            new playwright assertions (TC4 + TC5 + TC6) and the existing
+            a11y smoke (TC7) all PASS.
+
+Bullet 16 PASS — `git diff origin/main..origin/wave-4-b1b-searchbox-integration
+            -- pnpm-lock.yaml apps/site/package.json package.json` returns
+            EMPTY. No new deps; PagefindUI 1.5.2 already pinned;
+            Intl.Segmenter consumed via existing utility.
+
+Bullet 17 PASS — `grep -c 'B1b-searchbox-integration.md' docs/plans/wave-4-main/B1b-searchbox-integration.md`
+            → 7 (≥ 2). PR.md self-listed in `## files`.
+
+Bullet 18 PASS — Diff name-only output exactly matches the 10-file
+            COMMIT staging block:
+              apps/site/CONTRACT.md
+              apps/site/playwright/search.spec.ts
+              apps/site/src/__tests__/search-cjk.test.ts
+              apps/site/src/components/SearchBox.astro
+              docs/audits/codex-runs/2026-05-03-B1a-accept.txt
+              docs/audits/codex-runs/2026-05-03-B1a-commit.txt
+              docs/audits/codex-runs/2026-05-03-B1b-execute.txt
+              docs/audits/codex-runs/2026-05-03-B1b-pr-reviewer-55.txt
+              docs/plans/active.md
+              docs/plans/wave-4-main/B1b-searchbox-integration.md
+            10 files. Zero scope creep. TC22-TC27 envelope honored
+            (packages/ + other ADRs + prior wave-4-main PR.md +
+            agent-contract/CLAUDE/runbook + B7-scope + astro.config.mjs
+            all returned EMPTY diff).
+
+Bullet 19 PASS — `git diff -- apps/site/src/components.ts
+            packages/block-jupyter/ packages/block-nn-viz/
+            packages/block-agent-flow/` returns EMPTY. B7-scope
+            untouched.
+
+Bullet 20 PASS — `git diff -- apps/site/src/lib/word-level-match.ts
+            apps/site/src/__tests__/word-level-match.test.ts` returns
+            EMPTY. B1a-shipped utility consumed read-only.
+
+Bullet 21 PASS — docs/plans/active.md diff:
+              - `#TBD (this) | TBD | B1a | ADR-0012 v0.1.1 amendment ...`
+                replaced with `#39 | 1aa2811 | B1a | ADR-0012 v0.1.1
+                amendment + isWordLevelMatch utility ...` (B1a backfill)
+              - NEW B1b row inserted after B1a, before Stage A summary:
+                `| #TBD (this) | TBD | B1b | SearchBox Option B-4 hybrid
+                integration + count-fixup + paired discriminator
+                playwright restore |`
+              - Lines 31-32 (mandatory-scope ✅ flips) NOT in diff hunk
+                — byte-unchanged as required.
+
+Bullet 22 PASS — Codex review: R1 PASS (asymmetry-audit 8/8 PASS or
+            N/A; 0 issues; PagefindUI 1.5.2 selectors verified). No R2
+            dispatched. Within "R1 + 0-1 forward-fix" envelope. Risk
+            classes (a)-(d) all absorbed cleanly:
+              (a) PagefindUI selector — `.pagefind-ui__message` confirmed
+                  against ui-core.js
+              (b) global pattern — executor refactored to closure-captured
+                  `lastSearchTerm` (eliminates the risk entirely)
+              (c) <style is:global> — chosen as PLAN-projected
+              (d) playwright count assertion — substring-contains check
+                  used as projected; no flakiness regression
+
+Bullet 23 PASS — D1 stage 4 PRE-COMMIT CLAUDE REVIEW orchestrator-self
+            verified by orchestrator pre-commit:
+              (i) CONTRACT.md extension purely additive — VERIFIED
+              (ii) SearchBox <script> no new network/I/O/crypto — VERIFIED
+                   (only DOM querySelector + addEventListener + Intl
+                   via word-level-match utility)
+              (iii) inverse assertion timeout `{ timeout: 10_000 }`
+                    matches positive assertion timeout — VERIFIED
+              (iv) commit list = `## files` (10 files; no scope creep)
+                   — VERIFIED at COMMIT-time stage 5
+              (v) search-cjk.test.ts comment-only delta — VERIFIED
+                   (diff confined to lines 5-17 SCOPE NOTE; no logic
+                    or fixture drift)
+
+--------------------------------------------------------------------------------
+RESIDUE
+--------------------------------------------------------------------------------
+
+NONE. All 23 acceptance bullets honored. No scope creep. CI 8/8 GREEN.
+
+--------------------------------------------------------------------------------
+NOTABLE EXECUTOR DECISIONS (within PLAN envelope)
+--------------------------------------------------------------------------------
+
+1. SearchBox.astro 150 LOC vs PR.md projection ~128 LOC: still under
+   200-LOC max-lines target; lint clean. PLAN-time projection was an
+   approximation; executor chose more verbose but more readable
+   helper-function decomposition (bindSearchInputs, scheduleResult
+   Reconciliation, reconcileResults, updateCountDisplay, normalizeTerm,
+   matchesEveryQueryTerm, resultTextContent, appendMismatchMarker,
+   stripHtml). Acceptable.
+
+2. Closure-captured `lastSearchTerm` instead of `window.__skbLastSearchTerm`:
+   eliminates the global pollution risk plan-challenger flagged (C9
+   risk #2). Stronger than PR.md projection which used a typed global
+   augmentation. Acceptable strengthening.
+
+3. CSS rule strengthened with `!important` + `#search` scoping
+   (`#search [data-skb-word-level-mismatch="true"]`) vs PR.md's bare
+   global selector. Stricter; survives any PagefindUI-injected
+   higher-specificity rule. Acceptable strengthening.
+
+4. `matchesEveryQueryTerm` splits the input on whitespace and requires
+   EVERY token to word-level-match (rather than just the raw term).
+   Strictly stronger than the PR.md description; preserves the inverse
+   assertion semantics for single-token CJK queries like '记本'.
+
+5. `appendMismatchMarker` uses `aria-hidden="true"` on the sentinel
+   span — additional a11y polish beyond PR.md spec; harmless.
+
+6. CSS rule was strengthened with `display: none !important` (vs
+   PR.md's `display: none`). Functionally equivalent for the runtime
+   filter contract; mitigates PagefindUI specificity uncertainty.
+
+All six are within executor latitude (TDD-front order honored;
+implementation contract met; tests pass). None constitute residue.
+
+--------------------------------------------------------------------------------
+CI ROLLUP (PR #40 head 425e604b)
+--------------------------------------------------------------------------------
+
+  agent-contract-check / check        SUCCESS
+  ci / lint                            SUCCESS
+  ci / typecheck                       SUCCESS
+  ci / test                            SUCCESS
+  ci / size-check                      SUCCESS
+  ci / build                           SUCCESS
+  ci / visual-smoke                    SUCCESS
+  link-check / lychee                  SUCCESS
+
+8/8 GREEN. mergeable: MERGEABLE. state: OPEN.
+
+--------------------------------------------------------------------------------
+RECOMMENDATION
+--------------------------------------------------------------------------------
+
+orchestrator may proceed to auto-merge per Wave 3 authorization
+(`gh pr merge 40 --squash --delete-branch`). Post-merge: backfill
+B1b row `#TBD (this) | TBD` → `#40 | <squash-sha>` at the next
+PR (B2) per one-row-per-PR cadence (memory feedback_wave3_auto_merge).
+
+ACCEPT VERDICT: PASS
