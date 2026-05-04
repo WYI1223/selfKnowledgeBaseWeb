@@ -638,3 +638,87 @@ WSL2 chromium skip pattern (per memory `feedback_wsl2_chromium_launch.md`) prese
 - ADR-0008 D1 dead-dep: 3 NEW island files + 3 NEW Astro wrappers all consume existing workspace deps (`@skb/heavy-block-boundary` + `@skb/block-{jupyter,nn-viz,agent-flow}/ui-default`); no new dep additions.
 - ADR-0011 D6 + D7: this Amendment is bootstrap-flavored doc-only by orchestrator (matches Pre-B1 + ADR-0014 v0.2.1 + B1a v0.1.1 precedent); code parts handled by codex-generic-executor.
 - block-foundation/CONTRACT.md W4-1 invariant: scope unchanged (MDX componentsMap consumption); D10 codifies the Astro wrapper layer that mediates between componentsMap and the React boundary.
+
+### v0.4 (2026-05-04 — Wave 5 Stage C.1) — Plugin tier split: placeholder (Wave 5 MVP) vs real-runtime (Phase 2+)
+
+**Gap framing**: Wave 5 reframe v2 (memory
+`project_wave4_reframe_v2.md`, 2026-05-03 gatekeeper directive)
+supersedes Wave 4's MVP target. The MVP path no longer requires real
+Pyodide / TF.js / React Flow execution at first paint. The 3 heavy block
+surfaces show a static "🔌 plugin" placeholder, while real runtime
+restoration moves to Phase 2+ under a future `plugin-real-runtime` tier
+amendment.
+
+#### NEW D11 — Plugin tier split
+
+`HeavyBlockBoundary` remains the future boundary for the
+`plugin-real-runtime` tier: it dynamic-imports a heavy package's
+`RenderView`, hydrates Pyodide / TF.js / React Flow as needed, and
+eventually swaps skeleton state for the real component. Wave 5 ships
+only the `plugin-placeholder` tier: a static React shell rendered
+server-side through the existing Astro wrappers and hydrated as a no-op
+with `client:load`, so the D10 SSR / hydration boundary stays intact.
+
+The boundary package (`@skb/heavy-block-boundary`) remains installed,
+and `apps/site/src/components.ts` continues importing
+`@skb/heavy-block-boundary/heavy-block-skeleton.css` because the
+placeholder tier reuses the shared shell and the future real-runtime
+tier will reuse it immediately. Placeholder surfaces emit
+`aria-busy='false'` and `data-loaded='true'` on initial SSR, with no
+intermediate busy state. Reactivating the `plugin-real-runtime` tier
+reintroduces the `HeavyBlockBoundary` wrapper (parametrized over
+`FlatProps`) around the real dynamic import; the 3 island files are
+the conditional tier surface, by environment flag or by a later PR.
+
+#### AC#16 carve-out for the placeholder tier
+
+The original AC#16 production hydration contract remains authoritative
+for the `plugin-real-runtime` tier: real runtime loading must exercise
+the `aria-busy='true'` to `aria-busy='false'` transition, or an
+equivalent data/ARIA completion signal, on the live Astro route. Wave 5
+`plugin-placeholder` satisfies AC#16 by emitting `aria-busy='false'`
+and `data-loaded='true'` on initial SSR. The existing
+`apps/site/playwright/heavy-block-layout-shift.spec.ts` AC#16 poll
+(`ariaBusy === 'false' || outerLoaded === 'true' || loadedDescendants > 0`)
+therefore passes immediately for the placeholder tier. The Phase 2+
+`plugin-real-runtime` tier must exercise the full transition again when
+the boundary returns.
+
+#### Visual contract
+
+The placeholder shell reuses `.heavy-block-skeleton` plus
+`.heavy-block-skeleton--{kind}` from
+`@skb/heavy-block-boundary/heavy-block-skeleton.css`, preserving the
+v0.3 layout baseline. Its content is the emoji `🔌` plus the label
+`{KindLabel} · plugin runtime (Phase 2+)`. The new BEM modifier
+`.heavy-block-skeleton--placeholder` is reserved for future Stage C.3 /
+ADR-0014 v0.5 OKLCH wiring and has no rules at v0.4. Inline `width`
+and `minHeight` continue to come from each block package's
+`heavyBoundaryDimensions`, so AC#5 zero-layout-shift dimensions are
+unchanged.
+
+#### Phase 2+ migration sketch
+
+The island tier switch remains local to
+`apps/site/src/islands/{Jupyter,NnViz,AgentFlow}Island.tsx`:
+
+```tsx
+if (FEATURE_PLUGIN_REAL_RUNTIME) {
+  return <HeavyBlockBoundary kind={kind} dims={dims} load={load} childProps={props} />;
+}
+return <PluginPlaceholder kind={kind} dims={dims} />;
+```
+
+The real runtime implementation can resurface from Wave 4 B7 history
+(squash HEAD `794cd5d`) or from a new PR. Either path is Phase 2+
+scope, not Wave 5 C.1 scope.
+
+#### Implementation evidence stub
+
+| Item | Evidence |
+|---|---|
+| Jupyter placeholder | `apps/site/src/islands/JupyterIsland.tsx` contains `🔌`, `aria-busy='false'`, `data-loaded='true'` |
+| NnViz placeholder | `apps/site/src/islands/NnVizIsland.tsx` contains `🔌`, `aria-busy='false'`, `data-loaded='true'` |
+| AgentFlow placeholder | `apps/site/src/islands/AgentFlowIsland.tsx` contains `🔌`, `aria-busy='false'`, `data-loaded='true'` |
+| ADR v0.4 anchor | grep `Plugin tier split` in this amendment |
+| Playwright AC#16 | CI runs `apps/site/playwright/heavy-block-layout-shift.spec.ts`; squash HEAD TBD post-commit |

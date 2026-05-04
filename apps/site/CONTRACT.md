@@ -93,9 +93,13 @@
   heavy keys (`Jupyter` / `NnViz` / `AgentFlow`) reference Astro
   wrappers under `./components/<Kind>.astro` per ADR-0014 v0.3 D10
   (production hydration boundary) — the wrappers render React islands
-  with `client:load` directives. Editor-only (`*EditorView`) exports
-  are never wired into componentsMap because apps/site is a
-  read-only static renderer.
+  with `client:load` directives. In Wave 5 (ADR-0014 v0.4 amendment)
+  those islands render the `plugin-placeholder` tier — a static React
+  shell satisfying the SSR + hydration boundary contract without
+  dynamic-importing real runtimes. The `plugin-real-runtime` tier
+  (Phase 2+) restores the `HeavyBlockBoundary` + dynamic `load()` chain.
+  Editor-only (`*EditorView`) exports are never wired into componentsMap
+  because apps/site is a read-only static renderer.
 - **Chunking strategy / heavy-block taxonomy**: `src/components.ts` keeps the
   5 light blocks (`Callout`, `Code`, `Image`, `Math`, `Pdf`) eager-imported
   because their default render surfaces are small and shared by common prose
@@ -114,8 +118,18 @@
   correctness layer. `src/__tests__/lazy-chunking.test.ts` is the locking
   bundle-grep regression: prose-only route chunks must not contain `pyodide`,
   `tensorflow`, or `reactflow`, and the 3 heavy chunks must remain distinct.
-- **Pyodide CDN hosting (Jupyter heavy block)**: the apps/site Jupyter
-  island (`src/islands/JupyterIsland.tsx` → `@skb/block-jupyter/ui-default`
+  Wave 5 ships the `plugin-placeholder` tier — `block-jupyter` /
+  `block-nn-viz` / `block-agent-flow` `ui-default` modules are NOT
+  dynamic-imported by the islands at v0.4, so the prose-only chunk-leak
+  guarantees are trivially satisfied. The `manualChunks` pins remain in
+  `astro.config.mjs` as forward-compat seams for the `plugin-real-runtime`
+  tier.
+- **Pyodide CDN hosting (Jupyter heavy block)**: **Phase 2+ plugin-real-runtime
+  tier forward-pointer** — at v0.4 the
+  Jupyter island is a placeholder and does NOT load Pyodide; the CDN
+  allowlist below applies when the future `plugin-real-runtime` tier
+  (ADR-0014 next amendment) restores the dynamic load chain. The apps/site
+  Jupyter island (`src/islands/JupyterIsland.tsx` → `@skb/block-jupyter/ui-default`
   → `PyodideAdapter`) loads the Pyodide runtime + the default libraries
   (`numpy` / `pandas` / `matplotlib`) from
   `https://cdn.jsdelivr.net/pyodide/v0.27.7/full/` (jsdelivr CDN; Pyodide
