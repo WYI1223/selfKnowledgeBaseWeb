@@ -19,7 +19,7 @@ function newestMtime(paths: ReadonlyArray<string>): number {
   return Math.max(...paths.map((p) => statSync(p).mtimeMs));
 }
 
-export async function setup(): Promise<void> {
+export function setup(): void {
   const routeMissing = !existsSync(sampleRouteHtml);
   const outputMtime = existsSync(sampleRouteHtml)
     ? statSync(sampleRouteHtml).mtimeMs
