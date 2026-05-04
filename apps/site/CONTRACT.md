@@ -114,6 +114,22 @@
   correctness layer. `src/__tests__/lazy-chunking.test.ts` is the locking
   bundle-grep regression: prose-only route chunks must not contain `pyodide`,
   `tensorflow`, or `reactflow`, and the 3 heavy chunks must remain distinct.
+- **Pyodide CDN hosting (Jupyter heavy block)**: the apps/site Jupyter
+  island (`src/islands/JupyterIsland.tsx` → `@skb/block-jupyter/ui-default`
+  → `PyodideAdapter`) loads the Pyodide runtime + the default libraries
+  (`numpy` / `pandas` / `matplotlib`) from
+  `https://cdn.jsdelivr.net/pyodide/v0.27.7/full/` (jsdelivr CDN; Pyodide
+  core download + auto-resolved `.whl` packages share this base URL).
+  The version segment `v0.27.7` is string-hardcoded at the
+  `new PyodideAdapter({ boot: { indexURL } })` call site in
+  `packages/block-jupyter/src/ui-default/Jupyter.tsx` and MUST stay
+  byte-equal to the resolved `pyodide` version of the
+  `packages/kernel-pyodide` package (currently `pyodide@0.27.7` per
+  `pnpm-lock.yaml`). Future Pyodide upgrades MUST update both places in
+  the same PR (regression-grep: `cdn.jsdelivr.net/pyodide/v` literal must
+  match the resolved dep version). No CSP is configured at apps/site
+  today; if a CSP is added later, `cdn.jsdelivr.net` must be allowlisted
+  under `script-src` / `connect-src` (deferred to a CSP-introduction PR).
 
 ## Modifying this file
 

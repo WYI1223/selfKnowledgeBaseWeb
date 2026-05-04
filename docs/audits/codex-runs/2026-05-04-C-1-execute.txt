@@ -1,0 +1,2000 @@
+Reading additional input from stdin...
+OpenAI Codex v0.125.0 (research preview)
+--------
+workdir: /home/weiyi/selfKnowledgeBaseWeb
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: danger-full-access
+reasoning effort: xhigh
+reasoning summaries: none
+session id: 019df2d9-a141-7e62-baea-e0d99ef03b45
+--------
+user
+You are codex-generic-executor dispatched by orchestrator for ADR-0011 D1 stage 2 (EXECUTE) on Wave 4 Stage C PR C-1.
+
+# Branch + scope
+Branch: wave-4-c1-pyodide-cdn (orchestrator pre-created)
+PR.md: docs/plans/wave-4-main/C-1-pyodide-indexurl-cdn.md (locked at PLAN)
+
+You write ONLY 2 source files. The 3 doc files (apps/site/CONTRACT.md, docs/plans/active.md, PR.md) are orchestrator-self authored, ALREADY in place — do NOT modify them.
+
+# File 1 — packages/block-jupyter/src/ui-default/Jupyter.tsx (MODIFIED, 1-LOC delta at line 99)
+
+Current line 99:
+  adapterRef.current = adapter ?? new PyodideAdapter({ boot: { libraries: props.libraries } });
+
+Change to (add indexURL inside boot object, keep libraries):
+  adapterRef.current = adapter ?? new PyodideAdapter({ boot: { libraries: props.libraries, indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.27.7/full/' } });
+
+The literal string 'https://cdn.jsdelivr.net/pyodide/v0.27.7/full/' must be byte-exact (it is grepped by TC1 + matches the apps/site CONTRACT clause + the integration test). NO other source-line changes; line 84 'adapter?: KernelAdapter' (test-injection prop) stays. NO new imports needed (PyodideAdapter already imported). NO type changes.
+
+# File 2 — packages/kernel-pyodide/src/__tests__/boot.integration.test.ts (NEW)
+
+CI-skipped real-Pyodide boot integration smoke test. Pattern mirrors existing packages/kernel-pyodide/src/__tests__/matplotlib.test.ts CI-skip discipline.
+
+Constraints (verified PLAN-time):
+- PyodideAdapter.startSession(sessionId) returns Promise<KernelSession> — NOT createSession
+- session.execute(code) returns AsyncIterable<KernelEvent>
+- Result event shape: { type: 'execute_result', data: Record<string, unknown> } — data has 'text/plain' key for non-null Python values per packages/kernel-pyodide/src/boot.ts host.runCode wrapper
+- session.shutdown() returns Promise<void>
+- Use describe.skipIf(!process.env.LOCAL_RUN_PYODIDE_INTEGRATION) — opt-in via env flag (matches matplotlib.test.ts skipIf(process.env.CI) pattern but inverted: only run when explicit env var set)
+
+Skeleton (write byte-equivalent OR adjust types if HEAD differs):
+
+import { describe, it, expect } from 'vitest';
+import { PyodideAdapter } from '../adapter';
+import type { KernelEvent } from '@skb/kernel-adapter';
+
+/**
+ * Q14 absorbtion (per Wave 4 C-1 plan-challenger): real-Pyodide boot smoke.
+ * CI-skipped (the env-flag inversion of matplotlib.test.ts). Locally invoked:
+ *   LOCAL_RUN_PYODIDE_INTEGRATION=1 pnpm --filter @skb/kernel-pyodide test boot.integration
+ * Defends against:
+ *   (a) indexURL string drift vs Pyodide version range in package.json,
+ *   (b) CDN-base resolution breakage for loadPackage default libs.
+ */
+describe.skipIf(!process.env.LOCAL_RUN_PYODIDE_INTEGRATION)(
+  'PyodideAdapter real-CDN boot integration',
+  () => {
+    it('boots Pyodide from jsdelivr CDN and runs 1+1 → 2', async () => {
+      const adapter = new PyodideAdapter({
+        boot: {
+          indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.27.7/full/',
+          libraries: [],
+        },
+      });
+      const session = await adapter.startSession('integration-smoke');
+      const events: KernelEvent[] = [];
+      for await (const e of session.execute('1 + 1')) {
+        events.push(e);
+      }
+      const result = events.find((e) => e.type === 'execute_result');
+      expect(result).toBeDefined();
+      if (result?.type !== 'execute_result') throw new Error('expected execute_result event');
+      const text = result.data?.['text/plain'];
+      expect(typeof text === 'string' ? text : String(text ?? '')).toBe('2');
+      await session.shutdown();
+    }, 60_000);
+  },
+);
+
+CRITICAL: if HEAD types or APIs differ from skeleton (e.g., method renames, event-key shape changes, type narrowings), READ the actual files at packages/kernel-pyodide/src/{adapter.ts,session.ts,boot.ts} and packages/kernel-adapter/src/index.ts to confirm exact shapes; then adjust the assertion to match HEAD. The intent is 'real Pyodide returned 2'; precise event-key path matters less than satisfying TypeScript + the assertion.
+
+# Verifications you must run after both files written
+
+1. pnpm --filter @skb/kernel-pyodide test  → exit 0 (3 existing test files PASS; new integration test SKIPPED in default vitest run because LOCAL_RUN_PYODIDE_INTEGRATION env not set)
+2. pnpm --filter @skb/site test  → exit 0 (10 corpora unchanged)
+3. pnpm size-check  → exit 0
+4. pnpm --filter @skb/kernel-pyodide typecheck OR pnpm exec tsc -b packages/kernel-pyodide  → exit 0 (catches integration test typing errors that vitest may not surface because of skip)
+
+NOT required (orchestrator runs separately): pnpm check workspace-wide; pnpm link-check; pnpm build.
+
+# DO NOT
+- Touch apps/site/CONTRACT.md (orchestrator already authored Pyodide CDN clause)
+- Touch docs/plans/active.md (orchestrator already authored backfill + C-1 row)
+- Touch docs/plans/wave-4-main/C-1-pyodide-indexurl-cdn.md (PR.md locked)
+- Touch any package.json or pnpm-lock.yaml
+- Use git mutating commands (no add/commit/push); your job is EXECUTE only; reviewer codex commits at stage 5
+- Run pnpm install (no new deps)
+- Ship apps/site/test-results/ or any other untracked file
+
+# Output expectations
+Final stdout last 30 lines must contain:
+- 'EXECUTE-PASS' OR 'EXECUTE-FAIL: <reason>' verdict
+- both files' line counts and a 1-line summary of each
+- the 4 verification command exit codes (0 = pass)
+
+exec
+/bin/bash -lc "sed -n '1,220p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/3c463363/skills/using-superpowers/SKILL.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+---
+name: using-superpowers
+description: Use when starting any conversation - establishes how to find and use skills, requiring Skill tool invocation before ANY response including clarifying questions
+---
+
+<SUBAGENT-STOP>
+If you were dispatched as a subagent to execute a specific task, skip this skill.
+</SUBAGENT-STOP>
+
+<EXTREMELY-IMPORTANT>
+If you think there is even a 1% chance a skill might apply to what you are doing, you ABSOLUTELY MUST invoke the skill.
+
+IF A SKILL APPLIES TO YOUR TASK, YOU DO NOT HAVE A CHOICE. YOU MUST USE IT.
+
+This is not negotiable. This is not optional. You cannot rationalize your way out of this.
+</EXTREMELY-IMPORTANT>
+
+## Instruction Priority
+
+Superpowers skills override default system prompt behavior, but **user instructions always take precedence**:
+
+1. **User's explicit instructions** (CLAUDE.md, GEMINI.md, AGENTS.md, direct requests) — highest priority
+2. **Superpowers skills** — override default system behavior where they conflict
+3. **Default system prompt** — lowest priority
+
+If CLAUDE.md, GEMINI.md, or AGENTS.md says "don't use TDD" and a skill says "always use TDD," follow the user's instructions. The user is in control.
+
+## How to Access Skills
+
+**In Claude Code:** Use the `Skill` tool. When you invoke a skill, its content is loaded and presented to you—follow it directly. Never use the Read tool on skill files.
+
+**In Copilot CLI:** Use the `skill` tool. Skills are auto-discovered from installed plugins. The `skill` tool works the same as Claude Code's `Skill` tool.
+
+**In Gemini CLI:** Skills activate via the `activate_skill` tool. Gemini loads skill metadata at session start and activates the full content on demand.
+
+**In other environments:** Check your platform's documentation for how skills are loaded.
+
+## Platform Adaptation
+
+Skills use Claude Code tool names. Non-CC platforms: see `references/copilot-tools.md` (Copilot CLI), `references/codex-tools.md` (Codex) for tool equivalents. Gemini CLI users get the tool mapping loaded automatically via GEMINI.md.
+
+# Using Skills
+
+## The Rule
+
+**Invoke relevant or requested skills BEFORE any response or action.** Even a 1% chance a skill might apply means that you should invoke the skill to check. If an invoked skill turns out to be wrong for the situation, you don't need to use it.
+
+```dot
+digraph skill_flow {
+    "User message received" [shape=doublecircle];
+    "About to EnterPlanMode?" [shape=doublecircle];
+    "Already brainstormed?" [shape=diamond];
+    "Invoke brainstorming skill" [shape=box];
+    "Might any skill apply?" [shape=diamond];
+    "Invoke Skill tool" [shape=box];
+    "Announce: 'Using [skill] to [purpose]'" [shape=box];
+    "Has checklist?" [shape=diamond];
+    "Create TodoWrite todo per item" [shape=box];
+    "Follow skill exactly" [shape=box];
+    "Respond (including clarifications)" [shape=doublecircle];
+
+    "About to EnterPlanMode?" -> "Already brainstormed?";
+    "Already brainstormed?" -> "Invoke brainstorming skill" [label="no"];
+    "Already brainstormed?" -> "Might any skill apply?" [label="yes"];
+    "Invoke brainstorming skill" -> "Might any skill apply?";
+
+    "User message received" -> "Might any skill apply?";
+    "Might any skill apply?" -> "Invoke Skill tool" [label="yes, even 1%"];
+    "Might any skill apply?" -> "Respond (including clarifications)" [label="definitely not"];
+    "Invoke Skill tool" -> "Announce: 'Using [skill] to [purpose]'";
+    "Announce: 'Using [skill] to [purpose]'" -> "Has checklist?";
+    "Has checklist?" -> "Create TodoWrite todo per item" [label="yes"];
+    "Has checklist?" -> "Follow skill exactly" [label="no"];
+    "Create TodoWrite todo per item" -> "Follow skill exactly";
+}
+```
+
+## Red Flags
+
+These thoughts mean STOP—you're rationalizing:
+
+| Thought | Reality |
+|---------|---------|
+| "This is just a simple question" | Questions are tasks. Check for skills. |
+| "I need more context first" | Skill check comes BEFORE clarifying questions. |
+| "Let me explore the codebase first" | Skills tell you HOW to explore. Check first. |
+| "I can check git/files quickly" | Files lack conversation context. Check for skills. |
+| "Let me gather information first" | Skills tell you HOW to gather information. |
+| "This doesn't need a formal skill" | If a skill exists, use it. |
+| "I remember this skill" | Skills evolve. Read current version. |
+| "This doesn't count as a task" | Action = task. Check for skills. |
+| "The skill is overkill" | Simple things become complex. Use it. |
+| "I'll just do this one thing first" | Check BEFORE doing anything. |
+| "This feels productive" | Undisciplined action wastes time. Skills prevent this. |
+| "I know what that means" | Knowing the concept ≠ using the skill. Invoke it. |
+
+## Skill Priority
+
+When multiple skills could apply, use this order:
+
+1. **Process skills first** (brainstorming, debugging) - these determine HOW to approach the task
+2. **Implementation skills second** (frontend-design, mcp-builder) - these guide execution
+
+"Let's build X" → brainstorming first, then implementation skills.
+"Fix this bug" → debugging first, then domain-specific skills.
+
+## Skill Types
+
+**Rigid** (TDD, debugging): Follow exactly. Don't adapt away discipline.
+
+**Flexible** (patterns): Adapt principles to context.
+
+The skill itself tells you which.
+
+## User Instructions
+
+Instructions say WHAT, not HOW. "Add X" or "Fix Y" doesn't mean skip workflows.
+
+codex
+Using `superpowers:test-driven-development` for the source change sequence and `superpowers:verification-before-completion` before I report completion. The `using-superpowers` skill explicitly says to skip it for dispatched subagent-style tasks, which matches this orchestrator dispatch.
+exec
+/bin/bash -lc "sed -n '1,260p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/3c463363/skills/test-driven-development/SKILL.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+---
+name: test-driven-development
+description: Use when implementing any feature or bugfix, before writing implementation code
+---
+
+# Test-Driven Development (TDD)
+
+## Overview
+
+Write the test first. Watch it fail. Write minimal code to pass.
+
+**Core principle:** If you didn't watch the test fail, you don't know if it tests the right thing.
+
+**Violating the letter of the rules is violating the spirit of the rules.**
+
+## When to Use
+
+**Always:**
+- New features
+- Bug fixes
+- Refactoring
+- Behavior changes
+
+**Exceptions (ask your human partner):**
+- Throwaway prototypes
+- Generated code
+- Configuration files
+
+Thinking "skip TDD just this once"? Stop. That's rationalization.
+
+## The Iron Law
+
+```
+NO PRODUCTION CODE WITHOUT A FAILING TEST FIRST
+```
+
+Write code before the test? Delete it. Start over.
+
+**No exceptions:**
+- Don't keep it as "reference"
+- Don't "adapt" it while writing tests
+- Don't look at it
+- Delete means delete
+
+Implement fresh from tests. Period.
+
+## Red-Green-Refactor
+
+```dot
+digraph tdd_cycle {
+    rankdir=LR;
+    red [label="RED\nWrite failing test", shape=box, style=filled, fillcolor="#ffcccc"];
+    verify_red [label="Verify fails\ncorrectly", shape=diamond];
+    green [label="GREEN\nMinimal code", shape=box, style=filled, fillcolor="#ccffcc"];
+    verify_green [label="Verify passes\nAll green", shape=diamond];
+    refactor [label="REFACTOR\nClean up", shape=box, style=filled, fillcolor="#ccccff"];
+    next [label="Next", shape=ellipse];
+
+    red -> verify_red;
+    verify_red -> green [label="yes"];
+    verify_red -> red [label="wrong\nfailure"];
+    green -> verify_green;
+    verify_green -> refactor [label="yes"];
+    verify_green -> green [label="no"];
+    refactor -> verify_green [label="stay\ngreen"];
+    verify_green -> next;
+    next -> red;
+}
+```
+
+### RED - Write Failing Test
+
+Write one minimal test showing what should happen.
+
+<Good>
+```typescript
+test('retries failed operations 3 times', async () => {
+  let attempts = 0;
+  const operation = () => {
+    attempts++;
+    if (attempts < 3) throw new Error('fail');
+    return 'success';
+  };
+
+  const result = await retryOperation(operation);
+
+  expect(result).toBe('success');
+  expect(attempts).toBe(3);
+});
+```
+Clear name, tests real behavior, one thing
+</Good>
+
+<Bad>
+```typescript
+test('retry works', async () => {
+  const mock = jest.fn()
+    .mockRejectedValueOnce(new Error())
+    .mockRejectedValueOnce(new Error())
+    .mockResolvedValueOnce('success');
+  await retryOperation(mock);
+  expect(mock).toHaveBeenCalledTimes(3);
+});
+```
+Vague name, tests mock not code
+</Bad>
+
+**Requirements:**
+- One behavior
+- Clear name
+- Real code (no mocks unless unavoidable)
+
+### Verify RED - Watch It Fail
+
+**MANDATORY. Never skip.**
+
+```bash
+npm test path/to/test.test.ts
+```
+
+Confirm:
+- Test fails (not errors)
+- Failure message is expected
+- Fails because feature missing (not typos)
+
+**Test passes?** You're testing existing behavior. Fix test.
+
+**Test errors?** Fix error, re-run until it fails correctly.
+
+### GREEN - Minimal Code
+
+Write simplest code to pass the test.
+
+<Good>
+```typescript
+async function retryOperation<T>(fn: () => Promise<T>): Promise<T> {
+  for (let i = 0; i < 3; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      if (i === 2) throw e;
+    }
+  }
+  throw new Error('unreachable');
+}
+```
+Just enough to pass
+</Good>
+
+<Bad>
+```typescript
+async function retryOperation<T>(
+  fn: () => Promise<T>,
+  options?: {
+    maxRetries?: number;
+    backoff?: 'linear' | 'exponential';
+    onRetry?: (attempt: number) => void;
+  }
+): Promise<T> {
+  // YAGNI
+}
+```
+Over-engineered
+</Bad>
+
+Don't add features, refactor other code, or "improve" beyond the test.
+
+### Verify GREEN - Watch It Pass
+
+**MANDATORY.**
+
+```bash
+npm test path/to/test.test.ts
+```
+
+Confirm:
+- Test passes
+- Other tests still pass
+- Output pristine (no errors, warnings)
+
+**Test fails?** Fix code, not test.
+
+**Other tests fail?** Fix now.
+
+### REFACTOR - Clean Up
+
+After green only:
+- Remove duplication
+- Improve names
+- Extract helpers
+
+Keep tests green. Don't add behavior.
+
+### Repeat
+
+Next failing test for next feature.
+
+## Good Tests
+
+| Quality | Good | Bad |
+|---------|------|-----|
+| **Minimal** | One thing. "and" in name? Split it. | `test('validates email and domain and whitespace')` |
+| **Clear** | Name describes behavior | `test('test1')` |
+| **Shows intent** | Demonstrates desired API | Obscures what code should do |
+
+## Why Order Matters
+
+**"I'll write tests after to verify it works"**
+
+Tests written after code pass immediately. Passing immediately proves nothing:
+- Might test wrong thing
+- Might test implementation, not behavior
+- Might miss edge cases you forgot
+- You never saw it catch the bug
+
+Test-first forces you to see the test fail, proving it actually tests something.
+
+**"I already manually tested all the edge cases"**
+
+Manual testing is ad-hoc. You think you tested everything but:
+- No record of what you tested
+- Can't re-run when code changes
+- Easy to forget cases under pressure
+- "It worked when I tried it" ≠ comprehensive
+
+Automated tests are systematic. They run the same way every time.
+
+**"Deleting X hours of work is wasteful"**
+
+Sunk cost fallacy. The time is already gone. Your choice now:
+- Delete and rewrite with TDD (X more hours, high confidence)
+- Keep it and add tests after (30 min, low confidence, likely bugs)
+
+The "waste" is keeping code you can't trust. Working code without real tests is technical debt.
+
+**"TDD is dogmatic, being pragmatic means adapting"**
+
+TDD IS pragmatic:
+- Finds bugs before commit (faster than debugging after)
+- Prevents regressions (tests catch breaks immediately)
+- Documents behavior (tests show how to use code)
+- Enables refactoring (change freely, tests catch breaks)
+
+"Pragmatic" shortcuts = debugging in production = slower.
+
+**"Tests after achieve the same goals - it's spirit not ritual"**
+
+No. Tests-after answer "What does this do?" Tests-first answer "What should this do?"
+
+Tests-after are biased by your implementation. You test what you built, not what's required. You verify remembered edge cases, not discovered ones.
+
+Tests-first force edge case discovery before implementing. Tests-after verify you remembered everything (you didn't).
+
+30 minutes of tests after ≠ TDD. You get coverage, lose proof tests work.
+
+## Common Rationalizations
+
+| Excuse | Reality |
+|--------|---------|
+| "Too simple to test" | Simple code breaks. Test takes 30 seconds. |
+
+exec
+/bin/bash -lc "sed -n '1,220p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/3c463363/skills/verification-before-completion/SKILL.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+---
+name: verification-before-completion
+description: Use when about to claim work is complete, fixed, or passing, before committing or creating PRs - requires running verification commands and confirming output before making any success claims; evidence before assertions always
+---
+
+# Verification Before Completion
+
+## Overview
+
+Claiming work is complete without verification is dishonesty, not efficiency.
+
+**Core principle:** Evidence before claims, always.
+
+**Violating the letter of this rule is violating the spirit of this rule.**
+
+## The Iron Law
+
+```
+NO COMPLETION CLAIMS WITHOUT FRESH VERIFICATION EVIDENCE
+```
+
+If you haven't run the verification command in this message, you cannot claim it passes.
+
+## The Gate Function
+
+```
+BEFORE claiming any status or expressing satisfaction:
+
+1. IDENTIFY: What command proves this claim?
+2. RUN: Execute the FULL command (fresh, complete)
+3. READ: Full output, check exit code, count failures
+4. VERIFY: Does output confirm the claim?
+   - If NO: State actual status with evidence
+   - If YES: State claim WITH evidence
+5. ONLY THEN: Make the claim
+
+Skip any step = lying, not verifying
+```
+
+## Common Failures
+
+| Claim | Requires | Not Sufficient |
+|-------|----------|----------------|
+| Tests pass | Test command output: 0 failures | Previous run, "should pass" |
+| Linter clean | Linter output: 0 errors | Partial check, extrapolation |
+| Build succeeds | Build command: exit 0 | Linter passing, logs look good |
+| Bug fixed | Test original symptom: passes | Code changed, assumed fixed |
+| Regression test works | Red-green cycle verified | Test passes once |
+| Agent completed | VCS diff shows changes | Agent reports "success" |
+| Requirements met | Line-by-line checklist | Tests passing |
+
+## Red Flags - STOP
+
+- Using "should", "probably", "seems to"
+- Expressing satisfaction before verification ("Great!", "Perfect!", "Done!", etc.)
+- About to commit/push/PR without verification
+- Trusting agent success reports
+- Relying on partial verification
+- Thinking "just this once"
+- Tired and wanting work over
+- **ANY wording implying success without having run verification**
+
+## Rationalization Prevention
+
+| Excuse | Reality |
+|--------|---------|
+| "Should work now" | RUN the verification |
+| "I'm confident" | Confidence ≠ evidence |
+| "Just this once" | No exceptions |
+| "Linter passed" | Linter ≠ compiler |
+| "Agent said success" | Verify independently |
+| "I'm tired" | Exhaustion ≠ excuse |
+| "Partial check is enough" | Partial proves nothing |
+| "Different words so rule doesn't apply" | Spirit over letter |
+
+## Key Patterns
+
+**Tests:**
+```
+✅ [Run test command] [See: 34/34 pass] "All tests pass"
+❌ "Should pass now" / "Looks correct"
+```
+
+**Regression tests (TDD Red-Green):**
+```
+✅ Write → Run (pass) → Revert fix → Run (MUST FAIL) → Restore → Run (pass)
+❌ "I've written a regression test" (without red-green verification)
+```
+
+**Build:**
+```
+✅ [Run build] [See: exit 0] "Build passes"
+❌ "Linter passed" (linter doesn't check compilation)
+```
+
+**Requirements:**
+```
+✅ Re-read plan → Create checklist → Verify each → Report gaps or completion
+❌ "Tests pass, phase complete"
+```
+
+**Agent delegation:**
+```
+✅ Agent reports success → Check VCS diff → Verify changes → Report actual state
+❌ Trust agent report
+```
+
+## Why This Matters
+
+From 24 failure memories:
+- your human partner said "I don't believe you" - trust broken
+- Undefined functions shipped - would crash
+- Missing requirements shipped - incomplete features
+- Time wasted on false completion → redirect → rework
+- Violates: "Honesty is a core value. If you lie, you'll be replaced."
+
+## When To Apply
+
+**ALWAYS before:**
+- ANY variation of success/completion claims
+- ANY expression of satisfaction
+- ANY positive statement about work state
+- Committing, PR creation, task completion
+- Moving to next task
+- Delegating to agents
+
+**Rule applies to:**
+- Exact phrases
+- Paraphrases and synonyms
+- Implications of success
+- ANY communication suggesting completion/correctness
+
+## The Bottom Line
+
+**No shortcuts for verification.**
+
+Run the command. Read the output. THEN claim the result.
+
+This is non-negotiable.
+
+codex
+I’ll keep this scoped to the two requested source files, with the test file added before the UI adapter change. Next I’m reading the local API and the existing Pyodide test pattern so the new skipped smoke test matches HEAD rather than assuming the skeleton is still exact.
+  → Read current Jupyter adapter construction and Pyodide test/API shapes
+  • Add skipped real-CDN boot integration test
+  • Apply one-line Jupyter indexURL change
+  • Run requested package tests, size check, and typecheck
+  • Report verdict with line counts and command exit codes
+exec
+/bin/bash -lc "nl -ba packages/block-jupyter/src/ui-default/Jupyter.tsx | sed -n '70,115p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+    70	    };
+    71	  }
+    72	  return state;
+    73	}
+    74	
+    75	function formatMime(data: Record<string, unknown>): string {
+    76	  const text = data['text/plain'];
+    77	  if (typeof text === 'string') return text;
+    78	  return JSON.stringify(data);
+    79	}
+    80	
+    81	export interface JupyterViewProps
+    82	  extends BlockViewProps<typeof jupyterCore.propsSchema> {
+    83	  /** Override the adapter (test injection). */
+    84	  readonly adapter?: KernelAdapter;
+    85	}
+    86	
+    87	export function JupyterView({ props, adapter }: JupyterViewProps): JSX.Element {
+    88	  const [phase, setPhase] = useReducer(
+    89	    (_prev: KernelPhase, next: KernelPhase) => next,
+    90	    { type: 'idle' } as KernelPhase,
+    91	  );
+    92	  const [output, dispatchOutput] = useReducer(outputReducer, EMPTY_OUTPUT);
+    93	  const bridgeRef = useRef<KernelBridge | null>(null);
+    94	  const codeRef = useRef(props.code);
+    95	  codeRef.current = props.code;
+    96	
+    97	  const adapterRef = useRef<KernelAdapter | null>(null);
+    98	  if (adapterRef.current === null) {
+    99	    adapterRef.current = adapter ?? new PyodideAdapter({ boot: { libraries: props.libraries } });
+   100	  }
+   101	  const liveAdapter = adapterRef.current;
+   102	  const runOnLoadAtMount = useRef(props.runOnLoad);
+   103	
+   104	  useEffect(() => {
+   105	    const controller = new AbortController();
+   106	    const bridge = createKernelBridge({
+   107	      adapter: liveAdapter,
+   108	      sessionId: `jupyter-${cryptoRandomId()}`,
+   109	      signal: controller.signal,
+   110	      onPhase: setPhase,
+   111	      onEvent: (event) => dispatchOutput({ type: 'append', event }),
+   112	    });
+   113	    bridgeRef.current = bridge;
+   114	    if (runOnLoadAtMount.current) {
+   115	      void bridge.run(codeRef.current);
+
+exec
+/bin/bash -lc "sed -n '1,220p' packages/kernel-pyodide/src/__tests__/matplotlib.test.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+import { describe, it, expect } from 'vitest';
+import type { KernelEvent } from '@skb/kernel-adapter';
+import { PyodideSession } from '../session';
+import type { PyodideHost } from '../host';
+
+/**
+ * mock-based matplotlib smoke test (per plan-challenger NICE 8 revision):
+ * verifies the `display_data` KernelEvent schema shape. Real Pyodide CDN
+ * boot is intentionally NOT exercised here — that lives in the Wave 4
+ * Playwright e2e layer to keep CI deterministic.
+ */
+
+const PNG_BASE64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+
+function mockMatplotlibHost(): PyodideHost {
+  return {
+    runCode: (_code, emit) => {
+      emit({
+        type: 'display_data',
+        data: {
+          'image/png': PNG_BASE64,
+          'text/plain': '<Figure size 640x480 with 1 Axes>',
+        },
+      });
+      return Promise.resolve(null);
+    },
+    interrupt: () => {},
+    shutdown: () => Promise.resolve(),
+  };
+}
+
+describe('matplotlib display_data event schema (mocked Pyodide)', () => {
+  it('emits display_data event with image/png mime + base64 string when figure renders', async () => {
+    const session = new PyodideSession(mockMatplotlibHost());
+    const events: KernelEvent[] = [];
+    for await (const e of session.execute('plt.plot([1,2,3]); plt.show()')) {
+      events.push(e);
+    }
+    const display = events.find((e) => e.type === 'display_data');
+    expect(display).toBeDefined();
+    if (display?.type !== 'display_data') throw new Error('expected display_data');
+    const png = display.data['image/png'];
+    const txt = display.data['text/plain'];
+    expect(typeof png).toBe('string');
+    expect(typeof txt).toBe('string');
+    expect((png as string).length).toBeGreaterThan(0);
+    // PNG magic bytes 89 50 4e 47 = "\x89PNG" → base64 prefix "iVBORw0KGgo".
+    // F R2 CONCERN C2: stricter than length>0 — locks the actual format.
+    expect(png as string).toMatch(/^iVBORw0KGgo/);
+    expect(display.data['text/plain']).toMatch(/^<Figure /);
+  });
+
+  it('display_data data has exactly the expected mime keys (image/png + text/plain)', () => {
+    // F R2 CONCERN C2: lock the strict expected key set so a future fixture
+    // swap that drops image/png (the load-bearing payload for matplotlib)
+    // would fail loud, not silently degrade.
+    const session = new PyodideSession(mockMatplotlibHost());
+    return (async () => {
+      for await (const e of session.execute('plt.show()')) {
+        if (e.type === 'display_data') {
+          expect(Object.keys(e.data).sort()).toEqual(['image/png', 'text/plain']);
+          return;
+        }
+      }
+      throw new Error('no display_data event emitted');
+    })();
+  });
+
+  it('display_data event sits between status:busy and status:idle bookends', async () => {
+    const session = new PyodideSession(mockMatplotlibHost());
+    const events: KernelEvent[] = [];
+    for await (const e of session.execute('plt.show()')) events.push(e);
+    expect(events[0]).toEqual({ type: 'status', state: 'busy' });
+    expect(events.at(-1)).toEqual({ type: 'status', state: 'idle' });
+    const displayIdx = events.findIndex((e) => e.type === 'display_data');
+    expect(displayIdx).toBeGreaterThan(0);
+    expect(displayIdx).toBeLessThan(events.length - 1);
+  });
+
+  it('display_data.data is Record<string, unknown> (mime → payload map shape)', async () => {
+    const session = new PyodideSession(mockMatplotlibHost());
+    for await (const e of session.execute('plt.show()')) {
+      if (e.type === 'display_data') {
+        expect(typeof e.data).toBe('object');
+        expect(e.data).not.toBeNull();
+        expect(Array.isArray(e.data)).toBe(false);
+        for (const key of Object.keys(e.data)) {
+          expect(key).toMatch(/^[a-z]+\/[a-z0-9.+-]+$/);
+        }
+      }
+    }
+  });
+});
+
+exec
+/bin/bash -lc "sed -n '1,240p' packages/kernel-pyodide/src/adapter.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+import type { KernelAdapter, KernelCapabilities, KernelSession } from '@skb/kernel-adapter';
+import { KernelError, KernelStartupError } from '@skb/kernel-adapter';
+import { createDefaultHostFactory, DEFAULT_LIBS, type PyodideBootOptions } from './boot';
+import type { PyodideHostFactory } from './host';
+import { PyodideSession } from './session';
+
+/**
+ * Library list exposed via `capabilities.libraries`. Aliased to
+ * `DEFAULT_LIBS` (boot.ts) to make adapter ↔ boot drift structurally
+ * impossible — `capabilities.libraries` and the runtime `loadPackage`
+ * call site share a single authority (ADR-0006 item #5).
+ */
+export const PYODIDE_LIBRARIES = DEFAULT_LIBS;
+
+export interface PyodideAdapterOptions {
+  /** Override factory used by `startSession`. Pass a mock for tests. */
+  hostFactory?: PyodideHostFactory;
+  /** Forwarded to the default factory when `hostFactory` is not provided. */
+  boot?: PyodideBootOptions;
+}
+
+export class PyodideAdapter implements KernelAdapter {
+  readonly id = 'pyodide';
+  readonly capabilities: KernelCapabilities = {
+    libraries: PYODIDE_LIBRARIES,
+    gpu: false,
+    persistentState: true,
+  };
+
+  #factory: PyodideHostFactory;
+
+  constructor(options: PyodideAdapterOptions = {}) {
+    this.#factory = options.hostFactory ?? createDefaultHostFactory(options.boot);
+  }
+
+  async startSession(sessionId: string): Promise<KernelSession> {
+    void sessionId;
+    let host;
+    try {
+      host = await this.#factory.create();
+    } catch (cause) {
+      if (cause instanceof KernelError) throw cause;
+      throw new KernelStartupError('PyodideAdapter.startSession failed', { cause });
+    }
+    return new PyodideSession(host);
+  }
+}
+
+exec
+/bin/bash -lc "sed -n '1,260p' packages/kernel-pyodide/src/session.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+import type { KernelEvent, KernelSession } from '@skb/kernel-adapter';
+import {
+  KernelError,
+  KernelInterruptError,
+  KernelShutdownError,
+} from '@skb/kernel-adapter';
+import type { PyodideHost } from './host';
+
+export class PyodideSession implements KernelSession {
+  #host: PyodideHost;
+  #shutdown = false;
+
+  constructor(host: PyodideHost) {
+    this.#host = host;
+  }
+
+  execute(code: string): AsyncIterable<KernelEvent> {
+    if (this.#shutdown) {
+      throw new KernelShutdownError('execute() called on shutdown session');
+    }
+    return this.#run(code);
+  }
+
+  async interrupt(): Promise<void> {
+    if (this.#shutdown) {
+      throw new KernelInterruptError('interrupt() called on shutdown session');
+    }
+    try {
+      await this.#host.interrupt();
+    } catch (cause) {
+      if (cause instanceof KernelError) throw cause;
+      throw new KernelInterruptError('PyodideSession.interrupt failed', { cause });
+    }
+  }
+
+  async shutdown(): Promise<void> {
+    if (this.#shutdown) {
+      throw new KernelShutdownError('shutdown() called twice');
+    }
+    this.#shutdown = true;
+    try {
+      await this.#host.shutdown();
+    } catch (cause) {
+      if (cause instanceof KernelError) throw cause;
+      throw new KernelShutdownError('PyodideSession.shutdown failed', { cause });
+    }
+  }
+
+  async *#run(code: string): AsyncIterable<KernelEvent> {
+    const queue: KernelEvent[] = [];
+    let waiter: (() => void) | null = null;
+    const emit = (event: KernelEvent): void => {
+      queue.push(event);
+      waiter?.();
+      waiter = null;
+    };
+
+    yield { type: 'status', state: 'busy' };
+
+    let runError: unknown;
+    let hasRunError = false;
+    let result: Record<string, unknown> | null = null;
+    const done = this.#host
+      .runCode(code, emit)
+      .then((value) => {
+        result = value;
+      })
+      .catch((err: unknown) => {
+        runError = err;
+        hasRunError = true;
+      });
+
+    let settled = false;
+    void done.finally(() => {
+      settled = true;
+      waiter?.();
+      waiter = null;
+    });
+
+    while (true) {
+      if (queue.length > 0) {
+        yield queue.shift()!;
+        continue;
+      }
+      if (settled) break;
+      await new Promise<void>((resolve) => {
+        waiter = resolve;
+      });
+    }
+
+    if (hasRunError) {
+      yield toErrorEvent(runError);
+    } else if (result !== null) {
+      yield { type: 'execute_result', data: result };
+    }
+    yield { type: 'status', state: 'idle' };
+  }
+}
+
+function toErrorEvent(err: unknown): KernelEvent {
+  if (err instanceof Error) {
+    const stack = err.stack ? err.stack.split('\n') : [err.message];
+    return { type: 'error', ename: err.name, evalue: err.message, traceback: stack };
+  }
+  const evalue = stringifyNonError(err);
+  return { type: 'error', ename: 'Error', evalue, traceback: [evalue] };
+}
+
+function stringifyNonError(err: unknown): string {
+  if (err === undefined) return 'undefined';
+  if (err === null) return 'null';
+  if (typeof err === 'string') return err;
+  if (typeof err === 'number' || typeof err === 'boolean' || typeof err === 'bigint') {
+    return String(err);
+  }
+  try {
+    return JSON.stringify(err) ?? Object.prototype.toString.call(err);
+  } catch {
+    return Object.prototype.toString.call(err);
+  }
+}
+
+exec
+/bin/bash -lc "sed -n '1,280p' packages/kernel-pyodide/src/boot.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+import type { PyodideInterface } from 'pyodide';
+import type { KernelEvent } from '@skb/kernel-adapter';
+import { KernelStartupError } from '@skb/kernel-adapter';
+import { KernelImportError } from './errors';
+import type { PyodideHost, PyodideHostFactory } from './host';
+
+/**
+ * Default libraries pre-loaded by `createDefaultHostFactory`. Exported so
+ * the cross-file regression test can lock byte-equivalence with
+ * `PYODIDE_LIBRARIES` in adapter.ts (ADR-0006 item #5).
+ */
+export const DEFAULT_LIBS = ['numpy', 'pandas', 'matplotlib'] as const;
+
+export interface PyodideBootOptions {
+  indexURL?: string;
+  libraries?: readonly string[];
+}
+
+/**
+ * Default factory boots real Pyodide (npm package) on the current thread.
+ * Wave 3 will move this into a Worker; the host abstraction lets the
+ * adapter swap implementations without changing PyodideAdapter or the
+ * KernelAdapter contract.
+ */
+export function createDefaultHostFactory(opts: PyodideBootOptions = {}): PyodideHostFactory {
+  return {
+    async create(): Promise<PyodideHost> {
+      const libraries = opts.libraries ?? DEFAULT_LIBS;
+      let pyodide: PyodideInterface;
+      try {
+        const mod = await import('pyodide');
+        pyodide = await mod.loadPyodide(
+          opts.indexURL === undefined ? {} : { indexURL: opts.indexURL },
+        );
+      } catch (cause) {
+        throw new KernelStartupError('failed to load Pyodide runtime', { cause });
+      }
+      try {
+        await pyodide.loadPackage([...libraries]);
+      } catch (cause) {
+        throw new KernelImportError(
+          `failed to load default libraries: ${libraries.join(', ')}`,
+          { cause },
+        );
+      }
+      return wrapPyodide(pyodide);
+    },
+  };
+}
+
+function stringifyResult(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
+    return String(value);
+  }
+  try {
+    return JSON.stringify(value) ?? Object.prototype.toString.call(value);
+  } catch {
+    return Object.prototype.toString.call(value);
+  }
+}
+
+function wrapPyodide(pyodide: PyodideInterface): PyodideHost {
+  let activeEmit: ((event: KernelEvent) => void) | null = null;
+  pyodide.setStdout({
+    batched: (text: string) => activeEmit?.({ type: 'stdout', text }),
+  });
+  pyodide.setStderr({
+    batched: (text: string) => activeEmit?.({ type: 'stderr', text }),
+  });
+  return {
+    async runCode(code, emit) {
+      activeEmit = emit;
+      try {
+        const value: unknown = await pyodide.runPythonAsync(code);
+        return value === undefined || value === null
+          ? null
+          : { 'text/plain': stringifyResult(value) };
+      } finally {
+        activeEmit = null;
+      }
+    },
+    interrupt() {
+      // Main-thread Pyodide has no cancellation primitive in 0.27.x; Wave 3
+      // worker-isolated host will implement SharedArrayBuffer interrupt.
+    },
+    shutdown() {
+      // Single-host adapter has no per-session teardown surface in 0.27.x.
+      return Promise.resolve();
+    },
+  };
+}
+
+exec
+/bin/bash -lc "sed -n '1,220p' packages/kernel-adapter/src/index.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+export type {
+  KernelAdapter,
+  KernelSession,
+  KernelEvent,
+  KernelCapabilities,
+} from './adapter';
+
+export {
+  KernelError,
+  KernelStartupError,
+  KernelShutdownError,
+  KernelInterruptError,
+  KernelTimeoutError,
+} from './errors';
+
+exec
+/bin/bash -lc "sed -n '1,220p' packages/kernel-adapter/src/adapter.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+export type KernelEvent =
+  | { type: 'stdout'; text: string }
+  | { type: 'stderr'; text: string }
+  | { type: 'display_data'; data: Record<string, unknown> }
+  | { type: 'execute_result'; data: Record<string, unknown> }
+  | { type: 'error'; ename: string; evalue: string; traceback: string[] }
+  | { type: 'status'; state: 'idle' | 'busy' };
+
+export interface KernelCapabilities {
+  readonly libraries: readonly string[];
+  readonly gpu: boolean;
+  readonly persistentState: boolean;
+  readonly maxMemoryMB?: number;
+}
+
+export interface KernelSession {
+  execute(code: string): AsyncIterable<KernelEvent>;
+  interrupt(): Promise<void>;
+  shutdown(): Promise<void>;
+}
+
+export interface KernelAdapter {
+  readonly id: string;
+  readonly capabilities: KernelCapabilities;
+  startSession(sessionId: string): Promise<KernelSession>;
+}
+
+codex
+The HEAD API matches the locked skeleton: `startSession`, `AsyncIterable<KernelEvent>`, and `execute_result.data['text/plain']` are all current. The existing matplotlib test is mock-only and not skipped, so I’ll add the new opt-in real-CDN test as its own file.
+exec
+/bin/bash -lc 'git status --short' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+ M apps/site/CONTRACT.md
+ M docs/plans/active.md
+?? apps/site/test-results/
+?? docs/audits/codex-runs/2026-05-04-C-1-plan-challenge.txt
+?? docs/audits/codex-runs/2026-05-04-C-2-pr-reviewer-55.txt
+?? docs/plans/wave-4-main/C-1-pyodide-indexurl-cdn.md
+
+exec
+/bin/bash -lc 'wc -l packages/block-jupyter/src/ui-default/Jupyter.tsx' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+215 packages/block-jupyter/src/ui-default/Jupyter.tsx
+
+exec
+/bin/bash -lc 'rg --files packages/kernel-pyodide/src/__tests__' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+packages/kernel-pyodide/src/__tests__/session.test.ts
+packages/kernel-pyodide/src/__tests__/adapter.test.ts
+packages/kernel-pyodide/src/__tests__/matplotlib.test.ts
+
+codex
+The worktree already has the orchestrator-authored doc changes and an existing untracked `apps/site/test-results/`; I’m leaving those alone. I’m adding only the requested integration test file now, with the exact CDN literal and the opt-in skip guard.
+apply patch
+patch: completed
+/home/weiyi/selfKnowledgeBaseWeb/packages/kernel-pyodide/src/__tests__/boot.integration.test.ts
+diff --git a/packages/kernel-pyodide/src/__tests__/boot.integration.test.ts b/packages/kernel-pyodide/src/__tests__/boot.integration.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..d0d730175285527d7164dc2113ad54df36818f98
+--- /dev/null
++++ b/packages/kernel-pyodide/src/__tests__/boot.integration.test.ts
+@@ -0,0 +1,36 @@
++import { describe, it, expect } from 'vitest';
++import { PyodideAdapter } from '../adapter';
++import type { KernelEvent } from '@skb/kernel-adapter';
++
++/**
++ * Q14 absorbtion (per Wave 4 C-1 plan-challenger): real-Pyodide boot smoke.
++ * CI-skipped (the env-flag inversion of matplotlib.test.ts). Locally invoked:
++ *   LOCAL_RUN_PYODIDE_INTEGRATION=1 pnpm --filter @skb/kernel-pyodide test boot.integration
++ * Defends against:
++ *   (a) indexURL string drift vs Pyodide version range in package.json,
++ *   (b) CDN-base resolution breakage for loadPackage default libs.
++ */
++describe.skipIf(!process.env.LOCAL_RUN_PYODIDE_INTEGRATION)(
++  'PyodideAdapter real-CDN boot integration',
++  () => {
++    it('boots Pyodide from jsdelivr CDN and runs 1+1 -> 2', async () => {
++      const adapter = new PyodideAdapter({
++        boot: {
++          indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.27.7/full/',
++          libraries: [],
++        },
++      });
++      const session = await adapter.startSession('integration-smoke');
++      const events: KernelEvent[] = [];
++      for await (const e of session.execute('1 + 1')) {
++        events.push(e);
++      }
++      const result = events.find((e) => e.type === 'execute_result');
++      expect(result).toBeDefined();
++      if (result?.type !== 'execute_result') throw new Error('expected execute_result event');
++      const text = result.data?.['text/plain'];
++      expect(typeof text === 'string' ? text : String(text ?? '')).toBe('2');
++      await session.shutdown();
++    }, 60_000);
++  },
++);
+
+diff --git a/packages/kernel-pyodide/src/__tests__/boot.integration.test.ts b/packages/kernel-pyodide/src/__tests__/boot.integration.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..d0d730175285527d7164dc2113ad54df36818f98
+--- /dev/null
++++ b/packages/kernel-pyodide/src/__tests__/boot.integration.test.ts
+@@ -0,0 +1,36 @@
++import { describe, it, expect } from 'vitest';
++import { PyodideAdapter } from '../adapter';
++import type { KernelEvent } from '@skb/kernel-adapter';
++
++/**
++ * Q14 absorbtion (per Wave 4 C-1 plan-challenger): real-Pyodide boot smoke.
++ * CI-skipped (the env-flag inversion of matplotlib.test.ts). Locally invoked:
++ *   LOCAL_RUN_PYODIDE_INTEGRATION=1 pnpm --filter @skb/kernel-pyodide test boot.integration
++ * Defends against:
++ *   (a) indexURL string drift vs Pyodide version range in package.json,
++ *   (b) CDN-base resolution breakage for loadPackage default libs.
++ */
++describe.skipIf(!process.env.LOCAL_RUN_PYODIDE_INTEGRATION)(
++  'PyodideAdapter real-CDN boot integration',
++  () => {
++    it('boots Pyodide from jsdelivr CDN and runs 1+1 -> 2', async () => {
++      const adapter = new PyodideAdapter({
++        boot: {
++          indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.27.7/full/',
++          libraries: [],
++        },
++      });
++      const session = await adapter.startSession('integration-smoke');
++      const events: KernelEvent[] = [];
++      for await (const e of session.execute('1 + 1')) {
++        events.push(e);
++      }
++      const result = events.find((e) => e.type === 'execute_result');
++      expect(result).toBeDefined();
++      if (result?.type !== 'execute_result') throw new Error('expected execute_result event');
++      const text = result.data?.['text/plain'];
++      expect(typeof text === 'string' ? text : String(text ?? '')).toBe('2');
++      await session.shutdown();
++    }, 60_000);
++  },
++);
+
+  ✓ Read current Jupyter adapter construction and Pyodide test/API shapes
+  ✓ Add skipped real-CDN boot integration test
+  → Apply one-line Jupyter indexURL change
+  • Run requested package tests, size check, and typecheck
+  • Report verdict with line counts and command exit codes
+diff --git a/packages/kernel-pyodide/src/__tests__/boot.integration.test.ts b/packages/kernel-pyodide/src/__tests__/boot.integration.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..d0d730175285527d7164dc2113ad54df36818f98
+--- /dev/null
++++ b/packages/kernel-pyodide/src/__tests__/boot.integration.test.ts
+@@ -0,0 +1,36 @@
++import { describe, it, expect } from 'vitest';
++import { PyodideAdapter } from '../adapter';
++import type { KernelEvent } from '@skb/kernel-adapter';
++
++/**
++ * Q14 absorbtion (per Wave 4 C-1 plan-challenger): real-Pyodide boot smoke.
++ * CI-skipped (the env-flag inversion of matplotlib.test.ts). Locally invoked:
++ *   LOCAL_RUN_PYODIDE_INTEGRATION=1 pnpm --filter @skb/kernel-pyodide test boot.integration
++ * Defends against:
++ *   (a) indexURL string drift vs Pyodide version range in package.json,
++ *   (b) CDN-base resolution breakage for loadPackage default libs.
++ */
++describe.skipIf(!process.env.LOCAL_RUN_PYODIDE_INTEGRATION)(
++  'PyodideAdapter real-CDN boot integration',
++  () => {
++    it('boots Pyodide from jsdelivr CDN and runs 1+1 -> 2', async () => {
++      const adapter = new PyodideAdapter({
++        boot: {
++          indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.27.7/full/',
++          libraries: [],
++        },
++      });
++      const session = await adapter.startSession('integration-smoke');
++      const events: KernelEvent[] = [];
++      for await (const e of session.execute('1 + 1')) {
++        events.push(e);
++      }
++      const result = events.find((e) => e.type === 'execute_result');
++      expect(result).toBeDefined();
++      if (result?.type !== 'execute_result') throw new Error('expected execute_result event');
++      const text = result.data?.['text/plain'];
++      expect(typeof text === 'string' ? text : String(text ?? '')).toBe('2');
++      await session.shutdown();
++    }, 60_000);
++  },
++);
+
+codex
+Now I’m applying the single requested production-line edit in `Jupyter.tsx`: keeping the injected adapter prop untouched and adding only `boot.indexURL` beside the existing `libraries` entry.
+apply patch
+patch: completed
+/home/weiyi/selfKnowledgeBaseWeb/packages/block-jupyter/src/ui-default/Jupyter.tsx
+diff --git a/packages/block-jupyter/src/ui-default/Jupyter.tsx b/packages/block-jupyter/src/ui-default/Jupyter.tsx
+index 5dcbe4a5fc1662c1b298486c537728b960bb3690..72e0a23f3751074fc2b9aad7c62e85ecb070e056
+--- a/packages/block-jupyter/src/ui-default/Jupyter.tsx
++++ b/packages/block-jupyter/src/ui-default/Jupyter.tsx
+@@ -96,7 +96,7 @@
+ 
+   const adapterRef = useRef<KernelAdapter | null>(null);
+   if (adapterRef.current === null) {
+-    adapterRef.current = adapter ?? new PyodideAdapter({ boot: { libraries: props.libraries } });
++    adapterRef.current = adapter ?? new PyodideAdapter({ boot: { libraries: props.libraries, indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.27.7/full/' } });
+   }
+   const liveAdapter = adapterRef.current;
+   const runOnLoadAtMount = useRef(props.runOnLoad);
+diff --git a/packages/kernel-pyodide/src/__tests__/boot.integration.test.ts b/packages/kernel-pyodide/src/__tests__/boot.integration.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..d0d730175285527d7164dc2113ad54df36818f98
+--- /dev/null
++++ b/packages/kernel-pyodide/src/__tests__/boot.integration.test.ts
+@@ -0,0 +1,36 @@
++import { describe, it, expect } from 'vitest';
++import { PyodideAdapter } from '../adapter';
++import type { KernelEvent } from '@skb/kernel-adapter';
++
++/**
++ * Q14 absorbtion (per Wave 4 C-1 plan-challenger): real-Pyodide boot smoke.
++ * CI-skipped (the env-flag inversion of matplotlib.test.ts). Locally invoked:
++ *   LOCAL_RUN_PYODIDE_INTEGRATION=1 pnpm --filter @skb/kernel-pyodide test boot.integration
++ * Defends against:
++ *   (a) indexURL string drift vs Pyodide version range in package.json,
++ *   (b) CDN-base resolution breakage for loadPackage default libs.
++ */
++describe.skipIf(!process.env.LOCAL_RUN_PYODIDE_INTEGRATION)(
++  'PyodideAdapter real-CDN boot integration',
++  () => {
++    it('boots Pyodide from jsdelivr CDN and runs 1+1 -> 2', async () => {
++      const adapter = new PyodideAdapter({
++        boot: {
++          indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.27.7/full/',
++          libraries: [],
++        },
++      });
++      const session = await adapter.startSession('integration-smoke');
++      const events: KernelEvent[] = [];
++      for await (const e of session.execute('1 + 1')) {
++        events.push(e);
++      }
++      const result = events.find((e) => e.type === 'execute_result');
++      expect(result).toBeDefined();
++      if (result?.type !== 'execute_result') throw new Error('expected execute_result event');
++      const text = result.data?.['text/plain'];
++      expect(typeof text === 'string' ? text : String(text ?? '')).toBe('2');
++      await session.shutdown();
++    }, 60_000);
++  },
++);
+
+diff --git a/packages/block-jupyter/src/ui-default/Jupyter.tsx b/packages/block-jupyter/src/ui-default/Jupyter.tsx
+index 5dcbe4a5fc1662c1b298486c537728b960bb3690..72e0a23f3751074fc2b9aad7c62e85ecb070e056
+--- a/packages/block-jupyter/src/ui-default/Jupyter.tsx
++++ b/packages/block-jupyter/src/ui-default/Jupyter.tsx
+@@ -96,7 +96,7 @@
+ 
+   const adapterRef = useRef<KernelAdapter | null>(null);
+   if (adapterRef.current === null) {
+-    adapterRef.current = adapter ?? new PyodideAdapter({ boot: { libraries: props.libraries } });
++    adapterRef.current = adapter ?? new PyodideAdapter({ boot: { libraries: props.libraries, indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.27.7/full/' } });
+   }
+   const liveAdapter = adapterRef.current;
+   const runOnLoadAtMount = useRef(props.runOnLoad);
+diff --git a/packages/kernel-pyodide/src/__tests__/boot.integration.test.ts b/packages/kernel-pyodide/src/__tests__/boot.integration.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..d0d730175285527d7164dc2113ad54df36818f98
+--- /dev/null
++++ b/packages/kernel-pyodide/src/__tests__/boot.integration.test.ts
+@@ -0,0 +1,36 @@
++import { describe, it, expect } from 'vitest';
++import { PyodideAdapter } from '../adapter';
++import type { KernelEvent } from '@skb/kernel-adapter';
++
++/**
++ * Q14 absorbtion (per Wave 4 C-1 plan-challenger): real-Pyodide boot smoke.
++ * CI-skipped (the env-flag inversion of matplotlib.test.ts). Locally invoked:
++ *   LOCAL_RUN_PYODIDE_INTEGRATION=1 pnpm --filter @skb/kernel-pyodide test boot.integration
++ * Defends against:
++ *   (a) indexURL string drift vs Pyodide version range in package.json,
++ *   (b) CDN-base resolution breakage for loadPackage default libs.
++ */
++describe.skipIf(!process.env.LOCAL_RUN_PYODIDE_INTEGRATION)(
++  'PyodideAdapter real-CDN boot integration',
++  () => {
++    it('boots Pyodide from jsdelivr CDN and runs 1+1 -> 2', async () => {
++      const adapter = new PyodideAdapter({
++        boot: {
++          indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.27.7/full/',
++          libraries: [],
++        },
++      });
++      const session = await adapter.startSession('integration-smoke');
++      const events: KernelEvent[] = [];
++      for await (const e of session.execute('1 + 1')) {
++        events.push(e);
++      }
++      const result = events.find((e) => e.type === 'execute_result');
++      expect(result).toBeDefined();
++      if (result?.type !== 'execute_result') throw new Error('expected execute_result event');
++      const text = result.data?.['text/plain'];
++      expect(typeof text === 'string' ? text : String(text ?? '')).toBe('2');
++      await session.shutdown();
++    }, 60_000);
++  },
++);
+
+  ✓ Read current Jupyter adapter construction and Pyodide test/API shapes
+  ✓ Add skipped real-CDN boot integration test
+  ✓ Apply one-line Jupyter indexURL change
+  → Run requested package tests, size check, and typecheck
+  • Report verdict with line counts and command exit codes
+diff --git a/packages/block-jupyter/src/ui-default/Jupyter.tsx b/packages/block-jupyter/src/ui-default/Jupyter.tsx
+index 5dcbe4a5fc1662c1b298486c537728b960bb3690..72e0a23f3751074fc2b9aad7c62e85ecb070e056
+--- a/packages/block-jupyter/src/ui-default/Jupyter.tsx
++++ b/packages/block-jupyter/src/ui-default/Jupyter.tsx
+@@ -96,7 +96,7 @@
+ 
+   const adapterRef = useRef<KernelAdapter | null>(null);
+   if (adapterRef.current === null) {
+-    adapterRef.current = adapter ?? new PyodideAdapter({ boot: { libraries: props.libraries } });
++    adapterRef.current = adapter ?? new PyodideAdapter({ boot: { libraries: props.libraries, indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.27.7/full/' } });
+   }
+   const liveAdapter = adapterRef.current;
+   const runOnLoadAtMount = useRef(props.runOnLoad);
+diff --git a/packages/kernel-pyodide/src/__tests__/boot.integration.test.ts b/packages/kernel-pyodide/src/__tests__/boot.integration.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..d0d730175285527d7164dc2113ad54df36818f98
+--- /dev/null
++++ b/packages/kernel-pyodide/src/__tests__/boot.integration.test.ts
+@@ -0,0 +1,36 @@
++import { describe, it, expect } from 'vitest';
++import { PyodideAdapter } from '../adapter';
++import type { KernelEvent } from '@skb/kernel-adapter';
++
++/**
++ * Q14 absorbtion (per Wave 4 C-1 plan-challenger): real-Pyodide boot smoke.
++ * CI-skipped (the env-flag inversion of matplotlib.test.ts). Locally invoked:
++ *   LOCAL_RUN_PYODIDE_INTEGRATION=1 pnpm --filter @skb/kernel-pyodide test boot.integration
++ * Defends against:
++ *   (a) indexURL string drift vs Pyodide version range in package.json,
++ *   (b) CDN-base resolution breakage for loadPackage default libs.
++ */
++describe.skipIf(!process.env.LOCAL_RUN_PYODIDE_INTEGRATION)(
++  'PyodideAdapter real-CDN boot integration',
++  () => {
++    it('boots Pyodide from jsdelivr CDN and runs 1+1 -> 2', async () => {
++      const adapter = new PyodideAdapter({
++        boot: {
++          indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.27.7/full/',
++          libraries: [],
++        },
++      });
++      const session = await adapter.startSession('integration-smoke');
++      const events: KernelEvent[] = [];
++      for await (const e of session.execute('1 + 1')) {
++        events.push(e);
++      }
++      const result = events.find((e) => e.type === 'execute_result');
++      expect(result).toBeDefined();
++      if (result?.type !== 'execute_result') throw new Error('expected execute_result event');
++      const text = result.data?.['text/plain'];
++      expect(typeof text === 'string' ? text : String(text ?? '')).toBe('2');
++      await session.shutdown();
++    }, 60_000);
++  },
++);
+
+codex
+Both requested edits are in place. I’m checking the local diff and CDN literal before starting the four verification commands.
+exec
+/bin/bash -lc 'git status --short packages/block-jupyter/src/ui-default/Jupyter.tsx packages/kernel-pyodide/src/__tests__/boot.integration.test.ts apps/site/CONTRACT.md docs/plans/active.md docs/plans/wave-4-main/C-1-pyodide-indexurl-cdn.md' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+ M apps/site/CONTRACT.md
+ M docs/plans/active.md
+ M packages/block-jupyter/src/ui-default/Jupyter.tsx
+?? docs/plans/wave-4-main/C-1-pyodide-indexurl-cdn.md
+?? packages/kernel-pyodide/src/__tests__/boot.integration.test.ts
+
+exec
+/bin/bash -lc 'git diff -- packages/block-jupyter/src/ui-default/Jupyter.tsx' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+diff --git a/packages/block-jupyter/src/ui-default/Jupyter.tsx b/packages/block-jupyter/src/ui-default/Jupyter.tsx
+index 5dcbe4a..72e0a23 100644
+--- a/packages/block-jupyter/src/ui-default/Jupyter.tsx
++++ b/packages/block-jupyter/src/ui-default/Jupyter.tsx
+@@ -96,7 +96,7 @@ export function JupyterView({ props, adapter }: JupyterViewProps): JSX.Element {
+ 
+   const adapterRef = useRef<KernelAdapter | null>(null);
+   if (adapterRef.current === null) {
+-    adapterRef.current = adapter ?? new PyodideAdapter({ boot: { libraries: props.libraries } });
++    adapterRef.current = adapter ?? new PyodideAdapter({ boot: { libraries: props.libraries, indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.27.7/full/' } });
+   }
+   const liveAdapter = adapterRef.current;
+   const runOnLoadAtMount = useRef(props.runOnLoad);
+
+exec
+/bin/bash -lc "rg -n \"https://cdn\\.jsdelivr\\.net/pyodide/v0\\.27\\.7/full/\" packages/block-jupyter/src/ui-default/Jupyter.tsx packages/kernel-pyodide/src/__tests__/boot.integration.test.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+packages/kernel-pyodide/src/__tests__/boot.integration.test.ts:19:          indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.27.7/full/',
+packages/block-jupyter/src/ui-default/Jupyter.tsx:99:    adapterRef.current = adapter ?? new PyodideAdapter({ boot: { libraries: props.libraries, indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.27.7/full/' } });
+
+exec
+/bin/bash -lc 'wc -l packages/block-jupyter/src/ui-default/Jupyter.tsx packages/kernel-pyodide/src/__tests__/boot.integration.test.ts' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+ 215 packages/block-jupyter/src/ui-default/Jupyter.tsx
+  36 packages/kernel-pyodide/src/__tests__/boot.integration.test.ts
+ 251 total
+
+diff --git a/packages/block-jupyter/src/ui-default/Jupyter.tsx b/packages/block-jupyter/src/ui-default/Jupyter.tsx
+index 5dcbe4a5fc1662c1b298486c537728b960bb3690..72e0a23f3751074fc2b9aad7c62e85ecb070e056
+--- a/packages/block-jupyter/src/ui-default/Jupyter.tsx
++++ b/packages/block-jupyter/src/ui-default/Jupyter.tsx
+@@ -96,7 +96,7 @@
+ 
+   const adapterRef = useRef<KernelAdapter | null>(null);
+   if (adapterRef.current === null) {
+-    adapterRef.current = adapter ?? new PyodideAdapter({ boot: { libraries: props.libraries } });
++    adapterRef.current = adapter ?? new PyodideAdapter({ boot: { libraries: props.libraries, indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.27.7/full/' } });
+   }
+   const liveAdapter = adapterRef.current;
+   const runOnLoadAtMount = useRef(props.runOnLoad);
+diff --git a/packages/kernel-pyodide/src/__tests__/boot.integration.test.ts b/packages/kernel-pyodide/src/__tests__/boot.integration.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..d0d730175285527d7164dc2113ad54df36818f98
+--- /dev/null
++++ b/packages/kernel-pyodide/src/__tests__/boot.integration.test.ts
+@@ -0,0 +1,36 @@
++import { describe, it, expect } from 'vitest';
++import { PyodideAdapter } from '../adapter';
++import type { KernelEvent } from '@skb/kernel-adapter';
++
++/**
++ * Q14 absorbtion (per Wave 4 C-1 plan-challenger): real-Pyodide boot smoke.
++ * CI-skipped (the env-flag inversion of matplotlib.test.ts). Locally invoked:
++ *   LOCAL_RUN_PYODIDE_INTEGRATION=1 pnpm --filter @skb/kernel-pyodide test boot.integration
++ * Defends against:
++ *   (a) indexURL string drift vs Pyodide version range in package.json,
++ *   (b) CDN-base resolution breakage for loadPackage default libs.
++ */
++describe.skipIf(!process.env.LOCAL_RUN_PYODIDE_INTEGRATION)(
++  'PyodideAdapter real-CDN boot integration',
++  () => {
++    it('boots Pyodide from jsdelivr CDN and runs 1+1 -> 2', async () => {
++      const adapter = new PyodideAdapter({
++        boot: {
++          indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.27.7/full/',
++          libraries: [],
++        },
++      });
++      const session = await adapter.startSession('integration-smoke');
++      const events: KernelEvent[] = [];
++      for await (const e of session.execute('1 + 1')) {
++        events.push(e);
++      }
++      const result = events.find((e) => e.type === 'execute_result');
++      expect(result).toBeDefined();
++      if (result?.type !== 'execute_result') throw new Error('expected execute_result event');
++      const text = result.data?.['text/plain'];
++      expect(typeof text === 'string' ? text : String(text ?? '')).toBe('2');
++      await session.shutdown();
++    }, 60_000);
++  },
++);
+
+codex
+The diff check confirms one tracked line changed in `Jupyter.tsx`, plus the new test file. I’m starting the required verifications in the requested order so I can capture each exit code cleanly.
+exec
+/bin/bash -lc 'pnpm --filter @skb/kernel-pyodide test' in /home/weiyi/selfKnowledgeBaseWeb
+diff --git a/packages/block-jupyter/src/ui-default/Jupyter.tsx b/packages/block-jupyter/src/ui-default/Jupyter.tsx
+index 5dcbe4a5fc1662c1b298486c537728b960bb3690..72e0a23f3751074fc2b9aad7c62e85ecb070e056
+--- a/packages/block-jupyter/src/ui-default/Jupyter.tsx
++++ b/packages/block-jupyter/src/ui-default/Jupyter.tsx
+@@ -96,7 +96,7 @@
+ 
+   const adapterRef = useRef<KernelAdapter | null>(null);
+   if (adapterRef.current === null) {
+-    adapterRef.current = adapter ?? new PyodideAdapter({ boot: { libraries: props.libraries } });
++    adapterRef.current = adapter ?? new PyodideAdapter({ boot: { libraries: props.libraries, indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.27.7/full/' } });
+   }
+   const liveAdapter = adapterRef.current;
+   const runOnLoadAtMount = useRef(props.runOnLoad);
+diff --git a/packages/kernel-pyodide/src/__tests__/boot.integration.test.ts b/packages/kernel-pyodide/src/__tests__/boot.integration.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..d0d730175285527d7164dc2113ad54df36818f98
+--- /dev/null
++++ b/packages/kernel-pyodide/src/__tests__/boot.integration.test.ts
+@@ -0,0 +1,36 @@
++import { describe, it, expect } from 'vitest';
++import { PyodideAdapter } from '../adapter';
++import type { KernelEvent } from '@skb/kernel-adapter';
++
++/**
++ * Q14 absorbtion (per Wave 4 C-1 plan-challenger): real-Pyodide boot smoke.
++ * CI-skipped (the env-flag inversion of matplotlib.test.ts). Locally invoked:
++ *   LOCAL_RUN_PYODIDE_INTEGRATION=1 pnpm --filter @skb/kernel-pyodide test boot.integration
++ * Defends against:
++ *   (a) indexURL string drift vs Pyodide version range in package.json,
++ *   (b) CDN-base resolution breakage for loadPackage default libs.
++ */
++describe.skipIf(!process.env.LOCAL_RUN_PYODIDE_INTEGRATION)(
++  'PyodideAdapter real-CDN boot integration',
++  () => {
++    it('boots Pyodide from jsdelivr CDN and runs 1+1 -> 2', async () => {
++      const adapter = new PyodideAdapter({
++        boot: {
++          indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.27.7/full/',
++          libraries: [],
++        },
++      });
++      const session = await adapter.startSession('integration-smoke');
++      const events: KernelEvent[] = [];
++      for await (const e of session.execute('1 + 1')) {
++        events.push(e);
++      }
++      const result = events.find((e) => e.type === 'execute_result');
++      expect(result).toBeDefined();
++      if (result?.type !== 'execute_result') throw new Error('expected execute_result event');
++      const text = result.data?.['text/plain'];
++      expect(typeof text === 'string' ? text : String(text ?? '')).toBe('2');
++      await session.shutdown();
++    }, 60_000);
++  },
++);
+
+ succeeded in 1019ms:
+
+> @skb/kernel-pyodide@0.0.0 test /home/weiyi/selfKnowledgeBaseWeb/packages/kernel-pyodide
+> vitest run
+
+
+ RUN  v4.1.5 /home/weiyi/selfKnowledgeBaseWeb/packages/kernel-pyodide
+
+
+ Test Files  3 passed | 1 skipped (4)
+      Tests  25 passed | 1 skipped (26)
+   Start at  07:59:10
+   Duration  251ms (transform 280ms, setup 0ms, import 364ms, tests 23ms, environment 1ms)
+
+
+codex
+`@skb/kernel-pyodide` test exited 0, with the new integration file skipped by default as intended. Next is the site test corpus.
+exec
+/bin/bash -lc 'pnpm --filter @skb/site test' in /home/weiyi/selfKnowledgeBaseWeb
+diff --git a/packages/block-jupyter/src/ui-default/Jupyter.tsx b/packages/block-jupyter/src/ui-default/Jupyter.tsx
+index 5dcbe4a5fc1662c1b298486c537728b960bb3690..72e0a23f3751074fc2b9aad7c62e85ecb070e056
+--- a/packages/block-jupyter/src/ui-default/Jupyter.tsx
++++ b/packages/block-jupyter/src/ui-default/Jupyter.tsx
+@@ -96,7 +96,7 @@
+ 
+   const adapterRef = useRef<KernelAdapter | null>(null);
+   if (adapterRef.current === null) {
+-    adapterRef.current = adapter ?? new PyodideAdapter({ boot: { libraries: props.libraries } });
++    adapterRef.current = adapter ?? new PyodideAdapter({ boot: { libraries: props.libraries, indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.27.7/full/' } });
+   }
+   const liveAdapter = adapterRef.current;
+   const runOnLoadAtMount = useRef(props.runOnLoad);
+diff --git a/packages/kernel-pyodide/src/__tests__/boot.integration.test.ts b/packages/kernel-pyodide/src/__tests__/boot.integration.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..d0d730175285527d7164dc2113ad54df36818f98
+--- /dev/null
++++ b/packages/kernel-pyodide/src/__tests__/boot.integration.test.ts
+@@ -0,0 +1,36 @@
++import { describe, it, expect } from 'vitest';
++import { PyodideAdapter } from '../adapter';
++import type { KernelEvent } from '@skb/kernel-adapter';
++
++/**
++ * Q14 absorbtion (per Wave 4 C-1 plan-challenger): real-Pyodide boot smoke.
++ * CI-skipped (the env-flag inversion of matplotlib.test.ts). Locally invoked:
++ *   LOCAL_RUN_PYODIDE_INTEGRATION=1 pnpm --filter @skb/kernel-pyodide test boot.integration
++ * Defends against:
++ *   (a) indexURL string drift vs Pyodide version range in package.json,
++ *   (b) CDN-base resolution breakage for loadPackage default libs.
++ */
++describe.skipIf(!process.env.LOCAL_RUN_PYODIDE_INTEGRATION)(
++  'PyodideAdapter real-CDN boot integration',
++  () => {
++    it('boots Pyodide from jsdelivr CDN and runs 1+1 -> 2', async () => {
++      const adapter = new PyodideAdapter({
++        boot: {
++          indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.27.7/full/',
++          libraries: [],
++        },
++      });
++      const session = await adapter.startSession('integration-smoke');
++      const events: KernelEvent[] = [];
++      for await (const e of session.execute('1 + 1')) {
++        events.push(e);
++      }
++      const result = events.find((e) => e.type === 'execute_result');
++      expect(result).toBeDefined();
++      if (result?.type !== 'execute_result') throw new Error('expected execute_result event');
++      const text = result.data?.['text/plain'];
++      expect(typeof text === 'string' ? text : String(text ?? '')).toBe('2');
++      await session.shutdown();
++    }, 60_000);
++  },
++);
+
+ succeeded in 3724ms:
+
+> @skb/site@0.0.0 test /home/weiyi/selfKnowledgeBaseWeb/apps/site
+> vitest run
+
+
+ RUN  v4.1.5 /home/weiyi/selfKnowledgeBaseWeb/apps/site
+
+
+ Test Files  10 passed (10)
+      Tests  59 passed | 1 skipped (60)
+   Start at  07:59:16
+   Duration  2.05s (transform 1.22s, setup 0ms, import 1.92s, tests 633ms, environment 2.51s)
+
+
+diff --git a/packages/block-jupyter/src/ui-default/Jupyter.tsx b/packages/block-jupyter/src/ui-default/Jupyter.tsx
+index 5dcbe4a5fc1662c1b298486c537728b960bb3690..72e0a23f3751074fc2b9aad7c62e85ecb070e056
+--- a/packages/block-jupyter/src/ui-default/Jupyter.tsx
++++ b/packages/block-jupyter/src/ui-default/Jupyter.tsx
+@@ -96,7 +96,7 @@
+ 
+   const adapterRef = useRef<KernelAdapter | null>(null);
+   if (adapterRef.current === null) {
+-    adapterRef.current = adapter ?? new PyodideAdapter({ boot: { libraries: props.libraries } });
++    adapterRef.current = adapter ?? new PyodideAdapter({ boot: { libraries: props.libraries, indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.27.7/full/' } });
+   }
+   const liveAdapter = adapterRef.current;
+   const runOnLoadAtMount = useRef(props.runOnLoad);
+diff --git a/packages/kernel-pyodide/src/__tests__/boot.integration.test.ts b/packages/kernel-pyodide/src/__tests__/boot.integration.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..d0d730175285527d7164dc2113ad54df36818f98
+--- /dev/null
++++ b/packages/kernel-pyodide/src/__tests__/boot.integration.test.ts
+@@ -0,0 +1,36 @@
++import { describe, it, expect } from 'vitest';
++import { PyodideAdapter } from '../adapter';
++import type { KernelEvent } from '@skb/kernel-adapter';
++
++/**
++ * Q14 absorbtion (per Wave 4 C-1 plan-challenger): real-Pyodide boot smoke.
++ * CI-skipped (the env-flag inversion of matplotlib.test.ts). Locally invoked:
++ *   LOCAL_RUN_PYODIDE_INTEGRATION=1 pnpm --filter @skb/kernel-pyodide test boot.integration
++ * Defends against:
++ *   (a) indexURL string drift vs Pyodide version range in package.json,
++ *   (b) CDN-base resolution breakage for loadPackage default libs.
++ */
++describe.skipIf(!process.env.LOCAL_RUN_PYODIDE_INTEGRATION)(
++  'PyodideAdapter real-CDN boot integration',
++  () => {
++    it('boots Pyodide from jsdelivr CDN and runs 1+1 -> 2', async () => {
++      const adapter = new PyodideAdapter({
++        boot: {
++          indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.27.7/full/',
++          libraries: [],
++        },
++      });
++      const session = await adapter.startSession('integration-smoke');
++      const events: KernelEvent[] = [];
++      for await (const e of session.execute('1 + 1')) {
++        events.push(e);
++      }
++      const result = events.find((e) => e.type === 'execute_result');
++      expect(result).toBeDefined();
++      if (result?.type !== 'execute_result') throw new Error('expected execute_result event');
++      const text = result.data?.['text/plain'];
++      expect(typeof text === 'string' ? text : String(text ?? '')).toBe('2');
++      await session.shutdown();
++    }, 60_000);
++  },
++);
+
+codex
+`@skb/site` test exited 0: 10 test files passed. I’m running the size check now.
+exec
+/bin/bash -lc 'pnpm size-check' in /home/weiyi/selfKnowledgeBaseWeb
+diff --git a/packages/block-jupyter/src/ui-default/Jupyter.tsx b/packages/block-jupyter/src/ui-default/Jupyter.tsx
+index 5dcbe4a5fc1662c1b298486c537728b960bb3690..72e0a23f3751074fc2b9aad7c62e85ecb070e056
+--- a/packages/block-jupyter/src/ui-default/Jupyter.tsx
++++ b/packages/block-jupyter/src/ui-default/Jupyter.tsx
+@@ -96,7 +96,7 @@
+ 
+   const adapterRef = useRef<KernelAdapter | null>(null);
+   if (adapterRef.current === null) {
+-    adapterRef.current = adapter ?? new PyodideAdapter({ boot: { libraries: props.libraries } });
++    adapterRef.current = adapter ?? new PyodideAdapter({ boot: { libraries: props.libraries, indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.27.7/full/' } });
+   }
+   const liveAdapter = adapterRef.current;
+   const runOnLoadAtMount = useRef(props.runOnLoad);
+diff --git a/packages/kernel-pyodide/src/__tests__/boot.integration.test.ts b/packages/kernel-pyodide/src/__tests__/boot.integration.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..d0d730175285527d7164dc2113ad54df36818f98
+--- /dev/null
++++ b/packages/kernel-pyodide/src/__tests__/boot.integration.test.ts
+@@ -0,0 +1,36 @@
++import { describe, it, expect } from 'vitest';
++import { PyodideAdapter } from '../adapter';
++import type { KernelEvent } from '@skb/kernel-adapter';
++
++/**
++ * Q14 absorbtion (per Wave 4 C-1 plan-challenger): real-Pyodide boot smoke.
++ * CI-skipped (the env-flag inversion of matplotlib.test.ts). Locally invoked:
++ *   LOCAL_RUN_PYODIDE_INTEGRATION=1 pnpm --filter @skb/kernel-pyodide test boot.integration
++ * Defends against:
++ *   (a) indexURL string drift vs Pyodide version range in package.json,
++ *   (b) CDN-base resolution breakage for loadPackage default libs.
++ */
++describe.skipIf(!process.env.LOCAL_RUN_PYODIDE_INTEGRATION)(
++  'PyodideAdapter real-CDN boot integration',
++  () => {
++    it('boots Pyodide from jsdelivr CDN and runs 1+1 -> 2', async () => {
++      const adapter = new PyodideAdapter({
++        boot: {
++          indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.27.7/full/',
++          libraries: [],
++        },
++      });
++      const session = await adapter.startSession('integration-smoke');
++      const events: KernelEvent[] = [];
++      for await (const e of session.execute('1 + 1')) {
++        events.push(e);
++      }
++      const result = events.find((e) => e.type === 'execute_result');
++      expect(result).toBeDefined();
++      if (result?.type !== 'execute_result') throw new Error('expected execute_result event');
++      const text = result.data?.['text/plain'];
++      expect(typeof text === 'string' ? text : String(text ?? '')).toBe('2');
++      await session.shutdown();
++    }, 60_000);
++  },
++);
+
+ succeeded in 261ms:
+
+> self-knowledge-base-web@0.0.0 size-check /home/weiyi/selfKnowledgeBaseWeb
+> node scripts/check-size-limits.mjs
+
+✓ All 321 source files under 500 lines.
+
+codex
+`pnpm size-check` exited 0 and reported all 321 source files under the 500-line limit. I’m running the kernel-pyodide typecheck last to catch skipped-test typing.
+exec
+/bin/bash -lc 'pnpm --filter @skb/kernel-pyodide typecheck' in /home/weiyi/selfKnowledgeBaseWeb
+diff --git a/packages/block-jupyter/src/ui-default/Jupyter.tsx b/packages/block-jupyter/src/ui-default/Jupyter.tsx
+index 5dcbe4a5fc1662c1b298486c537728b960bb3690..72e0a23f3751074fc2b9aad7c62e85ecb070e056
+--- a/packages/block-jupyter/src/ui-default/Jupyter.tsx
++++ b/packages/block-jupyter/src/ui-default/Jupyter.tsx
+@@ -96,7 +96,7 @@
+ 
+   const adapterRef = useRef<KernelAdapter | null>(null);
+   if (adapterRef.current === null) {
+-    adapterRef.current = adapter ?? new PyodideAdapter({ boot: { libraries: props.libraries } });
++    adapterRef.current = adapter ?? new PyodideAdapter({ boot: { libraries: props.libraries, indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.27.7/full/' } });
+   }
+   const liveAdapter = adapterRef.current;
+   const runOnLoadAtMount = useRef(props.runOnLoad);
+diff --git a/packages/kernel-pyodide/src/__tests__/boot.integration.test.ts b/packages/kernel-pyodide/src/__tests__/boot.integration.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..d0d730175285527d7164dc2113ad54df36818f98
+--- /dev/null
++++ b/packages/kernel-pyodide/src/__tests__/boot.integration.test.ts
+@@ -0,0 +1,36 @@
++import { describe, it, expect } from 'vitest';
++import { PyodideAdapter } from '../adapter';
++import type { KernelEvent } from '@skb/kernel-adapter';
++
++/**
++ * Q14 absorbtion (per Wave 4 C-1 plan-challenger): real-Pyodide boot smoke.
++ * CI-skipped (the env-flag inversion of matplotlib.test.ts). Locally invoked:
++ *   LOCAL_RUN_PYODIDE_INTEGRATION=1 pnpm --filter @skb/kernel-pyodide test boot.integration
++ * Defends against:
++ *   (a) indexURL string drift vs Pyodide version range in package.json,
++ *   (b) CDN-base resolution breakage for loadPackage default libs.
++ */
++describe.skipIf(!process.env.LOCAL_RUN_PYODIDE_INTEGRATION)(
++  'PyodideAdapter real-CDN boot integration',
++  () => {
++    it('boots Pyodide from jsdelivr CDN and runs 1+1 -> 2', async () => {
++      const adapter = new PyodideAdapter({
++        boot: {
++          indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.27.7/full/',
++          libraries: [],
++        },
++      });
++      const session = await adapter.startSession('integration-smoke');
++      const events: KernelEvent[] = [];
++      for await (const e of session.execute('1 + 1')) {
++        events.push(e);
++      }
++      const result = events.find((e) => e.type === 'execute_result');
++      expect(result).toBeDefined();
++      if (result?.type !== 'execute_result') throw new Error('expected execute_result event');
++      const text = result.data?.['text/plain'];
++      expect(typeof text === 'string' ? text : String(text ?? '')).toBe('2');
++      await session.shutdown();
++    }, 60_000);
++  },
++);
+
+ succeeded in 1561ms:
+
+> @skb/kernel-pyodide@0.0.0 typecheck /home/weiyi/selfKnowledgeBaseWeb/packages/kernel-pyodide
+> tsc -b
+
+
+diff --git a/packages/block-jupyter/src/ui-default/Jupyter.tsx b/packages/block-jupyter/src/ui-default/Jupyter.tsx
+index 5dcbe4a5fc1662c1b298486c537728b960bb3690..72e0a23f3751074fc2b9aad7c62e85ecb070e056
+--- a/packages/block-jupyter/src/ui-default/Jupyter.tsx
++++ b/packages/block-jupyter/src/ui-default/Jupyter.tsx
+@@ -96,7 +96,7 @@
+ 
+   const adapterRef = useRef<KernelAdapter | null>(null);
+   if (adapterRef.current === null) {
+-    adapterRef.current = adapter ?? new PyodideAdapter({ boot: { libraries: props.libraries } });
++    adapterRef.current = adapter ?? new PyodideAdapter({ boot: { libraries: props.libraries, indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.27.7/full/' } });
+   }
+   const liveAdapter = adapterRef.current;
+   const runOnLoadAtMount = useRef(props.runOnLoad);
+diff --git a/packages/kernel-pyodide/src/__tests__/boot.integration.test.ts b/packages/kernel-pyodide/src/__tests__/boot.integration.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..d0d730175285527d7164dc2113ad54df36818f98
+--- /dev/null
++++ b/packages/kernel-pyodide/src/__tests__/boot.integration.test.ts
+@@ -0,0 +1,36 @@
++import { describe, it, expect } from 'vitest';
++import { PyodideAdapter } from '../adapter';
++import type { KernelEvent } from '@skb/kernel-adapter';
++
++/**
++ * Q14 absorbtion (per Wave 4 C-1 plan-challenger): real-Pyodide boot smoke.
++ * CI-skipped (the env-flag inversion of matplotlib.test.ts). Locally invoked:
++ *   LOCAL_RUN_PYODIDE_INTEGRATION=1 pnpm --filter @skb/kernel-pyodide test boot.integration
++ * Defends against:
++ *   (a) indexURL string drift vs Pyodide version range in package.json,
++ *   (b) CDN-base resolution breakage for loadPackage default libs.
++ */
++describe.skipIf(!process.env.LOCAL_RUN_PYODIDE_INTEGRATION)(
++  'PyodideAdapter real-CDN boot integration',
++  () => {
++    it('boots Pyodide from jsdelivr CDN and runs 1+1 -> 2', async () => {
++      const adapter = new PyodideAdapter({
++        boot: {
++          indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.27.7/full/',
++          libraries: [],
++        },
++      });
++      const session = await adapter.startSession('integration-smoke');
++      const events: KernelEvent[] = [];
++      for await (const e of session.execute('1 + 1')) {
++        events.push(e);
++      }
++      const result = events.find((e) => e.type === 'execute_result');
++      expect(result).toBeDefined();
++      if (result?.type !== 'execute_result') throw new Error('expected execute_result event');
++      const text = result.data?.['text/plain'];
++      expect(typeof text === 'string' ? text : String(text ?? '')).toBe('2');
++      await session.shutdown();
++    }, 60_000);
++  },
++);
+
+codex
+All four requested commands have now exited; I’m doing a final scope/status check and re-reading the exact line counts before I report the execute verdict.
+  ✓ Read current Jupyter adapter construction and Pyodide test/API shapes
+  ✓ Add skipped real-CDN boot integration test
+  ✓ Apply one-line Jupyter indexURL change
+  ✓ Run requested package tests, size check, and typecheck
+  → Report verdict with line counts and command exit codes
+diff --git a/packages/block-jupyter/src/ui-default/Jupyter.tsx b/packages/block-jupyter/src/ui-default/Jupyter.tsx
+index 5dcbe4a5fc1662c1b298486c537728b960bb3690..72e0a23f3751074fc2b9aad7c62e85ecb070e056
+--- a/packages/block-jupyter/src/ui-default/Jupyter.tsx
++++ b/packages/block-jupyter/src/ui-default/Jupyter.tsx
+@@ -96,7 +96,7 @@
+ 
+   const adapterRef = useRef<KernelAdapter | null>(null);
+   if (adapterRef.current === null) {
+-    adapterRef.current = adapter ?? new PyodideAdapter({ boot: { libraries: props.libraries } });
++    adapterRef.current = adapter ?? new PyodideAdapter({ boot: { libraries: props.libraries, indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.27.7/full/' } });
+   }
+   const liveAdapter = adapterRef.current;
+   const runOnLoadAtMount = useRef(props.runOnLoad);
+diff --git a/packages/kernel-pyodide/src/__tests__/boot.integration.test.ts b/packages/kernel-pyodide/src/__tests__/boot.integration.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..d0d730175285527d7164dc2113ad54df36818f98
+--- /dev/null
++++ b/packages/kernel-pyodide/src/__tests__/boot.integration.test.ts
+@@ -0,0 +1,36 @@
++import { describe, it, expect } from 'vitest';
++import { PyodideAdapter } from '../adapter';
++import type { KernelEvent } from '@skb/kernel-adapter';
++
++/**
++ * Q14 absorbtion (per Wave 4 C-1 plan-challenger): real-Pyodide boot smoke.
++ * CI-skipped (the env-flag inversion of matplotlib.test.ts). Locally invoked:
++ *   LOCAL_RUN_PYODIDE_INTEGRATION=1 pnpm --filter @skb/kernel-pyodide test boot.integration
++ * Defends against:
++ *   (a) indexURL string drift vs Pyodide version range in package.json,
++ *   (b) CDN-base resolution breakage for loadPackage default libs.
++ */
++describe.skipIf(!process.env.LOCAL_RUN_PYODIDE_INTEGRATION)(
++  'PyodideAdapter real-CDN boot integration',
++  () => {
++    it('boots Pyodide from jsdelivr CDN and runs 1+1 -> 2', async () => {
++      const adapter = new PyodideAdapter({
++        boot: {
++          indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.27.7/full/',
++          libraries: [],
++        },
++      });
++      const session = await adapter.startSession('integration-smoke');
++      const events: KernelEvent[] = [];
++      for await (const e of session.execute('1 + 1')) {
++        events.push(e);
++      }
++      const result = events.find((e) => e.type === 'execute_result');
++      expect(result).toBeDefined();
++      if (result?.type !== 'execute_result') throw new Error('expected execute_result event');
