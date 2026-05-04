@@ -22,6 +22,7 @@
 | [0014](ADR-0014-heavy-block-boundary.md)                  | HeavyBlockBoundary wrapper for client:only heavy blocks     | 2026-05-03 | accepted |
 | [0015](ADR-0015-wave-4-close.md)                          | Wave 4 close — 21-PR ratification + Wave 5 deferred set     | 2026-05-04 | accepted |
 | [0016](ADR-0016-grid-data-model.md)                       | Grid 数据模型与流动 (12-col grid + row flow + COL_SNAPS + 响应式) | 2026-05-04 | proposed |
+| [0017](ADR-0017-drag-drop-ux.md)                          | Drag/Drop UX (4 边缘对称 + outline overlay 方案 A + edge rects + lift) | 2026-05-04 | proposed |
 
 ## 模板
 
