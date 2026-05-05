@@ -3,9 +3,9 @@
 > SessionStart hook 读取此文件，把当前 wave 印在 session 起手位置。
 
 **当前 phase**: 1
-**当前 wave**: **Wave 5 plan v1.1 locked** (Pre-A5 v1.0 lock 2026-05-04; v1.0 → v1.1 R14 amendment 2026-05-05 via PR #61 squash `1304111`; v1.1 R14 first real-test ✅ closed via C.2-3.5 implementation PR #65 squash `b019a31` — defer-defer chain → plan amendment → implementation cycle 完成 end-to-end). [Wave 5 plan v1.1](../superpowers/plans/2026-05-04-phase-1-wave-5-integration.md). MVP target = v2 demo 整体体验 functional minimum. **5 Pre-A done + 3 C.1 done + 7 C.2 done (7/13: C.2-1/2/3/4/3.5/5/6) + 1 v1.1 meta = 16 PRs done; 18 implementation PRs remaining**. Total = **31 implementation + 1 meta = 32 roster entries**. 54 plan-challenger challenges absorbed across 5 rounds (49 v1.0 + 5 v1.1 light). Per-stage MVP-judgment escape valve (D3) + handoff pack (D15). R14 discipline ✅ operative + first-test ✅ closed. Wave 4 ✅ closed 2026-05-04 by [ADR-0015](../decisions/ADR-0015-wave-4-close.md).
+**当前 wave**: **Wave 5 plan v1.2 locked** (R14 SECOND real-test 2026-05-05 via PR #70 squash `56ff476` — gatekeeper sequencing pushback "交付了但 /notes/[slug]/edit 没有" formalized via NEW row C.4-prelude minimal editor scaffold; v1.1 R14 first real-test ✅ closed via C.2-3.5 PR #65; v1.0 baseline locked at Pre-A5 PR #54). [Wave 5 plan v1.2](../superpowers/plans/2026-05-04-phase-1-wave-5-integration.md). MVP target = v2 demo 整体体验 functional minimum. **5 Pre-A + 3 C.1 + 7 C.2 (C.2-1/2/3/4/3.5/5/6) + 2 meta (v1.1 + v1.2) = 17 PRs done; 18 implementation PRs remaining + 1 NEW C.4-prelude scaffold pending**. Total = **32 implementation + 2 meta = 34 roster entries**. 59 plan-challenger challenges absorbed across 6 rounds (49 v1.0 + 5 v1.1 + 5 v1.2). Per-stage MVP-judgment escape valve (D3) + handoff pack (D15). R14 discipline ✅ operative across MULTIPLE trigger classes (defer-chain v1.1 + gatekeeper-sequencing v1.2). Wave 4 ✅ closed 2026-05-04 by [ADR-0015](../decisions/ADR-0015-wave-4-close.md).
 
-**Wave 5 PR roster** (in progress; 16 PRs done; **next = C.2-7 ADR-0014 v0.5 amendment** per Wave 5 plan v1.1 row C.2-7):
+**Wave 5 PR roster** (in progress; 17 PRs done; **next = C.4-prelude minimal editor scaffold** per Wave 5 plan v1.2 row C.4-prelude — Q4 absorbtion LOCKED scaffold BEFORE C.2-7):
 
 | PR | Squash HEAD | Stage | Subject |
 |---|---|---|---|
@@ -28,7 +28,10 @@
 | #66 | `465588e` | docs | active.md sync post C.2-3.5 + lychee fix-forward (PR #65 broken link) |
 | #67 | `2df71b6` | C.2-5 | drag/drop UX 实施 (6 of 13 Stage C.2; edge-rects + tiebreak + outline-overlay per ADR-0017 D5+D3+D4; EDGE_W=28 cross-package consumer parity; reviewer R1 PASS-WITH-RESIDUE) |
 | #68 | `2fb7900` | C.2-6 | resize UX (col-ruler + size-tooltip + COL_SNAPS snap; 7 of 13 Stage C.2; ADR-0017 D9; closed C.2-2 effectiveColSnaps gap; reviewer R1 PASS) |
-| (Stage C.2 = 13 PRs post v1.1; 7 done) | TBD | C.2 | C.2-7 ADR-0014 v0.5 amendment (next; HeavyBlockBoundary dims grid context 联动 W5-1) → C.2-8..C.2-12 |
+| #69 | `338e965` | docs | bundled active.md sync post C.2-5 + C.2-6 |
+| #70 | `56ff476` | **v1.2 amend** | **Wave 5 plan v1.1 → v1.2 R14 SECOND real-test amendment + NEW row C.4-prelude (formalize user gatekeeper sequencing pushback "交付了但 /notes/[slug]/edit 没有, 我怎么试?" → minimal editor scaffold MVP smoke-test enable; 5/5 absorbed; reviewer R1+R2 PASS; R14 discipline operative across multiple trigger classes)** |
+| (Stage C.2 = 13 PRs post v1.1; 7 done) | TBD | C.2 | C.2-7 ADR-0014 v0.5 amendment → C.2-8..C.2-12 (post-scaffold-merge per Q4 LOCK) |
+| (Stage C.4 = 6 PRs post v1.2; 0 done) | TBD | C.4 | **C.4-prelude minimal editor scaffold (NEXT; Q4 LOCK scaffold-BEFORE-C.2-7)** → C.4-1 NoteSaveAdapter interface hardening (ownership refined post Q3) → C.4-2 route + mount enhancement → C.4-3..C.4-5 |
 | (Stage C.3 = 5 PRs) | TBD | C.3 | C.3-1..5 OKLCH + Inter/JetBrains Mono → visual smoke baseline |
 | (Stage C.4 = 5 PRs) | TBD | C.4 | C.4-1..5 NoteSaveAdapter → /notes/[slug]/edit → BlockRegistry → save/load → e2e |
 
@@ -123,24 +126,43 @@ Wave 3 main pipeline PR roster (2026-05-01 → 2026-05-02, all merged via auto-m
 
 ---
 
-## 起手指引（Wave 5 implementation; Stage C.2 mid-stage 7/13 done — next = C.2-7）
+## 起手指引（Wave 5 implementation; Stage C.2 mid-stage 7/13 done — next = C.4-prelude per Q4 LOCK; C.2-7 follows）
 
-Wave 5 plan v1.1 ✅ locked. 16 PRs done (5 Pre-A + 3 C.1 + 7 C.2 + 1 v1.1 meta). R14 first real-test ✅ closed end-to-end. **Next = C.2-7 ADR-0014 v0.5 amendment (HeavyBlockBoundary dims grid context 联动 W5-1)**. Per Wave 5 plan v1.1 row C.2-7: ~150 LOC, **orchestrator-self for doc-policy ADR amendment + codex for impl**, **D2 Row 4 (ADR amendment) + Row 1 (CONTRACT sync) — Row 4 substantive D-list change WILL fire** (vs C.2-3.5 consistency-correction class).
+Wave 5 plan v1.2 ✅ locked (R14 SECOND real-test). 17 PRs done (5 Pre-A + 3 C.1 + 7 C.2 + 2 meta). R14 discipline ✅ operative across multiple trigger classes (defer-chain v1.1 + gatekeeper-sequencing v1.2). **Next = C.4-prelude minimal editor scaffold (MVP smoke-test enable)**. Per Wave 5 plan v1.2 row C.4-prelude + Q4 plan-challenger absorbtion LOCKED scaffold-BEFORE-C.2-7: ~200 LOC, codex-generic-executor, D2 row 1 (CONTRACT). Reuses what C.2-1..C.2-6 + C.2-3.5 already shipped (grid + drag + resize + mdx-bridge end-state).
 
-### C.2-7 file scope (per plan v1.1 row)
-- `docs/decisions/ADR-0014-heavy-block-boundary.md` (v0.5 Amendments § — substantive D-list change; status `proposed v0.4 → proposed v0.5`)
-- `packages/heavy-block-boundary/src/HeavyBlockBoundary.tsx` (consume W5-1 公式 from `@skb/block-foundation` `effectiveCellHeight` + `effectiveColWidth`; replace any hard-coded dimensions)
+### C.4-prelude file scope (per plan v1.2 row)
+- `apps/site/src/pages/notes/[slug]/edit.astro` (NEW; basic route mounting editor-shell)
+- `apps/site/src/components/EditorShellMount.{astro,tsx}` (NEW; minimal mount wrapper)
+- `apps/site/CONTRACT.md` (route + mount contract; minimal section)
+- `packages/editor-shell/src/save-adapter.ts` (NEW; LocalStorageAdapter MVP per ADR-0018 D8) + tests
+- 1 PR.md self
+
+### In-scope for C.4-prelude (uses C.2 already-shipped foundation)
+- `/notes/[slug]/edit` Astro route + EditorShellMount wrapper
+- editor-shell mount with grid container (C.2-4) + drag-drop layer (C.2-5) + resize layer (C.2-6)
+- LocalStorageAdapter MVP impl (per ADR-0018 D8 接口冻结)
+- Hardcoded BlockRegistry + KernelRegistry minimal subset (callout/code/markdown — enough for smoke-test)
+
+### Out-of-scope for C.4-prelude (deferred to C.4-1..C.4-5 full set)
+- palette / slash-menu / drag-handle / toolbar 完整组装 (C.4-3 scope)
+- BlockRegistry/KernelRegistry full wire (C.4-3)
+- Save/load layoutEpoch sync (C.4-4)
+- e2e playwright (C.4-5)
+- v2 visual + fonts (Stage C.3 scope)
+
+### Why ordering enables MVP (per Q4 LOCK)
+Post-C.4-prelude merge: user navigates to `/notes/<slug>/edit` → editor-shell mounts with grid+drag+resize working → load sample note (LocalStorage) → edit prose → save to LocalStorage → reload → verify content + grid intact. **Minimum viable editor experience = MVP smoke-test enabled BEFORE Stage C.3 visual + C.4 full UI assembly + C.2-7 ADR amendment**. Faster user gatekeeper feedback loop. Q4 LOCK: scaffold has NO hard dependency on C.2-7 (uses minimal hardcoded BlockRegistry callout/code/markdown — light blocks only; does NOT consume `heavyBoundaryDimensions` which v0.5 ADR-0014 amendment rewrites at C.2-7).
+
+### After C.4-prelude merges → user 烟测 + decide next (per user 时序 item 4)
+1. **Continue full C.2 sequence**: orchestrator dispatches C.2-7 ADR-0014 v0.5 amendment → C.2-8..C.2-12
+2. **Adjust scope**: user invokes R14 third time → v1.3 amendment PR (recursive R14 enforcement)
+3. **MVP-ship 提前 close**: Wave 5 close ceremony (ADR-0019) on current state
+
+### C.2-7 details (post-scaffold-merge; queued)
+- `docs/decisions/ADR-0014-heavy-block-boundary.md` (v0.5 Amendments § — substantive D-list; status `proposed v0.4 → proposed v0.5`)
+- `packages/heavy-block-boundary/src/HeavyBlockBoundary.tsx` (consume W5-1 公式 from `@skb/block-foundation` `effectiveCellHeight` + `effectiveColWidth`)
 - `packages/heavy-block-boundary/CONTRACT.md` (sister-doc-sync per ADR-0016 §502 row 1 of 4)
-- tests + 1 PR.md self
-
-### Authoritative refs for C.2-7
-- ADR-0014 v0.4 (post C.1-1 amendment; HeavyBlockBoundary plugin placeholder) — current state
-- ADR-0016 D9 (W5-1 SSR vs hydration phase strategy) + §502 row 1 of 4 (heavy-block-boundary sister-doc-sync site)
-- ADR-0017 D9 mobile 1-col view-only consistency (heavy block dims also disabled on mobile)
-- `packages/block-foundation/src/grid-math.ts` `effectiveCellHeight` + `effectiveColWidth` + `DEFAULT_GRID_GEOMETRY` (single-authority W5-1 helpers; consumed at heavy-block-boundary post C.2-7)
-- C.2-6 PR.md `## R14 self-check` cross-package consumer parity pattern (memory `feedback_cross_package_consumer_pattern.md`)
-
-**D2 Row 4 fires** for substantive D-list change. v0.4 → v0.5 increment + heavy-block-boundary dims now W5-1 derived. Per Wave 5 plan v1.1 ROW 4 门槛规则: (a) D-list/status semantics changed = HIT.
+- ~150 LOC, orchestrator-self for ADR + codex for impl, D2 Row 4 (ADR amendment) + Row 1 (CONTRACT sync) fires
 
 ### Pre-flight (next session start)
 
