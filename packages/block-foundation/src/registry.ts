@@ -1,5 +1,10 @@
 import type { ZodTypeAny, infer as ZodInfer } from 'zod';
 import type { ComponentType } from 'react';
+import type {
+  BlockGridKind,
+  BlockGridPosition,
+  RowSpanSemantic,
+} from './types';
 
 export type BlockKind = 'prose' | 'component' | 'render' | 'viz';
 
@@ -33,6 +38,21 @@ export interface BlockUIDefinition<TSchema extends ZodTypeAny = ZodTypeAny> {
   readonly uiId: string;
   readonly EditorView: ComponentType<BlockViewProps<TSchema>>;
   readonly RenderView: ComponentType<BlockViewProps<TSchema>>;
+  /**
+   * ADR-0016 D2/D10 grid default. No block-foundation runtime default;
+   * editor-shell/mdx-bridge consumers may override on block insertion.
+   */
+  readonly gridDefault?: BlockGridPosition;
+  /**
+   * ADR-0016 D3/D10 row-span semantics. Default is 'integer' for backward
+   * compatibility when omitted.
+   */
+  readonly rowSpanSemantic?: RowSpanSemantic;
+  /**
+   * ADR-0016 D10 grid serialize/parse kind. Default mirrors BlockKind;
+   * runtime mirror wiring is deferred to C.2-4.
+   */
+  readonly gridKind?: BlockGridKind;
 }
 
 export function defineCore<T extends ZodTypeAny>(
