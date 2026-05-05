@@ -5,3 +5,6 @@ export { registerKernels } from './registerKernels';
 export { saveToMdx, loadFromMdx } from './saveLoad';
 export type { SaveLoadOptions } from './saveLoad';
 export { proseExtensions } from '@skb/block-foundation';
+export { GridContainer } from './grid-container';
+export type { GridContainerProps } from './grid-container';
+export { useAutoRowSpan } from './use-auto-row-span';
