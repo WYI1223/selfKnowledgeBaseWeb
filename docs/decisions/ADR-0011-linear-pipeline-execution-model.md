@@ -55,12 +55,12 @@ ADR-0007 D5 部分缓解（codex tool 取代部分 worker），但 Wave 2 实测
 
 | # | Stage | 角色 | 执行内容 |
 |---|---|---|---|
-| 1 | PLAN | pr-writer Claude subagent | 与 orchestrator 协商 lock PR.md（D2 schema）|
-| 2 | EXECUTE | codex 5.5 specialized profile（按职能选）OR ux-ui-lead Claude subagent（仅 UI/UX）| 先写 test → 再写 impl → 自跑 vitest 全 PASS |
-| 3 | REVIEW | codex 5.5 reviewer 新 session（注入 ADR-0006 8-point + D8 staging 协议）| line-level + spec-match；issues → 返工，PASS → 进 stage 4/5 |
+| 1 | PLAN | pr-writer Claude subagent | 与 orchestrator 协商 lock PR.md（D2 schema）；UI-touch PR 必含 e2e_smoke 字段（v0.2）|
+| 2 | EXECUTE | codex 5.5 specialized profile（按职能选）OR ux-ui-lead Claude subagent（仅 UI/UX）| 先写 vitest 单元 + (UI-touch PR) Playwright spec → 再写 impl → 自跑 vitest + playwright 全 PASS（v0.2）|
+| 3 | REVIEW | codex 5.5 reviewer 新 session（注入 ADR-0006 9-point + D8 staging 协议）| line-level + spec-match；UI-touch PR 必跑 `pnpm --filter @skb/site test:visual` 验 PASS（v0.2）；issues → 返工，PASS → 进 stage 4/5 |
 | 4 | PRE-COMMIT CLAUDE | orchestrator 自己跑（同一 Claude session）| 仅 ADR-0007 D2 row 1+4 触发；防 codex 同模型 echo chamber |
 | 5 | COMMIT | reviewer codex 兼任 | 显式 git add `<文件清单>` + git diff --cached --stat + commit + push |
-| 6 | ACCEPT | pr-writer Claude subagent 第二次调用 | 检查"实际是否满足 PR.md"（scope creep / drop / 测试 case 全跑）|
+| 6 | ACCEPT | pr-writer Claude subagent 第二次调用 | 检查"实际是否满足 PR.md"（scope creep / drop / 测试 case 全跑）；UI-touch PR 必再跑 Playwright + 截图归档到 e2e_smoke[].screenshot_archive 路径（v0.2）|
 
 PR 之间**严格串行**：上一 PR 的 stage 6 完成才进下一 PR 的 stage 1。
 
@@ -86,9 +86,19 @@ acceptance:
   - <验收点 1：reviewer 用此核对>
   - <验收点 2：pr-writer ACCEPT 时核对>
 executor: codex-block-generator | codex-api-crud-builder | … | ux-ui-lead
+ui_touch: true | false       # 由 scripts/check-ui-touch.ts 自动检测；UI-touch 的 PR 必填 e2e_smoke
+e2e_smoke:                   # v0.2 amendment 起强制（仅 ui_touch=true 时必填非空，否则可省）
+  - flow: <user 行为描述>
+    target_url: <route，如 /notes/[slug]/edit>
+    assertions:
+      - <DOM/visual 断言文本>
+    playwright_spec: <文件路径:test 名，如 apps/site/src/__tests__/e2e/edit-toolbar.spec.ts:"toolbar visible">
+    screenshot_archive: docs/audits/screenshots/<phase-or-pr>-<item>.png
 ```
 
 **TDD 前置 = test_cases 字段强制非空**。executor 拿到 PR.md 后**先写 test → 再写 impl → 自跑 vitest 全 PASS** 才进 review。
+
+**UI-touch PR 必含 E2E Playwright spec**（v0.2 amendment 起强制；详见 D9）。
 
 **Single-source-of-truth 强制条款 (v0.1.1; Wave 3 Stage A retrospective)**：
 
@@ -199,6 +209,103 @@ typo）/ A2=1 / A3=3（5/3 倒装 + 测试计数 + defensive-copy 残段）/ A4=
 - 每 PR Claude touch points ≤ 3（plan + accept + 可选 D2 pre-commit review）
 - forward-fix rate 目标 ≤ 15%（Wave 2 baseline 24%）
 - WE-001 / WE-009 / WE-011 类 hazard 零复发（PR 串行 = 结构性消除）
+- **D9 监控指标 (v0.2 amendment)**：UI-touch PR 的 Playwright spec coverage = 100%；user-smoke FAIL after agent ACCEPT PASS = 0% 目标（agent 失职阈值；任一 FAIL 触发 R-round 重做 + 加 spec 覆盖该 case）
+
+### D9 — Product Experience Quality Gate (v0.2 amendment, 2026-05-XX)
+
+#### D9.1 — 触发条件：UI-touch PR
+
+PR diff 触动以下任一 path pattern = `ui_touch: true`：
+
+```
+apps/site/src/pages/**           # 页面路由
+apps/site/src/components/**      # 站点级组件
+apps/site/src/styles/**          # 站点级样式
+packages/*/src/ui-default/**     # 任一 block / editor sub-module 的视觉层
+packages/heavy-block-boundary/src/**  # heavy block boundary 视觉
+packages/editor-shell/src/**     # editor 主壳（任何文件改动；含逻辑 + 视觉）
+packages/design-tokens/**        # design tokens（影响所有 UI consumer）
+```
+
+由 `scripts/check-ui-touch.ts` 自动检测 PR diff 文件路径，set `ui_touch: true|false` 进 PR.md 元数据。pr-writer subagent 在 PLAN stage 据此决定 e2e_smoke 字段是否必填。
+
+#### D9.2 — UI-touch PR 强制 E2E Playwright spec
+
+D2 schema `e2e_smoke` 字段在 `ui_touch: true` 时**强制非空**。每个 e2e_smoke 条目对应一条 user-visible flow，含：
+
+- `flow`: 一句话描述 user 实际行为（"打开 edit 页面看到 toolbar"）
+- `target_url`: 路由路径
+- `assertions`: DOM / visual 断言列表（playwright `expect()` 形态）
+- `playwright_spec`: spec 文件路径 + test name 引用
+- `screenshot_archive`: 截图归档路径（D9.5 强制）
+
+#### D9.3 — D1 stage 责任修订（重申，与 D1 stage 表同步）
+
+| stage | UI-touch PR 责任增量 |
+|---|---|
+| 2 EXECUTE | 先写 Playwright spec（TDD-first 应用到 E2E 层级）→ 再写 impl → 自跑 `pnpm --filter @skb/site test:visual` 全 PASS |
+| 3 REVIEW | codex-pr-reviewer-55 必跑 Playwright spec PASS 验证；FAIL = R-round（不接受"vitest unit 过即可" 论证） |
+| 6 ACCEPT | pr-writer subagent 必再跑 Playwright + **生成截图归档到 `docs/audits/screenshots/`**；spec FAIL 或截图 missing = R-round |
+
+#### D9.4 — 责任分工（agent vs user）
+
+**agent (orchestrator + codex executor + reviewer + pr-writer subagent) = 产品体验 gate**：
+- Playwright spec PASS + 截图归档 + self-verified report 全过才宣告"ready for user verify"
+- **禁止以"PR.md acceptance 全过 = ready" 形态绕过 E2E 验证**
+
+**user (gatekeeper) = 二次确认 gate**：
+- 浏览器手动烟测决定 MVP-ready
+- 若 user 烟测 FAIL but agent 报 PASS = **agent 失职**，该 PR R-round 重做 + 必加 Playwright spec 覆盖该 missed case（防止 agent regressing 到 only-unit-test 状态）
+
+#### D9.5 — 截图归档规范
+
+每个 e2e_smoke 条目必生成截图作 **agent self-verified evidence + user verification 对照基准**：
+
+```
+docs/audits/screenshots/<phase-or-pr-id>-<item-slug>.png
+```
+
+例：`docs/audits/screenshots/wave-5-phase-1-edit-toolbar-visible.png`
+
+截图文件 ≥ 5KB（防 placeholder / blank screenshot 漏验）。CI gate `scripts/check-screenshot-archive.ts` 验文件存在 + 大小 ≥ 5KB。
+
+#### D9.6 — CI gate
+
+`scripts/check-e2e-coverage.ts` + `scripts/check-screenshot-archive.ts` 在 `.github/workflows/ci.yml` 加新 job `e2e-coverage-check`：
+
+- PR diff 触发 UI-touch 检测
+- 若 `ui_touch=true` 但 PR.md 缺 `e2e_smoke` 字段或字段为空 → exit 1（merge block）
+- 若 `e2e_smoke[].playwright_spec` 引用的 spec 文件不存在 → exit 1
+- 若 `e2e_smoke[].screenshot_archive` 引用的截图不存在或 < 5KB → exit 1
+
+required check 进 branch protection，merge gate 强制。
+
+#### D9.7 — 实证依据 (Wave 5 C.4-prelude 失职案例)
+
+Wave 5 v1.2 R14 SECOND amendment 引入 row C.4-prelude（minimal editor scaffold）。PR #72 (squash 4f49be0) 实施完整：route + EditorShellMount + LocalStorageAdapter，所有 vitest unit + jsdom 测试 PASS，pr-writer ACCEPT 23/23 acceptance bullets PASS。orchestrator 报告 "MVP 体验就绪"。
+
+但 user 烟测发现：editor 页面无 toolbar / 无 slash menu / 无 palette / 无 save indicator / 无 Edit Mode 视觉标识 = "看不到任何一点进步"。**所有 vitest 测试 PASS 不等于产品体验 PASS**。
+
+根因：
+1. v1.2 amendment scope 把 toolbar/slash/palette mount 都标 OUT-OF-SCOPE 留 C.4 完整版
+2. PR.md 仅含 vitest unit 测试，**无任何端到端 Playwright spec 验证 user 真能用编辑器**
+3. agent 报"PASS"基于"代码符合 PR.md 字面",未基于"user 真能编辑"
+
+D9 v0.2 amendment 通过 schema 强制 + CI gate enforce + 责任分工 explicit 防止此类 agent-claim-PASS-but-user-FAIL 复发。Wave 5 后续所有 UI-touch PR 适用。
+
+### D10 — 防 prompt-patching anti-pattern
+
+gatekeeper 历史教训（Wave 5 实证）：发现新流程问题时**不得仅在 prompt / memory entry 修补**。所有结构性 process 调整必走以下渠道之一：
+
+1. **本 ADR amendment**（D1-D9 范围内的执行模型修订）
+2. **新 ADR**（跨 ADR-0011 范围的架构决策）
+3. **agent-contract.md profile 描述更新**（agent 责任修订）+ `pnpm generate:configs` 同步下游
+4. **CI gate / pre-commit hook 脚本**（机械 enforce）
+5. **memory entry**（仅作上述任一的 supplement，不作主修补途径）
+
+prompt-patching is forbidden as primary remediation —— prompt 是 session-scoped artifact，跨 session 不持久；任何只改 prompt 的修复 = 必然降级 + 必然复发。
+
+实证：Wave 5 C.4-prelude（v1.2 amendment scope 错）+ user 烟测产品体验失败 → gatekeeper 起初提议"修补下次的 prompt 加 Playwright 要求" → user 否决 + 要求 ADR-level 落地 → 本 v0.2 amendment 是正确响应。codify 为 Wave 5+ gatekeeper-self discipline。
 
 ## Consequences
 
@@ -260,6 +367,35 @@ the discipline scales.
 
 非破坏性 / 向后兼容：D1 / D3 / D4 / D5 / D6 / D7 / D8 不变。仅 D2 schema 加
 新强制条款 + EXECUTE 矛盾更新协议；既有 PR.md（Pre-A1 / A1-A5）回溯不必重写。
+
+### v0.2 (2026-05-XX; Wave 5 C.4-prelude 失职 → gatekeeper user push-back)
+
+新增 D9 (Product Experience Quality Gate) + D10 (anti prompt-patching)。
+D2 schema 加 `ui_touch` + `e2e_smoke` 字段。D1 stage 表 stages 2/3/6 加
+UI-touch PR 的 Playwright 责任。D8 监控指标加 user-smoke FAIL after agent
+ACCEPT PASS 阈值 = 0%。
+
+强制起点：本 amend PR 合 main 起，所有后续 UI-touch PR（per D9.1 path
+patterns）适用 D9 全套强制。CI gate `scripts/check-e2e-coverage.ts` +
+`scripts/check-screenshot-archive.ts` merge-block 形态 enforce。
+
+触发：Wave 5 C.4-prelude (PR #72) 单元测试全过 / pr-writer ACCEPT 23/23 PASS
+/ agent 报"MVP 体验就绪"，但 user 烟测发现 editor 页面 toolbar / slash menu /
+palette / save indicator / Edit Mode 视觉标识全无 = "看不到任何一点进步"。
+所有 vitest 测试 PASS 不等于产品体验 PASS。详见 D9.7。
+
+D10 (anti prompt-patching) 是 gatekeeper-self 教训：发现流程问题时不得仅
+在 prompt / memory entry 修补；必须走 ADR amendment / agent-contract.md
+profile 更新 / CI gate 脚本之一。prompt 是 session-scoped artifact，跨
+session 不持久；只改 prompt = 必然降级 + 必然复发。
+
+非破坏性 / 向后兼容：D1-D8 段语义不变；D2 schema 仅追加字段（既有 PR.md 回溯
+不必重写，因 ui_touch / e2e_smoke 仅 v0.2 起 enforce）。CI gate 仅 enforce
+v0.2 amendment merge 之后开 PR；v0.2 之前 merged PR 不追溯。
+
+受益面：Wave 5 v1.3 起所有 UI-touch PR + Wave 6+ 全部 UI-touch PR。Wave 5
+非 UI-touch PR（如 ADR amendment doc / scripts pure-logic / etc.）不适用
+（CI gate 自动 skip via ui_touch=false）。
 
 ## Related
 

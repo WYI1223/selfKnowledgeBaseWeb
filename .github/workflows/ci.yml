@@ -97,3 +97,27 @@ jobs:
       - run: pnpm exec playwright install --with-deps chromium
         working-directory: apps/site
       - run: pnpm --filter @skb/site test:visual
+
+  # ADR-0011 D9 + ADR-0006 item 9 (v0.2 amendment) enforcement: UI-touch PRs
+  # MUST declare ui_touch + e2e_smoke in PR.md and reference existing
+  # Playwright spec files + screenshot archives ≥ 5KB. Non-UI-touch PRs skip
+  # automatically (scripts return PASS without enforcement).
+  e2e-coverage-check:
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # need full history for git diff origin/main...HEAD
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Detect UI-touch
+        run: pnpm exec tsx scripts/check-ui-touch.ts --base origin/${{ github.base_ref }}
+      - name: Validate e2e_smoke coverage (ADR-0011 D9.2 + D9.6)
+        run: pnpm exec tsx scripts/check-e2e-coverage.ts --base origin/${{ github.base_ref }}
+      - name: Validate screenshot archive (ADR-0011 D9.5 + D9.6)
+        run: pnpm exec tsx scripts/check-screenshot-archive.ts --base origin/${{ github.base_ref }}

@@ -43,9 +43,9 @@ These three habits collectively define the process rule below.
 
 ## Decision
 
-Adopt an **8-point asymmetry-audit checklist** as a mandatory part of `code-reviewer` (Codex 5.3-spark, default cheap) and `pr-gate` (Codex 5.5, deep) review prompts. Reviewers MUST work through every applicable item before declaring PASS.
+Adopt an **9-point asymmetry-audit checklist** (8 from v0.1 + 1 new at v0.2 amendment 2026-05-XX) as a mandatory part of `codex-pr-reviewer-55` (Wave 3+ default reviewer per ADR-0011 D6) review prompts. Reviewers MUST work through every applicable item before declaring PASS. (Pre-Wave-3 `code-reviewer` / `pr-gate` profile prompts are deprecated per ADR-0011 D6.)
 
-### The 8 items
+### The 9 items
 
 1. **Field/attribute audit**: After adding a field to a data shape (Zod schema, Pydantic model, TS interface, mdast attrs, etc.), audit every comparator / equality / serialization / canonicalization function that handles this shape. (Wave 1 evidence: instance #4 — `marksEqual` link branch missed `title` when serialize emitted it.)
 
@@ -87,6 +87,10 @@ Adopt an **8-point asymmetry-audit checklist** as a mandatory part of `code-revi
 
    **Wave 1 evidence**: **instance #8** — ADR-0006 v1 commit codified reviewer-prompt mandates but did not update `agent-contract.md` / regenerate `.claude/agents/code-reviewer.md` / regenerate `.claude/agents/pr-gate.md` / cross-link `team-operations.md` / regenerate `docs/review-checklist.md`; pr-gate caught the dogfood failure during R1 review of the close-ceremony bundle, forcing a v2 fix. **instance #12 (sub-form A — pre-regeneration omission)** — v5 bundle updated authority files (`agent-contract.md`, generator code, `team-operations.md` cross-link) but had not run the generator at all post-edit; the 3 regenerated outputs were stale at HEAD content; pr-gate caught this during R2 review, forcing a v6 fix. **instance #12 (sub-form B — staging-vs-working-tree confusion)** — v6 bundle ran the generator (so working tree had new content) but did NOT `git add` the regenerated outputs; the git **index** still held HEAD blob hashes for the 3 generated files; orchestrator confused `git status --short` "M" prefix (working-tree-vs-index) with index-vs-HEAD; pr-gate caught this via `git ls-files --stage` blob-hash comparison during R3 review, forcing the v7 fix that explicitly stages with `git add` + verifies via `git diff --cached`. **instance #12 (sub-form C — lockfile is a generated-from-authority artifact)** — Wave 1 close ceremony commit `e15ec36` ("fix(deps): commit pnpm-lock.yaml for @tailwindcss/typography (lockfile drift)"): the design-tokens erratum (commit `fdc86a8`) added the `@tailwindcss/typography` dependency to `package.json` but did not stage the regenerated `pnpm-lock.yaml`; CI install used the pre-update lockfile, drifted against the new `package.json`, and failed `pnpm install --frozen-lockfile`. Resolution: commit `e15ec36` staged the lockfile separately. Lesson codified: when the authority is `package.json` (any dependency add / remove / version bump), `pnpm-lock.yaml` is the consumer-side generated artifact and must ride the same bundle — the class equivalence to `.claude/agents/*.md` regeneration is exact (deterministic derive + git-index staging required). The four sub-forms of the same item #8 class — pre-regeneration omission, post-regeneration commit-staging confusion, conceptually-correct-but-operationally-incomplete fix, AND lockfile-as-generated-artifact — together motivate the explicit operational sequence and `git diff --cached` canonical verification command codified above.
 
+9. **UI-touch + E2E spec audit (v0.2 amendment 2026-05-XX, ADR-0011 D9)**: When PR diff touches user-facing UI surfaces (per ADR-0011 D9.1 path patterns: `apps/site/src/{pages,components,styles}/**`, `packages/*/src/ui-default/**`, `packages/heavy-block-boundary/src/**`, `packages/editor-shell/src/**`, `packages/design-tokens/**`), reviewer MUST verify: (a) PR.md `ui_touch: true` + `e2e_smoke` field non-empty, (b) each `e2e_smoke` entry has corresponding Playwright spec file existing + test name resolvable, (c) `pnpm --filter @skb/site test:visual` PASSES locally during review, (d) referenced `screenshot_archive` path exists with file size ≥ 5KB. (Wave 5 evidence: C.4-prelude PR #72 — vitest unit + jsdom all PASS + pr-writer ACCEPT 23/23 PASS, but editor page had no toolbar/slash/palette/save-indicator/Edit-Mode visual; user smoke test discovered "看不到任何一点进步"; root cause = no E2E spec validating user-visible affordances; codified ADR-0011 D9 + this 9th asymmetry class.)
+
+   The asymmetry: **"vitest unit PASS" vs "production user-visible behavior PASS"** is the load-bearing pair. Wave 5 R22 forward-fix two-class classification (impl-defect vs PR.md drift) was insufficient; D9.7 evidence demonstrates a third class — **product-experience-defect** — that vitest cannot catch. CI gate `scripts/check-e2e-coverage.ts` mechanically enforces (a)+(b); reviewer manual verifies (c)+(d).
+
 ### Wave 2 prep notes (forward-compatibility application)
 
 The 8 items have specific Wave 2 trip-hazards already identified by Wave 1's review record:
@@ -123,11 +127,12 @@ The 8 items have specific Wave 2 trip-hazards already identified by Wave 1's rev
 
 ### Reviewer prompt updates
 
-`code-reviewer` and `pr-gate` profile prompts MUST be updated to:
+`codex-pr-reviewer-55` (Wave 3+ default reviewer per ADR-0011 D6) profile prompt MUST be updated to:
 
-1. State the 8-point checklist verbatim (or by reference to this ADR)
-2. Require the reviewer's verdict structure to include "asymmetry-audit applied: items {1..8} verdicts: ..."
+1. State the 9-point checklist verbatim (or by reference to this ADR)
+2. Require the reviewer's verdict structure to include "asymmetry-audit applied: items {1..9} verdicts: ..."
 3. Explicitly mark FAIL if any applicable item is left un-audited
+4. For item #9 (v0.2): if PR.md `ui_touch: true`, MUST run `pnpm --filter @skb/site test:visual` and verify PASS before declaring overall PASS verdict
 
 `docs/runbooks/team-operations.md` §"角色与触发器" Tier 2 reviewer rows should cross-link to this ADR.
 
@@ -138,6 +143,18 @@ Worker `ready-for-review` reports SHOULD include a brief asymmetry-audit summary
 ### Wave 1 retroactive
 
 This ADR is **forward-applicable**. Wave 1 PRs that already shipped under earlier review without this checklist remain valid; the empirical instances they revealed are exactly what grounded this ADR. No retroactive re-review required.
+
+## Amendments
+
+### v0.2 (2026-05-XX; Wave 5 C.4-prelude product-experience-defect 失职)
+
+新增第 9 项 **UI-touch + E2E spec audit**（与 ADR-0011 D9 配套）。codify 第三类 forward-fix：**product-experience-defect**（之外原 R22 两类：impl-defect + PR.md drift）。CI gate `scripts/check-e2e-coverage.ts` + `scripts/check-screenshot-archive.ts` 机械 enforce。
+
+强制起点：本 amend PR 合 main 起，所有后续 UI-touch PR（per ADR-0011 D9.1 path patterns）适用。Wave 5 v1.3+ 全套 UI-touch PR 必跑。
+
+非破坏性 / 向后兼容：items 1-8 不变；新加 item 9 仅 enforce 在 UI-touch PR；非 UI-touch PR 自动 skip item 9（CI gate via `ui_touch: false`）。
+
+实证依据：详见 ADR-0011 D9.7。Wave 5 PR #72 vitest unit / jsdom / pr-writer ACCEPT 全 PASS 但 user 烟测无 toolbar/slash/palette/save-indicator/Edit-Mode 任一 affordance = "看不到任何一点进步"。事后 codify。
 
 ## Related
 
