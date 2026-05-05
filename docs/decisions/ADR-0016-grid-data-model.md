@@ -504,7 +504,7 @@ ADR-0016 D9 `block-foundation/CONTRACT.md` 锁 W5-1 invariant 主权威; **4 sis
 | Sister CONTRACT | Stage C.2 实施 PR scope | Required forward-pointer 内容 |
 |---|---|---|
 | `packages/heavy-block-boundary/CONTRACT.md` (assumed exists per Wave 4 ADR-0014 W4-1 sister) | ADR-0014 v0.5 amendment PR | "W5-1 联动 colSpan/rowSpan: heavyBoundaryDimensions per-kind formula derive from W5-1; SSR fallback 与 hydration 切换路径见 ADR-0016 D9" |
-| `packages/mdx-bridge/CONTRACT.md` | mdx-bridge col/row/colSpan/rowSpan serialize PR (Stage C.2 D7) | "MDX serialize 字段 col/row/colSpan/rowSpan per ADR-0016 D7; markdown rowSpan='auto' 不写 不对称 per D3+D4 + proseGridDefaults D10" |
+| `packages/mdx-bridge/CONTRACT.md` | C.2-1 mdx-bridge serialize PR (transitional defensive defaults) + **C.2-3.5 hard-throw flip PR** (per Wave 5 plan v1.1 R14 amendment 2026-05-05; transition removal + ADR-0016 D7 end-state lock) | "MDX serialize 字段 col/row/colSpan/rowSpan per ADR-0016 D7; markdown rowSpan='auto' 不写 不对称 per D3+D4 + proseGridDefaults D10; C.2-1 → C.2-3.5 transition documented per Wave 5 plan v1.1 amendment (ADR-0015 R14 first real-test enforcement)" |
 | `apps/site/CONTRACT.md` | apps/site Astro renderer grid layout PR (Stage C.2 D8) | "Astro renderer `.skb-grid` container 渲染规则 per ADR-0016 D8; `@media` Responsive 12/6/1 per D5 + 转场态 FSM" |
 | `packages/editor-shell/CONTRACT.md` (assumed exists; create if NOT) | editor-shell grid 集成 PR (Stage C.2) | "editor-shell layoutReducer + layoutEpoch single-source mutation per ADR-0016 D12; 冲突仲裁规则 per 权威矩阵 section" |
 
