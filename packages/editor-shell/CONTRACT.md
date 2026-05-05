@@ -57,6 +57,38 @@ editor surface. Closes the "editor-shell composition" deferral from
 - `SaveLoadOptions { blockRegistry?: BlockRegistry }` — public options type
   for the per-call BlockRegistry injection pattern. Threading lands in B1.
 
+### NoteSaveAdapter (Wave 5; MVP shipped at C.4-prelude)
+
+ADR-0018 D8 lines 339-451 are the canonical interface authority for the
+C.4-prelude save-path public surface:
+[ADR-0018 D8](../../docs/decisions/ADR-0018-v2-visual-migration.md).
+
+Public exports added by the MVP scaffold:
+
+- `NoteSaveAdapter` — interface exposing `slug`, `load()`, and `save(state)`.
+- `NoteState` — interface carrying `mdxSource`, optional `tiptapState`,
+  `lastModified`, and consumer-incremented `version`.
+- `ReadonlyJSONValue` — recursive read-only JSON value type for optional
+  same-session Tiptap cache data.
+- `LocalStorageAdapter` — Wave 5 MVP implementation of `NoteSaveAdapter`.
+
+Storage semantics:
+
+- See sister-doc:
+  [apps/site/CONTRACT.md § Edit route (Wave 5)](../../apps/site/CONTRACT.md).
+- localStorage key prefix: `skb-note:{slug}` per ADR-0018 D8 lines 454-455.
+- `PER_NOTE_MAX_BYTES = 2 MB`; oversized serialized states return
+  `{ ok: false, error }` instead of writing.
+- `AGGREGATE_WARN_BYTES = 5 MB`; aggregate `skb-note:*` storage above this
+  threshold emits a `console.warn` but does not block the save.
+- Corrupted JSON and localStorage `SecurityError` during load return `null`
+  with a warning. `QuotaExceededError` and `SecurityError` during save return
+  `{ ok: false, error }`.
+
+**C.4-1 hardens this contract** (W5-2 invariant promotion + adapter contract
+test suite per Wave 5 plan v1.2 Q3 ownership boundary). C.4-prelude only ships
+MVP impl + this minimal doc forward-pointer.
+
 The component does NOT include a `'use client'` pragma — consumers (Stage C
 apps/site) decide the client/server boundary at integration time.
 
@@ -276,7 +308,7 @@ saveLoad public API is accepted-but-unused until B1 threads it through.
 
 [ADR-0008 D1](../../docs/decisions/ADR-0008-wave-2-entry-policies.md) dead-dep
 policy is satisfied at A5 by construction: every declared `@skb/*` workspace
-dep has at least one `from '@skb/<pkg>'` source import. The 13 declared deps
+dep has at least one `from '@skb/{pkg}'` source import. The 13 declared deps
 + 13 source imports (across `registerBlocks.ts` / `registerKernels.ts` /
 `saveLoad.ts` / `index.ts`) + 13 tsconfig references hold three-way exact-match
 symmetry.
@@ -289,15 +321,15 @@ symmetry.
   package's `XxxUiDefault` is typed
   `BlockUIDefinition<typeof XxxCore.propsSchema>` — a NARROW schema
   via `defineUI`'s generic. The narrow schema's
-  `EditorView`/`RenderView` is `ComponentType<BlockViewProps<NarrowSchema>>`,
+  `EditorView`/`RenderView` is `ComponentType<BlockViewProps&lt;NarrowSchema&gt;>`,
   which is NOT assignable to the registry's wider
-  `ComponentType<BlockViewProps<ZodTypeAny>>` due to ComponentType
+  `ComponentType<BlockViewProps&lt;ZodTypeAny&gt;>` due to ComponentType
   contravariance. The cast collapses the variance gap. ESLint's
   `no-unnecessary-type-assertion` does NOT flag these casts because
   the assertion is genuinely required by tsc.
 - **3 without cast** (jupyter / nn-viz / agent-flow): each package's
   `XxxUiDefault` resolves through `defineUI` with a wider component
-  type signature that already accepts `BlockViewProps<ZodTypeAny>`
+  type signature that already accepts `BlockViewProps&lt;ZodTypeAny&gt;`
   without contravariance issue (verified at A3 EXECUTE 2026-05-01;
   tsc accepts the direct registration). Adding the cast here would
   be a no-op; ESLint's `no-unnecessary-type-assertion` would flag it.

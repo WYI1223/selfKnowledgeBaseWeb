@@ -105,6 +105,36 @@
   blocks while the grid stays outside, and ADR-0017 D11 is the downstream visual
   feedback scope referenced by the grid architecture.
 
+## Edit route (Wave 5)
+
+- Route surface: `/notes/{slug}/edit` renders the C.4-prelude editor mount for
+  each non-draft note slug. It coexists with the read-only `/notes/{slug}`
+  catch-all route at `src/pages/notes/[...slug].astro`; the edit route lives at
+  `src/pages/notes/[...slug]/edit.astro` so nested slugs render canonical
+  unescaped paths.
+- Mount component: `src/pages/notes/[...slug]/edit.astro` imports
+  `src/components/EditorShellMount.astro`, which mounts
+  `EditorShellMount.tsx` as a React island with `client:only="react"`. This
+  avoids SSR for the Tiptap-dependent editor surface and passes the note body as
+  `initialMdx` for first-visit edits before localStorage has a saved state.
+- Persistence: the island uses `LocalStorageAdapter` from the
+  `@skb/editor-shell` save-adapter public surface per
+  [ADR-0018 D8](../../docs/decisions/ADR-0018-v2-visual-migration.md). The
+  localStorage key prefix is `skb-note:{slug}`, distinct from the
+  design-tokens `skb-theme` key.
+- See sister-doc:
+  [packages/editor-shell/CONTRACT.md § NoteSaveAdapter (Wave 5; MVP shipped at C.4-prelude)](../../packages/editor-shell/CONTRACT.md).
+- Block registry: `registerBlocks` from `@skb/editor-shell` registers all 8
+  Wave 2 block definitions. The 3 heavy blocks render the ADR-0014 v0.4
+  plugin-placeholder tier, so the C.4-prelude mount may register them without
+  loading real heavy runtimes.
+- Save trigger: the island uses an 800ms `setTimeout` debounce around
+  `saveToMdx` and `LocalStorageAdapter.save()`. `layoutEpoch` synchronization
+  is deferred to C.4-4 per Wave 5 plan v1.2.
+- Forward pointer: full UI assembly and e2e coverage land across C.4-1 through
+  C.4-5; v2 visual identity lands at Stage C.3. ADR-0018 D8 remains the
+  save-path interface freeze for this route.
+
 ## Invariants
 
 - **Static build only** (spec §1.8 constraint #3): the project must not introduce SSR; `astro build` outputs prerendered HTML.

@@ -1,0 +1,2000 @@
+Reading additional input from stdin...
+OpenAI Codex v0.125.0 (research preview)
+--------
+workdir: /home/weiyi/selfKnowledgeBaseWeb
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: danger-full-access
+reasoning effort: xhigh
+reasoning summaries: none
+session id: 019df9e4-6bf9-7423-8577-b10b2da47d85
+--------
+user
+You are the D1 stage-3 REVIEWER R2 (round-2 verification) for Wave 5 C.4-prelude. Your R1 review FAILED with 3 BLOCKER + 5 MAJOR + 1 MINOR. Orchestrator + executor codex addressed each. Verify the fixes.
+
+# Inputs
+
+- **R1 review** (canonical reference): `/home/weiyi/selfKnowledgeBaseWeb/docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt` lines 4117-4135 list the 9 R1 findings.
+- **R2 fix log**: `/home/weiyi/selfKnowledgeBaseWeb/docs/audits/codex-runs/2026-05-05-c4-prelude-execute-r2.txt` (head -2000 archive of the fix run).
+- **Current branch state** = `git diff` + untracked files. The branch `wave-5-main/C.4-prelude-editor-scaffold` is at the HEAD of all R1+R2 work; no commits yet (commit happens stage 5).
+- **PR.md** (orchestrator updated AC#1 + AC#21 + whitelist item 1 between R1 and R2): `/home/weiyi/selfKnowledgeBaseWeb/docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md`. Whitelist now 11 files; item 1 is `apps/site/src/pages/notes/[...slug]/edit.astro` (rest-route shape, supersedes original `[slug]/edit.astro`).
+
+# Findings to verify (exact pass/fail per finding)
+
+For each R1 finding, verify the fix landed + report PASS or REGRESSION:
+
+## R1 BLOCKER 1 (initialMdx prop)
+- Verify `apps/site/src/pages/notes/[...slug]/edit.astro` passes `initialMdx={note.body ?? ""}` to `<EditorShellMount>`.
+- Verify `apps/site/src/components/EditorShellMount.astro` accepts + forwards `initialMdx` prop.
+- Verify `apps/site/src/components/EditorShellMount.tsx` accepts `initialMdx?: string` prop and uses `state?.mdxSource ?? props.initialMdx` in the `onCreate` handler.
+
+## R1 BLOCKER 2 (file rename + drop encodeURIComponent)
+- Verify file is at `apps/site/src/pages/notes/[...slug]/edit.astro` (rest route).
+- Verify `apps/site/src/pages/notes/[slug]/edit.astro` (single-segment) is DELETED.
+- Verify NO `encodeURIComponent` call in the new file.
+- Verify `pnpm --filter=@skb/site build` produces canonical paths under `dist/notes/__test_cjk__/laptop/edit/index.html` (NOT `__test_cjk__%2Flaptop`). Run the find command yourself.
+
+## R1 BLOCKER 3 (D8 byte-equal save-adapter.ts)
+- Verify NO helper functions remain (`isNamedStorageError`, `isStorageCode`, `isRecord`, `aggregateNoteBytes`).
+- Verify inline `e instanceof DOMException && e.name === "X"` checks per ADR-0018 D8 lines 408, 433, 437.
+- Verify Phase 2+ extension comment block matches D8 lines 375-382 verbatim modulo JSDoc rewording (7-line block: AbortSignal description + timeout description + onProgress description + (2) subscribe + Real-time collaborative + Wave 5 NOT include either + ADR-0019+ amendment line).
+- Verify aggregate scan uses D8 line 423-426 verbatim shape: `Object.keys(localStorage).filter(k => k.startsWith("skb-note:")).reduce(...)`.
+- Acceptance: `await Promise.resolve()` lint stub + `serialized.length` check are documented one-line deviations from D8 verbatim — orchestrator pre-cleared as the minimum needed for ESLint require-await + ADR-0018 D8 freeze respect respectively.
+
+## R1 MAJOR 4 (debounce 800ms)
+- Verify `apps/site/src/components/EditorShellMount.tsx` `setTimeout(..., 800)` (NOT 500).
+
+## R1 MAJOR 5 (autolink hazards)
+- Verify zero matches for `grep -nE "\`[^\`]*<\w+>[^\`]*\`" apps/site/CONTRACT.md packages/editor-shell/CONTRACT.md` (excluding fenced code blocks). Note: `grep` will find autolink patterns but a tag like `<GridContainer>` inside a fenced ```jsx``` block is NOT scanned by lychee. Distinguish carefully.
+
+## R1 MAJOR 6 (sister-doc cross-references)
+- Verify `apps/site/CONTRACT.md` `## Edit route (Wave 5)` section contains a Markdown link to `packages/editor-shell/CONTRACT.md § NoteSaveAdapter`.
+- Verify `packages/editor-shell/CONTRACT.md` `### NoteSaveAdapter (Wave 5; MVP shipped at C.4-prelude)` subsection contains a Markdown link to `apps/site/CONTRACT.md § Edit route (Wave 5)`.
+
+## R1 MAJOR 7 (PR.md AC#21 stale)
+- Verify PR.md `## acceptance` AC#21 has been updated to reflect 2 NEW workspace deps in `apps/site/package.json` (orchestrator did this between R1 and R2; verify the prose now says "2 NEW workspace deps added", NOT "NO new dependency added"). The orchestrator update is at `docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md` lines around 432.
+
+## R1 MAJOR 8 (TextEncoder byte-length DEFERRED)
+- Per orchestrator decision (recorded in R2 fix dispatch): keep `serialized.length` per ADR-0018 D8 freeze; document limitation as known + invite future ADR amendment. Verify `save-adapter.ts` has a one-line JSDoc comment near the PER_NOTE_MAX_BYTES check noting "non-ASCII content uses UTF-16 char count via .length per ADR-0018 D8 freeze" or equivalent.
+
+## R1 MINOR 9 (lazy-guard useRef adapter)
+- Verify `EditorShellMount.tsx` uses `useRef<LocalStorageAdapter | null>(null)` + lazy guard pattern (`if (adapterRef.current === null || adapterRef.current.slug !== slug) { adapterRef.current = new LocalStorageAdapter(slug); }`).
+
+# Out-of-scope drift to flag (NEW in R2 only)
+
+The R2 fix touched some pre-existing prose in `packages/editor-shell/CONTRACT.md` outside the new NoteSaveAdapter subsection (changing `<NarrowSchema>` to `&lt;NarrowSchema&gt;`, etc.) at lines ~310-330. Flag this:
+- ASSESS: is this a pre-existing autolink hazard that lychee in HEAD 722bbb0 was already passing or failing on? If passing already, the R2 defensive escape is scope creep (not strictly within the C.4-prelude charter).
+- If you classify it as scope creep: flag as MINOR or POLISH; orchestrator can revert at PRE-COMMIT or ACCEPT pre-emptively.
+- If lychee in HEAD was actually failing on those existing patterns: classify as PASS-WITH-RESIDUE acceptable defensive cleanup.
+
+# Required output
+
+## Verdict
+PASS or PASS-WITH-RESIDUE or FAIL.
+
+## R1 findings disposition
+For each of the 9 R1 findings: PASS / REGRESSION / DEFERRED-PER-ORCHESTRATOR.
+
+## NEW R2 findings (if any)
+List + severity. Particularly the scope-adjacent edits to existing CONTRACT.md prose noted above.
+
+## Final
+PASS = no BLOCKER + no REGRESSION + at most 2 MAJOR + scope-adjacent edits classified.
+PASS-WITH-RESIDUE = same + some POLISH/MINOR documented.
+FAIL = any BLOCKER OR REGRESSION OR > 2 MAJOR.
+
+Recommend next step (stage 4 PRE-COMMIT CLAUDE OR another R3 fix dispatch).
+codex
+I’m using `superpowers:using-superpowers` because this session requires skill discovery before work. Then I’ll do the R2 review as a read-only verifier and run the requested build/find checks.
+exec
+/bin/bash -lc "sed -n '1,220p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/82fd64bc/skills/using-superpowers/SKILL.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+---
+name: using-superpowers
+description: Use when starting any conversation - establishes how to find and use skills, requiring Skill tool invocation before ANY response including clarifying questions
+---
+
+<SUBAGENT-STOP>
+If you were dispatched as a subagent to execute a specific task, skip this skill.
+</SUBAGENT-STOP>
+
+<EXTREMELY-IMPORTANT>
+If you think there is even a 1% chance a skill might apply to what you are doing, you ABSOLUTELY MUST invoke the skill.
+
+IF A SKILL APPLIES TO YOUR TASK, YOU DO NOT HAVE A CHOICE. YOU MUST USE IT.
+
+This is not negotiable. This is not optional. You cannot rationalize your way out of this.
+</EXTREMELY-IMPORTANT>
+
+## Instruction Priority
+
+Superpowers skills override default system prompt behavior, but **user instructions always take precedence**:
+
+1. **User's explicit instructions** (AGENTS.md, GEMINI.md, direct requests) — highest priority
+2. **Superpowers skills** — override default system behavior where they conflict
+3. **Default system prompt** — lowest priority
+
+If AGENTS.md or GEMINI.md says "don't use TDD" and a skill says "always use TDD," follow the user's instructions. The user is in control.
+
+## How to Access Skills
+
+**In Codex:** Use the `Skill` tool. When you invoke a skill, its content is loaded and presented to you—follow it directly. Never use the Read tool on skill files.
+
+**In Copilot CLI:** Use the `skill` tool. Skills are auto-discovered from installed plugins. The `skill` tool works the same as Codex's `Skill` tool.
+
+**In Gemini CLI:** Skills activate via the `activate_skill` tool. Gemini loads skill metadata at session start and activates the full content on demand.
+
+**In other environments:** Check your platform's documentation for how skills are loaded.
+
+## Platform Adaptation
+
+Skills may mention tool names that vary by runtime. Other platforms: see `references/copilot-tools.md` (Copilot CLI), `references/codex-tools.md` (Codex) for tool equivalents. Gemini CLI users get the tool mapping loaded automatically via GEMINI.md.
+
+# Using Skills
+
+## The Rule
+
+**Invoke relevant or requested skills BEFORE any response or action.** Even a 1% chance a skill might apply means that you should invoke the skill to check. If an invoked skill turns out to be wrong for the situation, you don't need to use it.
+
+```dot
+digraph skill_flow {
+    "User message received" [shape=doublecircle];
+    "About to EnterPlanMode?" [shape=doublecircle];
+    "Already brainstormed?" [shape=diamond];
+    "Invoke brainstorming skill" [shape=box];
+    "Might any skill apply?" [shape=diamond];
+    "Invoke Skill tool" [shape=box];
+    "Announce: 'Using [skill] to [purpose]'" [shape=box];
+    "Has checklist?" [shape=diamond];
+    "Create TodoWrite todo per item" [shape=box];
+    "Follow skill exactly" [shape=box];
+    "Respond (including clarifications)" [shape=doublecircle];
+
+    "About to EnterPlanMode?" -> "Already brainstormed?";
+    "Already brainstormed?" -> "Invoke brainstorming skill" [label="no"];
+    "Already brainstormed?" -> "Might any skill apply?" [label="yes"];
+    "Invoke brainstorming skill" -> "Might any skill apply?";
+
+    "User message received" -> "Might any skill apply?";
+    "Might any skill apply?" -> "Invoke Skill tool" [label="yes, even 1%"];
+    "Might any skill apply?" -> "Respond (including clarifications)" [label="definitely not"];
+    "Invoke Skill tool" -> "Announce: 'Using [skill] to [purpose]'";
+    "Announce: 'Using [skill] to [purpose]'" -> "Has checklist?";
+    "Has checklist?" -> "Create TodoWrite todo per item" [label="yes"];
+    "Has checklist?" -> "Follow skill exactly" [label="no"];
+    "Create TodoWrite todo per item" -> "Follow skill exactly";
+}
+```
+
+## Red Flags
+
+These thoughts mean STOP—you're rationalizing:
+
+| Thought | Reality |
+|---------|---------|
+| "This is just a simple question" | Questions are tasks. Check for skills. |
+| "I need more context first" | Skill check comes BEFORE clarifying questions. |
+| "Let me explore the codebase first" | Skills tell you HOW to explore. Check first. |
+| "I can check git/files quickly" | Files lack conversation context. Check for skills. |
+| "Let me gather information first" | Skills tell you HOW to gather information. |
+| "This doesn't need a formal skill" | If a skill exists, use it. |
+| "I remember this skill" | Skills evolve. Read current version. |
+| "This doesn't count as a task" | Action = task. Check for skills. |
+| "The skill is overkill" | Simple things become complex. Use it. |
+| "I'll just do this one thing first" | Check BEFORE doing anything. |
+| "This feels productive" | Undisciplined action wastes time. Skills prevent this. |
+| "I know what that means" | Knowing the concept ≠ using the skill. Invoke it. |
+
+## Skill Priority
+
+When multiple skills could apply, use this order:
+
+1. **Process skills first** (brainstorming, debugging) - these determine HOW to approach the task
+2. **Implementation skills second** (frontend-design, mcp-builder) - these guide execution
+
+"Let's build X" → brainstorming first, then implementation skills.
+"Fix this bug" → debugging first, then domain-specific skills.
+
+## Skill Types
+
+**Rigid** (TDD, debugging): Follow exactly. Don't adapt away discipline.
+
+**Flexible** (patterns): Adapt principles to context.
+
+The skill itself tells you which.
+
+## User Instructions
+
+Instructions say WHAT, not HOW. "Add X" or "Fix Y" doesn't mean skip workflows.
+
+  → Read R1/R2 artifacts and inspect changed files
+  • Verify each R1 finding against current branch
+  • Run site build and canonical path find check
+  • Assess R2-only CONTRACT.md drift against HEAD 722bbb0
+  • Summarize verdict with dispositions and next step
+codex
+I’m first gathering the canonical R1 list, the R2 run notes, and the current diff surface. That gives me the expected fixes and keeps the review anchored to the branch state rather than memory.
+exec
+/bin/bash -lc 'git status --short' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+ M apps/site/CONTRACT.md
+ M apps/site/package.json
+ M packages/editor-shell/CONTRACT.md
+ M packages/editor-shell/src/index.ts
+ M pnpm-lock.yaml
+?? apps/site/src/components/EditorShellMount.astro
+?? apps/site/src/components/EditorShellMount.tsx
+?? apps/site/src/pages/notes/[...slug]/
+?? docs/audits/codex-runs/2026-05-05-c4-prelude-execute-r2.txt
+?? docs/audits/codex-runs/2026-05-05-c4-prelude-execute-resume.txt
+?? docs/audits/codex-runs/2026-05-05-c4-prelude-execute.txt
+?? docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt
+?? docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md
+?? packages/editor-shell/src/__tests__/save-adapter.test.ts
+?? packages/editor-shell/src/save-adapter.ts
+
+exec
+/bin/bash -lc 'git diff --name-status' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+M	apps/site/CONTRACT.md
+M	apps/site/package.json
+M	packages/editor-shell/CONTRACT.md
+M	packages/editor-shell/src/index.ts
+M	pnpm-lock.yaml
+
+exec
+/bin/bash -lc "sed -n '4110,4145p' docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+exec
+/bin/bash -lc "sed -n '1,220p' docs/audits/codex-runs/2026-05-05-c4-prelude-execute-r2.txt" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+Reading additional input from stdin...
+OpenAI Codex v0.125.0 (research preview)
+--------
+workdir: /home/weiyi/selfKnowledgeBaseWeb
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: danger-full-access
+reasoning effort: xhigh
+reasoning summaries: none
+session id: 019df9da-f064-7873-9e68-f9f7df836925
+--------
+user
+You are the D1 stage-2 EXECUTOR R2 (round-2 fix dispatch) for Wave 5 C.4-prelude. Reviewer codex-pr-reviewer-55 returned FAIL with 3 BLOCKER + 5 MAJOR + 1 MINOR findings. Orchestrator has triaged + already updated PR.md (AC#1 + AC#21 + whitelist item 1 to `[...slug]/edit.astro` rest-route shape). Your job = fix the impl-side findings.
+
+# Findings to fix (per `/home/weiyi/selfKnowledgeBaseWeb/docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt` lines 4117-4135)
+
+## BLOCKER 1 — `[apps/site/src/pages/notes/[slug]/edit.astro]:31`
+
+The route currently passes only `slug`. PR.md AC#1 requires `<EditorShellMount slug={...} initialMdx={...} client:only="react" />` — the `initialMdx` prop is missing. First-visit edit of an unsaved note opens empty instead of loading the note body.
+
+**Fix**: Pass `note.body ?? ""` through the Astro wrapper to React island as `initialMdx` prop. The React island `EditorShellMount.tsx` MUST accept `initialMdx?: string` (default empty), and on `onCreate` use `state?.mdxSource ?? props.initialMdx` to populate the editor.
+
+## BLOCKER 2 — `[apps/site/src/pages/notes/[slug]/edit.astro]:14`
+
+Current `getStaticPaths` does `params: { slug: encodeURIComponent(slug) }` which produces `%2F` paths for nested slugs (e.g., `__test_cjk__/laptop` becomes `__test_cjk__%2Flaptop`). Astro `[slug]/edit.astro` is single-segment shape and cannot natively express nested slugs.
+
+**Fix**: MOVE the file from `apps/site/src/pages/notes/[slug]/edit.astro` to `apps/site/src/pages/notes/[...slug]/edit.astro` (rest-route shape; mirrors existing `apps/site/src/pages/notes/[...slug].astro` read-only catch-all). Drop `encodeURIComponent`. Use raw slug (params.slug = "__test_cjk__/laptop" works in rest route).
+
+```astro
+---
+import { getCollection, type CollectionEntry } from "astro:content";
+import BaseLayout from "@layouts/BaseLayout.astro";
+import EditorShellMount from "@components/EditorShellMount.astro";
+import "../../../styles/grid.css";
+
+export async function getStaticPaths() {
+  const notes = (await getCollection("notes")).filter(
+    (note: CollectionEntry<"notes">) => !note.data.draft,
+  );
+  return notes.map((note: CollectionEntry<"notes">) => ({
+    params: { slug: note.id.replace(/\/index$/, "") },
+    props: { note },
+  }));
+}
+
+interface Props { note: CollectionEntry<"notes">; }
+const { note } = Astro.props as Props;
+const slug = note.id.replace(/\/index$/, "");
+---
+<BaseLayout title={`Edit: ${note.data.title}`}>
+  <article>
+    <h1>Edit: {note.data.title}</h1>
+    <EditorShellMount slug={slug} initialMdx={note.body ?? ""} />
+  </article>
+</BaseLayout>
+```
+
+CRITICAL: `git mv` to preserve history if possible — actually since the file was untracked, just delete the old and create at new path.
+
+## BLOCKER 3 — `[packages/editor-shell/src/save-adapter.ts]:38`
+
+ADR-0018 D8 byte-equivalence is broken. The current impl has helper functions (`isNamedStorageError`, `isStorageCode`, `isRecord`, `aggregateNoteBytes`) and shortened Phase 2 extension comments. PR.md AC#10/AC#11/AC#12/AC#13 require byte-equal modulo whitespace + JSDoc rewording.
+
+**Fix**: Restore `packages/editor-shell/src/save-adapter.ts` to ADR-0018 D8 verbatim (lines 339-451). Specifically:
+- DROP all 4 helper functions (`isNamedStorageError`, `isStorageCode`, `isRecord`, `aggregateNoteBytes`)
+- Use INLINE checks per D8 lines 408, 433, 437: `if (e instanceof DOMException && e.name === "SecurityError")`, etc.
+- For aggregate scan, use D8 line 423-426 verbatim shape: `Object.keys(localStorage).filter(k => k.startsWith("skb-note:")).reduce((sum, k) => sum + (localStorage.getItem(k)?.length ?? 0), 0)`.
+- Preserve the Phase 2+ extension comment block VERBATIM modulo JSDoc rewording (D8 lines 375-382 — 7-line block); current impl shortened it to 3 lines. RESTORE the full block (per Q12 absorbtion).
+- Keep the `await Promise.resolve()` lint-only stub at the start of load() and save() — that one IS a deviation from D8 verbatim, but it is the minimum required to satisfy `require-await` ESLint rule when there is no await in the body. Document in a one-line JSDoc comment at each method head: "// async boundary placeholder for ESLint require-await; D8 sync semantic preserved".
+- KEEP `ReadonlyJSONValue` + `NoteState` + `NoteSaveAdapter` as currently shipped (those are already byte-equal modulo JSDoc — re-verify after restore).
+- After restore, re-run `pnpm test --filter=@skb/editor-shell` — all 7 save-adapter cases MUST still pass. The 4 DOMException-based cases (corrupted JSON, SecurityError on getItem, QuotaExceededError on setItem, SecurityError on setItem) all need to pass via the inline `instanceof DOMException && e.name === "X"` check.
+- DO NOT change PER_NOTE_MAX_BYTES check from `serialized.length` to `TextEncoder().encode().byteLength`. Per ADR-0018 D8 line 418 verbatim the check IS `serialized.length`. Reviewer flagged this as MAJOR #8 but the orchestrator is keeping D8 verbatim — the documented limitation (UTF-16 char count vs encoded bytes for non-ASCII) is acknowledged + deferred to a future ADR-0018 amendment. Add a one-line JSDoc comment at the PER_NOTE_MAX_BYTES check noting "// non-ASCII content uses UTF-16 char count via .length per ADR-0018 D8 freeze; future amendment may switch to TextEncoder.byteLength".
+
+## MAJOR 4 — `[apps/site/src/components/EditorShellMount.tsx]:67`
+
+Debounce currently 500ms, PR.md AC#3 says 800ms. Change `setTimeout(..., 500)` to `setTimeout(..., 800)`.
+
+## MAJOR 5 — `[apps/site/CONTRACT.md]:110` + `[packages/editor-shell/CONTRACT.md]:77`
+
+Backticked autolink hazards: `<slug>` inside backticks triggers lychee autolink scan per memory `feedback_lychee_autolink_in_backticks.md`. Replace ALL `<slug>` literal substrings within backticked strings with `{slug}` (or curly braces `{slug}`) in BOTH CONTRACT files. Specifically:
+- `apps/site/CONTRACT.md` lines around `## Edit route (Wave 5)` — change `\`/notes/<slug>/edit\`` to `\`/notes/{slug}/edit\``, `\`/notes/<slug>\`` to `\`/notes/{slug}\``, and any `\`skb-note:<slug>\`` to `\`skb-note:{slug}\``.
+- `packages/editor-shell/CONTRACT.md` `### NoteSaveAdapter (Wave 5; MVP shipped at C.4-prelude)` subsection — change `\`skb-note:<slug>\`` to `\`skb-note:{slug}\``.
+- Pre-empt grep: `grep -nE "\`[^\`]*<\w+>[^\`]*\`" apps/site/CONTRACT.md packages/editor-shell/CONTRACT.md` MUST yield ZERO matches after the fix.
+
+## MAJOR 6 — `[apps/site/CONTRACT.md]:118`
+
+Bidirectional sister-document cross-reference missing. Add explicit Markdown links:
+- In `apps/site/CONTRACT.md` `## Edit route (Wave 5)` section: add a line "See sister-doc: `[packages/editor-shell/CONTRACT.md § NoteSaveAdapter (Wave 5; MVP shipped at C.4-prelude)](../../packages/editor-shell/CONTRACT.md)`."
+- In `packages/editor-shell/CONTRACT.md` `### NoteSaveAdapter (Wave 5; MVP shipped at C.4-prelude)` subsection: add a line "See sister-doc: `[apps/site/CONTRACT.md § Edit route (Wave 5)](../../apps/site/CONTRACT.md)`."
+
+## MINOR 9 — `[apps/site/src/components/EditorShellMount.tsx]:10`
+
+`useRef(new LocalStorageAdapter(slug))` constructs on every render. Use lazy guard pattern:
+
+```tsx
+const adapterRef = useRef<LocalStorageAdapter | null>(null);
+if (adapterRef.current === null || adapterRef.current.slug !== slug) {
+  adapterRef.current = new LocalStorageAdapter(slug);
+}
+const adapter = adapterRef.current;
+```
+
+This avoids the per-render `new` allocation + correctly reacts to slug prop changes.
+
+# DO NOT do these things
+
+- DO NOT touch any file outside the 11-file whitelist (already updated to include `[...slug]/edit.astro` instead of `[slug]/edit.astro`). The two CONTRACT.md files + save-adapter.ts + EditorShellMount.tsx + edit.astro (now `[...slug]/edit.astro`) + EditorShellMount.astro are in scope.
+- DO NOT change `apps/site/src/pages/notes/[...slug].astro` (the existing read-only catch-all; PR.md AC#19 requires zero LOC delta there).
+- DO NOT change PR.md `## acceptance` (orchestrator already updated AC#1 + AC#21).
+- DO NOT git commit; commit happens at stage 5 by reviewer codex.
+
+# After fixes, run all of these:
+
+```bash
+pnpm test --filter=@skb/editor-shell
+pnpm --filter=@skb/editor-shell --filter=@skb/site lint
+pnpm --filter=@skb/editor-shell --filter=@skb/site typecheck
+pnpm size-check
+pnpm link-check
+pnpm --filter=@skb/site build
+find /home/weiyi/selfKnowledgeBaseWeb/apps/site/dist/notes -type f -name "*.html" 2>/dev/null | sort | head -20
+```
+
+The build + find should show files like `dist/notes/sample-blocks/edit/index.html` and `dist/notes/__test_cjk__/laptop/edit/index.html` (NO `%2F` encoding). Lychee MUST pass (no autolink hazards remain). All other check commands MUST be clean.
+
+# Final report
+
+To stdout:
+- Files touched (full paths) — should be: edit.astro (renamed), EditorShellMount.tsx, save-adapter.ts, CONTRACT.md ×2; total 5 files
+- LOC delta per file
+- Verification: vitest + lint + typecheck + size-check + link-check + build all clean
+- Build output: list of `*.html` files under dist/notes/ to confirm rest-route shape produced canonical paths
+- Lychee pre-empt grep: zero matches for autolink-in-backticks pattern
+codex
+I’ll apply the relevant workflow skills first, then inspect the existing implementation and patch only the whitelisted files. I’ll keep the route move scoped to the edit page and avoid git mutations.
+exec
+/bin/bash -lc "sed -n '1,220p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/82fd64bc/skills/receiving-code-review/SKILL.md" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1,220p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/82fd64bc/skills/using-superpowers/SKILL.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+---
+name: receiving-code-review
+description: Use when receiving code review feedback, before implementing suggestions, especially if feedback seems unclear or technically questionable - requires technical rigor and verification, not performative agreement or blind implementation
+---
+
+# Code Review Reception
+
+## Overview
+
+Code review requires technical evaluation, not emotional performance.
+
+**Core principle:** Verify before implementing. Ask before assuming. Technical correctness over social comfort.
+
+## The Response Pattern
+
+```
+WHEN receiving code review feedback:
+
+1. READ: Complete feedback without reacting
+2. UNDERSTAND: Restate requirement in own words (or ask)
+3. VERIFY: Check against codebase reality
+4. EVALUATE: Technically sound for THIS codebase?
+5. RESPOND: Technical acknowledgment or reasoned pushback
+6. IMPLEMENT: One item at a time, test each
+```
+
+## Forbidden Responses
+
+**NEVER:**
+- "You're absolutely right!" (explicit AGENTS.md violation)
+- "Great point!" / "Excellent feedback!" (performative)
+- "Let me implement that now" (before verification)
+
+**INSTEAD:**
+- Restate the technical requirement
+- Ask clarifying questions
+- Push back with technical reasoning if wrong
+- Just start working (actions > words)
+
+## Handling Unclear Feedback
+
+```
+IF any item is unclear:
+  STOP - do not implement anything yet
+  ASK for clarification on unclear items
+
+WHY: Items may be related. Partial understanding = wrong implementation.
+```
+
+**Example:**
+```
+your human partner: "Fix 1-6"
+You understand 1,2,3,6. Unclear on 4,5.
+
+❌ WRONG: Implement 1,2,3,6 now, ask about 4,5 later
+✅ RIGHT: "I understand items 1,2,3,6. Need clarification on 4 and 5 before proceeding."
+```
+
+## Source-Specific Handling
+
+### From your human partner
+- **Trusted** - implement after understanding
+- **Still ask** if scope unclear
+- **No performative agreement**
+- **Skip to action** or technical acknowledgment
+
+### From External Reviewers
+```
+BEFORE implementing:
+  1. Check: Technically correct for THIS codebase?
+  2. Check: Breaks existing functionality?
+  3. Check: Reason for current implementation?
+  4. Check: Works on all platforms/versions?
+  5. Check: Does reviewer understand full context?
+
+IF suggestion seems wrong:
+  Push back with technical reasoning
+
+IF can't easily verify:
+
+codex
+The working tree has the expected uncommitted staged-work shape: tracked contract/package changes plus untracked new route/component/adapter/test files. I’ll now inspect the exact implementation points, including the bracketed Astro route paths.
+exec
+/bin/bash -lc 'wc -l docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+2000 docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt
+
+exec
+/bin/bash -lc 'tail -80 docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+    23	
+    24	const { note } = Astro.props as Props;
+    25	const slug = note.id.replace(/\/index$/, '');
+    26	---
+    27	
+    28	<BaseLayout title={`Edit: ${note.data.title}`}>
+    29	  <article>
+    30	    <h1>Edit: {note.data.title}</h1>
+    31	    <EditorShellMount slug={slug} />
+    32	  </article>
+    33	</BaseLayout>
+
+exec
+/bin/bash -lc "nl -ba apps/site/CONTRACT.md | sed -n '1,180p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	# apps/site Contract
+     2	
+     3	## Public surface
+     4	
+     5	- Routes:
+     6	  - `/` — notes index
+     7	  - `/notes/{slug}` — rendered note
+     8	- MDX component blocks: `src/components.ts` exports `componentsMap`, the static-site
+     9	  PascalCase MDX tag map consumed by note pages.
+    10	- Content collection schema: `src/content.config.ts` imports `frontmatterSchema` from `@skb/content-types`. apps/site MUST NOT redefine the schema inline (single-authority rule per `packages/content-types/CONTRACT.md`).
+    11	- Theme: light / dark, controlled via `<html data-theme="dark">`. Persistent toggle button in the top-right corner of every page.
+    12	
+    13	## Search index
+    14	
+    15	- Stack: PageFind 1.5.0+ through `astro-pagefind` 1.8.6+. `astro.config.mjs`
+    16	  registers the adapter so `astro build` emits `dist/pagefind/` after static
+    17	  HTML generation. ADR-0012 prose was aligned to the current `dist/pagefind/`
+    18	  path (without the historical `_` prefix) at v0.1.1 amendment 2026-05-03
+    19	  (Wave 4 Stage B B1a); the semantic contract (post-build hook + build
+    20	  artifact) is unchanged.
+    21	- UI surface: `src/components/SearchBox.astro` renders the SSR-safe
+    22	  `<div id="search">` mount point and lazy browser script that constructs
+    23	  `@pagefind/default-ui` with `resetStyles: false`. The dedicated `/search`
+    24	  route embeds that component through `BaseLayout`, and the global header links
+    25	  to `/search`.
+    26	- Word-level result filter: `apps/site/src/lib/word-level-match.ts` exposes
+    27	  `isWordLevelMatch(query, content, locale?)`; `SearchBox.astro` wires it via
+    28	  `@pagefind/default-ui` `processTerm` + `processResult` callbacks plus a
+    29	  `MutationObserver` that applies `[data-skb-word-level-mismatch="true"]` to
+    30	  substring-only-match list item ancestors (CSS `display: none`) and patches the
+    31	  `.pagefind-ui__message` count display. This restores the ADR-0012 v0.1.1
+    32	  criterion 4 paired discriminator at runtime; PagefindUI's index-time
+    33	  tokenization is unchanged.
+    34	- A11y guarantee: search input labeling, keyboard result navigation, and result
+    35	  ARIA semantics come from `@pagefind/default-ui` defaults. apps/site may wrap
+    36	  the surface, but it must not replace those defaults with a custom UI unless a
+    37	  follow-up contract update preserves equivalent keyboard and screen-reader
+    38	  behavior. The B1b word-level wrapper is post-render result filtering only
+    39	  (DOM `data-*` attribute + CSS `display: none`); it does not replace any
+    40	  `@pagefind/default-ui` ARIA, keyboard, or screen-reader behavior. Hidden
+    41	  mismatched results are removed from the visible result count via
+    42	  `.pagefind-ui__message` text replacement so screen readers do not announce
+    43	  stale totals.
+    44	- `/search` render-safety: `astro build` must emit the `/search` HTML before
+    45	  `dist/pagefind/` exists. The page contains only the static mount point plus a
+    46	  client-side script and stylesheet reference; the browser loads PageFind's
+    47	  runtime and index after first paint. This satisfies ADR-0012 out-of-scope
+    48	  #C4(a) for D3 without introducing SSR or blocking static generation.
+    49	- Bundle-size budget: PageFind runtime + initial search-route index chunks must
+    50	  stay <= 120 kB gzip at first paint. D2 has no `/search` route yet, so D3 must
+    51	  re-measure the user-facing route after UI integration.
+    52	- Index-size budget: the complete `dist/pagefind/` directory must stay <= 30 kB
+    53	  uncompressed for the current 2-note corpus and <= 300 kB uncompressed at the
+    54	  100-note projection. Projection formula:
+    55	  `ceil(current_dist_pagefind_bytes / current_note_count * 100)`.
+    56	- Measurement commands:
+    57	
+    58	  ```bash
+    59	  pnpm --filter=@skb/site build
+    60	  test -f apps/site/dist/pagefind/pagefind-entry.json
+    61	  du -sb apps/site/dist/pagefind
+    62	  ```
+    63	
+    64	- Current D2 measurement (sample-blocks + sample-mdx-note + index = 3 indexed
+    65	  pages): `dist/pagefind/` ~= 200 kB uncompressed (Pagefind runtime + UI
+
+exec
+/bin/bash -lc "nl -ba 'apps/site/src/pages/notes/[...slug]/edit.astro'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	---
+     2	import { getCollection, type CollectionEntry } from 'astro:content';
+     3	import BaseLayout from '@layouts/BaseLayout.astro';
+     4	import EditorShellMount from '../../../components/EditorShellMount.astro';
+     5	import '../../../styles/grid.css';
+     6	
+     7	export async function getStaticPaths() {
+     8	  const notes = (await getCollection('notes')).filter(
+     9	    (note: CollectionEntry<'notes'>) => !note.data.draft,
+    10	  );
+    11	  return notes.map((note: CollectionEntry<'notes'>) => ({
+    12	    params: { slug: note.id.replace(/\/index$/, '') },
+    13	    props: { note },
+    14	  }));
+    15	}
+    16	
+    17	interface Props {
+    18	  note: CollectionEntry<'notes'>;
+    19	}
+    20	
+    21	const { note } = Astro.props as Props;
+    22	const slug = note.id.replace(/\/index$/, '');
+    23	---
+    24	
+    25	<BaseLayout title={`Edit: ${note.data.title}`}>
+    26	  <article>
+    27	    <h1>Edit: {note.data.title}</h1>
+    28	    <EditorShellMount slug={slug} initialMdx={note.body ?? ''} />
+    29	  </article>
+    30	</BaseLayout>
+
+exec
+/bin/bash -lc "test -e 'apps/site/src/pages/notes/[slug]/edit.astro'; echo "'$?' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+1
+
+exec
+/bin/bash -lc 'nl -ba apps/site/src/components/EditorShellMount.astro' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	---
+     2	import { EditorShellMount } from './EditorShellMount.tsx';
+     3	
+     4	interface Props {
+     5	  slug: string;
+     6	  initialMdx?: string;
+     7	}
+     8	
+     9	const { slug, initialMdx = '' } = Astro.props as Props;
+    10	---
+    11	
+    12	<div class="editor-shell-mount">
+    13	  <EditorShellMount client:only="react" slug={slug} initialMdx={initialMdx} />
+    14	</div>
+
+exec
+/bin/bash -lc 'nl -ba apps/site/src/components/EditorShellMount.tsx' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	import { useEffect, useRef, useState } from 'react';
+     2	import { BlockRegistry } from '@skb/block-foundation';
+     3	import {
+     4	  EditorShell,
+     5	  GridContainer,
+     6	  LocalStorageAdapter,
+     7	  loadFromMdx,
+     8	  registerBlocks,
+     9	  saveToMdx,
+    10	  type EditorShellProps,
+    11	} from '@skb/editor-shell';
+    12	
+    13	export interface EditorShellMountProps {
+    14	  slug: string;
+    15	  initialMdx?: string;
+    16	}
+    17	
+    18	type EditorInstance = Parameters<NonNullable<EditorShellProps['onCreate']>>[0];
+    19	
+    20	export function EditorShellMount({ slug, initialMdx = '' }: EditorShellMountProps) {
+    21	  const adapterRef = useRef<LocalStorageAdapter | null>(null);
+    22	  const registryRef = useRef<BlockRegistry | null>(null);
+    23	  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    24	  const versionRef = useRef(1);
+    25	  const [ready, setReady] = useState(false);
+    26	
+    27	  if (adapterRef.current === null || adapterRef.current.slug !== slug) {
+    28	    adapterRef.current = new LocalStorageAdapter(slug);
+    29	  }
+    30	
+    31	  if (registryRef.current === null) {
+    32	    const registry = new BlockRegistry();
+    33	    registerBlocks(registry);
+    34	    registryRef.current = registry;
+    35	  }
+    36	
+    37	  const adapter = adapterRef.current;
+    38	
+    39	  useEffect(() => {
+    40	    let cancelled = false;
+    41	
+    42	    void adapter.load()
+    43	      .catch(() => null)
+    44	      .then(() => {
+    45	        if (!cancelled) setReady(true);
+    46	      });
+    47	
+    48	    return () => {
+    49	      cancelled = true;
+    50	      if (saveTimerRef.current !== null) clearTimeout(saveTimerRef.current);
+    51	    };
+    52	  }, [adapter]);
+    53	
+    54	  if (!ready) return <div>Loading...</div>;
+    55	
+    56	  const handleCreate = (editor: EditorInstance) => {
+    57	    void adapter
+    58	      .load()
+    59	      .then((state) => {
+    60	        const mdxSource = state?.mdxSource ?? initialMdx;
+    61	        if (mdxSource) {
+    62	          try {
+    63	            loadFromMdx(editor, mdxSource, { blockRegistry: registryRef.current ?? undefined });
+    64	          } catch {
+    65	            return;
+    66	          }
+    67	        }
+    68	        versionRef.current = state?.version ?? 1;
+    69	      })
+    70	      .catch(() => undefined);
+    71	  };
+    72	
+    73	  const handleChange = (editor: EditorInstance) => {
+    74	    if (saveTimerRef.current !== null) clearTimeout(saveTimerRef.current);
+    75	    saveTimerRef.current = setTimeout(() => {
+    76	      try {
+    77	        const mdxSource = saveToMdx(editor, { blockRegistry: registryRef.current ?? undefined });
+    78	        versionRef.current += 1;
+    79	        void adapter.save({ mdxSource, version: versionRef.current, lastModified: Date.now() });
+    80	      } catch {
+    81	        return;
+    82	      }
+    83	    }, 800);
+    84	  };
+    85	
+    86	  return (
+    87	    <GridContainer>
+    88	      <EditorShell onCreate={handleCreate} onChange={handleChange} />
+    89	    </GridContainer>
+    90	  );
+    91	}
+
+exec
+/bin/bash -lc 'nl -ba packages/editor-shell/src/save-adapter.ts' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	/**
+     2	 * Note persistence adapter for the Wave 5 editor scaffold.
+     3	 *
+     4	 * ADR-0018 D8 lines 339-451 are the canonical interface authority.
+     5	 * C.4-prelude ships the MVP LocalStorageAdapter only.
+     6	 */
+     7	
+     8	/** Read-only JSON-serializable value for optional same-session Tiptap cache data. */
+     9	export type ReadonlyJSONValue =
+    10	  | string
+    11	  | number
+    12	  | boolean
+    13	  | null
+    14	  | readonly ReadonlyJSONValue[]
+    15	  | { readonly [key: string]: ReadonlyJSONValue };
+    16	
+    17	export interface NoteState {
+    18	  /** Raw MDX source persisted for mdx-bridge round trips. */
+    19	  readonly mdxSource: string;
+    20	  /** Optional Tiptap state cache. Not a stable cross-client schema. */
+    21	  readonly tiptapState?: ReadonlyJSONValue;
+    22	  /** Last-modified timestamp in milliseconds. */
+    23	  readonly lastModified: number;
+    24	  /** Consumer-incremented monotonic version. LocalStorageAdapter does not increment. */
+    25	  readonly version: number;
+    26	}
+    27	
+    28	export interface NoteSaveAdapter {
+    29	  /** Note slug for /notes/<slug>. */
+    30	  readonly slug: string;
+    31	
+    32	  /** Load NoteState from persistence; null means no saved state. */
+    33	  load(): Promise<NoteState | null>;
+    34	
+    35	  /** Save NoteState to persistence; returns ok false with a displayable error on failure. */
+    36	  save(state: NoteState): Promise<{ ok: boolean; error?: string }>;
+    37	
+    38	  // Phase 2+ extensions (per Q12 absorbtion — Phase 2+ 兼容位预留):
+    39	  // (1) save(state, options?: { signal?: AbortSignal; timeout?: number; onProgress?: (p: number) => void })
+    40	  //     - AbortSignal: user cancel mid-save (e.g., switch route during ApiAdapter network);
+    41	  //     - timeout: ms before abort (default no-timeout for LocalStorage; default 10s for Api);
+    42	  //     - onProgress: ApiAdapter upload progress (0-1 fraction)
+    43	  // (2) subscribe(callback: (state: NoteState) => void): UnsubscribeFn
+    44	  //     - Real-time collaborative; Phase 2+ ApiAdapter via WebSocket; LocalStorageAdapter NOT subscribe (single-session)
+    45	  // Wave 5 NOT include either; ADR-0018 D8 接口 v1 不动; v2 接口 ADR-0019+ amendment 引入.
+    46	}
+    47	
+    48	export class LocalStorageAdapter implements NoteSaveAdapter {
+    49	  /** Per-note serialized JSON cap. */
+    50	  private static readonly PER_NOTE_MAX_BYTES = 2 * 1024 * 1024;
+    51	
+    52	  /** Best-effort aggregate warning threshold across all skb-note:* keys. */
+    53	  private static readonly AGGREGATE_WARN_BYTES = 5 * 1024 * 1024;
+    54	
+    55	  constructor(public readonly slug: string) {}
+    56	
+    57	  async load(): Promise<NoteState | null> {
+    58	    // async boundary placeholder for ESLint require-await; D8 sync semantic preserved.
+    59	    await Promise.resolve();
+    60	    try {
+    61	      const raw = localStorage.getItem(`skb-note:${this.slug}`);
+    62	      if (!raw) return null;
+    63	
+    64	      try {
+    65	        return JSON.parse(raw) as NoteState;
+    66	      } catch {
+    67	        console.warn(`[NoteSaveAdapter] corrupted state for ${this.slug}; returning null`);
+    68	        return null;
+    69	      }
+    70	    } catch (e) {
+    71	      if (e instanceof DOMException && e.name === 'SecurityError') {
+    72	        console.warn('[NoteSaveAdapter] localStorage SecurityError; load disabled');
+    73	        return null;
+    74	      }
+    75	      throw e;
+    76	    }
+    77	  }
+    78	
+    79	  async save(state: NoteState): Promise<{ ok: boolean; error?: string }> {
+    80	    // async boundary placeholder for ESLint require-await; D8 sync semantic preserved.
+    81	    await Promise.resolve();
+    82	    const serialized = JSON.stringify(state);
+    83	    // non-ASCII content uses UTF-16 char count via .length per ADR-0018 D8 freeze; future amendment may switch to TextEncoder.byteLength.
+    84	    if (serialized.length > LocalStorageAdapter.PER_NOTE_MAX_BYTES) {
+    85	      return {
+    86	        ok: false,
+    87	        error: `note exceeds 2MB limit (${serialized.length} bytes); split into smaller notes`,
+    88	      };
+    89	    }
+    90	
+    91	    try {
+    92	      localStorage.setItem(`skb-note:${this.slug}`, serialized);
+    93	      const aggregateBytes = Object.keys(localStorage)
+    94	        .filter((k) => k.startsWith('skb-note:'))
+    95	        .reduce((sum, k) => sum + (localStorage.getItem(k)?.length ?? 0), 0);
+    96	      if (aggregateBytes > LocalStorageAdapter.AGGREGATE_WARN_BYTES) {
+    97	        console.warn(
+    98	          `[NoteSaveAdapter] aggregate notes ${aggregateBytes} bytes > 5MB; consider Phase 2+ apps/api`,
+    99	        );
+   100	      }
+   101	      return { ok: true };
+   102	    } catch (e) {
+   103	      if (e instanceof DOMException && (e.name === 'QuotaExceededError' || e.code === 22)) {
+   104	        return {
+   105	          ok: false,
+   106	          error: 'localStorage quota exceeded; delete old notes or upgrade to apps/api',
+   107	        };
+   108	      }
+   109	      if (e instanceof DOMException && e.name === 'SecurityError') {
+   110	        return {
+   111	          ok: false,
+   112	          error: 'localStorage disabled (private mode / sandbox); save disabled',
+   113	        };
+   114	      }
+   115	      return { ok: false, error: e instanceof Error ? e.message : 'unknown' };
+   116	    }
+   117	  }
+   118	}
+   119	
+   120	// Phase 2+ impl (NOT Wave 5 scope; placeholder forward-pointer)
+   121	// export class ApiAdapter implements NoteSaveAdapter {
+   122	//   constructor(public readonly slug: string, public readonly apiBase: string, public readonly authToken: string) {}
+   123	//   async load() { return await fetch(`${apiBase}/v1/notes/${slug}`, ...) ... }
+   124	//   async save(state, options?: { signal?, timeout?, onProgress? }) { POST /v1/notes/${slug} with retry }
+   125	// }
+
+exec
+/bin/bash -lc 'rg -n "isNamedStorageError|isStorageCode|isRecord|aggregateNoteBytes" packages/editor-shell/src/save-adapter.ts' in /home/weiyi/selfKnowledgeBaseWeb
+ exited 1 in 0ms:
+exec
+/bin/bash -lc "rg -n \"DOMException|Object\\.keys\\(localStorage\\)|PER_NOTE_MAX_BYTES|UTF-16|Phase 2|AbortSignal|subscribe|Real-time|ADR-0019\" packages/editor-shell/src/save-adapter.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+38:  // Phase 2+ extensions (per Q12 absorbtion — Phase 2+ 兼容位预留):
+39:  // (1) save(state, options?: { signal?: AbortSignal; timeout?: number; onProgress?: (p: number) => void })
+40:  //     - AbortSignal: user cancel mid-save (e.g., switch route during ApiAdapter network);
+43:  // (2) subscribe(callback: (state: NoteState) => void): UnsubscribeFn
+44:  //     - Real-time collaborative; Phase 2+ ApiAdapter via WebSocket; LocalStorageAdapter NOT subscribe (single-session)
+45:  // Wave 5 NOT include either; ADR-0018 D8 接口 v1 不动; v2 接口 ADR-0019+ amendment 引入.
+50:  private static readonly PER_NOTE_MAX_BYTES = 2 * 1024 * 1024;
+71:      if (e instanceof DOMException && e.name === 'SecurityError') {
+83:    // non-ASCII content uses UTF-16 char count via .length per ADR-0018 D8 freeze; future amendment may switch to TextEncoder.byteLength.
+84:    if (serialized.length > LocalStorageAdapter.PER_NOTE_MAX_BYTES) {
+93:      const aggregateBytes = Object.keys(localStorage)
+98:          `[NoteSaveAdapter] aggregate notes ${aggregateBytes} bytes > 5MB; consider Phase 2+ apps/api`,
+103:      if (e instanceof DOMException && (e.name === 'QuotaExceededError' || e.code === 22)) {
+109:      if (e instanceof DOMException && e.name === 'SecurityError') {
+120:// Phase 2+ impl (NOT Wave 5 scope; placeholder forward-pointer)
+
+exec
+/bin/bash -lc "rg -n \"encodeURIComponent\" 'apps/site/src/pages/notes/[...slug]/edit.astro' apps/site/src/pages/notes packages/editor-shell/src/save-adapter.ts apps/site/src/components/EditorShellMount.tsx" in /home/weiyi/selfKnowledgeBaseWeb
+ exited 1 in 0ms:
+exec
+/bin/bash -lc "nl -ba apps/site/CONTRACT.md | sed -n '95,145p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+    95	  is deferred to C.2-4 editor-shell grid container work or a future
+    96	  componentsMap-wrapper PR; apps/site must not add that style chain in this PR.
+    97	- Transitional fallback (Wave 5 C.2-3 → C.2-4): MDX children inside `.skb-grid`
+    98	  without an inline `style` attribute matching `grid-column` get `grid-column: 1 / -1`
+    99	  via `.skb-grid > *:not([style*="grid-column"])` so unstyled prose remains
+   100	  full-width readable until per-block grid emission lands. `grid-auto-rows`
+   101	  uses `minmax(var(--row-h), auto)` so content height drives row height
+   102	  rather than clamping to 48px.
+   103	- Architectural pointers: ADR-0016 D8 defines the Astro renderer `.skb-grid`
+   104	  wrapper, D9 defines the SSR vs hydration phase split, D11 keeps Tiptap inside
+   105	  blocks while the grid stays outside, and ADR-0017 D11 is the downstream visual
+   106	  feedback scope referenced by the grid architecture.
+   107	
+   108	## Edit route (Wave 5)
+   109	
+   110	- Route surface: `/notes/{slug}/edit` renders the C.4-prelude editor mount for
+   111	  each non-draft note slug. It coexists with the read-only `/notes/{slug}`
+   112	  catch-all route at `src/pages/notes/[...slug].astro`; the edit route lives at
+   113	  `src/pages/notes/[...slug]/edit.astro` so nested slugs render canonical
+   114	  unescaped paths.
+   115	- Mount component: `src/pages/notes/[...slug]/edit.astro` imports
+   116	  `src/components/EditorShellMount.astro`, which mounts
+   117	  `EditorShellMount.tsx` as a React island with `client:only="react"`. This
+   118	  avoids SSR for the Tiptap-dependent editor surface and passes the note body as
+   119	  `initialMdx` for first-visit edits before localStorage has a saved state.
+   120	- Persistence: the island uses `LocalStorageAdapter` from the
+   121	  `@skb/editor-shell` save-adapter public surface per
+   122	  [ADR-0018 D8](../../docs/decisions/ADR-0018-v2-visual-migration.md). The
+   123	  localStorage key prefix is `skb-note:{slug}`, distinct from the
+   124	  design-tokens `skb-theme` key.
+   125	- See sister-doc:
+   126	  [packages/editor-shell/CONTRACT.md § NoteSaveAdapter (Wave 5; MVP shipped at C.4-prelude)](../../packages/editor-shell/CONTRACT.md).
+   127	- Block registry: `registerBlocks` from `@skb/editor-shell` registers all 8
+   128	  Wave 2 block definitions. The 3 heavy blocks render the ADR-0014 v0.4
+   129	  plugin-placeholder tier, so the C.4-prelude mount may register them without
+   130	  loading real heavy runtimes.
+   131	- Save trigger: the island uses an 800ms `setTimeout` debounce around
+   132	  `saveToMdx` and `LocalStorageAdapter.save()`. `layoutEpoch` synchronization
+   133	  is deferred to C.4-4 per Wave 5 plan v1.2.
+   134	- Forward pointer: full UI assembly and e2e coverage land across C.4-1 through
+   135	  C.4-5; v2 visual identity lands at Stage C.3. ADR-0018 D8 remains the
+   136	  save-path interface freeze for this route.
+   137	
+   138	## Invariants
+   139	
+   140	- **Static build only** (spec §1.8 constraint #3): the project must not introduce SSR; `astro build` outputs prerendered HTML.
+   141	- **Default zero JavaScript** (Astro islands): only components annotated with `client:*` hydrate. Wave 1 shipped `ThemeToggle (client:load)`; Wave 4 B7 adds the 3 heavy block islands below.
+   142	- **No hand-rolled visual values** (ADR-0003 / spec §2.6 invariant #5): `tailwind.config.ts` MUST consume `@skb/design-tokens/tailwind-preset` via `presets: [...]`. Hard-coded `#hex`, `rgb(...)`, or pixel literals in any source file under `src/` are rejected by `pr-gate`.
+   143	- **FOUC inline script ↔ design-tokens `STORAGE_KEY` literal sync**: the inline `<script is:inline>` in `BaseLayout.astro` reads `localStorage.getItem('skb-theme')` literally. The design-tokens package owns the canonical `STORAGE_KEY = 'skb-theme'` constant; renaming it requires updating BOTH packages in the same PR. The inline script cannot import the constant — it must run before any module loads to prevent FOUC.
+   144	- **FOUC inline script must NOT write localStorage** (ADR-0003 D6): the script only reads + applies. Writes are reserved for manual user action via `useTheme.setTheme` / `toggle`. This preserves the property "system OS theme change is reflected on next visit unless the user has explicitly chosen a theme."
+   145	- **FOUC boot-theme algorithm MUST be byte-equivalent to `getInitialTheme()`** from `@skb/design-tokens` in BOTH happy-path AND exception handling:
+
+exec
+/bin/bash -lc "nl -ba packages/editor-shell/CONTRACT.md | sed -n '65,105p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+    65	
+    66	Public exports added by the MVP scaffold:
+    67	
+    68	- `NoteSaveAdapter` — interface exposing `slug`, `load()`, and `save(state)`.
+    69	- `NoteState` — interface carrying `mdxSource`, optional `tiptapState`,
+    70	  `lastModified`, and consumer-incremented `version`.
+    71	- `ReadonlyJSONValue` — recursive read-only JSON value type for optional
+    72	  same-session Tiptap cache data.
+    73	- `LocalStorageAdapter` — Wave 5 MVP implementation of `NoteSaveAdapter`.
+    74	
+    75	Storage semantics:
+    76	
+    77	- See sister-doc:
+    78	  [apps/site/CONTRACT.md § Edit route (Wave 5)](../../apps/site/CONTRACT.md).
+    79	- localStorage key prefix: `skb-note:{slug}` per ADR-0018 D8 lines 454-455.
+    80	- `PER_NOTE_MAX_BYTES = 2 MB`; oversized serialized states return
+    81	  `{ ok: false, error }` instead of writing.
+    82	- `AGGREGATE_WARN_BYTES = 5 MB`; aggregate `skb-note:*` storage above this
+    83	  threshold emits a `console.warn` but does not block the save.
+    84	- Corrupted JSON and localStorage `SecurityError` during load return `null`
+    85	  with a warning. `QuotaExceededError` and `SecurityError` during save return
+    86	  `{ ok: false, error }`.
+    87	
+    88	**C.4-1 hardens this contract** (W5-2 invariant promotion + adapter contract
+    89	test suite per Wave 5 plan v1.2 Q3 ownership boundary). C.4-prelude only ships
+    90	MVP impl + this minimal doc forward-pointer.
+    91	
+    92	The component does NOT include a `'use client'` pragma — consumers (Stage C
+    93	apps/site) decide the client/server boundary at integration time.
+    94	
+    95	## Grid layout (Wave 5)
+    96	
+    97	**W5-2: editor-shell `layoutReducer` + `layoutEpoch` single-source mutation 是
+    98	grid block position 的唯一权威 mutation site.** 所有 block grid mutations (drag
+    99	from grid container / resize from handle / `useAutoRowSpan` auto-measure /
+   100	responsive transition / undo-redo / mdx-load) 必经过此 reducer; 冲突仲裁规则 per
+   101	ADR-0016 D12 + 权威矩阵 section. CRDT/OT 协同编辑 OUT OF SCOPE (Phase 2+);
+   102	editor-shell `layoutEpoch` 是 single-source ordering, NOT 分布式 vector clock.
+   103	**C.2-4 forward-pointer only**: `layoutReducer` + `layoutEpoch` impl 落地 C.2-8
+   104	(per Wave 5 plan v1.1 row C.2-8); 此 PR 仅 lock invariant prose +
+   105	`GridContainer` thin wrapper + `useAutoRowSpan` hook public surface.
+
+exec
+/bin/bash -lc "nl -ba packages/editor-shell/CONTRACT.md | sed -n '300,340p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+   300	
+   301	**Component-block RTT is NOT yet operational** — Stage B (B1-B8) extends
+   302	mdx-bridge with `mdxJsxFlowElement` routing + per-call BlockRegistry
+   303	injection. Until B1 lands, attempting to save/load any document containing
+   304	the 8 Wave 2 component blocks (Callout / Code / Image / Math / Pdf /
+   305	Jupyter / NnViz / AgentFlow) will throw via mdx-bridge's existing
+   306	fail-loud rule. The `SaveLoadOptions.blockRegistry` parameter at the
+   307	saveLoad public API is accepted-but-unused until B1 threads it through.
+   308	
+   309	[ADR-0008 D1](../../docs/decisions/ADR-0008-wave-2-entry-policies.md) dead-dep
+   310	policy is satisfied at A5 by construction: every declared `@skb/*` workspace
+   311	dep has at least one `from '@skb/{pkg}'` source import. The 13 declared deps
+   312	+ 13 source imports (across `registerBlocks.ts` / `registerKernels.ts` /
+   313	`saveLoad.ts` / `index.ts`) + 13 tsconfig references hold three-way exact-match
+   314	symmetry.
+   315	
+   316	## Type variance note (Stage A A3 R3 retrospective; codified Wave 4 B4)
+   317	
+   318	`registerBlocks` casts 5 of 8 ui-defaults via `XxxUiDefault as unknown as BlockUIDefinition` and leaves the remaining 3 uncast. The asymmetry is structural, not historical: it traces ComponentType contravariance under `exactOptionalPropertyTypes: true`.
+   319	
+   320	- **5 with cast** (callout / code / image / math / pdf): each
+   321	  package's `XxxUiDefault` is typed
+   322	  `BlockUIDefinition<typeof XxxCore.propsSchema>` — a NARROW schema
+   323	  via `defineUI`'s generic. The narrow schema's
+   324	  `EditorView`/`RenderView` is `ComponentType<BlockViewProps&lt;NarrowSchema&gt;>`,
+   325	  which is NOT assignable to the registry's wider
+   326	  `ComponentType<BlockViewProps&lt;ZodTypeAny&gt;>` due to ComponentType
+   327	  contravariance. The cast collapses the variance gap. ESLint's
+   328	  `no-unnecessary-type-assertion` does NOT flag these casts because
+   329	  the assertion is genuinely required by tsc.
+   330	- **3 without cast** (jupyter / nn-viz / agent-flow): each package's
+   331	  `XxxUiDefault` resolves through `defineUI` with a wider component
+   332	  type signature that already accepts `BlockViewProps&lt;ZodTypeAny&gt;`
+   333	  without contravariance issue (verified at A3 EXECUTE 2026-05-01;
+   334	  tsc accepts the direct registration). Adding the cast here would
+   335	  be a no-op; ESLint's `no-unnecessary-type-assertion` would flag it.
+   336	
+   337	**Implication**: the 5/3 split is locked-in until the underlying
+   338	ui-default package types converge. Future blocks SHOULD pick the
+   339	3-camp signature shape (no cast required) when authoring new
+   340	ui-defaults; A3 R3 incident notes the asymmetry was first
+
+exec
+/bin/bash -lc "grep -nE \"\\"'`[''^'"\\"'`]*<'"\\w+>["'^'"\\"'`]*'"\\"'`" apps/site/CONTRACT.md packages/editor-shell/CONTRACT.md' in /home/weiyi/selfKnowledgeBaseWeb
+ exited 1 in 0ms:
+exec
+/bin/bash -lc "nl -ba docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md | sed -n '420,445p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+   420	- [ ] **AC#17**: `pnpm size-check` PASSES (500-line hard fail per
+   421	      file). Every NEW file < 500 lines (target < 250).
+   422	- [ ] **AC#18**: `pnpm link-check` PASSES (lychee). No autolink-
+   423	      in-backticks regressions per memory
+   424	      `feedback_lychee_autolink_in_backticks.md` (regex-grep
+   425	      `\`[^\`]*<\w+>[^\`]*\`` over the 3 doc deltas: this PR.md +
+   426	      `apps/site/CONTRACT.md` + `packages/editor-shell/CONTRACT.md`
+   427	      should match zero rows).
+   428	
+   429	### D. Cross-package + invariant compliance
+   430	
+   431	- [ ] **AC#19**: `apps/site/src/pages/notes/[...slug].astro` (the
+   432	      catch-all read-only renderer; squash `2586328`) is UNTOUCHED
+   433	      by this PR (read-only display path is orthogonal). `git diff
+   434	      --stat` shows zero LOC delta on that file.
+   435	- [ ] **AC#20**: Astro static-paths reconciliation: `pnpm --filter=
+   436	      @skb/site build` produces both `dist/notes/[slug]/index.html`
+   437	      (read-only) + `dist/notes/[slug]/edit/index.html` (edit) for
+   438	      each sample note (`sample-mdx-note`, `sample-blocks`,
+   439	      `__test_cjk__/laptop`, `__test_cjk__/zh-note`). Verify via
+   440	      `find apps/site/dist/notes -type f -name '*.html'`.
+   441	- [ ] **AC#21**: `apps/site/package.json` has 2 NEW workspace deps
+   442	      added (`@skb/editor-shell`: `workspace:*` + `@skb/block-foundation`:
+   443	      `workspace:*`); `pnpm-lock.yaml` regenerated to match. Per
+   444	      whitelist items 10/11 EXECUTE-time mechanical scope refinement
+   445	      (the original PR.md draft incorrectly assumed editor-shell was
+
+exec
+/bin/bash -lc "nl -ba docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md | sed -n '441,455p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+   441	- [ ] **AC#21**: `apps/site/package.json` has 2 NEW workspace deps
+   442	      added (`@skb/editor-shell`: `workspace:*` + `@skb/block-foundation`:
+   443	      `workspace:*`); `pnpm-lock.yaml` regenerated to match. Per
+   444	      whitelist items 10/11 EXECUTE-time mechanical scope refinement
+   445	      (the original PR.md draft incorrectly assumed editor-shell was
+   446	      already a transitive apps/site dep at the v1.2 plan-lock time;
+   447	      codex executor flagged the unresolved import at Step E and
+   448	      orchestrator pre-cleared the addition under "scope refinement"
+   449	      classification). `packages/editor-shell/package.json` is
+   450	      UNTOUCHED (zero LOC delta).
+   451	- [ ] **AC#22**: `EditorShellMount.tsx` uses `client:only="react"`
+   452	      (NOT `client:load`). Per `## risks` row (c) below, Tiptap is
+   453	      browser-only; SSR stub forces hydration mismatch. Verify via
+   454	      `grep 'client:only="react"' apps/site/src/pages/notes/[slug]/edit.astro`.
+   455	- [ ] **AC#23**: cumulative PR delta tracker reads "**PR 18 of 32**
+
+exec
+/bin/bash -lc "rg -n \"\\[slug\\]/edit|notes/\\[slug\\]|<slug>|%2F|encodeURIComponent|NO new dependency|NO new\" docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md apps/site/CONTRACT.md packages/editor-shell/CONTRACT.md apps/site/src/pages apps/site/src/components packages/editor-shell/src/save-adapter.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+packages/editor-shell/src/save-adapter.ts:29:  /** Note slug for /notes/<slug>. */
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:6:> navigate to `/notes/[slug]/edit`, mount `EditorShell` with the
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:12:> ("交付了但 /notes/[slug]/edit 没有，我怎么 edit/尝试？").
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:54:Minimal editor scaffold for `/notes/[slug]/edit` MVP smoke-test (per
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:57:1. NEW `apps/site/src/pages/notes/[slug]/edit.astro` (~30-50 LOC).
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:61:   two routes are disjoint by Astro path-segment depth (`/notes/[slug]`
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:62:   = read-only via catch-all; `/notes/[slug]/edit` = edit-mode via
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:178:   - route surface: `/notes/[slug]/edit` static-paths route per note
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:179:     slug; coexists with read-only `/notes/[slug]` catch-all renderer
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:202:| 1 | `apps/site/src/pages/notes/[slug]/edit.astro` | NEW | 30-50 | Static-paths route per note; mounts `EditorShellMount` via `client:only="react"`. |
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:224:**"交付了但 /notes/[slug]/edit 没有，我怎么 edit/尝试？"** during
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:263:- reload `/notes/[slug]/edit` and verify content + grid intact
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:338:      `encodeURIComponent` mangling — original `[slug]/edit.astro`
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:436:      @skb/site build` produces both `dist/notes/[slug]/index.html`
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:437:      (read-only) + `dist/notes/[slug]/edit/index.html` (edit) for
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:454:      `grep 'client:only="react"' apps/site/src/pages/notes/[slug]/edit.astro`.
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:466:   shape per R2 reviewer fix; supersedes original `[slug]/edit.astro`
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:683:`EditorShellMount.astro` + `[slug]/edit.astro` route.
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:688:(static-paths reconciliation produces both `dist/notes/[slug]/...`
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:689:+ `dist/notes/[slug]/edit/...` HTML).
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:715:### (b) Astro static-paths conflict between `[...slug].astro` (read-only catch-all) and `[slug]/edit.astro` (edit-mode)
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:718:`/src/pages/notes/[slug]/edit.astro` (single-segment + literal `edit`)
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:720:risk: catch-all takes precedence on `/notes/[slug]/edit` and routes
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:721:to `[...slug].astro` with `slug = "[slug]/edit"` instead of the
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:725:specific-first** by static-segment count; `[slug]/edit.astro` has
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:729:@skb/site build` MUST emit BOTH `dist/notes/[slug]/index.html`
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:730:(catch-all read-only output) + `dist/notes/[slug]/edit/index.html`
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:876:    BOTH `dist/notes/[slug]/index.html` (catch-all read-only) +
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:877:    `dist/notes/[slug]/edit/index.html` (NEW edit route) for each
+
+exec
+/bin/bash -lc "nl -ba docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md | sed -n '190,210p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+   190	   - C.4-prelude scope lock: this section is the MVP scaffold contract
+   191	     only; C.4-2 enhances the route + mount with full BlockRegistry /
+   192	     KernelRegistry wire-up; C.4-4 adds save/load layoutEpoch sync;
+   193	     C.4-5 adds e2e playwright
+   194	
+   195	9. NEW `docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md` (this
+   196	   PR.md). ~700-800 lines target.
+   197	
+   198	## what
+   199	
+   200	| # | File | Status | LOC budget | Purpose |
+   201	|---|---|---|---:|---|
+   202	| 1 | `apps/site/src/pages/notes/[slug]/edit.astro` | NEW | 30-50 | Static-paths route per note; mounts `EditorShellMount` via `client:only="react"`. |
+   203	| 2 | `apps/site/src/components/EditorShellMount.astro` | NEW | 10-20 | Astro wrapper re-exporting the React island. |
+   204	| 3 | `apps/site/src/components/EditorShellMount.tsx` | NEW | 50-80 | React island: `LocalStorageAdapter` + `EditorShell` + `GridContainer`. |
+   205	| 4 | `packages/editor-shell/src/save-adapter.ts` | NEW | 140-200 | `NoteSaveAdapter` interface + `NoteState` + `LocalStorageAdapter` MVP impl per ADR-0018 D8 接口冻结. |
+   206	| 5 | `packages/editor-shell/src/__tests__/save-adapter.test.ts` | NEW | 120-180 | 7+ vitest cases (round-trip + size cap + 4 exception paths). |
+   207	| 6 | `packages/editor-shell/src/index.ts` | MODIFY | +3-4 | Barrel re-exports for the 4 NEW save-adapter symbols. |
+   208	| 7 | `packages/editor-shell/CONTRACT.md` | MODIFY | +25-40 | NEW `### NoteSaveAdapter (Wave 5; MVP shipped at C.4-prelude)` subsection under `## Public surface`. |
+   209	| 8 | `apps/site/CONTRACT.md` | MODIFY | +20-35 | NEW `## Edit route (Wave 5)` section between `## Grid layout` and `## Invariants`. |
+   210	| 9 | `docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md` | NEW (this) | 700-800 | This PR.md. |
+
+exec
+/bin/bash -lc "nl -ba docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md | sed -n '450,472p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+   450	      UNTOUCHED (zero LOC delta).
+   451	- [ ] **AC#22**: `EditorShellMount.tsx` uses `client:only="react"`
+   452	      (NOT `client:load`). Per `## risks` row (c) below, Tiptap is
+   453	      browser-only; SSR stub forces hydration mismatch. Verify via
+   454	      `grep 'client:only="react"' apps/site/src/pages/notes/[slug]/edit.astro`.
+   455	- [ ] **AC#23**: cumulative PR delta tracker reads "**PR 18 of 32**
+   456	      locked at v1.2; 17 done after this merge; 15 remaining to Wave
+   457	      5 close" — assert via `## R14 self-check` row 6.
+   458	
+   459	## scope (whitelist)
+   460	
+   461	ONLY these files (no globs; per ADR-0006 D8 explicit-file-list
+   462	staging discipline + Wave 5 plan v1.2 row C.4-prelude line 571
+   463	verbatim):
+   464	
+   465	1. `apps/site/src/pages/notes/[...slug]/edit.astro` (NEW; rest-route
+   466	   shape per R2 reviewer fix; supersedes original `[slug]/edit.astro`
+   467	   from v1.2 plan whitelist line 571 — see `## R14 self-check`
+   468	   final row + AC#1 explanation)
+   469	2. `apps/site/src/components/EditorShellMount.astro` (NEW)
+   470	3. `apps/site/src/components/EditorShellMount.tsx` (NEW)
+   471	4. `packages/editor-shell/src/save-adapter.ts` (NEW)
+   472	5. `packages/editor-shell/src/__tests__/save-adapter.test.ts` (NEW)
+
+exec
+/bin/bash -lc "git diff -- docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md | sed -n '1,180p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+codex
+The core R1 implementation fixes are visible so far: the rest route exists, the deleted single-segment route is absent, `initialMdx` is threaded, debounce is 800ms, and the contract grep currently returns zero matches. I’m checking the R2-only prose edits against `722bbb0` now, because that decides whether they’re harmless defensive cleanup or scope creep.
+exec
+/bin/bash -lc 'git rev-parse HEAD' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+722bbb0e8ad14b037671bdaa8def837c5c6f9dd9
+
+exec
+/bin/bash -lc "git show 722bbb0:packages/editor-shell/CONTRACT.md | nl -ba | sed -n '316,335p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+   316	
+   317	Each A2-A5 PR Modifies this file to extend "Public surface" as exports land.
+   318	The "Wave 3 Stage A expansion outline" section is informational; once A5
+   319	closes Stage A, that section may be retired in favor of a stable public-surface
+   320	declaration (orchestrator decision at Stage A close ceremony).
+   321	
+   322	## Related
+   323	
+   324	- [ADR-0010 D7 #3](../../docs/decisions/ADR-0010-wave-2-close.md) — editor-shell composition deferral closed by Stage A
+   325	- [ADR-0011 D1+D6](../../docs/decisions/ADR-0011-linear-pipeline-execution-model.md) — pipeline + codex profiles
+   326	- [Wave 3 plan, Stage A](../../docs/superpowers/plans/2026-05-01-phase-1-wave-3-integration.md) — locked Stage A scope
+   327	- [packages/block-foundation/CONTRACT.md](../block-foundation/CONTRACT.md) — registry consumer pattern A3 will use
+   328	- [packages/mdx-bridge/CONTRACT.md](../mdx-bridge/CONTRACT.md) — per-call injection pattern B1 will thread through saveLoad
+
+exec
+/bin/bash -lc "git show 722bbb0:packages/editor-shell/CONTRACT.md | grep -nE \"\\"'`[''^'"\\"'`]*<'"\\w+>["'^'"\\"'`]*'"\\"'`"' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+279:dep has at least one `from '@skb/<pkg>'` source import. The 13 declared deps
+292:  `EditorView`/`RenderView` is `ComponentType<BlockViewProps<NarrowSchema>>`,
+294:  `ComponentType<BlockViewProps<ZodTypeAny>>` due to ComponentType
+300:  type signature that already accepts `BlockViewProps<ZodTypeAny>`
+
+exec
+/bin/bash -lc "git show 722bbb0:apps/site/CONTRACT.md | grep -nE \"\\"'`[''^'"\\"'`]*<'"\\w+>["'^'"\\"'`]*'"\\"'`"' in /home/weiyi/selfKnowledgeBaseWeb
+ exited 1 in 0ms:
+exec
+/bin/bash -lc "git diff -- packages/editor-shell/CONTRACT.md | sed -n '1,220p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+diff --git a/packages/editor-shell/CONTRACT.md b/packages/editor-shell/CONTRACT.md
+index 3b33ca3..e0e78dc 100644
+--- a/packages/editor-shell/CONTRACT.md
++++ b/packages/editor-shell/CONTRACT.md
+@@ -57,6 +57,38 @@ editor surface. Closes the "editor-shell composition" deferral from
+ - `SaveLoadOptions { blockRegistry?: BlockRegistry }` — public options type
+   for the per-call BlockRegistry injection pattern. Threading lands in B1.
+ 
++### NoteSaveAdapter (Wave 5; MVP shipped at C.4-prelude)
++
++ADR-0018 D8 lines 339-451 are the canonical interface authority for the
++C.4-prelude save-path public surface:
++[ADR-0018 D8](../../docs/decisions/ADR-0018-v2-visual-migration.md).
++
++Public exports added by the MVP scaffold:
++
++- `NoteSaveAdapter` — interface exposing `slug`, `load()`, and `save(state)`.
++- `NoteState` — interface carrying `mdxSource`, optional `tiptapState`,
++  `lastModified`, and consumer-incremented `version`.
++- `ReadonlyJSONValue` — recursive read-only JSON value type for optional
++  same-session Tiptap cache data.
++- `LocalStorageAdapter` — Wave 5 MVP implementation of `NoteSaveAdapter`.
++
++Storage semantics:
++
++- See sister-doc:
++  [apps/site/CONTRACT.md § Edit route (Wave 5)](../../apps/site/CONTRACT.md).
++- localStorage key prefix: `skb-note:{slug}` per ADR-0018 D8 lines 454-455.
++- `PER_NOTE_MAX_BYTES = 2 MB`; oversized serialized states return
++  `{ ok: false, error }` instead of writing.
++- `AGGREGATE_WARN_BYTES = 5 MB`; aggregate `skb-note:*` storage above this
++  threshold emits a `console.warn` but does not block the save.
++- Corrupted JSON and localStorage `SecurityError` during load return `null`
++  with a warning. `QuotaExceededError` and `SecurityError` during save return
++  `{ ok: false, error }`.
++
++**C.4-1 hardens this contract** (W5-2 invariant promotion + adapter contract
++test suite per Wave 5 plan v1.2 Q3 ownership boundary). C.4-prelude only ships
++MVP impl + this minimal doc forward-pointer.
++
+ The component does NOT include a `'use client'` pragma — consumers (Stage C
+ apps/site) decide the client/server boundary at integration time.
+ 
+@@ -276,7 +308,7 @@ saveLoad public API is accepted-but-unused until B1 threads it through.
+ 
+ [ADR-0008 D1](../../docs/decisions/ADR-0008-wave-2-entry-policies.md) dead-dep
+ policy is satisfied at A5 by construction: every declared `@skb/*` workspace
+-dep has at least one `from '@skb/<pkg>'` source import. The 13 declared deps
++dep has at least one `from '@skb/{pkg}'` source import. The 13 declared deps
+ + 13 source imports (across `registerBlocks.ts` / `registerKernels.ts` /
+ `saveLoad.ts` / `index.ts`) + 13 tsconfig references hold three-way exact-match
+ symmetry.
+@@ -289,15 +321,15 @@ symmetry.
+   package's `XxxUiDefault` is typed
+   `BlockUIDefinition<typeof XxxCore.propsSchema>` — a NARROW schema
+   via `defineUI`'s generic. The narrow schema's
+-  `EditorView`/`RenderView` is `ComponentType<BlockViewProps<NarrowSchema>>`,
++  `EditorView`/`RenderView` is `ComponentType<BlockViewProps&lt;NarrowSchema&gt;>`,
+   which is NOT assignable to the registry's wider
+-  `ComponentType<BlockViewProps<ZodTypeAny>>` due to ComponentType
++  `ComponentType<BlockViewProps&lt;ZodTypeAny&gt;>` due to ComponentType
+   contravariance. The cast collapses the variance gap. ESLint's
+   `no-unnecessary-type-assertion` does NOT flag these casts because
+   the assertion is genuinely required by tsc.
+ - **3 without cast** (jupyter / nn-viz / agent-flow): each package's
+   `XxxUiDefault` resolves through `defineUI` with a wider component
+-  type signature that already accepts `BlockViewProps<ZodTypeAny>`
++  type signature that already accepts `BlockViewProps&lt;ZodTypeAny&gt;`
+   without contravariance issue (verified at A3 EXECUTE 2026-05-01;
+   tsc accepts the direct registration). Adding the cast here would
+   be a no-op; ESLint's `no-unnecessary-type-assertion` would flag it.
+
+exec
+/bin/bash -lc 'ls -la' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+total 508
+drwxr-xr-x 15 weiyi weiyi   4096 May  5 16:18 .
+drwxr-x--- 22 weiyi weiyi   4096 May  5 16:46 ..
+drwxr-xr-x  3 weiyi weiyi   4096 Apr 29 10:37 .agents
+drwxr-xr-x  4 weiyi weiyi   4096 May  5 16:24 .claude
+-r--r--r--  1 weiyi weiyi      0 Apr 29 10:33 .codex
+drwxr-xr-x  4 weiyi weiyi   4096 May  1 07:56 .codex-runs
+-rw-r--r--  1 weiyi weiyi    219 Apr 29 11:23 .editorconfig
+drwxr-xr-x  8 weiyi weiyi   4096 May  5 16:46 .git
+drwxr-xr-x  3 weiyi weiyi   4096 Apr 29 12:05 .github
+-rw-r--r--  1 weiyi weiyi    813 May  1 03:59 .gitignore
+-rw-r--r--  1 weiyi weiyi   2033 May  1 22:09 .lychee.toml
+-rw-r--r--  1 weiyi weiyi    106 Apr 29 11:23 .npmrc
+drwxr-xr-x  3 weiyi weiyi   4096 May  4 18:06 .turbo
+-rw-r--r--  1 weiyi weiyi   8322 May  4 00:30 AGENTS.md
+-rw-r--r--  1 weiyi weiyi   8279 May  4 00:30 CLAUDE.md
+-rw-r--r--  1 weiyi weiyi  11357 Apr 29 10:59 LICENSE
+-rw-r--r--  1 weiyi weiyi  26528 May  4 00:30 agent-contract.md
+drwxr-xr-x  4 weiyi weiyi   4096 Apr 29 20:32 apps
+-rw-r--r--  1 weiyi weiyi   1834 Apr 29 10:59 claude+codex.md
+-rw-r--r--  1 weiyi weiyi   3351 Apr 29 10:59 codex.md
+drwxr-xr-x  3 weiyi weiyi   4096 Apr 29 20:32 content
+drwxr-xr-x  8 weiyi weiyi   4096 May  1 21:51 docs
+-rw-r--r--  1 weiyi weiyi   3401 May  4 00:00 eslint.config.js
+drwxr-xr-x  8 weiyi weiyi   4096 May  5 16:18 node_modules
+-rw-r--r--  1 weiyi weiyi     84 Apr 29 10:33 opencode.json
+-rw-r--r--  1 weiyi weiyi   1407 Apr 30 16:07 package.json
+drwxr-xr-x 24 weiyi weiyi   4096 May  3 10:58 packages
+-rw-r--r--  1 weiyi weiyi 327276 May  5 16:18 pnpm-lock.yaml
+-rw-r--r--  1 weiyi weiyi     40 Apr 29 11:41 pnpm-workspace.yaml
+-rw-r--r--  1 weiyi weiyi    159 Apr 29 11:23 prettier.config.cjs
+drwxr-xr-x  5 weiyi weiyi   4096 Apr 30 16:04 scripts
+-rw-r--r--  1 weiyi weiyi    298 Apr 29 10:37 skills-lock.json
+drwxr-xr-x  2 weiyi weiyi   4096 May  4 00:30 tmp
+-rw-r--r--  1 weiyi weiyi    691 Apr 29 11:23 tsconfig.base.json
+-rw-r--r--  1 weiyi weiyi   1106 May  1 08:46 tsconfig.json
+-rw-r--r--  1 weiyi weiyi    466 Apr 29 11:40 turbo.json
+-rw-r--r--  1 weiyi weiyi    173 Apr 29 12:01 vitest.config.ts
+
+exec
+/bin/bash -lc "rg -n \"link-check|lychee|feedback_lychee|CONTRACT\" package.json pnpm-workspace.yaml .github scripts docs -g '"'!node_modules'"'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+package.json:23:    "link-check": "lychee --config .lychee.toml './**/*.md'",
+docs/review-checklist.md:20:- [ ] **Cross-references**: all internal markdown links resolve (`pnpm link-check`).
+docs/review-checklist.md:21:- [ ] **Contracts in sync**: `packages/*/CONTRACT.md`, `agent-contract.md`, and code interfaces match.
+docs/review-checklist.md:36:- [ ] **#6 Sister-file documentation audit**: After updating one CONTRACT.md (or analogous document), audit ALL related CONTRACT.md files for sister-file drift; shared identifiers must use identical terminology across both halves of the contract.
+docs/review-checklist.md:50:- [ ] **Contracts**: any change to `packages/*/CONTRACT.md` matches the implementation
+docs/review-checklist.md:78:      regenerate; `CONTRACT.md` ↔ implementation; `docs/plans/` reflects status).
+.github/workflows/link-check.yml:1:name: link-check
+.github/workflows/link-check.yml:13:  group: link-check-${{ github.ref }}
+.github/workflows/link-check.yml:17:  lychee:
+.github/workflows/link-check.yml:21:      - uses: lycheeverse/lychee-action@v2
+.github/workflows/link-check.yml:23:          args: --no-progress --config .lychee.toml './**/*.md'
+docs/plans/wave-3-prep/PR-1-agent-contract.md:114:- Row 1 (contract change in `agent-contract.md` + every `CONTRACT.md` consumer
+docs/plans/wave-3-prep/PR-1-agent-contract.md:126:- viz-block CONTRACT.md prose (PR #3).
+docs/plans/wave-3-prep/PR-2-f3-typed-tokens.md:8:> No D2 row 4 trigger (no new ADR); D2 row 1 trigger DOES fire (CONTRACT change
+docs/plans/wave-3-prep/PR-2-f3-typed-tokens.md:20:Hand-edited (source code + CONTRACT updates):
+docs/plans/wave-3-prep/PR-2-f3-typed-tokens.md:27:- `packages/block-code/CONTRACT.md` *(public surface += `CODE_THEME_TOKENS`;
+docs/plans/wave-3-prep/PR-2-f3-typed-tokens.md:32:- `packages/block-image/CONTRACT.md` *(public surface += `IMAGE_THEME_TOKENS`;
+docs/plans/wave-3-prep/PR-2-f3-typed-tokens.md:74:- `packages/block-code/CONTRACT.md` — public surface += `CODE_THEME_TOKENS`
+docs/plans/wave-3-prep/PR-2-f3-typed-tokens.md:75:- `packages/block-image/CONTRACT.md` — public surface += `IMAGE_THEME_TOKENS`
+docs/plans/wave-3-prep/PR-2-f3-typed-tokens.md:97:7. `packages/block-code/CONTRACT.md` "Public surface" lists
+docs/plans/wave-3-prep/PR-2-f3-typed-tokens.md:100:8. `packages/block-image/CONTRACT.md` mirrors #7.
+docs/plans/wave-3-prep/PR-2-f3-typed-tokens.md:121:- Row 1 (CONTRACT change in `block-code/CONTRACT.md` + `block-image/CONTRACT.md`):
+docs/plans/wave-3-prep/PR-2-f3-typed-tokens.md:134:- block-image/CONTRACT.md line 3-4 stale prose claiming "第一个真实
+docs/plans/wave-3-main/Pre-B1-adr-0011-v0.1.1-amend.md:62:- **TC5** (link-check eligible — preempt A1-style lychee fail) Input:
+docs/plans/wave-3-main/Pre-B1-adr-0011-v0.1.1-amend.md:137:- **Row 1** (CONTRACT/ADR change): **HIT** — ADR-0011 D2 section
+docs/plans/wave-3-main/B6-mdx-bridge-pdf-fixture.md:10:mdxComponent dispatch via `@skb/block-pdf/core` devDep. CONTRACT
+docs/plans/wave-3-main/B6-mdx-bridge-pdf-fixture.md:31:- `packages/mdx-bridge/CONTRACT.md` — fixture-count prose 13 → 14.
+docs/plans/wave-3-main/B6-mdx-bridge-pdf-fixture.md:48:- **TC6** CONTRACT fixture-count grew exactly 1.
+docs/plans/wave-3-main/B6-mdx-bridge-pdf-fixture.md:54:- `packages/mdx-bridge/CONTRACT.md` — fixture-count prose bump.
+docs/plans/wave-3-main/B6-mdx-bridge-pdf-fixture.md:65:4. CONTRACT.md fixture-count bumped — TC6.
+docs/runbooks/codex-tool-invocations.md:247:(6) 一份 CONTRACT.md 改动 → 审 sister CONTRACT.md 是否同步；
+docs/runbooks/codex-tool-invocations.md:294:- 契约漂移（CONTRACT.md 与实际接口不一致）
+docs/plans/wave-3-prep/PR-3-viz-test-corpus.md:1:# PR #3 — viz-block test-corpus invariant prose (3 CONTRACTs)
+docs/plans/wave-3-prep/PR-3-viz-test-corpus.md:5:> 300-line ESLint warn threshold; pre-allowlist via per-package CONTRACTs
+docs/plans/wave-3-prep/PR-3-viz-test-corpus.md:9:> (ADR-0006 #6 sister-file CONTRACT discipline + #5 algorithm-replication
+docs/plans/wave-3-prep/PR-3-viz-test-corpus.md:15:`block-agent-flow` CONTRACT.md add a "Test corpus" section naming the
+docs/plans/wave-3-prep/PR-3-viz-test-corpus.md:17:`mdx-bridge/CONTRACT.md` "Implementation notes" precedent for the 243-line
+docs/plans/wave-3-prep/PR-3-viz-test-corpus.md:22:Hand-edited (3 CONTRACT.md additions; doc-only):
+docs/plans/wave-3-prep/PR-3-viz-test-corpus.md:24:- `packages/block-jupyter/CONTRACT.md` *(new "Test corpus invariants"
+docs/plans/wave-3-prep/PR-3-viz-test-corpus.md:27:- `packages/block-nn-viz/CONTRACT.md` *(new section: tfjs-bridge.test.ts
+docs/plans/wave-3-prep/PR-3-viz-test-corpus.md:29:- `packages/block-agent-flow/CONTRACT.md` *(new section: flow-bridge.test.ts
+docs/plans/wave-3-prep/PR-3-viz-test-corpus.md:41:- **TC1** Section symmetry: each of the 3 new CONTRACT.md additions shares
+docs/plans/wave-3-prep/PR-3-viz-test-corpus.md:46:- **TC2** `pnpm link-check` (lychee) — every internal link in the 3 new
+docs/plans/wave-3-prep/PR-3-viz-test-corpus.md:56:existence: each test file already EXISTS and PASSES at HEAD; the CONTRACT
+docs/plans/wave-3-prep/PR-3-viz-test-corpus.md:61:- `packages/block-jupyter/CONTRACT.md`
+docs/plans/wave-3-prep/PR-3-viz-test-corpus.md:62:- `packages/block-nn-viz/CONTRACT.md`
+docs/plans/wave-3-prep/PR-3-viz-test-corpus.md:63:- `packages/block-agent-flow/CONTRACT.md`
+docs/plans/wave-3-prep/PR-3-viz-test-corpus.md:65:No external CONTRACT consumers affected (no public-surface change).
+docs/plans/wave-3-prep/PR-3-viz-test-corpus.md:69:None. Pre-allowlist precedent already exists in `mdx-bridge/CONTRACT.md`
+docs/plans/wave-3-prep/PR-3-viz-test-corpus.md:75:1. Each of the 3 viz-block CONTRACT.md files has a new "## Test corpus
+docs/plans/wave-3-prep/PR-3-viz-test-corpus.md:87:3. `pnpm link-check` passes (no broken internal links).
+docs/plans/wave-3-prep/PR-3-viz-test-corpus.md:91:   "CONTRACT-disclosed" (no longer drift candidates).
+docs/plans/wave-3-prep/PR-3-viz-test-corpus.md:97:  CONTRACT.md files; codex-generic-executor profile not yet wired into
+docs/plans/wave-3-prep/PR-3-viz-test-corpus.md:102:- **D2 PRE-COMMIT CLAUDE REVIEW (row 1 hits — CONTRACT change in 3
+docs/plans/wave-3-prep/PR-3-viz-test-corpus.md:109:- Row 1 (CONTRACT change in 3 packages): **HIT**.
+docs/plans/wave-3-prep/PR-3-viz-test-corpus.md:115:  Claude review of the 3 CONTRACT diffs.
+docs/plans/wave-3-prep/PR-3-viz-test-corpus.md:128:  CONTRACT-disclosed in `mdx-bridge/CONTRACT.md` "Implementation notes"
+docs/plans/wave-3-prep/PR-3-viz-test-corpus.md:131:- block-image/CONTRACT.md line 3-4 stale boilerplate (carried from PR #2
+docs/plans/wave-3-prep/PR-3-viz-test-corpus.md:141:  sister-file CONTRACT drift discipline
+docs/plans/wave-3-prep/PR-3-viz-test-corpus.md:142:- [mdx-bridge/CONTRACT.md](../../../packages/mdx-bridge/CONTRACT.md) — the
+docs/plans/wave-3-prep/PR-3-viz-test-corpus.md:143:  CONTRACT-disclosure pattern source (Wave 1 carry-over, 243-line
+scripts/render/review-checklist.ts:24:- [ ] **Cross-references**: all internal markdown links resolve (\`pnpm link-check\`).
+scripts/render/review-checklist.ts:25:- [ ] **Contracts in sync**: \`packages/*/CONTRACT.md\`, \`agent-contract.md\`, and code interfaces match.
+scripts/render/review-checklist.ts:40:- [ ] **#6 Sister-file documentation audit**: After updating one CONTRACT.md (or analogous document), audit ALL related CONTRACT.md files for sister-file drift; shared identifiers must use identical terminology across both halves of the contract.
+scripts/render/review-checklist.ts:54:- [ ] **Contracts**: any change to \`packages/*/CONTRACT.md\` matches the implementation
+scripts/render/review-checklist.ts:82:      regenerate; \`CONTRACT.md\` ↔ implementation; \`docs/plans/\` reflects status).
+docs/plans/active.md:28:| #66 | `465588e` | docs | active.md sync post C.2-3.5 + lychee fix-forward (PR #65 broken link) |
+docs/plans/active.md:48:| #34 | 5f360a6 | A4 | HeavyBlockBoundary CSS + a11y polish + prefers-reduced-motion + CONTRACT.md consolidation (AC#4/#12/#13/#14) |
+docs/plans/active.md:58:| #44 | `794cd5d` | B5 | codex profile prefix R3 (agent-contract.md + regen) + lychee autolink-in-backticks memory codify (`feedback_lychee_autolink_in_backticks.md`) |
+docs/plans/active.md:78:- ✅ Path-prose alignment in ADR-0012: `_pagefind/` → `pagefind/` — **B1a (this PR; 5 occurrences flipped + apps/site/CONTRACT.md stale-note removed)**
+docs/plans/active.md:131:Wave 5 plan v1.2 ✅ locked (R14 SECOND real-test). 17 PRs done (5 Pre-A + 3 C.1 + 7 C.2 + 2 meta). R14 discipline ✅ operative across multiple trigger classes (defer-chain v1.1 + gatekeeper-sequencing v1.2). **Next = C.4-prelude minimal editor scaffold (MVP smoke-test enable)**. Per Wave 5 plan v1.2 row C.4-prelude + Q4 plan-challenger absorbtion LOCKED scaffold-BEFORE-C.2-7: ~200 LOC, codex-generic-executor, D2 row 1 (CONTRACT). Reuses what C.2-1..C.2-6 + C.2-3.5 already shipped (grid + drag + resize + mdx-bridge end-state).
+docs/plans/active.md:136:- `apps/site/CONTRACT.md` (route + mount contract; minimal section)
+docs/plans/active.md:164:- `packages/heavy-block-boundary/CONTRACT.md` (sister-doc-sync per ADR-0016 §502 row 1 of 4)
+docs/plans/active.md:165:- ~150 LOC, orchestrator-self for ADR + codex for impl, D2 Row 4 (ADR amendment) + Row 1 (CONTRACT sync) fires
+scripts/render/claude-md.ts:32:   contract files in sync (\`packages/*/CONTRACT.md\`, \`agent-contract.md\`).
+scripts/render/claude-md.ts:33:3. **Lychee link-check**: broken markdown links block merge. Run \`pnpm link-check\` locally.
+scripts/render/claude-md.ts:53:    ['`pnpm link-check`', 'Lychee scan over `./**/*.md`'],
+docs/runbooks/team-operations.md:104:- **完工标准**：`pnpm check` 在自己包内全绿 + 文档（CONTRACT.md / 注释）齐全
+docs/runbooks/team-operations.md:130:| `link-checker`        | CI 每次 push（不在 team 内手动触发）              | lychee 扫 markdown 短链                                                    |
+docs/runbooks/team-operations.md:140:  "message": "Track <X> implementation done. Files: ... Tests: pass. CONTRACT.md updated. Ready for review."
+docs/runbooks/team-operations.md:180:| 1 | 修改任何 `*/CONTRACT.md`（接口形状变化，非补充） | ✅ | ✅ |
+docs/runbooks/team-operations.md:197:- 不动 CONTRACT.md / schema
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:315:- **契约文档强制**：每个接口包含 `CONTRACT.md`，被 `code-reviewer` 强制审查
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:437:### 2.5 跨包契约位置 + `CONTRACT.md` 制度
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:441:| **Block Core / UI 双层接口（ADR-0003）** | `packages/block-foundation/src/registry.ts` | 所有 block 的 core + 所有 block 的 ui-default + editor + site | `block-foundation/CONTRACT.md` |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:442:| **设计 token 接口（ADR-0003）** | `packages/design-tokens/src/{tokens.css,tokens-dark.css,tailwind-preset.cjs,use-theme.ts}` | apps/site + 每个 block-X/ui-default + packages/ui | `design-tokens/CONTRACT.md` |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:443:| MDX ↔ block 序列化协议 | `packages/mdx-bridge/src/round-trip.test.ts` | mdx-bridge + 每个 block | `mdx-bridge/CONTRACT.md` |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:444:| KernelAdapter 接口 | `packages/kernel-adapter/src/adapter.ts` | jupyter / runnable-code blocks | `kernel-adapter/CONTRACT.md` |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:445:| API endpoints | `apps/api/app/schemas.py` (Pydantic) | api-client (auto-gen) | `apps/api/CONTRACT.md` |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:446:| 页面 frontmatter schema | `packages/content-types/src/frontmatter.ts` | site 构建 + editor 元数据面板 | `content-types/CONTRACT.md` |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:447:| Agent 工具 schema | `packages/agent-tools/src/*.ts` | apps/api 实现 + agent-chat UI | `agent-tools/CONTRACT.md` |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:448:| 编辑器命令清单 | `packages/editor-commands/src/index.ts` | UI 操作 + agent 工具实现 | `editor-commands/CONTRACT.md` |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:449:| WebSocket 协议 | `apps/api/app/ws/protocol.py` | apps/site 客户端 + agent loop | `apps/api/app/ws/CONTRACT.md` |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:450:| LLMProvider 抽象 | `apps/api/app/llm/provider.py` | Anthropic 实现 + 未来 provider | `apps/api/app/llm/CONTRACT.md` |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:452:**铁律**：契约文件顶部注释明确 "修改此文件需同步更新 X / Y / Z"；改了文件但没改 `CONTRACT.md`，`code-reviewer` 直接 reject。
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:493:4. WebSocket 协议变更必须更新 `app/ws/CONTRACT.md`
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:514:  T0.3  CI 骨架（lint / typecheck / test / size-check / link-check）
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:585:  └─ link-checker         ── CI 每次 push (lychee)
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:638:| `link-checker` | CI 每次 push | `lychee` 扫 markdown 短链，broken 阻断 merge |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:690:│   1. 修改任何 */CONTRACT.md（接口形状变化，非补充）        │
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:746:- 触发条件：diff < 20 行 + 无 .ts/.tsx/.py/.toml 文件 + 无 CONTRACT.md / schema 改动
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:810:### 3.5 文档交叉引用 + lychee CI
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:814:**lychee 配置**（`.lychee.toml`）：
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:829:- name: link-check
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:830:  uses: lycheeverse/lychee-action@v2
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:879:  "check": "turbo run lint typecheck test build size-check link-check",
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:886:  "link-check": "lychee './**/*.md'",
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:912:    ├─→ link-check (lychee)
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:941:- <link to spec / plan / impacted CONTRACT.md>
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:1093:| T0.11 CI 骨架（GitHub Actions：lint / typecheck / test / size-check / link-check） | api-builder | dummy commit CI 全绿 |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:1094:| T0.12 lychee 配置 + 首次 link-check 通过 | api-builder | CI 链路检查节点上线 |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:1115:| E. kernel-adapter + registry | kernel-architect | Claude | 接口 + 类型 + CONTRACT.md 完整；单测覆盖接口约束 |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:1116:| F. editor-commands + agent-tools schema | editor-eng | Claude | 命令模式 API + agent-tools type stubs + CONTRACT.md |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:1277:| 2026-04-29 | 每接口包含 `CONTRACT.md` | 契约漂移是 monorepo 最大的隐性失败模式 |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:1283:| 2026-04-29 | CI 强制 lychee 链接检查 + 文档强制交叉引用 | 避免文档孤儿化与短链失效 |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:1296:| 2026-04-29 | 新增 `pr-gate` (Codex 5.5) 仅对高风险 PR 启用 | 触发条件明确（CONTRACT / 核心包 / ADR / 安全），低频高质量 |
+docs/plans/wave-3-main/B1-mdx-bridge-jsx-routing.md:28:`block-foundation/CONTRACT.md:28` "Serialize / parse hook ownership"
+docs/plans/wave-3-main/B1-mdx-bridge-jsx-routing.md:35:in `packages/mdx-bridge/CONTRACT.md` into a live `## Component block
+docs/plans/wave-3-main/B1-mdx-bridge-jsx-routing.md:64:  `block-foundation/CONTRACT.md:28` — see `## Critical design choice`
+docs/plans/wave-3-main/B1-mdx-bridge-jsx-routing.md:92:     (Wave 1 `_mdast` pattern carries over; see CONTRACT.md
+docs/plans/wave-3-main/B1-mdx-bridge-jsx-routing.md:131:  lines (still under 300 soft warn; **no** new CONTRACT.md size-
+docs/plans/wave-3-main/B1-mdx-bridge-jsx-routing.md:134:  CONTRACT acknowledgment in `docs/audits/structure-2026-05.md:84`
+docs/plans/wave-3-main/B1-mdx-bridge-jsx-routing.md:152:  (Wave 2+)` prose at CONTRACT.md:144-156 explicitly forecast this
+docs/plans/wave-3-main/B1-mdx-bridge-jsx-routing.md:158:- `packages/mdx-bridge/CONTRACT.md` — four coordinated edits:
+docs/plans/wave-3-main/B1-mdx-bridge-jsx-routing.md:164:     from block-foundation/CONTRACT.md:28, the registry-absent +
+docs/plans/wave-3-main/B1-mdx-bridge-jsx-routing.md:203:serialize.ts + index.ts + package.json + tsconfig.json + CONTRACT.md +
+docs/plans/wave-3-main/B1-mdx-bridge-jsx-routing.md:216:- `packages/block-foundation/CONTRACT.md` — **NOT modified**. Line
+docs/plans/wave-3-main/B1-mdx-bridge-jsx-routing.md:220:  `git diff main -- packages/block-foundation/CONTRACT.md`
+docs/plans/wave-3-main/B1-mdx-bridge-jsx-routing.md:222:- `packages/block-callout/CONTRACT.md` and the 7 sister
+docs/plans/wave-3-main/B1-mdx-bridge-jsx-routing.md:223:  `block-*/CONTRACT.md` — **NOT modified**. B1 is producer-side
+docs/plans/wave-3-main/B1-mdx-bridge-jsx-routing.md:225:  CONTRACTs do not need changes (they remain consumers of
+docs/plans/wave-3-main/B1-mdx-bridge-jsx-routing.md:237:  package source + CONTRACT update. Source-of-truth is
+docs/plans/wave-3-main/B1-mdx-bridge-jsx-routing.md:345:- **TC12** (sister CONTRACT.md sync — ADR-0006 #6) Input:
+docs/plans/wave-3-main/B1-mdx-bridge-jsx-routing.md:346:  `git diff main -- packages/block-*/CONTRACT.md
+docs/plans/wave-3-main/B1-mdx-bridge-jsx-routing.md:347:  packages/block-foundation/CONTRACT.md`. Expected: empty
+docs/plans/wave-3-main/B1-mdx-bridge-jsx-routing.md:348:  diff. The 8 block-*/CONTRACT.md files PLUS
+docs/plans/wave-3-main/B1-mdx-bridge-jsx-routing.md:349:  block-foundation/CONTRACT.md MUST remain unchanged because
+docs/plans/wave-3-main/B1-mdx-bridge-jsx-routing.md:356:  packages/mdx-bridge/CONTRACT.md`. Expected:
+docs/plans/wave-3-main/B1-mdx-bridge-jsx-routing.md:363:    0 hits; CONTRACT.md edit 4 in `## files` is dropped from B1;
+docs/plans/wave-3-main/B1-mdx-bridge-jsx-routing.md:369:- `packages/mdx-bridge/CONTRACT.md` — Wave 1 invariants extended;
+docs/plans/wave-3-main/B1-mdx-bridge-jsx-routing.md:376:- `packages/block-foundation/CONTRACT.md` — **NOT modified**
+docs/plans/wave-3-main/B1-mdx-bridge-jsx-routing.md:393:CONTRACT.md `## Modifying this file` rule "公共表面 …的任何字段或
+docs/plans/wave-3-main/B1-mdx-bridge-jsx-routing.md:416:   CONTRACT.md numeric prose updates per `## files` edit-list
+docs/plans/wave-3-main/B1-mdx-bridge-jsx-routing.md:420:5. CONTRACT.md `## Component block dispatch (Wave 3+)` section
+docs/plans/wave-3-main/B1-mdx-bridge-jsx-routing.md:424:   `block-foundation/CONTRACT.md` line 54-56 "Wave 2+ rule").
+docs/plans/wave-3-main/B1-mdx-bridge-jsx-routing.md:432:8. Sister CONTRACT.md sync per ADR-0006 #6: 8 block-*/CONTRACT.md
+docs/plans/wave-3-main/B1-mdx-bridge-jsx-routing.md:433:   + block-foundation/CONTRACT.md unchanged. Per TC12.
+docs/plans/wave-3-main/B1-mdx-bridge-jsx-routing.md:457:| Row 1 (CONTRACT.md change — high-value authority) | **HIT** | mdx-bridge/CONTRACT.md edited per `## files` (4 coordinated edits). |
+docs/plans/wave-3-main/B1-mdx-bridge-jsx-routing.md:461:| Row 5 (cross ≥3 packages) | **HIT** | Producer-side infrastructure that 8 block-*/CONTRACT.md become indirect consumers of (via the dispatch-table contract); +editor-shell saveLoad.ts +block-foundation type import = 10+ packages indirectly affected. |
+docs/plans/wave-3-main/B1-mdx-bridge-jsx-routing.md:537:`block-foundation/CONTRACT.md:28` AUTHORITATIVE prose):
+docs/plans/wave-3-main/B1-mdx-bridge-jsx-routing.md:565:- **Pro 1**: respects block-foundation/CONTRACT.md:28
+docs/plans/wave-3-main/B1-mdx-bridge-jsx-routing.md:588:  block-foundation/CONTRACT.md:23 "BlockCoreDefinition
+docs/plans/wave-3-main/B1-mdx-bridge-jsx-routing.md:614:block-foundation/CONTRACT.md:28** (forbids hooks on the
+docs/plans/wave-3-main/B1-mdx-bridge-jsx-routing.md:621:external-table pattern at block-foundation/CONTRACT.md:28,
+docs/plans/wave-3-main/B1-mdx-bridge-jsx-routing.md:636:`block-foundation/CONTRACT.md:28` authority — see
+docs/plans/wave-3-main/B1-mdx-bridge-jsx-routing.md:653:`## Canonicalization rules` CONTRACT.md section documenting
+docs/plans/wave-3-main/B1-mdx-bridge-jsx-routing.md:657:- B1 is already large (per `## files`; CONTRACT.md
+docs/plans/wave-3-main/B1-mdx-bridge-jsx-routing.md:658:  edits or near-CONTRACT-class — `mdx-bridge/CONTRACT.md`
+docs/plans/wave-3-main/B1-mdx-bridge-jsx-routing.md:661:  follow-through). Adding a fifth CONTRACT.md edit (the
+docs/plans/wave-3-main/B1-mdx-bridge-jsx-routing.md:673:  paragraph in CONTRACT.md); the cost of deferring one
+docs/plans/wave-3-main/B1-mdx-bridge-jsx-routing.md:679:`## files` CONTRACT.md edit-4 bullet activates and TC13
+docs/plans/wave-3-main/B1-mdx-bridge-jsx-routing.md:692:  per-block — see `block-foundation/CONTRACT.md` lines
+docs/plans/wave-3-main/B1-mdx-bridge-jsx-routing.md:752:the canonicalization-rules CONTRACT.md prose. After B1,
+docs/plans/wave-3-main/B1-mdx-bridge-jsx-routing.md:774:- mdx-bridge contract: `packages/mdx-bridge/CONTRACT.md`
+docs/plans/wave-3-main/B1-mdx-bridge-jsx-routing.md:776:  `packages/block-foundation/CONTRACT.md` (line 28
+docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:41:local-lychee acceptance text → orchestrator amended TC20 + bullet 13
+docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:225:→ TC20 `pnpm link-check` → TC21 `pnpm check` workspace-wide.
+docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:322:  apps/site/CONTRACT.md docs/decisions/ADR-0012-search-index-stack.md` →
+docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:358:- **TC20** (lychee link-check; CI canonical per B1a + B1b precedent):
+docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:359:  `pnpm link-check` runs in CI workflow (lychee binary not on local
+docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:360:  WSL2 dev env; `pnpm link-check` locally exits 1 with `lychee: not
+docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:362:  followed: `feedback_lychee_line_anchor` no `:line` suffix on
+docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:363:  relative file links; `feedback_lychee_user_local_paths` no
+docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:364:  `~/.claude/...` links; `feedback_lychee_npmjs_403` no
+docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:369:  CI lychee step (canonical) AND verify the file targets exist
+docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:382:- **NONE.** B2 modifies no `*/CONTRACT.md` file. The 8 block
+docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:383:  packages + heavy-block-boundary CONTRACT.md files all stay
+docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:384:  byte-unchanged (TC18 verifies). `apps/site/CONTRACT.md` stays
+docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:392:  markdown link (lychee resolves), but does not edit them. Standard
+docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:399:standard PR (no CONTRACT/ADR touch)" + the orchestrator-refined
+docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:402:- **Row 1 (CONTRACT.md change)**: **NO.** B2 touches no
+docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:403:  `*/CONTRACT.md` file. TC13 + TC18 verify empty diff across all
+docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:404:  CONTRACT files.
+docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:522:13. **link-check (lychee) — CI canonical per B1a + B1b precedent**:
+docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:524:    active.md updates + PR.md self-references resolve in CI lychee
+docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:525:    step. Local `pnpm link-check` BLOCKED on dev WSL2 (lychee binary
+docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:527:    targets exist via `test -f` and follow lychee disciplines
+docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:528:    (`feedback_lychee_line_anchor.md` no `:line` suffix on relative
+docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:529:    links; `feedback_lychee_user_local_paths.md` no `~/.claude/...`
+docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:530:    links; `feedback_lychee_npmjs_403.md` no `npmjs.com/package/...`
+docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:555:    `apps/site/CONTRACT.md` + `docs/decisions/ADR-0012-search-index-stack.md`
+docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:696:  `pnpm link-check` BLOCKED on dev WSL2 (lychee binary not installed;
+docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:700:  CONTRACT.md) → B2.H `pnpm check` workspace-wide clean (TC21) →
+docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:746:  AC#16 expansion + ADR-0014 v0.3 amendment + `apps/site/CONTRACT.md`
+docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:755:  `apps/site/CONTRACT.md` + `docs/decisions/ADR-0012-search-index-stack.md`
+docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:766:  Stage A retro items 2-4; B5 codex profile prefix R3 + lychee
+docs/plans/wave-4-main/B2-sample-blocks-cleanup.md:788:- memory `feedback_lychee_line_anchor.md` + `feedback_lychee_user_local_paths.md` + `feedback_lychee_npmjs_403.md` — lychee discipline applied to PR.md cross-references + MDX intro prose ADR cites
+docs/plans/wave-3-main/B5-mdx-bridge-math-fixture.md:10:mdxComponent dispatch via `@skb/block-math/core` devDep. CONTRACT
+docs/plans/wave-3-main/B5-mdx-bridge-math-fixture.md:31:- `packages/mdx-bridge/CONTRACT.md` — fixture-count prose 12 → 13.
+docs/plans/wave-3-main/B5-mdx-bridge-math-fixture.md:48:- **TC6** CONTRACT fixture-count grew exactly 1.
+docs/plans/wave-3-main/B5-mdx-bridge-math-fixture.md:54:- `packages/mdx-bridge/CONTRACT.md` — fixture-count prose bump.
+docs/plans/wave-3-main/B5-mdx-bridge-math-fixture.md:65:4. CONTRACT.md fixture-count bumped — TC6.
+docs/plans/wave-3-main/B5-mdx-bridge-math-fixture.md:78:- Row 1 (CONTRACT.md change): **HIT**.
+scripts/__tests__/generate-configs.test.ts:69:    // git-operator + pr-reviewer absorbed; structure-auditor / performance-auditor / mdx-doctor / link-checker codex-ized
+scripts/__tests__/generate-configs.test.ts:76:      'link-checker',
+docs/plans/wave-4-main/A7-astro-variants-consolidation.md:59:> A close gate); apps/site/CONTRACT.md is **NOT modified** (the new page
+docs/plans/wave-4-main/A7-astro-variants-consolidation.md:114:`packages/heavy-block-boundary/CONTRACT.md` invariant + each .astro file
+docs/plans/wave-4-main/A7-astro-variants-consolidation.md:411:a11y + CONTRACT consolidation).
+docs/plans/wave-4-main/A7-astro-variants-consolidation.md:425:  any other source / CONTRACT.md file in the boundary package) —
+docs/plans/wave-4-main/A7-astro-variants-consolidation.md:429:- `packages/heavy-block-boundary/CONTRACT.md` — already consolidated
+docs/plans/wave-4-main/A7-astro-variants-consolidation.md:439:  `heavyBoundaryDimensions` exports + CONTRACT.md bullets +
+docs/plans/wave-4-main/A7-astro-variants-consolidation.md:466:- `apps/site/CONTRACT.md` — the new page is self-documenting via
+docs/plans/wave-4-main/A7-astro-variants-consolidation.md:468:  CONTRACT prose edit (the existing CONTRACT.md `## Public surface`
+docs/plans/wave-4-main/A7-astro-variants-consolidation.md:483:- Any CONTRACT.md in any package — A7 makes ZERO CONTRACT.md
+docs/plans/wave-4-main/A7-astro-variants-consolidation.md:569:- **TC9** (heavy-block-boundary src + CONTRACT.md byte-unchanged
+docs/plans/wave-4-main/A7-astro-variants-consolidation.md:596:- **TC15** (`apps/site/CONTRACT.md` byte-unchanged) Input: `git diff
+docs/plans/wave-4-main/A7-astro-variants-consolidation.md:597:  main -- apps/site/CONTRACT.md`. Expected: empty diff (the new page
+docs/plans/wave-4-main/A7-astro-variants-consolidation.md:612:- **TC19** (no CONTRACT.md changes anywhere) Input: `git diff main
+docs/plans/wave-4-main/A7-astro-variants-consolidation.md:613:  --name-only -- '**/CONTRACT.md'`. Expected: empty (A7 makes ZERO
+docs/plans/wave-4-main/A7-astro-variants-consolidation.md:614:  CONTRACT.md edits anywhere). Location: shell.
+docs/plans/wave-4-main/A7-astro-variants-consolidation.md:651:- **No CONTRACT.md files are modified by A7.** The 5 .astro variant
+docs/plans/wave-4-main/A7-astro-variants-consolidation.md:659:  `**/CONTRACT.md`.
+docs/plans/wave-4-main/A7-astro-variants-consolidation.md:660:- **`apps/site/CONTRACT.md`** — **NOT modified.** The new page is
+docs/plans/wave-4-main/A7-astro-variants-consolidation.md:663:  CONTRACT.md `## Public surface` enumerates routes `/` and
+docs/plans/wave-4-main/A7-astro-variants-consolidation.md:672:  document the new route in CONTRACT.md (e.g., the route becomes a
+docs/plans/wave-4-main/A7-astro-variants-consolidation.md:674:  CONTRACT addition can land in a follow-up PR; A7's PR.md + the
+docs/plans/wave-4-main/A7-astro-variants-consolidation.md:677:- **`packages/heavy-block-boundary/CONTRACT.md`** — **NOT modified.**
+docs/plans/wave-4-main/A7-astro-variants-consolidation.md:684:  (`packages/block-foundation/CONTRACT.md`) is **NOT modified.**
+docs/plans/wave-4-main/A7-astro-variants-consolidation.md:685:- **5 block CONTRACT.md** (`packages/block-{math,pdf,jupyter,nn-viz,agent-flow}/CONTRACT.md`)
+docs/plans/wave-4-main/A7-astro-variants-consolidation.md:730:- **Row 1 (CONTRACT.md change)**: **NO.** Wave 4 plan A7 § lines
+docs/plans/wave-4-main/A7-astro-variants-consolidation.md:731:  249-250 flagged this as conditional ("apps/site CONTRACT.md may
+docs/plans/wave-4-main/A7-astro-variants-consolidation.md:734:  (a) the existing `apps/site/CONTRACT.md` `## Public surface`
+docs/plans/wave-4-main/A7-astro-variants-consolidation.md:750:  CONTRACT.md `Public surface` section.
+docs/plans/wave-4-main/A7-astro-variants-consolidation.md:928:    boundary source + CONTRACT.md remain byte-unchanged; A7 does
+docs/plans/wave-4-main/A7-astro-variants-consolidation.md:932:    files (A5's `heavyBoundaryDimensions` exports + CONTRACT.md
+docs/plans/wave-4-main/A7-astro-variants-consolidation.md:939:13. NO modifications to `apps/site/CONTRACT.md` (per `## D2 trigger
+docs/plans/wave-4-main/A7-astro-variants-consolidation.md:1039:  - The React `HeavyBlockBoundary` source + CONTRACT.md (TC9 —
+docs/plans/wave-4-main/A7-astro-variants-consolidation.md:1048:  - `apps/site/CONTRACT.md` (TC15 — per Row 1 NO verdict).
+docs/plans/wave-4-main/A7-astro-variants-consolidation.md:1108:  - `feedback_lychee_line_anchor` — links above use plain paths
+docs/plans/wave-4-main/A7-astro-variants-consolidation.md:1110:  - `feedback_lychee_user_local_paths` — no `~/.claude/...` links
+docs/plans/wave-3-main/C2-apps-site-dynamic-chunking.md:33:heavy-block taxonomy in `apps/site/CONTRACT.md`.
+docs/plans/wave-3-main/C2-apps-site-dynamic-chunking.md:104:- `apps/site/CONTRACT.md` — add a "Chunking strategy / heavy-block
+docs/plans/wave-3-main/C2-apps-site-dynamic-chunking.md:111:= **5 files in canonical `## files` block** (2 NEW: lazy-chunking.test.ts + PR.md self; 3 modified: components.ts + astro.config.mjs + CONTRACT.md). No `pnpm-lock.yaml` change
+docs/plans/wave-3-main/C2-apps-site-dynamic-chunking.md:155:  test + build + size-check + link-check).
+docs/plans/wave-3-main/C2-apps-site-dynamic-chunking.md:176:- `apps/site/CONTRACT.md` — adds a "Chunking strategy" invariant block
+docs/plans/wave-3-main/C2-apps-site-dynamic-chunking.md:197:No mutation to `packages/*/CONTRACT.md` — block-* surfaces are unchanged
+docs/plans/wave-3-main/C2-apps-site-dynamic-chunking.md:200:in `apps/site/CONTRACT.md` "Component-block rendering" invariant; C2
+docs/plans/wave-3-main/C2-apps-site-dynamic-chunking.md:224:6. **CONTRACT.md updated** with chunking-strategy + heavy-block
+docs/plans/wave-3-main/C2-apps-site-dynamic-chunking.md:255:- Row 1 (`apps/site/CONTRACT.md` chunking-strategy invariant): **HIT**.
+docs/plans/wave-3-main/C2-apps-site-dynamic-chunking.md:322:JavaScript" invariant (`CONTRACT.md` line 16). The visit when this
+docs/plans/wave-3-main/C2-apps-site-dynamic-chunking.md:380:4. **CONTRACT.md documentation** of the heavy-block taxonomy +
+docs/plans/wave-3-main/C2-apps-site-dynamic-chunking.md:394:| Row 1 contract change | **HIT** | apps/site/CONTRACT.md chunking-strategy + heavy-block taxonomy invariant block |
+docs/plans/wave-3-main/C2-apps-site-dynamic-chunking.md:434:| 5 | `apps/site/CONTRACT.md` | mod | chunking-strategy + taxonomy invariant |
+docs/plans/wave-3-main/C2-apps-site-dynamic-chunking.md:438:astro.config.mjs ~10 + CONTRACT.md ~30 + PR.md self ~340 (PR.md excluded
+docs/plans/wave-3-main/C2-apps-site-dynamic-chunking.md:444:  memory `feedback_lychee_line_anchor.md` (FIX-D1 lychee lesson).
+docs/plans/wave-3-main/C2-apps-site-dynamic-chunking.md:460:  description; CONTRACT.md and TC2 reference it by reading the
+docs/plans/wave-3-main/C2-apps-site-dynamic-chunking.md:499:- [apps/site/CONTRACT.md](../../../apps/site/CONTRACT.md) — consumer surface modified by C2 (chunking-strategy block).
+docs/plans/wave-3-main/C2-apps-site-dynamic-chunking.md:500:- [packages/block-jupyter/CONTRACT.md](../../../packages/block-jupyter/CONTRACT.md) — heavy-block sibling; Pyodide dep producer.
+docs/plans/wave-3-main/C2-apps-site-dynamic-chunking.md:501:- [packages/block-nn-viz/CONTRACT.md](../../../packages/block-nn-viz/CONTRACT.md) — heavy-block sibling; @tensorflow/tfjs dep producer.
+docs/plans/wave-3-main/C2-apps-site-dynamic-chunking.md:502:- [packages/block-agent-flow/CONTRACT.md](../../../packages/block-agent-flow/CONTRACT.md) — heavy-block sibling; reactflow dep producer.
+docs/plans/wave-4-main/wave-4-close-ceremony.md:11:6 canonical staged files + COMMIT-time +1 audit-archive backfill = **7 staged at commit**. **Executor: `orchestrator-self`** (matches Pre-A2 + ADR-0014 v0.2.1 + B7 + B6 close-ceremony precedent for doc-flavored authority work; close-ceremony scope = ADR + active.md + audit summaries + PR.md, all doc-flavored). NO `package.json` / `pnpm-lock.yaml` change. NO source code change. NO `apps/site/CONTRACT.md` or any package CONTRACT.md change.
+docs/plans/wave-4-main/wave-4-close-ceremony.md:33:- `docs/audits/mdx-2026-05-wave-4-close.md` — **NEW** (~40 LOC light addendum). References [`mdx-2026-05-wave-4-prep.md`](../../audits/mdx-2026-05-wave-4-prep.md) (B6 codex-mdx-doctor dispatch) + acknowledges NO mdx-bridge source change in C-1/C-2 (Jupyter.tsx UI-default surface + apps/site CONTRACT clause + NEW kernel-pyodide CI-skipped test = none touch mdx-bridge). All 16 RTT assertions PASS unchanged. Wave 5 ADR-0016 grid 数据模型 lock will require fresh codex-mdx-doctor dispatch (mdx-bridge col/row/colSpan/rowSpan serialization is Wave 5 NEW surface).
+docs/plans/wave-4-main/wave-4-close-ceremony.md:53:Close-ceremony PR ships **0 NEW vitest unit suites** (doc-flavored work; no source code change). TDD-front discipline (per ADR-0011 D1 stage 2) for a doc-flavored ship means **shell-level grep + structural assertions** before commit. Order: TC1 ADR file presence + structure → TC2 active.md sync → TC3-TC5 audit summaries presence + key keyword greps → TC6 PR.md self-list → TC7 byte-unchanged guards across Wave 4 shipped scope → TC8 lychee discipline + `pnpm check` → TC9 R-rounds tracked.
+docs/plans/wave-4-main/wave-4-close-ceremony.md:85:  `git diff origin/main -- apps/site/src/ apps/site/public/ apps/site/CONTRACT.md apps/site/astro.config.mjs apps/site/package.json pnpm-lock.yaml content/ packages/ docs/decisions/ADR-{0001..0014}-*.md docs/superpowers/plans/2026-05-03-phase-1-wave-4-integration.md` reports zero modified files (close-ceremony does NOT touch any prior-Wave-4-shipped surface; it only ADDS new docs + updates active.md + ADR-0015).
+docs/plans/wave-4-main/wave-4-close-ceremony.md:87:- **TC8** (lychee 4-discipline pre-flight + workspace check):
+docs/plans/wave-4-main/wave-4-close-ceremony.md:88:  - lychee 4-discipline grep on this PR.md + ADR-0015 + active.md + 3 audit close addendums:
+docs/plans/wave-4-main/wave-4-close-ceremony.md:90:    - **No** angle-bracket-wrapped autolink syntax inside backticks per memory `feedback_lychee_autolink_in_backticks.md` (the canonical pre-empt grep applies; empty in NEW content; only tolerable in pre-existing pre-PR text)
+docs/plans/wave-4-main/wave-4-close-ceremony.md:95:  - `pnpm link-check` (CI canonical lychee) PASS — verified at PR CI
+docs/plans/wave-4-main/wave-4-close-ceremony.md:101:- **NONE.** Wave 4 close ceremony does NOT touch any `*/CONTRACT.md` file. The close ADR (ADR-0015) ratifies prior CONTRACT.md changes (e.g., apps/site/CONTRACT.md Pyodide CDN clause shipped at C-1) but does NOT introduce new CONTRACT-level surface. TC7 byte-unchanged guard verifies empty diff across all CONTRACT.md files.
+docs/plans/wave-4-main/wave-4-close-ceremony.md:114:| 1 | CONTRACT.md change | NO — TC7 byte-unchanged across all CONTRACT files |
+docs/plans/wave-4-main/wave-4-close-ceremony.md:151:9. **NO source-code change**: empty diff across `apps/site/src/`, `apps/site/public/`, `packages/`, `content/`, `apps/site/CONTRACT.md`, `apps/site/astro.config.mjs`, `apps/site/package.json`, `pnpm-lock.yaml`. (TC7.)
+docs/plans/wave-4-main/wave-4-close-ceremony.md:161:14. **`pnpm link-check`** (CI canonical lychee) PASS — all 4 lychee disciplines respected. (TC8.)
+docs/plans/wave-4-main/wave-4-close-ceremony.md:227:  - `feedback_lychee_autolink_in_backticks.md` — lychee discipline reference
+docs/plans/wave-3-main/A1-editor-shell-skeleton.md:5:> + `CONTRACT.md` + `src/index.ts` (empty barrel) + `src/__tests__/smoke.test.ts`. Zero
+docs/plans/wave-3-main/A1-editor-shell-skeleton.md:34:- `packages/editor-shell/CONTRACT.md` *(NEW — declares "Public surface: NONE — Wave 3
+docs/plans/wave-3-main/A1-editor-shell-skeleton.md:112:- **TC6** (CONTRACT.md presence + public-surface declaration — in-PR doc-acceptance)
+docs/plans/wave-3-main/A1-editor-shell-skeleton.md:113:  Input: `test -f packages/editor-shell/CONTRACT.md && grep -E '^## Public surface'
+docs/plans/wave-3-main/A1-editor-shell-skeleton.md:114:  packages/editor-shell/CONTRACT.md`. Expected: file exists; matches one heading
+docs/plans/wave-3-main/A1-editor-shell-skeleton.md:119:  recognizes the new package + CONTRACT" — that is an out-of-PR sweep; A1
+docs/plans/wave-3-main/A1-editor-shell-skeleton.md:120:  enforces the *precondition* by guaranteeing CONTRACT.md exists with a parseable
+docs/plans/wave-3-main/A1-editor-shell-skeleton.md:125:- `packages/editor-shell/CONTRACT.md` (NEW) — declares the empty-barrel public surface
+docs/plans/wave-3-main/A1-editor-shell-skeleton.md:129:  CONTRACT.md but the references graph is contract-flavored (it constrains build
+docs/plans/wave-3-main/A1-editor-shell-skeleton.md:150:4. `packages/editor-shell/CONTRACT.md` exists; opens with `## Public surface`
+docs/plans/wave-3-main/A1-editor-shell-skeleton.md:205:  on the new CONTRACT.md (row 1) even though the surface is empty.
+docs/plans/wave-3-main/A1-editor-shell-skeleton.md:215:      packages/editor-shell/CONTRACT.md \
+docs/plans/wave-3-main/A1-editor-shell-skeleton.md:232:- **Row 1** (CONTRACT.md change): **HIT**. `packages/editor-shell/CONTRACT.md` is
+docs/plans/wave-3-main/A1-editor-shell-skeleton.md:250:mitigates codex same-model echo-chamber risk on the new CONTRACT.md). Row 2 by
+docs/plans/wave-3-main/A1-editor-shell-skeleton.md:276:  after A1 lands will pick up the new package + CONTRACT. A1 only enforces the
+docs/plans/wave-3-main/A1-editor-shell-skeleton.md:277:  precondition (CONTRACT.md present + parseable Public-surface heading via TC6).
+docs/plans/wave-3-main/A1-editor-shell-skeleton.md:300:- [packages/block-foundation/CONTRACT.md](../../../packages/block-foundation/CONTRACT.md)
+docs/plans/wave-3-main/A1-editor-shell-skeleton.md:301:  — pattern reference for the new editor-shell CONTRACT.md (similar empty-deps
+docs/plans/wave-3-main/B4-mdx-bridge-image-fixture.md:11:CONTRACT fixture-table grows 11 → 12.
+docs/plans/wave-3-main/B4-mdx-bridge-image-fixture.md:32:- `packages/mdx-bridge/CONTRACT.md` — fixture-count prose 11 → 12.
+docs/plans/wave-3-main/B4-mdx-bridge-image-fixture.md:55:- **TC6** CONTRACT fixture-count grew exactly 1.
+docs/plans/wave-3-main/B4-mdx-bridge-image-fixture.md:61:- `packages/mdx-bridge/CONTRACT.md` — fixture-count prose bump.
+docs/plans/wave-3-main/B4-mdx-bridge-image-fixture.md:72:4. CONTRACT.md fixture-count prose bumped — TC6.
+docs/plans/wave-3-main/B4-mdx-bridge-image-fixture.md:85:- Row 1 (CONTRACT.md change): **HIT**.
+docs/plans/wave-4-main/B1b-searchbox-integration.md:19:> below (Row 1 HIT — `apps/site/CONTRACT.md` UI-surface clause
+docs/plans/wave-4-main/B1b-searchbox-integration.md:45:unchanged); extend `apps/site/CONTRACT.md` `## Search index` UI-surface
+docs/plans/wave-4-main/B1b-searchbox-integration.md:56:tests + CONTRACT extension + bookkeeping; plan-challenger codex audit
+docs/plans/wave-4-main/B1b-searchbox-integration.md:401:- `apps/site/CONTRACT.md` — **MODIFIED** (~10 LOC net delta;
+docs/plans/wave-4-main/B1b-searchbox-integration.md:433:  All other prose in `apps/site/CONTRACT.md` stays byte-unchanged
+docs/plans/wave-4-main/B1b-searchbox-integration.md:496:logic change) + 1 CONTRACT.md UI-surface extension + bookkeeping
+docs/plans/wave-4-main/B1b-searchbox-integration.md:506:clean → apply CONTRACT + active.md + search-cjk.test.ts comment
+docs/plans/wave-4-main/B1b-searchbox-integration.md:507:edits → run `pnpm link-check` clean → run `pnpm check`
+docs/plans/wave-4-main/B1b-searchbox-integration.md:580:- **TC10** (`apps/site/CONTRACT.md` UI-surface clause extended): (a)
+docs/plans/wave-4-main/B1b-searchbox-integration.md:581:  `grep -c 'Word-level result filter' apps/site/CONTRACT.md` → ≥ 1;
+docs/plans/wave-4-main/B1b-searchbox-integration.md:582:  (b) `grep -c 'isWordLevelMatch' apps/site/CONTRACT.md` → ≥ 1;
+docs/plans/wave-4-main/B1b-searchbox-integration.md:583:  (c) `grep -c 'data-skb-word-level-mismatch' apps/site/CONTRACT.md`
+docs/plans/wave-4-main/B1b-searchbox-integration.md:607:- **TC16** lychee link-check: `pnpm link-check` → exit 0. Per
+docs/plans/wave-4-main/B1b-searchbox-integration.md:608:  memory `feedback_lychee_line_anchor` no `:line` suffix; per
+docs/plans/wave-4-main/B1b-searchbox-integration.md:609:  `feedback_lychee_user_local_paths` no `~/.claude/...` links;
+docs/plans/wave-4-main/B1b-searchbox-integration.md:610:  per `feedback_lychee_npmjs_403` cite npm via GitHub repo URL only.
+docs/plans/wave-4-main/B1b-searchbox-integration.md:658:- **`apps/site/CONTRACT.md`** — **EDITED**. The `## Search index`
+docs/plans/wave-4-main/B1b-searchbox-integration.md:668:  absorbtion at B1a, any apps/site/CONTRACT.md change fires Row 1.
+docs/plans/wave-4-main/B1b-searchbox-integration.md:673:- **No other CONTRACT.md files modified.** B1b does NOT touch any
+docs/plans/wave-4-main/B1b-searchbox-integration.md:674:  `packages/*/CONTRACT.md`. The 8 block packages
+docs/plans/wave-4-main/B1b-searchbox-integration.md:675:  (`packages/block-{callout,code,image,math,pdf,jupyter,nn-viz,agent-flow}/CONTRACT.md`)
+docs/plans/wave-4-main/B1b-searchbox-integration.md:677:  (`packages/heavy-block-boundary/CONTRACT.md`) + the other 5
+docs/plans/wave-4-main/B1b-searchbox-integration.md:678:  workspace package CONTRACT.md files all remain byte-unchanged.
+docs/plans/wave-4-main/B1b-searchbox-integration.md:700:"B1b D2 trigger: Row 1 (apps/site/CONTRACT.md UI-surface clause
+docs/plans/wave-4-main/B1b-searchbox-integration.md:703:- **Row 1 (CONTRACT.md change)**: **HIT.** B1b extends
+docs/plans/wave-4-main/B1b-searchbox-integration.md:704:  `apps/site/CONTRACT.md` `## Search index` `UI surface:` clause
+docs/plans/wave-4-main/B1b-searchbox-integration.md:707:  plan-challenger C7 absorbtion at B1a, any apps/site/CONTRACT.md
+docs/plans/wave-4-main/B1b-searchbox-integration.md:720:  + small CONTRACT.md extension + bookkeeping; no existing files
+docs/plans/wave-4-main/B1b-searchbox-integration.md:730:  search-cjk.test.ts comment + CONTRACT.md) + `docs/plans/`
+docs/plans/wave-4-main/B1b-searchbox-integration.md:738:- **Row 7 (legacy doc resurrection)**: **NO.** `apps/site/CONTRACT.md`
+docs/plans/wave-4-main/B1b-searchbox-integration.md:809:9. **`apps/site/CONTRACT.md` UI-surface clause extended** with the
+docs/plans/wave-4-main/B1b-searchbox-integration.md:836:14. **`pnpm link-check` clean** (lychee canonical). TC16 evidence.
+docs/plans/wave-4-main/B1b-searchbox-integration.md:837:    Per memory `feedback_lychee_line_anchor` no `:line` suffix;
+docs/plans/wave-4-main/B1b-searchbox-integration.md:838:    per `feedback_lychee_user_local_paths` no `~/.claude/...`
+docs/plans/wave-4-main/B1b-searchbox-integration.md:839:    links; per `feedback_lychee_npmjs_403` cite npm via GitHub
+docs/plans/wave-4-main/B1b-searchbox-integration.md:915:    (i) `apps/site/CONTRACT.md` extension is purely additive (does
+docs/plans/wave-4-main/B1b-searchbox-integration.md:948:| C8 | A11y CONTRACT update if Option B-2 chosen | **ABSORBED**: B-4 chosen → no a11y CONTRACT touch (decision flipped at B1b) | **B1b RE-EVALUATES**: per pr-writer briefing recommendation, B1b extends apps/site/CONTRACT.md UI-surface clause + A11y guarantee clause to codify the wrapper while preserving a11y invariant. The original C8 verdict assumed minimal CONTRACT touch; B1b's recommendation flip is justified by forward-looking regression protection. |
+docs/plans/wave-4-main/B1b-searchbox-integration.md:1024:  refactor + playwright spec authoring + apps/site/CONTRACT.md
+docs/plans/wave-4-main/B1b-searchbox-integration.md:1045:  `apps/site/CONTRACT.md` extension → B1b.I apply
+docs/plans/wave-4-main/B1b-searchbox-integration.md:1048:  → B1b.K run `pnpm link-check` clean → B1b.L run `pnpm check`
+docs/plans/wave-4-main/B1b-searchbox-integration.md:1054:  reads `apps/site/CONTRACT.md` + `apps/site/src/lib/word-level-match.ts`
+docs/plans/wave-4-main/B1b-searchbox-integration.md:1063:  focus: (i) `apps/site/CONTRACT.md` extension is purely additive
+docs/plans/wave-4-main/B1b-searchbox-integration.md:1081:  apps/site/CONTRACT.md
+docs/plans/wave-4-main/B1b-searchbox-integration.md:1110:- **B5** (PR #6): codex profile prefix R3 + lychee autolink memory codify.
+docs/plans/wave-4-main/B1b-searchbox-integration.md:1143:- [A4 PR.md](A4-heavy-block-boundary-css-a11y.md) — code + CSS + test + CONTRACT.md pattern at apps/site layer (precedent for B1b's CSS + script + CONTRACT extension pattern)
+docs/plans/wave-4-main/B1b-searchbox-integration.md:1148:- memory `feedback_lychee_line_anchor.md` + `feedback_lychee_user_local_paths.md` + `feedback_lychee_npmjs_403.md` — lychee discipline applied to CONTRACT extension cross-references
+docs/plans/wave-3-main/D2-search-index-build-integration.md:5:> dep declaration + integration register + CONTRACT surface + CJK
+docs/plans/wave-3-main/D2-search-index-build-integration.md:13:index in `apps/site/CONTRACT.md`; add CJK + reindex regression tests
+docs/plans/wave-3-main/D2-search-index-build-integration.md:44:- `apps/site/CONTRACT.md` — add `## Search index` section documenting:
+docs/plans/wave-3-main/D2-search-index-build-integration.md:94:  `apps/site/CONTRACT.md` `## Search index` measurement table +
+docs/plans/wave-3-main/D2-search-index-build-integration.md:100:  CONTRACT). Location: `apps/site/CONTRACT.md` measurement table.
+docs/plans/wave-3-main/D2-search-index-build-integration.md:121:- `apps/site/CONTRACT.md` — adds `## Search index` section. Surface
+docs/plans/wave-3-main/D2-search-index-build-integration.md:137:6. CONTRACT documents bundle + index measurements with reproducible
+docs/plans/wave-3-main/D2-search-index-build-integration.md:149:  first → install dep + register integration → CONTRACT update →
+docs/plans/wave-3-main/D2-search-index-build-integration.md:160:- **Row 1** (CONTRACT change): NO — apps/site/CONTRACT.md is
+docs/plans/wave-3-main/C3-sample-blocks-page-live.md:63:- `apps/site/astro.config.mjs` / `apps/site/CONTRACT.md` — no changes
+docs/plans/wave-3-main/C3-sample-blocks-page-live.md:126:   astro.config.mjs, CONTRACT.md, package.json, tsconfig.json, all
+docs/plans/wave-3-main/C3-sample-blocks-page-live.md:173:- **Row 1** (CONTRACT change): NO — content frontmatter, not contract surface.
+docs/plans/wave-3-main/A3-editor-shell-block-registry.md:10:> one shot (1 foundation + 8 blocks). Closes the A1 + A2 CONTRACT.md
+docs/plans/wave-3-main/A3-editor-shell-block-registry.md:21:curated prose composition in A3+ consumers; CONTRACT.md updates `## Public
+docs/plans/wave-3-main/A3-editor-shell-block-registry.md:72:- `packages/editor-shell/CONTRACT.md` — three coordinated edits to the
+docs/plans/wave-3-main/A3-editor-shell-block-registry.md:308:- **TC7** (CONTRACT.md updated public surface — in-PR doc-acceptance) Input:
+docs/plans/wave-3-main/A3-editor-shell-block-registry.md:310:  grep -E '^- ?`?registerBlocks' packages/editor-shell/CONTRACT.md
+docs/plans/wave-3-main/A3-editor-shell-block-registry.md:311:  grep -E '^- ?`?proseExtensions' packages/editor-shell/CONTRACT.md
+docs/plans/wave-3-main/A3-editor-shell-block-registry.md:354:- `packages/editor-shell/CONTRACT.md` — Modified: `## Public surface` adds
+docs/plans/wave-3-main/A3-editor-shell-block-registry.md:362:     methods — see `packages/block-foundation/CONTRACT.md` §Invariants
+docs/plans/wave-3-main/A3-editor-shell-block-registry.md:382:A2 CONTRACT.md prediction (with the speculative prop-API drop — see
+docs/plans/wave-3-main/A3-editor-shell-block-registry.md:385:The dispatch context confirms: locked plan A3 row 4 = NO; A2 CONTRACT.md
+docs/plans/wave-3-main/A3-editor-shell-block-registry.md:406:3. `packages/editor-shell/CONTRACT.md` `## Public surface` heading body lists
+docs/plans/wave-3-main/A3-editor-shell-block-registry.md:474:   + CONTRACT.md + src/index.ts (+1 export) + adds 2 new files (registerBlocks.ts
+docs/plans/wave-3-main/A3-editor-shell-block-registry.md:515:    files (package.json, tsconfig.json, CONTRACT.md, src/index.ts);
+docs/plans/wave-3-main/A3-editor-shell-block-registry.md:563:  risk on the CONTRACT.md public-surface change (the central new-surface
+docs/plans/wave-3-main/A3-editor-shell-block-registry.md:581:      packages/editor-shell/CONTRACT.md \
+docs/plans/wave-3-main/A3-editor-shell-block-registry.md:602:- **Row 1** (CONTRACT.md change): **HIT**.
+docs/plans/wave-3-main/A3-editor-shell-block-registry.md:603:  `packages/editor-shell/CONTRACT.md` `## Public surface` body changes from
+docs/plans/wave-3-main/A3-editor-shell-block-registry.md:611:  A2's predicted CONTRACT.md outline (with a narrowing, not an expansion);
+docs/plans/wave-3-main/A3-editor-shell-block-registry.md:626:mitigates codex same-model echo-chamber risk on the CONTRACT.md public-surface
+docs/plans/wave-3-main/A3-editor-shell-block-registry.md:689:  `ZodObject<...>` (Wave 3 deferral noted in `packages/block-foundation/CONTRACT.md`
+docs/plans/wave-3-main/A3-editor-shell-block-registry.md:774:  CONTRACT.md `## Wave 3 Stage A expansion outline` section A3's
+docs/plans/wave-3-main/A3-editor-shell-block-registry.md:775:  package.json + CONTRACT.md changes deliver verbatim.
+docs/plans/wave-3-main/A3-editor-shell-block-registry.md:778:- [packages/block-foundation/CONTRACT.md](../../../packages/block-foundation/CONTRACT.md)
+docs/plans/wave-3-main/A2-editor-shell-tiptap-container.md:9:> in `happy-dom`, prove the doc shape round-trips. Closes the A1 CONTRACT.md
+docs/plans/wave-3-main/A2-editor-shell-tiptap-container.md:19:`@testing-library/react`, `happy-dom` external deps); CONTRACT.md updates from
+docs/plans/wave-3-main/A2-editor-shell-tiptap-container.md:48:- `packages/editor-shell/CONTRACT.md` — `## Public surface` changes from `NONE
+docs/plans/wave-3-main/A2-editor-shell-tiptap-container.md:177:- **TC6** (CONTRACT.md updated public surface — in-PR doc-acceptance)
+docs/plans/wave-3-main/A2-editor-shell-tiptap-container.md:179:  packages/editor-shell/CONTRACT.md`. Expected: ≥1 hit (the new bullet listing
+docs/plans/wave-3-main/A2-editor-shell-tiptap-container.md:181:  `grep -c 'NONE — Wave 3 A1 skeleton' packages/editor-shell/CONTRACT.md`
+docs/plans/wave-3-main/A2-editor-shell-tiptap-container.md:203:- `packages/editor-shell/CONTRACT.md` — Modified: `## Public surface` changes
+docs/plans/wave-3-main/A2-editor-shell-tiptap-container.md:214:CONTRACT.md prediction verbatim. No architecture decision needs codification.
+docs/plans/wave-3-main/A2-editor-shell-tiptap-container.md:215:The dispatch context confirms: locked plan A2 row 4 = NO; A1 CONTRACT.md outline
+docs/plans/wave-3-main/A2-editor-shell-tiptap-container.md:224:3. `packages/editor-shell/CONTRACT.md` `## Public surface` heading body lists
+docs/plans/wave-3-main/A2-editor-shell-tiptap-container.md:264:   CONTRACT.md, src/index.ts, src/EditorShell.tsx + new test) + lockfile + this
+docs/plans/wave-3-main/A2-editor-shell-tiptap-container.md:284:    files (package.json, vitest.config.ts, CONTRACT.md, src/index.ts);
+docs/plans/wave-3-main/A2-editor-shell-tiptap-container.md:317:  risk on the CONTRACT.md public-surface change (the central new-surface
+docs/plans/wave-3-main/A2-editor-shell-tiptap-container.md:329:      packages/editor-shell/CONTRACT.md \
+docs/plans/wave-3-main/A2-editor-shell-tiptap-container.md:349:- **Row 1** (CONTRACT.md change): **HIT**.
+docs/plans/wave-3-main/A2-editor-shell-tiptap-container.md:350:  `packages/editor-shell/CONTRACT.md` `## Public surface` body changes from
+docs/plans/wave-3-main/A2-editor-shell-tiptap-container.md:357:  A1's predicted CONTRACT.md outline verbatim; no architecture decision
+docs/plans/wave-3-main/A2-editor-shell-tiptap-container.md:370:declaration in CONTRACT.md). Other rows do not trigger stage 4 alone; row 1
+docs/plans/wave-3-main/A2-editor-shell-tiptap-container.md:458:  merged `27a8fd1`); created the empty package + CONTRACT.md whose
+docs/plans/wave-3-main/A2-editor-shell-tiptap-container.md:459:  `## Wave 3 Stage A expansion outline` section A2's package.json + CONTRACT.md
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:19:> `packages/block-{jupyter,nn-viz,agent-flow}/CONTRACT.md` `## Public
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:69:> `@skb/heavy-block-boundary/CONTRACT.md` is **NOT modified** (already
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:96:`packages/block-{jupyter,nn-viz,agent-flow}/CONTRACT.md` `## Public
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:99:below — single-source authoritative; CONTRACT.md prose copies that
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:297:- `packages/block-jupyter/CONTRACT.md` — **MODIFIED** (D2 Row 1
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:309:  of CONTRACT.md (Invariants / Test corpus invariants / Wave 3 work /
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:314:  correctly from `packages/block-jupyter/CONTRACT.md` (verified at
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:316:  root, then `docs/decisions/...` resolves; lychee-friendly).
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:374:- `packages/block-nn-viz/CONTRACT.md` — **MODIFIED** (D2 Row 1
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:422:- `packages/block-agent-flow/CONTRACT.md` — **MODIFIED** (D2 Row 1
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:642:    + CONTRACT.md consolidation (AC#4/#12/#13/#14) |`)**: replace
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:644:    + prefers-reduced-motion + CONTRACT.md consolidation (AC#4/#12/#13/#14)
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:689:- `packages/heavy-block-boundary/CONTRACT.md` — **UNCHANGED**.
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:727:- `packages/block-jupyter/CONTRACT.md` /
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:728:  `packages/block-nn-viz/CONTRACT.md` /
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:729:  `packages/block-agent-flow/CONTRACT.md` `## Invariants` /
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:802:contract test + 3 CONTRACT.md `Public surface` updates + 3
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:809:package.json/tsconfig deps + apps/site rewire + CONTRACT.md
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:883:- **TC7** (3 heavy block CONTRACT.md files document the new
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:886:  HeavyBlockDimensions' packages/block-jupyter/CONTRACT.md`.
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:888:  `packages/block-nn-viz/CONTRACT.md`. Expected: ≥ 1. Input (c):
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:889:  same for `packages/block-agent-flow/CONTRACT.md`. Expected: ≥ 1.
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:891:  packages/block-jupyter/CONTRACT.md`. Expected: ≥ 1 (cross-link to
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:892:  ADR-0014 D5). Input (e): same for `packages/block-nn-viz/CONTRACT.md`.
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:894:  `packages/block-agent-flow/CONTRACT.md`. Expected: ≥ 1. Location:
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:959:  LOC, each barrel `index.ts` est. ~20 LOC, each CONTRACT.md est. ~200
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:989:- **TC17** (`packages/heavy-block-boundary/CONTRACT.md` +
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:992:  (a): `git diff main -- packages/heavy-block-boundary/CONTRACT.md`.
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:1012:- **TC19** (3 heavy block CONTRACT.md changes are scoped to a
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:1014:  Input (a): `git diff main -- packages/block-jupyter/CONTRACT.md |
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:1017:  `packages/block-nn-viz/CONTRACT.md`. Expected: 1-2. Input (c):
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:1018:  same for `packages/block-agent-flow/CONTRACT.md`. Expected: 1-2.
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:1020:  packages/block-jupyter/CONTRACT.md | grep -cE '^[-]'`. Expected:
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:1025:  reviewer accepts up to 2 `-` lines per CONTRACT.md as long as the
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:1037:  `.github/workflows/link-check.yml` on push to feature branch.
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:1038:  Expected: workflow `success` conclusion (lychee CI-only per Wave
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:1041:  suffix per memory `feedback_lychee_line_anchor`); no `~/.claude/...`
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:1042:  markdown link form per memory `feedback_lychee_user_local_paths`.
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:1043:  3 CONTRACT.md cross-links to ADR-0014 D5 use the relative path
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:1045:  `packages/block-{kind}/CONTRACT.md` (verified at PLAN-time: 2
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:1063:- **`packages/block-jupyter/CONTRACT.md`** — **MODIFIED** (D2 Row 1
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:1069:  CONTRACT.md prose copies that bullet's literal block per heavy
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:1074:- **`packages/block-nn-viz/CONTRACT.md`** — **MODIFIED** (D2 Row 1
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:1077:- **`packages/block-agent-flow/CONTRACT.md`** — **MODIFIED** (D2
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:1080:- **`packages/heavy-block-boundary/CONTRACT.md`** — **NOT modified.**
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:1084:  dims) is documented in the heavy block CONTRACTs, NOT in the
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:1085:  boundary's CONTRACT (the boundary is agnostic to specific kinds —
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:1087:  43 of `heavy-block-boundary/CONTRACT.md` already states "Future
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:1093:- **W4-1 partner contract** (`packages/block-foundation/CONTRACT.md`)
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:1094:  is **NOT modified**. The boundary's CONTRACT.md continues to
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:1224:10. **3 CONTRACT.md `Public surface` bullets** (D2 Row 1 trigger ×3
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:1225:    consolidation single-source authoritative; CONTRACT.md prose
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:1229:    For `packages/block-jupyter/CONTRACT.md` (insert after
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:1236:    For `packages/block-nn-viz/CONTRACT.md` (insert after
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:1242:    For `packages/block-agent-flow/CONTRACT.md` (insert after
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:1248:    All other sections of each CONTRACT.md (Invariants / Test corpus
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:1295:16. `packages/heavy-block-boundary/*` (CONTRACT.md, JSX, CSS,
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:1353:    HIT (3 heavy block CONTRACT.md `Public surface` updates is the
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:1354:    architectural-surface change — single bullet per CONTRACT.md
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:1356:    D1+D2 v0.1.1, even a single bullet on a CONTRACT.md is a Row 1
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:1358:    1-22 + the 3 CONTRACT.md bullet additions + the apps/site
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:1361:    correct AND the 3 sister CONTRACT.md bullets are consistent
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:1379:- **Row 1** (CONTRACT change): **HIT** —
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:1380:  `packages/block-jupyter/CONTRACT.md` +
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:1381:  `packages/block-nn-viz/CONTRACT.md` +
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:1382:  `packages/block-agent-flow/CONTRACT.md` each gain a single bullet
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:1385:  CONTRACT.md `Public surface` addition is a Row 1 trigger
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:1387:  visibility); 3 CONTRACT.md touches in coordination amplifies the
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:1405:  attention to cross-package consistency: 3 sister CONTRACT.md
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:1413:  CONTRACT.md `Public surface` updates + documentation bookkeeping;
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:1417:CONTRACT.md; the 3-sister bullet addition is the meta-class
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:1426:hit Row 1 once via CONTRACT.md consolidation; A5 hits Row 1 three
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:1454:  + each barrel + each CONTRACT.md `Public surface` section + each
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:1467:  + REPLACE componentsMap entries) + 3 CONTRACT.md bullet appends +
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:1502:  (f) each CONTRACT.md bullet uses the same prose template (only
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:1505:  resolving correctly from each `packages/block-{kind}/CONTRACT.md`;
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:1529:  empty diff on CONTRACT.md / JSX / CSS / package.json /
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:1532:  (3 heavy block CONTRACT.md `Public surface` bullet additions in
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:1534:  bullets 1-22 + the 3 CONTRACT.md bullet additions + the apps/site
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:1538:  CONTRACT.md bullets are consistent (same prose template; only
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:1640:- DO NOT modify `packages/heavy-block-boundary/CONTRACT.md` or
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:1659:  `feedback_lychee_user_local_paths`.
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:1723:- [`packages/heavy-block-boundary/CONTRACT.md`](../../../packages/heavy-block-boundary/CONTRACT.md)
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:1740:- [`packages/block-callout/CONTRACT.md`](../../../packages/block-callout/CONTRACT.md)
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:1741:  — workspace precedent for CONTRACT.md `## Public surface` bullet
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:62:    ├── CONTRACT.md
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:63:    ├── ws/CONTRACT.md
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:64:    └── llm/CONTRACT.md
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:70:│   ├── CONTRACT.md
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:81:│   ├── package.json · tsconfig.json · CONTRACT.md
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:84:│   ├── package.json · tsconfig.json · CONTRACT.md
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:87:│   ├── package.json · tsconfig.json · CONTRACT.md
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:90:│   ├── package.json · tsconfig.json · CONTRACT.md
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:93:│   ├── package.json · tsconfig.json · CONTRACT.md
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:96:│   ├── package.json · tsconfig.json · CONTRACT.md
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:99:    ├── package.json · tsconfig.json · CONTRACT.md
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:112:- `.github/workflows/link-check.yml` —— Task 0 加 `configFile` + concurrency
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:222:  content: "Task 0: Phase 0 deferred follow-ups (lychee configFile + concurrency + fail)",
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:325:  message: "Please start Task 0 from Wave 1 plan: resolve ADR-0001 deferred follow-ups #3/#4/#6 (lychee configFile + concurrency + fail). See plan section 'Task 0: Phase 0 Deferred Follow-ups' for steps. When done, mark task ready-for-review and message me."
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:337:> "Task 0 ready for review. Modified: .github/workflows/link-check.yml. Tested: local lychee run clean. Ready for review."
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:346:- Modify: `.github/workflows/link-check.yml`
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:349:**Why first:** 这些 follow-up 是 Phase 0 ADR-0001 显式记的债务（Erratum 7 + Deferred 3/4/6）。在 Wave 1 引入大量新文件之前修掉，避免 Wave 1 PR 撞到 lychee 假阳性 / vitest 假阴性。
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:361:- [ ] **Step 2：修 `.github/workflows/link-check.yml`**
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:363:把现有 lychee step 改为：
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:366:      - uses: lycheeverse/lychee-action@v2
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:368:          configFile: .lychee.toml
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:374:注意：去掉原来的 `args: --no-progress './**/*.md'`。lychee-action 在 `args` 缺省时会读取 `.lychee.toml` 的 `paths` 字段（本仓库 `.lychee.toml` 已在 Phase 0 配 `**/*.md`）。
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:380:  group: link-check-${{ github.ref }}
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:384:- [ ] **Step 3：本地干跑 lychee 验证**
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:387:pnpm exec lychee --config .lychee.toml --no-progress './**/*.md' 2>&1 | tail -20
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:390:预期：0 broken / 0 timeouts。如果有 timeout，把对应 URL 加进 `.lychee.toml` 的 `exclude` 段并重跑。
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:395:git add .github/workflows/link-check.yml
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:396:git commit -m "fix(ci): link-check loads .lychee.toml + concurrency
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:399:- lychee-action with explicit args bypassed .lychee.toml; switch to
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:412:watch GitHub Actions; link-check 应在新仓库状态下 PASS 且不再误读 plan-doc 内的 fenced code 样例链接。
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:631:> **不变量**：`STORAGE_KEY = 'skb-theme'` 在 design-tokens 与本 inline script 中**字面相同**。如果将来改 key，需要同时改两处（design-tokens 是单一源；inline script 必须独立维护因为加载顺序约束）。这一约束写入 `apps/site/CONTRACT.md`。
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:728:- [ ] **Step 12：写 `apps/site/CONTRACT.md`**
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:756:- design-tokens 契约（`../../packages/design-tokens/CONTRACT.md`）
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:770:- CONTRACT.md documents public surface + invariants
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:816:- Create: `packages/content-types/{package.json,tsconfig.json,CONTRACT.md,src/{index,frontmatter,block-props}.ts,src/__tests__/frontmatter.test.ts}`
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:817:- Create: `packages/block-foundation/{package.json,tsconfig.json,CONTRACT.md,src/{index,registry,prose}.ts,src/__tests__/registry.test.ts}`
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:951:- [ ] **Step 10：写 `packages/content-types/CONTRACT.md`**
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:974:- [block-foundation/CONTRACT.md](../block-foundation/CONTRACT.md)
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:1267:- [ ] **Step 21：写 `packages/block-foundation/CONTRACT.md`（ADR-0003 后含 Core+UI 双层）**
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:1300:- content-types 契约（`../content-types/CONTRACT.md`）
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:1301:- mdx-bridge 契约（`../mdx-bridge/CONTRACT.md`）
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:1302:- design-tokens 契约（`../design-tokens/CONTRACT.md`）
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:1354:- Create: `packages/mdx-bridge/{package.json,tsconfig.json,CONTRACT.md,src/{index,parse,serialize}.ts,src/__tests__/{round-trip.test.ts,fixtures/}}`
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:1712:- [ ] **Step 15：写 `packages/mdx-bridge/CONTRACT.md`**
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:1739:- [block-foundation/CONTRACT.md](../block-foundation/CONTRACT.md)
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:1770:- Create: `apps/api/` 全套（pyproject.toml + app/* + tests/* + 3 个 CONTRACT.md）
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:2357:- [ ] **Step 14：写 `app/CONTRACT.md`**
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:2391:- ws/CONTRACT.md（`ws/CONTRACT.md`）
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:2392:- llm/CONTRACT.md（`llm/CONTRACT.md`）
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:2395:- [ ] **Step 15：写 `app/ws/CONTRACT.md`**
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:2423:- 父契约 `apps/api/app/CONTRACT.md`
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:2426:- [ ] **Step 16：写 `app/llm/CONTRACT.md`**
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:2452:- [agent-tools/CONTRACT.md](../../../packages/agent-tools/CONTRACT.md)
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:2469:3 CONTRACT.md docs (api / ws / llm) per spec §2.5
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:2601:- [ ] **Step 4：写 kernel-adapter CONTRACT.md**
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:2630:- [kernel-registry/CONTRACT.md](../kernel-registry/CONTRACT.md)
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:2775:- [ ] **Step 9：写 kernel-registry CONTRACT.md**
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:2796:- [kernel-adapter/CONTRACT.md](../kernel-adapter/CONTRACT.md)
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:3001:- [ ] **Step 4：editor-commands CONTRACT.md**
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:3029:- [agent-tools/CONTRACT.md](../agent-tools/CONTRACT.md)
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:3174:- [ ] **Step 9：agent-tools CONTRACT.md**
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:3200:- [editor-commands/CONTRACT.md](../editor-commands/CONTRACT.md)
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:3202:- [apps/api/llm/CONTRACT.md](../../apps/api/app/llm/CONTRACT.md)
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:3231:- Create: `packages/design-tokens/{package.json,tsconfig.json,CONTRACT.md}`
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:3658:### G5: barrel + tokens 单测 + CONTRACT.md
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:3706:- [ ] **Step 13：写 `packages/design-tokens/CONTRACT.md`**
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:3738:- block-foundation 契约（`../block-foundation/CONTRACT.md`）—— UI 注册时引用
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:3739:- apps/site 契约（`../../apps/site/CONTRACT.md`）—— FOUC inline script 同步约束
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:3869:- 跨包契约文档 8 份（CONTRACT.md），review 时有据可依
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:3880:- [x] #3 link-check.yml concurrency（Task 0 处理）
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:3881:- [x] #4 link-check.yml fail: true（Task 0 处理）
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:3882:- [x] #6 link-check.yml configFile（Task 0 处理）
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:3998:- §2.5 跨包契约：**10 个 CONTRACT.md**（content-types / block-foundation / mdx-bridge / kernel-adapter / kernel-registry / editor-commands / agent-tools / api+ws+llm / **design-tokens / apps/site**）
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:4002:- §3.10 CI：Track A/D/G 加入后 ci.yml / link-check.yml / agent-contract-check.yml 三 workflow 应继续 pass
+docs/plans/wave-3-main/B3-mdx-bridge-code-fixture.md:12:mdxComponent dispatch via `@skb/block-code/core` devDep import. CONTRACT
+docs/plans/wave-3-main/B3-mdx-bridge-code-fixture.md:40:- `packages/mdx-bridge/CONTRACT.md` — bump fixture-count prose 10 → 11
+docs/plans/wave-3-main/B3-mdx-bridge-code-fixture.md:74:- **TC6** (CONTRACT fixture-count grew exactly 1): `grep '11' packages/mdx-bridge/CONTRACT.md` shows new fixture-count prose.
+docs/plans/wave-3-main/B3-mdx-bridge-code-fixture.md:80:- `packages/mdx-bridge/CONTRACT.md` — fixture-count prose (single-line bump).
+docs/plans/wave-3-main/B3-mdx-bridge-code-fixture.md:91:4. CONTRACT.md fixture-count prose bumped to 11 — TC6.
+docs/plans/wave-3-main/B3-mdx-bridge-code-fixture.md:106:- Row 1 (CONTRACT.md fixture-count change): **HIT**.
+docs/plans/wave-3-main/B7-mdx-bridge-jupyter-fixture.md:10:mdxComponent dispatch via `@skb/block-jupyter/core` devDep. CONTRACT
+docs/plans/wave-3-main/B7-mdx-bridge-jupyter-fixture.md:32:- `packages/mdx-bridge/CONTRACT.md` — fixture-count prose 14 → 15.
+docs/plans/wave-3-main/B7-mdx-bridge-jupyter-fixture.md:46:- **TC6** CONTRACT fixture-count grew exactly 1.
+docs/plans/wave-3-main/B7-mdx-bridge-jupyter-fixture.md:52:- `packages/mdx-bridge/CONTRACT.md` — fixture-count prose bump.
+docs/plans/wave-3-main/B7-mdx-bridge-jupyter-fixture.md:63:4. CONTRACT.md fixture-count bumped — TC6.
+docs/decisions/ADR-0006-asymmetry-audit-checklist.md:27:| 5 | Track F v5 | R3 → fixed v6 | One CONTRACT.md updated to reflect code; sister CONTRACT.md (`agent-tools`) had stale wording | Documentation-vs-code drift in the file the worker did not edit |
+docs/decisions/ADR-0006-asymmetry-audit-checklist.md:60:6. **Sister-file documentation audit**: After updating one CONTRACT.md (or any document that describes a code surface), audit ALL related CONTRACT.md files in the package family for sister-file drift. Two CONTRACT.md files that describe two halves of the same contract must use **identical terminology** for the shared identifiers (function names, schema names, refine predicate names). (Wave 1 evidence: instance #5 — `editor-commands/CONTRACT.md` updated to cite `editBlockInputSchema` while `agent-tools/CONTRACT.md` still referred to the old shape.)
+docs/decisions/ADR-0006-asymmetry-audit-checklist.md:98:- **Item #5 + Wave 2 client-side replications**: when apps/site adds new client-side algorithm replications (theme variants beyond light/dark, locale negotiation pre-hydration, etc.), the worker MUST audit both saved-value semantics AND try/catch scope against authority. (See `packages/design-tokens/CONTRACT.md` Inverse-direction obligation invariant.)
+docs/decisions/ADR-0006-asymmetry-audit-checklist.md:148:- [packages/design-tokens/CONTRACT.md](../../packages/design-tokens/CONTRACT.md) Inverse-direction obligation — concrete application of items #5 + #7
+docs/plans/wave-4-main/C-1-pyodide-indexurl-cdn.md:14:> **D2 Row 1 HIT**: `apps/site/CONTRACT.md` gains a "Pyodide CDN
+docs/plans/wave-4-main/C-1-pyodide-indexurl-cdn.md:16:> two-place sync requirement (`apps/site/CONTRACT.md` clause ↔
+docs/plans/wave-4-main/C-1-pyodide-indexurl-cdn.md:25:share the same base URL); add a `apps/site/CONTRACT.md` "Pyodide CDN
+docs/plans/wave-4-main/C-1-pyodide-indexurl-cdn.md:46:`apps/site/CONTRACT.md` per orchestrator lock (apps/site is the
+docs/plans/wave-4-main/C-1-pyodide-indexurl-cdn.md:55:+ `apps/site/CONTRACT.md` + `active.md` + this PR.md) — these are
+docs/plans/wave-4-main/C-1-pyodide-indexurl-cdn.md:68:`orchestrator-self` for the doc syncs (`apps/site/CONTRACT.md` +
+docs/plans/wave-4-main/C-1-pyodide-indexurl-cdn.md:87:- `apps/site/CONTRACT.md` — **MODIFIED** (~8-10 LOC delta;
+docs/plans/wave-4-main/C-1-pyodide-indexurl-cdn.md:111:  This is the **Row 1 HIT** trigger — apps/site/CONTRACT.md is a
+docs/plans/wave-4-main/C-1-pyodide-indexurl-cdn.md:198:- **TC2** — apps/site CONTRACT clause grep:
+docs/plans/wave-4-main/C-1-pyodide-indexurl-cdn.md:199:  `grep -F "Pyodide" apps/site/CONTRACT.md` and
+docs/plans/wave-4-main/C-1-pyodide-indexurl-cdn.md:200:  `grep -F "jsdelivr" apps/site/CONTRACT.md` and
+docs/plans/wave-4-main/C-1-pyodide-indexurl-cdn.md:201:  `grep -F "v0.27.7" apps/site/CONTRACT.md` each exit 0 with ≥1
+docs/plans/wave-4-main/C-1-pyodide-indexurl-cdn.md:203:  trap per `feedback_lychee_autolink_in_backticks.md` — clause uses
+docs/plans/wave-4-main/C-1-pyodide-indexurl-cdn.md:246:- **TC10** — link-check (CI canonical): `pnpm link-check` exits 0.
+docs/plans/wave-4-main/C-1-pyodide-indexurl-cdn.md:261:  unchanged: `git diff --stat origin/main -- apps/site/public/sample-assets/ apps/site/src/components.ts apps/site/src/components/Jupyter.astro apps/site/src/islands/JupyterIsland.tsx packages/heavy-block-boundary/ packages/kernel-pyodide/src/adapter.ts packages/kernel-pyodide/src/boot.ts` reports zero modified files (note: `apps/site/CONTRACT.md` IS expected modified; not in this list).
+docs/plans/wave-4-main/C-1-pyodide-indexurl-cdn.md:281:- `apps/site/CONTRACT.md` — **NET ADD** "Pyodide CDN hosting"
+docs/plans/wave-4-main/C-1-pyodide-indexurl-cdn.md:284:No other CONTRACT.md is modified. Specifically:
+docs/plans/wave-4-main/C-1-pyodide-indexurl-cdn.md:285:- `packages/block-jupyter/CONTRACT.md` is NOT modified — the change
+docs/plans/wave-4-main/C-1-pyodide-indexurl-cdn.md:288:- `packages/kernel-pyodide/CONTRACT.md` is NOT modified — the
+docs/plans/wave-4-main/C-1-pyodide-indexurl-cdn.md:309:| 1 | CONTRACT.md change | **HIT** — `apps/site/CONTRACT.md` adds "Pyodide CDN hosting" invariant clause (~8-10 LOC net add) |
+docs/plans/wave-4-main/C-1-pyodide-indexurl-cdn.md:348:   `new PyodideAdapter` call site); (b) `apps/site/CONTRACT.md`
+docs/plans/wave-4-main/C-1-pyodide-indexurl-cdn.md:355:   `apps/site/CONTRACT.md` clause explicitly states the requirement
+docs/plans/wave-4-main/C-1-pyodide-indexurl-cdn.md:361:   for the literal CDN segment — the CONTRACT clause uses the
+docs/plans/wave-4-main/C-1-pyodide-indexurl-cdn.md:412:11. **Lychee 4-discipline clean**: PR.md links pass `pnpm link-check`;
+docs/plans/wave-4-main/C-1-pyodide-indexurl-cdn.md:450:    - `apps/site/CONTRACT.md` "Pyodide CDN hosting" clause add.
+docs/plans/wave-4-main/C-1-pyodide-indexurl-cdn.md:477:          apps/site/CONTRACT.md \
+docs/plans/wave-4-main/C-1-pyodide-indexurl-cdn.md:497:(273 KB truncated archive, lychee-piping per
+docs/plans/wave-4-main/C-1-pyodide-indexurl-cdn.md:514:| Q9 | version drift risk | high | ABSORBED | **ABSORBED**: indexURL string hardcodes `v0.27.7`; PR.md acceptance includes a "future Pyodide upgrade must sync indexURL string" cross-reference; codified in the new `apps/site/CONTRACT.md` clause |
+docs/plans/wave-4-main/C-1-pyodide-indexurl-cdn.md:576:- `apps/site/CONTRACT.md` (modification target):
+docs/plans/wave-4-main/C-1-pyodide-indexurl-cdn.md:577:  `apps/site/CONTRACT.md`
+docs/plans/wave-4-main/C-1-pyodide-indexurl-cdn.md:578:- `packages/kernel-pyodide/CONTRACT.md` (sister authority,
+docs/plans/wave-4-main/C-1-pyodide-indexurl-cdn.md:579:  unmodified): `packages/kernel-pyodide/CONTRACT.md`
+docs/plans/wave-4-main/C-1-pyodide-indexurl-cdn.md:580:- `packages/block-jupyter/CONTRACT.md` (call-site owner,
+docs/plans/wave-4-main/C-1-pyodide-indexurl-cdn.md:581:  unmodified): `packages/block-jupyter/CONTRACT.md`
+docs/plans/wave-4-main/C-1-pyodide-indexurl-cdn.md:586:- Memory `feedback_lychee_autolink_in_backticks.md` (TC10 grep
+docs/plans/wave-3-main/D3-search-index-ui.md:24:- `apps/site/CONTRACT.md` — extend `## Search index` (D2 added) with UI subsection: SearchBox + /search route surface; A11y guarantees (keyboard nav, ARIA labels via default-ui); /search SSR-before-index render-safety per ADR-0012 out-of-scope #C4(a) — confirms lazy-load satisfies the contract.
+docs/plans/wave-3-main/D3-search-index-ui.md:45:- `apps/site/CONTRACT.md` — UI subsection added under D2's `## Search index`. Surface growth only.
+docs/plans/wave-3-main/D3-search-index-ui.md:67:- **Row 1** (CONTRACT change): NO — apps/site CONTRACT surface-only growth (UI subsection).
+docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md:130:- **verification required** (per Q2 absorbtion): TC1-TC14 in PR.md (file existence + structure + section presence + lychee CI + pnpm check + lockfile unchanged) — all shell + GitHub Actions assertions; no vitest/playwright.
+docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md:143:- **size**: ~400-500 LOC ADR prose + ~10 LOC `block-foundation/CONTRACT.md` W5-1 invariant + ~5 LOC `docs/decisions/README.md` ADR roster
+docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md:145:- **D2 trigger judgment**: Row 4 (NEW ADR) HIT + Row 1 (CONTRACT.md W5-1 invariant) HIT → stage 4 PRE-COMMIT CLAUDE REVIEW fires
+docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md:160:- **D2 trigger judgment**: Row 4 (NEW ADR) HIT → stage 4 fires (Row 1 NO unless CONTRACT touched at lock)
+docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md:173:  - **NEW per Q4+Q8 absorbtion**: **save-path 方案草案 + 回退路径** (apps/api endpoint vs Astro endpoint vs localStorage prototype) — 在此 ADR 接口冻结 (Pre-A5 仅做确认与验收, 减少晚期改动); 若此处 surface "持久化路径变更" 或 "接口契约调整" 即 D2 row 4 (ADR amendment 范围扩大) + row 1 (CONTRACT.md 影响 apps/site 或新 package) 立即触发 stage 4 PRE-COMMIT CLAUDE REVIEW
+docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md:176:- **D2 trigger judgment**: Row 4 (NEW ADR) HIT → stage 4 fires; **若 surface save-path CONTRACT 影响**: Row 1 ALSO fires (per Q4 escalation rule)
+docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md:189:- **D2 trigger judgment**: standard PR. **若 v1.0 surface ADR amendment 必要 → Q4 escalation**: 立即 D2 row 4 fires; 若涉及 CONTRACT 同步 = Row 1 also fires; v1.0 不应 surface 重大 ADR amendment (那应在 Pre-A2/3/4 内 absorb), 此处仅 last-mile cross-reference 检查
+docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md:354:| **D13** | **Late-surface D2 trigger escalation** (per Q4 absorbtion): Pre-A4 内若 surface "持久化路径变更" OR "接口契约调整" 即立即触发 D2 row 4 (ADR scope 扩大) + row 1 (CONTRACT 同步); Pre-A5 NOT 兜底; v1.0 不应 surface 重大 ADR amendment | Per Q4 absorbtion |
+docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md:449:| Pre-A2 ADR-0016 grid | `2026-05-04-Pre-A2-plan-challenge.txt` (113 lines) | 12 (4 high + 7 medium + 1 low) | 11 | 1 | W5-1 invariant + D12 layoutEpoch + 权威矩阵 + Sister-document sync (4 sister CONTRACTs) + 转场态 FSM + SSR fallback |
+docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md:463:3. **Sub-edit c**: NEW Stage C.2 row C.2-3.5 inserted between C.2-3 and C.2-4 at fractional index 3.5. Subject = "mdx-bridge hard-throw flip + sample MDX backfill + RTT fixtures grid-aware update". Whitelist scoped to `packages/mdx-bridge/src/{parse,serialize}.ts` + `packages/mdx-bridge/CONTRACT.md` + 17 RTT fixtures + 4 `content/notes/**/*.mdx` files (primary target = `sample-blocks/index.mdx`). LOC budget ~250-350. Executor = `codex-generic-executor`. D2 trigger Row 1 + Row 5.
+docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md:493:2. **Sub-edit b**: NEW Stage C.4 row `C.4-prelude` (or fractional index per plan-challenger lock) inserted at the start of Stage C.4 PR breakdown table — between Stage C.3 close and existing C.4-1 row. Subject = "minimal editor scaffold (MVP smoke-test enable)". Whitelist scoped to `apps/site/src/pages/notes/[slug]/edit.astro` (NEW; basic route mounting editor-shell) + `apps/site/src/components/EditorShellMount.{astro,tsx}` (NEW; minimal mount wrapper) + `apps/site/CONTRACT.md` (route + mount contract; minimal) + `packages/editor-shell/src/save-adapter.ts` (NEW; LocalStorageAdapter MVP per ADR-0018 D8) + tests + 1 PR.md. LOC budget ~200. Executor = `codex-generic-executor`. D2 trigger Row 1 (CONTRACT).
+docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md:529:| C.1-1 | Heavy block plugin placeholder + ADR-0014 v0.4 amendment | `apps/site/src/islands/{Jupyter,NnViz,AgentFlow}Island.tsx` (rewrite to plugin placeholder) + `apps/site/src/components/{Jupyter,NnViz,AgentFlow}.astro` (unchanged) + `apps/site/src/components.ts` (componentsMap) + `docs/decisions/ADR-0014-heavy-block-boundary.md` (v0.4 Amendments §) + 1 PR.md | ~300 LOC | codex-generic-executor | Row 4 (ADR amendment) + Row 1 (apps/site/CONTRACT.md may sync) |
+docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md:539:| C.2-1 | mdx-bridge col/row/colSpan/rowSpan serialize | `packages/mdx-bridge/src/**/*` + `packages/mdx-bridge/CONTRACT.md` (+ W5-1 forward-pointer + serialize boundary) + RTT fixtures | ~300 LOC | codex-generic-executor | Row 1 (CONTRACT) + Row 5 (cross mdx-bridge + block-foundation + apps/site) |
+docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md:540:| C.2-2 | block-foundation BlockUIDefinition grid 字段 (gridDefault + rowSpanSemantic + gridKind + proseGridDefaults + grid-math.ts helpers) | `packages/block-foundation/src/types.ts` + `packages/block-foundation/src/grid-math.ts` (NEW) + `packages/block-foundation/CONTRACT.md` (W5-1 invariant 已 Pre-A2 加; 此 PR 加 helpers public surface) + tests | ~250 LOC | codex-generic-executor | Row 1 (CONTRACT) + Row 5 |
+docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md:541:| C.2-3 | Astro renderer grid layout + Responsive 12/6/1 **[OUT OF SCOPE — hard-throw flip + sample-MDX backfill + 17 RTT fixtures grid-aware update deferred to NEW C.2-3.5 per v1.1 amendment]** | `apps/site/src/styles/grid.css` (NEW; `.skb-grid` container + `@media` breakpoints) + `apps/site/src/layouts/BaseLayout.astro` + `apps/site/CONTRACT.md` | ~200 LOC | codex-generic-executor | Row 1 + Row 5 |
+docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md:542:| **C.2-3.5** (v1.1 amendment NEW; LOCKED at fractional index 3.5 post Q2 plan-challenger absorbtion) | **mdx-bridge hard-throw flip + sample MDX backfill + RTT fixtures grid-aware update** | `packages/mdx-bridge/src/parse.ts` (remove `_gridAttrsExplicit` defensive branch + add hard-throw on missing grid attrs per ADR-0016 D7) + `packages/mdx-bridge/src/serialize.ts` (remove `_gridAttrsExplicit` marker tracking) + `packages/mdx-bridge/CONTRACT.md` (transitional-prose removal + end-state lock per ADR-0016 D7) + `packages/mdx-bridge/src/__tests__/fixtures/22-callout.mdx` .. `29-agent-flow.mdx` (8 component-block fixtures: `backfill-required`) + `01-paragraph.mdx` .. `09-link-title-comparator.mdx` (9 prose fixtures: `audit-only-verified`; `proseGridDefaults` derive-not-emit invariant refresh) + `content/notes/sample-blocks/index.mdx` (`backfill-required`; primary 8-block target; 5689 B at HEAD `2586328`) + `content/notes/sample-mdx-note/index.mdx` (`audit-only-verified`; PR.acceptance MUST emit "zero component blocks" evidence) + `content/notes/__test_cjk__/laptop/index.mdx` (`audit-only-verified`; same evidence req) + `content/notes/__test_cjk__/zh-note/index.mdx` (`audit-only-verified`; same evidence req) + 1 PR.md | ~250-350 LOC | codex-generic-executor | Row 1 (CONTRACT) + Row 5 (cross mdx-bridge + content/notes) |
+docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md:543:| C.2-4 | editor-shell grid 集成 + useAutoRowSpan hook (per ADR-0016 D3 两阶段稳态) | `packages/editor-shell/src/grid-container.tsx` (NEW) + `packages/editor-shell/src/use-auto-row-span.ts` (NEW) + `packages/editor-shell/CONTRACT.md` (W5-2 invariant 加 + grid container API public surface) | ~400 LOC | codex-generic-executor | Row 1 (CONTRACT W5-2 NEW) + Row 5 |
+docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md:544:| C.2-5 | drag/drop UX 实施 (per ADR-0017 D5 选项 1 + D3 tiebreak + D4 outline overlay) | `packages/editor-shell/src/drag-drop/{edge-rects,tiebreak,outline-overlay}.ts` (NEW) + tests | ~500 LOC | codex-generic-executor | Row 1 (CONTRACT) + Row 5 |
+docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md:545:| C.2-6 | resize UX 实施 (col-ruler + size-tooltip + COL_SNAPS snap; per ADR-0017 D9) | `packages/editor-shell/src/resize/{col-ruler,size-tooltip}.tsx` (NEW) + tests | ~300 LOC | codex-generic-executor | Row 1 (CONTRACT) |
+docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md:546:| C.2-7 | ADR-0014 v0.5 amendment (HeavyBlockBoundary dims grid context 联动 W5-1) | `docs/decisions/ADR-0014-heavy-block-boundary.md` (v0.5 Amendments §) + `packages/heavy-block-boundary/src/HeavyBlockBoundary.tsx` (consume W5-1 公式) + `packages/heavy-block-boundary/CONTRACT.md` (sister-doc-sync per ADR-0016 D9 Sister-document sync) | ~150 LOC | orchestrator-self (doc-policy ADR amendment) + codex for impl | Row 4 (ADR amendment) + Row 1 (CONTRACT sync) |
+docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md:559:| C.3-1 | design-tokens OKLCH 14 color + 1 hex `--surface` + 3 layout + Inter/JetBrains Mono fonts (per ADR-0018 D1+D2) | `packages/design-tokens/src/tokens.css` + `packages/design-tokens/CONTRACT.md` (token additions) + `tokens-fallback.css` (NEW; OKLCH→hex via Culori build script) + tests | ~300 LOC | codex-generic-executor + ux-ui-lead subagent | Row 1 (CONTRACT) + Row 5 (cross design-tokens + apps/site + 5 light blocks + heavy-block-boundary) |
+docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md:571:| **C.4-prelude** (v1.2 amendment NEW; LOCKED at semantic identifier post Q1 plan-challenger absorbtion; orchestrator preliminary recommendation) | **minimal editor scaffold (MVP smoke-test enable; per Wave 5 plan v1.2 R14 SECOND real-test 2026-05-05)** | `apps/site/src/pages/notes/[slug]/edit.astro` (NEW; basic route mounting editor-shell) + `apps/site/src/components/EditorShellMount.{astro,tsx}` (NEW; minimal mount wrapper) + `apps/site/CONTRACT.md` (route + mount contract; minimal section) + `packages/editor-shell/src/save-adapter.ts` (NEW; LocalStorageAdapter MVP per ADR-0018 D8) + tests + 1 PR.md. **In-scope**: `/notes/[slug]/edit` route + EditorShellMount + grid container (C.2-4) + drag/drop layer (C.2-5) + resize layer (C.2-6) + LocalStorageAdapter MVP + minimal hardcoded BlockRegistry (callout/code/markdown subset). **Out-of-scope (deferred to C.4-1..C.4-5 full set)**: palette / slash-menu / drag-handle / toolbar 完整组装 (C.4-3); BlockRegistry/KernelRegistry full wire (C.4-3); save/load layoutEpoch sync (C.4-4); e2e playwright (C.4-5); v2 visual + fonts (Stage C.3). | ~200 LOC | codex-generic-executor | Row 1 (CONTRACT) |
+docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md:572:| C.4-1 (post v1.2 Q3 ownership refinement) | NoteSaveAdapter interface contract hardening + NoteState shape + W5-2 contract surface + adapter contract tests (LocalStorageAdapter MVP impl already shipped at C.4-prelude per v1.2 R14 SECOND amendment; C.4-1 NO LONGER re-implements impl — only hardens interface + adds contract tests) | `packages/editor-shell/src/save-adapter.ts` (modify; interface + types only — impl stays at MVP shipped by C.4-prelude) + `packages/editor-shell/CONTRACT.md` (W5-2 invariant + NoteSaveAdapter public surface section) + adapter contract tests | ~150 LOC (reduced from ~250 v1.0; impl LOC moved to C.4-prelude) | codex-generic-executor | Row 1 (CONTRACT W5-2 + NoteSaveAdapter surface) + Row 5 |
+docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md:573:| C.4-2 (post v1.2 ownership refinement) | apps/site `/notes/[slug]/edit` route + `EditorShellMount` enhancement (full BlockRegistry/KernelRegistry wire-up; route already shipped at C.4-prelude as MVP scaffold per v1.2 R14 SECOND amendment) | `apps/site/src/pages/notes/[slug]/edit.astro` (modify; enhance MVP route shipped at C.4-prelude with full block registry wire) + `apps/site/src/components/EditorShellMount.{astro,tsx}` (modify; enhance MVP mount with full registry props) + `apps/site/CONTRACT.md` (route + mount contract enhancement) | ~150 LOC (reduced from ~300 v1.0; route + mount NEW LOC moved to C.4-prelude) | codex-generic-executor | Row 1 + Row 5 |
+docs/decisions/ADR-0002-wave-1-close.md:15:1. Capture empirical lessons that should bind Wave 2+ (recorded as ADR-0006 process rule and inline notes in CONTRACT.md / CONVENTIONS.md)
+docs/decisions/ADR-0002-wave-1-close.md:34:| Task 0 | Phase 0 deferred follow-ups (lychee config + concurrency + fail) | `6a791e6` |
+docs/decisions/ADR-0002-wave-1-close.md:57:3. **mdx-bridge CONTRACT.md throw-site count claim** — Wave 1 close included a follow-up commit to add the missing 5th throw-site test (or amend the wording).
+docs/decisions/ADR-0002-wave-1-close.md:67:7. **Lychee config flag fix (Task 10)**: root `package.json:link-check` now passes `--config .lychee.toml`. Pre-fix the script ignored repository-level config (include_verbatim / exclude / max_concurrency / timeout / require_https) and used lychee defaults.
+docs/decisions/ADR-0002-wave-1-close.md:73:9. **`packages/content-types/frontmatterSchema` is the single authority** for note frontmatter. Consumers (`apps/site`, future block-foundation block plugins) MUST `import { frontmatterSchema } from '@skb/content-types'` rather than redefine inline. Documented in `apps/site/CONTRACT.md` + `content-types/CONTRACT.md`.
+docs/decisions/ADR-0002-wave-1-close.md:75:10. **`packages/editor-commands/editBlockInputSchema` is the single authority** for the `edit_block` agent-tool input shape. Composed via `editBlockBase.omit({type: true}).refine(editBlockHasChange)`. Consumers (`@skb/agent-tools`) MUST import; cannot duplicate the `.refine()` predicate. Documented in both packages' CONTRACT.md.
+docs/decisions/ADR-0002-wave-1-close.md:77:11. **`packages/design-tokens/getInitialTheme()` is the single authority** for FOUC initial-theme algorithm. Consumer-side replicas (currently `apps/site/BaseLayout.astro` IIFE) MUST be byte-equivalent in BOTH happy-path AND exception scope; replica MUST register a regression test (template: `apps/site/src/__tests__/fouc-script.test.ts`). Documented in `design-tokens/CONTRACT.md` Inverse-direction obligation invariant.
+docs/decisions/ADR-0002-wave-1-close.md:93:16. **Wave 2 attr-bearing mark expansion** — first attr-bearing mark beyond `link` (e.g. `highlight: {color}`, `kbd: {style}`) MUST simultaneously update `wrapMark` + `marksEqual` + add fixture. Default `return true` in `marksEqual` is silent-drop trap. Documented in mdx-bridge CONTRACT.md as Wave 2 prep.
+docs/decisions/ADR-0002-wave-1-close.md:99:19. **F1 — mdx-bridge forward-compat dead deps** (audit §5/§6): `mdx-bridge/package.json` declares `@skb/block-foundation` and `@skb/content-types` workspace deps; source contains no imports yet. Documented at mdx-bridge CONTRACT §"Wave 1 declared peers (forward-compat)". Wave 2 entry ADR should resolve dead-dep policy globally (audit §7 recommendation #1: tighten "every package.json `@skb/*` must have a corresponding source import" OR relax "tsconfig refs MUST match package.json + CONTRACT MUST explain").
+docs/decisions/ADR-0002-wave-1-close.md:103:21. **Wave 2 prereq — block-foundation MDX renderer interface freeze** (audit §7 recommendation #2): the first `block-callout` package (per agent-contract `simple-block-eng`) will be the first real consumer of `block-foundation`'s dual-layer API. Add a `block-foundation/RFC.md` walkthrough of "how block-callout will register" to block-foundation CONTRACT before block-callout PR opens.
+docs/decisions/ADR-0002-wave-1-close.md:123:- **Empirical lessons preserved**: 22 errata + ADR-0006 8-point checklist + 3 cross-package single-authority invariants now codified at the right scope (CONTRACT.md / CONVENTIONS.md / ADR). Wave 2+ workers won't re-litigate.
+docs/decisions/ADR-0002-wave-1-close.md:126:- **Single-authority discipline**: 3 cross-package authority pairs (frontmatter schema / edit-block input schema / FOUC algorithm) all have consumer-side test gates + bidirectional CONTRACT.md documentation.
+docs/decisions/ADR-0002-wave-1-close.md:133:- **CONTRACT.md pages getting heavier**: each package's CONTRACT.md now carries ~5-15 invariants. Acceptable trade-off vs implicit conventions, but Wave 2+ should keep watch — if any package CONTRACT.md exceeds ~300 lines, refactor invariants into a separate document and link.
+docs/decisions/ADR-0002-wave-1-close.md:148:5. ⏳ mdx-bridge CONTRACT.md cleanup (mdx-bridge-eng) — committed via review chain
+docs/decisions/ADR-0002-wave-1-close.md:149:6. ⏳ design-tokens CONTRACT.md inverse invariant (editor-integrator) — committed via review chain
+docs/decisions/ADR-0005-api-conventions.md:35:8. **WS 单点 `/v1/ws/`** + JSON `type`-tagged messages（细节 ws/CONTRACT.md）
+docs/decisions/ADR-0005-api-conventions.md:60:| [Wave 1 plan](../superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md) Track D | 新增 Step 0「读 CONVENTIONS.md」；Step 4 schemas 用 camelCase alias；Step 8 router prefix `/v1/auth`；Step 9 files.py → pages.py + `/v1/pages`；Step 14 CONTRACT.md reference CONVENTIONS.md |
+docs/plans/wave-5-main/Pre-A3-adr-0017-drag-drop-ux.md:63:- `packages/block-foundation/CONTRACT.md` — Pre-A2 W5-1 invariant locked; Pre-A3 ADR
+docs/plans/wave-5-main/Pre-A3-adr-0017-drag-drop-ux.md:64:  consumes W5-1 但 NOT touch CONTRACT (drag/drop UX 是 editor-shell internal; sister
+docs/plans/wave-5-main/Pre-A3-adr-0017-drag-drop-ux.md:65:  CONTRACT W5-2-class invariant 留 Stage C.2 实施 PR scope-fence per Wave 5 plan v0.2
+docs/plans/wave-5-main/Pre-A3-adr-0017-drag-drop-ux.md:67:- `packages/editor-shell/CONTRACT.md` (assumed not yet exist) — Stage C.2 实施 PR
+docs/plans/wave-5-main/Pre-A3-adr-0017-drag-drop-ux.md:118:- **TC13** (link-check via CI) Input: `.github/workflows/link-check.yml` on push (lychee
+docs/plans/wave-5-main/Pre-A3-adr-0017-drag-drop-ux.md:119:  CI-only). Expected: workflow `success`. Per memory `feedback_lychee_user_local_paths`
+docs/plans/wave-5-main/Pre-A3-adr-0017-drag-drop-ux.md:120:  + `feedback_lychee_autolink_in_backticks`: pre-empt scan run before push. Location:
+docs/plans/wave-5-main/Pre-A3-adr-0017-drag-drop-ux.md:134:NOT cross-package CONTRACT. ADR-0006 D8 + ADR-0011 D2 row 1 NOT fired here.
+docs/plans/wave-5-main/Pre-A3-adr-0017-drag-drop-ux.md:142:status code / Zod / try-catch / cross-package CONTRACT touch).
+docs/plans/wave-5-main/Pre-A3-adr-0017-drag-drop-ux.md:178:12. **Link-check passes via CI** (lychee pre-empt scan run before push;
+docs/plans/wave-5-main/Pre-A3-adr-0017-drag-drop-ux.md:201:- **Row 1** (CONTRACT change): NO — ADR-0017 是 editor-shell internal drag/drop UX
+docs/plans/wave-5-main/Pre-A3-adr-0017-drag-drop-ux.md:202:  schema; NOT cross-package CONTRACT. block-foundation/CONTRACT.md 不动 (Pre-A2 W5-1
+docs/plans/wave-5-main/Pre-A3-adr-0017-drag-drop-ux.md:203:  足够; W5-2 invariant 在 Stage C.2 实施 PR 创建 editor-shell CONTRACT.md 时加).
+docs/plans/wave-5-main/Pre-A3-adr-0017-drag-drop-ux.md:244:  - `packages/editor-shell/CONTRACT.md` (NEW) + W5-2 invariant
+docs/decisions/ADR-0001-stack-selection.md:123:### Erratum 4: §3.5 lychee `include_verbatim`
+docs/decisions/ADR-0001-stack-selection.md:125:Spec §3.5 / plan T0.12 lychee 配置写 `include_verbatim = true`。但 spec / plan 文档本身含大量 fenced code 样例，里面的相对路径是 T0.13 等后续任务的"未来文件"占位符。`include_verbatim = true` 会让 lychee 把它们当真链接扫描，CI 必挂。
+docs/decisions/ADR-0001-stack-selection.md:141:### Erratum 7: lychee-action 给 explicit `args` 时不读 `.lychee.toml`
+docs/decisions/ADR-0001-stack-selection.md:143:Spec §3.5 / plan T0.12 假设 `lycheeverse/lychee-action@v2` 会自动读取 `.lychee.toml`。实测：当 workflow `with: args: '...'` 显式提供参数时，action 不再 auto-load config 文件。Erratum 4 设的 `include_verbatim = false` 在 CI 实际无效（虽然 plan-doc 重定向链接已绕过具体破坏）。
+docs/decisions/ADR-0001-stack-selection.md:145:**修正实现**：本次未改 workflow（用户已 push 通过的修复绕过了破坏）。Phase 1 引入更多含 fenced code 内 markdown 样例时，需在 link-check.yml 加 `with: configFile: .lychee.toml` 或移除 explicit `args`，已记入 deferred follow-ups。
+docs/decisions/ADR-0001-stack-selection.md:151:- **CI workflow 加 concurrency block**（T0.12 Note N1）：`.github/workflows/link-check.yml` 没有 concurrency cancel-in-progress。lychee 跑得快，影响小；统一三个 workflow 风格时一起加。
+docs/decisions/ADR-0001-stack-selection.md:152:- **CI workflow 显式 `fail: true`**（T0.12 Note N2）：lychee-action@v2 默认就 fail，但显式声明对未来读者更清晰。
+docs/decisions/ADR-0001-stack-selection.md:154:- **link-check.yml 加载 .lychee.toml**（Erratum 7 后续）：给 lychee-action 加 `with: configFile: .lychee.toml`，或者把 args 移到 toml 里去。当前修复（重定向 broken 链接）治标，未治本。
+docs/decisions/ADR-0012-search-index-stack.md:44:1. **Bundle-size budget**: PageFind runtime + initial index chunks at first paint of search route ≤ **120 kB gzip total**, 在 `astro build` artifact 上测量（Pagefind docs 公开数据 ~70-100 kB；120 kB 留 headroom）。D2 PR 必须在 `apps/site/CONTRACT.md` 公开测量结果 + 提交可复现的测量脚本。
+docs/decisions/ADR-0012-search-index-stack.md:46:3. **Reindex-on-update mechanism (TC3, plan-challenger R2 #13)**: 索引由 `astro-pagefind` post-build hook 在每次 `astro build` 重新生成；D2 必须包含 regression test：mutate 一个 MDX 文件 → re-run `astro build` → 验证 `pagefind/` 该 note 对应 chunk 的 content-hash 变化。**禁止** client-side reindex path（runtime fetch + rebuild index in browser）— 与 build-time deterministic 契约冲突。CDN/proxy stale-cache 风险通过 PageFind 出厂的 content-hash 文件名（每个 chunk 文件名含内容哈希）天然 cache-bust — D2 PR 应在 CONTRACT 描述中显式记录此机制（plan-challenger D1b #C4(b) absorbed）。
+docs/decisions/ADR-0012-search-index-stack.md:124:- **B1b (next PR; deferred per plan-challenger C6+C10 split-recommendation)** ships SearchBox 集成（`apps/site/src/components/SearchBox.astro`）：Option B-4 hybrid（PagefindUI `processTerm` short-circuit + `processResult` 标记 mismatch + DOM-level hide + count-fixup MutationObserver），并恢复 `apps/site/playwright/search.spec.ts` paired discriminator inverse 断言（Wave 3 D3 暂时移除，Wave 4 B1b 复原）。Plan-challenger C2 verdict（验证 PagefindUI `process_result` 仅 mutate payload、不能 filter `results` array）锁定 hide-via-DOM 路径而非 wholesale UI 替换；plan-challenger C8 verdict（B-2 wholesale 需 `apps/site/CONTRACT.md` a11y 改动）解释 Option B-4 选型避免了 a11y CONTRACT 大改。
+docs/decisions/ADR-0012-search-index-stack.md:126:**Path-prose alignment**: `## Decision` §3 + `## Acceptance criteria` 2 + 3 + `## Consequences` Negative 1 + `## Neutral / explicit out-of-scope` 末项原引用的 PageFind &lt;1.5 历史下划线前缀 dist 路径已统一改为 `dist/pagefind/`（5 处；PageFind 1.5+ 输出路径无下划线前缀，与 `apps/site/dist/pagefind/` 实际产物对齐）。语义契约不变 —— post-build hook + dist artifact + content-hash chunk filenames 保持 PageFind 出厂默认。`apps/site/CONTRACT.md` 在同一 PR 同步移除原 stale-note 段（B1a scope）。
+docs/plans/wave-3-main/A5-editor-shell-save-load.md:33:`@skb/mdx-bridge` workspace dep; rewrite CONTRACT.md `## Wave 3 Stage A
+docs/plans/wave-3-main/A5-editor-shell-save-load.md:107:  point and matches mdx-bridge's CONTRACT.md "Round-trip invariant"
+docs/plans/wave-3-main/A5-editor-shell-save-load.md:134:  Stage A close note` in CONTRACT.md for the ratification.
+docs/plans/wave-3-main/A5-editor-shell-save-load.md:135:- `packages/editor-shell/CONTRACT.md` — three coordinated edits:
+docs/plans/wave-3-main/A5-editor-shell-save-load.md:476:- **TC7** (CONTRACT.md updated public surface — in-PR doc-acceptance)
+docs/plans/wave-3-main/A5-editor-shell-save-load.md:480:    packages/editor-shell/CONTRACT.md
+docs/plans/wave-3-main/A5-editor-shell-save-load.md:488:  grep -c '^## Stage A close note' packages/editor-shell/CONTRACT.md
+docs/plans/wave-3-main/A5-editor-shell-save-load.md:541:- `packages/editor-shell/CONTRACT.md` — Modified: `## Public surface`
+docs/plans/wave-3-main/A5-editor-shell-save-load.md:586:plus the A4 CONTRACT.md prediction (with one **narrowing** — see `##
+docs/plans/wave-3-main/A5-editor-shell-save-load.md:599:  `TiptapDoc` structural type. mdx-bridge's CONTRACT.md "Round-trip
+docs/plans/wave-3-main/A5-editor-shell-save-load.md:611:  is governed by Wave 1 origin contracts in `packages/mdx-bridge/CONTRACT.md`
+docs/plans/wave-3-main/A5-editor-shell-save-load.md:614:The dispatch context confirms: locked plan A5 row 4 = NO; A4 CONTRACT.md
+docs/plans/wave-3-main/A5-editor-shell-save-load.md:641:3. `packages/editor-shell/CONTRACT.md` `## Public surface` heading body
+docs/plans/wave-3-main/A5-editor-shell-save-load.md:683:5. **Stage A close note ratification**: `packages/editor-shell/CONTRACT.md`
