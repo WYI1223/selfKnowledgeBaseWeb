@@ -2,7 +2,7 @@
 
 | 字段 | 值 |
 | ---- | --- |
-| 状态 | **locked v1.1** (R14 amendment 2026-05-05; v1.0 → v1.1 to formalize C.2-1→C.2-3 defer-chain via NEW row C.2-3.5; per [ADR-0015](../../decisions/ADR-0015-wave-4-close.md) R14 + memory `feedback_r14_defer_chain_plan_amendment.md`; v1.0 lock evidence preserved in `## v1.0 Pre-A5 final lock amendments` section; v1.1 amendment evidence in NEW `## v1.1 R14 amendment (2026-05-05)` section) |
+| 状态 | **locked v1.2** (R14 SECOND real-test 2026-05-05; v1.1 → v1.2 to formalize user-gatekeeper-sequencing-pushback via NEW row C.4-prelude minimal editor scaffold; per [ADR-0015](../../decisions/ADR-0015-wave-4-close.md) R14 + memory `feedback_r14_defer_chain_plan_amendment.md` extended to gatekeeper-sequencing class; v1.0 lock evidence preserved in `## v1.0 Pre-A5 final lock amendments` section; v1.1 amendment evidence in `## v1.1 R14 amendment (2026-05-05)` section; v1.2 amendment evidence in NEW `## v1.2 R14 amendment (2026-05-05) — SECOND real-test` section) |
 | Wave | Phase 1 Wave 5 |
 | 起步 HEAD | `a157168` (Wave 4 close ceremony PR #49 squash; ADR-0015 ratifying 21-PR Wave 4 + Wave 5 deferred set) |
 | 起步预备 | (Pre-A1 [this lock] is the first Wave 5 PR) |
@@ -475,6 +475,53 @@ Pre-A2 (HEAD `6e2c1d9` ADR-0016 grid 数据模型) + Pre-A3 (HEAD `157a4f7` ADR-
 
 > R14 first real-test enforcement — defer-defer chain (hard-throw flip + sample MDX backfill + 17 RTT fixtures: C.2-1 → C.2-3 → v1.1 amendment) → plan amendment PR (v1.1) 5-stage D1 pipeline 形式化处理而非 handoff pack 跟踪. 证明 R14 discipline operative.
 
+## v1.2 R14 amendment (2026-05-05) — SECOND real-test
+
+**Trigger**: user gatekeeper sequencing pushback (verbatim quote: "交付了但 /notes/[slug]/edit 没有，我怎么 edit/尝试？"). Diagnosis: Wave 5 plan v1.1 sequence pushed editor mount to C.4-2 (~14 PRs out from current 16-done state); violates MVP framework "每版本体验" (per-version user experience) core principle.
+
+**Trigger source two-layer (post Q5 plan-challenger absorbtion)**:
+- **Canonical authority (规范依据)**: [ADR-0015](../../decisions/ADR-0015-wave-4-close.md) R14 (mid-Wave reframe via plan amendment PR, not memory-only) — applies to ANY R14-class trigger.
+- **Illustrative reference**: memory `feedback_r14_defer_chain_plan_amendment.md` documents the v1.1 defer-chain class trigger; v1.2 extends-by-illustration to gatekeeper-sequencing class (NOT same-class identity match — defer-chain memory is reused by extension, not by same-class membership). The memory entry remains scoped to its original defer-chain class; v1.2's gatekeeper-sequencing class is a NEW R14 trigger class authorised by ADR-0015 R14 broad reading. Future R14 second-tier triggers may codify their own memory entries OR continue extending under ADR-0015 canonical authority.
+
+Per ADR-0015 R14 + memory illustrative reference: STOP forward execution + open formal plan amendment PR running 5-stage D1 pipeline + plan-challenger light round (3-5 challenges, NOT full 12-Q). NOT handoff-pack-only; NOT fold scaffold into C.2-7 OR C.4-1.
+
+**R14 SECOND real-test classification**: v1.1 absorbed defer-defer chain (PR scope narrowing); v1.2 absorbs user gatekeeper sequencing pushback (delivery sequence vs MVP experience). Together: R14 discipline operative across **multiple trigger classes** beyond first test.
+
+**3 prose edits** (per Wave 5 plan v1.2 amendment PR — `docs/plans/wave-5-main/v1.2-plan-amendment-r14-second.md`):
+
+1. **Sub-edit a**: frontmatter `状态` field bumped v1.1 → v1.2.
+2. **Sub-edit b**: NEW Stage C.4 row `C.4-prelude` (or fractional index per plan-challenger lock) inserted at the start of Stage C.4 PR breakdown table — between Stage C.3 close and existing C.4-1 row. Subject = "minimal editor scaffold (MVP smoke-test enable)". Whitelist scoped to `apps/site/src/pages/notes/[slug]/edit.astro` (NEW; basic route mounting editor-shell) + `apps/site/src/components/EditorShellMount.{astro,tsx}` (NEW; minimal mount wrapper) + `apps/site/CONTRACT.md` (route + mount contract; minimal) + `packages/editor-shell/src/save-adapter.ts` (NEW; LocalStorageAdapter MVP per ADR-0018 D8) + tests + 1 PR.md. LOC budget ~200. Executor = `codex-generic-executor`. D2 trigger Row 1 (CONTRACT).
+3. **Sub-edit c** (this section): v1.2 amendment record + R25-shaped retrospective candidate.
+4. **Sub-edit d**: Wave 5 PR roster table extended with v1.2 amendment row; Stage C.4 5 → 6 PRs (NEW C.4-prelude inserted); final implementation PR count 31 → 32.
+
+**In-scope for C.4-prelude** (uses what C.2-1..C.2-6 + C.2-3.5 already shipped):
+- `/notes/[slug]/edit` Astro route + `EditorShellMount` wrapper
+- editor-shell mount with grid container + drag-drop layer + resize layer (all 已 shipped at C.2-4/5/6)
+- `LocalStorageAdapter` MVP impl (per ADR-0018 D8 接口冻结) — **save-adapter file ownership boundary (post Q3 plan-challenger absorbtion): C.4-prelude ships minimal MVP implementation; C.4-1 ships public interface contract hardening + W5-2 update + adapter contract tests** (NOT re-implement MVP impl; avoids ownership-overlap scope drift between C.4-prelude and C.4-1)
+- Hardcoded `BlockRegistry` + `KernelRegistry` minimal subset (callout/code/markdown — enough for smoke-test)
+
+**Out-of-scope for C.4-prelude (deferred to C.4-1..C.4-5 full set)**:
+- palette / slash-menu / drag-handle / toolbar 完整组装 (C.4-3 scope)
+- `BlockRegistry` + `KernelRegistry` full wire (C.4-3 scope; minimal subset OK at prelude)
+- Save/load layoutEpoch sync + version increment trigger (C.4-4 scope)
+- e2e playwright load→edit→save→reload coverage (C.4-5 scope)
+- v2 visual identity (Stage C.3 scope)
+- Inter / JetBrains Mono fonts (Stage C.3 scope)
+
+**Why this ordering enables MVP**: post-C.4-prelude merge, user can navigate to `/notes/<slug>/edit`, see editor-shell with grid + drag + resize working, load a sample note (LocalStorage), edit prose, save to LocalStorage, reload, verify content + grid intact. Minimum viable editor experience = MVP smoke-test enabled BEFORE Stage C.3 visual + C.4 full UI assembly. Faster user gatekeeper feedback loop.
+
+**Ordering note (post Q4 plan-challenger absorbtion)**: C.4-prelude has **NO hard dependency on C.2-7**; C.2-7 can follow without blocking the MVP smoke-test. Scaffold uses minimal hardcoded BlockRegistry (callout/code/markdown — light blocks only); does NOT consume `heavyBoundaryDimensions` (which v0.5 ADR-0014 amendment rewrites at C.2-7). Orchestrator preliminary lock = scaffold lands BEFORE C.2-7; C.2-7 follows post-scaffold-merge. Plan-challenger Q4 absorbed.
+
+**Pipeline**: 5-stage D1 (PLAN pr-writer → EXECUTE orchestrator-self per Wave 5 plan v1.0 D6 "pure-doc PR" exception → plan-challenger light round 3-5 challenges → REVIEW codex-pr-reviewer-55 → PRE-COMMIT CLAUDE REVIEW orchestrator-self per D2 row 1+4 fires → COMMIT reviewer codex with ADR-0006 D8 explicit-file-list staging → ACCEPT pr-writer 2nd invocation).
+
+**Cumulative PR delta tracker**: v1.0 baseline 30 PRs; v1.1 +1 PR (C.2-3.5) = 31; v1.2 +1 PR (C.4-prelude) = 32 implementation PRs total. Cumulative delta 2/30 = 6.7%, still well below D4 R14 threshold ("PR 总量变化 > 15%"). Future v1.3+ amendments must re-check cumulative delta against this baseline.
+
+**Plan-challenger absorbtion (v1.2 light round)**: 5/5 challenges raised + absorbed at Stage 3 (codex `plan-challenger` profile dispatch 2026-05-05; raw audit at `/tmp/codex-runs/2026-05-05-v1.2-plan-challenge.txt`; curated archive at `docs/audits/codex-runs/2026-05-05-v1.2-plan-challenge.txt` 100 lines). 5/5 ABSORBED (3 ABSORB-RECOMMENDED Q1+Q2+Q4 + 1 ABSORB-OPTIONAL Q3 ownership boundary + 1 RE-LITIGATE Q5 memory class split). Q1 = `C.4-prelude` LOCKED semantic (NOT fractional decimal); stage-local semantic boundary "C.4 首先可交付条目 (not C.2 fractional spillover)". Q2 = Stage C.4 grows 5 → 6 inline (NOT separate mini-stage); "C.4 mini-stage is intentionally inlined in C.4". Q3 = ownership boundary refined: C.4-prelude ships MVP `LocalStorageAdapter` impl; C.4-1 ships `NoteSaveAdapter` interface contract hardening + W5-2 update + adapter contract tests (NOT re-implement MVP impl). Q4 = scaffold BEFORE C.2-7 confirmed (no hard dependency; C.2-7 can follow without blocking MVP smoke). Q5 RE-LITIGATE absorbed via two-layer trigger source: **ADR-0015 R14 canonical authority** (规范依据); memory `feedback_r14_defer_chain_plan_amendment.md` **illustrative-only** (records defer-chain class extension to gatekeeper-sequencing class as fact, NOT as canonical same-class match — defer-chain memory is reused by extension, not by same-class identity). Full 5-row absorbtion table lives in PR.md `## Plan-challenger absorbtion` section (`docs/plans/wave-5-main/v1.2-plan-amendment-r14-second.md`); reviewer codex Stage 4 verifies absorbtion accuracy.
+
+**Wave 5 close ADR-0019 R25-shaped retrospective candidate**:
+
+> R14 SECOND real-test enforcement (2026-05-05) — user gatekeeper sequencing pushback ("交付了但 /notes/[slug]/edit 没有，我怎么试？") triggered v1.1 → v1.2 plan amendment PR via D1 pipeline + plan-challenger light round + NEW row C.4-prelude minimal editor scaffold. Together with v1.1 defer-defer chain absorbtion, R14 discipline operative beyond first test. Pattern: plan amendment 不只在 PR scope narrowing 时触发，也在 user gatekeeper sequencing pushback 时触发. 两次都走 D1 pipeline 形式化 = R14 discipline operative across multiple trigger classes.
+
 ### Stage C.1 — Cleanup PR breakdown (locked at v1.0)
 
 | PR | Subject | Files (whitelist per scope-fence D12) | Estimated LOC | Executor | D2 trigger |
@@ -521,8 +568,9 @@ Pre-A2 (HEAD `6e2c1d9` ADR-0016 grid 数据模型) + Pre-A3 (HEAD `157a4f7` ADR-
 
 | PR | Subject | Whitelist | LOC | Executor | D2 |
 |---|---|---|---|---|---|
-| C.4-1 | NoteSaveAdapter interface + NoteState shape + LocalStorageAdapter MVP impl (per ADR-0018 D8 接口冻结) | `packages/editor-shell/src/save-adapter.ts` (NEW) + `packages/editor-shell/CONTRACT.md` (W5-2 invariant + NoteSaveAdapter public surface section) + tests | ~250 LOC | codex-generic-executor | Row 1 (CONTRACT W5-2 + NoteSaveAdapter surface) + Row 5 |
-| C.4-2 | apps/site `/notes/[slug]/edit` route mount editor-shell + EditorShellMount wrapper | `apps/site/src/pages/notes/[slug]/edit.astro` (NEW) + `apps/site/src/components/EditorShellMount.{astro,tsx}` (NEW) + `apps/site/CONTRACT.md` (route + mount contract) | ~300 LOC | codex-generic-executor | Row 1 + Row 5 |
+| **C.4-prelude** (v1.2 amendment NEW; LOCKED at semantic identifier post Q1 plan-challenger absorbtion; orchestrator preliminary recommendation) | **minimal editor scaffold (MVP smoke-test enable; per Wave 5 plan v1.2 R14 SECOND real-test 2026-05-05)** | `apps/site/src/pages/notes/[slug]/edit.astro` (NEW; basic route mounting editor-shell) + `apps/site/src/components/EditorShellMount.{astro,tsx}` (NEW; minimal mount wrapper) + `apps/site/CONTRACT.md` (route + mount contract; minimal section) + `packages/editor-shell/src/save-adapter.ts` (NEW; LocalStorageAdapter MVP per ADR-0018 D8) + tests + 1 PR.md. **In-scope**: `/notes/[slug]/edit` route + EditorShellMount + grid container (C.2-4) + drag/drop layer (C.2-5) + resize layer (C.2-6) + LocalStorageAdapter MVP + minimal hardcoded BlockRegistry (callout/code/markdown subset). **Out-of-scope (deferred to C.4-1..C.4-5 full set)**: palette / slash-menu / drag-handle / toolbar 完整组装 (C.4-3); BlockRegistry/KernelRegistry full wire (C.4-3); save/load layoutEpoch sync (C.4-4); e2e playwright (C.4-5); v2 visual + fonts (Stage C.3). | ~200 LOC | codex-generic-executor | Row 1 (CONTRACT) |
+| C.4-1 (post v1.2 Q3 ownership refinement) | NoteSaveAdapter interface contract hardening + NoteState shape + W5-2 contract surface + adapter contract tests (LocalStorageAdapter MVP impl already shipped at C.4-prelude per v1.2 R14 SECOND amendment; C.4-1 NO LONGER re-implements impl — only hardens interface + adds contract tests) | `packages/editor-shell/src/save-adapter.ts` (modify; interface + types only — impl stays at MVP shipped by C.4-prelude) + `packages/editor-shell/CONTRACT.md` (W5-2 invariant + NoteSaveAdapter public surface section) + adapter contract tests | ~150 LOC (reduced from ~250 v1.0; impl LOC moved to C.4-prelude) | codex-generic-executor | Row 1 (CONTRACT W5-2 + NoteSaveAdapter surface) + Row 5 |
+| C.4-2 (post v1.2 ownership refinement) | apps/site `/notes/[slug]/edit` route + `EditorShellMount` enhancement (full BlockRegistry/KernelRegistry wire-up; route already shipped at C.4-prelude as MVP scaffold per v1.2 R14 SECOND amendment) | `apps/site/src/pages/notes/[slug]/edit.astro` (modify; enhance MVP route shipped at C.4-prelude with full block registry wire) + `apps/site/src/components/EditorShellMount.{astro,tsx}` (modify; enhance MVP mount with full registry props) + `apps/site/CONTRACT.md` (route + mount contract enhancement) | ~150 LOC (reduced from ~300 v1.0; route + mount NEW LOC moved to C.4-prelude) | codex-generic-executor | Row 1 + Row 5 |
 | C.4-3 | BlockRegistry + KernelRegistry + mdx-bridge wire-up + palette/slash-menu/drag-handle/toolbar 组装 | editor-shell composition glue + apps/site consumption | ~400 LOC | codex-generic-executor | Row 1 + Row 5 |
 | C.4-4 | Save/load 双向 implementation (per Pre-A4 接口冻结) + layoutEpoch sync + version increment trigger | editor-shell save/load wire + LocalStorageAdapter consumer + tests | ~300 LOC | codex-generic-executor | Row 1 |
 | C.4-5 | Stage C.4 close: vitest + playwright 端到端 (load → edit → save → reload → verify content/grid intact) + Stage C.4 handoff pack = Wave 5 close 候选 | `apps/site/playwright/edit-flow-e2e.spec.ts` + handoff pack + Wave 5 close-prep readiness check | ~400 LOC | codex-generic-executor + orchestrator | Standard |
@@ -546,13 +594,14 @@ Updates to Pre-A1 v0.2 risk list based on Pre-A2/3/4 plan-challenger findings:
 | #52 | `157a4f7` | Pre-A3 | ADR-0017 drag/drop UX + 13/13 absorbed (R4) |
 | #53 | `7e487ec` | Pre-A4 | ADR-0018 v2 视觉 + save-path 接口冻结 + 14/14 absorbed (R6) |
 | #54 | `2bc129a` | Pre-A5 | Wave 5 plan v0.2 → v1.0 final lock + Stage C.1-C.4 PR breakdown |
-| TBD (this) | TBD | v1.1 amend | Wave 5 plan v1.0 → v1.1 R14 amendment + NEW row C.2-3.5 (formalize C.2-1→C.2-3 hard-throw + sample-MDX + 17 RTT fixtures defer-chain per ADR-0015 R14) |
+| #61 | `1304111` | v1.1 amend | Wave 5 plan v1.0 → v1.1 R14 amendment + NEW row C.2-3.5 (formalize C.2-1→C.2-3 hard-throw + sample-MDX + 17 RTT fixtures defer-chain per ADR-0015 R14) |
+| TBD (this) | TBD | v1.2 amend | Wave 5 plan v1.1 → v1.2 R14 SECOND real-test amendment + NEW row C.4-prelude (formalize user gatekeeper sequencing pushback "交付了但 /notes/[slug]/edit 没有，我怎么试？" → minimal editor scaffold MVP smoke-test enable per ADR-0015 R14 extended to gatekeeper-sequencing class) |
 | (Stage C.1 = 3 PRs) | TBD | C.1 | C.1-1 plugin placeholder + v0.4 amend / C.1-2 PDF + chunk-leak / C.1-3 gitignore |
 | (Stage C.2 = 13 PRs post v1.1) | TBD | C.2 | C.2-1 mdx-bridge serialize → C.2-3 Astro grid → **NEW C.2-3.5 hard-throw flip + sample-MDX backfill** → C.2-4 editor-shell grid → C.2-12 Stage C.2 close (C.2 grew 12 → 13 per v1.1 R14 amendment) |
 | (Stage C.3 = 5 PRs) | TBD | C.3 | C.3-1 OKLCH + fonts → C.3-5 visual smoke baseline |
-| (Stage C.4 = 5 PRs) | TBD | C.4 | C.4-1 NoteSaveAdapter → C.4-5 e2e + Wave 5 close 候选 |
+| (Stage C.4 = 6 PRs post v1.2) | TBD | C.4 | **NEW C.4-prelude minimal editor scaffold (MVP smoke-test enable)** → C.4-1 NoteSaveAdapter → C.4-5 e2e + Wave 5 close 候选 (C.4 grew 5 → 6 per v1.2 R14 SECOND real-test amendment) |
 
-**Wave 5 final PR count locked at v1.1**: 5 Pre-A + 3 (C.1) + **13** (C.2: 12 v1.0 baseline + 1 NEW C.2-3.5) + 5 (C.3) + 5 (C.4) = **31 implementation PRs total**. (Plus 1 meta amendment PR — this v1.1 amendment PR — logged separately in the roster table immediately above; total roster entries = 32 = 31 implementation + 1 meta. The "implementation PR count" 31 is what matters for session-budget estimate; the meta PR is workflow overhead.) v1.0 baseline = 30 implementation PRs; v1.1 delta = +1 PR (Stage C.2 grew 12 → 13). Within Wave 5 plan v0.2 estimate 23-30 PRs (re-baseline at v1.1 = 23-31 implementation). 3-5 sessions estimate maintained. Cumulative delta tracker: 1/30 = 3.3%, well below D4 R14 15% threshold per `## v1.1 R14 amendment` section "Cumulative PR delta tracker".
+**Wave 5 final PR count locked at v1.2**: 5 Pre-A + 3 (C.1) + **13** (C.2: 12 v1.0 baseline + 1 NEW C.2-3.5 per v1.1) + 5 (C.3) + **6** (C.4: 5 v1.0 baseline + 1 NEW C.4-prelude per v1.2) = **32 implementation PRs total**. (Plus 2 meta amendment PRs — v1.1 amendment PR squash `1304111` + this v1.2 amendment PR — logged separately in the roster table; total roster entries = 34 = 32 implementation + 2 meta. The "implementation PR count" 32 is what matters for session-budget estimate.) v1.0 baseline = 30 implementation PRs; v1.1 delta = +1 PR (Stage C.2 grew 12 → 13); v1.2 delta = +1 PR (Stage C.4 grew 5 → 6). Cumulative delta tracker: 2/30 = 6.7%, still well below D4 R14 15% threshold per `## v1.2 R14 amendment` section "Cumulative PR delta tracker". 3-5 sessions estimate maintained.
 
 **Plan v1.0 lock evidence**: Pre-A5 PR.md `## acceptance` walks each amendment + Stage C.1-C.4 per-PR table presence + Wave 5 PR roster table.
 
