@@ -1,0 +1,2000 @@
+Reading additional input from stdin...
+OpenAI Codex v0.125.0 (research preview)
+--------
+workdir: /home/weiyi/selfKnowledgeBaseWeb
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: danger-full-access
+reasoning effort: xhigh
+reasoning summaries: none
+session id: 019df9da-f064-7873-9e68-f9f7df836925
+--------
+user
+You are the D1 stage-2 EXECUTOR R2 (round-2 fix dispatch) for Wave 5 C.4-prelude. Reviewer codex-pr-reviewer-55 returned FAIL with 3 BLOCKER + 5 MAJOR + 1 MINOR findings. Orchestrator has triaged + already updated PR.md (AC#1 + AC#21 + whitelist item 1 to `[...slug]/edit.astro` rest-route shape). Your job = fix the impl-side findings.
+
+# Findings to fix (per `/home/weiyi/selfKnowledgeBaseWeb/docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt` lines 4117-4135)
+
+## BLOCKER 1 — `[apps/site/src/pages/notes/[slug]/edit.astro]:31`
+
+The route currently passes only `slug`. PR.md AC#1 requires `<EditorShellMount slug={...} initialMdx={...} client:only="react" />` — the `initialMdx` prop is missing. First-visit edit of an unsaved note opens empty instead of loading the note body.
+
+**Fix**: Pass `note.body ?? ""` through the Astro wrapper to React island as `initialMdx` prop. The React island `EditorShellMount.tsx` MUST accept `initialMdx?: string` (default empty), and on `onCreate` use `state?.mdxSource ?? props.initialMdx` to populate the editor.
+
+## BLOCKER 2 — `[apps/site/src/pages/notes/[slug]/edit.astro]:14`
+
+Current `getStaticPaths` does `params: { slug: encodeURIComponent(slug) }` which produces `%2F` paths for nested slugs (e.g., `__test_cjk__/laptop` becomes `__test_cjk__%2Flaptop`). Astro `[slug]/edit.astro` is single-segment shape and cannot natively express nested slugs.
+
+**Fix**: MOVE the file from `apps/site/src/pages/notes/[slug]/edit.astro` to `apps/site/src/pages/notes/[...slug]/edit.astro` (rest-route shape; mirrors existing `apps/site/src/pages/notes/[...slug].astro` read-only catch-all). Drop `encodeURIComponent`. Use raw slug (params.slug = "__test_cjk__/laptop" works in rest route).
+
+```astro
+---
+import { getCollection, type CollectionEntry } from "astro:content";
+import BaseLayout from "@layouts/BaseLayout.astro";
+import EditorShellMount from "@components/EditorShellMount.astro";
+import "../../../styles/grid.css";
+
+export async function getStaticPaths() {
+  const notes = (await getCollection("notes")).filter(
+    (note: CollectionEntry<"notes">) => !note.data.draft,
+  );
+  return notes.map((note: CollectionEntry<"notes">) => ({
+    params: { slug: note.id.replace(/\/index$/, "") },
+    props: { note },
+  }));
+}
+
+interface Props { note: CollectionEntry<"notes">; }
+const { note } = Astro.props as Props;
+const slug = note.id.replace(/\/index$/, "");
+---
+<BaseLayout title={`Edit: ${note.data.title}`}>
+  <article>
+    <h1>Edit: {note.data.title}</h1>
+    <EditorShellMount slug={slug} initialMdx={note.body ?? ""} />
+  </article>
+</BaseLayout>
+```
+
+CRITICAL: `git mv` to preserve history if possible — actually since the file was untracked, just delete the old and create at new path.
+
+## BLOCKER 3 — `[packages/editor-shell/src/save-adapter.ts]:38`
+
+ADR-0018 D8 byte-equivalence is broken. The current impl has helper functions (`isNamedStorageError`, `isStorageCode`, `isRecord`, `aggregateNoteBytes`) and shortened Phase 2 extension comments. PR.md AC#10/AC#11/AC#12/AC#13 require byte-equal modulo whitespace + JSDoc rewording.
+
+**Fix**: Restore `packages/editor-shell/src/save-adapter.ts` to ADR-0018 D8 verbatim (lines 339-451). Specifically:
+- DROP all 4 helper functions (`isNamedStorageError`, `isStorageCode`, `isRecord`, `aggregateNoteBytes`)
+- Use INLINE checks per D8 lines 408, 433, 437: `if (e instanceof DOMException && e.name === "SecurityError")`, etc.
+- For aggregate scan, use D8 line 423-426 verbatim shape: `Object.keys(localStorage).filter(k => k.startsWith("skb-note:")).reduce((sum, k) => sum + (localStorage.getItem(k)?.length ?? 0), 0)`.
+- Preserve the Phase 2+ extension comment block VERBATIM modulo JSDoc rewording (D8 lines 375-382 — 7-line block); current impl shortened it to 3 lines. RESTORE the full block (per Q12 absorbtion).
+- Keep the `await Promise.resolve()` lint-only stub at the start of load() and save() — that one IS a deviation from D8 verbatim, but it is the minimum required to satisfy `require-await` ESLint rule when there is no await in the body. Document in a one-line JSDoc comment at each method head: "// async boundary placeholder for ESLint require-await; D8 sync semantic preserved".
+- KEEP `ReadonlyJSONValue` + `NoteState` + `NoteSaveAdapter` as currently shipped (those are already byte-equal modulo JSDoc — re-verify after restore).
+- After restore, re-run `pnpm test --filter=@skb/editor-shell` — all 7 save-adapter cases MUST still pass. The 4 DOMException-based cases (corrupted JSON, SecurityError on getItem, QuotaExceededError on setItem, SecurityError on setItem) all need to pass via the inline `instanceof DOMException && e.name === "X"` check.
+- DO NOT change PER_NOTE_MAX_BYTES check from `serialized.length` to `TextEncoder().encode().byteLength`. Per ADR-0018 D8 line 418 verbatim the check IS `serialized.length`. Reviewer flagged this as MAJOR #8 but the orchestrator is keeping D8 verbatim — the documented limitation (UTF-16 char count vs encoded bytes for non-ASCII) is acknowledged + deferred to a future ADR-0018 amendment. Add a one-line JSDoc comment at the PER_NOTE_MAX_BYTES check noting "// non-ASCII content uses UTF-16 char count via .length per ADR-0018 D8 freeze; future amendment may switch to TextEncoder.byteLength".
+
+## MAJOR 4 — `[apps/site/src/components/EditorShellMount.tsx]:67`
+
+Debounce currently 500ms, PR.md AC#3 says 800ms. Change `setTimeout(..., 500)` to `setTimeout(..., 800)`.
+
+## MAJOR 5 — `[apps/site/CONTRACT.md]:110` + `[packages/editor-shell/CONTRACT.md]:77`
+
+Backticked autolink hazards: `<slug>` inside backticks triggers lychee autolink scan per memory `feedback_lychee_autolink_in_backticks.md`. Replace ALL `<slug>` literal substrings within backticked strings with `{slug}` (or curly braces `{slug}`) in BOTH CONTRACT files. Specifically:
+- `apps/site/CONTRACT.md` lines around `## Edit route (Wave 5)` — change `\`/notes/<slug>/edit\`` to `\`/notes/{slug}/edit\``, `\`/notes/<slug>\`` to `\`/notes/{slug}\``, and any `\`skb-note:<slug>\`` to `\`skb-note:{slug}\``.
+- `packages/editor-shell/CONTRACT.md` `### NoteSaveAdapter (Wave 5; MVP shipped at C.4-prelude)` subsection — change `\`skb-note:<slug>\`` to `\`skb-note:{slug}\``.
+- Pre-empt grep: `grep -nE "\`[^\`]*<\w+>[^\`]*\`" apps/site/CONTRACT.md packages/editor-shell/CONTRACT.md` MUST yield ZERO matches after the fix.
+
+## MAJOR 6 — `[apps/site/CONTRACT.md]:118`
+
+Bidirectional sister-document cross-reference missing. Add explicit Markdown links:
+- In `apps/site/CONTRACT.md` `## Edit route (Wave 5)` section: add a line "See sister-doc: `[packages/editor-shell/CONTRACT.md § NoteSaveAdapter (Wave 5; MVP shipped at C.4-prelude)](../../packages/editor-shell/CONTRACT.md)`."
+- In `packages/editor-shell/CONTRACT.md` `### NoteSaveAdapter (Wave 5; MVP shipped at C.4-prelude)` subsection: add a line "See sister-doc: `[apps/site/CONTRACT.md § Edit route (Wave 5)](../../apps/site/CONTRACT.md)`."
+
+## MINOR 9 — `[apps/site/src/components/EditorShellMount.tsx]:10`
+
+`useRef(new LocalStorageAdapter(slug))` constructs on every render. Use lazy guard pattern:
+
+```tsx
+const adapterRef = useRef<LocalStorageAdapter | null>(null);
+if (adapterRef.current === null || adapterRef.current.slug !== slug) {
+  adapterRef.current = new LocalStorageAdapter(slug);
+}
+const adapter = adapterRef.current;
+```
+
+This avoids the per-render `new` allocation + correctly reacts to slug prop changes.
+
+# DO NOT do these things
+
+- DO NOT touch any file outside the 11-file whitelist (already updated to include `[...slug]/edit.astro` instead of `[slug]/edit.astro`). The two CONTRACT.md files + save-adapter.ts + EditorShellMount.tsx + edit.astro (now `[...slug]/edit.astro`) + EditorShellMount.astro are in scope.
+- DO NOT change `apps/site/src/pages/notes/[...slug].astro` (the existing read-only catch-all; PR.md AC#19 requires zero LOC delta there).
+- DO NOT change PR.md `## acceptance` (orchestrator already updated AC#1 + AC#21).
+- DO NOT git commit; commit happens at stage 5 by reviewer codex.
+
+# After fixes, run all of these:
+
+```bash
+pnpm test --filter=@skb/editor-shell
+pnpm --filter=@skb/editor-shell --filter=@skb/site lint
+pnpm --filter=@skb/editor-shell --filter=@skb/site typecheck
+pnpm size-check
+pnpm link-check
+pnpm --filter=@skb/site build
+find /home/weiyi/selfKnowledgeBaseWeb/apps/site/dist/notes -type f -name "*.html" 2>/dev/null | sort | head -20
+```
+
+The build + find should show files like `dist/notes/sample-blocks/edit/index.html` and `dist/notes/__test_cjk__/laptop/edit/index.html` (NO `%2F` encoding). Lychee MUST pass (no autolink hazards remain). All other check commands MUST be clean.
+
+# Final report
+
+To stdout:
+- Files touched (full paths) — should be: edit.astro (renamed), EditorShellMount.tsx, save-adapter.ts, CONTRACT.md ×2; total 5 files
+- LOC delta per file
+- Verification: vitest + lint + typecheck + size-check + link-check + build all clean
+- Build output: list of `*.html` files under dist/notes/ to confirm rest-route shape produced canonical paths
+- Lychee pre-empt grep: zero matches for autolink-in-backticks pattern
+codex
+I’ll apply the relevant workflow skills first, then inspect the existing implementation and patch only the whitelisted files. I’ll keep the route move scoped to the edit page and avoid git mutations.
+exec
+/bin/bash -lc "sed -n '1,220p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/82fd64bc/skills/receiving-code-review/SKILL.md" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1,220p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/82fd64bc/skills/using-superpowers/SKILL.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+---
+name: receiving-code-review
+description: Use when receiving code review feedback, before implementing suggestions, especially if feedback seems unclear or technically questionable - requires technical rigor and verification, not performative agreement or blind implementation
+---
+
+# Code Review Reception
+
+## Overview
+
+Code review requires technical evaluation, not emotional performance.
+
+**Core principle:** Verify before implementing. Ask before assuming. Technical correctness over social comfort.
+
+## The Response Pattern
+
+```
+WHEN receiving code review feedback:
+
+1. READ: Complete feedback without reacting
+2. UNDERSTAND: Restate requirement in own words (or ask)
+3. VERIFY: Check against codebase reality
+4. EVALUATE: Technically sound for THIS codebase?
+5. RESPOND: Technical acknowledgment or reasoned pushback
+6. IMPLEMENT: One item at a time, test each
+```
+
+## Forbidden Responses
+
+**NEVER:**
+- "You're absolutely right!" (explicit AGENTS.md violation)
+- "Great point!" / "Excellent feedback!" (performative)
+- "Let me implement that now" (before verification)
+
+**INSTEAD:**
+- Restate the technical requirement
+- Ask clarifying questions
+- Push back with technical reasoning if wrong
+- Just start working (actions > words)
+
+## Handling Unclear Feedback
+
+```
+IF any item is unclear:
+  STOP - do not implement anything yet
+  ASK for clarification on unclear items
+
+WHY: Items may be related. Partial understanding = wrong implementation.
+```
+
+**Example:**
+```
+your human partner: "Fix 1-6"
+You understand 1,2,3,6. Unclear on 4,5.
+
+❌ WRONG: Implement 1,2,3,6 now, ask about 4,5 later
+✅ RIGHT: "I understand items 1,2,3,6. Need clarification on 4 and 5 before proceeding."
+```
+
+## Source-Specific Handling
+
+### From your human partner
+- **Trusted** - implement after understanding
+- **Still ask** if scope unclear
+- **No performative agreement**
+- **Skip to action** or technical acknowledgment
+
+### From External Reviewers
+```
+BEFORE implementing:
+  1. Check: Technically correct for THIS codebase?
+  2. Check: Breaks existing functionality?
+  3. Check: Reason for current implementation?
+  4. Check: Works on all platforms/versions?
+  5. Check: Does reviewer understand full context?
+
+IF suggestion seems wrong:
+  Push back with technical reasoning
+
+IF can't easily verify:
+  Say so: "I can't verify this without [X]. Should I [investigate/ask/proceed]?"
+
+IF conflicts with your human partner's prior decisions:
+  Stop and discuss with your human partner first
+```
+
+**your human partner's rule:** "External feedback - be skeptical, but check carefully"
+
+## YAGNI Check for "Professional" Features
+
+```
+IF reviewer suggests "implementing properly":
+  grep codebase for actual usage
+
+  IF unused: "This endpoint isn't called. Remove it (YAGNI)?"
+  IF used: Then implement properly
+```
+
+**your human partner's rule:** "You and reviewer both report to me. If we don't need this feature, don't add it."
+
+## Implementation Order
+
+```
+FOR multi-item feedback:
+  1. Clarify anything unclear FIRST
+  2. Then implement in this order:
+     - Blocking issues (breaks, security)
+     - Simple fixes (typos, imports)
+     - Complex fixes (refactoring, logic)
+  3. Test each fix individually
+  4. Verify no regressions
+```
+
+## When To Push Back
+
+Push back when:
+- Suggestion breaks existing functionality
+- Reviewer lacks full context
+- Violates YAGNI (unused feature)
+- Technically incorrect for this stack
+- Legacy/compatibility reasons exist
+- Conflicts with your human partner's architectural decisions
+
+**How to push back:**
+- Use technical reasoning, not defensiveness
+- Ask specific questions
+- Reference working tests/code
+- Involve your human partner if architectural
+
+**Signal if uncomfortable pushing back out loud:** "Strange things are afoot at the Circle K"
+
+## Acknowledging Correct Feedback
+
+When feedback IS correct:
+```
+✅ "Fixed. [Brief description of what changed]"
+✅ "Good catch - [specific issue]. Fixed in [location]."
+✅ [Just fix it and show in the code]
+
+❌ "You're absolutely right!"
+❌ "Great point!"
+❌ "Thanks for catching that!"
+❌ "Thanks for [anything]"
+❌ ANY gratitude expression
+```
+
+**Why no thanks:** Actions speak. Just fix it. The code itself shows you heard the feedback.
+
+**If you catch yourself about to write "Thanks":** DELETE IT. State the fix instead.
+
+## Gracefully Correcting Your Pushback
+
+If you pushed back and were wrong:
+```
+✅ "You were right - I checked [X] and it does [Y]. Implementing now."
+✅ "Verified this and you're correct. My initial understanding was wrong because [reason]. Fixing."
+
+❌ Long apology
+❌ Defending why you pushed back
+❌ Over-explaining
+```
+
+State the correction factually and move on.
+
+## Common Mistakes
+
+| Mistake | Fix |
+|---------|-----|
+| Performative agreement | State requirement or just act |
+| Blind implementation | Verify against codebase first |
+| Batch without testing | One at a time, test each |
+| Assuming reviewer is right | Check if breaks things |
+| Avoiding pushback | Technical correctness > comfort |
+| Partial implementation | Clarify all items first |
+| Can't verify, proceed anyway | State limitation, ask for direction |
+
+## Real Examples
+
+**Performative Agreement (Bad):**
+```
+Reviewer: "Remove legacy code"
+❌ "You're absolutely right! Let me remove that..."
+```
+
+**Technical Verification (Good):**
+```
+Reviewer: "Remove legacy code"
+✅ "Checking... build target is 10.15+, this API needs 13+. Need legacy for backward compat. Current impl has wrong bundle ID - fix it or drop pre-13 support?"
+```
+
+**YAGNI (Good):**
+```
+Reviewer: "Implement proper metrics tracking with database, date filters, CSV export"
+✅ "Grepped codebase - nothing calls this endpoint. Remove it (YAGNI)? Or is there usage I'm missing?"
+```
+
+**Unclear Item (Good):**
+```
+your human partner: "Fix items 1-6"
+You understand 1,2,3,6. Unclear on 4,5.
+✅ "Understand 1,2,3,6. Need clarification on 4 and 5 before implementing."
+```
+
+## GitHub Thread Replies
+
+When replying to inline review comments on GitHub, reply in the comment thread (`gh api repos/{owner}/{repo}/pulls/{pr}/comments/{id}/replies`), not as a top-level PR comment.
+
+## The Bottom Line
+
+**External feedback = suggestions to evaluate, not orders to follow.**
+
+Verify. Question. Then implement.
+
+No performative agreement. Technical rigor always.
+
+ succeeded in 0ms:
+---
+name: using-superpowers
+description: Use when starting any conversation - establishes how to find and use skills, requiring Skill tool invocation before ANY response including clarifying questions
+---
+
+<SUBAGENT-STOP>
+If you were dispatched as a subagent to execute a specific task, skip this skill.
+</SUBAGENT-STOP>
+
+<EXTREMELY-IMPORTANT>
+If you think there is even a 1% chance a skill might apply to what you are doing, you ABSOLUTELY MUST invoke the skill.
+
+IF A SKILL APPLIES TO YOUR TASK, YOU DO NOT HAVE A CHOICE. YOU MUST USE IT.
+
+This is not negotiable. This is not optional. You cannot rationalize your way out of this.
+</EXTREMELY-IMPORTANT>
+
+## Instruction Priority
+
+Superpowers skills override default system prompt behavior, but **user instructions always take precedence**:
+
+1. **User's explicit instructions** (AGENTS.md, GEMINI.md, direct requests) — highest priority
+2. **Superpowers skills** — override default system behavior where they conflict
+3. **Default system prompt** — lowest priority
+
+If AGENTS.md or GEMINI.md says "don't use TDD" and a skill says "always use TDD," follow the user's instructions. The user is in control.
+
+## How to Access Skills
+
+**In Codex:** Use the `Skill` tool. When you invoke a skill, its content is loaded and presented to you—follow it directly. Never use the Read tool on skill files.
+
+**In Copilot CLI:** Use the `skill` tool. Skills are auto-discovered from installed plugins. The `skill` tool works the same as Codex's `Skill` tool.
+
+**In Gemini CLI:** Skills activate via the `activate_skill` tool. Gemini loads skill metadata at session start and activates the full content on demand.
+
+**In other environments:** Check your platform's documentation for how skills are loaded.
+
+## Platform Adaptation
+
+Skills may mention tool names that vary by runtime. Other platforms: see `references/copilot-tools.md` (Copilot CLI), `references/codex-tools.md` (Codex) for tool equivalents. Gemini CLI users get the tool mapping loaded automatically via GEMINI.md.
+
+# Using Skills
+
+## The Rule
+
+**Invoke relevant or requested skills BEFORE any response or action.** Even a 1% chance a skill might apply means that you should invoke the skill to check. If an invoked skill turns out to be wrong for the situation, you don't need to use it.
+
+```dot
+digraph skill_flow {
+    "User message received" [shape=doublecircle];
+    "About to EnterPlanMode?" [shape=doublecircle];
+    "Already brainstormed?" [shape=diamond];
+    "Invoke brainstorming skill" [shape=box];
+    "Might any skill apply?" [shape=diamond];
+    "Invoke Skill tool" [shape=box];
+    "Announce: 'Using [skill] to [purpose]'" [shape=box];
+    "Has checklist?" [shape=diamond];
+    "Create TodoWrite todo per item" [shape=box];
+    "Follow skill exactly" [shape=box];
+    "Respond (including clarifications)" [shape=doublecircle];
+
+    "About to EnterPlanMode?" -> "Already brainstormed?";
+    "Already brainstormed?" -> "Invoke brainstorming skill" [label="no"];
+    "Already brainstormed?" -> "Might any skill apply?" [label="yes"];
+    "Invoke brainstorming skill" -> "Might any skill apply?";
+
+    "User message received" -> "Might any skill apply?";
+    "Might any skill apply?" -> "Invoke Skill tool" [label="yes, even 1%"];
+    "Might any skill apply?" -> "Respond (including clarifications)" [label="definitely not"];
+    "Invoke Skill tool" -> "Announce: 'Using [skill] to [purpose]'";
+    "Announce: 'Using [skill] to [purpose]'" -> "Has checklist?";
+    "Has checklist?" -> "Create TodoWrite todo per item" [label="yes"];
+    "Has checklist?" -> "Follow skill exactly" [label="no"];
+    "Create TodoWrite todo per item" -> "Follow skill exactly";
+}
+```
+
+## Red Flags
+
+These thoughts mean STOP—you're rationalizing:
+
+| Thought | Reality |
+|---------|---------|
+| "This is just a simple question" | Questions are tasks. Check for skills. |
+| "I need more context first" | Skill check comes BEFORE clarifying questions. |
+| "Let me explore the codebase first" | Skills tell you HOW to explore. Check first. |
+| "I can check git/files quickly" | Files lack conversation context. Check for skills. |
+| "Let me gather information first" | Skills tell you HOW to gather information. |
+| "This doesn't need a formal skill" | If a skill exists, use it. |
+| "I remember this skill" | Skills evolve. Read current version. |
+| "This doesn't count as a task" | Action = task. Check for skills. |
+| "The skill is overkill" | Simple things become complex. Use it. |
+| "I'll just do this one thing first" | Check BEFORE doing anything. |
+| "This feels productive" | Undisciplined action wastes time. Skills prevent this. |
+| "I know what that means" | Knowing the concept ≠ using the skill. Invoke it. |
+
+## Skill Priority
+
+When multiple skills could apply, use this order:
+
+1. **Process skills first** (brainstorming, debugging) - these determine HOW to approach the task
+2. **Implementation skills second** (frontend-design, mcp-builder) - these guide execution
+
+"Let's build X" → brainstorming first, then implementation skills.
+"Fix this bug" → debugging first, then domain-specific skills.
+
+## Skill Types
+
+**Rigid** (TDD, debugging): Follow exactly. Don't adapt away discipline.
+
+**Flexible** (patterns): Adapt principles to context.
+
+The skill itself tells you which.
+
+## User Instructions
+
+Instructions say WHAT, not HOW. "Add X" or "Fix Y" doesn't mean skip workflows.
+
+exec
+/bin/bash -lc "sed -n '1,220p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/82fd64bc/skills/test-driven-development/SKILL.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+---
+name: test-driven-development
+description: Use when implementing any feature or bugfix, before writing implementation code
+---
+
+# Test-Driven Development (TDD)
+
+## Overview
+
+Write the test first. Watch it fail. Write minimal code to pass.
+
+**Core principle:** If you didn't watch the test fail, you don't know if it tests the right thing.
+
+**Violating the letter of the rules is violating the spirit of the rules.**
+
+## When to Use
+
+**Always:**
+- New features
+- Bug fixes
+- Refactoring
+- Behavior changes
+
+**Exceptions (ask your human partner):**
+- Throwaway prototypes
+- Generated code
+- Configuration files
+
+Thinking "skip TDD just this once"? Stop. That's rationalization.
+
+## The Iron Law
+
+```
+NO PRODUCTION CODE WITHOUT A FAILING TEST FIRST
+```
+
+Write code before the test? Delete it. Start over.
+
+**No exceptions:**
+- Don't keep it as "reference"
+- Don't "adapt" it while writing tests
+- Don't look at it
+- Delete means delete
+
+Implement fresh from tests. Period.
+
+## Red-Green-Refactor
+
+```dot
+digraph tdd_cycle {
+    rankdir=LR;
+    red [label="RED\nWrite failing test", shape=box, style=filled, fillcolor="#ffcccc"];
+    verify_red [label="Verify fails\ncorrectly", shape=diamond];
+    green [label="GREEN\nMinimal code", shape=box, style=filled, fillcolor="#ccffcc"];
+    verify_green [label="Verify passes\nAll green", shape=diamond];
+    refactor [label="REFACTOR\nClean up", shape=box, style=filled, fillcolor="#ccccff"];
+    next [label="Next", shape=ellipse];
+
+    red -> verify_red;
+    verify_red -> green [label="yes"];
+    verify_red -> red [label="wrong\nfailure"];
+    green -> verify_green;
+    verify_green -> refactor [label="yes"];
+    verify_green -> green [label="no"];
+    refactor -> verify_green [label="stay\ngreen"];
+    verify_green -> next;
+    next -> red;
+}
+```
+
+### RED - Write Failing Test
+
+Write one minimal test showing what should happen.
+
+<Good>
+```typescript
+test('retries failed operations 3 times', async () => {
+  let attempts = 0;
+  const operation = () => {
+    attempts++;
+    if (attempts < 3) throw new Error('fail');
+    return 'success';
+  };
+
+  const result = await retryOperation(operation);
+
+  expect(result).toBe('success');
+  expect(attempts).toBe(3);
+});
+```
+Clear name, tests real behavior, one thing
+</Good>
+
+<Bad>
+```typescript
+test('retry works', async () => {
+  const mock = jest.fn()
+    .mockRejectedValueOnce(new Error())
+    .mockRejectedValueOnce(new Error())
+    .mockResolvedValueOnce('success');
+  await retryOperation(mock);
+  expect(mock).toHaveBeenCalledTimes(3);
+});
+```
+Vague name, tests mock not code
+</Bad>
+
+**Requirements:**
+- One behavior
+- Clear name
+- Real code (no mocks unless unavoidable)
+
+### Verify RED - Watch It Fail
+
+**MANDATORY. Never skip.**
+
+```bash
+npm test path/to/test.test.ts
+```
+
+Confirm:
+- Test fails (not errors)
+- Failure message is expected
+- Fails because feature missing (not typos)
+
+**Test passes?** You're testing existing behavior. Fix test.
+
+**Test errors?** Fix error, re-run until it fails correctly.
+
+### GREEN - Minimal Code
+
+Write simplest code to pass the test.
+
+<Good>
+```typescript
+async function retryOperation<T>(fn: () => Promise<T>): Promise<T> {
+  for (let i = 0; i < 3; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      if (i === 2) throw e;
+    }
+  }
+  throw new Error('unreachable');
+}
+```
+Just enough to pass
+</Good>
+
+<Bad>
+```typescript
+async function retryOperation<T>(
+  fn: () => Promise<T>,
+  options?: {
+    maxRetries?: number;
+    backoff?: 'linear' | 'exponential';
+    onRetry?: (attempt: number) => void;
+  }
+): Promise<T> {
+  // YAGNI
+}
+```
+Over-engineered
+</Bad>
+
+Don't add features, refactor other code, or "improve" beyond the test.
+
+### Verify GREEN - Watch It Pass
+
+**MANDATORY.**
+
+```bash
+npm test path/to/test.test.ts
+```
+
+Confirm:
+- Test passes
+- Other tests still pass
+- Output pristine (no errors, warnings)
+
+**Test fails?** Fix code, not test.
+
+**Other tests fail?** Fix now.
+
+### REFACTOR - Clean Up
+
+After green only:
+- Remove duplication
+- Improve names
+- Extract helpers
+
+Keep tests green. Don't add behavior.
+
+### Repeat
+
+Next failing test for next feature.
+
+## Good Tests
+
+| Quality | Good | Bad |
+|---------|------|-----|
+| **Minimal** | One thing. "and" in name? Split it. | `test('validates email and domain and whitespace')` |
+| **Clear** | Name describes behavior | `test('test1')` |
+| **Shows intent** | Demonstrates desired API | Obscures what code should do |
+
+## Why Order Matters
+
+**"I'll write tests after to verify it works"**
+
+Tests written after code pass immediately. Passing immediately proves nothing:
+- Might test wrong thing
+- Might test implementation, not behavior
+- Might miss edge cases you forgot
+- You never saw it catch the bug
+
+Test-first forces you to see the test fail, proving it actually tests something.
+
+**"I already manually tested all the edge cases"**
+
+Manual testing is ad-hoc. You think you tested everything but:
+
+exec
+/bin/bash -lc "sed -n '1,220p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/82fd64bc/skills/brainstorming/SKILL.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+---
+name: brainstorming
+description: "You MUST use this before any creative work - creating features, building components, adding functionality, or modifying behavior. Explores user intent, requirements and design before implementation."
+---
+
+# Brainstorming Ideas Into Designs
+
+Help turn ideas into fully formed designs and specs through natural collaborative dialogue.
+
+Start by understanding the current project context, then ask questions one at a time to refine the idea. Once you understand what you're building, present the design and get user approval.
+
+<HARD-GATE>
+Do NOT invoke any implementation skill, write any code, scaffold any project, or take any implementation action until you have presented a design and the user has approved it. This applies to EVERY project regardless of perceived simplicity.
+</HARD-GATE>
+
+## Anti-Pattern: "This Is Too Simple To Need A Design"
+
+Every project goes through this process. A todo list, a single-function utility, a config change — all of them. "Simple" projects are where unexamined assumptions cause the most wasted work. The design can be short (a few sentences for truly simple projects), but you MUST present it and get approval.
+
+## Checklist
+
+You MUST create a task for each of these items and complete them in order:
+
+1. **Explore project context** — check files, docs, recent commits
+2. **Offer visual companion** (if topic will involve visual questions) — this is its own message, not combined with a clarifying question. See the Visual Companion section below.
+3. **Ask clarifying questions** — one at a time, understand purpose/constraints/success criteria
+4. **Propose 2-3 approaches** — with trade-offs and your recommendation
+5. **Present design** — in sections scaled to their complexity, get user approval after each section
+6. **Write design doc** — save to `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md` and commit
+7. **Spec self-review** — quick inline check for placeholders, contradictions, ambiguity, scope (see below)
+8. **User reviews written spec** — ask user to review the spec file before proceeding
+9. **Transition to implementation** — invoke writing-plans skill to create implementation plan
+
+## Process Flow
+
+```dot
+digraph brainstorming {
+    "Explore project context" [shape=box];
+    "Visual questions ahead?" [shape=diamond];
+    "Offer Visual Companion\n(own message, no other content)" [shape=box];
+    "Ask clarifying questions" [shape=box];
+    "Propose 2-3 approaches" [shape=box];
+    "Present design sections" [shape=box];
+    "User approves design?" [shape=diamond];
+    "Write design doc" [shape=box];
+    "Spec self-review\n(fix inline)" [shape=box];
+    "User reviews spec?" [shape=diamond];
+    "Invoke writing-plans skill" [shape=doublecircle];
+
+    "Explore project context" -> "Visual questions ahead?";
+    "Visual questions ahead?" -> "Offer Visual Companion\n(own message, no other content)" [label="yes"];
+    "Visual questions ahead?" -> "Ask clarifying questions" [label="no"];
+    "Offer Visual Companion\n(own message, no other content)" -> "Ask clarifying questions";
+    "Ask clarifying questions" -> "Propose 2-3 approaches";
+    "Propose 2-3 approaches" -> "Present design sections";
+    "Present design sections" -> "User approves design?";
+    "User approves design?" -> "Present design sections" [label="no, revise"];
+    "User approves design?" -> "Write design doc" [label="yes"];
+    "Write design doc" -> "Spec self-review\n(fix inline)";
+    "Spec self-review\n(fix inline)" -> "User reviews spec?";
+    "User reviews spec?" -> "Write design doc" [label="changes requested"];
+    "User reviews spec?" -> "Invoke writing-plans skill" [label="approved"];
+}
+```
+
+**The terminal state is invoking writing-plans.** Do NOT invoke frontend-design, mcp-builder, or any other implementation skill. The ONLY skill you invoke after brainstorming is writing-plans.
+
+## The Process
+
+**Understanding the idea:**
+
+- Check out the current project state first (files, docs, recent commits)
+- Before asking detailed questions, assess scope: if the request describes multiple independent subsystems (e.g., "build a platform with chat, file storage, billing, and analytics"), flag this immediately. Don't spend questions refining details of a project that needs to be decomposed first.
+- If the project is too large for a single spec, help the user decompose into sub-projects: what are the independent pieces, how do they relate, what order should they be built? Then brainstorm the first sub-project through the normal design flow. Each sub-project gets its own spec → plan → implementation cycle.
+- For appropriately-scoped projects, ask questions one at a time to refine the idea
+- Prefer multiple choice questions when possible, but open-ended is fine too
+- Only one question per message - if a topic needs more exploration, break it into multiple questions
+- Focus on understanding: purpose, constraints, success criteria
+
+**Exploring approaches:**
+
+- Propose 2-3 different approaches with trade-offs
+- Present options conversationally with your recommendation and reasoning
+- Lead with your recommended option and explain why
+
+**Presenting the design:**
+
+- Once you believe you understand what you're building, present the design
+- Scale each section to its complexity: a few sentences if straightforward, up to 200-300 words if nuanced
+- Ask after each section whether it looks right so far
+- Cover: architecture, components, data flow, error handling, testing
+- Be ready to go back and clarify if something doesn't make sense
+
+**Design for isolation and clarity:**
+
+- Break the system into smaller units that each have one clear purpose, communicate through well-defined interfaces, and can be understood and tested independently
+- For each unit, you should be able to answer: what does it do, how do you use it, and what does it depend on?
+- Can someone understand what a unit does without reading its internals? Can you change the internals without breaking consumers? If not, the boundaries need work.
+- Smaller, well-bounded units are also easier for you to work with - you reason better about code you can hold in context at once, and your edits are more reliable when files are focused. When a file grows large, that's often a signal that it's doing too much.
+
+**Working in existing codebases:**
+
+- Explore the current structure before proposing changes. Follow existing patterns.
+- Where existing code has problems that affect the work (e.g., a file that's grown too large, unclear boundaries, tangled responsibilities), include targeted improvements as part of the design - the way a good developer improves code they're working in.
+- Don't propose unrelated refactoring. Stay focused on what serves the current goal.
+
+## After the Design
+
+**Documentation:**
+
+- Write the validated design (spec) to `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md`
+  - (User preferences for spec location override this default)
+- Use elements-of-style:writing-clearly-and-concisely skill if available
+- Commit the design document to git
+
+**Spec Self-Review:**
+After writing the spec document, look at it with fresh eyes:
+
+1. **Placeholder scan:** Any "TBD", "TODO", incomplete sections, or vague requirements? Fix them.
+2. **Internal consistency:** Do any sections contradict each other? Does the architecture match the feature descriptions?
+3. **Scope check:** Is this focused enough for a single implementation plan, or does it need decomposition?
+4. **Ambiguity check:** Could any requirement be interpreted two different ways? If so, pick one and make it explicit.
+
+Fix any issues inline. No need to re-review — just fix and move on.
+
+**User Review Gate:**
+After the spec review loop passes, ask the user to review the written spec before proceeding:
+
+> "Spec written and committed to `<path>`. Please review it and let me know if you want to make any changes before we start writing out the implementation plan."
+
+Wait for the user's response. If they request changes, make them and re-run the spec review loop. Only proceed once the user approves.
+
+**Implementation:**
+
+- Invoke the writing-plans skill to create a detailed implementation plan
+- Do NOT invoke any other skill. writing-plans is the next step.
+
+## Key Principles
+
+- **One question at a time** - Don't overwhelm with multiple questions
+- **Multiple choice preferred** - Easier to answer than open-ended when possible
+- **YAGNI ruthlessly** - Remove unnecessary features from all designs
+- **Explore alternatives** - Always propose 2-3 approaches before settling
+- **Incremental validation** - Present design, get approval before moving on
+- **Be flexible** - Go back and clarify when something doesn't make sense
+
+## Visual Companion
+
+A browser-based companion for showing mockups, diagrams, and visual options during brainstorming. Available as a tool — not a mode. Accepting the companion means it's available for questions that benefit from visual treatment; it does NOT mean every question goes through the browser.
+
+**Offering the companion:** When you anticipate that upcoming questions will involve visual content (mockups, layouts, diagrams), offer it once for consent:
+> "Some of what we're working on might be easier to explain if I can show it to you in a web browser. I can put together mockups, diagrams, comparisons, and other visuals as we go. This feature is still new and can be token-intensive. Want to try it? (Requires opening a local URL)"
+
+**This offer MUST be its own message.** Do not combine it with clarifying questions, context summaries, or any other content. The message should contain ONLY the offer above and nothing else. Wait for the user's response before continuing. If they decline, proceed with text-only brainstorming.
+
+**Per-question decision:** Even after the user accepts, decide FOR EACH QUESTION whether to use the browser or the terminal. The test: **would the user understand this better by seeing it than reading it?**
+
+- **Use the browser** for content that IS visual — mockups, wireframes, layout comparisons, architecture diagrams, side-by-side visual designs
+- **Use the terminal** for content that is text — requirements questions, conceptual choices, tradeoff lists, A/B/C/D text options, scope decisions
+
+A question about a UI topic is not automatically a visual question. "What does personality mean in this context?" is a conceptual question — use the terminal. "Which wizard layout works better?" is a visual question — use the browser.
+
+If they agree to the companion, read the detailed guide before proceeding:
+`skills/brainstorming/visual-companion.md`
+
+codex
+Using `receiving-code-review`, `test-driven-development`, and `brainstorming` in a constrained form: the orchestrator has already supplied the approved design and explicitly forbids new spec commits, so I’ll verify the reported code state, use existing checks as the red/green signal where test edits are out of scope, then patch the five allowed files.
+  → Inspect current implementation and reviewer-reported surfaces
+  • Patch route shape, initialMdx flow, debounce, lazy adapter, and D8 save adapter body
+  • Patch CONTRACT sister-doc links and autolink hazards
+  • Run required verification commands and capture route output
+  • Report files, LOC deltas, checks, and dist note paths
+codex
+I’m checking the current file layout and exact implementation before editing, especially whether the old edit route is still present and how the React island currently initializes editor state.
+exec
+/bin/bash -lc 'git status --short' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+ M apps/site/CONTRACT.md
+ M apps/site/package.json
+ M packages/editor-shell/CONTRACT.md
+ M packages/editor-shell/src/index.ts
+ M pnpm-lock.yaml
+?? apps/site/src/components/EditorShellMount.astro
+?? apps/site/src/components/EditorShellMount.tsx
+?? apps/site/src/pages/notes/[slug]/
+?? docs/audits/codex-runs/2026-05-05-c4-prelude-execute-resume.txt
+?? docs/audits/codex-runs/2026-05-05-c4-prelude-execute.txt
+?? docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt
+?? docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md
+?? packages/editor-shell/src/__tests__/save-adapter.test.ts
+?? packages/editor-shell/src/save-adapter.ts
+
+exec
+/bin/bash -lc 'find apps/site/src/pages/notes -maxdepth 3 -type f | sort' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+apps/site/src/pages/notes/[...slug].astro
+apps/site/src/pages/notes/[slug]/edit.astro
+
+exec
+/bin/bash -lc "sed -n '1,220p' apps/site/src/pages/notes/[slug]/edit.astro" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+---
+import { getCollection, type CollectionEntry } from 'astro:content';
+import BaseLayout from '@layouts/BaseLayout.astro';
+import EditorShellMount from '../../../components/EditorShellMount.astro';
+import '../../../styles/grid.css';
+
+export async function getStaticPaths() {
+  const notes = (await getCollection('notes')).filter(
+    (note: CollectionEntry<'notes'>) => !note.data.draft,
+  );
+  return notes.map((note: CollectionEntry<'notes'>) => {
+    const slug = note.id.replace(/\/index$/, '');
+    return {
+      params: { slug: encodeURIComponent(slug) },
+      props: { note },
+    };
+  });
+}
+
+interface Props {
+  note: CollectionEntry<'notes'>;
+}
+
+const { note } = Astro.props as Props;
+const slug = note.id.replace(/\/index$/, '');
+---
+
+<BaseLayout title={`Edit: ${note.data.title}`}>
+  <article>
+    <h1>Edit: {note.data.title}</h1>
+    <EditorShellMount slug={slug} />
+  </article>
+</BaseLayout>
+
+exec
+/bin/bash -lc "sed -n '1,220p' apps/site/src/components/EditorShellMount.tsx" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+import { useEffect, useRef, useState } from 'react';
+import { BlockRegistry } from '@skb/block-foundation';
+import { EditorShell, GridContainer, LocalStorageAdapter, loadFromMdx, registerBlocks, saveToMdx, type EditorShellProps } from '@skb/editor-shell';
+
+export interface EditorShellMountProps { slug: string; }
+
+type EditorInstance = Parameters<NonNullable<EditorShellProps['onCreate']>>[0];
+
+export function EditorShellMount({ slug }: EditorShellMountProps) {
+  const adapterRef = useRef(new LocalStorageAdapter(slug));
+  const registryRef = useRef<BlockRegistry | null>(null);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const versionRef = useRef(1);
+  const [ready, setReady] = useState(false);
+
+  if (registryRef.current === null) {
+    const registry = new BlockRegistry();
+    registerBlocks(registry);
+    registryRef.current = registry;
+  }
+
+  const adapter = adapterRef.current;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void adapter.load()
+      .catch(() => null)
+      .then(() => {
+        if (!cancelled) setReady(true);
+      });
+
+    return () => {
+      cancelled = true;
+      if (saveTimerRef.current !== null) clearTimeout(saveTimerRef.current);
+    };
+  }, [adapter]);
+
+  if (!ready) return <div>Loading...</div>;
+
+  const handleCreate = (editor: EditorInstance) => {
+    void adapter
+      .load()
+      .then((state) => {
+        if (state?.mdxSource) {
+          try {
+            loadFromMdx(editor, state.mdxSource, { blockRegistry: registryRef.current ?? undefined });
+          } catch {
+            return;
+          }
+        }
+        versionRef.current = state?.version ?? 1;
+      })
+      .catch(() => undefined);
+  };
+
+  const handleChange = (editor: EditorInstance) => {
+    if (saveTimerRef.current !== null) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      try {
+        const mdxSource = saveToMdx(editor, { blockRegistry: registryRef.current ?? undefined });
+        versionRef.current += 1;
+        void adapter.save({ mdxSource, version: versionRef.current, lastModified: Date.now() });
+      } catch {
+        return;
+      }
+    }, 500);
+  };
+
+  return (
+    <GridContainer>
+      <EditorShell onCreate={handleCreate} onChange={handleChange} />
+    </GridContainer>
+  );
+}
+
+exec
+/bin/bash -lc "sed -n '1,260p' packages/editor-shell/src/save-adapter.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+/**
+ * Note persistence adapter for the Wave 5 editor scaffold.
+ *
+ * ADR-0018 D8 lines 339-451 are the canonical interface authority.
+ * C.4-prelude ships the MVP LocalStorageAdapter only.
+ */
+
+/** Read-only JSON-serializable value for optional same-session Tiptap cache data. */
+export type ReadonlyJSONValue =
+  | string
+  | number
+  | boolean
+  | null
+  | readonly ReadonlyJSONValue[]
+  | { readonly [key: string]: ReadonlyJSONValue };
+
+export interface NoteState {
+  /** Raw MDX source persisted for mdx-bridge round trips. */
+  readonly mdxSource: string;
+  /** Optional Tiptap state cache. Not a stable cross-client schema. */
+  readonly tiptapState?: ReadonlyJSONValue;
+  /** Last-modified timestamp in milliseconds. */
+  readonly lastModified: number;
+  /** Consumer-incremented monotonic version. LocalStorageAdapter does not increment. */
+  readonly version: number;
+}
+
+export interface NoteSaveAdapter {
+  /** Note slug for /notes/<slug>. */
+  readonly slug: string;
+
+  /** Load NoteState from persistence; null means no saved state. */
+  load(): Promise<NoteState | null>;
+
+  /** Save NoteState to persistence; returns ok false with a displayable error on failure. */
+  save(state: NoteState): Promise<{ ok: boolean; error?: string }>;
+
+  // Phase 2+ extensions (per ADR-0018 D8 compatibility reservation):
+  // (1) save(state, options?: { signal?: AbortSignal; timeout?: number; onProgress?: (p: number) => void })
+  // (2) subscribe(callback: (state: NoteState) => void): UnsubscribeFn
+  // Wave 5 keeps the v1 interface frozen; later API adapters require an ADR amendment.
+}
+
+export class LocalStorageAdapter implements NoteSaveAdapter {
+  /** Per-note serialized JSON cap. */
+  private static readonly PER_NOTE_MAX_BYTES = 2 * 1024 * 1024;
+
+  /** Best-effort aggregate warning threshold across all skb-note:* keys. */
+  private static readonly AGGREGATE_WARN_BYTES = 5 * 1024 * 1024;
+
+  constructor(public readonly slug: string) {}
+
+  async load(): Promise<NoteState | null> {
+    // Keep the async adapter boundary even though the Wave 5 MVP backend is sync localStorage.
+    await Promise.resolve();
+    try {
+      const raw = localStorage.getItem(`skb-note:${this.slug}`);
+      if (!raw) return null;
+
+      try {
+        return JSON.parse(raw) as NoteState;
+      } catch {
+        console.warn(`[NoteSaveAdapter] corrupted state for ${this.slug}; returning null`);
+        return null;
+      }
+    } catch (error) {
+      if (isNamedStorageError(error, 'SecurityError')) {
+        console.warn('[NoteSaveAdapter] localStorage SecurityError; load disabled');
+        return null;
+      }
+      throw error;
+    }
+  }
+
+  async save(state: NoteState): Promise<{ ok: boolean; error?: string }> {
+    // Keep the async adapter boundary even though the Wave 5 MVP backend is sync localStorage.
+    await Promise.resolve();
+    const serialized = JSON.stringify(state);
+    if (serialized.length > LocalStorageAdapter.PER_NOTE_MAX_BYTES) {
+      return {
+        ok: false,
+        error: `note exceeds 2MB limit (${serialized.length} bytes); split into smaller notes`,
+      };
+    }
+
+    try {
+      localStorage.setItem(`skb-note:${this.slug}`, serialized);
+      const aggregateBytes = aggregateNoteBytes();
+      if (aggregateBytes > LocalStorageAdapter.AGGREGATE_WARN_BYTES) {
+        console.warn(
+          `[NoteSaveAdapter] aggregate notes ${aggregateBytes} bytes > 5MB; consider Phase 2+ apps/api`,
+        );
+      }
+      return { ok: true };
+    } catch (error) {
+      if (isNamedStorageError(error, 'QuotaExceededError') || isStorageCode(error, 22)) {
+        return {
+          ok: false,
+          error: 'localStorage quota exceeded; delete old notes or upgrade to apps/api',
+        };
+      }
+      if (isNamedStorageError(error, 'SecurityError')) {
+        return {
+          ok: false,
+          error: 'localStorage disabled (private mode / sandbox); save disabled',
+        };
+      }
+      return { ok: false, error: error instanceof Error ? error.message : 'unknown' };
+    }
+  }
+}
+
+function aggregateNoteBytes(): number {
+  let total = 0;
+  for (let index = 0; index < localStorage.length; index += 1) {
+    const key = localStorage.key(index);
+    if (key?.startsWith('skb-note:')) {
+      total += localStorage.getItem(key)?.length ?? 0;
+    }
+  }
+  return total;
+}
+
+function isNamedStorageError(error: unknown, name: string): boolean {
+  return isRecord(error) && error.name === name;
+}
+
+function isStorageCode(error: unknown, code: number): boolean {
+  return isRecord(error) && error.code === code;
+}
+
+function isRecord(value: unknown): value is { readonly name?: unknown; readonly code?: unknown } {
+  return typeof value === 'object' && value !== null;
+}
+
+// Phase 2+ ApiAdapter - see ADR-0018 D8 lines 445-450.
+
+codex
+The reported state is present: the edit page is still a single segment route and the island only receives `slug`. I’m pulling the contract text and ADR source now so the save adapter restore matches the frozen shape instead of guessing.
+exec
+/bin/bash -lc "sed -n '90,145p' apps/site/CONTRACT.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+- Mobile override: `.skb-grid` switches to `grid-template-columns: 1fr`, and
+  direct children render with `grid-column: 1`. This is a rendering-only
+  preview path: `rowSpan='auto'` is derived for layout, but persisted
+  `rowSpan` values are unchanged per ADR-0016 D5.
+- C.2-3 is container-only. Per-block `gridColumn` and `gridRow` style emission
+  is deferred to C.2-4 editor-shell grid container work or a future
+  componentsMap-wrapper PR; apps/site must not add that style chain in this PR.
+- Transitional fallback (Wave 5 C.2-3 → C.2-4): MDX children inside `.skb-grid`
+  without an inline `style` attribute matching `grid-column` get `grid-column: 1 / -1`
+  via `.skb-grid > *:not([style*="grid-column"])` so unstyled prose remains
+  full-width readable until per-block grid emission lands. `grid-auto-rows`
+  uses `minmax(var(--row-h), auto)` so content height drives row height
+  rather than clamping to 48px.
+- Architectural pointers: ADR-0016 D8 defines the Astro renderer `.skb-grid`
+  wrapper, D9 defines the SSR vs hydration phase split, D11 keeps Tiptap inside
+  blocks while the grid stays outside, and ADR-0017 D11 is the downstream visual
+  feedback scope referenced by the grid architecture.
+
+## Edit route (Wave 5)
+
+- Route surface: `/notes/<slug>/edit` renders the C.4-prelude editor mount for
+  each non-draft note slug. It coexists with the read-only `/notes/<slug>`
+  catch-all route at `src/pages/notes/[...slug].astro`; the edit route lives at
+  the deeper literal `edit` segment.
+- Mount component: `src/pages/notes/[slug]/edit.astro` imports
+  `src/components/EditorShellMount.astro`, which mounts
+  `EditorShellMount.tsx` as a React island with `client:only="react"`. This
+  avoids SSR for the Tiptap-dependent editor surface.
+- Persistence: the island uses `LocalStorageAdapter` from the
+  `@skb/editor-shell` save-adapter public surface per
+  [ADR-0018 D8](../../docs/decisions/ADR-0018-v2-visual-migration.md). The
+  localStorage key prefix is `skb-note:<slug>`, distinct from the
+  design-tokens `skb-theme` key.
+- Block registry: `registerBlocks` from `@skb/editor-shell` registers all 8
+  Wave 2 block definitions. The 3 heavy blocks render the ADR-0014 v0.4
+  plugin-placeholder tier, so the C.4-prelude mount may register them without
+  loading real heavy runtimes.
+- Save trigger: the island uses a 500ms `setTimeout` debounce around
+  `saveToMdx` and `LocalStorageAdapter.save()`. `layoutEpoch` synchronization
+  is deferred to C.4-4 per Wave 5 plan v1.2.
+- Forward pointer: full UI assembly and e2e coverage land across C.4-1 through
+  C.4-5; v2 visual identity lands at Stage C.3. ADR-0018 D8 remains the
+  save-path interface freeze for this route.
+
+## Invariants
+
+- **Static build only** (spec §1.8 constraint #3): the project must not introduce SSR; `astro build` outputs prerendered HTML.
+- **Default zero JavaScript** (Astro islands): only components annotated with `client:*` hydrate. Wave 1 shipped `ThemeToggle (client:load)`; Wave 4 B7 adds the 3 heavy block islands below.
+- **No hand-rolled visual values** (ADR-0003 / spec §2.6 invariant #5): `tailwind.config.ts` MUST consume `@skb/design-tokens/tailwind-preset` via `presets: [...]`. Hard-coded `#hex`, `rgb(...)`, or pixel literals in any source file under `src/` are rejected by `pr-gate`.
+- **FOUC inline script ↔ design-tokens `STORAGE_KEY` literal sync**: the inline `<script is:inline>` in `BaseLayout.astro` reads `localStorage.getItem('skb-theme')` literally. The design-tokens package owns the canonical `STORAGE_KEY = 'skb-theme'` constant; renaming it requires updating BOTH packages in the same PR. The inline script cannot import the constant — it must run before any module loads to prevent FOUC.
+- **FOUC inline script must NOT write localStorage** (ADR-0003 D6): the script only reads + applies. Writes are reserved for manual user action via `useTheme.setTheme` / `toggle`. This preserves the property "system OS theme change is reflected on next visit unless the user has explicitly chosen a theme."
+- **FOUC boot-theme algorithm MUST be byte-equivalent to `getInitialTheme()`** from `@skb/design-tokens` in BOTH happy-path AND exception handling:
+  1. STRICT-whitelist saved value (`saved === 'light' || saved === 'dark'`); fall through to `matchMedia('(prefers-color-scheme: dark)')` otherwise. A truthy-coerce check (e.g. `saved ? saved === 'dark' : ...`) diverges for invalid / case-mismatched / legacy localStorage values and produces a hydration flash on first paint.
+  2. The `try/catch` MUST wrap ONLY the `localStorage.getItem` call. `matchMedia` + DOM apply MUST run AFTER the catch handler. A wide-scope `try/catch` swallows the `matchMedia` path on Safari Private Mode / iOS WebView with storage restrictions / browsers with localStorage disabled — producing light when system pref is dark, i.e. a hydration flash.
+  Both rules are enforced by `src/__tests__/fouc-script.test.ts`, which extracts the IIFE from `BaseLayout.astro` and asserts equivalence against `getInitialTheme()` for a 16-row saved-value × system-preference corpus + 2 storage-throws × system-preference rows + an explicit truthy-coerce regression assertion.
+- **Content frontmatter schema is owned by `@skb/content-types`**: apps/site imports `frontmatterSchema` and uses it directly in `defineCollection`. Inline schema redefinition is a contract break (content-types CONTRACT.md single-authority invariant). When the schema needs new optional fields, update `@skb/content-types` and let it propagate.
+
+exec
+/bin/bash -lc 'rg -n "ADR-0018|NoteSaveAdapter|LocalStorageAdapter|Phase 2" docs packages apps agent-contract.md CLAUDE.md' in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '55,105p' packages/editor-shell/CONTRACT.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+  — replace the editor's document by parsing MDX source. Same prose-only
+  semantics as `saveToMdx`; component-block JSX throws until B1.
+- `SaveLoadOptions { blockRegistry?: BlockRegistry }` — public options type
+  for the per-call BlockRegistry injection pattern. Threading lands in B1.
+
+### NoteSaveAdapter (Wave 5; MVP shipped at C.4-prelude)
+
+ADR-0018 D8 lines 339-451 are the canonical interface authority for the
+C.4-prelude save-path public surface:
+[ADR-0018 D8](../../docs/decisions/ADR-0018-v2-visual-migration.md).
+
+Public exports added by the MVP scaffold:
+
+- `NoteSaveAdapter` — interface exposing `slug`, `load()`, and `save(state)`.
+- `NoteState` — interface carrying `mdxSource`, optional `tiptapState`,
+  `lastModified`, and consumer-incremented `version`.
+- `ReadonlyJSONValue` — recursive read-only JSON value type for optional
+  same-session Tiptap cache data.
+- `LocalStorageAdapter` — Wave 5 MVP implementation of `NoteSaveAdapter`.
+
+Storage semantics:
+
+- localStorage key prefix: `skb-note:<slug>` per ADR-0018 D8 lines 454-455.
+- `PER_NOTE_MAX_BYTES = 2 MB`; oversized serialized states return
+  `{ ok: false, error }` instead of writing.
+- `AGGREGATE_WARN_BYTES = 5 MB`; aggregate `skb-note:*` storage above this
+  threshold emits a `console.warn` but does not block the save.
+- Corrupted JSON and localStorage `SecurityError` during load return `null`
+  with a warning. `QuotaExceededError` and `SecurityError` during save return
+  `{ ok: false, error }`.
+
+**C.4-1 hardens this contract** (W5-2 invariant promotion + adapter contract
+test suite per Wave 5 plan v1.2 Q3 ownership boundary). C.4-prelude only ships
+MVP impl + this minimal doc forward-pointer.
+
+The component does NOT include a `'use client'` pragma — consumers (Stage C
+apps/site) decide the client/server boundary at integration time.
+
+## Grid layout (Wave 5)
+
+**W5-2: editor-shell `layoutReducer` + `layoutEpoch` single-source mutation 是
+grid block position 的唯一权威 mutation site.** 所有 block grid mutations (drag
+from grid container / resize from handle / `useAutoRowSpan` auto-measure /
+responsive transition / undo-redo / mdx-load) 必经过此 reducer; 冲突仲裁规则 per
+ADR-0016 D12 + 权威矩阵 section. CRDT/OT 协同编辑 OUT OF SCOPE (Phase 2+);
+editor-shell `layoutEpoch` 是 single-source ordering, NOT 分布式 vector clock.
+**C.2-4 forward-pointer only**: `layoutReducer` + `layoutEpoch` impl 落地 C.2-8
+(per Wave 5 plan v1.1 row C.2-8); 此 PR 仅 lock invariant prose +
+`GridContainer` thin wrapper + `useAutoRowSpan` hook public surface.
+
+`GridContainer` public surface:
+
+exec
+/bin/bash -lc "sed -n '1,180p' apps/site/src/components/EditorShellMount.astro" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+---
+import { EditorShellMount } from './EditorShellMount.tsx';
+
+interface Props {
+  slug: string;
+}
+
+const { slug } = Astro.props as Props;
+---
+
+<div class="editor-shell-mount">
+  <EditorShellMount client:only="react" slug={slug} />
+</div>
+
+ succeeded in 0ms:
+agent-contract.md:297:      各 component 的 Tailwind 类组合。Phase 2b 设计 skill 流水线启动后，
+apps/api/CONVENTIONS.md:187:- Phase 2b 加 agent_bridge 后协议扩展；`type` 字段约定不变
+apps/api/app/ws/protocol.py:4:Phase 2b implements agent_bridge bidirectional tool calls on top.
+apps/api/app/ws/CONTRACT.md:21:## Phase 2b expansion
+apps/api/app/ws/CONTRACT.md:23:Phase 2b upgrades this endpoint to `agent_bridge`: bidirectional JSON-RPC where Custom Tools running in the browser editor can be invoked from the server side, and vice versa. The `type` field convention remains; new types will be added (`tool_call`, `tool_result`, `state_delta`, etc.). Detailed protocol will be defined in the Phase 2b plan.
+apps/api/app/pages.py:4:Endpoint: GET/PUT /v1/pages/{slug} (Wave 1: GET + PUT only; DELETE in Phase 2/2b).
+apps/api/app/llm/provider.py:20:    """Phase 1 freezes this interface; Phase 2b implements concrete providers."""
+apps/api/app/llm/CONTRACT.md:8:`stream` yields SSE-shaped event dicts: `{"type": "text" | "tool_use" | "stop", ...}`. Concrete shape per event type will be pinned in Phase 2b alongside the first concrete provider.
+apps/api/app/llm/CONTRACT.md:14:- Phase 1 freezes the interface; Phase 2b adds concrete implementations
+apps/api/app/llm/CONTRACT.md:16:## Phase 2b implementations
+apps/api/app/git_ops.py:3:Wave 4 + Phase 2b agent_bridge will call commit_path() after page writes.
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:89:Phase 2+ (按需追加，前端代码不改)
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:270:- **Phase 2+**：新增 `RemoteJupyterAdapter` 等实现，注册到 `KernelRegistry`。Block frontmatter 多一个 `kernel="remote:gpu-box"` 字段即可路由。前端代码不变。
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:290:**Phase 2 加入**（不影响 Phase 1 上线）：
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:362:│   ├── agent-tools/                         # ★ 工具 schema 定义 (Phase 2 实现)
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:390:**Phase 2 新增（不修改 Phase 1 包）**：
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:393:- `apps/api/app/llm/` —— LLMProvider 抽象（Phase 1 已留接口，Phase 2 完整实现）
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:481:**Phase 1 必须建（防 Phase 2 大改）**：
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:484:2. **`packages/agent-tools`** —— **仅 type 定义**，列出工具 schema（Phase 2 才实现）
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:486:4. **`apps/api/app/llm/`** —— LLMProvider 抽象接口（Anthropic 实现可 Phase 2 完成，但接口 Phase 1 就要冻结）
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:654:| `codex-css-stylist` | Tailwind 类组合 / 设计 token 应用（Phase 2b 起归 ux-ui-lead 调度） |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:757:### 3.3 设计 Skill 流水线（Phase 2 启动时触发）
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:1165:**Pause point（强制）**：Phase 1 结束后**显式 pause**，让用户写真实笔记 + auditors 跑全套，发现痛点；反馈喂回 Phase 2a plan 调整。这是用户提到的"停下脚步重新看"的窗口。
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:1167:### 4.3 Phase 2a：扩展 Block 类型（轻量里程碑）
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:1181:**Phase 2a 退出标准**：7 个新 block 全部通过 round-trip + 单测；老功能无回归（视觉回归 + E2E 全绿）。
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:1183:### 4.4 Phase 2b：In-page Agent 集成
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:1196:**Phase 2b 退出标准**：
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:1220:| Phase 1 上线后 | 强制 pause：让用户写真实笔记，让 auditors 跑全套，反馈喂回 Phase 2a |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:1241:| Phase 2b 的 agent 接入耦合 Phase 1 设计假设 | 中 | 高 | Phase 1 必须冻结的 4 个接口严守不变量 |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:1248:- [ ] **主题：暗色 / 亮色 / 双模切换** —— 推迟到 Phase 2b 设计 skill 流水线启动时议
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:1250:- [ ] **Logo / favicon / branding** —— Phase 2b 设计 phase
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:1279:| 2026-04-29 | `editor-commands` 命令模式 Phase 1 强制 | 防 Phase 2 引入 agent 时反向重构编辑器 |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:1280:| 2026-04-29 | `agent-tools` 仅 type 定义放 Phase 1 | 锁定工具 schema，Phase 2 实现不破坏接口 |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:1303:| 2026-04-29 | Phase 2 拆分为 2a (block 扩展) + 2b (in-page agent) | MVP 后立刻有可见里程碑；agent 集成不阻塞功能扩展 |
+docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md:1305:| 2026-04-29 | Phase 1 退出后强制 pause | 给 user 时间真实使用 + auditors 跑全套，反馈影响 Phase 2a 计划 |
+packages/editor-shell/src/index.ts:7:export type { NoteSaveAdapter, NoteState, ReadonlyJSONValue } from './save-adapter';
+packages/editor-shell/src/index.ts:8:export { LocalStorageAdapter } from './save-adapter';
+packages/editor-shell/src/resize/col-ruler.tsx:9: * `[1]`. TODO(ADR-0018/C.3): migrate the stop highlight literal
+packages/editor-commands/CONTRACT.md:30:原因：editor-commands 是 agent-tools 的源头（mutating tools 1:1 wrap commandSchemas via `.omit({type:true})`；edit_block 路径走 `editBlockInputSchema` 共享 predicate）；通过 agent-tools 接到 Phase 2b apps/api dispatch；任何 schema 变化都要协调 4+ 个层（editor-shell / agent-tools / apps/api / agent prompt 模板）。
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:2167:Wave 1 minimal: GET + PUT only (DELETE in Phase 2 / 2b).
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:2257:Phase 2b 才在此实现 agent_bridge 的双向工具调用。
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:2301:    """Phase 1 freezes this interface; Phase 2b implements concrete providers."""
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:2346:> **注**：write_file 在 Phase 1 Wave 4 的部署阶段才会调 commit_path（自动 commit 到 git）；Wave 1 阶段保留 stub。Phase 2b agent_bridge 用同一函数。
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:2416:## Phase 2b expansion
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:2418:Phase 2b 把 ws 升级为 agent_bridge：双向 JSON-RPC，Custom Tools 通过此通道访问浏览器编辑器 LIVE state。具体协议待 Phase 2b plan 详定。
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:2440:## Phase 2b implementations
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:2467:- git_ops.commit_path() helper (used in Wave 4 + Phase 2b)
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:2562:// Reserved for future event helpers (e.g., type guards) — Phase 2 may populate
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:2621:- Phase 2+：`@skb/kernel-remote-jupyter` 等
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:2808:Phase 2+ may register remote-jupyter / runpod / gpu-box.
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:3088:- [ ] **Step 7：写 `src/tools.ts`（仅 schema 与类型，**不实现** —— Phase 2b 实现在 apps/api）**
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:3095: * Agent tool schemas (Phase 1：仅类型定义；Phase 2b 在 apps/api 实现).
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:3184:## Phase 1 vs Phase 2b 分工
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:3187:- Phase 2b：apps/api `agent_bridge.py` 实现真正的工具执行；UI 通过 WebSocket 触发
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:3209:git commit -m "feat(agent-tools): freeze 10-tool schema for Phase 2b
+docs/superpowers/plans/2026-04-29-phase-1-wave-1-foundation.md:3212:read_page, search, get_editor_state) defined inline. Phase 2b
+packages/agent-tools/src/tools.ts:9: * Agent tool schemas (Phase 1: 仅类型定义；Phase 2b 在 apps/api 实现).
+packages/agent-tools/CONTRACT.md:10:## Phase 1 vs Phase 2b 分工
+packages/agent-tools/CONTRACT.md:13:- Phase 2b：apps/api `agent_bridge.py` 实现真正的工具执行；UI 通过 WebSocket 触发
+packages/agent-tools/CONTRACT.md:28:原因：toolSchemas 在 Phase 2b agent_bridge 实现前先冻结，是 Claude / agent 调用契约；新增字段会改变 agent prompt 模板 + apps/api dispatch 表 + 类型生成。
+packages/editor-shell/src/save-adapter.ts:4: * ADR-0018 D8 lines 339-451 are the canonical interface authority.
+packages/editor-shell/src/save-adapter.ts:5: * C.4-prelude ships the MVP LocalStorageAdapter only.
+packages/editor-shell/src/save-adapter.ts:24:  /** Consumer-incremented monotonic version. LocalStorageAdapter does not increment. */
+packages/editor-shell/src/save-adapter.ts:28:export interface NoteSaveAdapter {
+packages/editor-shell/src/save-adapter.ts:38:  // Phase 2+ extensions (per ADR-0018 D8 compatibility reservation):
+packages/editor-shell/src/save-adapter.ts:44:export class LocalStorageAdapter implements NoteSaveAdapter {
+packages/editor-shell/src/save-adapter.ts:63:        console.warn(`[NoteSaveAdapter] corrupted state for ${this.slug}; returning null`);
+packages/editor-shell/src/save-adapter.ts:68:        console.warn('[NoteSaveAdapter] localStorage SecurityError; load disabled');
+packages/editor-shell/src/save-adapter.ts:79:    if (serialized.length > LocalStorageAdapter.PER_NOTE_MAX_BYTES) {
+packages/editor-shell/src/save-adapter.ts:89:      if (aggregateBytes > LocalStorageAdapter.AGGREGATE_WARN_BYTES) {
+packages/editor-shell/src/save-adapter.ts:91:          `[NoteSaveAdapter] aggregate notes ${aggregateBytes} bytes > 5MB; consider Phase 2+ apps/api`,
+packages/editor-shell/src/save-adapter.ts:136:// Phase 2+ ApiAdapter - see ADR-0018 D8 lines 445-450.
+docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md:20:   - v2 视觉 identity forward (ADR-0018 NEW; granularity Phase 2+ L1 visual reframe)
+docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md:24:4. **Per-ADR plan-challenger** (per ADR-0007 D5 + ADR-0011 D2 v0.1.1): ADR-0016 + ADR-0017 + ADR-0018 each round; Wave 5 plan v1.0 lock at Pre-A5
+docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md:47:| (Phase 2+ L1 visual; granularity 原 Phase 2+ scope) | **ADR-0018** (NEW reframe v2 forward) | v2 视觉 migration: OKLCH + Inter + JetBrains Mono + 顶 2px 横条 + prose customization | Pre-A4 |
+docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md:48:| 0014 (modal canvas) | **ADR-0019+** (Phase 2+; NOT Wave 5 scope) | Modal canvas editor (Figma-style 三栏) | Phase 2+ |
+docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md:49:| 0015 (CLI grammar + 命令目录) | **ADR-0020+** (Phase 2+; NOT Wave 5 scope) | Doc CLI agent-facing API | Phase 2+ |
+docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md:50:| 0016 (editor runtime 命令通道) | **ADR-0021+** (Phase 2b+; NOT Wave 5 scope) | Editor runtime 命令通道协议 | Phase 2b+ |
+docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md:68:**Heavy blocks** (Jupyter / NnViz / AgentFlow) ship as **"🔌 plugin" placeholder** in Wave 5 — Wave 5 不实施 真渲染. Real Pyodide / TF.js / React Flow runtime 留 Phase 2+. C-1 CDN infrastructure (Wave 4 PR #48 HEAD `de39e07`) preserved as future plugin-real-runtime support; not deleted in C.1.
+docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md:153:  - 命中检测算法: 选项 1 预计算 edge rects half-in/half-out 28px + 距离 tiebreak (重叠 gap 区按距离排); 选项 2/3 留 Phase 2+ 性能优化路径
+docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md:163:#### Pre-A4 — ADR-0018 v2 视觉 migration design lock + save-path 接口冻结 + plan-challenger 4-round
+docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md:165:- **scope**: author `docs/decisions/ADR-0018-v2-visual-migration.md` (status: proposed; NEW reframe v2 forward). Lock D-list:
+docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md:177:- **verification required** (per Q2): playwright smoke for save round-trip on apps/site (post-implementation; ADR lock 不要求 playwright run, 但 ADR-0018 D-list 必含 save-path 测试 fixture 模板); shell ADR file presence + ADR roster update + save-path interface TypeScript 编译通过
+docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md:244:- Modal canvas (Phase 2+; 不动)
+docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md:268:### Stage C.3 — v2 视觉 identity (per ADR-0018)
+docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md:295:8. **dark mode** (Phase 2+ deferred per Pre-A4 plan-challenger; or Wave 5 if scope allows)
+docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md:301:- shell ADR-0018 D-list § "8 light block calibration" 列表完整性
+docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md:306:**Goal**: user 真能在 apps/site 编辑笔记 + 保存. apps/site 加 `/notes/[slug]/edit` 路由. **Save-path 接口在 Pre-A4 ADR-0018 已冻结** (per Q4+Q8 absorbtion).
+docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md:342:| D1 | **Pre-A roadmap = 5 PRs** (Pre-A1 plan v0.1+v0.2 + Pre-A2 ADR-0016 + Pre-A3 ADR-0017 + Pre-A4 ADR-0018+save-path 接口冻结 + Pre-A5 plan v1.0 lock) | Per ADR-0015 D6 + 2026-05-04 gatekeeper directive + Q8 absorbtion (save-path 提前 Pre-A4) |
+docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md:349:| D8 | **Heavy block "🔌 plugin" placeholder** = Wave 5 default; real Pyodide / TF.js / React Flow runtime 留 Phase 2+ | Per reframe v2 memory + 2026-05-03 gatekeeper directive |
+docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md:351:| D10 | **Stage C.4 save 路径决策提前到 Pre-A4** (per Q8 absorbtion): Pre-A4 ADR-0018 必产出 save 方案草案 + 回退路径 + 接口冻结. Pre-A5 仅做确认与验收. 减少晚期改动与重构成本 | Per Q8 absorbtion (revised from 推到 Pre-A5) |
+docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md:361:2. **ADR-0017 drag/drop UX hit-test 性能** (snapshot ref + edge rects O(n) per-event with n≤30 < 0.05ms/frame). Mitigation: 性能 budget assertion in playwright; 选项 2/3 留 Phase 2+ 性能优化路径.
+docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md:362:3. **ADR-0018 OKLCH 转换 collateral** (8 light blocks 视觉 calibration scope) — Stage C.3 ux-ui-lead subagent dispatch 时间预估. Mitigation: ADR-0018 D-list 包含 8 light block calibration 列表; visual smoke playwright 发现 regress.
+docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md:366:7. **8 light block CSS 校准 scope creep** — ux-ui-lead subagent 实施 OKLCH 切换 collateral 时可能发现更多 visual drift. Mitigation: ADR-0018 D-list 锁定 8 block 范围 + visual baseline screenshot 比对; 超出范围 ↦ Phase 2+ 单独 PR.
+docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md:374:| C.1 | C-4 chunk-leak 仍存在但 plugin placeholder 后无影响 | perf-auditor 检测 chunk 体积; 实际运行无 leak 影响 | document NO-OP 决策 + lock as moot | 留 Phase 2+ 切换真渲染时 revisit |
+docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md:377:| C.2 | Drag/drop 性能退化 (frame > 16ms) | n=30+ blocks; per-event O(n) edge rects | playwright budget assertion fail | 切换 ADR-0017 选项 2 (grid 单元索引 O(1)) Phase 2+ amendment |
+docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md:378:| C.3 | OKLCH 在老 Safari (<15.4) fallback 失效 | Safari 14 加载 apps/site | design-tokens 必含 hex fallback (ADR-0018 D-list 强制 candidate) | revert OKLCH 切换至双 token (OKLCH + hex parallel) |
+docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md:379:| C.3 | 8 light block visual regress (OKLCH switchover collateral) | screenshot 比对超阈值 | ux-ui-lead 单 PR 修复; visual-smoke playwright re-run | revert 单 PR + ADR-0018 D-list 增强 calibration scope |
+docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md:398:Wave 5 close = MVP-ready judgment may = Phase 1 完成 (C.4 wire 是 Phase 1 闭环); user 可决定 ship 或继续 Phase 2 plan-draft fresh session.
+docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md:430:| Q8 | Stage C.4 save-path 决策时机不一致; Pre-A4 仅讨论 / Pre-A5 才锁过晚 | medium | **ABSORBED** | D10 修订: Pre-A4 ADR-0018 必产出 save 方案草案 + 回退路径 + 接口冻结. Pre-A5 仅确认验收. Locked at Pre-A4 scope + D10. |
+docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md:442:Pre-A2 (HEAD `6e2c1d9` ADR-0016 grid 数据模型) + Pre-A3 (HEAD `157a4f7` ADR-0017 drag/drop UX) + Pre-A4 (HEAD `7e487ec` ADR-0018 v2 视觉 migration + save-path 接口冻结) all merged with status proposed v0.1.1 post 12+13+14 = 39 plan-challenger challenges absorbed. Stage C.1-C.4 per-PR breakdown now lockable.
+docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md:451:| Pre-A4 ADR-0018 visual + save-path | `2026-05-04-Pre-A4-plan-challenge.txt` (111 lines) | 14 (3 high + 7 medium + 4 low) | 9 | 5 | OKLCH Culori fallback + 8 kind hue (3+5) + Inter privacy/self-host + .skb-prose namespace + typography CSS vars + NoteSaveAdapter @ editor-shell + LocalStorageAdapter quota+security 错误处理 |
+docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md:493:2. **Sub-edit b**: NEW Stage C.4 row `C.4-prelude` (or fractional index per plan-challenger lock) inserted at the start of Stage C.4 PR breakdown table — between Stage C.3 close and existing C.4-1 row. Subject = "minimal editor scaffold (MVP smoke-test enable)". Whitelist scoped to `apps/site/src/pages/notes/[slug]/edit.astro` (NEW; basic route mounting editor-shell) + `apps/site/src/components/EditorShellMount.{astro,tsx}` (NEW; minimal mount wrapper) + `apps/site/CONTRACT.md` (route + mount contract; minimal) + `packages/editor-shell/src/save-adapter.ts` (NEW; LocalStorageAdapter MVP per ADR-0018 D8) + tests + 1 PR.md. LOC budget ~200. Executor = `codex-generic-executor`. D2 trigger Row 1 (CONTRACT).
+docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md:500:- `LocalStorageAdapter` MVP impl (per ADR-0018 D8 接口冻结) — **save-adapter file ownership boundary (post Q3 plan-challenger absorbtion): C.4-prelude ships minimal MVP implementation; C.4-1 ships public interface contract hardening + W5-2 update + adapter contract tests** (NOT re-implement MVP impl; avoids ownership-overlap scope drift between C.4-prelude and C.4-1)
+docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md:519:**Plan-challenger absorbtion (v1.2 light round)**: 5/5 challenges raised + absorbed at Stage 3 (codex `plan-challenger` profile dispatch 2026-05-05; raw audit at `/tmp/codex-runs/2026-05-05-v1.2-plan-challenge.txt`; curated archive at `docs/audits/codex-runs/2026-05-05-v1.2-plan-challenge.txt` 100 lines). 5/5 ABSORBED (3 ABSORB-RECOMMENDED Q1+Q2+Q4 + 1 ABSORB-OPTIONAL Q3 ownership boundary + 1 RE-LITIGATE Q5 memory class split). Q1 = `C.4-prelude` LOCKED semantic (NOT fractional decimal); stage-local semantic boundary "C.4 首先可交付条目 (not C.2 fractional spillover)". Q2 = Stage C.4 grows 5 → 6 inline (NOT separate mini-stage); "C.4 mini-stage is intentionally inlined in C.4". Q3 = ownership boundary refined: C.4-prelude ships MVP `LocalStorageAdapter` impl; C.4-1 ships `NoteSaveAdapter` interface contract hardening + W5-2 update + adapter contract tests (NOT re-implement MVP impl). Q4 = scaffold BEFORE C.2-7 confirmed (no hard dependency; C.2-7 can follow without blocking MVP smoke). Q5 RE-LITIGATE absorbed via two-layer trigger source: **ADR-0015 R14 canonical authority** (规范依据); memory `feedback_r14_defer_chain_plan_amendment.md` **illustrative-only** (records defer-chain class extension to gatekeeper-sequencing class as fact, NOT as canonical same-class match — defer-chain memory is reused by extension, not by same-class identity). Full 5-row absorbtion table lives in PR.md `## Plan-challenger absorbtion` section (`docs/plans/wave-5-main/v1.2-plan-amendment-r14-second.md`); reviewer codex Stage 4 verifies absorbtion accuracy.
+docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md:555:### Stage C.3 — v2 视觉 identity PR breakdown (locked at v1.0; per ADR-0018 D1-D7)
+docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md:559:| C.3-1 | design-tokens OKLCH 14 color + 1 hex `--surface` + 3 layout + Inter/JetBrains Mono fonts (per ADR-0018 D1+D2) | `packages/design-tokens/src/tokens.css` + `packages/design-tokens/CONTRACT.md` (token additions) + `tokens-fallback.css` (NEW; OKLCH→hex via Culori build script) + tests | ~300 LOC | codex-generic-executor + ux-ui-lead subagent | Row 1 (CONTRACT) + Row 5 (cross design-tokens + apps/site + 5 light blocks + heavy-block-boundary) |
+docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md:560:| C.3-2 | block kind 顶 2px 彩色横条 8 kind hue (per ADR-0018 D3 locked values) | `packages/design-tokens/src/tokens.css` (8 kind hue token) + 5 light block ui-default 加 顶 2px 横条 CSS | ~200 LOC | codex-generic-executor + ux-ui-lead | Row 1 + Row 5 |
+docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md:563:| C.3-5 | Stage C.3 close: visual smoke vs baseline diff < 5% (per ADR-0018 AC#8) + Stage C.3 handoff pack | `apps/site/playwright/visual-smoke-baseline/*.png` (commit baselines) + handoff pack | ~50 LOC + binaries | orchestrator | Standard |
+docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md:567:### Stage C.4 — Editor-shell wire to apps/site PR breakdown (locked at v1.0; per ADR-0018 D8 接口冻结 + ADR-0016 + ADR-0017)
+docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md:571:| **C.4-prelude** (v1.2 amendment NEW; LOCKED at semantic identifier post Q1 plan-challenger absorbtion; orchestrator preliminary recommendation) | **minimal editor scaffold (MVP smoke-test enable; per Wave 5 plan v1.2 R14 SECOND real-test 2026-05-05)** | `apps/site/src/pages/notes/[slug]/edit.astro` (NEW; basic route mounting editor-shell) + `apps/site/src/components/EditorShellMount.{astro,tsx}` (NEW; minimal mount wrapper) + `apps/site/CONTRACT.md` (route + mount contract; minimal section) + `packages/editor-shell/src/save-adapter.ts` (NEW; LocalStorageAdapter MVP per ADR-0018 D8) + tests + 1 PR.md. **In-scope**: `/notes/[slug]/edit` route + EditorShellMount + grid container (C.2-4) + drag/drop layer (C.2-5) + resize layer (C.2-6) + LocalStorageAdapter MVP + minimal hardcoded BlockRegistry (callout/code/markdown subset). **Out-of-scope (deferred to C.4-1..C.4-5 full set)**: palette / slash-menu / drag-handle / toolbar 完整组装 (C.4-3); BlockRegistry/KernelRegistry full wire (C.4-3); save/load layoutEpoch sync (C.4-4); e2e playwright (C.4-5); v2 visual + fonts (Stage C.3). | ~200 LOC | codex-generic-executor | Row 1 (CONTRACT) |
+docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md:572:| C.4-1 (post v1.2 Q3 ownership refinement) | NoteSaveAdapter interface contract hardening + NoteState shape + W5-2 contract surface + adapter contract tests (LocalStorageAdapter MVP impl already shipped at C.4-prelude per v1.2 R14 SECOND amendment; C.4-1 NO LONGER re-implements impl — only hardens interface + adds contract tests) | `packages/editor-shell/src/save-adapter.ts` (modify; interface + types only — impl stays at MVP shipped by C.4-prelude) + `packages/editor-shell/CONTRACT.md` (W5-2 invariant + NoteSaveAdapter public surface section) + adapter contract tests | ~150 LOC (reduced from ~250 v1.0; impl LOC moved to C.4-prelude) | codex-generic-executor | Row 1 (CONTRACT W5-2 + NoteSaveAdapter surface) + Row 5 |
+docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md:575:| C.4-4 | Save/load 双向 implementation (per Pre-A4 接口冻结) + layoutEpoch sync + version increment trigger | editor-shell save/load wire + LocalStorageAdapter consumer + tests | ~300 LOC | codex-generic-executor | Row 1 |
+docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md:595:| #53 | `7e487ec` | Pre-A4 | ADR-0018 v2 视觉 + save-path 接口冻结 + 14/14 absorbed (R6) |
+docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md:602:| (Stage C.4 = 6 PRs post v1.2) | TBD | C.4 | **NEW C.4-prelude minimal editor scaffold (MVP smoke-test enable)** → C.4-1 NoteSaveAdapter → C.4-5 e2e + Wave 5 close 候选 (C.4 grew 5 → 6 per v1.2 R14 SECOND real-test amendment) |
+docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md:611:- **Pre-A3 ADR-0017 + Pre-A4 ADR-0018+save-path 接口冻结 + Pre-A5 v1.0 lock** — sequential PRs after Pre-A2.
+docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md:614:- **Phase 2 plan-draft** — happens after Wave 5 close (or Phase 1 pause if C.4 wire 完成 = MVP ship).
+packages/editor-shell/src/__tests__/save-adapter.test.ts:2:import { LocalStorageAdapter, type NoteState } from '../save-adapter';
+packages/editor-shell/src/__tests__/save-adapter.test.ts:29:describe('@skb/editor-shell LocalStorageAdapter', () => {
+packages/editor-shell/src/__tests__/save-adapter.test.ts:37:    const adapter = new LocalStorageAdapter('test-slug');
+packages/editor-shell/src/__tests__/save-adapter.test.ts:44:    const adapter = new LocalStorageAdapter('test-slug');
+packages/editor-shell/src/__tests__/save-adapter.test.ts:52:    const adapter = new LocalStorageAdapter('test-slug');
+packages/editor-shell/src/__tests__/save-adapter.test.ts:68:    const adapter = new LocalStorageAdapter('test-slug');
+packages/editor-shell/src/__tests__/save-adapter.test.ts:82:    const adapter = new LocalStorageAdapter('test-slug');
+packages/editor-shell/src/__tests__/save-adapter.test.ts:94:    const adapter = new LocalStorageAdapter('test-slug');
+packages/editor-shell/src/__tests__/save-adapter.test.ts:108:    const adapter = new LocalStorageAdapter('test-slug');
+packages/editor-shell/CONTRACT.md:60:### NoteSaveAdapter (Wave 5; MVP shipped at C.4-prelude)
+packages/editor-shell/CONTRACT.md:62:ADR-0018 D8 lines 339-451 are the canonical interface authority for the
+packages/editor-shell/CONTRACT.md:64:[ADR-0018 D8](../../docs/decisions/ADR-0018-v2-visual-migration.md).
+packages/editor-shell/CONTRACT.md:68:- `NoteSaveAdapter` — interface exposing `slug`, `load()`, and `save(state)`.
+packages/editor-shell/CONTRACT.md:73:- `LocalStorageAdapter` — Wave 5 MVP implementation of `NoteSaveAdapter`.
+packages/editor-shell/CONTRACT.md:77:- localStorage key prefix: `skb-note:<slug>` per ADR-0018 D8 lines 454-455.
+packages/editor-shell/CONTRACT.md:99:ADR-0016 D12 + 权威矩阵 section. CRDT/OT 协同编辑 OUT OF SCOPE (Phase 2+);
+packages/editor-shell/CONTRACT.md:246:source per ADR-0017 D9, with migration to design tokens deferred to ADR-0018
+docs/decisions/ADR-0017-drag-drop-ux.md:37:- **Pre-A4 ADR-0018**: v2 视觉 migration + save-path 接口冻结
+docs/decisions/ADR-0017-drag-drop-ux.md:180:| **shifted-block outline** | dashed `oklch(88% 0.05 215 / 0.5)` border (per ADR-0018 token 蓝 215°) | 仅 split-top / split-bottom | 每个被推位的 block 各画一个; 在被推下到的新位置 |
+docs/decisions/ADR-0017-drag-drop-ux.md:209:- token 来源: design-tokens (ADR-0018) 的 `--accent` (橙红 35°) / `--accent-soft` / `--canvas-soft` / `--accent-success` (per Q11 absorbtion drop-pulse token化) / `--text-3` (col-ruler stop label)
+docs/decisions/ADR-0017-drag-drop-ux.md:213:实施约束: 所有 visual 元素的 token + 状态切换 同步 by ADR-0018 design-tokens 包.
+docs/decisions/ADR-0017-drag-drop-ux.md:215:### D5 — 命中检测算法 (推荐选项 1; 选项 2/3 留 Phase 2+)
+docs/decisions/ADR-0017-drag-drop-ux.md:234:**选项 2: grid 单元索引** (性能优化备案; Phase 2+ 切)
+docs/decisions/ADR-0017-drag-drop-ux.md:238:**选项 3: DOM 原生事件分发** (性能极致备案; Phase 2+ 切)
+docs/decisions/ADR-0017-drag-drop-ux.md:242:**MVP 用选项 1**. 性能问题在 Phase 2+ (n ≥ 500) 真出现时再切 2 / 3. 选项 2 / 3 接口形式与选项 1 共享 (mode + blockId + distance), 切换 cost 仅 implementation pure swap.
+docs/decisions/ADR-0017-drag-drop-ux.md:311:- **col-ruler**: 浮在 grid 容器顶部, 显示 12 columns (or effective viewport cols) 的 6 个 stop (= effectiveColSnaps); cursor 命中 stop 时 stop highlight `oklch(58% 0.16 35 / 0.4)` (accent-soft per ADR-0018)
+docs/decisions/ADR-0017-drag-drop-ux.md:337:- 按 kind 着色: `.ghost-canvas` (蓝 215°) / `.ghost-runnable` (绿 145°) / `.ghost-image` (橙黄 60°) / `.ghost-markdown` (中性灰); per ADR-0018 token
+docs/decisions/ADR-0017-drag-drop-ux.md:346:- token 来源: ADR-0018 design-tokens 包 `--accent-success` (Stage C.3 实施 PR 锁); fallback `oklch(70% 0.12 145 / 0.5)` (与 runnable 顶条 hue 145° 同色) 仅 token 未加时兼容
+docs/decisions/ADR-0017-drag-drop-ux.md:349:**Token 化 vs hardcode 决策 (per Q11 absorbtion)**: 早期 v2 demo hardcode hue 145° 与 runnable kind 顶条同色, 状态色 vs 组件色冲突 (e.g., user 看 drop-pulse 可能误以为 runnable kind transition). ADR-0018 (Pre-A4) 锁 v2 视觉 migration 时引入 `--accent-success` 独立 token (语义: drop succeeded / save succeeded / commit-pulse general); fallback hex 仅作 backward-compat (Stage C.3 实施 OKLCH 切完全 token化后 fallback 可移除).
+docs/decisions/ADR-0017-drag-drop-ux.md:369:**冲突仲裁** (per ADR-0016 D12): drag (user-initiated) 优先于 auto-measure (markdown rowSpan='auto'); responsive transition (per ADR-0016 D5 转场态 FSM) 期间 drag 拒绝 (UI grayed cursor). 单用户单 session 假设 explicit (CRDT/OT Phase 2+).
+docs/decisions/ADR-0017-drag-drop-ux.md:395:- 命中算法选项 1 + 2/3 备案 = MVP 简单 + Phase 2+ 性能优化路径明确; 切换 cost 仅 implementation pure swap (接口共享)
+docs/decisions/ADR-0017-drag-drop-ux.md:402:- D5 选项 1 性能 O(n) per-event = n ≥ 500 blocks 时退化; mitigation 切 选项 2 / 3 时 cost = 接口形式相同, pure implementation swap (Phase 2+)
+docs/decisions/ADR-0017-drag-drop-ux.md:409:- Modal canvas (granularity 旧 ADR-0014; Wave 5+ ADR-0019+) drag/drop 内部行为 OUT OF SCOPE; modal 内 canvas node/edge editing 留 Phase 2+ ADR
+docs/decisions/ADR-0017-drag-drop-ux.md:432:| Q11 | drop-pulse hardcode hue 145° 与 ADR-0018 token 漂移 + runnable 顶条同色冲突 | medium | **ABSORBED** | D11 改 `box-shadow: var(--accent-success, oklch(70% 0.12 145 / 0.5))`; ADR-0018 (Pre-A4) 锁 `--accent-success` token (drop / save / commit-pulse general); fallback hex 仅 backward-compat. Locked at D11 token block. |
+docs/decisions/ADR-0005-api-conventions.md:43:- **多 agent 协作风格统一**：api-builder + codex-api-crud-builder + 未来 Phase 2b agent_bridge 都依据同一份 CONVENTIONS.md，PR review 时违背能被快速识别
+docs/decisions/ADR-0014-heavy-block-boundary.md:426:- Phase 1 + Phase 2 chunking (`apps/site/astro.config.mjs` `manualChunks`) unchanged; HeavyBlockBoundary uses dynamic `import()` which Vite respects
+docs/decisions/ADR-0014-heavy-block-boundary.md:579:| #TBD | TBD | A8 — this PR: Stage A close, perf baseline, Phase 2 chunking decision, and status promotion |
+docs/decisions/ADR-0014-heavy-block-boundary.md:588:Phase 2 chunking decision at A8 (informational; no D-list change): **NO-OP**. Codex-perf-auditor
+docs/decisions/ADR-0014-heavy-block-boundary.md:642:### v0.4 (2026-05-04 — Wave 5 Stage C.1) — Plugin tier split: placeholder (Wave 5 MVP) vs real-runtime (Phase 2+)
+docs/decisions/ADR-0014-heavy-block-boundary.md:649:restoration moves to Phase 2+ under a future `plugin-real-runtime` tier
+docs/decisions/ADR-0014-heavy-block-boundary.md:683:therefore passes immediately for the placeholder tier. The Phase 2+
+docs/decisions/ADR-0014-heavy-block-boundary.md:693:`{KindLabel} · plugin runtime (Phase 2+)`. The new BEM modifier
+docs/decisions/ADR-0014-heavy-block-boundary.md:700:#### Phase 2+ migration sketch
+docs/decisions/ADR-0014-heavy-block-boundary.md:713:(squash HEAD `794cd5d`) or from a new PR. Either path is Phase 2+
+docs/decisions/ADR-0001-stack-selection.md:68:- Phase 2 追加：runnable-code / chart / diagram / table / embed / video / toggle / RemoteKernelAdapter
+packages/kernel-adapter/CONTRACT.md:18:- `KernelTimeoutError` (`kind: 'timeout'`) — operation did not complete within adapter-specific deadline (Phase 2+ remote adapters; reusable in Wave 2 if Pyodide hangs)
+packages/kernel-adapter/CONTRACT.md:34:- Phase 2+：`@skb/kernel-remote-jupyter` 等
+packages/kernel-adapter/CONTRACT.md:40:原因：`KernelAdapter` 接口 freeze 是 Wave 2 PyodideAdapter 与 Phase 2 RemoteJupyterAdapter 共同的契约基础；optional 字段会在 2+ 实现间产生兼容性矩阵，无 ADR 协调会引发漂移。同步范围：本文件 + kernel-registry + 全部已实现 adapter 包。
+docs/decisions/README.md:26:| [0018](ADR-0018-v2-visual-migration.md)                   | v2 视觉 migration + save-path 接口冻结 (OKLCH + Inter/JetBrains Mono + 顶 2px 横条 + LocalStorageAdapter MVP) | 2026-05-04 | proposed |
+docs/runbooks/codex-tool-invocations.md:415:各 component 的 Tailwind 类组合。Phase 2b 设计 skill 流水线启动后，
+docs/decisions/ADR-0011-linear-pipeline-execution-model.md:207:- **Concurrency hazard 结构性消除**：PR 串行 → WE-001 / WE-009 / WE-011 复合并发危险类不复发。Wave 2 codified 的复杂 move-aside 协议在 Wave 3 不再需要（仍保留作 Phase 2+ 多 worker 协作时复用）。
+docs/decisions/ADR-0013-wave-3-close.md:68:| #21 | C2 — Phase 1 dynamic chunking (4 R-rounds: manualChunks regex; documented Phase 1 vs Phase 2 deferred) | 1+2+3+5+6 |
+docs/decisions/ADR-0013-wave-3-close.md:97:- **C5** — Phase 2 selective per-block heavy-chunk loading + perf-baseline measurement against C1 (codex-perf-auditor dispatch deferred from C3 R-during-EXECUTE)
+docs/decisions/ADR-0013-wave-3-close.md:159:- Stage C completion: C4a (3 missing block Astro variants) + C4b (2 heavy block Astro variants) + C5 (Phase 2 selective chunking + perf baseline)
+docs/decisions/ADR-0004-agent-team-dispatch-model.md:138:- **Phase 2/3 平滑扩展**：Phase 2 / 2a / 2b 各自一个 team，agents 类型库不变
+docs/superpowers/plans/2026-04-29-phase-0-scaffolding.md:727:      Phase 1 的 4 个必建项之一是 LLMProvider 抽象 —— 接口冻结，实现可 Phase 2b 完成。
+docs/superpowers/plans/2026-04-29-phase-0-scaffolding.md:779:      Phase 2b 设计 skill 流水线启动后，本 agent 角色让位给 design-pipeline。
+docs/superpowers/plans/2026-04-29-phase-0-scaffolding.md:1398:**Context:** §2.6 / §3.13 把 skills 定位为 playbook 文档（不是工具替代）。Phase 0 写一个示例骨架，Phase 2b 才填实质内容。
+docs/superpowers/plans/2026-04-29-phase-0-scaffolding.md:1430:[填实质模板，Phase 2b 完成]
+docs/superpowers/plans/2026-04-29-phase-0-scaffolding.md:1434:- [Phase 2b plan](../../docs/superpowers/plans/) (尚未创建)
+docs/superpowers/plans/2026-04-29-phase-0-scaffolding.md:1444:agent-tools custom-tools. Phase 2b will fill the real template.
+docs/superpowers/plans/2026-04-29-phase-0-scaffolding.md:1918:- §3.3 设计 skill：Phase 2b
+docs/decisions/ADR-0016-grid-data-model.md:13:Wave 5 reframe v2 (2026-05-04 gatekeeper directive; absorbed via Wave 5 plan v0.2 Pre-A2 scope) 把 **grid 数据模型** 前移到 Wave 5 Stage C.2 实施. 此 ADR 锁定数据模型 + grid 流动 + 响应式 + COL_SNAPS 共识, 作为 ADR-0017 (drag/drop UX, Pre-A3) 与 ADR-0018 (v2 视觉 migration, Pre-A4) 的前置依赖.
+docs/decisions/ADR-0016-grid-data-model.md:208:实施: design-tokens 包 (Stage C.3 ADR-0018) 暴露 breakpoint vars (`--bp-tablet: 768px`, `--bp-desktop: 1024px`); apps/site Astro renderer + editor-shell grid 都消费.
+docs/decisions/ADR-0016-grid-data-model.md:296:1. wrap notes content 在 `<div class="skb-grid">...</div>` (或 `.gblock-grid` per design-tokens naming convention; 由 ADR-0018 Pre-A4 锁)
+docs/decisions/ADR-0016-grid-data-model.md:434:**协同/多人编辑假设**: Wave 5 假设 **single-user single-session**. CRDT/OT 协同编辑 OUT OF SCOPE (Phase 2+); editor-shell `layoutEpoch` 是 single-source ordering, NOT 分布式 vector clock. Stage C.4 实施 (apps/site `/notes/[slug]/edit` mount editor-shell) 保证一次只一个 active editor session.
+docs/decisions/ADR-0016-grid-data-model.md:490:- Astro renderer + editor-shell grid container 双 implementation = 视觉样式 + 响应式 token 必须 single-source-of-truth (design-tokens 包, ADR-0018 Pre-A4 锁); 漂移风险 mitigated via ADR-0006 D8 8-point asymmetry audit (item #5: 算法 + 运行时常量复刻)
+docs/decisions/ADR-0016-grid-data-model.md:498:- Modal canvas (granularity 旧 ADR-0014 = Wave 5+ ADR-0019+) 留 Phase 2+; 此 ADR 不规定 modal 内部 grid 行为
+docs/decisions/ADR-0016-grid-data-model.md:522:| Q2 | D2 公式 row-h=48 / gap=14 硬编码 (主题 token 变化漂移风险) | medium | **ABSORBED** | D10 加 `effectiveCellHeight(rowSpan, rowH, gap)` + `effectiveColWidth(colSpan, containerWidth, gap, totalCols)` helpers in `@skb/block-foundation/grid-math.ts`; design-tokens (ADR-0018) authority. Locked at D10. |
+docs/decisions/ADR-0016-grid-data-model.md:529:| Q9 | D11 NodeView attrs '被动数据' 但 useAutoRowSpan + drag/resize 同帧竞争 rowSpan 仲裁未定义 | high | **ABSORBED** | NEW D12 "Layout mutation 单一源 (layoutEpoch reducer)"; 冲突仲裁规则表 (drag > auto-measure; responsive wins T1 then auto-measure T4); single-user 单 session 假设 explicit; CRDT/OT Phase 2+. Locked at D12. |
+apps/site/src/components/EditorShellMount.tsx:3:import { EditorShell, GridContainer, LocalStorageAdapter, loadFromMdx, registerBlocks, saveToMdx, type EditorShellProps } from '@skb/editor-shell';
+apps/site/src/components/EditorShellMount.tsx:10:  const adapterRef = useRef(new LocalStorageAdapter(slug));
+apps/site/src/__tests__/heavy-block-plugin-placeholder.test.ts:43:      label: 'Jupyter · plugin runtime (Phase 2+)',
+apps/site/src/__tests__/heavy-block-plugin-placeholder.test.ts:52:      label: 'NnViz · plugin runtime (Phase 2+)',
+apps/site/src/__tests__/heavy-block-plugin-placeholder.test.ts:61:      label: 'AgentFlow · plugin runtime (Phase 2+)',
+docs/decisions/ADR-0015-wave-4-close.md:115:   - **ADR-0018**: design-tokens OKLCH 切 (cream `oklch(99% 0.005 80)` / accent 橙红 35° / canvas 蓝 215° / mark 黄 90°) + Inter + JetBrains Mono fonts + block kind 顶 2px 彩色横条 (canvas 215° / runnable 145° / image 60° / markdown 无横条 / math/pdf/jupyter/nn-viz/agent-flow TBD hue) + prose customization (b-quote / b-callout / b-code / aref) + typography 升级 (15px/1.55 body, H1 28px/700/-0.018em, etc.)
+docs/decisions/ADR-0015-wave-4-close.md:135:  - ADR-0018 v2 视觉 migration — plan-challenger round
+docs/decisions/ADR-0015-wave-4-close.md:192:  - Pre-A4: ADR-0018 v2 视觉 migration design lock + plan-challenger
+apps/site/CONTRACT.md:118:- Persistence: the island uses `LocalStorageAdapter` from the
+apps/site/CONTRACT.md:120:  [ADR-0018 D8](../../docs/decisions/ADR-0018-v2-visual-migration.md). The
+apps/site/CONTRACT.md:128:  `saveToMdx` and `LocalStorageAdapter.save()`. `layoutEpoch` synchronization
+apps/site/CONTRACT.md:131:  C.4-5; v2 visual identity lands at Stage C.3. ADR-0018 D8 remains the
+apps/site/CONTRACT.md:161:  (Phase 2+) restores the `HeavyBlockBoundary` + dynamic `load()` chain.
+apps/site/CONTRACT.md:188:- **Pyodide CDN hosting (Jupyter heavy block)**: **Phase 2+ plugin-real-runtime
+docs/superpowers/plans/2026-05-03-phase-1-wave-4-integration.md:274:#### A8 — C5 Phase 2 selective chunking + perf baseline + ADR-0014 promotion (Stage A close)
+docs/superpowers/plans/2026-05-03-phase-1-wave-4-integration.md:277:  Phase 2 selective per-block chunking strategy (C5 carry-over) **only
+docs/superpowers/plans/2026-05-03-phase-1-wave-4-integration.md:316:§ v0.2.1 log line. If A8 PR ships Phase 2 chunking but defers ADR
+docs/superpowers/plans/2026-05-03-phase-1-wave-4-integration.md:488:- `docs/plans/active.md` repointed to Wave 5 (or Phase 2 if Phase 1 done)
+apps/site/src/islands/JupyterIsland.tsx:23:        Jupyter · plugin runtime (Phase 2+)
+apps/site/src/islands/NnVizIsland.tsx:23:        NnViz · plugin runtime (Phase 2+)
+docs/plans/active.md:15:| #53 | `7e487ec` | Pre-A4 | ADR-0018 v2 视觉 migration + save-path 接口冻结 + 14/14 absorbed (R6) |
+docs/plans/active.md:34:| (Stage C.4 = 6 PRs post v1.2; 0 done) | TBD | C.4 | **C.4-prelude minimal editor scaffold (NEXT; Q4 LOCK scaffold-BEFORE-C.2-7)** → C.4-1 NoteSaveAdapter interface hardening (ownership refined post Q3) → C.4-2 route + mount enhancement → C.4-3..C.4-5 |
+docs/plans/active.md:36:| (Stage C.4 = 5 PRs) | TBD | C.4 | C.4-1..5 NoteSaveAdapter → /notes/[slug]/edit → BlockRegistry → save/load → e2e |
+docs/plans/active.md:76:- ✅ Stage C completion: C4a (3 missing block Astro variants math/pdf/jupyter) + C4b (2 heavy block Astro variants nn-viz/agent-flow) + C5 (Phase 2 selective chunking + perf baseline) — **✅ A7 + A8 (Wave 4 Stage A close 2026-05-03)**
+docs/plans/active.md:137:- `packages/editor-shell/src/save-adapter.ts` (NEW; LocalStorageAdapter MVP per ADR-0018 D8) + tests
+docs/plans/active.md:143:- LocalStorageAdapter MVP impl (per ADR-0018 D8 接口冻结)
+apps/site/src/islands/AgentFlowIsland.tsx:23:        AgentFlow · plugin runtime (Phase 2+)
+docs/decisions/ADR-0018-v2-visual-migration.md:1:# ADR-0018: v2 视觉 migration — design-tokens OKLCH + Inter/JetBrains Mono + 顶 2px 横条 + prose customization + save-path 接口冻结
+docs/decisions/ADR-0018-v2-visual-migration.md:8:| 触发 | [Wave 5 plan v0.2 D1+D5+D10](../superpowers/plans/2026-05-04-phase-1-wave-5-integration.md) (Pre-A4 ADR-0018 v2 视觉 migration design lock + save-path 接口冻结 per Q4+Q8 absorbtion) + reframe v2 memory `project_wave4_reframe_v2.md` + granularity doc v0.3.4 § "v2 视觉契约要素 (认证源 = v2-styles.css, 所有 token 不变)" + § "v2 编辑器 UX 要素 (视觉细节)" body (NEW reframe v2 forward; granularity 原 Phase 2+ L1 visual scope) |
+docs/decisions/ADR-0018-v2-visual-migration.md:9:| 关系 | 不替代任何 ADR; 扩展 [ADR-0003](ADR-0003-headless-presentational-split.md) D6 (design-tokens authority + OKLCH switchover) + 扩展 [ADR-0017 D11](ADR-0017-drag-drop-ux.md) (drop-pulse 消费 `--accent-success` token); 扩展 [ADR-0014](ADR-0014-heavy-block-boundary.md) (heavy block plugin placeholder 消费 design-tokens 视觉 + 顶 2px 横条 from D3); save-path 接口冻结 = NEW Phase 1 持久化决策 (Stage C.4 实施 + Phase 2+ apps/api endpoint 升级路径) |
+docs/decisions/ADR-0018-v2-visual-migration.md:16:2. **Save-path 接口冻结 (Stage C.4 实施)**: 提前 (per Q8 absorbtion) 在此 ADR 锁定 NoteSaveAdapter interface + 3 候选实施路径 + Wave 5 MVP 选 localStorage prototype + Phase 2+ apps/api endpoint upgrade path; Pre-A5 仅做确认与验收 不动接口
+docs/decisions/ADR-0018-v2-visual-migration.md:29:- Save-path: Wave 5 MVP = **localStorage prototype** (单设备; 简单; MVP-friendly); Phase 2+ apps/api endpoint upgrade (跨设备同步 + collaborative).
+docs/decisions/ADR-0018-v2-visual-migration.md:37:- **Stage C.3 实施**: design-tokens OKLCH 切 + Inter/JetBrains Mono + 顶 2px 横条 + prose customization + 8 light block CSS calibration (per ADR-0018 D1-D7) — ux-ui-lead subagent dispatch
+docs/decisions/ADR-0018-v2-visual-migration.md:38:- **Stage C.4 实施**: NoteSaveAdapter interface + LocalStorageAdapter MVP impl + apps/site `/notes/[slug]/edit` route 消费 (per ADR-0018 D8 接口冻结) — orchestrator + codex-generic-executor
+docs/decisions/ADR-0018-v2-visual-migration.md:79:`@skb/design-tokens/src/tokens-dark.css` (per existing CONTRACT.md `## Public surface`): **dark mode 留 Phase 2+** (per Q3 plan-challenger candidate + granularity Open Q2). Wave 5 lite-only; 不实施 dark theme.
+docs/decisions/ADR-0018-v2-visual-migration.md:127:**5 missing kind hue lock (per Pre-A4 plan-challenger Q3 absorbtion)**: math / pdf / jupyter / nn-viz / agent-flow 5 个 block kind 在 Wave 4 ADR-0014 已 ratified, 但顶 2px 横条 hue 未在视觉契约定义. ADR-0018 D3 在 Pre-A4 plan-challenger round 锁定 + 修订:
+docs/decisions/ADR-0018-v2-visual-migration.md:133:3. **a11y 对比度**: 顶 2px 横条对 `--bg` cream `oklch(99% 0.005 80)` 背景对比度 ≥ 3:1 (WCAG AA non-text 大字号准则). **NOT 要求** 对 `--text` 对比度 (顶 2px 横条 NOT 用于显示文字; 仅视觉 kind 识别 decoration; "text on top 横条 上写小字" 场景在 ADR-0018 视觉契约中不存在)
+docs/decisions/ADR-0018-v2-visual-migration.md:150:- alternate 标识方案 (per Q3 absorbtion suggestion — 细左侧条 OR 底纹) 推迟到 Phase 2+ visual refinement; Wave 5 MVP 接受 markdown 默认无横条作 simplicity 选择
+docs/decisions/ADR-0018-v2-visual-migration.md:325:| 路径 | 复杂度 | 跨设备同步 | Wave 5 适用 | Phase 2+ 适用 |
+docs/decisions/ADR-0018-v2-visual-migration.md:329:| (c) localStorage prototype (browser localStorage; per `feedback_lychee_user_local_paths` 风格 single-device persist) | 低 (client-side 简单 K-V) | ❌ | ✅ **Wave 5 MVP 选** | ❌ (Phase 2+ apps/api 替换) |
+docs/decisions/ADR-0018-v2-visual-migration.md:331:**Wave 5 MVP 锁**: localStorage prototype (路径 c). 单设备 + 简单 + Phase 1 完成路径; 跨设备同步 + collaborative editing 留 Phase 2+ apps/api endpoint 升级.
+docs/decisions/ADR-0018-v2-visual-migration.md:333:#### NoteSaveAdapter TypeScript interface (Stage C.4 实施 + Phase 2+ 升级 共享)
+docs/decisions/ADR-0018-v2-visual-migration.md:335:**Adapter 落点 (per Q9 absorbtion — 锁单一落点)**: NoteSaveAdapter 接口 + LocalStorageAdapter impl 落 `@skb/editor-shell/src/save-adapter.ts` (NEW; Stage C.4 实施 PR scope; 唯一对外契约位置). `@skb/mdx-bridge` 仅做 MDX serialize/parse 映射 per ADR-0016 D7, NOT 暴露 NoteSaveAdapter. Stage C.4 实施 PR 不允许双签名; ADR-0018 lock NoteSaveAdapter at editor-shell.
+docs/decisions/ADR-0018-v2-visual-migration.md:352:   *  Stage C.4 实施 PR 可选不存 (LocalStorageAdapter 加载时 always 从 mdxSource 重建 Tiptap state). */
+docs/decisions/ADR-0018-v2-visual-migration.md:357:   *  Phase 2+ apps/api endpoint 用作乐观锁 conflict detect (server compares incoming.version vs stored.version + 1).
+docs/decisions/ADR-0018-v2-visual-migration.md:359:   *  LocalStorageAdapter.save() NOT auto-increment (Wave 5 MVP consumer-driven; Phase 2+ ApiAdapter server-validate). */
+docs/decisions/ADR-0018-v2-visual-migration.md:363:export interface NoteSaveAdapter {
+docs/decisions/ADR-0018-v2-visual-migration.md:371:   *  Wave 5 MVP NoteSaveAdapter is sync-on-success (LocalStorageAdapter immediate);
+docs/decisions/ADR-0018-v2-visual-migration.md:372:   *  Phase 2+ ApiAdapter is async-with-retry (network failure → exponential backoff). */
+docs/decisions/ADR-0018-v2-visual-migration.md:375:  // Phase 2+ extensions (per Q12 absorbtion — Phase 2+ 兼容位预留):
+docs/decisions/ADR-0018-v2-visual-migration.md:381:  //     - Real-time collaborative; Phase 2+ ApiAdapter via WebSocket; LocalStorageAdapter NOT subscribe (single-session)
+docs/decisions/ADR-0018-v2-visual-migration.md:382:  // Wave 5 NOT include either; ADR-0018 D8 接口 v1 不动; v2 接口 ADR-0019+ amendment 引入.
+docs/decisions/ADR-0018-v2-visual-migration.md:386:export class LocalStorageAdapter implements NoteSaveAdapter {
+docs/decisions/ADR-0018-v2-visual-migration.md:403:        console.warn(`[NoteSaveAdapter] corrupted state for ${this.slug}; returning null`);
+docs/decisions/ADR-0018-v2-visual-migration.md:409:        console.warn(`[NoteSaveAdapter] localStorage SecurityError; load disabled`);
+docs/decisions/ADR-0018-v2-visual-migration.md:418:    if (serialized.length > LocalStorageAdapter.PER_NOTE_MAX_BYTES) {
+docs/decisions/ADR-0018-v2-visual-migration.md:427:      if (aggregateBytes > LocalStorageAdapter.AGGREGATE_WARN_BYTES) {
+docs/decisions/ADR-0018-v2-visual-migration.md:428:        console.warn(`[NoteSaveAdapter] aggregate notes ${aggregateBytes} bytes > 5MB; consider Phase 2+ apps/api`);
+docs/decisions/ADR-0018-v2-visual-migration.md:445:// Phase 2+ impl (NOT Wave 5 scope; placeholder forward-pointer)
+docs/decisions/ADR-0018-v2-visual-migration.md:446:// export class ApiAdapter implements NoteSaveAdapter {
+docs/decisions/ADR-0018-v2-visual-migration.md:456:- version field: monotonic int starting at 1; increments on each save. **Wave 5 MVP**: 不验证 version (单设备 单 session 假设); Phase 2+ apps/api endpoint 用 version 做乐观锁 (conflict detect).
+docs/decisions/ADR-0018-v2-visual-migration.md:457:- save 触发: Wave 5 Stage C.4 实施 PR 锁 trigger 策略 (per layoutEpoch ADR-0016 D12 +1 时 OR explicit save button OR debounced auto-save); ADR-0018 仅锁接口, NOT trigger frequency.
+docs/decisions/ADR-0018-v2-visual-migration.md:461:- **Pre-A4 (this ADR)**: NoteSaveAdapter interface + NoteState shape + LocalStorageAdapter MVP impl + Phase 2+ ApiAdapter forward-pointer. **接口冻结** (Pre-A5 仅做确认与验收 不动接口; Stage C.4 实施 PR 在此接口下实施 + 不调整 fields).
+docs/decisions/ADR-0018-v2-visual-migration.md:462:- **Stage C.4 实施**: editor-shell 创建 `NoteSaveAdapter` 实现; apps/site `/notes/[slug]/edit` route 消费; layoutReducer + mdx-bridge 集成 + save trigger 策略 (debounce / explicit / auto-save).
+docs/decisions/ADR-0018-v2-visual-migration.md:464:接口冻结约束: Wave 5 任何 PR 改动 NoteSaveAdapter / NoteState shape **必走 ADR-0018 Amendment** (D2 row 4 fires); Stage C.4 实施 不允许 silent 接口扩展.
+docs/decisions/ADR-0018-v2-visual-migration.md:478:9. **AC#9 (NoteSaveAdapter interface + LocalStorageAdapter impl + round-trip vitest)**: TypeScript `NoteSaveAdapter` interface + `NoteState` shape per D8 export from `@skb/editor-shell`; LocalStorageAdapter `load() / save()` round-trip vitest fixture (mock localStorage); ApiAdapter Phase 2+ forward-pointer comment in source
+docs/decisions/ADR-0018-v2-visual-migration.md:479:10. **AC#10 (dark mode 留 Phase 2+)**: Wave 5 NOT 实施 dark theme; `tokens-dark.css` 留 既有 (per design-tokens CONTRACT.md), NOT 加 v2 dark variant; ADR-0018 Out-of-scope explicit
+docs/decisions/ADR-0018-v2-visual-migration.md:491:- LocalStorageAdapter MVP + ApiAdapter Phase 2+ forward-pointer = upgrade path 显式; 用户可在 Wave 5 ship single-device, Phase 2+ 升级 cross-device 不破坏 NoteSaveAdapter interface (interface 冻结约束)
+docs/decisions/ADR-0018-v2-visual-migration.md:493:- `--accent-success` NEW token = ADR-0017 D11 forward-pointer 兑现; drop-pulse / save-success / commit-pulse general purpose token 可复用 (Wave 5 + Phase 2+)
+docs/decisions/ADR-0018-v2-visual-migration.md:498:- Save-path localStorage prototype = 单设备限制; user 切换设备 (e.g., 笔记本 → 手机) 时 notes 不同步; user-aware + Phase 2+ 升级路径文档化 (D8 接口冻结); MVP-acceptable per Wave 5 plan v0.2 D10
+docs/decisions/ADR-0018-v2-visual-migration.md:503:- Dark mode 推 Phase 2+ (per Q3 plan-challenger candidate; AC#10): cream/橙红主色在 dark 下需要重新设计 NOT simple invert; granularity v0.3.4 Open Q2 已 acknowledged
+docs/decisions/ADR-0018-v2-visual-migration.md:506:- Astro endpoint (路径 b) 不选 = 与 Astro static build 不兼容; Wave 5 + Phase 2+ 都 不 启用 server-mode (per ADR-0001 stack selection Astro static 决策); Phase 2+ apps/api endpoint 走 separate server (not Astro endpoint)
+docs/decisions/ADR-0018-v2-visual-migration.md:512:dispatch: `codex exec --yolo --profile plan-challenger ...` (Pre-A4 ADR-0018 design-lock 4-round style); audit log path: `/tmp/codex-runs/2026-05-04-Pre-A4-plan-challenge.txt` raw + `docs/audits/codex-runs/2026-05-04-Pre-A4-plan-challenge.txt` curated archive.
+docs/decisions/ADR-0018-v2-visual-migration.md:516:| Q1 | D-list 拆分 D1+D2+D6 是否合并 visual-tokens 单 D-section + D8 与 D1-D7 在同 ADR 是否合理 | medium | **PARTIALLY ABSORBED** | D1-D8 保持独立 (各自可追踪可 ratify); D8 自然形成 "Persist Contract" 独立子段 (`#### Save-path 决策` + `#### NoteSaveAdapter TypeScript interface` + `#### Storage key + version field semantics` + `#### Pre-A4 vs Stage C.4 boundary`) — 视觉与持久化在 D2 审核时分离. Locked at D8 子段结构. |
+docs/decisions/ADR-0018-v2-visual-migration.md:518:| Q3 | 5 missing kind hue 候选不满足 60° 角距 + a11y 对比度 | high | **ABSORBED** | D3 加 "Hue 选择原则" + relax 60° → 30° + lightness/chroma supplement + WCAG 3:1 contrast + Validation 算法; 5 kind hue 重新 lock: math 280° / pdf 0° / jupyter 90° / nn-viz 325° / agent-flow 180° (lightness/chroma 各异). markdown 默认无横条 + 'Phase 2+ alternate 标识' note. Locked at D3 Hue 选择原则段 + 5 kind 表格. |
+docs/decisions/ADR-0018-v2-visual-migration.md:524:| Q9 | NoteSaveAdapter 落点 editor-shell vs mdx-bridge | medium | **ABSORBED** | D8 NoteSaveAdapter 段 锁 `@skb/editor-shell/src/save-adapter.ts` 唯一落点; mdx-bridge 仅做序列化映射 (per ADR-0016 D7); Stage C.4 实施 PR 不允许双签名. Locked at D8 NoteSaveAdapter Adapter 落点 段. |
+docs/decisions/ADR-0018-v2-visual-migration.md:525:| Q10 | tiptapState unknown vs 明确 schema + version readonly 约束 | medium | **ABSORBED** | D8 NoteState 改 `tiptapState?: ReadonlyJSONValue` (cache-only 注释); `version` readonly + 注释 consumer 必 increment before each save() call (Wave 5 MVP consumer-driven; LocalStorageAdapter NOT auto-increment; Phase 2+ ApiAdapter server-validate). Phase 2+ apps/api 乐观锁 conflict detect 路径预留. Locked at D8 NoteState shape. |
+docs/decisions/ADR-0018-v2-visual-migration.md:526:| Q11 | localStorage 5MB cap + Quota/SecurityError silent data-loss | high | **ABSORBED** | D8 LocalStorageAdapter 加 PER_NOTE_MAX_BYTES (2MB) + AGGREGATE_WARN_BYTES (5MB) + load/save Quota/SecurityError 处理 + console.warn + save-disabled UI fallback (editor-shell 控制). Locked at D8 LocalStorageAdapter impl. |
+docs/decisions/ADR-0018-v2-visual-migration.md:527:| Q12 | NoteSaveAdapter Phase 2+ 扩展 (AbortSignal/timeout/progress) 未预留 | medium | **ABSORBED** | D8 NoteSaveAdapter interface 注释 加 Phase 2+ 扩展位 (AbortSignal/timeout/onProgress + subscribe callback for collaborative); v1 接口冻结不动; v2 接口 ADR-0019+ amendment 引入. Locked at D8 interface Phase 2+ 扩展 段. |
+docs/decisions/ADR-0018-v2-visual-migration.md:528:| Q13 | D2 trigger 门槛表 reduce 复核歧义 | low | **PARTIALLY ABSORBED** | Compliance 末尾加 "Pre-A4 D2 trigger 门槛表" — `NoteSaveAdapter 接口落文件 → 直接 row1` + "design-tokens token additions → row1 + row5" 等显式. 不必修改 D2 trigger judgment section 本身. Locked at Compliance trailing 门槛表 note. |
+docs/decisions/ADR-0018-v2-visual-migration.md:529:| Q14 | Modal canvas (Phase 2+ ADR-0019+) token 继承 explicit | low | **PARTIALLY ABSORBED** | Out-of-scope section 末尾加 modal canvas constraint: "Phase 2+ ADR-0019+ modal canvas 必继承 design-tokens (background/shadow/font); 不重复定义新 visual constants". Locked at Out-of-scope trailing note. |
+docs/decisions/ADR-0018-v2-visual-migration.md:535:**Pre-A3 internal-consistency drift lesson applied**: Pre-A3 had 4 R-rounds due to stale prose. Pre-A4 mitigation strategy: (a) absorbtion edits 直接落 each D-section's natural location (避免 cross-section 引用维护); (b) 5 missing kind hue 单一 table 一处更新; (c) D8 NoteSaveAdapter interface block 整体替换 (避免 partial inconsistency). orchestrator-self pre-empt grep 验证 stale prose 减少前置.
+docs/decisions/ADR-0018-v2-visual-migration.md:539:- This ADR satisfies [Wave 5 plan v0.2 Pre-A4 acceptance](../superpowers/plans/2026-05-04-phase-1-wave-5-integration.md) (ADR-0018 design lock + save-path 接口冻结 + plan-challenger 4-round + Q4+Q8 absorbtion 兑现 D10 修订)
+docs/decisions/ADR-0018-v2-visual-migration.md:541:- This ADR ratifies granularity doc v0.3.4 § "v2 视觉契约要素 (认证源 = v2-styles.css)" + § "v2 编辑器 UX 要素" body content (gatekeeper-side scratch at `/mnt/d/download/web/v2-design-granularity.md`, NOT in git per gatekeeper-side discipline; prose form per memory `feedback_lychee_user_local_paths`) NEW reframe v2 forward (granularity 原 Phase 2+ L1 visual scope → Wave 5 ADR-0018)
+docs/decisions/ADR-0018-v2-visual-migration.md:546:- **Pre-A4 D2 trigger 触发面 (per Wave 5 plan v0.2 D13 + Q4 absorbtion)**: 此 Pre-A4 ADR design-lock = D2 row 4 (NEW ADR) HIT. **若 surface 持久化路径变更或接口契约调整 (Q4 escalation)** = D2 row 1 (CONTRACT 影响) ALSO HIT → stage 4 强制. 本 Pre-A4 D8 锁 NoteSaveAdapter interface = NEW interface 但 NOT 修改既有 CONTRACT (`packages/editor-shell/CONTRACT.md` 既存 since Wave 3 Stage A; Stage C.4 实施 PR 同步/扩展 + W5-2 invariant 加 + NoteSaveAdapter public surface section); 故 Pre-A4 暂不触 row 1 (Stage C.4 实施 PR 时再触 row 1 + row 5 cross ≥3 packages: editor-shell + apps/site + mdx-bridge consumers)
+docs/decisions/ADR-0018-v2-visual-migration.md:547:- **Stage C.3 + Stage C.4 实施 PR D2 escalation explicit**: Stage C.3 design-tokens 实施 PR (OKLCH switchover) 必触 row 1 (design-tokens/CONTRACT.md 同步 token additions) + row 5 (cross design-tokens + apps/site + 5 light block packages + heavy-block-boundary); Stage C.4 NoteSaveAdapter 实施 PR 必触 row 1 (editor-shell/CONTRACT.md 同步/扩展 + W5-2 invariant + NoteSaveAdapter public surface) + row 5 (cross editor-shell + apps/site + mdx-bridge); orchestrator 在 Pre-A5 v1.0 lock 时 plan-challenger 验证 Stage C.3 / Stage C.4 PR 拆分粒度 + D2 trigger 准确性
+docs/decisions/ADR-0018-v2-visual-migration.md:553:| ADR-0018 NEW (this PR) | row 4 only | Pre-A4 |
+docs/decisions/ADR-0018-v2-visual-migration.md:554:| ADR-0018 Amendment (v0.X.X) | row 4 only | (任何 Wave 5+ amendment PR) |
+docs/decisions/ADR-0018-v2-visual-migration.md:559:| `@skb/editor-shell/src/save-adapter.ts` (NEW NoteSaveAdapter interface 落文件) | row 1 (editor-shell/CONTRACT.md 同步/扩展 + W5-2 invariant 加 + NoteSaveAdapter public surface section) + row 5 (cross editor-shell + apps/site + mdx-bridge) | Stage C.4 |
+docs/decisions/ADR-0018-v2-visual-migration.md:560:| LocalStorageAdapter impl + apps/site `/notes/[slug]/edit` route | row 1 (editor-shell/CONTRACT.md 同步) + row 5 (cross-package) | Stage C.4 |
+docs/decisions/ADR-0018-v2-visual-migration.md:562:- **Modal canvas (Phase 2+ ADR-0019+) token 继承约束 (per Q14 absorbtion)**: ADR-0018 不覆盖 modal canvas drag/drop UX (per ADR-0017 D6 lift 模式 在 inline grid; modal 内独立 surface). 但 modal 视觉必继承 `@skb/design-tokens` 既有 token (background `--bg` cream / shadow rgba(20,15,10) 暖色调 / font `--sans` Inter / radius / row-h / gap / accent / canvas / mark / `--accent-success`); Phase 2+ ADR-0019+ modal canvas ADR 不允许重复定义 visual constants. Modal 内部 UX (e.g., toolbar / inspector) 视觉 token 全 inherit; 仅 layout / interaction logic 在 Phase 2+ ADR scope.
+docs/decisions/ADR-0018-v2-visual-migration.md:568:- [ADR-0016 grid 数据模型](ADR-0016-grid-data-model.md) — `--row-h` + `--gap` token authoritative source (此 ADR D1 + D6); MDX serialize ADR-0016 D7 与 NoteSaveAdapter D8 配套
+docs/decisions/ADR-0018-v2-visual-migration.md:573:- [ADR-0006 8-point asymmetry audit](ADR-0006-asymmetry-audit-checklist.md) — items #5 (algorithm + runtime constants 复刻; 14 OKLCH + 1 hex + 3 layout + 8 kind hue + 3 shadow + 2 font 必 single-source design-tokens) + #6 (sister CONTRACT.md sync; design-tokens CONTRACT.md Stage C.3 PR 同步; editor-shell CONTRACT.md 既存 Wave 3 Stage A; Stage C.4 PR 同步/扩展 + W5-2 invariant) + #8 (authority: ADR-0018 NEW; README ADR roster sync)
+docs/decisions/ADR-0018-v2-visual-migration.md:574:- [ADR-0005 API conventions](ADR-0005-api-conventions.md) — Phase 2+ ApiAdapter 升级路径 consume (REST `/v1/notes/<slug>` per camelCase + RFC 7807)
+docs/decisions/ADR-0018-v2-visual-migration.md:579:- granularity doc v0.3.4 (`/mnt/d/download/web/v2-design-granularity.md`) — gatekeeper-side scratch; § "v2 视觉契约要素 (认证源 = v2-styles.css)" + § "v2 编辑器 UX 要素" body 是此 ADR D1-D7 source intent (per Wave 5 plan v0.2 D5 ADR 编号映射表 NEW reframe v2 forward; granularity 原 Phase 2+ L1 visual scope)
+docs/plans/wave-3-main/C3-sample-blocks-page-live.md:189:- Per-block selective heavy-chunk loading (Phase 2 chunking; C5+).
+docs/plans/wave-3-main/C2-apps-site-dynamic-chunking.md:12:> "Phase 2 chunking" — when sample-blocks goes live and block-usage is
+docs/plans/wave-3-main/C2-apps-site-dynamic-chunking.md:26:Phase 2 (per-block selective loading via per-tag thunk evaluation) is
+docs/plans/wave-3-main/C2-apps-site-dynamic-chunking.md:61:chunks; prose-only routes load 0). "Phase 2 chunking" (per-block
+docs/plans/wave-3-main/C2-apps-site-dynamic-chunking.md:370:   together. **Phase 2 (C5+)**: per-block selective loading deferred
+docs/plans/wave-3-main/C2-apps-site-dynamic-chunking.md:387:prose-only zero-heavy-strings property. Phase 2 (per-block selective
+packages/heavy-block-boundary/src/__tests__/HeavyBlockBoundary.test.tsx:332:    // Phase 2: successful load -> aria-busy='false'
+docs/plans/wave-4-main/A7-astro-variants-consolidation.md:398:  C4a/C4b carry-over)" to "Stage A8 (Phase 2 chunking + perf
+docs/plans/wave-4-main/A7-astro-variants-consolidation.md:464:  template output + zero React runtime). C5 (Phase 2 chunking) is
+docs/plans/wave-4-main/A7-astro-variants-consolidation.md:594:  (A7 adds NO `manualChunks` entries; C5 Phase 2 chunking is A8
+docs/plans/wave-4-main/A7-astro-variants-consolidation.md:952:    pointer flipped to `Stage A8 (Phase 2 chunking + perf baseline
+docs/plans/wave-4-main/A7-astro-variants-consolidation.md:980:20. **Out-of-scope deferred to A8 (Stage A close)**: C5 Phase 2
+docs/plans/wave-4-main/A7-astro-variants-consolidation.md:1024:- **A8 (Stage A close)**: Phase 2 selective chunking refinement
+docs/plans/wave-5-main/Pre-A3-adr-0017-drag-drop-ux.md:10:> (预计算 edge rects + 距离 tiebreak; 选项 2/3 留 Phase 2+) + 源块 lift 模式 +
+docs/plans/wave-5-main/Pre-A3-adr-0017-drag-drop-ux.md:163:5. **D5 命中选项 1 + 选项 2 + 选项 3 备案 explicit** (Phase 2+ 性能优化路径
+docs/plans/wave-5-main/Pre-A3-adr-0017-drag-drop-ux.md:238:- **Pre-A4 ADR-0018 v2 视觉 migration + save-path 接口冻结** — sequential per
+docs/plans/wave-5-main/Pre-A3-adr-0017-drag-drop-ux.md:247:  - design-tokens GAP token + accent token (Stage C.3 ADR-0018; consumed by drag/drop
+docs/plans/wave-5-main/Pre-A3-adr-0017-drag-drop-ux.md:249:- **Modal canvas drag/drop UX** (granularity 旧 ADR-0014 = Wave 5+ ADR-0019+) — Phase 2+
+docs/plans/wave-4-main/Pre-A3-plan-lock.md:205:- Phase 2 plan-draft — happens after Wave 4 close; out of scope here.
+docs/plans/wave-4-main/wave-4-close-ceremony.md:16:  - D3 — Wave 5 deferred items (binding handoff): reframe v2 = heavy block plugin tier + grid forward (ADR-0016) + drag/drop forward (ADR-0017) + v2 视觉 forward (ADR-0018) + editor-shell wire-up + Stage C residue (C-3 PDF iframe + C-4 chunk-leak)
+docs/plans/wave-4-main/wave-4-close-ceremony.md:139:3. **Wave 5 deferred items binding handoff** in ADR-0015 D3: heavy block plugin tier + grid forward (ADR-0016) + drag/drop forward (ADR-0017) + v2 视觉 forward (ADR-0018) + editor-shell wire-up + Stage C residue (C-3 + C-4 + apps/site/test-results gitignore).
+docs/plans/wave-4-main/wave-4-close-ceremony.md:185:- **Wave 5 plan-draft authoring**: Pre-A1 (Wave 5 plan + plan-challenger) + Pre-A2 (ADR-0016 grid + plan-challenger) + Pre-A3 (ADR-0017 drag/drop + plan-challenger) + Pre-A4 (ADR-0018 v2 视觉 + plan-challenger) + Pre-A5 (Wave 5 plan v1.0 lock)
+docs/plans/wave-5-main/Pre-A1-plan-lock.md:59:  `docs/decisions/ADR-0018*.md` — TBD at Pre-A2/A3/A4; NOT in scope
+docs/plans/wave-5-main/Pre-A1-plan-lock.md:89:  `grep -cE 'ADR-0016|ADR-0017|ADR-0018' docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md`.
+docs/plans/wave-5-main/Pre-A1-plan-lock.md:155:   Pre-A3 ADR-0017 + Pre-A4 ADR-0018 + Pre-A5 v1.0 final lock) — TC3
+docs/plans/wave-5-main/Pre-A1-plan-lock.md:293:- **Pre-A3 ADR-0017 + Pre-A4 ADR-0018 + Pre-A5 v1.0 lock** — sequential
+docs/plans/overview.md:17:| 2b    | pending     | (Phase 2a 完工后 writing-plans 产出)                                                    |
+docs/audits/perf-2026-05-wave-5-c4-chunk-leak.md:121:## Phase 2+ Note
+docs/audits/perf-2026-05-wave-5-c4-chunk-leak.md:129:Recommended Phase 2+ checks:
+docs/audits/perf-2026-05-wave-5-c4-chunk-leak.md:140:- ADR-0014 v0.4 D11: plugin tier split and Phase 2+ real-runtime pointer.
+docs/plans/wave-5-main/C.1-1-heavy-block-plugin-placeholder.md:10:> runtime is deferred to a Phase 2+ `plugin-real-runtime` tier; the
+docs/plans/wave-5-main/C.1-1-heavy-block-plugin-placeholder.md:15:> while preserving the Pyodide CDN paragraph as Phase 2+ pointer.
+docs/plans/wave-5-main/C.1-1-heavy-block-plugin-placeholder.md:38:`{KindLabel} · plugin runtime (Phase 2+)`. NO OKLCH / kind-hue token
+docs/plans/wave-5-main/C.1-1-heavy-block-plugin-placeholder.md:40:ADR-0018 D3 forward-pointer). Keep the 3 Astro wrappers
+docs/plans/wave-5-main/C.1-1-heavy-block-plugin-placeholder.md:56:preserving the Pyodide CDN paragraph as Phase 2+ forward-pointer (do
+docs/plans/wave-5-main/C.1-1-heavy-block-plugin-placeholder.md:89:  · plugin runtime (Phase 2+)</span></div>`. The
+docs/plans/wave-5-main/C.1-1-heavy-block-plugin-placeholder.md:102:  `NnViz · plugin runtime (Phase 2+)`. BEM modifier
+docs/plans/wave-5-main/C.1-1-heavy-block-plugin-placeholder.md:108:  `AgentFlow · plugin runtime (Phase 2+)`. BEM modifier
+docs/plans/wave-5-main/C.1-1-heavy-block-plugin-placeholder.md:143:    runtimes. The `plugin-real-runtime` tier (Phase 2+) restores the
+docs/plans/wave-5-main/C.1-1-heavy-block-plugin-placeholder.md:156:    "**Phase 2+ plugin-real-runtime tier forward-pointer** — at v0.4
+docs/plans/wave-5-main/C.1-1-heavy-block-plugin-placeholder.md:169:  tier split: placeholder (Wave 5 MVP) vs real-runtime (Phase 2+)`).
+docs/plans/wave-5-main/C.1-1-heavy-block-plugin-placeholder.md:176:       placeholder. Real runtime restoration deferred to Phase 2+
+docs/plans/wave-5-main/C.1-1-heavy-block-plugin-placeholder.md:180:       tier (Phase 2+; would dynamic-import the heavy package's
+docs/plans/wave-5-main/C.1-1-heavy-block-plugin-placeholder.md:204:       tier. The `plugin-real-runtime` tier (Phase 2+) will exercise
+docs/plans/wave-5-main/C.1-1-heavy-block-plugin-placeholder.md:211:       label `{KindLabel} · plugin runtime (Phase 2+)`. NEW BEM
+docs/plans/wave-5-main/C.1-1-heavy-block-plugin-placeholder.md:217:    5. **Phase 2+ migration sketch** (~10 LOC): conditional tier
+docs/plans/wave-5-main/C.1-1-heavy-block-plugin-placeholder.md:223:       documented as Phase 2+ scope.
+docs/plans/wave-5-main/C.1-1-heavy-block-plugin-placeholder.md:233:    `🔌`; tree contains text `Jupyter · plugin runtime (Phase 2+)`;
+docs/plans/wave-5-main/C.1-1-heavy-block-plugin-placeholder.md:239:    `'nn-viz'`, label `NnViz · plugin runtime (Phase 2+)`, dims
+docs/plans/wave-5-main/C.1-1-heavy-block-plugin-placeholder.md:242:    kind `'agent-flow'`, label `AgentFlow · plugin runtime (Phase 2+)`,
+docs/plans/wave-5-main/C.1-1-heavy-block-plugin-placeholder.md:273:     (Phase 2+)`; outer inline style `width: 600px` +
+docs/plans/wave-5-main/C.1-1-heavy-block-plugin-placeholder.md:282:     `NnViz · plugin runtime (Phase 2+)`; dims `width: 500px` +
+docs/plans/wave-5-main/C.1-1-heavy-block-plugin-placeholder.md:290:     `AgentFlow · plugin runtime (Phase 2+)`; dims `width: 600px` +
+docs/plans/wave-5-main/C.1-1-heavy-block-plugin-placeholder.md:342:  framing + Pyodide CDN preserved as Phase 2+ pointer). 8-key
+docs/plans/wave-5-main/C.1-1-heavy-block-plugin-placeholder.md:349:  Phase 2+ plugin-real-runtime tier; only the island consumer rewires).
+docs/plans/wave-5-main/C.1-1-heavy-block-plugin-placeholder.md:360:- `docs/decisions/ADR-0018-v2-visual-migration.md` — **NOT touched**
+docs/plans/wave-5-main/C.1-1-heavy-block-plugin-placeholder.md:362:  v0.5 per ADR-0018 D3 forward-pointer).
+docs/plans/wave-5-main/C.1-1-heavy-block-plugin-placeholder.md:376:  - `grep -F 'Jupyter · plugin runtime (Phase 2+)' apps/site/src/islands/JupyterIsland.tsx`
+docs/plans/wave-5-main/C.1-1-heavy-block-plugin-placeholder.md:387:  `NnViz · plugin runtime (Phase 2+)`.
+docs/plans/wave-5-main/C.1-1-heavy-block-plugin-placeholder.md:391:  `agent-flow` + label `AgentFlow · plugin runtime (Phase 2+)`.
+docs/plans/wave-5-main/C.1-1-heavy-block-plugin-placeholder.md:409:  - `grep -F 'Phase 2+ plugin-real-runtime' apps/site/CONTRACT.md`
+docs/plans/wave-5-main/C.1-1-heavy-block-plugin-placeholder.md:502:Pre-A4 ADR-0018). Implementation PRs rely on Stage 3
+docs/plans/wave-5-main/C.1-1-heavy-block-plugin-placeholder.md:607:   (alternate consumer surface; no Stage C.1 obligation; Phase 2+ may
+docs/plans/wave-5-main/C.1-1-heavy-block-plugin-placeholder.md:612:   prepend Phase 2+ forward-pointer framer; AC#6 enforces
+docs/plans/wave-5-main/C.1-1-heavy-block-plugin-placeholder.md:621:   satisfies …; Phase 2+ real-runtime tier exercises …"); future tier
+docs/plans/wave-5-main/C.1-1-heavy-block-plugin-placeholder.md:645:- **ADR-0018 OKLCH token consumption by placeholder** (Stage C.3 +
+docs/plans/wave-5-main/C.1-1-heavy-block-plugin-placeholder.md:646:  ADR-0014 v0.5 follow-up; ADR-0018 D3 forward-pointer at L154). The
+docs/plans/wave-5-main/C.1-1-heavy-block-plugin-placeholder.md:651:  obligation; Phase 2+ may align.
+docs/plans/wave-5-main/C.1-1-heavy-block-plugin-placeholder.md:655:  preserved unchanged for Phase 2+ plugin-real-runtime tier; only the
+docs/plans/wave-5-main/C.1-1-heavy-block-plugin-placeholder.md:659:- **Plugin-real-runtime tier reactivation** — Phase 2+ scope; v0.4
+docs/plans/wave-5-main/C.1-1-heavy-block-plugin-placeholder.md:660:  amendment includes a "Phase 2+ migration sketch" stub but ships no
+docs/plans/wave-5-main/C.1-1-heavy-block-plugin-placeholder.md:752:- [ADR-0018 v2 visual migration](../../decisions/ADR-0018-v2-visual-migration.md)
+docs/plans/wave-5-main/C.1-1-heavy-block-plugin-placeholder.md:764:  that wiring with the placeholder tier (Phase 2+ may resurface B7's
+docs/plans/wave-5-main/C.1-1-heavy-block-plugin-placeholder.md:768:  preserved unchanged for Phase 2+ plugin-real-runtime tier (per
+docs/plans/wave-4-main/A2-heavy-block-boundary-core.md:653:- **A8** — Phase 2 selective per-block chunking + perf baseline (C5
+docs/audits/structure-2026-04-29-wave-1.md:118:| `agent-tools` | (none) | yes (expected) | Wave 2 will be consumed by `apps/api/agent_bridge.py` (Phase 2b) and editor-shell. CONTRACT documents Phase 1 vs 2b split. |
+docs/audits/structure-2026-04-29-wave-1.md:125:| `mdx-bridge` | (none) | yes (expected) | Wave 2 will be consumed by editor-shell (load → Tiptap → save) and by `apps/api` server-side serialize check (Phase 2b). |
+docs/plans/wave-5-main/C.2-5-drag-drop-ux.md:143:   Tokens are deferred to ADR-0018 (Stage C.3); C.2-5 ships only the
+docs/plans/wave-5-main/C.2-5-drag-drop-ux.md:280:per ADR-0017 D5 lines 234-242 — option 2/3 deferred to Phase 2+ when
+docs/plans/wave-5-main/C.2-5-drag-drop-ux.md:554:  `--accent` / `--accent-soft` tokens are all deferred to ADR-0018
+docs/plans/wave-5-main/C.2-5-drag-drop-ux.md:604:ADR-0018 (v2 visual migration) Pre-A4 design-lock owns the design
+docs/plans/wave-5-main/C.2-5-drag-drop-ux.md:913:  ADR-0018 design-tokens package; C.2-5 ships only structural class
+docs/plans/wave-5-main/C.2-5-drag-drop-ux.md:1163:  (token integration via ADR-0018).
+docs/plans/wave-5-main/C.2-5-drag-drop-ux.md:1205:  entirely; Phase 2+.
+docs/plans/wave-5-main/C.2-5-drag-drop-ux.md:1209:  ADR-0018 design-tokens) — deferred to **Stage C.3** (token
+docs/plans/wave-5-main/C.2-5-drag-drop-ux.md:1220:  entirely; Phase 2+ (ADR-0019+).
+docs/audits/perf-2026-05-wave-3-close.md:60:1. **C5 deferred work**: Phase 2 selective per-block heavy-chunk loading + measure per-route bundle delta after C4a/C4b ship Astro variants for math/pdf/jupyter/nn-viz/agent-flow.
+docs/plans/wave-4-main/A4-heavy-block-boundary-css-a11y.md:374:    `getAttribute('aria-hidden') === 'true'`. Phase 2 (successful
+docs/plans/wave-4-main/A4-heavy-block-boundary-css-a11y.md:649:  `__spinner` both `aria-hidden === 'true'`; Phase 2 (successful
+docs/plans/wave-4-main/A4-heavy-block-boundary-css-a11y.md:1244:- **A8** — Phase 2 selective per-block chunking + perf baseline
+docs/plans/wave-4-main/A8-perf-chunking-adr-0014-promote.md:1:# A8 — Stage A close: perf baseline + Phase 2 chunking (data-driven) + ADR-0014 promote `proposed → accepted`
+docs/plans/wave-4-main/A8-perf-chunking-adr-0014-promote.md:4:> carry-over **C5** (Phase 2 selective per-block chunking refinement
+docs/plans/wave-4-main/A8-perf-chunking-adr-0014-promote.md:13:> (2) **Phase 2 chunking decision** — **conditional** on perf data
+docs/plans/wave-4-main/A8-perf-chunking-adr-0014-promote.md:87:`--analyze`), and apply Phase 2 selective chunking refinement in
+docs/plans/wave-4-main/A8-perf-chunking-adr-0014-promote.md:182:  | #TBD | TBD | A8 — this PR (Stage A close: perf baseline + Phase 2 chunking decision + status promotion + Pre-promotion review walkthrough) |
+docs/plans/wave-4-main/A8-perf-chunking-adr-0014-promote.md:335:  > + plan-challenger C4 absorbtion (data-driven Phase 2 chunking
+docs/plans/wave-4-main/A8-perf-chunking-adr-0014-promote.md:350:  #1. Phase 2 selective chunking refinement is data-driven per
+docs/plans/wave-4-main/A8-perf-chunking-adr-0014-promote.md:517:  baseline + Phase 2 chunking decision (data-driven) + ADR-0014
+docs/plans/wave-4-main/A8-perf-chunking-adr-0014-promote.md:534:  + A1 + A2 + A3 + A4 + A5 + A6 + A7 done. **Stage A8 (Phase 2
+docs/plans/wave-4-main/A8-perf-chunking-adr-0014-promote.md:1355:7. **Phase 2 chunking decision recorded** (per plan-challenger C4
+docs/plans/wave-5-main/v1.2-plan-amendment-r14-second.md:56:class, NOT same-class identity match) + ADR-0018 D8 NoteSaveAdapter 接口冻结
+docs/plans/wave-5-main/v1.2-plan-amendment-r14-second.md:57:(LocalStorageAdapter MVP path
+docs/plans/wave-5-main/v1.2-plan-amendment-r14-second.md:110:     (NEW; LocalStorageAdapter MVP per ADR-0018 D8 接口冻结 — note
+docs/plans/wave-5-main/v1.2-plan-amendment-r14-second.md:111:     this overlaps with C.4-1 NoteSaveAdapter but C.4-prelude
+docs/plans/wave-5-main/v1.2-plan-amendment-r14-second.md:112:     **owns the LocalStorageAdapter MVP impl path** while C.4-1 owns
+docs/plans/wave-5-main/v1.2-plan-amendment-r14-second.md:113:     the **interface design + NoteState shape + ApiAdapter Phase 2+
+docs/plans/wave-5-main/v1.2-plan-amendment-r14-second.md:184:the existing ADR-0018 D8 NoteSaveAdapter interface lock from Pre-A4
+docs/plans/wave-5-main/v1.2-plan-amendment-r14-second.md:185:(HEAD `7e487ec`) covers the C.4-prelude LocalStorageAdapter MVP scope
+docs/plans/wave-5-main/v1.2-plan-amendment-r14-second.md:233:- ADR-0018 D8 NoteSaveAdapter 接口冻结 (Pre-A4 HEAD `7e487ec` lock,
+docs/plans/wave-5-main/v1.2-plan-amendment-r14-second.md:235:  anchor** for the C.4-prelude LocalStorageAdapter MVP path (per
+docs/plans/wave-5-main/v1.2-plan-amendment-r14-second.md:236:  ADR-0018 D8 + Q11 absorbtion = LocalStorageAdapter PER_NOTE_MAX_BYTES
+docs/plans/wave-5-main/v1.2-plan-amendment-r14-second.md:318:git diff origin/main -- docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md | grep -E '^\+' | grep -vE '^\+\+\+' | grep -E '(LocalStorageAdapter\s*=\s*class|class\s+LocalStorageAdapter|interface\s+NoteSaveAdapter|export\s+(const|function|class)|describe\s*\(|test\s*\(|expect\s*\(|throw new Error|localStorage\.(getItem|setItem))' | wc -l
+docs/plans/wave-5-main/v1.2-plan-amendment-r14-second.md:361:| Q3 | Ownership boundary C.4-prelude vs C.4-1 NoteSaveAdapter | medium | **ABSORBED** | Refine boundary: **C.4-prelude ships minimal MVP `LocalStorageAdapter` impl (per ADR-0018 D8); C.4-1 ships `NoteSaveAdapter` interface contract hardening + `NoteState` shape + W5-2 update + adapter contract tests** (NOT re-implement MVP impl). C.4-1 LOC reduced from ~250 (v1.0) → ~150 (post v1.2; impl LOC moved to C.4-prelude). Locked at sub-edit b C.4-prelude whitelist + plan C.4-1 row prose update + ownership-boundary explicit cite. |
+docs/plans/wave-5-main/v1.2-plan-amendment-r14-second.md:403:5. **ADR-0018 D8 NoteSaveAdapter MVP fidelity** — does the
+docs/plans/wave-5-main/v1.2-plan-amendment-r14-second.md:404:   C.4-prelude LocalStorageAdapter MVP scope cover ADR-0018 D8 +
+docs/plans/wave-5-main/v1.2-plan-amendment-r14-second.md:408:   preliminary: YES — the LocalStorageAdapter MVP impl in
+docs/plans/wave-5-main/v1.2-plan-amendment-r14-second.md:411:   ApiAdapter Phase 2+ forward-pointer comment is deferred to
+docs/plans/wave-5-main/v1.2-plan-amendment-r14-second.md:440:   ADR-0018 D8 (NoteSaveAdapter 接口冻结 reference) + memory
+docs/plans/wave-5-main/v1.2-plan-amendment-r14-second.md:477:    LocalStorageAdapter MVP impl per ADR-0018 D8, (e) tests.
+docs/plans/wave-5-main/v1.2-plan-amendment-r14-second.md:540:  a substantive ADR-0018 D8 amendment** (D8 NoteSaveAdapter
+docs/plans/wave-5-main/v1.2-plan-amendment-r14-second.md:679:route + EditorShellMount wrapper + LocalStorageAdapter MVP impl) —
+docs/plans/wave-5-main/v1.2-plan-amendment-r14-second.md:683:(b) **NoteSaveAdapter interface design + NoteState shape +
+docs/plans/wave-5-main/v1.2-plan-amendment-r14-second.md:684:ApiAdapter Phase 2+ forward-pointer comment + W5-2 CONTRACT public
+docs/plans/wave-5-main/v1.2-plan-amendment-r14-second.md:686:plan §524). C.4-prelude **owns the impl path** for LocalStorageAdapter
+docs/plans/wave-5-main/v1.2-plan-amendment-r14-second.md:697:§527). C.4-prelude ships LocalStorageAdapter MVP single-direction
+docs/plans/wave-5-main/v1.2-plan-amendment-r14-second.md:710:C.3 (no scaffold-class visual coupling per ADR-0018 D6 = visual
+docs/plans/wave-5-main/v1.2-plan-amendment-r14-second.md:812:- [ADR-0018 v2 visual migration + D8 NoteSaveAdapter 接口冻结](../../decisions/ADR-0018-v2-visual-migration.md) — D8 LocalStorageAdapter MVP path locked at Pre-A4
+docs/plans/wave-4-main/A1-heavy-block-boundary-package.md:418:- **A8** — Phase 2 selective per-block chunking + perf baseline
+docs/plans/wave-4-main/Pre-A2-adr-0014-heavy-block-boundary.md:248:- Phase 2 selective per-block chunking + perf baseline (C5 carry-over).
+docs/plans/wave-5-main/Pre-A4-adr-0018-v2-visual-migration.md:1:# Pre-A4 — ADR-0018 v2 视觉 migration design lock + save-path 接口冻结 + plan-challenger 4-round
+docs/plans/wave-5-main/Pre-A4-adr-0018-v2-visual-migration.md:3:> **Wave 5 Pre-A ADR design-lock PR.** Authors `docs/decisions/ADR-0018-v2-visual-migration.md`
+docs/plans/wave-5-main/Pre-A4-adr-0018-v2-visual-migration.md:11:> NoteSaveAdapter TypeScript interface + NoteState shape + LocalStorageAdapter MVP impl +
+docs/plans/wave-5-main/Pre-A4-adr-0018-v2-visual-migration.md:12:> Phase 2+ ApiAdapter forward-pointer. Updates `docs/decisions/README.md` ADR roster (add
+docs/plans/wave-5-main/Pre-A4-adr-0018-v2-visual-migration.md:13:> ADR-0018). Plan-challenger codex 4-round per ADR-0007 D5 + Wave 5 Pre-A2 12/12 + Pre-A3
+docs/plans/wave-5-main/Pre-A4-adr-0018-v2-visual-migration.md:20:Wave 5 — author ADR-0018 v2 视觉 migration (OKLCH design-tokens + Inter/JetBrains Mono +
+docs/plans/wave-5-main/Pre-A4-adr-0018-v2-visual-migration.md:22:calibration) + save-path 接口冻结 (NoteSaveAdapter interface + NoteState + LocalStorage
+docs/plans/wave-5-main/Pre-A4-adr-0018-v2-visual-migration.md:23:MVP + ApiAdapter Phase 2+ forward) status proposed + update `docs/decisions/README.md`
+docs/plans/wave-5-main/Pre-A4-adr-0018-v2-visual-migration.md:24:ADR roster (add ADR-0018) + dispatch plan-challenger codex 4-round + absorb verdicts →
+docs/plans/wave-5-main/Pre-A4-adr-0018-v2-visual-migration.md:25:ADR-0018 status proposed lock + bundle Pre-A3 codex pr-reviewer-55 R1-R4 audit log
+docs/plans/wave-5-main/Pre-A4-adr-0018-v2-visual-migration.md:32:- `docs/decisions/ADR-0018-v2-visual-migration.md` — NEW; ~395 LOC ADR with D1-D8 (1.
+docs/plans/wave-5-main/Pre-A4-adr-0018-v2-visual-migration.md:36:  CSS calibration scope + 8. save-path 接口冻结 NoteSaveAdapter interface + 3 候选路径
+docs/plans/wave-5-main/Pre-A4-adr-0018-v2-visual-migration.md:37:  trade-off + LocalStorageAdapter MVP + Phase 2+ ApiAdapter forward) + AC#1-#12 +
+docs/plans/wave-5-main/Pre-A4-adr-0018-v2-visual-migration.md:39:- `docs/decisions/README.md` — ADR roster updated: NEW row for ADR-0018 (status:
+docs/plans/wave-5-main/Pre-A4-adr-0018-v2-visual-migration.md:74:  同步/扩展 + NoteSaveAdapter public surface section 加 + W5-2 invariant 加; Pre-A4
+docs/plans/wave-5-main/Pre-A4-adr-0018-v2-visual-migration.md:76:- `packages/editor-shell/src/save-adapter.ts` (NEW Stage C.4) — NoteSaveAdapter
+docs/plans/wave-5-main/Pre-A4-adr-0018-v2-visual-migration.md:77:  interface + LocalStorageAdapter impl; Pre-A4 仅 ADR schema lock
+docs/plans/wave-5-main/Pre-A4-adr-0018-v2-visual-migration.md:81:  (`/notes/[slug]/edit` route mount editor-shell + NoteSaveAdapter consumer) 实施 scope
+docs/plans/wave-5-main/Pre-A4-adr-0018-v2-visual-migration.md:91:- **TC1** (ADR-0018 file exists) Input: `test -f docs/decisions/ADR-0018-v2-visual-migration.md && echo OK`. Expected: `OK`.
+docs/plans/wave-5-main/Pre-A4-adr-0018-v2-visual-migration.md:92:- **TC2** (status proposed; allow v0.X.X suffix) Input: `grep -cE '^\| 状态 \| proposed' docs/decisions/ADR-0018-v2-visual-migration.md`. Expected: `1`.
+docs/plans/wave-5-main/Pre-A4-adr-0018-v2-visual-migration.md:94:  Input: `grep -cE '^### D[0-9]+ —|^[0-9]+\. \*\*AC#[0-9]+|^## Plan-challenger codex absorbtion|^## Compliance|^## Related' docs/decisions/ADR-0018-v2-visual-migration.md`. Expected: `≥ 23` (8 D + 12 AC + 1 + 1 + 1).
+docs/plans/wave-5-main/Pre-A4-adr-0018-v2-visual-migration.md:95:- **TC4** (D1 token rows: 15 color (14 OKLCH + 1 hex `--surface`) + 3 layout (--row-h / --gap / --radius) = 18 rows ≥ 16 in D1 table; 2 font + 3 shadow tokens are in D2 + D6 NOT D1) Input: `grep -cE '^\| \`--' docs/decisions/ADR-0018-v2-visual-migration.md`. Expected: `≥ 16` (D1 table 18 rows actual; matches acceptance bullet 3).
+docs/plans/wave-5-main/Pre-A4-adr-0018-v2-visual-migration.md:96:- **TC5** (D3 9 kind table rows: 4 既有 + 5 NEW; 8 hue tokens; markdown no hue) Input: `grep -cE '^\| (canvas|runnable|image|markdown|math|pdf|jupyter|nn-viz|agent-flow) \|' docs/decisions/ADR-0018-v2-visual-migration.md`. Expected: `≥ 9` (4 既有 entries incl markdown no-hue + 5 NEW kind entries; 8 hue tokens 总 since markdown 默认无横条).
+docs/plans/wave-5-main/Pre-A4-adr-0018-v2-visual-migration.md:97:- **TC6** (D8 NoteSaveAdapter interface + LocalStorageAdapter impl explicit) Input: `grep -cE 'NoteSaveAdapter|NoteState|LocalStorageAdapter|class.*Adapter' docs/decisions/ADR-0018-v2-visual-migration.md`. Expected: `≥ 6`.
+docs/plans/wave-5-main/Pre-A4-adr-0018-v2-visual-migration.md:98:- **TC7** (D8 3 候选路径 trade-off table) Input: `grep -cE '^\| \(a\)|^\| \(b\)|^\| \(c\)' docs/decisions/ADR-0018-v2-visual-migration.md`. Expected: `≥ 3`.
+docs/plans/wave-5-main/Pre-A4-adr-0018-v2-visual-migration.md:99:- **TC8** (D8 Wave 5 MVP localStorage 锁; Phase 2+ apps/api forward) Input: `grep -cE 'Wave 5 MVP.*localStorage|Phase 2\+.*[Aa]pi[Aa]dapter|localStorage prototype' docs/decisions/ADR-0018-v2-visual-migration.md`. Expected: `≥ 3`.
+docs/plans/wave-5-main/Pre-A4-adr-0018-v2-visual-migration.md:100:- **TC9** (Dark mode 推 Phase 2+ in Out-of-scope / Consequences) Input: `grep -cE '[Dd]ark mode.*Phase 2|tokens-dark.*留|Wave 5 NOT.*dark' docs/decisions/ADR-0018-v2-visual-migration.md`. Expected: `≥ 2`.
+docs/plans/wave-5-main/Pre-A4-adr-0018-v2-visual-migration.md:101:- **TC10** (D1 `--accent-success` token + ADR-0017 D11 forward back-reference) Input: `grep -cE 'accent-success|ADR-0017 D11' docs/decisions/ADR-0018-v2-visual-migration.md`. Expected: `≥ 3`.
+docs/plans/wave-5-main/Pre-A4-adr-0018-v2-visual-migration.md:102:- **TC11** (README ADR roster includes ADR-0018) Input: `grep -cE '^\| \[0018\]\(ADR-0018-v2-visual-migration\.md\)' docs/decisions/README.md`. Expected: `1`.
+docs/plans/wave-5-main/Pre-A4-adr-0018-v2-visual-migration.md:103:- **TC12** (Plan-challenger absorbtion table populated post-dispatch) Input: `awk '/^## Plan-challenger codex absorbtion/,0' docs/decisions/ADR-0018-v2-visual-migration.md | grep -cE '^\| (Q[0-9]+|C[0-9]+) \|'`. Expected: `≥ 1`.
+docs/plans/wave-5-main/Pre-A4-adr-0018-v2-visual-migration.md:109:- **TC18** (D8 Pre-A4 vs Stage C.4 boundary explicit) Input: `grep -cE 'Pre-A4.*Stage C\.4 boundary|接口冻结约束' docs/decisions/ADR-0018-v2-visual-migration.md`. Expected: `≥ 2`.
+docs/plans/wave-5-main/Pre-A4-adr-0018-v2-visual-migration.md:113:None at Pre-A4. ADR-0018 是 design-tokens OKLCH switchover + save-path interface schema
+docs/plans/wave-5-main/Pre-A4-adr-0018-v2-visual-migration.md:118:- **#8 (authority 文档改动 → generated/consumed surface 同 commit sync)**: ADR-0018 NEW = authority; generated surface = `docs/decisions/README.md` ADR roster row; sync 在 same commit
+docs/plans/wave-5-main/Pre-A4-adr-0018-v2-visual-migration.md:123:- **ADR-0018** (NEW; status proposed): Pre-A4 design-lock; this PR creates ADR-0018
+docs/plans/wave-5-main/Pre-A4-adr-0018-v2-visual-migration.md:127:- ADR-0005 (existing): Phase 2+ ApiAdapter 升级路径 consume API conventions; ADR-0005 content 不动
+docs/plans/wave-5-main/Pre-A4-adr-0018-v2-visual-migration.md:132:1. **ADR-0018 committed** at `docs/decisions/ADR-0018-v2-visual-migration.md` with status `proposed` — TC1+TC2.
+docs/plans/wave-5-main/Pre-A4-adr-0018-v2-visual-migration.md:136:5. **D8 NoteSaveAdapter interface + NoteState + LocalStorageAdapter MVP impl** explicit — TC6.
+docs/plans/wave-5-main/Pre-A4-adr-0018-v2-visual-migration.md:138:7. **Dark mode 推 Phase 2+ (Out-of-scope / Consequences acknowledgment)** — TC9.
+docs/plans/wave-5-main/Pre-A4-adr-0018-v2-visual-migration.md:140:9. **ADR roster updated**: ADR-0018 added — TC11.
+docs/plans/wave-5-main/Pre-A4-adr-0018-v2-visual-migration.md:147:16. **D8 Pre-A4 vs Stage C.4 boundary explicit** (接口冻结约束: 改 NoteSaveAdapter / NoteState 必走 ADR-0018 Amendment) — TC18.
+docs/plans/wave-5-main/Pre-A4-adr-0018-v2-visual-migration.md:149:18. **D2 trigger Row 4 (NEW ADR-0018) HIT; Row 1 NO** correctly identified + stage 4 PRE-COMMIT CLAUDE REVIEW fires.
+docs/plans/wave-5-main/Pre-A4-adr-0018-v2-visual-migration.md:151:20. **Orchestrator-self acceptance** confirms Wave 5 plan v0.2 Pre-A4 scope honored: granularity v0.3.4 § "v2 视觉契约要素 (认证源 = v2-styles.css)" + § "v2 编辑器 UX 要素" 翻译到 ADR-0018 D1-D7 (NEW reframe v2 forward); save-path 决策提前到 Pre-A4 (per Q4+Q8 absorbtion D10 修订); ADR consumes ADR-0017 D11 + ADR-0016 D7 + ADR-0014 forward + ADR-0005 Phase 2+; ADR编号锁 + 5 missing kind hue Pre-A4 plan-challenger 时 lock (per Q3 absorbtion).
+docs/plans/wave-5-main/Pre-A4-adr-0018-v2-visual-migration.md:155:- **Row 1** (CONTRACT change): NO — ADR-0018 是 design-tokens OKLCH switchover + save-path interface schema; NOT 修改既有 CONTRACT.md. design-tokens CONTRACT.md + editor-shell CONTRACT.md 同步留 Stage C.3 + Stage C.4 实施 PR.
+docs/plans/wave-5-main/Pre-A4-adr-0018-v2-visual-migration.md:157:- **Row 4** (NEW ADR): **HIT** — `docs/decisions/ADR-0018-v2-visual-migration.md` is NEW status proposed.
+docs/plans/wave-5-main/Pre-A4-adr-0018-v2-visual-migration.md:181:- **Stage C.4 实施** — NoteSaveAdapter interface + LocalStorageAdapter impl + apps/site `/notes/[slug]/edit` route + editor-shell wire-up.
+docs/plans/wave-5-main/Pre-A4-adr-0018-v2-visual-migration.md:182:- **Dark mode** (Phase 2+) — Out-of-scope/AC#10 explicit (per Q3 plan-challenger candidate + granularity Open Q2; tokens-dark.css 不加 v2 dark variant Wave 5).
+docs/plans/wave-5-main/Pre-A4-adr-0018-v2-visual-migration.md:183:- **Phase 2+ ApiAdapter** (cross-device 同步; collaborative editing) — D8 forward-pointer; consume ADR-0005 API conventions.
+docs/plans/wave-5-main/Pre-A4-adr-0018-v2-visual-migration.md:188:- [ADR-0018 v2 视觉 migration (this PR)](../../decisions/ADR-0018-v2-visual-migration.md) — the ADR being design-locked
+docs/plans/wave-5-main/Pre-A4-adr-0018-v2-visual-migration.md:196:- [ADR-0005 API conventions](../../decisions/ADR-0005-api-conventions.md) — Phase 2+ ApiAdapter
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:18:> component + 1 NEW `LocalStorageAdapter` MVP impl in `@skb/editor-shell`
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:19:> per ADR-0018 D8 接口冻结 (lines 339-451) + 1 NEW vitest round-trip
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:22:> `### NoteSaveAdapter (Wave 5; MVP shipped at C.4-prelude)` minimal
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:32:> JetBrains Mono fonts (Stage C.3); **NoteSaveAdapter interface
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:41:> `### NoteSaveAdapter` subsection addition; Row 5 — cross-package
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:42:> public-surface boundary change since `NoteSaveAdapter` / `NoteState`
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:43:> / `LocalStorageAdapter` are NEW exports from `@skb/editor-shell`
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:86:   hydration. Body: instantiate `LocalStorageAdapter(slug)`; on mount
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:100:   Defines + exports `ReadonlyJSONValue` + `NoteState` + `NoteSaveAdapter`
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:101:   + `LocalStorageAdapter` byte-equal (modulo whitespace + JSDoc
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:103:   `docs/decisions/ADR-0018-v2-visual-migration.md` lines 339-451 —
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:105:   sub-sections `#### NoteSaveAdapter TypeScript interface` (lines
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:144:   Add barrel re-exports: `export { LocalStorageAdapter } from
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:146:   NoteSaveAdapter } from './save-adapter';`. Existing 20 exports
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:151:   `### NoteSaveAdapter (Wave 5; MVP shipped at C.4-prelude)` under
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:157:   - public-surface bullets for `NoteSaveAdapter` interface +
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:158:     `NoteState` shape + `LocalStorageAdapter` impl + `ReadonlyJSONValue`
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:163:   - **C.4-prelude scope lock**: only the MVP `LocalStorageAdapter`
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:166:     test suite + Phase 2+ ApiAdapter forward-pointer prose +
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:167:     interface-amendment policy via ADR-0018 amendment per D8 line
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:170:   - cite ADR-0018 D8 line 339-451 verbatim freeze + D8 line 333-335
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:171:     adapter 落点 single-authority lock (NoteSaveAdapter at
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:183:   - persistence: `LocalStorageAdapter` from `@skb/editor-shell` per
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:184:     ADR-0018 D8 接口冻结; localStorage key `skb-note:{slug}`; NOT
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:204:| 3 | `apps/site/src/components/EditorShellMount.tsx` | NEW | 50-80 | React island: `LocalStorageAdapter` + `EditorShell` + `GridContainer`. |
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:205:| 4 | `packages/editor-shell/src/save-adapter.ts` | NEW | 140-200 | `NoteSaveAdapter` interface + `NoteState` + `LocalStorageAdapter` MVP impl per ADR-0018 D8 接口冻结. |
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:208:| 7 | `packages/editor-shell/CONTRACT.md` | MODIFY | +25-40 | NEW `### NoteSaveAdapter (Wave 5; MVP shipped at C.4-prelude)` subsection under `## Public surface`. |
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:258:  `LocalStorageAdapter.load()` returns `null` on first visit)
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:286:line 572 pre-amendment) bundled together: `NoteSaveAdapter` interface
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:287:declaration + `NoteState` shape + `LocalStorageAdapter` MVP impl +
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:290:"ownership boundary refined: C.4-prelude ships MVP `LocalStorageAdapter`
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:291:impl; C.4-1 ships `NoteSaveAdapter` interface contract hardening +
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:296:  ADR-0018 D8 lines 339-451 freeze + minimal CONTRACT.md
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:299:  Phase 2+ ApiAdapter forward-pointer prose elaboration. Focus =
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:305:  cross-referencing C.4-prelude impl + Phase 2+ ApiAdapter migration
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:307:  formal contracts) + interface-amendment policy via ADR-0018
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:309:  NoteSaveAdapter / NoteState shape **必走 ADR-0018 Amendment**").
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:352:      exists; React island with `LocalStorageAdapter(slug)` instance
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:358:      with `ReadonlyJSONValue` + `NoteState` + `NoteSaveAdapter` +
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:359:      `LocalStorageAdapter` exported. ~140-200 LOC; under 250 LOC
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:365:      barrel re-exports (`LocalStorageAdapter` + 3 type re-exports).
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:368:      `### NoteSaveAdapter (Wave 5; MVP shipped at C.4-prelude)`
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:376:### B. Interface byte-equivalence to ADR-0018 D8 freeze
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:379:      produces a recursive readonly JSON union matching ADR-0018
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:384:      produces the 4-field shape matching ADR-0018 lines 348-361:
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:387:- [ ] **AC#12**: `grep -A 18 'export interface NoteSaveAdapter' packages/editor-shell/src/save-adapter.ts`
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:388:      produces the 3-member shape matching ADR-0018 lines 363-383:
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:391:      Phase 2+ extension comment block (D8 lines 375-382) MUST be
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:393:      Phase 2+ 兼容位预留).
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:394:- [ ] **AC#13**: `grep -A 60 'export class LocalStorageAdapter' packages/editor-shell/src/save-adapter.ts`
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:395:      produces the load + save methods matching ADR-0018 lines
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:403:      (per ADR-0018 D8 line 455); NOT collide with design-tokens
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:474:7. `packages/editor-shell/CONTRACT.md` (MODIFY; NEW `### NoteSaveAdapter
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:530:  optimistic-lock semantic is C.4-4 scope per ADR-0018 D8 line 357).
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:534:  the `LocalStorageAdapter` round-trip; e2e covers the full route +
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:545:  (per ADR-0018 D2 + plan v1.2 line 559).
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:547:- **NoteSaveAdapter interface contract HARDENING** (W5-2 contract
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:548:  surface formalization + adapter contract test suite + Phase 2+
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:574:  `### NoteSaveAdapter (Wave 5; MVP shipped at C.4-prelude)` subsection
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:582:This PR introduces NEW exports from `@skb/editor-shell` (`NoteSaveAdapter`
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:583:+ `NoteState` + `LocalStorageAdapter` + `ReadonlyJSONValue`) consumed
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:592:ADR-0018 D8 接口冻结 (lines 339-451). NoteSaveAdapter / NoteState /
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:593:LocalStorageAdapter are byte-equal-to-D8 declarations + NOT silent
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:606:edits + the ADR-0018 D8 interface byte-equivalence verification.
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:622:   LocalStorageAdapter('test-slug')`. `expect(await adapter.load()).toBe(
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:674:Verbatim per ADR-0018 D8 lines 339-451 (modulo JSDoc rewording +
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:675:file-head comment citing ADR-0018 D8 + plan v1.2 row C.4-prelude).
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:693:`### NoteSaveAdapter (Wave 5; MVP shipped at C.4-prelude)` subsection.
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:701:### (a) NoteSaveAdapter interface drift from ADR-0018 D8 freeze
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:705:ADR-0018 amendment). Per D8 line 464 invariant: "Wave 5 任何 PR 改动
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:706:NoteSaveAdapter / NoteState shape **必走 ADR-0018 Amendment** (D2
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:710:diff vs ADR-0018 D8 lines). Stage 4 PRE-COMMIT CLAUDE REVIEW
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:712:before authorising COMMIT; any drift = STOP + raise as ADR-0018
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:764:The NEW `LocalStorageAdapter` key prefix `skb-note:{slug}` (per
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:765:ADR-0018 D8 line 455) MUST NOT collide.
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:801:| 3 | No out-of-scope drift | None of the 7 deferred items (palette / BlockRegistry full / save layoutEpoch / e2e / v2 visual / fonts / NoteSaveAdapter contract hardening) appear as implementation deltas in this PR's `git diff` | ✅ planned (verify post-EXECUTE via stage-4 file-list grep) |
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:806:| 8 | NoteSaveAdapter interface byte-equivalence | AC#10..AC#14 grep checks against ADR-0018 D8 lines 339-451 freeze; any drift → STOP + raise as ADR-0018 amendment Q + D2 row 4 fires (see `## risks` row a) | ✅ planned (verify post-EXECUTE Stage 4) |
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:814:1. **ADR-0018 D8 byte-equivalence grep** — run AC#10..AC#14 grep
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:820:   - `grep -A 18 'export interface NoteSaveAdapter' ...` matches D8
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:821:     line 363-383 (3 members + Phase 2+ extension comment block)
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:822:   - `grep -A 60 'export class LocalStorageAdapter' ...` matches D8
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:826:   ANY drift → STOP + raise as ADR-0018 amendment Q (D2 row 4 fires).
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:834:   `### NoteSaveAdapter (Wave 5; MVP shipped at C.4-prelude)`
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:835:   subsection presence** — `grep -n '^### NoteSaveAdapter (Wave 5;
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:842:   hits (one for value `LocalStorageAdapter`, one for type `NoteSaveAdapter
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:900:- [ADR-0018 D8 接口冻结](../../decisions/ADR-0018-v2-visual-migration.md)
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:902:  (NoteSaveAdapter TypeScript interface block — verbatim freeze)
+docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:923:  `### NoteSaveAdapter (Wave 5; MVP shipped at C.4-prelude)`
+docs/plans/wave-5-main/C.1-2-pdf-chunk-leak.md:40:ADR-0018 OKLCH switchover Stage C.3). NO change to vitest assertions
+docs/plans/wave-5-main/C.1-2-pdf-chunk-leak.md:49:dynamic-import root), and 1-2 forward-pointer notes for Phase 2+
+docs/plans/wave-5-main/C.1-2-pdf-chunk-leak.md:131:  6. **Forward-pointers (Phase 2+)** (~10-15 LOC): when the future
+docs/plans/wave-5-main/C.1-2-pdf-chunk-leak.md:141:     4 C-1 / C.1-1 preserved as Phase 2+ forward-pointer) becomes
+docs/plans/wave-5-main/C.1-2-pdf-chunk-leak.md:246:  cross-referenced in the audit MD as forward-pointer for Phase 2+
+docs/plans/wave-5-main/C.1-2-pdf-chunk-leak.md:247:  but not amended. ADR-0018 untouched (OKLCH switchover Stage C.3
+docs/plans/wave-5-main/C.1-2-pdf-chunk-leak.md:315:    → matches (Phase 2+ forward-pointer per ADR-0014 v0.4 D11).
+docs/plans/wave-5-main/C.1-2-pdf-chunk-leak.md:473:   the audit doc into Phase 2+ design content. **Mitigation**: ≤ 150
+docs/plans/wave-5-main/C.1-2-pdf-chunk-leak.md:477:   notes for Phase 2+ stay short and reference ADR-0014 v0.4 D11
+docs/plans/wave-5-main/C.1-2-pdf-chunk-leak.md:516:- **ADR-0018 OKLCH switchover** (Stage C.3; PDF iframe background
+docs/plans/wave-5-main/C.1-2-pdf-chunk-leak.md:532:- **`manualChunks` integrity check spec** (Phase 2+; recommended
+docs/plans/wave-5-main/C.1-2-pdf-chunk-leak.md:536:- **Negative-case regression spec** (Phase 2+; recommended forward-pointer
+docs/plans/wave-5-main/C.1-2-pdf-chunk-leak.md:544:- **Plugin-real-runtime tier reactivation** — Phase 2+ scope; audit
+docs/plans/wave-5-main/C.1-2-pdf-chunk-leak.md:545:  MD includes Phase 2+ forward-pointer but ships no feature flag /
+docs/plans/wave-5-main/C.1-2-pdf-chunk-leak.md:630:  Phase 2+ plugin-real-runtime tier when the chunk-leak verdict
+docs/plans/wave-5-main/C.1-2-pdf-chunk-leak.md:632:- [ADR-0018 v2 visual migration](../../decisions/ADR-0018-v2-visual-migration.md)
+docs/plans/wave-4-main/A6-heavy-block-playwright-layout-shift.md:825:- **A8** — Phase 2 selective per-block chunking + perf baseline
+docs/plans/wave-5-main/C.1-handoff-pack.md:24:ADR amendments landed: ADR-0014 v0.4 (Plugin tier split — placeholder Wave 5 MVP vs real-runtime Phase 2+).
+docs/plans/wave-5-main/C.1-handoff-pack.md:32:1. **Plugin-real-runtime tier reactivation (Phase 2+)**: ADR-0014 v0.4 D11 codifies the placeholder vs real-runtime split. When Phase 2+ reactivates the real tier, AC#16 carve-out reverts (full `aria-busy='true' → 'false'` transition required again). Future PR will re-validate. NOT blocking Stage C.2.
+docs/plans/wave-5-main/C.1-handoff-pack.md:36:3. **`sample-blocks-astro` route alternate consumer**: `apps/site/src/pages/sample-blocks-astro.astro` directly consumes the package-level `Jupyter.astro` / `NnViz.astro` / `AgentFlow.astro` variants under `@skb/block-{jupyter,nn-viz,agent-flow}/ui-default`, bypassing the islands path. C.1-1 left this path unchanged; that route still loads real heavy components. Phase 2+ may align this surface with the plugin-tier model. Not in C.1-3 scope; not blocking C.2.
+docs/plans/wave-5-main/C.1-handoff-pack.md:38:4. **Pyodide CDN paragraph in apps/site/CONTRACT.md**: preserved as Phase 2+ forward-pointer per reframe v2 memory. Wave 4 PR #48 (jsdelivr CDN for Pyodide indexURL) infrastructure NOT deleted; forms the basis of plugin-real-runtime tier reactivation.
+docs/plans/wave-5-main/C.1-handoff-pack.md:63:- AC#16 production hydration polling: placeholder tier satisfies via initial `aria-busy='false'` + `data-loaded='true'` SSR; full transition coverage deferred to plugin-real-runtime tier (Phase 2+).
+docs/plans/wave-5-main/C.1-handoff-pack.md:67:- **ADR-0014 v0.5 amendment** (Stage C.2-7 per Wave 5 plan v1.0 §475): HeavyBlockBoundary grid-context dimensions consume W5-1 invariant + 顶 2px 横条 token (post Stage C.3 OKLCH switchover). Pre-condition: ADR-0016 grid + ADR-0018 OKLCH tokens locked (already done at Pre-A2 + Pre-A4).
+docs/plans/wave-4-main/A3-heavy-block-boundary-retry.md:890:- **A8** — Phase 2 selective per-block chunking + perf baseline (C5
+docs/plans/wave-5-main/C.1-3-gitignore.md:124:- Stage C.4 (NoteSaveAdapter + /notes/[slug]/edit + BlockRegistry wire + save/load + e2e; 5 PRs at v1.0 §496-506)
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:793:  consequences line 426 explicitly state Phase 1 + Phase 2 chunking
+docs/plans/wave-4-main/A5-apps-site-heavy-block-dims-migration.md:1581:- **A8** — Phase 2 selective per-block chunking + perf baseline
+docs/plans/wave-5-main/C.2-1-mdx-bridge-grid-serialize.md:462:  amended here. ADR-0017 / ADR-0018 untouched (drag/drop UX + v2
+docs/plans/wave-5-main/C.2-1-mdx-bridge-grid-serialize.md:950:- **Stage C.3** (ADR-0018 OKLCH switchover; `packages/design-tokens/**`).
+docs/plans/wave-5-main/Pre-A5-plan-v1-lock.md:5:> (locked post Pre-A2 ADR-0016 + Pre-A3 ADR-0017 + Pre-A4 ADR-0018 design locks). Adds
+docs/plans/wave-5-main/Pre-A5-plan-v1-lock.md:35:  (5 PRs locked per ADR-0018 D1-D7); (5) Stage C.4 PR breakdown (5 PRs locked per
+docs/plans/wave-5-main/Pre-A5-plan-v1-lock.md:36:  ADR-0018 D8 接口冻结); (6) Refined risk predictions (Risk #8 + #9 NEW); (7) Wave 5
+docs/plans/wave-5-main/Pre-A5-plan-v1-lock.md:63:- `docs/decisions/ADR-0015-wave-4-close.md` / ADR-0016-* / ADR-0017-* / ADR-0018-* —
+docs/plans/wave-5-main/Pre-A5-plan-v1-lock.md:124:6. **Stage C.3 PR breakdown** (5 PRs locked per ADR-0018 D1-D7; OKLCH + fonts /
+docs/plans/wave-5-main/Pre-A5-plan-v1-lock.md:127:7. **Stage C.4 PR breakdown** (5 PRs locked per ADR-0018 D8 接口冻结; NoteSaveAdapter +
+docs/plans/wave-5-main/Pre-A5-plan-v1-lock.md:128:   LocalStorageAdapter / `/notes/[slug]/edit` route / BlockRegistry + KernelRegistry +
+docs/plans/wave-5-main/Pre-A5-plan-v1-lock.md:197:- **Phase 2 plan-draft** — happens after Wave 5 close (or Phase 1 pause if C.4 wire 完成
+docs/plans/wave-5-main/Pre-A5-plan-v1-lock.md:208:- [ADR-0018 v2 视觉 migration + save-path 接口冻结](../../decisions/ADR-0018-v2-visual-migration.md)
+docs/plans/wave-5-main/Pre-A5-plan-v1-lock.md:226:- [Wave 5 Pre-A4 PR.md](Pre-A4-adr-0018-v2-visual-migration.md) — Pre-A4 ADR-0018
+docs/plans/wave-5-main/Pre-A2-adr-0016-grid-data-model.md:255:- **Pre-A4 ADR-0018 v2 视觉 migration + save-path 接口冻结** — sequential PR after
+docs/plans/wave-5-main/C.2-4-editor-shell-grid.md:104:     协同编辑 OUT OF SCOPE (Phase 2+); editor-shell `layoutEpoch` 是
+docs/plans/wave-5-main/C.2-4-editor-shell-grid.md:923:(Phase 2+), the CSS-authority requirement is part of the
+docs/plans/wave-5-main/C.2-4-editor-shell-grid.md:993:Stage C.2 / Phase 2+ refinement (effect-local cancellation flag);
+docs/plans/wave-5-main/C.2-4-editor-shell-grid.md:1028:- **Stage C.3 design-tokens** (ADR-0018 + Pre-A4 PR; OKLCH +
+docs/plans/wave-5-main/C.2-4-editor-shell-grid.md:1036:- **Storybook / Ladle / standalone editor demo**: Phase 2+ scope.
+docs/plans/wave-5-main/C.2-4-editor-shell-grid.md:1040:- **CRDT/OT collaborative editing** (ADR-0016 D12 explicit Phase 2+
+docs/audits/structure-2026-05.md:159:| `agent-tools` | 0 | yes (expected) | Phase 2b consumer is `apps/api/agent_bridge.py`; CONTRACT documents. |
+docs/plans/wave-5-main/C.2-6-resize-ux.md:117:   forward-pointer comment to ADR-0018 + Stage C.3 token migration).
+docs/plans/wave-5-main/C.2-6-resize-ux.md:268:   - Forward-pointer to ADR-0018 + Stage C.3 for the
+docs/plans/wave-5-main/C.2-6-resize-ux.md:579:  ADR-0018 (Pre-A4) Stage C.3 token migration. C.2-6 ships only the
+docs/plans/wave-5-main/C.2-6-resize-ux.md:645:ADR-0018 (v2 visual migration) Pre-A4 design-lock owns the design
+docs/plans/wave-5-main/C.2-6-resize-ux.md:734:literal is present in the source (forward-pointer to ADR-0018 + Stage
+docs/plans/wave-5-main/C.2-6-resize-ux.md:1322:  — out of Wave 5 entirely; Phase 2+.
+docs/plans/wave-5-main/C.2-6-resize-ux.md:1326:  drag-ghost coloring; ADR-0018 design-tokens) — deferred to
+docs/plans/wave-5-main/C.2-6-resize-ux.md:1338:  entirely; Phase 2+ (ADR-0019+).
+docs/plans/wave-5-main/C.2-6-resize-ux.md:1341:  Phase 2+ per ADR-0016 D12 + ADR-0017 D12 single-user
+docs/plans/wave-5-main/C.2-6-resize-ux.md:1351:  ADR-0018 token migration. C.2-6 ships only structural class
+docs/audits/codex-runs/2026-04-30-task-F-pr-gate-r2.txt:708:packages/kernel-adapter/CONTRACT.md:18:- `KernelTimeoutError` (`kind: 'timeout'`) — operation did not complete within adapter-specific deadline (Phase 2+ remote adapters; reusable in Wave 2 if Pyodide hangs)
+docs/audits/codex-runs/2026-04-30-task-F-pr-gate-r2.txt:930:- `KernelTimeoutError` (`kind: 'timeout'`) — operation did not complete within adapter-specific deadline (Phase 2+ remote adapters; reusable in Wave 2 if Pyodide hangs)
+docs/audits/codex-runs/2026-04-30-task-F-pr-gate-r2.txt:946:- Phase 2+：`@skb/kernel-remote-jupyter` 等
+docs/audits/codex-runs/2026-04-30-task-F-pr-gate-r2.txt:952:原因：`KernelAdapter` 接口 freeze 是 Wave 2 PyodideAdapter 与 Phase 2 RemoteJupyterAdapter 共同的契约基础；optional 字段会在 2+ 实现间产生兼容性矩阵，无 ADR 协调会引发漂移。同步范围：本文件 + kernel-registry + 全部已实现 adapter 包。
+docs/audits/codex-runs/2026-04-30-task-F-pr-gate-r2.txt:2077:packages/kernel-adapter/CONTRACT.md:18:- `KernelTimeoutError` (`kind: 'timeout'`) — operation did not complete within adapter-specific deadline (Phase 2+ remote adapters; reusable in Wave 2 if Pyodide hangs)
+docs/audits/codex-runs/2026-04-30-task-F-pr-gate-r2.txt:2126:    18	- `KernelTimeoutError` (`kind: 'timeout'`) — operation did not complete within adapter-specific deadline (Phase 2+ remote adapters; reusable in Wave 2 if Pyodide hangs)
+docs/audits/codex-runs/2026-04-30-task-F-pr-gate-r2.txt:2142:    34	- Phase 2+：`@skb/kernel-remote-jupyter` 等
+docs/audits/codex-runs/2026-04-30-task-F-pr-gate-r2.txt:2148:    40	原因：`KernelAdapter` 接口 freeze 是 Wave 2 PyodideAdapter 与 Phase 2 RemoteJupyterAdapter 共同的契约基础；optional 字段会在 2+ 实现间产生兼容性矩阵，无 ADR 协调会引发漂移。同步范围：本文件 + kernel-registry + 全部已实现 adapter 包。
+docs/audits/codex-runs/2026-05-04-C-1-plan-challenge.txt:412:Phase 2+ (按需追加，前端代码不改)
+docs/audits/codex-runs/2026-05-04-C-1-plan-challenge.txt:832:docs/decisions/ADR-0011-linear-pipeline-execution-model.md:207:- **Concurrency hazard 结构性消除**：PR 串行 → WE-001 / WE-009 / WE-011 复合并发危险类不复发。Wave 2 codified 的复杂 move-aside 协议在 Wave 3 不再需要（仍保留作 Phase 2+ 多 worker 协作时复用）。
+docs/audits/codex-runs/2026-05-04-C-1-plan-challenge.txt:990:packages/kernel-adapter/CONTRACT.md:40:原因：`KernelAdapter` 接口 freeze 是 Wave 2 PyodideAdapter 与 Phase 2 RemoteJupyterAdapter 共同的契约基础；optional 字段会在 2+ 实现间产生兼容性矩阵，无 ADR 协调会引发漂移。同步范围：本文件 + kernel-registry + 全部已实现 adapter 包。
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:32:- **ADR-0018 D8 canonical interface authority**: `/home/weiyi/selfKnowledgeBaseWeb/docs/decisions/ADR-0018-v2-visual-migration.md` lines 339-451 (interface freeze).
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:49:6. ADR-0018 D8 interface byte-equal — does `packages/editor-shell/src/save-adapter.ts` declare `NoteSaveAdapter` / `NoteState` / `LocalStorageAdapter` / `ReadonlyJSONValue` byte-equal (modulo whitespace + JSDoc rewording) to the prose at ADR-0018 D8 lines 339-451?
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:51:8. CONTRACT.md sister-document sync — does `apps/site/CONTRACT.md` `## Edit route (Wave 5)` cross-reference `packages/editor-shell/CONTRACT.md` `### NoteSaveAdapter (Wave 5; MVP shipped at C.4-prelude)` (and vice versa)?
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:54:- Is the `apps/site/CONTRACT.md` `## Edit route (Wave 5)` section internally consistent with `packages/editor-shell/CONTRACT.md` `### NoteSaveAdapter` subsection?
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:240:/bin/bash -lc "sed -n '339,451p' docs/decisions/ADR-0018-v2-visual-migration.md" in /home/weiyi/selfKnowledgeBaseWeb
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:255:   *  Stage C.4 实施 PR 可选不存 (LocalStorageAdapter 加载时 always 从 mdxSource 重建 Tiptap state). */
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:260:   *  Phase 2+ apps/api endpoint 用作乐观锁 conflict detect (server compares incoming.version vs stored.version + 1).
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:262:   *  LocalStorageAdapter.save() NOT auto-increment (Wave 5 MVP consumer-driven; Phase 2+ ApiAdapter server-validate). */
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:266:export interface NoteSaveAdapter {
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:274:   *  Wave 5 MVP NoteSaveAdapter is sync-on-success (LocalStorageAdapter immediate);
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:275:   *  Phase 2+ ApiAdapter is async-with-retry (network failure → exponential backoff). */
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:278:  // Phase 2+ extensions (per Q12 absorbtion — Phase 2+ 兼容位预留):
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:284:  //     - Real-time collaborative; Phase 2+ ApiAdapter via WebSocket; LocalStorageAdapter NOT subscribe (single-session)
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:285:  // Wave 5 NOT include either; ADR-0018 D8 接口 v1 不动; v2 接口 ADR-0019+ amendment 引入.
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:289:export class LocalStorageAdapter implements NoteSaveAdapter {
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:306:        console.warn(`[NoteSaveAdapter] corrupted state for ${this.slug}; returning null`);
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:312:        console.warn(`[NoteSaveAdapter] localStorage SecurityError; load disabled`);
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:321:    if (serialized.length > LocalStorageAdapter.PER_NOTE_MAX_BYTES) {
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:330:      if (aggregateBytes > LocalStorageAdapter.AGGREGATE_WARN_BYTES) {
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:331:        console.warn(`[NoteSaveAdapter] aggregate notes ${aggregateBytes} bytes > 5MB; consider Phase 2+ apps/api`);
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:348:// Phase 2+ impl (NOT Wave 5 scope; placeholder forward-pointer)
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:349:// export class ApiAdapter implements NoteSaveAdapter {
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:357:/bin/bash -lc 'rg -n "ADR-0006|8-point|checklist|Lychee|link-check|single-authority|TDD|acceptance|whitelist|NoteSaveAdapter|LocalStorageAdapter|skb-note|ReadonlyJSONValue|Wave 5|D2 row|CONTRACT|cross-package" CLAUDE.md agent-contract.md docs/decisions docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md' in /home/weiyi/selfKnowledgeBaseWeb
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:364:docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:18:> component + 1 NEW `LocalStorageAdapter` MVP impl in `@skb/editor-shell`
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:367:docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:22:> `### NoteSaveAdapter (Wave 5; MVP shipped at C.4-prelude)` minimal
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:369:docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:32:> JetBrains Mono fonts (Stage C.3); **NoteSaveAdapter interface
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:373:docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:41:> `### NoteSaveAdapter` subsection addition; Row 5 — cross-package
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:374:docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:42:> public-surface boundary change since `NoteSaveAdapter` / `NoteState`
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:375:docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:43:> / `LocalStorageAdapter` are NEW exports from `@skb/editor-shell`
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:378:docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:86:   hydration. Body: instantiate `LocalStorageAdapter(slug)`; on mount
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:381:docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:100:   Defines + exports `ReadonlyJSONValue` + `NoteState` + `NoteSaveAdapter`
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:382:docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:101:   + `LocalStorageAdapter` byte-equal (modulo whitespace + JSDoc
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:383:docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:105:   sub-sections `#### NoteSaveAdapter TypeScript interface` (lines
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:386:docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:144:   Add barrel re-exports: `export { LocalStorageAdapter } from
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:388:docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:146:   NoteSaveAdapter } from './save-adapter';`. Existing 20 exports
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:390:docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:151:   `### NoteSaveAdapter (Wave 5; MVP shipped at C.4-prelude)` under
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:392:docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:157:   - public-surface bullets for `NoteSaveAdapter` interface +
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:393:docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:158:     `NoteState` shape + `LocalStorageAdapter` impl + `ReadonlyJSONValue`
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:395:docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:163:   - **C.4-prelude scope lock**: only the MVP `LocalStorageAdapter`
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:396:docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:171:     adapter 落点 single-authority lock (NoteSaveAdapter at
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:400:docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:183:   - persistence: `LocalStorageAdapter` from `@skb/editor-shell` per
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:401:docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:184:     ADR-0018 D8 接口冻结; localStorage key `skb-note:{slug}`; NOT
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:402:docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:204:| 3 | `apps/site/src/components/EditorShellMount.tsx` | NEW | 50-80 | React island: `LocalStorageAdapter` + `EditorShell` + `GridContainer`. |
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:403:docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:205:| 4 | `packages/editor-shell/src/save-adapter.ts` | NEW | 140-200 | `NoteSaveAdapter` interface + `NoteState` + `LocalStorageAdapter` MVP impl per ADR-0018 D8 接口冻结. |
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:404:docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:208:| 7 | `packages/editor-shell/CONTRACT.md` | MODIFY | +25-40 | NEW `### NoteSaveAdapter (Wave 5; MVP shipped at C.4-prelude)` subsection under `## Public surface`. |
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:410:docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:258:  `LocalStorageAdapter.load()` returns `null` on first visit)
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:412:docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:286:line 572 pre-amendment) bundled together: `NoteSaveAdapter` interface
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:413:docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:287:declaration + `NoteState` shape + `LocalStorageAdapter` MVP impl +
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:414:docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:290:"ownership boundary refined: C.4-prelude ships MVP `LocalStorageAdapter`
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:415:docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:291:impl; C.4-1 ships `NoteSaveAdapter` interface contract hardening +
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:416:docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:296:  ADR-0018 D8 lines 339-451 freeze + minimal CONTRACT.md
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:419:docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:309:  NoteSaveAdapter / NoteState shape **必走 ADR-0018 Amendment**").
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:423:docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:343:      exists; React island with `LocalStorageAdapter(slug)` instance
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:424:docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:349:      with `ReadonlyJSONValue` + `NoteState` + `NoteSaveAdapter` +
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:425:docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:350:      `LocalStorageAdapter` exported. ~140-200 LOC; under 250 LOC
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:427:docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:356:      barrel re-exports (`LocalStorageAdapter` + 3 type re-exports).
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:429:docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:359:      `### NoteSaveAdapter (Wave 5; MVP shipped at C.4-prelude)`
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:436:docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:378:- [ ] **AC#12**: `grep -A 18 'export interface NoteSaveAdapter' packages/editor-shell/src/save-adapter.ts`
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:437:docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:385:- [ ] **AC#13**: `grep -A 60 'export class LocalStorageAdapter' packages/editor-shell/src/save-adapter.ts`
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:449:docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:457:7. `packages/editor-shell/CONTRACT.md` (MODIFY; NEW `### NoteSaveAdapter
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:455:docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:517:  the `LocalStorageAdapter` round-trip; e2e covers the full route +
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:456:docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:530:- **NoteSaveAdapter interface contract HARDENING** (W5-2 contract
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:462:docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:557:  `### NoteSaveAdapter (Wave 5; MVP shipped at C.4-prelude)` subsection
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:463:docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:565:This PR introduces NEW exports from `@skb/editor-shell` (`NoteSaveAdapter`
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:464:docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:566:+ `NoteState` + `LocalStorageAdapter` + `ReadonlyJSONValue`) consumed
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:465:docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:575:ADR-0018 D8 接口冻结 (lines 339-451). NoteSaveAdapter / NoteState /
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:466:docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:576:LocalStorageAdapter are byte-equal-to-D8 declarations + NOT silent
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:472:docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:605:   LocalStorageAdapter('test-slug')`. `expect(await adapter.load()).toBe(
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:476:docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:676:`### NoteSaveAdapter (Wave 5; MVP shipped at C.4-prelude)` subsection.
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:478:docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:684:### (a) NoteSaveAdapter interface drift from ADR-0018 D8 freeze
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:479:docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:688:ADR-0018 amendment). Per D8 line 464 invariant: "Wave 5 任何 PR 改动
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:480:docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:689:NoteSaveAdapter / NoteState shape **必走 ADR-0018 Amendment** (D2
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:484:docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:747:The NEW `LocalStorageAdapter` key prefix `skb-note:{slug}` (per
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:491:docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:784:| 3 | No out-of-scope drift | None of the 7 deferred items (palette / BlockRegistry full / save layoutEpoch / e2e / v2 visual / fonts / NoteSaveAdapter contract hardening) appear as implementation deltas in this PR's `git diff` | ✅ planned (verify post-EXECUTE via stage-4 file-list grep) |
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:494:docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:789:| 8 | NoteSaveAdapter interface byte-equivalence | AC#10..AC#14 grep checks against ADR-0018 D8 lines 339-451 freeze; any drift → STOP + raise as ADR-0018 amendment Q + D2 row 4 fires (see `## risks` row a) | ✅ planned (verify post-EXECUTE Stage 4) |
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:497:docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:803:   - `grep -A 18 'export interface NoteSaveAdapter' ...` matches D8
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:498:docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:805:   - `grep -A 60 'export class LocalStorageAdapter' ...` matches D8
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:500:docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:809:   ANY drift → STOP + raise as ADR-0018 amendment Q (D2 row 4 fires).
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:504:docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:817:   `### NoteSaveAdapter (Wave 5; MVP shipped at C.4-prelude)`
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:505:docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:818:   subsection presence** — `grep -n '^### NoteSaveAdapter (Wave 5;
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:507:docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:825:   hits (one for value `LocalStorageAdapter`, one for type `NoteSaveAdapter
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:521:docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:885:  (NoteSaveAdapter TypeScript interface block — verbatim freeze)
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:525:docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md:906:  `### NoteSaveAdapter (Wave 5; MVP shipped at C.4-prelude)`
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:587:docs/decisions/ADR-0018-v2-visual-migration.md:8:| 触发 | [Wave 5 plan v0.2 D1+D5+D10](../superpowers/plans/2026-05-04-phase-1-wave-5-integration.md) (Pre-A4 ADR-0018 v2 视觉 migration design lock + save-path 接口冻结 per Q4+Q8 absorbtion) + reframe v2 memory `project_wave4_reframe_v2.md` + granularity doc v0.3.4 § "v2 视觉契约要素 (认证源 = v2-styles.css, 所有 token 不变)" + § "v2 编辑器 UX 要素 (视觉细节)" body (NEW reframe v2 forward; granularity 原 Phase 2+ L1 visual scope) |
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:588:docs/decisions/ADR-0018-v2-visual-migration.md:13:Wave 5 reframe v2 (2026-05-04 gatekeeper directive; absorbed via Wave 5 plan v0.2 Pre-A4 scope) 把 **v2 视觉 identity** + **save-path 接口冻结** 同时锁在此 ADR. 两个相关 domain:
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:589:docs/decisions/ADR-0018-v2-visual-migration.md:16:2. **Save-path 接口冻结 (Stage C.4 实施)**: 提前 (per Q8 absorbtion) 在此 ADR 锁定 NoteSaveAdapter interface + 3 候选实施路径 + Wave 5 MVP 选 localStorage prototype + Phase 2+ apps/api endpoint upgrade path; Pre-A5 仅做确认与验收 不动接口
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:590:docs/decisions/ADR-0018-v2-visual-migration.md:20:- **Save-path**: Wave 5 plan v0.2 D10 (修订 per Q8 absorbtion); Phase 1 MVP 持久化决策 (granularity v0.3.4 NOT 直接讨论 save-path; this ADR 是 NEW)
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:591:docs/decisions/ADR-0018-v2-visual-migration.md:29:- Save-path: Wave 5 MVP = **localStorage prototype** (单设备; 简单; MVP-friendly); Phase 2+ apps/api endpoint upgrade (跨设备同步 + collaborative).
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:592:docs/decisions/ADR-0018-v2-visual-migration.md:31:### Wave 5 stage 关系
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:593:docs/decisions/ADR-0018-v2-visual-migration.md:36:- **Pre-A5**: Wave 5 plan v1.0 final lock (Stage C.1-C.4 per-PR breakdown + 接口冻结 cross-reference)
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:594:docs/decisions/ADR-0018-v2-visual-migration.md:38:- **Stage C.4 实施**: NoteSaveAdapter interface + LocalStorageAdapter MVP impl + apps/site `/notes/[slug]/edit` route 消费 (per ADR-0018 D8 接口冻结) — orchestrator + codex-generic-executor
+docs/audits/codex-runs/2026-05-05-c4-prelude-pr-reviewer-55.txt:595:docs/decisions/ADR-0018-v2-visual-migration.md:79:`@skb/design-tokens/src/tokens-dark.css` (per existing CONTRACT.md `## Public surface`): **dark mode 留 Phase 2+** (per Q3 plan-challenger candidate + granularity Open Q2). Wave 5 lite-only; 不实施 dark theme.

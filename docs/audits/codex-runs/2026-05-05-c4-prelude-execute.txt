@@ -1,0 +1,2000 @@
+Reading additional input from stdin...
+OpenAI Codex v0.125.0 (research preview)
+--------
+workdir: /home/weiyi/selfKnowledgeBaseWeb
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: danger-full-access
+reasoning effort: xhigh
+reasoning summaries: none
+session id: 019df9bf-d459-77d0-bb81-6c8596616aac
+--------
+user
+You are the D1 stage-2 EXECUTOR for Wave 5 C.4-prelude — minimal editor scaffold (MVP smoke-test enable).
+
+# Step 1 (mandatory) — Read the locked PR.md
+
+Read `/home/weiyi/selfKnowledgeBaseWeb/docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md` (900 lines; locked at PLAN stage). It contains:
+- `## scope (whitelist)` — the 8 files you may touch
+- `## acceptance` — the per-file delta + ADR-0018 D8 byte-equal interface requirement
+- `## TDD plan` — 6-step sequence (tests first)
+- `## risks` (a)-(e) — known pitfalls
+
+Stay strictly within the whitelist. If you discover a need to touch a non-whitelisted file → STOP, do not touch, report it to the orchestrator in your final summary; do NOT silently expand scope (R14 discipline per memory `feedback_r14_defer_chain_plan_amendment.md` — drift triggers v1.3 plan amendment, NOT silent expansion).
+
+# Step 2 — TDD-front: write vitest cases first
+
+Per `## TDD plan` Step 1, write `packages/editor-shell/src/__tests__/save-adapter.test.ts` FIRST with at minimum these 6 cases:
+- (1) load() returns null for missing localStorage key
+- (2) save() then load() round-trips a NoteState (mdxSource + version + lastModified)
+- (3) save() rejects oversized (>2MB) state with `{ ok: false, error: ... }` error string mentions "2MB" or "exceeds"
+- (4) corrupted JSON in localStorage → load() returns null + console.warn fires
+- (5) SecurityError on getItem → load() returns null
+- (6) QuotaExceededError on setItem → save() returns `{ ok: false, error: ... }` mentioning "quota"
+Use vitest + jsdom; mock localStorage via `vi.stubGlobal` or jsdom default; mock DOMException for Quota/Security paths.
+
+# Step 3 — Implement `packages/editor-shell/src/save-adapter.ts`
+
+Per ADR-0018 D8 lines 339-451 (interface freeze) — implement byte-equal (modulo whitespace + JSDoc rewording) the following exports:
+- `ReadonlyJSONValue` type
+- `NoteState` interface (readonly mdxSource, optional readonly tiptapState, readonly lastModified, readonly version)
+- `NoteSaveAdapter` interface (slug, load, save)
+- `LocalStorageAdapter` class implementing NoteSaveAdapter (PER_NOTE_MAX_BYTES = 2 * 1024 * 1024, AGGREGATE_WARN_BYTES = 5 * 1024 * 1024, key prefix `skb-note:`)
+
+CRITICAL: localStorage key = `skb-note:${slug}` (line 397 of ADR-0018). Aggregate byte sum filters keys with prefix `skb-note:`. Do NOT collide with `skb-theme` design-tokens key. ESLint max-lines warn at 300 — keep file under 250 lines (drop the commented-out ApiAdapter forward-pointer if needed; replace with one-line `// Phase 2+ ApiAdapter — see ADR-0018 D8 lines 445-450`).
+
+# Step 4 — Run vitest filter
+
+```bash
+pnpm test --filter=@skb/editor-shell
+```
+
+All save-adapter cases MUST pass before proceeding to step 5. If any fail, fix the impl (NOT the tests) until green.
+
+# Step 5 — Modify `packages/editor-shell/src/index.ts` barrel
+
+Add re-exports for `NoteSaveAdapter`, `NoteState`, `LocalStorageAdapter`, `ReadonlyJSONValue` (type re-exports use `export type`).
+
+# Step 6 — Write `packages/editor-shell/CONTRACT.md` minimal subsection
+
+Add a NEW subsection `### NoteSaveAdapter (Wave 5; MVP shipped at C.4-prelude)` placed under the existing `## Public surface` section. Document:
+- Public exports (4 names above)
+- localStorage key prefix `skb-note:<slug>`
+- `PER_NOTE_MAX_BYTES = 2 MB` + `AGGREGATE_WARN_BYTES = 5 MB`
+- Forward-pointer: "**C.4-1 hardens this contract** (W5-2 invariant promotion + adapter contract test suite per Wave 5 plan v1.2 Q3 ownership boundary). C.4-prelude only ships MVP impl + this minimal doc forward-pointer."
+- Cite ADR-0018 D8 as canonical interface authority
+
+# Step 7 — Write `apps/site/src/components/EditorShellMount.tsx`
+
+React island component (small, ~40-60 LOC). Receives a `slug: string` prop. On mount:
+1. Construct `LocalStorageAdapter(slug)`
+2. Call `adapter.load()` to get NoteState (null = new note → empty mdxSource + version=1)
+3. Render `<EditorShell initialContent={state?.mdxSource ?? ""} onChange={(editor) => { /* save with debounce optional but minimal version OK to skip */ }} />`. Use `loadFromMdx` from saveLoad.ts to convert mdxSource→Tiptap doc on load.
+4. Wrap with `<GridContainer>` from `@skb/editor-shell` so grid CSS applies.
+5. Register the 8 blocks via `registerBlocks` (standard pattern; per Q4 plan-challenger absorbtion this is acceptable since heavy blocks just remain unrendered until invoked).
+6. Provide a "Save" button (or onChange auto-save with simple setTimeout debounce — pick one, document in code comment, keep minimal).
+
+# Step 8 — Write `apps/site/src/components/EditorShellMount.astro`
+
+Thin Astro wrapper that imports the React island via `client:only="react"` directive (per risk (c) in PR.md — avoid SSR hydration mismatch on Tiptap):
+
+```astro
+---
+interface Props { slug: string; }
+const { slug } = Astro.props;
+---
+<div class="editor-shell-mount">
+  <EditorShellMount client:only="react" slug={slug} />
+</div>
+```
+
+Where `EditorShellMount` is imported from the .tsx sibling (or via a barrel; pick whatever is idiomatic for apps/site existing patterns — see `apps/site/src/components/SearchBox.astro` for an analogue).
+
+# Step 9 — Write `apps/site/src/pages/notes/[slug]/edit.astro`
+
+Astro route. `getStaticPaths` returns same set as `[...slug].astro` but for the edit-mode view. Imports BaseLayout + EditorShellMount.astro. Mounts EditorShellMount with the slug. Title = `Edit: <note title>`. Imports `apps/site/src/styles/grid.css` so .skb-grid CSS resolves.
+
+CRITICAL: verify Astro static-paths resolves `/notes/<slug>/edit` distinctly from `/notes/<slug>` rendered by `[...slug].astro` catch-all. If conflicts arise, file-name based resolution should disambiguate (more specific routes win in Astro). If not, document the issue + STOP for orchestrator review.
+
+# Step 10 — Modify `apps/site/CONTRACT.md`
+
+Add a NEW section `## Edit route (Wave 5)` between existing `## Grid layout (Wave 5)` and the next section. Document:
+- Route: `/notes/<slug>/edit` (renders editor mount)
+- Coexists with `/notes/<slug>` (read-only catch-all `[...slug].astro`)
+- EditorShellMount island via `client:only="react"`
+- LocalStorageAdapter persistence per `@skb/editor-shell/save-adapter`
+- Forward-pointer to C.4-1..C.4-5 for full UI assembly + e2e
+
+# Step 11 — Self-tests (per WE-007 codex spark→lint gap memory)
+
+Run all of these from `/home/weiyi/selfKnowledgeBaseWeb`:
+```bash
+pnpm test --filter=@skb/editor-shell
+pnpm lint --filter=@skb/editor-shell --filter=@skb/site
+pnpm typecheck --filter=@skb/editor-shell --filter=@skb/site
+pnpm size-check
+```
+All MUST be clean before reporting commit-ready.
+
+# Step 12 — Final report
+
+Output to stdout:
+- Files created/modified (full paths)
+- LOC delta per file
+- vitest summary: N tests run, N passed, 0 failed
+- pnpm lint/typecheck/size-check all green
+- Any out-of-whitelist need encountered (NONE expected)
+
+Do NOT git commit; that is reviewer codex stage 5 per ADR-0011 D1. Do NOT modify any file outside the 8-file whitelist.
+exec
+/bin/bash -lc "sed -n '1,220p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/c5debd62/skills/verification-before-completion/SKILL.md" in /home/weiyi/selfKnowledgeBaseWeb
+ exited 2 in 0ms:
+sed: can't read /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/c5debd62/skills/verification-before-completion/SKILL.md: No such file or directory
+
+exec
+/bin/bash -lc "sed -n '1,220p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/c5debd62/skills/using-superpowers/SKILL.md" in /home/weiyi/selfKnowledgeBaseWeb
+ exited 2 in 0ms:
+sed: can't read /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/c5debd62/skills/using-superpowers/SKILL.md: No such file or directory
+
+exec
+/bin/bash -lc "sed -n '1,220p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/c5debd62/skills/test-driven-development/SKILL.md" in /home/weiyi/selfKnowledgeBaseWeb
+ exited 2 in 0ms:
+sed: can't read /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/c5debd62/skills/test-driven-development/SKILL.md: No such file or directory
+
+codex
+I’m checking the required workflow skills first. The listed skill cache path is stale in this workspace, so I’m locating the installed copies before touching the PR files.
+exec
+/bin/bash -lc 'ls /home/weiyi/.codex/plugins/cache/openai-curated' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+github
+superpowers
+
+exec
+/bin/bash -lc "rg --files /home/weiyi/.codex/plugins /home/weiyi/.agents /home/weiyi/.codex/skills | rg 'using-superpowers/SKILL.md|test-driven-development/SKILL.md|verification-before-completion/SKILL.md|brainstorming/SKILL.md'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+/home/weiyi/.codex/plugins/cache/openai-curated/superpowers/82fd64bc/skills/brainstorming/SKILL.md
+/home/weiyi/.codex/plugins/cache/openai-curated/superpowers/82fd64bc/skills/test-driven-development/SKILL.md
+/home/weiyi/.codex/plugins/cache/openai-curated/superpowers/82fd64bc/skills/verification-before-completion/SKILL.md
+/home/weiyi/.codex/plugins/cache/openai-curated/superpowers/82fd64bc/skills/using-superpowers/SKILL.md
+
+exec
+/bin/bash -lc "sed -n '1,240p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/82fd64bc/skills/using-superpowers/SKILL.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+---
+name: using-superpowers
+description: Use when starting any conversation - establishes how to find and use skills, requiring Skill tool invocation before ANY response including clarifying questions
+---
+
+<SUBAGENT-STOP>
+If you were dispatched as a subagent to execute a specific task, skip this skill.
+</SUBAGENT-STOP>
+
+<EXTREMELY-IMPORTANT>
+If you think there is even a 1% chance a skill might apply to what you are doing, you ABSOLUTELY MUST invoke the skill.
+
+IF A SKILL APPLIES TO YOUR TASK, YOU DO NOT HAVE A CHOICE. YOU MUST USE IT.
+
+This is not negotiable. This is not optional. You cannot rationalize your way out of this.
+</EXTREMELY-IMPORTANT>
+
+## Instruction Priority
+
+Superpowers skills override default system prompt behavior, but **user instructions always take precedence**:
+
+1. **User's explicit instructions** (AGENTS.md, GEMINI.md, direct requests) — highest priority
+2. **Superpowers skills** — override default system behavior where they conflict
+3. **Default system prompt** — lowest priority
+
+If AGENTS.md or GEMINI.md says "don't use TDD" and a skill says "always use TDD," follow the user's instructions. The user is in control.
+
+## How to Access Skills
+
+**In Codex:** Use the `Skill` tool. When you invoke a skill, its content is loaded and presented to you—follow it directly. Never use the Read tool on skill files.
+
+**In Copilot CLI:** Use the `skill` tool. Skills are auto-discovered from installed plugins. The `skill` tool works the same as Codex's `Skill` tool.
+
+**In Gemini CLI:** Skills activate via the `activate_skill` tool. Gemini loads skill metadata at session start and activates the full content on demand.
+
+**In other environments:** Check your platform's documentation for how skills are loaded.
+
+## Platform Adaptation
+
+Skills may mention tool names that vary by runtime. Other platforms: see `references/copilot-tools.md` (Copilot CLI), `references/codex-tools.md` (Codex) for tool equivalents. Gemini CLI users get the tool mapping loaded automatically via GEMINI.md.
+
+# Using Skills
+
+## The Rule
+
+**Invoke relevant or requested skills BEFORE any response or action.** Even a 1% chance a skill might apply means that you should invoke the skill to check. If an invoked skill turns out to be wrong for the situation, you don't need to use it.
+
+```dot
+digraph skill_flow {
+    "User message received" [shape=doublecircle];
+    "About to EnterPlanMode?" [shape=doublecircle];
+    "Already brainstormed?" [shape=diamond];
+    "Invoke brainstorming skill" [shape=box];
+    "Might any skill apply?" [shape=diamond];
+    "Invoke Skill tool" [shape=box];
+    "Announce: 'Using [skill] to [purpose]'" [shape=box];
+    "Has checklist?" [shape=diamond];
+    "Create TodoWrite todo per item" [shape=box];
+    "Follow skill exactly" [shape=box];
+    "Respond (including clarifications)" [shape=doublecircle];
+
+    "About to EnterPlanMode?" -> "Already brainstormed?";
+    "Already brainstormed?" -> "Invoke brainstorming skill" [label="no"];
+    "Already brainstormed?" -> "Might any skill apply?" [label="yes"];
+    "Invoke brainstorming skill" -> "Might any skill apply?";
+
+    "User message received" -> "Might any skill apply?";
+    "Might any skill apply?" -> "Invoke Skill tool" [label="yes, even 1%"];
+    "Might any skill apply?" -> "Respond (including clarifications)" [label="definitely not"];
+    "Invoke Skill tool" -> "Announce: 'Using [skill] to [purpose]'";
+    "Announce: 'Using [skill] to [purpose]'" -> "Has checklist?";
+    "Has checklist?" -> "Create TodoWrite todo per item" [label="yes"];
+    "Has checklist?" -> "Follow skill exactly" [label="no"];
+    "Create TodoWrite todo per item" -> "Follow skill exactly";
+}
+```
+
+## Red Flags
+
+These thoughts mean STOP—you're rationalizing:
+
+| Thought | Reality |
+|---------|---------|
+| "This is just a simple question" | Questions are tasks. Check for skills. |
+| "I need more context first" | Skill check comes BEFORE clarifying questions. |
+| "Let me explore the codebase first" | Skills tell you HOW to explore. Check first. |
+| "I can check git/files quickly" | Files lack conversation context. Check for skills. |
+| "Let me gather information first" | Skills tell you HOW to gather information. |
+| "This doesn't need a formal skill" | If a skill exists, use it. |
+| "I remember this skill" | Skills evolve. Read current version. |
+| "This doesn't count as a task" | Action = task. Check for skills. |
+| "The skill is overkill" | Simple things become complex. Use it. |
+| "I'll just do this one thing first" | Check BEFORE doing anything. |
+| "This feels productive" | Undisciplined action wastes time. Skills prevent this. |
+| "I know what that means" | Knowing the concept ≠ using the skill. Invoke it. |
+
+## Skill Priority
+
+When multiple skills could apply, use this order:
+
+1. **Process skills first** (brainstorming, debugging) - these determine HOW to approach the task
+2. **Implementation skills second** (frontend-design, mcp-builder) - these guide execution
+
+"Let's build X" → brainstorming first, then implementation skills.
+"Fix this bug" → debugging first, then domain-specific skills.
+
+## Skill Types
+
+**Rigid** (TDD, debugging): Follow exactly. Don't adapt away discipline.
+
+**Flexible** (patterns): Adapt principles to context.
+
+The skill itself tells you which.
+
+## User Instructions
+
+Instructions say WHAT, not HOW. "Add X" or "Fix Y" doesn't mean skip workflows.
+
+exec
+/bin/bash -lc "sed -n '1,260p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/82fd64bc/skills/test-driven-development/SKILL.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+---
+name: test-driven-development
+description: Use when implementing any feature or bugfix, before writing implementation code
+---
+
+# Test-Driven Development (TDD)
+
+## Overview
+
+Write the test first. Watch it fail. Write minimal code to pass.
+
+**Core principle:** If you didn't watch the test fail, you don't know if it tests the right thing.
+
+**Violating the letter of the rules is violating the spirit of the rules.**
+
+## When to Use
+
+**Always:**
+- New features
+- Bug fixes
+- Refactoring
+- Behavior changes
+
+**Exceptions (ask your human partner):**
+- Throwaway prototypes
+- Generated code
+- Configuration files
+
+Thinking "skip TDD just this once"? Stop. That's rationalization.
+
+## The Iron Law
+
+```
+NO PRODUCTION CODE WITHOUT A FAILING TEST FIRST
+```
+
+Write code before the test? Delete it. Start over.
+
+**No exceptions:**
+- Don't keep it as "reference"
+- Don't "adapt" it while writing tests
+- Don't look at it
+- Delete means delete
+
+Implement fresh from tests. Period.
+
+## Red-Green-Refactor
+
+```dot
+digraph tdd_cycle {
+    rankdir=LR;
+    red [label="RED\nWrite failing test", shape=box, style=filled, fillcolor="#ffcccc"];
+    verify_red [label="Verify fails\ncorrectly", shape=diamond];
+    green [label="GREEN\nMinimal code", shape=box, style=filled, fillcolor="#ccffcc"];
+    verify_green [label="Verify passes\nAll green", shape=diamond];
+    refactor [label="REFACTOR\nClean up", shape=box, style=filled, fillcolor="#ccccff"];
+    next [label="Next", shape=ellipse];
+
+    red -> verify_red;
+    verify_red -> green [label="yes"];
+    verify_red -> red [label="wrong\nfailure"];
+    green -> verify_green;
+    verify_green -> refactor [label="yes"];
+    verify_green -> green [label="no"];
+    refactor -> verify_green [label="stay\ngreen"];
+    verify_green -> next;
+    next -> red;
+}
+```
+
+### RED - Write Failing Test
+
+Write one minimal test showing what should happen.
+
+<Good>
+```typescript
+test('retries failed operations 3 times', async () => {
+  let attempts = 0;
+  const operation = () => {
+    attempts++;
+    if (attempts < 3) throw new Error('fail');
+    return 'success';
+  };
+
+  const result = await retryOperation(operation);
+
+  expect(result).toBe('success');
+  expect(attempts).toBe(3);
+});
+```
+Clear name, tests real behavior, one thing
+</Good>
+
+<Bad>
+```typescript
+test('retry works', async () => {
+  const mock = jest.fn()
+    .mockRejectedValueOnce(new Error())
+    .mockRejectedValueOnce(new Error())
+    .mockResolvedValueOnce('success');
+  await retryOperation(mock);
+  expect(mock).toHaveBeenCalledTimes(3);
+});
+```
+Vague name, tests mock not code
+</Bad>
+
+**Requirements:**
+- One behavior
+- Clear name
+- Real code (no mocks unless unavoidable)
+
+### Verify RED - Watch It Fail
+
+**MANDATORY. Never skip.**
+
+```bash
+npm test path/to/test.test.ts
+```
+
+Confirm:
+- Test fails (not errors)
+- Failure message is expected
+- Fails because feature missing (not typos)
+
+**Test passes?** You're testing existing behavior. Fix test.
+
+**Test errors?** Fix error, re-run until it fails correctly.
+
+### GREEN - Minimal Code
+
+Write simplest code to pass the test.
+
+<Good>
+```typescript
+async function retryOperation<T>(fn: () => Promise<T>): Promise<T> {
+  for (let i = 0; i < 3; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      if (i === 2) throw e;
+    }
+  }
+  throw new Error('unreachable');
+}
+```
+Just enough to pass
+</Good>
+
+<Bad>
+```typescript
+async function retryOperation<T>(
+  fn: () => Promise<T>,
+  options?: {
+    maxRetries?: number;
+    backoff?: 'linear' | 'exponential';
+    onRetry?: (attempt: number) => void;
+  }
+): Promise<T> {
+  // YAGNI
+}
+```
+Over-engineered
+</Bad>
+
+Don't add features, refactor other code, or "improve" beyond the test.
+
+### Verify GREEN - Watch It Pass
+
+**MANDATORY.**
+
+```bash
+npm test path/to/test.test.ts
+```
+
+Confirm:
+- Test passes
+- Other tests still pass
+- Output pristine (no errors, warnings)
+
+**Test fails?** Fix code, not test.
+
+**Other tests fail?** Fix now.
+
+### REFACTOR - Clean Up
+
+After green only:
+- Remove duplication
+- Improve names
+- Extract helpers
+
+Keep tests green. Don't add behavior.
+
+### Repeat
+
+Next failing test for next feature.
+
+## Good Tests
+
+| Quality | Good | Bad |
+|---------|------|-----|
+| **Minimal** | One thing. "and" in name? Split it. | `test('validates email and domain and whitespace')` |
+| **Clear** | Name describes behavior | `test('test1')` |
+| **Shows intent** | Demonstrates desired API | Obscures what code should do |
+
+## Why Order Matters
+
+**"I'll write tests after to verify it works"**
+
+Tests written after code pass immediately. Passing immediately proves nothing:
+- Might test wrong thing
+- Might test implementation, not behavior
+- Might miss edge cases you forgot
+- You never saw it catch the bug
+
+Test-first forces you to see the test fail, proving it actually tests something.
+
+**"I already manually tested all the edge cases"**
+
+Manual testing is ad-hoc. You think you tested everything but:
+- No record of what you tested
+- Can't re-run when code changes
+- Easy to forget cases under pressure
+- "It worked when I tried it" ≠ comprehensive
+
+Automated tests are systematic. They run the same way every time.
+
+**"Deleting X hours of work is wasteful"**
+
+Sunk cost fallacy. The time is already gone. Your choice now:
+- Delete and rewrite with TDD (X more hours, high confidence)
+- Keep it and add tests after (30 min, low confidence, likely bugs)
+
+The "waste" is keeping code you can't trust. Working code without real tests is technical debt.
+
+**"TDD is dogmatic, being pragmatic means adapting"**
+
+TDD IS pragmatic:
+- Finds bugs before commit (faster than debugging after)
+- Prevents regressions (tests catch breaks immediately)
+- Documents behavior (tests show how to use code)
+- Enables refactoring (change freely, tests catch breaks)
+
+"Pragmatic" shortcuts = debugging in production = slower.
+
+**"Tests after achieve the same goals - it's spirit not ritual"**
+
+No. Tests-after answer "What does this do?" Tests-first answer "What should this do?"
+
+Tests-after are biased by your implementation. You test what you built, not what's required. You verify remembered edge cases, not discovered ones.
+
+Tests-first force edge case discovery before implementing. Tests-after verify you remembered everything (you didn't).
+
+30 minutes of tests after ≠ TDD. You get coverage, lose proof tests work.
+
+## Common Rationalizations
+
+| Excuse | Reality |
+|--------|---------|
+| "Too simple to test" | Simple code breaks. Test takes 30 seconds. |
+
+exec
+/bin/bash -lc "sed -n '1,220p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/82fd64bc/skills/verification-before-completion/SKILL.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+---
+name: verification-before-completion
+description: Use when about to claim work is complete, fixed, or passing, before committing or creating PRs - requires running verification commands and confirming output before making any success claims; evidence before assertions always
+---
+
+# Verification Before Completion
+
+## Overview
+
+Claiming work is complete without verification is dishonesty, not efficiency.
+
+**Core principle:** Evidence before claims, always.
+
+**Violating the letter of this rule is violating the spirit of this rule.**
+
+## The Iron Law
+
+```
+NO COMPLETION CLAIMS WITHOUT FRESH VERIFICATION EVIDENCE
+```
+
+If you haven't run the verification command in this message, you cannot claim it passes.
+
+## The Gate Function
+
+```
+BEFORE claiming any status or expressing satisfaction:
+
+1. IDENTIFY: What command proves this claim?
+2. RUN: Execute the FULL command (fresh, complete)
+3. READ: Full output, check exit code, count failures
+4. VERIFY: Does output confirm the claim?
+   - If NO: State actual status with evidence
+   - If YES: State claim WITH evidence
+5. ONLY THEN: Make the claim
+
+Skip any step = lying, not verifying
+```
+
+## Common Failures
+
+| Claim | Requires | Not Sufficient |
+|-------|----------|----------------|
+| Tests pass | Test command output: 0 failures | Previous run, "should pass" |
+| Linter clean | Linter output: 0 errors | Partial check, extrapolation |
+| Build succeeds | Build command: exit 0 | Linter passing, logs look good |
+| Bug fixed | Test original symptom: passes | Code changed, assumed fixed |
+| Regression test works | Red-green cycle verified | Test passes once |
+| Agent completed | VCS diff shows changes | Agent reports "success" |
+| Requirements met | Line-by-line checklist | Tests passing |
+
+## Red Flags - STOP
+
+- Using "should", "probably", "seems to"
+- Expressing satisfaction before verification ("Great!", "Perfect!", "Done!", etc.)
+- About to commit/push/PR without verification
+- Trusting agent success reports
+- Relying on partial verification
+- Thinking "just this once"
+- Tired and wanting work over
+- **ANY wording implying success without having run verification**
+
+## Rationalization Prevention
+
+| Excuse | Reality |
+|--------|---------|
+| "Should work now" | RUN the verification |
+| "I'm confident" | Confidence ≠ evidence |
+| "Just this once" | No exceptions |
+| "Linter passed" | Linter ≠ compiler |
+| "Agent said success" | Verify independently |
+| "I'm tired" | Exhaustion ≠ excuse |
+| "Partial check is enough" | Partial proves nothing |
+| "Different words so rule doesn't apply" | Spirit over letter |
+
+## Key Patterns
+
+**Tests:**
+```
+✅ [Run test command] [See: 34/34 pass] "All tests pass"
+❌ "Should pass now" / "Looks correct"
+```
+
+**Regression tests (TDD Red-Green):**
+```
+✅ Write → Run (pass) → Revert fix → Run (MUST FAIL) → Restore → Run (pass)
+❌ "I've written a regression test" (without red-green verification)
+```
+
+**Build:**
+```
+✅ [Run build] [See: exit 0] "Build passes"
+❌ "Linter passed" (linter doesn't check compilation)
+```
+
+**Requirements:**
+```
+✅ Re-read plan → Create checklist → Verify each → Report gaps or completion
+❌ "Tests pass, phase complete"
+```
+
+**Agent delegation:**
+```
+✅ Agent reports success → Check VCS diff → Verify changes → Report actual state
+❌ Trust agent report
+```
+
+## Why This Matters
+
+From 24 failure memories:
+- your human partner said "I don't believe you" - trust broken
+- Undefined functions shipped - would crash
+- Missing requirements shipped - incomplete features
+- Time wasted on false completion → redirect → rework
+- Violates: "Honesty is a core value. If you lie, you'll be replaced."
+
+## When To Apply
+
+**ALWAYS before:**
+- ANY variation of success/completion claims
+- ANY expression of satisfaction
+- ANY positive statement about work state
+- Committing, PR creation, task completion
+- Moving to next task
+- Delegating to agents
+
+**Rule applies to:**
+- Exact phrases
+- Paraphrases and synonyms
+- Implications of success
+- ANY communication suggesting completion/correctness
+
+## The Bottom Line
+
+**No shortcuts for verification.**
+
+Run the command. Read the output. THEN claim the result.
+
+This is non-negotiable.
+
+exec
+/bin/bash -lc "sed -n '1,220p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/82fd64bc/skills/brainstorming/SKILL.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+---
+name: brainstorming
+description: "You MUST use this before any creative work - creating features, building components, adding functionality, or modifying behavior. Explores user intent, requirements and design before implementation."
+---
+
+# Brainstorming Ideas Into Designs
+
+Help turn ideas into fully formed designs and specs through natural collaborative dialogue.
+
+Start by understanding the current project context, then ask questions one at a time to refine the idea. Once you understand what you're building, present the design and get user approval.
+
+<HARD-GATE>
+Do NOT invoke any implementation skill, write any code, scaffold any project, or take any implementation action until you have presented a design and the user has approved it. This applies to EVERY project regardless of perceived simplicity.
+</HARD-GATE>
+
+## Anti-Pattern: "This Is Too Simple To Need A Design"
+
+Every project goes through this process. A todo list, a single-function utility, a config change — all of them. "Simple" projects are where unexamined assumptions cause the most wasted work. The design can be short (a few sentences for truly simple projects), but you MUST present it and get approval.
+
+## Checklist
+
+You MUST create a task for each of these items and complete them in order:
+
+1. **Explore project context** — check files, docs, recent commits
+2. **Offer visual companion** (if topic will involve visual questions) — this is its own message, not combined with a clarifying question. See the Visual Companion section below.
+3. **Ask clarifying questions** — one at a time, understand purpose/constraints/success criteria
+4. **Propose 2-3 approaches** — with trade-offs and your recommendation
+5. **Present design** — in sections scaled to their complexity, get user approval after each section
+6. **Write design doc** — save to `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md` and commit
+7. **Spec self-review** — quick inline check for placeholders, contradictions, ambiguity, scope (see below)
+8. **User reviews written spec** — ask user to review the spec file before proceeding
+9. **Transition to implementation** — invoke writing-plans skill to create implementation plan
+
+## Process Flow
+
+```dot
+digraph brainstorming {
+    "Explore project context" [shape=box];
+    "Visual questions ahead?" [shape=diamond];
+    "Offer Visual Companion\n(own message, no other content)" [shape=box];
+    "Ask clarifying questions" [shape=box];
+    "Propose 2-3 approaches" [shape=box];
+    "Present design sections" [shape=box];
+    "User approves design?" [shape=diamond];
+    "Write design doc" [shape=box];
+    "Spec self-review\n(fix inline)" [shape=box];
+    "User reviews spec?" [shape=diamond];
+    "Invoke writing-plans skill" [shape=doublecircle];
+
+    "Explore project context" -> "Visual questions ahead?";
+    "Visual questions ahead?" -> "Offer Visual Companion\n(own message, no other content)" [label="yes"];
+    "Visual questions ahead?" -> "Ask clarifying questions" [label="no"];
+    "Offer Visual Companion\n(own message, no other content)" -> "Ask clarifying questions";
+    "Ask clarifying questions" -> "Propose 2-3 approaches";
+    "Propose 2-3 approaches" -> "Present design sections";
+    "Present design sections" -> "User approves design?";
+    "User approves design?" -> "Present design sections" [label="no, revise"];
+    "User approves design?" -> "Write design doc" [label="yes"];
+    "Write design doc" -> "Spec self-review\n(fix inline)";
+    "Spec self-review\n(fix inline)" -> "User reviews spec?";
+    "User reviews spec?" -> "Write design doc" [label="changes requested"];
+    "User reviews spec?" -> "Invoke writing-plans skill" [label="approved"];
+}
+```
+
+**The terminal state is invoking writing-plans.** Do NOT invoke frontend-design, mcp-builder, or any other implementation skill. The ONLY skill you invoke after brainstorming is writing-plans.
+
+## The Process
+
+**Understanding the idea:**
+
+- Check out the current project state first (files, docs, recent commits)
+- Before asking detailed questions, assess scope: if the request describes multiple independent subsystems (e.g., "build a platform with chat, file storage, billing, and analytics"), flag this immediately. Don't spend questions refining details of a project that needs to be decomposed first.
+- If the project is too large for a single spec, help the user decompose into sub-projects: what are the independent pieces, how do they relate, what order should they be built? Then brainstorm the first sub-project through the normal design flow. Each sub-project gets its own spec → plan → implementation cycle.
+- For appropriately-scoped projects, ask questions one at a time to refine the idea
+- Prefer multiple choice questions when possible, but open-ended is fine too
+- Only one question per message - if a topic needs more exploration, break it into multiple questions
+- Focus on understanding: purpose, constraints, success criteria
+
+**Exploring approaches:**
+
+- Propose 2-3 different approaches with trade-offs
+- Present options conversationally with your recommendation and reasoning
+- Lead with your recommended option and explain why
+
+**Presenting the design:**
+
+- Once you believe you understand what you're building, present the design
+- Scale each section to its complexity: a few sentences if straightforward, up to 200-300 words if nuanced
+- Ask after each section whether it looks right so far
+- Cover: architecture, components, data flow, error handling, testing
+- Be ready to go back and clarify if something doesn't make sense
+
+**Design for isolation and clarity:**
+
+- Break the system into smaller units that each have one clear purpose, communicate through well-defined interfaces, and can be understood and tested independently
+- For each unit, you should be able to answer: what does it do, how do you use it, and what does it depend on?
+- Can someone understand what a unit does without reading its internals? Can you change the internals without breaking consumers? If not, the boundaries need work.
+- Smaller, well-bounded units are also easier for you to work with - you reason better about code you can hold in context at once, and your edits are more reliable when files are focused. When a file grows large, that's often a signal that it's doing too much.
+
+**Working in existing codebases:**
+
+- Explore the current structure before proposing changes. Follow existing patterns.
+- Where existing code has problems that affect the work (e.g., a file that's grown too large, unclear boundaries, tangled responsibilities), include targeted improvements as part of the design - the way a good developer improves code they're working in.
+- Don't propose unrelated refactoring. Stay focused on what serves the current goal.
+
+## After the Design
+
+**Documentation:**
+
+- Write the validated design (spec) to `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md`
+  - (User preferences for spec location override this default)
+- Use elements-of-style:writing-clearly-and-concisely skill if available
+- Commit the design document to git
+
+**Spec Self-Review:**
+After writing the spec document, look at it with fresh eyes:
+
+1. **Placeholder scan:** Any "TBD", "TODO", incomplete sections, or vague requirements? Fix them.
+2. **Internal consistency:** Do any sections contradict each other? Does the architecture match the feature descriptions?
+3. **Scope check:** Is this focused enough for a single implementation plan, or does it need decomposition?
+4. **Ambiguity check:** Could any requirement be interpreted two different ways? If so, pick one and make it explicit.
+
+Fix any issues inline. No need to re-review — just fix and move on.
+
+**User Review Gate:**
+After the spec review loop passes, ask the user to review the written spec before proceeding:
+
+> "Spec written and committed to `<path>`. Please review it and let me know if you want to make any changes before we start writing out the implementation plan."
+
+Wait for the user's response. If they request changes, make them and re-run the spec review loop. Only proceed once the user approves.
+
+**Implementation:**
+
+- Invoke the writing-plans skill to create a detailed implementation plan
+- Do NOT invoke any other skill. writing-plans is the next step.
+
+## Key Principles
+
+- **One question at a time** - Don't overwhelm with multiple questions
+- **Multiple choice preferred** - Easier to answer than open-ended when possible
+- **YAGNI ruthlessly** - Remove unnecessary features from all designs
+- **Explore alternatives** - Always propose 2-3 approaches before settling
+- **Incremental validation** - Present design, get approval before moving on
+- **Be flexible** - Go back and clarify when something doesn't make sense
+
+## Visual Companion
+
+A browser-based companion for showing mockups, diagrams, and visual options during brainstorming. Available as a tool — not a mode. Accepting the companion means it's available for questions that benefit from visual treatment; it does NOT mean every question goes through the browser.
+
+**Offering the companion:** When you anticipate that upcoming questions will involve visual content (mockups, layouts, diagrams), offer it once for consent:
+> "Some of what we're working on might be easier to explain if I can show it to you in a web browser. I can put together mockups, diagrams, comparisons, and other visuals as we go. This feature is still new and can be token-intensive. Want to try it? (Requires opening a local URL)"
+
+**This offer MUST be its own message.** Do not combine it with clarifying questions, context summaries, or any other content. The message should contain ONLY the offer above and nothing else. Wait for the user's response before continuing. If they decline, proceed with text-only brainstorming.
+
+**Per-question decision:** Even after the user accepts, decide FOR EACH QUESTION whether to use the browser or the terminal. The test: **would the user understand this better by seeing it than reading it?**
+
+- **Use the browser** for content that IS visual — mockups, wireframes, layout comparisons, architecture diagrams, side-by-side visual designs
+- **Use the terminal** for content that is text — requirements questions, conceptual choices, tradeoff lists, A/B/C/D text options, scope decisions
+
+A question about a UI topic is not automatically a visual question. "What does personality mean in this context?" is a conceptual question — use the terminal. "Which wizard layout works better?" is a visual question — use the browser.
+
+If they agree to the companion, read the detailed guide before proceeding:
+`skills/brainstorming/visual-companion.md`
+
+codex
+Using the Superpowers workflow: the locked PR.md is the approved design source here, so I’m applying the TDD and verification gates without reopening scope. Next I’m reading that locked plan end to end and extracting the whitelist before any edits.
+exec
+/bin/bash -lc "sed -n '1,220p' docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+# C.4-prelude — Minimal editor scaffold (MVP smoke-test enable; per Wave 5 plan v1.2 R14 SECOND real-test 2026-05-05)
+
+> **Wave 5 Stage C.4 lead-off implementation PR** — first row of the
+> Stage C.4 PR breakdown post v1.2 plan amendment (squash `56ff476`,
+> PR #70). Lands the **minimal editor scaffold** so the user can
+> navigate to `/notes/[slug]/edit`, mount `EditorShell` with the
+> Wave 5 grid container + drag/drop + resize layers (all already
+> shipped at C.2-4 / C.2-5 / C.2-6, squashes `de13d15` / `2df71b6` /
+> `2fb7900`), edit prose, save to LocalStorage, reload, and verify
+> content + grid intact — i.e. the **MVP smoke-test surface** the
+> user gatekeeper called out at v1.1 → v1.2 R14 SECOND real-test
+> ("交付了但 /notes/[slug]/edit 没有，我怎么 edit/尝试？").
+>
+> Scope is intentionally minimal per Wave 5 plan v1.2 row C.4-prelude
+> whitelist (line 571 of
+> `docs/superpowers/plans/2026-05-04-phase-1-wave-5-integration.md`):
+> 1 NEW Astro route + 1 NEW Astro wrapper + 1 NEW React island mount
+> component + 1 NEW `LocalStorageAdapter` MVP impl in `@skb/editor-shell`
+> per ADR-0018 D8 接口冻结 (lines 339-451) + 1 NEW vitest round-trip
+> suite + barrel re-export edits + apps/site CONTRACT.md `## Edit route
+> (Wave 5)` minimal section + `@skb/editor-shell` CONTRACT.md
+> `### NoteSaveAdapter (Wave 5; MVP shipped at C.4-prelude)` minimal
+> subsection. Total LOC budget ~200 across all whitelist files (per
+> v1.2 plan row LOC column).
+>
+> **Out-of-scope fence (deferred to C.4-1..C.4-5 full set + Stage C.3
+> visual)**: palette / slash-menu / drag-handle / toolbar 完整组装
+> (C.4-3); BlockRegistry/KernelRegistry full wire (C.4-3; minimal
+> hardcoded subset OK at prelude per plan v1.2 line 501); save/load
+> layoutEpoch sync + version increment trigger (C.4-4); e2e playwright
+> load → edit → save → reload (C.4-5); v2 visual identity + Inter /
+> JetBrains Mono fonts (Stage C.3); **NoteSaveAdapter interface
+> contract HARDENING** (W5-2 contract surface + adapter contract test
+> suite) — per Q3 plan-challenger absorbtion the C.4-prelude PR ships
+> only the minimal MVP impl + minimal CONTRACT.md doc forward-pointer;
+> full hardening lives at C.4-1.
+>
+> **PRE-COMMIT CLAUDE REVIEW (D1 stage 4) FIRES** per `## D2 trigger
+> judgment` (Row 1 — apps/site CONTRACT.md `## Edit route (Wave 5)`
+> section addition + `@skb/editor-shell` CONTRACT.md
+> `### NoteSaveAdapter` subsection addition; Row 5 — cross-package
+> public-surface boundary change since `NoteSaveAdapter` / `NoteState`
+> / `LocalStorageAdapter` are NEW exports from `@skb/editor-shell`
+> consumed by the apps/site `EditorShellMount` island).
+>
+> Cumulative PR delta tracker: this is **PR 18 of 32** locked
+> implementation PRs at v1.2 (16 done at HEAD `722bbb0` post PR #70
+> + #71 active.md sync; +1 = this C.4-prelude = 17 done after merge;
+> remaining = C.2-7 + C.3-1..C.3-5 + C.4-1..C.4-5 + Stage C.4 close
+> = 15 PRs to Wave 5 close).
+
+## title
+
+Minimal editor scaffold for `/notes/[slug]/edit` MVP smoke-test (per
+Wave 5 plan v1.2 R14 SECOND real-test row C.4-prelude). Specifically:
+
+1. NEW `apps/site/src/pages/notes/[slug]/edit.astro` (~30-50 LOC).
+   Basic Astro static-paths route mounting `EditorShellMount` for each
+   note slug. Coexists with the existing catch-all read-only renderer
+   `apps/site/src/pages/notes/[...slug].astro` (squash `2586328`); the
+   two routes are disjoint by Astro path-segment depth (`/notes/[slug]`
+   = read-only via catch-all; `/notes/[slug]/edit` = edit-mode via
+   this NEW route). The `getStaticPaths()` export iterates the same
+   `getCollection('notes')` used by `[...slug].astro` and emits one
+   route per note. The Astro page imports `BaseLayout` for shared
+   theme + FOUC inline script + `apps/site/src/styles/grid.css` (the
+   `.skb-grid` selector authority per ADR-0016 D8) and embeds
+   `<EditorShellMount slug={slug} initialMdx={body} client:only="react" />`
+   as the only body content.
+
+2. NEW `apps/site/src/components/EditorShellMount.astro` (~10-20 LOC).
+   Thin Astro wrapper that re-exports the React island below with
+   `client:only="react"` (chosen mount mode — see point 3 below for
+   rationale). Named-export `Props` interface matching the React
+   island props (`{ slug: string; initialMdx: string }`). The `.astro`
+   file is the integration seam keeping the React island invocation
+   syntactically natural inside `.astro` consumers.
+
+3. NEW `apps/site/src/components/EditorShellMount.tsx` (~50-80 LOC).
+   React island consumed by the `.astro` wrapper above. Hydration mode
+   = `client:only="react"`. Rationale: the editor-shell MUST run only
+   on the client (Tiptap is browser-only — `document.execCommand` /
+   `ProseMirror` DOM dependencies); `client:load` would force SSR a
+   server stub which Tiptap rejects. `client:only="react"` skips SSR
+   entirely + emits the React-rendered DOM at mount time post-
+   hydration. Body: instantiate `LocalStorageAdapter(slug)`; on mount
+   call `adapter.load()` + fall back to `props.initialMdx` if `null`
+   (i.e. first edit of an MDX-source-only note); call `registerBlocks(
+   blockRegistry)` (the C.2-1..C.2-6 already-shipped block registry
+   accepts all 8 light + heavy blocks per ADR-0009 D1; heavy blocks
+   render the Wave 5 plugin-placeholder tier per ADR-0014 v0.4 +
+   apps/site `componentsMap` invariant; this is harmless at MVP — see
+   `## R14 self-check` row 4 + plan v1.2 line 501 + Q4 absorbtion);
+   render `<EditorShell initialContent={loadedMdx} onChange={handler}/>`
+   wrapped in a `GridContainer` element. The `handler` debounces save() via
+   `setTimeout(..., 800ms)` (Wave 5 MVP heuristic; C.4-4 owns
+   trigger-strategy contract per plan v1.0 line 575).
+
+4. NEW `packages/editor-shell/src/save-adapter.ts` (~140-200 LOC).
+   Defines + exports `ReadonlyJSONValue` + `NoteState` + `NoteSaveAdapter`
+   + `LocalStorageAdapter` byte-equal (modulo whitespace + JSDoc
+   rewording) to the prose at
+   `docs/decisions/ADR-0018-v2-visual-migration.md` lines 339-451 —
+   the Stage C.4 实施 PR scope canonical interface freeze. Cite D8
+   sub-sections `#### NoteSaveAdapter TypeScript interface` (lines
+   333-451) + `#### Storage key + version field semantics` (lines
+   453-457) verbatim in the file-head JSDoc. localStorage key prefix
+   = `skb-note:{slug}` per D8 line 455 (NOT collide with design-tokens
+   `skb-theme` per design-tokens CONTRACT.md `STORAGE_KEY` invariant).
+   Per-note size cap = 2 MB; aggregate warn = 5 MB. Exception
+   handling: `QuotaExceededError` → `{ ok: false, error: 'localStorage
+   quota exceeded; ...' }`; `SecurityError` on `getItem` → `null` +
+   `console.warn`; `SecurityError` on `setItem` → `{ ok: false, error:
+   'localStorage disabled (private mode / sandbox); ...' }`; corrupted
+   JSON in storage → `null` + `console.warn` (treat as new note per Q11
+   data-loss disclosure). LOC budget MUST stay under 250 (ESLint
+   `max-lines: 300` warn threshold); target 140-200.
+
+5. NEW `packages/editor-shell/src/__tests__/save-adapter.test.ts`
+   (~120-180 LOC). Vitest round-trip suite covering at minimum:
+   - `load()` returns `null` for missing key
+   - `save()` then `load()` round-trips a `NoteState` (`mdxSource` +
+     `version` + `lastModified`)
+   - `save()` rejects oversized (> 2 MB) state with
+     `{ ok: false, error: ... '2MB limit' ... }`
+   - corrupted JSON in localStorage → `load()` returns `null` +
+     `console.warn` invoked once
+   - `SecurityError` on `getItem` → `load()` returns `null`
+   - `QuotaExceededError` on `setItem` → `save()` returns
+     `{ ok: false, error: ... 'quota exceeded' ... }`
+   - `SecurityError` on `setItem` → `save()` returns
+     `{ ok: false, error: ... 'private mode / sandbox' ... }`
+   Test scaffolding: `vi.stubGlobal('localStorage', mockStore)` for
+   the happy-path round-trip cases; `vi.spyOn(localStorage, 'getItem')
+   .mockImplementation(() => { throw new DOMException('...',
+   'SecurityError'); })` for the exception paths; mock
+   `QuotaExceededError` via `Object.assign(new Error('quota'), { name:
+   'QuotaExceededError', code: 22 })` since jsdom doesn't surface the
+   `DOMException` constructor with the `code` field set
+   automatically. Each case asserts both the return value AND
+   `console.warn.mock.calls.length` for the warn paths.
+
+6. MODIFIED `packages/editor-shell/src/index.ts` (~3-4 LOC delta).
+   Add barrel re-exports: `export { LocalStorageAdapter } from
+   './save-adapter';` + `export type { ReadonlyJSONValue, NoteState,
+   NoteSaveAdapter } from './save-adapter';`. Existing 20 exports
+   preserved (no regression).
+
+7. MODIFIED `packages/editor-shell/CONTRACT.md` (~25-40 LOC delta).
+   Add NEW subsection
+   `### NoteSaveAdapter (Wave 5; MVP shipped at C.4-prelude)` under
+   the existing `## Public surface` section (between the
+   `saveToMdx` / `loadFromMdx` / `SaveLoadOptions` block ending
+   ~L58 and the closing `'use client'` paragraph ~L60-61), OR
+   append at the bottom of `## Public surface` immediately before
+   the `## Grid layout (Wave 5)` section (~L63). Subsection content:
+   - public-surface bullets for `NoteSaveAdapter` interface +
+     `NoteState` shape + `LocalStorageAdapter` impl + `ReadonlyJSONValue`
+     type alias
+   - localStorage key prefix `skb-note:{slug}` + 2 MB per-note cap +
+     5 MB aggregate warn + 4 exception handling rules (Quota /
+     Security on get / Security on set / corrupted JSON)
+   - **C.4-prelude scope lock**: only the MVP `LocalStorageAdapter`
+     impl + minimal public-surface listing ships here; **full
+     contract hardening (W5-2 contract surface + adapter contract
+     test suite + Phase 2+ ApiAdapter forward-pointer prose +
+     interface-amendment policy via ADR-0018 amendment per D8 line
+     464)** is C.4-1 scope per Q3 plan-challenger absorbtion (Wave
+     5 plan v1.2 line 519, line 572 row C.4-1 ownership refinement)
+   - cite ADR-0018 D8 line 339-451 verbatim freeze + D8 line 333-335
+     adapter 落点 single-authority lock (NoteSaveAdapter at
+     `@skb/editor-shell`, NOT `@skb/mdx-bridge`)
+
+8. MODIFIED `apps/site/CONTRACT.md` (~20-35 LOC delta). Add NEW
+   section `## Edit route (Wave 5)` between the existing
+   `## Grid layout (Wave 5)` section (ends ~L106) and the
+   `## Invariants` section (starts ~L108). Section content:
+   - route surface: `/notes/[slug]/edit` static-paths route per note
+     slug; coexists with read-only `/notes/[slug]` catch-all renderer
+     by Astro path-depth disjointness
+   - mount mode: `client:only="react"` for `EditorShellMount.tsx`
+     (rationale: Tiptap browser-only)
+   - persistence: `LocalStorageAdapter` from `@skb/editor-shell` per
+     ADR-0018 D8 接口冻结; localStorage key `skb-note:{slug}`; NOT
+     collide with `skb-theme` design-tokens key
+   - block registry: `registerBlocks()` (all 8 blocks) at MVP per Q4
+     absorbtion (heavy blocks render plugin-placeholder per ADR-0014
+     v0.4 — harmless when not invoked at smoke-test); palette /
+     slash-menu / drag-handle / toolbar 完整组装 deferred to C.4-3
+   - C.4-prelude scope lock: this section is the MVP scaffold contract
+     only; C.4-2 enhances the route + mount with full BlockRegistry /
+     KernelRegistry wire-up; C.4-4 adds save/load layoutEpoch sync;
+     C.4-5 adds e2e playwright
+
+9. NEW `docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md` (this
+   PR.md). ~700-800 lines target.
+
+## what
+
+| # | File | Status | LOC budget | Purpose |
+|---|---|---|---:|---|
+| 1 | `apps/site/src/pages/notes/[slug]/edit.astro` | NEW | 30-50 | Static-paths route per note; mounts `EditorShellMount` via `client:only="react"`. |
+| 2 | `apps/site/src/components/EditorShellMount.astro` | NEW | 10-20 | Astro wrapper re-exporting the React island. |
+| 3 | `apps/site/src/components/EditorShellMount.tsx` | NEW | 50-80 | React island: `LocalStorageAdapter` + `EditorShell` + `GridContainer`. |
+| 4 | `packages/editor-shell/src/save-adapter.ts` | NEW | 140-200 | `NoteSaveAdapter` interface + `NoteState` + `LocalStorageAdapter` MVP impl per ADR-0018 D8 接口冻结. |
+| 5 | `packages/editor-shell/src/__tests__/save-adapter.test.ts` | NEW | 120-180 | 7+ vitest cases (round-trip + size cap + 4 exception paths). |
+| 6 | `packages/editor-shell/src/index.ts` | MODIFY | +3-4 | Barrel re-exports for the 4 NEW save-adapter symbols. |
+| 7 | `packages/editor-shell/CONTRACT.md` | MODIFY | +25-40 | NEW `### NoteSaveAdapter (Wave 5; MVP shipped at C.4-prelude)` subsection under `## Public surface`. |
+| 8 | `apps/site/CONTRACT.md` | MODIFY | +20-35 | NEW `## Edit route (Wave 5)` section between `## Grid layout` and `## Invariants`. |
+| 9 | `docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md` | NEW (this) | 700-800 | This PR.md. |
+
+**Total source/test LOC budget**: ~400-610 across files 1-8 (target
+~200 net per plan v1.2 LOC column; the 200 lock is the implementation
+core 1-5; doc + CONTRACT.md edits 6-8 are ~50-80 supplementary;
+target total = 200 + ~80 = ~280). Tracking ±20% per `## R14
+self-check` row 5; if drift > 20% → STOP + trigger v1.3 plan
+amendment per memory `feedback_r14_defer_chain_plan_amendment.md`.
+
+## why
+
+
+exec
+/bin/bash -lc "sed -n '221,440p' docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+### 1. User gatekeeper sequencing pushback → R14 SECOND real-test → v1.2 plan amendment
+
+The user gatekeeper raised the verbatim sequencing complaint
+**"交付了但 /notes/[slug]/edit 没有，我怎么 edit/尝试？"** during
+post-C.2-6 status sync (2026-05-05). Diagnosis (per Wave 5 plan v1.2
+section `## v1.2 R14 amendment (2026-05-05) — SECOND real-test`,
+lines 478-523): Wave 5 plan v1.1 sequence pushed editor mount to
+C.4-2 (~14 PRs out from the then-current 16-done state at HEAD
+`722bbb0`); this violated the MVP framework "每版本体验" (per-version
+user experience) core principle — the user could not 烟测
+("smoke-test") the integrated editor before Stage C.3 visual + Stage
+C.4 full UI assembly landed (15+ PRs out).
+
+Per ADR-0015 R14 (mid-Wave reframe via plan amendment PR, NOT
+memory-only) extended-by-illustration to the new gatekeeper-sequencing
+trigger class (per memory `feedback_r14_defer_chain_plan_amendment.md`
+illustrative-only reference; v1.1 absorbed defer-defer chain class +
+v1.2 absorbs gatekeeper-sequencing class — together R14 discipline
+operative across multiple trigger classes), orchestrator STOPped
+forward execution + opened formal v1.1 → v1.2 plan amendment PR
+running 5-stage D1 pipeline + plan-challenger light round (5/5
+absorbed: Q1 LOCKED `C.4-prelude` semantic identifier NOT fractional
+decimal + Q2 Stage C.4 grows 5 → 6 inline + Q3 ownership boundary
+refined + Q4 NO hard dependency on C.2-7 + Q5 RE-LITIGATE memory
+class split absorbed via two-layer trigger source). Squashes:
+v1.2 amendment PR `56ff476` (#70) + active.md sync `722bbb0` (#71).
+This C.4-prelude PR is the **first implementation deliverable post
+v1.2 lock**, executing the row C.4-prelude whitelist verbatim.
+
+### 2. MVP smoke-test surface enabled BEFORE Stage C.3 visual + C.4 full UI assembly + C.2-7 ADR-0014 v0.5 amendment
+
+Post-C.4-prelude merge, the user can:
+- navigate to `/notes/sample-mdx-note/edit` (or any note slug from
+  `getCollection('notes')`)
+- see `EditorShell` mounted inside `GridContainer` with the C.2-1 →
+  C.2-6 grid + drag/drop + resize layers active
+- load the sample note's MDX body (via `props.initialMdx` fallback if
+  `LocalStorageAdapter.load()` returns `null` on first visit)
+- edit prose (StarterKit + `proseExtensions` from
+  `@skb/block-foundation` provide markdown-class editing)
+- save to LocalStorage (debounced 800ms via `EditorShell.onChange`
+  callback wiring)
+- reload `/notes/[slug]/edit` and verify content + grid intact
+
+This is the **minimum viable editor experience**; it is NOT the full
+C.4 production wire (palette / slash-menu / drag-handle / toolbar +
+full BlockRegistry/KernelRegistry contract hardening + version
+increment + e2e playwright + v2 visual). Per Q4 plan-challenger
+absorbtion (plan v1.2 line 513), the scaffold has **NO hard
+dependency on C.2-7** (ADR-0014 v0.5 amendment + heavyBoundaryDimensions
+grid context); the minimal hardcoded BlockRegistry uses light blocks
+only (callout / code / markdown — derived from the existing
+`registerBlocks()` already-shipped factory). C.2-7 follows
+post-scaffold-merge without blocking the MVP smoke-test.
+
+The MVP smoke-test enables a **faster user gatekeeper feedback loop**:
+the user can validate the integrated grid + drag + resize + persist
+flow against actual content, surface UX issues, and feed real-test
+findings back into Stage C.3 + C.4 implementation PRs BEFORE 14 more
+PRs land. This is the same per-version-experience enforcement R14
+SECOND real-test made canonical at v1.2.
+
+### 3. Ownership boundary refined (Q3 plan-challenger absorbtion): C.4-prelude ships MVP impl, C.4-1 hardens contract surface
+
+The original Wave 5 plan v1.0 row C.4-1 (`docs/superpowers/plans/...`
+line 572 pre-amendment) bundled together: `NoteSaveAdapter` interface
+declaration + `NoteState` shape + `LocalStorageAdapter` MVP impl +
+W5-2 contract surface hardening + adapter contract tests. Q3
+plan-challenger absorbtion (plan v1.2 line 519 verbatim:
+"ownership boundary refined: C.4-prelude ships MVP `LocalStorageAdapter`
+impl; C.4-1 ships `NoteSaveAdapter` interface contract hardening +
+W5-2 update + adapter contract tests (NOT re-implement MVP impl)")
+split this into two PRs to avoid scope-overlap drift:
+
+- **C.4-prelude (this PR)**: ships the **MVP impl** verbatim per
+  ADR-0018 D8 lines 339-451 freeze + minimal CONTRACT.md
+  doc-forward-pointer subsection. Vitest round-trip + 4 exception
+  paths. NOT W5-2 contract hardening; NOT contract test suite; NOT
+  Phase 2+ ApiAdapter forward-pointer prose elaboration. Focus =
+  **MVP smoke-test enable**.
+
+- **C.4-1 (post v1.2 row C.4-1; reduced from ~250 LOC to ~150 LOC)**:
+  ships the **interface contract HARDENING** — W5-2 invariant prose
+  formalization at `@skb/editor-shell/CONTRACT.md` `## Public surface`
+  cross-referencing C.4-prelude impl + Phase 2+ ApiAdapter migration
+  contract + adapter contract test suite (load/save/version invariant
+  formal contracts) + interface-amendment policy via ADR-0018
+  amendment per D8 line 464 ("接口冻结约束: Wave 5 任何 PR 改动
+  NoteSaveAdapter / NoteState shape **必走 ADR-0018 Amendment**").
+  C.4-1 does NOT re-implement the MVP impl — only hardens the
+  contract surface around it.
+
+### 4. Stage C.4 grew 5 → 6 PRs (Q2 plan-challenger absorbtion)
+
+Per Q2 plan-challenger absorbtion (plan v1.2 line 519: "Stage C.4
+grows 5 → 6 inline (NOT separate mini-stage); 'C.4 mini-stage is
+intentionally inlined in C.4'"), the new C.4-prelude row is **inlined
+into Stage C.4** at the start of the PR breakdown table (between Stage
+C.3 close + existing C.4-1 row), NOT a separate Stage C.5 mini-stage.
+Stage C.4 final implementation PR count = 6 (C.4-prelude + C.4-1 +
+C.4-2 + C.4-3 + C.4-4 + C.4-5). Wave 5 total locked implementation
+PRs: 30 (v1.0) → 31 (v1.1 +C.2-3.5) → 32 (v1.2 +C.4-prelude).
+Cumulative delta tracker = 2/30 = 6.7%, well below D4 R14 threshold
+("PR 总量变化 > 15%"). Future v1.3+ amendments must re-check
+cumulative delta against this baseline.
+
+## acceptance
+
+This PR is ACCEPT (per pr-writer 2nd dispatch at D1 stage 6 per
+ADR-0011 D1) iff ALL of the following hold post-COMMIT (squash
+HEAD = TBD):
+
+### A. File deltas match whitelist (D1 stage 6 mechanical check)
+
+- [ ] **AC#1**: `apps/site/src/pages/notes/[slug]/edit.astro` exists
+      with `getStaticPaths()` enumerating each note via
+      `getCollection('notes')` + `<EditorShellMount slug={...}
+      initialMdx={...} client:only="react" />` body. ~30-50 LOC.
+- [ ] **AC#2**: `apps/site/src/components/EditorShellMount.astro`
+      exists; thin Astro wrapper exposing `Props` interface.
+      ~10-20 LOC.
+- [ ] **AC#3**: `apps/site/src/components/EditorShellMount.tsx`
+      exists; React island with `LocalStorageAdapter(slug)` instance
+      + `registerBlocks(registry)` call + an `EditorShell` element
+      inside a `GridContainer` element + 800 ms debounced `onChange`
+      save handler.
+      ~50-80 LOC.
+- [ ] **AC#4**: `packages/editor-shell/src/save-adapter.ts` exists
+      with `ReadonlyJSONValue` + `NoteState` + `NoteSaveAdapter` +
+      `LocalStorageAdapter` exported. ~140-200 LOC; under 250 LOC
+      ESLint warn threshold.
+- [ ] **AC#5**: `packages/editor-shell/src/__tests__/save-adapter.test.ts`
+      exists with 7+ vitest cases enumerated in `## TDD plan`; all
+      PASS. ~120-180 LOC.
+- [ ] **AC#6**: `packages/editor-shell/src/index.ts` adds 3-4 LOC of
+      barrel re-exports (`LocalStorageAdapter` + 3 type re-exports).
+      Existing 20 exports preserved.
+- [ ] **AC#7**: `packages/editor-shell/CONTRACT.md` adds NEW
+      `### NoteSaveAdapter (Wave 5; MVP shipped at C.4-prelude)`
+      subsection under `## Public surface` (~25-40 LOC delta).
+- [ ] **AC#8**: `apps/site/CONTRACT.md` adds NEW `## Edit route
+      (Wave 5)` section between `## Grid layout (Wave 5)` and
+      `## Invariants` (~20-35 LOC delta).
+- [ ] **AC#9**: `docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md`
+      exists (this PR.md).
+
+### B. Interface byte-equivalence to ADR-0018 D8 freeze
+
+- [ ] **AC#10**: `grep -A 4 'export type ReadonlyJSONValue' packages/editor-shell/src/save-adapter.ts`
+      produces a recursive readonly JSON union matching ADR-0018
+      lines 343-346 modulo whitespace + JSDoc rewording. (Specifically:
+      `string | number | boolean | null` + `readonly ReadonlyJSONValue[]`
+      + `{ readonly [key: string]: ReadonlyJSONValue }`.)
+- [ ] **AC#11**: `grep -A 12 'export interface NoteState' packages/editor-shell/src/save-adapter.ts`
+      produces the 4-field shape matching ADR-0018 lines 348-361:
+      `mdxSource: string` + `tiptapState?: ReadonlyJSONValue` +
+      `lastModified: number` + `version: number`, all `readonly`.
+- [ ] **AC#12**: `grep -A 18 'export interface NoteSaveAdapter' packages/editor-shell/src/save-adapter.ts`
+      produces the 3-member shape matching ADR-0018 lines 363-383:
+      `readonly slug: string` + `load(): Promise<NoteState | null>`
+      + `save(state: NoteState): Promise<{ ok: boolean; error?: string }>`.
+      Phase 2+ extension comment block (D8 lines 375-382) MUST be
+      preserved verbatim modulo JSDoc rewording (per Q12 absorbtion
+      Phase 2+ 兼容位预留).
+- [ ] **AC#13**: `grep -A 60 'export class LocalStorageAdapter' packages/editor-shell/src/save-adapter.ts`
+      produces the load + save methods matching ADR-0018 lines
+      385-443 modulo whitespace + JSDoc rewording. Specifically:
+      `PER_NOTE_MAX_BYTES = 2 * 1024 * 1024` + `AGGREGATE_WARN_BYTES
+      = 5 * 1024 * 1024` + `localStorage.getItem('skb-note:'+slug)`
+      load + `JSON.parse` corrupted-catch + SecurityError outer-catch
+      + `localStorage.setItem('skb-note:'+slug, serialized)` save +
+      QuotaExceededError catch + SecurityError catch.
+- [ ] **AC#14**: localStorage key prefix is byte-equal `skb-note:`
+      (per ADR-0018 D8 line 455); NOT collide with design-tokens
+      `skb-theme` (per design-tokens CONTRACT.md `STORAGE_KEY`
+      invariant). Verify via `grep -n "'skb-note:'" packages/editor-shell/src/save-adapter.ts`
+      (≥ 2 hits — one in `load()` + one in `save()` + optionally one
+      in the aggregate-size scan).
+
+### C. Vitest + integration green
+
+- [ ] **AC#15**: `pnpm --filter=@skb/editor-shell test` includes the
+      NEW `save-adapter.test.ts` cases; ALL PASS. The 7 cases
+      enumerated in `## TDD plan` are ALL present + each asserts
+      both return value + (where applicable) `console.warn` mock
+      call count.
+- [ ] **AC#16**: `pnpm check` PASSES (lint + typecheck + test +
+      build + size). No new ESLint warnings on `save-adapter.ts`
+      (under 250 LOC). No new typecheck failures across
+      `@skb/editor-shell` + `apps/site`.
+- [ ] **AC#17**: `pnpm size-check` PASSES (500-line hard fail per
+      file). Every NEW file < 500 lines (target < 250).
+- [ ] **AC#18**: `pnpm link-check` PASSES (lychee). No autolink-
+      in-backticks regressions per memory
+      `feedback_lychee_autolink_in_backticks.md` (regex-grep
+      `\`[^\`]*<\w+>[^\`]*\`` over the 3 doc deltas: this PR.md +
+      `apps/site/CONTRACT.md` + `packages/editor-shell/CONTRACT.md`
+      should match zero rows).
+
+### D. Cross-package + invariant compliance
+
+- [ ] **AC#19**: `apps/site/src/pages/notes/[...slug].astro` (the
+      catch-all read-only renderer; squash `2586328`) is UNTOUCHED
+      by this PR (read-only display path is orthogonal). `git diff
+      --stat` shows zero LOC delta on that file.
+- [ ] **AC#20**: Astro static-paths reconciliation: `pnpm --filter=
+      @skb/site build` produces both `dist/notes/[slug]/index.html`
+      (read-only) + `dist/notes/[slug]/edit/index.html` (edit) for
+      each sample note (`sample-mdx-note`, `sample-blocks`,
+      `__test_cjk__/laptop`, `__test_cjk__/zh-note`). Verify via
+      `find apps/site/dist/notes -type f -name '*.html'`.
+- [ ] **AC#21**: NO new dependency added to `apps/site/package.json`
+      OR `packages/editor-shell/package.json` (`@skb/editor-shell` +
+      `@skb/block-foundation` are already present per Wave 3 Stage A
+      shipped state). `git diff packages/*/package.json
+      apps/*/package.json` shows zero LOC delta.
+- [ ] **AC#22**: `EditorShellMount.tsx` uses `client:only="react"`
+      (NOT `client:load`). Per `## risks` row (c) below, Tiptap is
+      browser-only; SSR stub forces hydration mismatch. Verify via
+      `grep 'client:only="react"' apps/site/src/pages/notes/[slug]/edit.astro`.
+
+exec
+/bin/bash -lc "sed -n '441,660p' docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+- [ ] **AC#23**: cumulative PR delta tracker reads "**PR 18 of 32**
+      locked at v1.2; 17 done after this merge; 15 remaining to Wave
+      5 close" — assert via `## R14 self-check` row 6.
+
+## scope (whitelist)
+
+ONLY these files (no globs; per ADR-0006 D8 explicit-file-list
+staging discipline + Wave 5 plan v1.2 row C.4-prelude line 571
+verbatim):
+
+1. `apps/site/src/pages/notes/[slug]/edit.astro` (NEW)
+2. `apps/site/src/components/EditorShellMount.astro` (NEW)
+3. `apps/site/src/components/EditorShellMount.tsx` (NEW)
+4. `packages/editor-shell/src/save-adapter.ts` (NEW)
+5. `packages/editor-shell/src/__tests__/save-adapter.test.ts` (NEW)
+6. `packages/editor-shell/src/index.ts` (MODIFY; barrel re-exports)
+7. `packages/editor-shell/CONTRACT.md` (MODIFY; NEW `### NoteSaveAdapter
+   (Wave 5; MVP shipped at C.4-prelude)` subsection under
+   `## Public surface`)
+8. `apps/site/CONTRACT.md` (MODIFY; NEW `## Edit route (Wave 5)`
+   section between `## Grid layout (Wave 5)` and `## Invariants`)
+9. `docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md` (this
+   PR.md)
+
+Anything outside this list = scope creep → STOP + trigger v1.3 plan
+amendment per memory `feedback_r14_defer_chain_plan_amendment.md`
+(see `## R14 self-check` final row).
+
+## out-of-scope (deferred)
+
+The following are explicitly OUT OF SCOPE for C.4-prelude (per Wave
+5 plan v1.2 lines 503-509 verbatim + Q3 ownership boundary
+absorbtion line 519). Each is owned by a downstream PR:
+
+- **palette / slash-menu / drag-handle / toolbar 完整组装** — deferred
+  to **C.4-3** (BlockRegistry + KernelRegistry + mdx-bridge wire-up
+  + palette/slash-menu/drag-handle/toolbar 组装; per plan v1.2 line
+  574). The MVP scaffold uses the bare `EditorShell` (StarterKit +
+  `proseExtensions`-only) — sufficient for prose smoke-test.
+
+- **`BlockRegistry` + `KernelRegistry` full wire** — deferred to
+  **C.4-3** (per plan v1.2 line 574). C.4-prelude calls the
+  already-shipped `registerBlocks(registry)` factory (per
+  `@skb/editor-shell/src/registerBlocks.ts` shipped at Wave 3 Stage
+  A2), which registers all 8 blocks (5 light + 3 heavy); heavy
+  blocks render the ADR-0014 v0.4 plugin-placeholder tier (harmless
+  static React shell). This is the **minimal hardcoded BlockRegistry
+  subset** per plan v1.2 line 501; explicitly OK at prelude per Q4
+  absorbtion.
+
+- **save/load layoutEpoch sync + version increment trigger** —
+  deferred to **C.4-4** (per plan v1.2 line 575). C.4-prelude `save()`
+  calls do NOT increment `version` (the `EditorShellMount.tsx`
+  debounced handler uses a plain in-component `useRef` counter
+  starting at 1, hardcoded; layoutEpoch wiring + version-as-
+  optimistic-lock semantic is C.4-4 scope per ADR-0018 D8 line 357).
+
+- **e2e playwright load → edit → save → reload coverage** — deferred
+  to **C.4-5** (per plan v1.2 line 576). C.4-prelude vitest covers
+  the `LocalStorageAdapter` round-trip; e2e covers the full route +
+  mount + reload flow under real chromium (skip-on-WSL2 per memory
+  `feedback_wsl2_chromium_launch.md`; CI-only execution).
+
+- **v2 visual identity (OKLCH colors + 8-kind hue bars + prose
+  customization + shadow refresh)** — deferred to **Stage C.3**
+  (C.3-1..C.3-5 per plan v1.2 lines 559-565). C.4-prelude inherits
+  the existing v1 visual baseline (Wave 4 close); the editor UI
+  surface is intentionally bare.
+
+- **Inter / JetBrains Mono fonts** — deferred to **Stage C.3-1**
+  (per ADR-0018 D2 + plan v1.2 line 559).
+
+- **NoteSaveAdapter interface contract HARDENING** (W5-2 contract
+  surface formalization + adapter contract test suite + Phase 2+
+  ApiAdapter forward-pointer prose elaboration + interface-amendment
+  policy doc) — deferred to **C.4-1** per Q3 plan-challenger
+  absorbtion (plan v1.2 line 519 + line 572 row C.4-1 ownership
+  refinement). C.4-prelude ships only the MVP impl + minimal
+  doc-forward-pointer subsection in `@skb/editor-shell/CONTRACT.md`.
+
+- **C.2-7 (ADR-0014 v0.5 amendment + heavyBoundaryDimensions grid
+  context 联动 W5-1)** — sequencing peer; per Q4 plan-challenger
+  absorbtion (plan v1.2 line 513) C.4-prelude has **NO hard
+  dependency on C.2-7**. C.2-7 follows post-scaffold-merge without
+  blocking the MVP smoke-test (scaffold uses light blocks only +
+  does NOT consume `heavyBoundaryDimensions`).
+
+## D2 trigger judgment
+
+Per ADR-0007 D2 + ADR-0011 D1 stage-4 trigger conditions:
+
+### Row 1 — CONTRACT.md change
+
+This PR modifies **two** CONTRACT.md files:
+
+- `apps/site/CONTRACT.md` — NEW `## Edit route (Wave 5)` section
+  (~20-35 LOC delta) documenting route surface + mount mode + persistence
+  + block registry + scope lock.
+- `packages/editor-shell/CONTRACT.md` — NEW
+  `### NoteSaveAdapter (Wave 5; MVP shipped at C.4-prelude)` subsection
+  (~25-40 LOC delta) documenting public-surface bullets + key prefix +
+  size caps + 4 exception rules + scope lock to C.4-1.
+
+→ **Row 1 FIRES.**
+
+### Row 5 — Cross-package public-surface boundary change
+
+This PR introduces NEW exports from `@skb/editor-shell` (`NoteSaveAdapter`
++ `NoteState` + `LocalStorageAdapter` + `ReadonlyJSONValue`) consumed
+by the apps/site `EditorShellMount.tsx` island. Two packages touched
+in the same PR (editor-shell + apps/site) with a NEW boundary contract.
+
+→ **Row 5 FIRES.**
+
+### Row 4 — NEW ADR required
+
+This PR does NOT introduce a new ADR; it implements the already-locked
+ADR-0018 D8 接口冻结 (lines 339-451). NoteSaveAdapter / NoteState /
+LocalStorageAdapter are byte-equal-to-D8 declarations + NOT silent
+interface extensions (per D8 line 464 invariant).
+
+→ **Row 4 does NOT fire.**
+
+### Stage 4 PRE-COMMIT CLAUDE REVIEW gate
+
+Per ADR-0011 D1 stage 4 trigger conditions ("D2 row 1+4 hit") + the
+broader interpretation per ADR-0007 D2 row 5 cross-package class:
+
+→ **Stage 4 PRE-COMMIT CLAUDE REVIEW (orchestrator self) FIRES.**
+The orchestrator-self review at Stage 4 mitigates same-model echo
+chamber on the cross-package public-surface boundary + 2 CONTRACT.md
+edits + the ADR-0018 D8 interface byte-equivalence verification.
+Specific orchestrator-self review checks enumerated at
+`## stage-4 PRE-COMMIT CLAUDE REVIEW prep` below.
+
+## TDD plan
+
+Per CLAUDE.md "Review workflow" stage 2 (TDD-front: write tests first
+→ write impl → vitest all PASS), the executor sequence is:
+
+### Step 1 — Write `packages/editor-shell/src/__tests__/save-adapter.test.ts` first
+
+Vitest cases (all 7+ MUST be present + green; ~120-180 LOC):
+
+1. **`load() returns null for missing key`** — `vi.stubGlobal('localStorage',
+   {getItem: () => null, setItem: vi.fn(), key: () => null, length: 0,
+   clear: vi.fn(), removeItem: vi.fn()})`. `const adapter = new
+   LocalStorageAdapter('test-slug')`. `expect(await adapter.load()).toBe(
+   null)`.
+
+2. **`save() then load() round-trips a NoteState`** — use a real Map-
+   backed mock localStorage. `const state: NoteState = { mdxSource:
+   '# hello', lastModified: 1700000000, version: 1 }`. `expect(await
+   adapter.save(state)).toEqual({ ok: true })`. `expect(await
+   adapter.load()).toEqual(state)`. (`tiptapState` omitted — exercises
+   the optional-field branch.)
+
+3. **`save() rejects oversized state`** — construct `mdxSource` of
+   length `2 * 1024 * 1024 + 1` (e.g., `'a'.repeat(2*1024*1024+1)`).
+   `expect(result.ok).toBe(false); expect(result.error).toMatch(/2MB
+   limit|2 MB|2097152|exceeds/)`.
+
+4. **`load() returns null + console.warn for corrupted JSON`** —
+   pre-seed `localStorage` with `localStorage.setItem('skb-note:test-
+   slug', 'not-json{{{')`. `const warnSpy = vi.spyOn(console,
+   'warn').mockImplementation(() => {})`. `expect(await
+   adapter.load()).toBe(null); expect(warnSpy).toHaveBeenCalledTimes(
+   1); expect(warnSpy.mock.calls[0][0]).toMatch(/corrupted/i)`.
+
+5. **`load() returns null on SecurityError`** — `vi.spyOn(localStorage,
+   'getItem').mockImplementation(() => { throw new DOMException('access
+   denied', 'SecurityError'); })`. `const warnSpy = vi.spyOn(console,
+   'warn').mockImplementation(() => {})`. `expect(await
+   adapter.load()).toBe(null); expect(warnSpy).toHaveBeenCalledTimes(
+   1)`.
+
+6. **`save() rejects on QuotaExceededError`** — construct mock error:
+   `const err = Object.assign(new DOMException('Quota exceeded',
+   'QuotaExceededError'), { code: 22 })`. `vi.spyOn(localStorage,
+   'setItem').mockImplementation(() => { throw err; })`. `const result
+   = await adapter.save(smallState); expect(result.ok).toBe(false);
+   expect(result.error).toMatch(/quota/i)`.
+
+7. **`save() rejects on SecurityError on setItem`** —
+   `vi.spyOn(localStorage, 'setItem').mockImplementation(() => { throw
+   new DOMException('private mode', 'SecurityError'); })`. `const
+   result = await adapter.save(smallState); expect(result.ok).toBe(
+   false); expect(result.error).toMatch(/private mode|sandbox|
+   disabled/i)`.
+
+Optional 8th case (defensive — recommended but not blocking):
+8. **`save() console.warn fires when aggregate exceeds 5 MB warn
+   threshold`** — pre-populate Map-backed mock with 4 existing notes
+   each 1.4 MB; save a 5th 1 MB note; assert `warnSpy.mock.calls`
+   contains a matching `/aggregate.*5MB|exceeds 5MB/i` invocation +
+   `result.ok === true` (warn is non-fatal).
+
+### Step 2 — Write `packages/editor-shell/src/save-adapter.ts` impl
+
+Verbatim per ADR-0018 D8 lines 339-451 (modulo JSDoc rewording +
+file-head comment citing ADR-0018 D8 + plan v1.2 row C.4-prelude).
+Run `pnpm --filter=@skb/editor-shell test save-adapter` — all 7+
+cases MUST PASS.
+
+### Step 3 — Write `packages/editor-shell/src/index.ts` barrel + run
+`pnpm --filter=@skb/editor-shell typecheck` to verify export wire.
+
+### Step 4 — Write `apps/site/src/components/EditorShellMount.tsx` +
+`EditorShellMount.astro` + `[slug]/edit.astro` route.
+
+NO vitest for the route + mount component at C.4-prelude (per `##
+out-of-scope` — e2e playwright deferred to C.4-5; visual smoke
+deferred to C.3-5). Verify via `pnpm --filter=@skb/site build`
+(static-paths reconciliation produces both `dist/notes/[slug]/...`
++ `dist/notes/[slug]/edit/...` HTML).
+
+### Step 5 — Write `apps/site/CONTRACT.md` `## Edit route (Wave 5)`
+section + `packages/editor-shell/CONTRACT.md`
+`### NoteSaveAdapter (Wave 5; MVP shipped at C.4-prelude)` subsection.
+
+
+exec
+/bin/bash -lc "sed -n '661,900p' docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+### Step 6 — Run full `pnpm check` + `pnpm link-check` + `pnpm size-check`
+
+ALL must PASS. Any failure → fix BEFORE committing.
+
+## risks
+
+### (a) NoteSaveAdapter interface drift from ADR-0018 D8 freeze
+
+The largest risk: silent interface drift from D8 lines 339-451 (e.g.,
+field rename, optional-field flip, extra field added at MVP without
+ADR-0018 amendment). Per D8 line 464 invariant: "Wave 5 任何 PR 改动
+NoteSaveAdapter / NoteState shape **必走 ADR-0018 Amendment** (D2
+row 4 fires)"; silent extension violates contract freeze.
+
+**Mitigation**: AC#10..AC#14 byte-equivalence checks (grep + visual
+diff vs ADR-0018 D8 lines). Stage 4 PRE-COMMIT CLAUDE REVIEW
+orchestrator-self runs the AC#10..AC#14 sequence as a hard gate
+before authorising COMMIT; any drift = STOP + raise as ADR-0018
+amendment Q (NOT silent fix).
+
+### (b) Astro static-paths conflict between `[...slug].astro` (read-only catch-all) and `[slug]/edit.astro` (edit-mode)
+
+Astro routes `/src/pages/notes/[...slug].astro` (rest catch-all) +
+`/src/pages/notes/[slug]/edit.astro` (single-segment + literal `edit`)
+must be reconcilable by Astro's static-paths resolver. Empirical
+risk: catch-all takes precedence on `/notes/[slug]/edit` and routes
+to `[...slug].astro` with `slug = "[slug]/edit"` instead of the
+edit route.
+
+**Mitigation**: Astro 4.x static-paths resolver matches **most-
+specific-first** by static-segment count; `[slug]/edit.astro` has
+1 dynamic segment + 1 literal segment (`edit`) = depth-2 specificity;
+`[...slug].astro` has 1 rest segment = depth-1 specificity. The
+literal-segment route wins. Verify via AC#20: `pnpm --filter=
+@skb/site build` MUST emit BOTH `dist/notes/[slug]/index.html`
+(catch-all read-only output) + `dist/notes/[slug]/edit/index.html`
+(literal edit-route output) for the same slug.
+
+If Astro resolution is ambiguous (4.x changes between versions per
+the Astro changelog), fall back to a more-specific catch-all variant
+of `[...slug].astro` that excludes paths ending in `/edit` (filter
+inside `getStaticPaths()` `.filter(({ params }) => !params.slug?.
+endsWith('/edit'))`); this is a **secondary mitigation only** if
+AC#20 fails — preferred is the depth-2-specificity natural resolution.
+
+### (c) `EditorShellMount` client island hydration timing on first paint
+
+`client:load` would force Astro to SSR a server-stub of the React
+component before hydration; Tiptap is browser-only (`document.execCommand`,
+`ProseMirror` DOM dependencies) and would throw during SSR. The
+chosen `client:only="react"` skips SSR entirely + emits the component
+post-hydration only.
+
+**Trade-off**: `client:only="react"` produces a **first-paint blank
+flash** (no SSR placeholder for the editor surface). For MVP smoke-
+test this is acceptable (the user sees a fast initial nav + then
+the editor mounts within ~100-300 ms post-load). Stage C.3 visual
+PR can add a CSS skeleton placeholder if the flash is judged poor
+UX.
+
+**Mitigation**: document the choice explicitly in `apps/site/CONTRACT.md`
+`## Edit route (Wave 5)` section (mount mode bullet) + cite the
+Tiptap-browser-only rationale. AC#22 grep verifies `client:only="react"`
+is used (NOT `client:load`).
+
+### (d) localStorage key collision with existing `skb-theme` design-tokens key
+
+The design-tokens package (`packages/design-tokens/CONTRACT.md`)
+owns `STORAGE_KEY = 'skb-theme'` for the FOUC theme persistence.
+The NEW `LocalStorageAdapter` key prefix `skb-note:{slug}` (per
+ADR-0018 D8 line 455) MUST NOT collide.
+
+**Mitigation**: `skb-note:` (with colon separator + slug) is a
+distinct prefix from `skb-theme` (no colon, full key). No string-
+prefix overlap. AC#14 verifies the prefix byte-equality. Future
+`@skb/*` packages MUST also avoid `skb-note:` collision (single-
+authority registration table maintained at design-tokens
+CONTRACT.md if collision risk grows; out-of-scope at C.4-prelude
+since only 2 keys exist post-merge).
+
+### (e) (additional, lower-priority) `registerBlocks(registry)` heavy-block render path on first edit
+
+`registerBlocks()` registers all 8 blocks including the 3 heavy ones
+(Jupyter / NnViz / AgentFlow). At MVP smoke-test the user is unlikely
+to invoke heavy-block rendering (no palette to insert + StarterKit-
+only prose); but a corrupted-MDX load with heavy-block JSX could
+trigger the plugin-placeholder render path.
+
+**Mitigation**: ADR-0014 v0.4 plugin-placeholder tier is the Wave 5
+shipped state — placeholder render is harmless (static React shell;
+no Pyodide / TF.js / React Flow load). Per Q4 absorbtion (plan v1.2
+line 513), heavy-block boundary dimensions are NOT consumed at
+C.4-prelude (`heavyBoundaryDimensions` is C.2-7 scope). Risk surface
+= cosmetic only; not blocking.
+
+## R14 self-check
+
+Per memory `feedback_r14_defer_chain_plan_amendment.md` + Wave 5
+plan v1.2 R14 SECOND real-test discipline, mechanical self-test
+that this PR's scope matches the v1.2 plan row C.4-prelude verbatim
++ no scope drift + LOC budget within ±20%:
+
+| # | Check | Pass condition | Status |
+|---|---|---|---|
+| 1 | Whitelist match | All 9 files in `## scope (whitelist)` map verbatim to plan v1.2 row C.4-prelude line 571 (apps/site route + EditorShellMount {astro,tsx} + apps/site CONTRACT.md + editor-shell save-adapter.ts + tests + 1 PR.md) + the 2 implicit-but-required additions (`packages/editor-shell/src/index.ts` barrel + `packages/editor-shell/CONTRACT.md` minimal subsection) which are NOT explicitly in the row 571 prose but are the **structurally minimum** edits for a NEW public-surface export per ADR-0011 D1 + W5-2 contract surface forward-pointer per Q3 absorbtion | ✅ planned (verify post-EXECUTE) |
+| 2 | LOC budget | Total source/test LOC delta ≤ 280 (target 200 ±20% = 160-240; +80 supplementary doc edits = ~280 upper bound) | ✅ tracked in `## what` table |
+| 3 | No out-of-scope drift | None of the 7 deferred items (palette / BlockRegistry full / save layoutEpoch / e2e / v2 visual / fonts / NoteSaveAdapter contract hardening) appear as implementation deltas in this PR's `git diff` | ✅ planned (verify post-EXECUTE via stage-4 file-list grep) |
+| 4 | Q1-Q4 absorbtion outcomes reflected | Q1 `C.4-prelude` semantic identifier (NOT fractional) used in PR.md filename + plan row reference + cumulative tracker + Q2 Stage C.4 6-PR breakdown affirmed (PR 18 of 32 framing) + Q3 ownership boundary refined (MVP impl here, contract hardening at C.4-1) + Q4 NO hard dependency on C.2-7 (light blocks only; `heavyBoundaryDimensions` not consumed) | ✅ all 4 cited in `## why` + `## out-of-scope` + `## D2 trigger judgment` + `## risks` |
+| 5 | Drift detection escape valve | If during EXECUTE the implementation requires an out-of-scope file (e.g., `apps/api/...`, `packages/mdx-bridge/...`, additional CONTRACT.md edit) → STOP + open v1.3 plan amendment PR (5-stage D1 + plan-challenger light round) per `feedback_r14_defer_chain_plan_amendment.md` + ADR-0015 R14; do NOT fold into this PR | ✅ executor instruction |
+| 6 | Cumulative PR delta | Wave 5 v1.0 baseline 30; v1.1 +1 (C.2-3.5) = 31; v1.2 +1 (C.4-prelude) = 32. Cumulative delta 2/30 = 6.7% < 15% threshold. This PR consumes 1/15 remaining = 6.7% local progress; PR 18 of 32 | ✅ tracked |
+| 7 | R14 SECOND real-test trigger source two-layer | Cite ADR-0015 R14 canonical authority (规范依据) + memory `feedback_r14_defer_chain_plan_amendment.md` illustrative-only reference (NOT same-class identity match — defer-chain memory reused by extension to gatekeeper-sequencing class per Q5 absorbtion) | ✅ cited in `## why` paragraph 1 |
+| 8 | NoteSaveAdapter interface byte-equivalence | AC#10..AC#14 grep checks against ADR-0018 D8 lines 339-451 freeze; any drift → STOP + raise as ADR-0018 amendment Q + D2 row 4 fires (see `## risks` row a) | ✅ planned (verify post-EXECUTE Stage 4) |
+
+## stage-4 PRE-COMMIT CLAUDE REVIEW prep
+
+Per ADR-0011 D1 stage 4 trigger conditions (D2 row 1 + Row 5 fires;
+see `## D2 trigger judgment` above), orchestrator-self pre-commit
+checks BEFORE authorising reviewer codex COMMIT (D1 stage 5):
+
+1. **ADR-0018 D8 byte-equivalence grep** — run AC#10..AC#14 grep
+   sequence against `packages/editor-shell/src/save-adapter.ts`:
+   - `grep -A 4 'export type ReadonlyJSONValue' ...` matches D8 line
+     343-346 (recursive readonly JSON union)
+   - `grep -A 12 'export interface NoteState' ...` matches D8 line
+     348-361 (4 readonly fields)
+   - `grep -A 18 'export interface NoteSaveAdapter' ...` matches D8
+     line 363-383 (3 members + Phase 2+ extension comment block)
+   - `grep -A 60 'export class LocalStorageAdapter' ...` matches D8
+     line 385-443 (constants + load + save + 4 exception paths)
+   - `grep -n "'skb-note:'" ...` ≥ 2 hits (key prefix verbatim per
+     D8 line 455)
+   ANY drift → STOP + raise as ADR-0018 amendment Q (D2 row 4 fires).
+
+2. **`apps/site/CONTRACT.md` `## Edit route (Wave 5)` section
+   presence** — `grep -n '^## Edit route (Wave 5)$' apps/site/CONTRACT.md`
+   ≥ 1 hit + section content has the 5 mandated bullets (route
+   surface + mount mode + persistence + block registry + scope lock).
+
+3. **`packages/editor-shell/CONTRACT.md`
+   `### NoteSaveAdapter (Wave 5; MVP shipped at C.4-prelude)`
+   subsection presence** — `grep -n '^### NoteSaveAdapter (Wave 5;
+   MVP shipped at C.4-prelude)$' packages/editor-shell/CONTRACT.md`
+   ≥ 1 hit + subsection content has the 4 mandated bullet groups
+   (public-surface + key prefix + size caps + scope lock to C.4-1).
+
+4. **Barrel re-exports in `packages/editor-shell/src/index.ts`** —
+   `grep -n 'save-adapter' packages/editor-shell/src/index.ts` ≥ 2
+   hits (one for value `LocalStorageAdapter`, one for type `NoteSaveAdapter
+   | NoteState | ReadonlyJSONValue`).
+
+5. **localStorage key prefix `skb-note:` byte-match** — covered by
+   check 1 grep + AC#14 cross-reference; specifically NOT colliding
+   with design-tokens `skb-theme` key per design-tokens CONTRACT.md
+   `STORAGE_KEY` invariant.
+
+6. **vitest 7+ cases all PASS** — `pnpm --filter=@skb/editor-shell
+   test save-adapter` MUST exit 0 + the 7 enumerated cases (per
+   `## TDD plan` Step 1) all green.
+
+7. **`pnpm size-check` PASS** — every NEW file < 500 lines hard
+   limit + every NEW file under 250 lines (under ESLint `max-lines:
+   300` warn). `save-adapter.ts` MUST be < 250 LOC.
+
+8. **`pnpm link-check` (lychee) PASS** — no autolink-in-backticks
+   regression per memory `feedback_lychee_autolink_in_backticks.md`
+   (`grep -nE '`[^`]*<\w+>[^`]*`' docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md
+   apps/site/CONTRACT.md packages/editor-shell/CONTRACT.md` MUST
+   match zero rows). No `npmjs.com` URLs per memory
+   `feedback_lychee_npmjs_403.md`. No `~/.claude/...` markdown
+   links per memory `feedback_lychee_user_local_paths.md`.
+
+9. **ADR-0006 8-point checklist self-pass** — orchestrator-self
+   walks the 8 points (file size + cross-file ref sync + lychee +
+   pnpm check mandate + git mutation discipline + web access
+   discipline + cross-package moves + 8th-class hunt for high-risk
+   surface). Stage 4 trigger = mitigates same-model echo chamber on
+   the cross-package public-surface boundary.
+
+10. **Astro static-paths reconciliation pre-build sanity** — run
+    `pnpm --filter=@skb/site build` locally + verify
+    `find apps/site/dist/notes -type f -name '*.html' | sort` shows
+    BOTH `dist/notes/[slug]/index.html` (catch-all read-only) +
+    `dist/notes/[slug]/edit/index.html` (NEW edit route) for each
+    sample slug. Per `## risks` row (b) — if catch-all swallows the
+    edit route, fall back to filtered `getStaticPaths()` mitigation.
+
+11. **`pnpm check:affected` PASS** — limit to packages affected
+    since `origin/main` to catch any cross-package typecheck
+    regression early; full `pnpm check` MUST PASS as the final
+    AC#16 hard gate.
+
+ALL 11 checks PASS → orchestrator-self authorises reviewer codex
+COMMIT (D1 stage 5) per ADR-0006 D8 explicit-file-list staging
+(`git reset HEAD` → `git add <9 files>` → `git diff --cached
+--stat` verify file count = 9 + LOC delta ≤ ~610 → `git commit`).
+
+ANY check FAILS → STOP + remediate before COMMIT (NO `--amend` per
+git-mutation discipline; new commit per CLAUDE.md hard rule 5 +
+memory `feedback_git_operator_explicit_stage.md`).
+
+## Related
+
+- [Wave 5 plan v1.2 row C.4-prelude](../../superpowers/plans/2026-05-04-phase-1-wave-5-integration.md)
+  — line 571 (whitelist row) + lines 478-523 (`## v1.2 R14 amendment`
+  rationale + Q1-Q5 plan-challenger absorbtion)
+- [ADR-0018 D8 接口冻结](../../decisions/ADR-0018-v2-visual-migration.md)
+  — lines 319-464 (entire D8 section); specifically lines 339-451
+  (NoteSaveAdapter TypeScript interface block — verbatim freeze)
+  + lines 453-457 (Storage key + version field semantics) + line
+  464 (interface-amendment policy)
+- [ADR-0015 R14](../../decisions/ADR-0015-wave-4-close.md) — mid-Wave
+  reframe via plan amendment PR canonical authority (extended-by-
+  illustration to gatekeeper-sequencing trigger class via memory
+  `feedback_r14_defer_chain_plan_amendment.md` per Q5 two-layer
+  absorbtion)
+- [ADR-0011 D1 linear pipeline](../../decisions/ADR-0011-linear-pipeline-execution-model.md)
+  — D1 stage 4 PRE-COMMIT CLAUDE REVIEW trigger conditions
+- [ADR-0007 D2 trigger judgment](../../decisions/ADR-0007-job-function-codex-heavy-execution.md)
+  — Row 1 (CONTRACT) + Row 5 (cross-package boundary) judgment table
+- [ADR-0006 D8 explicit-file-list staging](../../decisions/ADR-0006-pr-gate-and-claude-review-protocol.md)
+  — reviewer codex COMMIT discipline
+- [ADR-0014 v0.4 plugin-placeholder tier](../../decisions/ADR-0014-heavy-block-boundary.md)
+  — heavy-block harmless-at-MVP rationale
+- [ADR-0016 D8/D9/D11/D12](../../decisions/ADR-0016-grid-data-model.md)
+  — `.skb-grid` selector authority + SSR/hydration phase split +
+  Tiptap-inside/grid-outside layering + layoutEpoch ordering
+- [`@skb/editor-shell` CONTRACT.md current state](../../../packages/editor-shell/CONTRACT.md)
+  — `## Public surface` section (this PR appends NEW
+  `### NoteSaveAdapter (Wave 5; MVP shipped at C.4-prelude)`
+  subsection)
+- [`apps/site` CONTRACT.md current state](../../../apps/site/CONTRACT.md)
+  — `## Grid layout (Wave 5)` section ends at L106 (this PR appends
+  NEW `## Edit route (Wave 5)` section between Grid layout and
+  Invariants)
+- [Wave 5 plan v1.2 amendment PR squash `56ff476` (#70)](https://github.com/W-YI/selfKnowledgeBaseWeb/pull/70)
+  + active.md sync squash `722bbb0` (#71) — v1.2 R14 SECOND real-test
+  formalize
+- previous Stage C.2 implementation PR exemplars:
+  [C.2-6 resize UX](./C.2-6-resize-ux.md) + [C.2-5 drag/drop UX](./C.2-5-drag-drop.md)
+  + [C.2-4 editor-shell grid](./C.2-4-editor-shell-grid.md)
+
+  ✓ Read locked PR.md and whitelist
+  → Inspect existing editor/site patterns
+  • Write save-adapter tests first and verify RED
+  • Implement save-adapter and run editor-shell tests
+  • Add barrel export, route, island, wrappers, and docs
+  • Run lint/typecheck/size-check and route build sanity
+  • Report exact files, LOC, test counts, and scope status
+codex
+The plan whitelist is locked to the eight implementation files; I will leave the PR.md untouched. I’m now reading only the existing patterns needed to make those eight files fit the repo.
+exec
+/bin/bash -lc "sed -n '339,451p' docs/decisions/ADR-0018-v2-visual-migration.md" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc 'git status --short' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+?? docs/plans/wave-5-main/C.4-prelude-editor-scaffold.md
+
+ succeeded in 0ms:
+```typescript
+// @skb/editor-shell/src/save-adapter.ts (NEW; Stage C.4 实施 PR scope)
+
+/** Read-only JSON-serializable value (recursive). 用于 tiptapState 缓存仅; NOT 持久化 schema. */
+export type ReadonlyJSONValue =
+  | string | number | boolean | null
+  | readonly ReadonlyJSONValue[]
+  | { readonly [key: string]: ReadonlyJSONValue };
+
+export interface NoteState {
+  /** Raw MDX source — 持久化 + round-trip with mdx-bridge per ADR-0016 D7 */
+  readonly mdxSource: string;
+  /** Optional Tiptap state cache (preview optimization). NOT 跨端稳定 schema; 仅 same-session memory cache.
+   *  Stage C.4 实施 PR 可选不存 (LocalStorageAdapter 加载时 always 从 mdxSource 重建 Tiptap state). */
+  readonly tiptapState?: ReadonlyJSONValue;
+  /** Last-modified timestamp ms */
+  readonly lastModified: number;
+  /** Monotonic version; consumer increments before each save() call. Wave 5 MVP 不验证;
+   *  Phase 2+ apps/api endpoint 用作乐观锁 conflict detect (server compares incoming.version vs stored.version + 1).
+   *  约束: 每次 save() 前 consumer 必 increment version (e.g., editor-shell 在 layoutEpoch +1 时同步 version +1).
+   *  LocalStorageAdapter.save() NOT auto-increment (Wave 5 MVP consumer-driven; Phase 2+ ApiAdapter server-validate). */
+  readonly version: number;
+}
+
+export interface NoteSaveAdapter {
+  /** Note slug (URL path /notes/<slug>) */
+  readonly slug: string;
+
+  /** Load NoteState from persistence; null = no saved state (new note) */
+  load(): Promise<NoteState | null>;
+
+  /** Save NoteState to persistence; { ok: true } success; { ok: false, error } failure.
+   *  Wave 5 MVP NoteSaveAdapter is sync-on-success (LocalStorageAdapter immediate);
+   *  Phase 2+ ApiAdapter is async-with-retry (network failure → exponential backoff). */
+  save(state: NoteState): Promise<{ ok: boolean; error?: string }>;
+
+  // Phase 2+ extensions (per Q12 absorbtion — Phase 2+ 兼容位预留):
+  // (1) save(state, options?: { signal?: AbortSignal; timeout?: number; onProgress?: (p: number) => void })
+  //     - AbortSignal: user cancel mid-save (e.g., switch route during ApiAdapter network);
+  //     - timeout: ms before abort (default no-timeout for LocalStorage; default 10s for Api);
+  //     - onProgress: ApiAdapter upload progress (0-1 fraction)
+  // (2) subscribe(callback: (state: NoteState) => void): UnsubscribeFn
+  //     - Real-time collaborative; Phase 2+ ApiAdapter via WebSocket; LocalStorageAdapter NOT subscribe (single-session)
+  // Wave 5 NOT include either; ADR-0018 D8 接口 v1 不动; v2 接口 ADR-0019+ amendment 引入.
+}
+
+// Wave 5 MVP impl (per Q11 absorbtion — localStorage size/quota/SecurityError 错误处理)
+export class LocalStorageAdapter implements NoteSaveAdapter {
+  /** Per-note size cap (≤ 2 MB serialized JSON; 合理 markdown size budget) */
+  private static readonly PER_NOTE_MAX_BYTES = 2 * 1024 * 1024;
+
+  /** Aggregate cap (warn at 5 MB; localStorage browser limit ~5-10 MB depending) */
+  private static readonly AGGREGATE_WARN_BYTES = 5 * 1024 * 1024;
+
+  constructor(public readonly slug: string) {}
+
+  async load(): Promise<NoteState | null> {
+    try {
+      const raw = localStorage.getItem(`skb-note:${this.slug}`);
+      if (!raw) return null;
+      try {
+        return JSON.parse(raw) as NoteState;
+      } catch {
+        // Corrupted JSON; log warn but return null (treat as new note; per Q11 数据丢失 disclosure)
+        console.warn(`[NoteSaveAdapter] corrupted state for ${this.slug}; returning null`);
+        return null;
+      }
+    } catch (e) {
+      // SecurityError (e.g., localStorage disabled in private mode / iframe sandbox)
+      if (e instanceof DOMException && e.name === 'SecurityError') {
+        console.warn(`[NoteSaveAdapter] localStorage SecurityError; load disabled`);
+        return null;  // user 看到 empty editor; explicit "save disabled" UI 由 editor-shell 控制
+      }
+      throw e;
+    }
+  }
+
+  async save(state: NoteState): Promise<{ ok: boolean; error?: string }> {
+    const serialized = JSON.stringify(state);
+    if (serialized.length > LocalStorageAdapter.PER_NOTE_MAX_BYTES) {
+      return { ok: false, error: `note exceeds 2MB limit (${serialized.length} bytes); split into smaller notes` };
+    }
+    try {
+      localStorage.setItem(`skb-note:${this.slug}`, serialized);
+      // Aggregate size warning (best-effort; iterate localStorage keys)
+      const aggregateBytes = Object.keys(localStorage)
+        .filter(k => k.startsWith('skb-note:'))
+        .reduce((sum, k) => sum + (localStorage.getItem(k)?.length ?? 0), 0);
+      if (aggregateBytes > LocalStorageAdapter.AGGREGATE_WARN_BYTES) {
+        console.warn(`[NoteSaveAdapter] aggregate notes ${aggregateBytes} bytes > 5MB; consider Phase 2+ apps/api`);
+      }
+      return { ok: true };
+    } catch (e) {
+      // QuotaExceededError (localStorage 满)
+      if (e instanceof DOMException && (e.name === 'QuotaExceededError' || e.code === 22)) {
+        return { ok: false, error: 'localStorage quota exceeded; delete old notes or upgrade to apps/api' };
+      }
+      // SecurityError
+      if (e instanceof DOMException && e.name === 'SecurityError') {
+        return { ok: false, error: 'localStorage disabled (private mode / sandbox); save disabled' };
+      }
+      return { ok: false, error: e instanceof Error ? e.message : 'unknown' };
+    }
+  }
+}
+
+// Phase 2+ impl (NOT Wave 5 scope; placeholder forward-pointer)
+// export class ApiAdapter implements NoteSaveAdapter {
+//   constructor(public readonly slug: string, public readonly apiBase: string, public readonly authToken: string) {}
+//   async load() { return await fetch(`${apiBase}/v1/notes/${slug}`, ...) ... }
+//   async save(state, options?: { signal?, timeout?, onProgress? }) { POST /v1/notes/${slug} with retry }
+// }
+```
+
+exec
+/bin/bash -lc "sed -n '1,220p' packages/editor-shell/src/index.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+export { EditorShell } from './EditorShell';
+export type { EditorShellProps } from './EditorShell';
+export { registerBlocks } from './registerBlocks';
+export { registerKernels } from './registerKernels';
+export { saveToMdx, loadFromMdx } from './saveLoad';
+export type { SaveLoadOptions } from './saveLoad';
+export { proseExtensions } from '@skb/block-foundation';
+export { GridContainer } from './grid-container';
+export type { GridContainerProps } from './grid-container';
+export { useAutoRowSpan } from './use-auto-row-span';
+export { EDGE_W, GAP, computeEdgeRects } from './drag-drop/edge-rects';
+export type { EdgeRect, BlockLayout } from './drag-drop/edge-rects';
+export { tiebreak, findMatches } from './drag-drop/tiebreak';
+export type { EdgeMatch, DragVelocity } from './drag-drop/tiebreak';
+export { OutlineOverlay } from './drag-drop/outline-overlay';
+export type { OutlineOverlayProps } from './drag-drop/outline-overlay';
+export { ColRuler } from './resize/col-ruler';
+export type { ColRulerProps } from './resize/col-ruler';
+export { SizeTooltip, colSpanToFraction } from './resize/size-tooltip';
+export type { SizeTooltipProps } from './resize/size-tooltip';
+
+exec
+/bin/bash -lc "sed -n '1,180p' packages/editor-shell/CONTRACT.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+# `@skb/editor-shell` — Contract
+
+Wave 3 Stage A composition layer. Composes the 8 block-* packages, 3 editor
+sub-modules, kernel-registry adapters, and mdx-bridge into a usable Tiptap
+editor surface. Closes the "editor-shell composition" deferral from
+[ADR-0010 D7 #3](../../docs/decisions/ADR-0010-wave-2-close.md).
+
+## Public surface
+
+- `EditorShell` — functional React component. Mounts a Tiptap editor via
+  `@tiptap/react`'s `useEditor` with `[StarterKit]` prose extensions only.
+  No block-* extensions yet (A3 adds the registry boot).
+- `EditorShellProps` — public props type:
+  ```ts
+  export interface EditorShellProps {
+    /** Optional initial editor content (Tiptap doc JSON or HTML string).
+     *  Defaults to an empty paragraph. */
+    initialContent?: object | string;
+    /** Optional change callback fired on each Tiptap update event. */
+    onChange?: (editor: Editor) => void;
+    /** Optional className applied to the EditorContent root for
+     *  consumer-controlled styling. */
+    className?: string;
+    /** Optional creation hook: invoked once with the constructed editor
+     *  instance after mount. Used by tests + future A3 wrappers needing
+     *  imperative editor access. */
+    onCreate?: (editor: Editor) => void;
+  }
+  ```
+  `Editor` type re-exported transitively from `@tiptap/core` via
+  `@tiptap/react`.
+- `registerBlocks(registry: BlockRegistry): void` — wires the 8 Wave 2
+  block-* core + ui-default definitions into the supplied `BlockRegistry`
+  instance. Idempotent at consumer scope (each registerBlocks call expects a
+  fresh registry; calling twice on the same registry throws "Duplicate core
+  name" per BlockRegistry contract). Insertion order = locked-plan order:
+  callout, code, image (component), math, pdf (render), jupyter, nn-viz,
+  agent-flow (viz). Per ADR-0009 D1: 3 component + 2 render + 3 viz = 8.
+- `proseExtensions` — Tiptap Extension array re-exported from
+  `@skb/block-foundation`. Consumers wire into `useEditor({ extensions: [...] })`
+  alongside `StarterKit` for prose-block-aware editing. A2's `EditorShell`
+  does NOT consume this yet (StarterKit-only); A3+ wrappers may.
+- `registerKernels(registry: KernelRegistry, adapter?: KernelAdapter): void`
+  — wires `PyodideAdapter` (default) into the supplied `KernelRegistry`
+  instance. `adapter` parameter lets consumers override with a custom
+  `KernelAdapter` implementation. PyodideAdapter constructor is cheap
+  (no Pyodide boot until `startSession()`). `KernelAdapter` type imported
+  from `@skb/kernel-adapter` (3rd workspace dep added at A4).
+- `saveToMdx(editor: Editor, options?: SaveLoadOptions): string` — serialize
+  the editor's current document to MDX source. Prose-only at A5 (Stage A);
+  component blocks throw via mdx-bridge's existing fail-loud rule until B1
+  extends the walker. `options.blockRegistry` is forward-compat (accepted
+  but unused at A5; B1 threads through to mdx-bridge per-call injection).
+- `loadFromMdx(editor: Editor, source: string, options?: SaveLoadOptions): void`
+  — replace the editor's document by parsing MDX source. Same prose-only
+  semantics as `saveToMdx`; component-block JSX throws until B1.
+- `SaveLoadOptions { blockRegistry?: BlockRegistry }` — public options type
+  for the per-call BlockRegistry injection pattern. Threading lands in B1.
+
+The component does NOT include a `'use client'` pragma — consumers (Stage C
+apps/site) decide the client/server boundary at integration time.
+
+## Grid layout (Wave 5)
+
+**W5-2: editor-shell `layoutReducer` + `layoutEpoch` single-source mutation 是
+grid block position 的唯一权威 mutation site.** 所有 block grid mutations (drag
+from grid container / resize from handle / `useAutoRowSpan` auto-measure /
+responsive transition / undo-redo / mdx-load) 必经过此 reducer; 冲突仲裁规则 per
