@@ -99,3 +99,29 @@ describe('BlockRegistry — UI', () => {
     expect(reg.getUI('callout', 'rogue')).toBeUndefined();
   });
 });
+
+describe('BlockRegistry — grid fields', () => {
+  it('round-trips gridDefault through defineUI', () => {
+    const withGridDefault = defineUI({
+      ...calloutUIDefault,
+      gridDefault: { col: 1, colSpan: 12, rowSpan: 1 },
+    });
+
+    expect(withGridDefault.gridDefault).toEqual({
+      col: 1,
+      colSpan: 12,
+      rowSpan: 1,
+    });
+  });
+
+  it('round-trips rowSpanSemantic and gridKind through defineUI', () => {
+    const withGridSemantics = defineUI({
+      ...calloutUIDefault,
+      rowSpanSemantic: 'auto',
+      gridKind: 'prose',
+    });
+
+    expect(withGridSemantics.rowSpanSemantic).toBe('auto');
+    expect(withGridSemantics.gridKind).toBe('prose');
+  });
+});
