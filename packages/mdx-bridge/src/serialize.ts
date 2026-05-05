@@ -10,6 +10,7 @@ import type {
   ListItem,
   PhrasingContent,
 } from 'mdast';
+import { COL_SNAPS } from '@skb/block-foundation';
 import type { MdastJsxElement } from './dispatch-table';
 import { getJsxDispatch } from './dispatch-table';
 import type { MdxBridgeOptions, TiptapDoc, TiptapMark, TiptapNode } from './parse';
@@ -47,8 +48,10 @@ type MdastJsxAttribute = Extract<
   { type: 'mdxJsxAttribute' }
 >;
 
-const COL_SNAPS = [2, 3, 4, 6, 8, 12] as const;
-const GRID_ATTR_NAMES = new Set(['col', 'row', 'colSpan', 'rowSpan', '_gridAttrsExplicit']);
+// COL_SNAPS imported from `@skb/block-foundation` (ADR-0006 class 4
+// single-authority schema; per Wave 5 plan v1.1 row C.2-3.5 reviewer R1
+// finding — was duplicated locally pre-amendment).
+const GRID_ATTR_NAMES = new Set(['col', 'row', 'colSpan', 'rowSpan']);
 
 function isPhrasing(node: RootContent | MdastJsxElement): node is PhrasingContent {
   return PHRASING_TYPES.has(node.type);
@@ -174,13 +177,12 @@ function unsupportedBlock(type: string): never {
 
 // Grid attr shape `{col, row?, colSpan, rowSpan}` per ADR-0016 D2 (single
 // schema authority). COL_SNAPS + col/colSpan/row/rowSpan validation rules
-// per D2 + D6 + D7. Path (a) transitional gate: emit ONLY when the
-// `_gridAttrsExplicit` Tiptap-attrs marker is true (preserves byte-equiv
-// for the 17 pre-grid RTT fixtures until C.2-3 lifts the marker).
+// per D2 + D6 + D7. ADR-0016 D7 end-state per Wave 5 plan v1.1 row C.2-3.5
+// (R14 amendment 2026-05-05): grid attrs emit unconditionally in canonical
+// order, while non-prose rowSpan='auto' still fails loudly at serialize time.
 function serializeGridAttrs(node: TiptapNode, mdxComponent: string): MdastJsxAttribute[] {
   const attrs = node.attrs ?? {};
   const isProse = mdxComponent === 'Markdown';
-  const shouldEmit = attrs['_gridAttrsExplicit'] === true;
 
   if (attrs['rowSpan'] === 'auto' && !isProse) {
     throw new Error(
@@ -188,7 +190,6 @@ function serializeGridAttrs(node: TiptapNode, mdxComponent: string): MdastJsxAtt
         `rowSpan must be an integer per ADR-0016 D3.`,
     );
   }
-  if (!shouldEmit) return [];
 
   const col = parseSerializableGridInteger('col', attrs['col'] ?? 1, node.type);
   const colSpan = parseSerializableGridInteger('colSpan', attrs['colSpan'] ?? 12, node.type);

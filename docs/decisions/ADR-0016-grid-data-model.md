@@ -180,7 +180,7 @@ export function useAutoRowSpan(
 
 mdx-bridge `tiptapToMdx` 必须实现这个不对称: markdown 块 (kind='prose' OR kind='component' with mdxComponent='Markdown') 不 serialize rowSpan; 其他块 serialize rowSpan 整数.
 
-mdx-bridge `mdxToTiptap` 反向: markdown 块若 MDX 中无 rowSpan attr → Tiptap state rowSpan='auto'; 其他块若 MDX 中无 rowSpan attr → fallback rowSpan=1 (defensive default).
+mdx-bridge `mdxToTiptap` 反向: markdown 块若 MDX 中无 rowSpan attr → Tiptap state rowSpan='auto'; **其他块若 MDX 中无 rowSpan attr → mdx-bridge throws** (per Wave 5 plan v1.1 row C.2-3.5 R14 amendment 2026-05-05; transitional `_gridAttrsExplicit` defensive default + console.warn path removed at C.2-3.5 execution; end-state hard-throw per ADR-0016 D7).
 
 ### D4 — 其他 block rowSpan = 用户设定整数, 入持久化
 
@@ -287,7 +287,7 @@ mdx-bridge `tiptapToMdx` serialize 每个 block 时必输出 grid attrs 作为 M
 
 `mdxToTiptap` 反向: 解析 MDX attrs 重建 grid position; 缺失 col/colSpan = invalid (mdx-bridge throws); row 缺失 = undefined (auto-place); rowSpan 缺失:
 - markdown block (mdxComponent='Markdown' OR kind='prose'): rowSpan='auto'
-- 其他 block: rowSpan=1 (defensive default + console.warn 提示 author 应显式)
+- **其他 block: mdx-bridge throws** (per Wave 5 plan v1.1 row C.2-3.5 R14 amendment 2026-05-05; transitional `_gridAttrsExplicit` defensive default + console.warn path removed at C.2-3.5 execution; end-state hard-throw)
 
 ### D8 — Astro renderer grid layout support
 

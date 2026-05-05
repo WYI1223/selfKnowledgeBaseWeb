@@ -164,7 +164,7 @@ function gridDoc(fixture: ComponentFixture, gridAttrs: Record<string, unknown>):
     content: [
       {
         type: fixture.core.name,
-        attrs: { ...gridAttrs, _gridAttrsExplicit: true, ...fixture.attrs },
+        attrs: { ...gridAttrs, ...fixture.attrs },
       },
     ],
   };
@@ -214,7 +214,6 @@ describe('grid attr round-trip', () => {
         const parsed = mdxToTiptap(source, options);
         expect(parsed.content[0]?.attrs).toMatchObject({
           ...shape.attrs,
-          _gridAttrsExplicit: true,
         });
 
         expect(tiptapToMdx(parsed, options).trim()).toBe(source);
@@ -233,7 +232,7 @@ describe('grid attr round-trip', () => {
       content: [
         {
           type: 'markdown',
-          attrs: { col: 1, colSpan: 6, rowSpan: 'auto', _gridAttrsExplicit: true },
+          attrs: { col: 1, colSpan: 6, rowSpan: 'auto' },
           content: [
             {
               type: 'paragraph',
@@ -253,7 +252,6 @@ describe('grid attr round-trip', () => {
       col: 1,
       colSpan: 6,
       rowSpan: 'auto',
-      _gridAttrsExplicit: true,
     });
     expect(tiptapToMdx(stripMdast(parsed), options).trim()).toBe(source);
   });

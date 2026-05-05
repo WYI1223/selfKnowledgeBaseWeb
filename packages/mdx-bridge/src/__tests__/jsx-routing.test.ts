@@ -111,7 +111,8 @@ function serializeCalloutChild(
 describe('mdxJsxFlowElement routing', () => {
   it('TC1 round-trips a registered Callout', () => {
     ensureCalloutDispatch();
-    const source = '<TestCallout type="info">\n  hello\n</TestCallout>';
+    const source =
+      '<TestCallout col={1} colSpan={12} rowSpan={1} type="info">\n  hello\n</TestCallout>';
     const blockRegistry = registryWithCallout();
 
     const restored = tiptapToMdx(mdxToTiptap(source, { blockRegistry }), { blockRegistry });
@@ -148,7 +149,8 @@ describe('mdxJsxFlowElement routing', () => {
 
   it('TC5 round-trips nested Callout blocks', () => {
     ensureCalloutDispatch();
-    const source = '<TestCallout>\n  <TestCallout type="warn">\n    inner\n  </TestCallout>\n</TestCallout>';
+    const source =
+      '<TestCallout col={1} colSpan={12} rowSpan={1}>\n  <TestCallout col={1} colSpan={12} rowSpan={1} type="warn">\n    inner\n  </TestCallout>\n</TestCallout>';
     const blockRegistry = registryWithCallout();
 
     const restored = tiptapToMdx(mdxToTiptap(source, { blockRegistry }), { blockRegistry });
@@ -162,8 +164,14 @@ describe('mdxJsxFlowElement routing', () => {
     const regB = registryWithCallout();
     const emptyRegistry = new BlockRegistry();
 
-    const docA = mdxToTiptap('<TestCallout type="info">\n  A\n</TestCallout>', { blockRegistry: regA });
-    const docB = mdxToTiptap('<TestCallout type="warn">\n  B\n</TestCallout>', { blockRegistry: regB });
+    const docA = mdxToTiptap(
+      '<TestCallout col={1} colSpan={12} rowSpan={1} type="info">\n  A\n</TestCallout>',
+      { blockRegistry: regA },
+    );
+    const docB = mdxToTiptap(
+      '<TestCallout col={1} colSpan={12} rowSpan={1} type="warn">\n  B\n</TestCallout>',
+      { blockRegistry: regB },
+    );
 
     expect(docA.content[0]?.type).toBe('callout');
     expect(docB.content[0]?.attrs?.['type']).toBe('warn');

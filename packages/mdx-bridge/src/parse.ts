@@ -4,6 +4,7 @@ import remarkMdx from 'remark-mdx';
 import remarkFrontmatter from 'remark-frontmatter';
 import type { Root, RootContent } from 'mdast';
 import type { BlockRegistry } from '@skb/block-foundation';
+import { COL_SNAPS } from '@skb/block-foundation';
 import { getJsxDispatch, type MdastJsxElement } from './dispatch-table';
 
 export interface MdxBridgeOptions {
@@ -46,15 +47,15 @@ interface GridAttrs {
   readonly row?: number;
   readonly colSpan: number;
   readonly rowSpan: number | 'auto';
-  readonly explicit: boolean;
 }
 
 // Grid attr shape `{col, row?, colSpan, rowSpan}` per ADR-0016 D2 (single
-// schema authority). COL_SNAPS = [2,3,4,6,8,12] per ADR-0016 D2 + D6 (1/6,
-// 1/4, 1/3, 1/2, 2/3, full). Path (a) transitional behavior: defensive
-// defaults + console.warn on missing required attrs (col / colSpan); explicit
-// invalid values still throw per D7. Hard-throw flip lands at C.2-3.
-const COL_SNAPS = [2, 3, 4, 6, 8, 12] as const;
+// schema authority). COL_SNAPS imported from `@skb/block-foundation` (ADR-0006
+// class 4 single-authority schema; per Wave 5 plan v1.1 row C.2-3.5 reviewer
+// R1 finding — was duplicated locally pre-amendment). ADR-0016 D7 hard-throw
+// end-state per Wave 5 plan v1.1 row C.2-3.5 (R14 amendment 2026-05-05):
+// missing required attrs throw loudly; prose Markdown continues to derive
+// rowSpan='auto' per ADR-0016 D3.
 const GRID_ATTR_NAMES = new Set(['col', 'row', 'colSpan', 'rowSpan']);
 
 /**
@@ -184,9 +185,10 @@ function parseGridAttrs(node: MdastJsxElement, blockType: string, isProse: boole
   const rowSpanAttr = getGridAttr(node, 'rowSpan');
 
   if (!isProse && (!colAttr || !colSpanAttr)) {
-    console.warn(
-      `mdx-bridge: grid attrs missing on block ${blockType}; defaulted to col=1 colSpan=12. ` +
-        `ADR-0016 D7 hard-throw lands at C.2-3.`,
+    throw new Error(
+      `mdx-bridge: required grid attrs col + colSpan missing on block "${blockType}"; ` +
+        `per ADR-0016 D7 end-state invariant (Wave 5 plan v1.1 row C.2-3.5; ` +
+        `R14 amendment 2026-05-05).`,
     );
   }
 
@@ -204,7 +206,6 @@ function parseGridAttrs(node: MdastJsxElement, blockType: string, isProse: boole
     ...(row !== undefined ? { row } : {}),
     colSpan,
     rowSpan,
-    explicit: Boolean(colAttr && colSpanAttr),
   };
 }
 
@@ -217,7 +218,6 @@ function mergeGridAttrs(
     ...(gridAttrs.row !== undefined ? { row: gridAttrs.row } : {}),
     colSpan: gridAttrs.colSpan,
     rowSpan: gridAttrs.rowSpan,
-    ...(gridAttrs.explicit ? { _gridAttrsExplicit: true } : {}),
     ...(blockAttrs ?? {}),
   };
 }
@@ -280,11 +280,11 @@ function parseRowSpan(
 ): number | 'auto' {
   if (!attr) {
     if (isProse) return 'auto';
-    console.warn(
-      `mdx-bridge: grid attr default rowSpan=1 on non-prose block ${blockType}; ` +
-        `explicit value recommended per ADR-0016 D3+D7.`,
+    throw new Error(
+      `mdx-bridge: required grid attr rowSpan missing on block "${blockType}"; ` +
+        `per ADR-0016 D7 end-state invariant (Wave 5 plan v1.1 row C.2-3.5; ` +
+        `R14 amendment 2026-05-05).`,
     );
-    return 1;
   }
 
   const value = attrValue(attr);
