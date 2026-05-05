@@ -147,6 +147,48 @@ React-side defensive-rendering defaults, an orthogonal concern from mdx-bridge
 defensive defaults with the same numeric values but a distinct enforcement
 layer.
 
+### Drag/Drop layer (C.2-5)
+
+C.2-5 adds the editor-side drag/drop UX primitives under
+`packages/editor-shell/src/drag-drop/`:
+
+- `edge-rects.ts` exports `EDGE_W`, `GAP`, `EdgeRect`, `BlockLayout`, and
+  `computeEdgeRects(blocks)`. It pre-computes the 4 half-in / half-out edge
+  rectangles per snapshot block per ADR-0017 D2 and D5 option 1.
+- `tiebreak.ts` exports `EdgeMatch`, `DragVelocity`, `tiebreak(matches,
+  velocity)`, and `findMatches(cursorX, cursorY, edgeRects, blockRects)`.
+  It implements ADR-0017 D3's signed-distance formula, primary
+  `Math.abs(distance)` ordering, velocity-direction tiebreak at
+  epsilon 0.5px/frame, spatial fallback, and `blockId.localeCompare` stable
+  terminator.
+- `outline-overlay.tsx` exports `OutlineOverlay` and `OutlineOverlayProps`.
+  It implements the C.2-5 subset of ADR-0017 D4 scheme A: static base plus
+  one active dashed accent for the affected edge. The `host` and
+  `shifted-block` outline classes, drag-ghost, drop-pulse, Esc cancel, and
+  `layoutEpoch` reducer wiring remain C.2-8 scope.
+
+Drag/drop edge-width is coupled to grid `--gap` via `EDGE_W = 2 * GAP`.
+`EDGE_W = 28` and `GAP = 14` ensure the 14px gap between adjacent blocks is
+fully covered by both neighbours' edge rects, eliminating the dead zone where
+a cursor in the gap would miss every edge. Cross-package consumer parity:
+`apps/site/src/styles/grid.css` owns `.skb-grid { --gap: 14px }` from C.2-3;
+that value MUST stay byte-equal to the `GAP = 14` export from
+`edge-rects.ts`. Drift is an algorithm replication failure mode, not a visual
+token preference.
+
+The drag/drop layer consumes the W5-1 `BlockGridPosition` shape authority from
+`@skb/block-foundation` conceptually: block bounding boxes are derived from
+grid `{ col, row?, colSpan, rowSpan }` dimensions per ADR-0016 D11's Tiptap
+inside / grid outside layering. The modules do not mutate NodeView attrs; they
+emit geometric data and visual feedback for later C.2-8 reducer wiring.
+
+Wave 5 plan v1.1 row C.2-3.5 is the active downstream constraint: drag/drop
+modules MUST NOT reference `_gridAttrsExplicit`, the mdx-bridge transitional
+marker removed at the hard-throw flip end-state (`b019a31`). ADR-0016 D2
+numeric defaults may still be used as React-side defensive rendering defaults
+at a future `BlockLayout` input boundary; that is orthogonal to mdx-bridge
+hard-throw enforcement.
+
 `layoutReducer` + `layoutEpoch` implementation remains deferred to C.2-8 per
 Wave 5 plan v1.1 row C.2-8; C.2-4 establishes the W5-2 invariant prose, thin
 grid container, and auto-row-span hook only.
