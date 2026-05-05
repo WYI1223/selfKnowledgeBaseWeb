@@ -42,6 +42,13 @@ const TIPTAP_PROSE_BLOCK_TYPES = new Set([
 ]);
 
 type TiptapMdastBlock = BlockContent | DefinitionContent | MdastJsxElement;
+type MdastJsxAttribute = Extract<
+  MdastJsxElement['attributes'][number],
+  { type: 'mdxJsxAttribute' }
+>;
+
+const COL_SNAPS = [2, 3, 4, 6, 8, 12] as const;
+const GRID_ATTR_NAMES = new Set(['col', 'row', 'colSpan', 'rowSpan', '_gridAttrsExplicit']);
 
 function isPhrasing(node: RootContent | MdastJsxElement): node is PhrasingContent {
   return PHRASING_TYPES.has(node.type);
@@ -148,7 +155,14 @@ function tiptapComponentToMdast(
 
   const dispatch = getJsxDispatch(core.mdxComponent);
   if (!dispatch || dispatch.blockType !== node.type) return unsupportedBlock(node.type);
-  return dispatch.serialize(node);
+
+  const gridAttrs = serializeGridAttrs(node, core.mdxComponent);
+  const element = dispatch.serialize(stripGridAttrsForDispatch(node));
+  if (gridAttrs.length === 0) return element;
+  return {
+    ...element,
+    attributes: [...gridAttrs, ...element.attributes],
+  };
 }
 
 function unsupportedBlock(type: string): never {
@@ -156,6 +170,111 @@ function unsupportedBlock(type: string): never {
     `mdx-bridge: unsupported block type "${type}". ` +
       `Add a fixture and a parse + serialize case before introducing this block type.`,
   );
+}
+
+// Grid attr shape `{col, row?, colSpan, rowSpan}` per ADR-0016 D2 (single
+// schema authority). COL_SNAPS + col/colSpan/row/rowSpan validation rules
+// per D2 + D6 + D7. Path (a) transitional gate: emit ONLY when the
+// `_gridAttrsExplicit` Tiptap-attrs marker is true (preserves byte-equiv
+// for the 17 pre-grid RTT fixtures until C.2-3 lifts the marker).
+function serializeGridAttrs(node: TiptapNode, mdxComponent: string): MdastJsxAttribute[] {
+  const attrs = node.attrs ?? {};
+  const isProse = mdxComponent === 'Markdown';
+  const shouldEmit = attrs['_gridAttrsExplicit'] === true;
+
+  if (attrs['rowSpan'] === 'auto' && !isProse) {
+    throw new Error(
+      `mdx-bridge: unsupported grid attr rowSpan='auto' on non-prose block ${node.type}; ` +
+        `rowSpan must be an integer per ADR-0016 D3.`,
+    );
+  }
+  if (!shouldEmit) return [];
+
+  const col = parseSerializableGridInteger('col', attrs['col'] ?? 1, node.type);
+  const colSpan = parseSerializableGridInteger('colSpan', attrs['colSpan'] ?? 12, node.type);
+  validateGridPosition(col, colSpan, node.type);
+
+  const out: MdastJsxAttribute[] = [
+    gridExpressionAttr('col', col),
+    ...(attrs['row'] !== undefined
+      ? [gridExpressionAttr('row', parseSerializableGridInteger('row', attrs['row'], node.type))]
+      : []),
+    gridExpressionAttr('colSpan', colSpan),
+  ];
+
+  if (!isProse) {
+    out.push(
+      gridExpressionAttr(
+        'rowSpan',
+        parseSerializableGridInteger('rowSpan', attrs['rowSpan'] ?? 1, node.type),
+      ),
+    );
+  }
+  return out;
+}
+
+function stripGridAttrsForDispatch(node: TiptapNode): TiptapNode {
+  if (!node.attrs) return node;
+  const attrs: Record<string, unknown> = {};
+  let stripped = false;
+  for (const [key, value] of Object.entries(node.attrs)) {
+    if (GRID_ATTR_NAMES.has(key)) {
+      stripped = true;
+    } else {
+      attrs[key] = value;
+    }
+  }
+  return stripped ? { ...node, attrs } : node;
+}
+
+function gridExpressionAttr(name: string, value: number): MdastJsxAttribute {
+  return {
+    type: 'mdxJsxAttribute',
+    name,
+    value: {
+      type: 'mdxJsxAttributeValueExpression',
+      value: String(value),
+    },
+  };
+}
+
+function parseSerializableGridInteger(name: string, value: unknown, blockType: string): number {
+  const numeric = typeof value === 'number' ? value : Number(value);
+  if (!Number.isInteger(numeric)) {
+    throw new Error(
+      `mdx-bridge: unsupported grid attr ${name}=${JSON.stringify(value)} on block ${blockType}; ` +
+        `expected an integer.`,
+    );
+  }
+  if (name === 'col' && (numeric < 1 || numeric > 12)) {
+    throw new Error(
+      `mdx-bridge: unsupported grid attr col=${numeric} on block ${blockType}; ` +
+        `expected 1 ≤ col ≤ 12.`,
+    );
+  }
+  if (name === 'colSpan' && !COL_SNAPS.includes(numeric as (typeof COL_SNAPS)[number])) {
+    throw new Error(
+      `mdx-bridge: unsupported grid attr colSpan on block ${blockType}; ` +
+        `expected COL_SNAPS [2,3,4,6,8,12], received ${numeric}.`,
+    );
+  }
+  if ((name === 'row' || name === 'rowSpan') && numeric < 1) {
+    throw new Error(
+      `mdx-bridge: unsupported grid attr ${name}=${numeric} on block ${blockType}; ` +
+        `expected ${name} ≥ 1.`,
+    );
+  }
+  return numeric;
+}
+
+function validateGridPosition(col: number, colSpan: number, blockType: string): void {
+  const end = col + colSpan - 1;
+  if (end > 12) {
+    throw new Error(
+      `mdx-bridge: unsupported grid attrs on block ${blockType}; ` +
+        `col + colSpan - 1 = ${end}, expected col + colSpan - 1 ≤ 12.`,
+    );
+  }
 }
 
 /**

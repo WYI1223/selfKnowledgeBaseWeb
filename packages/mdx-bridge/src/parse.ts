@@ -36,6 +36,27 @@ export interface TiptapMark {
   attrs?: Record<string, unknown>;
 }
 
+type MdastJsxAttribute = Extract<
+  MdastJsxElement['attributes'][number],
+  { type: 'mdxJsxAttribute' }
+>;
+
+interface GridAttrs {
+  readonly col: number;
+  readonly row?: number;
+  readonly colSpan: number;
+  readonly rowSpan: number | 'auto';
+  readonly explicit: boolean;
+}
+
+// Grid attr shape `{col, row?, colSpan, rowSpan}` per ADR-0016 D2 (single
+// schema authority). COL_SNAPS = [2,3,4,6,8,12] per ADR-0016 D2 + D6 (1/6,
+// 1/4, 1/3, 1/2, 2/3, full). Path (a) transitional behavior: defensive
+// defaults + console.warn on missing required attrs (col / colSpan); explicit
+// invalid values still throw per D7. Hard-throw flip lands at C.2-3.
+const COL_SNAPS = [2, 3, 4, 6, 8, 12] as const;
+const GRID_ATTR_NAMES = new Set(['col', 'row', 'colSpan', 'rowSpan']);
+
 /**
  * Wave 1 minimal MDX → Tiptap doc.
  *
@@ -139,7 +160,14 @@ function mdastJsxFlowElementToTiptap(
   const dispatch = getJsxDispatch(componentName);
   if (!dispatch || dispatch.blockType !== core.name) return unsupportedBlock(componentName);
 
-  return { ...dispatch.parse(node), _mdast: node };
+  const gridAttrs = parseGridAttrs(node, core.name, componentName === 'Markdown');
+  const nodeForDispatch = stripGridAttrsForDispatch(node);
+  const parsed = dispatch.parse(nodeForDispatch);
+  return {
+    ...parsed,
+    attrs: mergeGridAttrs(parsed.attrs, gridAttrs),
+    _mdast: nodeForDispatch,
+  };
 }
 
 function unsupportedBlock(type: string): never {
@@ -147,6 +175,137 @@ function unsupportedBlock(type: string): never {
     `mdx-bridge: unsupported block type "${type}". ` +
       `Add a fixture and a parse + serialize case before introducing this block type.`,
   );
+}
+
+function parseGridAttrs(node: MdastJsxElement, blockType: string, isProse: boolean): GridAttrs {
+  const colAttr = getGridAttr(node, 'col');
+  const rowAttr = getGridAttr(node, 'row');
+  const colSpanAttr = getGridAttr(node, 'colSpan');
+  const rowSpanAttr = getGridAttr(node, 'rowSpan');
+
+  if (!isProse && (!colAttr || !colSpanAttr)) {
+    console.warn(
+      `mdx-bridge: grid attrs missing on block ${blockType}; defaulted to col=1 colSpan=12. ` +
+        `ADR-0016 D7 hard-throw lands at C.2-3.`,
+    );
+  }
+
+  const col = colAttr ? parseGridInteger('col', attrValue(colAttr), blockType) : 1;
+  const colSpan = colSpanAttr
+    ? parseGridInteger('colSpan', attrValue(colSpanAttr), blockType)
+    : 12;
+  validateGridPosition(col, colSpan, blockType);
+
+  const row = rowAttr ? parseGridInteger('row', attrValue(rowAttr), blockType) : undefined;
+  const rowSpan = parseRowSpan(rowSpanAttr, blockType, isProse);
+
+  return {
+    col,
+    ...(row !== undefined ? { row } : {}),
+    colSpan,
+    rowSpan,
+    explicit: Boolean(colAttr && colSpanAttr),
+  };
+}
+
+function mergeGridAttrs(
+  blockAttrs: Record<string, unknown> | undefined,
+  gridAttrs: GridAttrs,
+): Record<string, unknown> {
+  return {
+    col: gridAttrs.col,
+    ...(gridAttrs.row !== undefined ? { row: gridAttrs.row } : {}),
+    colSpan: gridAttrs.colSpan,
+    rowSpan: gridAttrs.rowSpan,
+    ...(gridAttrs.explicit ? { _gridAttrsExplicit: true } : {}),
+    ...(blockAttrs ?? {}),
+  };
+}
+
+function stripGridAttrsForDispatch(node: MdastJsxElement): MdastJsxElement {
+  return {
+    ...node,
+    attributes: node.attributes.filter((attr) => {
+      return attr.type !== 'mdxJsxAttribute' || !GRID_ATTR_NAMES.has(attr.name);
+    }),
+  };
+}
+
+function getGridAttr(node: MdastJsxElement, name: string): MdastJsxAttribute | undefined {
+  return node.attributes.find(
+    (attr): attr is MdastJsxAttribute => attr.type === 'mdxJsxAttribute' && attr.name === name,
+  );
+}
+
+function attrValue(attr: MdastJsxAttribute): unknown {
+  if (typeof attr.value === 'object' && attr.value !== null && 'value' in attr.value) {
+    return attr.value.value;
+  }
+  return attr.value;
+}
+
+function parseGridInteger(name: string, value: unknown, blockType: string): number {
+  const numeric = typeof value === 'number' ? value : Number(value);
+  if (!Number.isInteger(numeric)) {
+    throw new Error(
+      `mdx-bridge: unsupported grid attr ${name}=${JSON.stringify(value)} on block ${blockType}; ` +
+        `expected an integer.`,
+    );
+  }
+  if (name === 'col' && (numeric < 1 || numeric > 12)) {
+    throw new Error(
+      `mdx-bridge: unsupported grid attr col=${numeric} on block ${blockType}; ` +
+        `expected 1 ≤ col ≤ 12.`,
+    );
+  }
+  if (name === 'colSpan' && !COL_SNAPS.includes(numeric as (typeof COL_SNAPS)[number])) {
+    throw new Error(
+      `mdx-bridge: unsupported grid attr colSpan on block ${blockType}; ` +
+        `expected COL_SNAPS [2,3,4,6,8,12], received ${numeric}.`,
+    );
+  }
+  if ((name === 'row' || name === 'rowSpan') && numeric < 1) {
+    throw new Error(
+      `mdx-bridge: unsupported grid attr ${name}=${numeric} on block ${blockType}; ` +
+        `expected ${name} ≥ 1.`,
+    );
+  }
+  return numeric;
+}
+
+function parseRowSpan(
+  attr: MdastJsxAttribute | undefined,
+  blockType: string,
+  isProse: boolean,
+): number | 'auto' {
+  if (!attr) {
+    if (isProse) return 'auto';
+    console.warn(
+      `mdx-bridge: grid attr default rowSpan=1 on non-prose block ${blockType}; ` +
+        `explicit value recommended per ADR-0016 D3+D7.`,
+    );
+    return 1;
+  }
+
+  const value = attrValue(attr);
+  if (value === 'auto') {
+    if (isProse) return 'auto';
+    throw new Error(
+      `mdx-bridge: unsupported grid attr rowSpan='auto' on non-prose block ${blockType}; ` +
+        `rowSpan must be an integer per ADR-0016 D3.`,
+    );
+  }
+  return parseGridInteger('rowSpan', value, blockType);
+}
+
+function validateGridPosition(col: number, colSpan: number, blockType: string): void {
+  const end = col + colSpan - 1;
+  if (end > 12) {
+    throw new Error(
+      `mdx-bridge: unsupported grid attrs on block ${blockType}; ` +
+        `col + colSpan - 1 = ${end}, expected col + colSpan - 1 ≤ 12.`,
+    );
+  }
 }
 
 /**
