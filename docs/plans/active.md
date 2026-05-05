@@ -3,9 +3,9 @@
 > SessionStart hook 读取此文件，把当前 wave 印在 session 起手位置。
 
 **当前 phase**: 1
-**当前 wave**: **Wave 5 plan v1.1 locked** (Pre-A5 v1.0 lock 2026-05-04; v1.0 → v1.1 R14 amendment 2026-05-05 via PR #61 squash `1304111` per [ADR-0015](../decisions/ADR-0015-wave-4-close.md) R14 — defer-defer chain for hard-throw flip + sample MDX backfill + 17 RTT fixtures formalized via NEW Stage C.2 row C.2-3.5 LOCKED at fractional index 3.5; 5/5 plan-challenger challenges absorbed; reviewer R3 PASS; R14 first real-test enforcement validated). [Wave 5 plan v1.1](../superpowers/plans/2026-05-04-phase-1-wave-5-integration.md). MVP target = v2 demo 整体体验 functional minimum. **5 Pre-A done + 3 C.1 done + 4 C.2 done (4/13 with v1.1: C.2-1/2/3/4) + 1 v1.1 meta = 13 PRs done; 21 implementation PRs remaining**. Total = **31 implementation + 1 meta = 32 roster entries**. 54 plan-challenger challenges absorbed across 5 rounds (49 v1.0 + 5 v1.1 light). Per-stage MVP-judgment escape valve (D3) + handoff pack (D15). R14 discipline ✅ operative. Wave 4 ✅ closed 2026-05-04 by [ADR-0015](../decisions/ADR-0015-wave-4-close.md).
+**当前 wave**: **Wave 5 plan v1.1 locked** (Pre-A5 v1.0 lock 2026-05-04; v1.0 → v1.1 R14 amendment 2026-05-05 via PR #61 squash `1304111`; v1.1 R14 first real-test ✅ closed via C.2-3.5 implementation PR #65 squash `b019a31` — defer-defer chain → plan amendment → implementation cycle 完成 end-to-end). [Wave 5 plan v1.1](../superpowers/plans/2026-05-04-phase-1-wave-5-integration.md). MVP target = v2 demo 整体体验 functional minimum. **5 Pre-A done + 3 C.1 done + 5 C.2 done (5/13: C.2-1/2/3/4/3.5) + 1 v1.1 meta = 14 PRs done; 20 implementation PRs remaining**. Total = **31 implementation + 1 meta = 32 roster entries**. 54 plan-challenger challenges absorbed across 5 rounds (49 v1.0 + 5 v1.1 light). Per-stage MVP-judgment escape valve (D3) + handoff pack (D15). R14 discipline ✅ operative + first-test ✅ closed. Wave 4 ✅ closed 2026-05-04 by [ADR-0015](../decisions/ADR-0015-wave-4-close.md).
 
-**Wave 5 PR roster** (in progress; 13 PRs done; **next = C.2-3.5 mdx-bridge hard-throw flip** per Q2 v1.1 downstream constraint — must land before C.2-5..C.2-11 to enforce hard-throw end-state):
+**Wave 5 PR roster** (in progress; 14 PRs done; **next = C.2-5 drag/drop UX** per Wave 5 plan v1.1 row C.2-5):
 
 | PR | Squash HEAD | Stage | Subject |
 |---|---|---|---|
@@ -23,7 +23,9 @@
 | #61 | `1304111` | **v1.1 amend** | **Wave 5 plan v1.0 → v1.1 R14 amendment + NEW row C.2-3.5 (formalize C.2-1→C.2-3 hard-throw + sample-MDX + 17 RTT fixtures defer-chain; 5/5 absorbed; R3 PASS; R14 first real-test ✅)** |
 | #62 | `882710a` | docs | active.md sync post v1.1 amendment merge |
 | #63 | `de13d15` | C.2-4 | editor-shell grid 集成 + useAutoRowSpan hook (4 of 13 Stage C.2; W5-2 invariant + GridContainer thin wrapper + 3-stage 抖动收敛 hook per ADR-0016 D3) |
-| (Stage C.2 = 13 PRs post v1.1; 4 done) | TBD | C.2 | C.2-3.5 hard-throw flip (next; chronological after C.2-4 per Q2 v1.1 downstream constraint) → C.2-5..C.2-12 drag/drop/resize/playwright |
+| #64 | `f8a265f` | docs | active.md sync post C.2-4 merge |
+| #65 | `b019a31` | **C.2-3.5** | **mdx-bridge hard-throw flip + sample MDX backfill + 17 RTT fixtures (5 of 13 Stage C.2; R14 first real-test ✅ closed; ADR-0016 D3/D7 prose consistency-correction; COL_SNAPS class 4 fix; reviewer R1+R2+R3 PASS post 4 mechanical fixes)** |
+| (Stage C.2 = 13 PRs post v1.1; 5 done) | TBD | C.2 | C.2-5 drag/drop UX (next; per ADR-0017 D5+D3+D4) → C.2-6 resize → C.2-7..C.2-12 |
 | (Stage C.3 = 5 PRs) | TBD | C.3 | C.3-1..5 OKLCH + Inter/JetBrains Mono → visual smoke baseline |
 | (Stage C.4 = 5 PRs) | TBD | C.4 | C.4-1..5 NoteSaveAdapter → /notes/[slug]/edit → BlockRegistry → save/load → e2e |
 
@@ -118,17 +120,23 @@ Wave 3 main pipeline PR roster (2026-05-01 → 2026-05-02, all merged via auto-m
 
 ---
 
-## 起手指引（Wave 5 implementation; Stage C.2 mid-stage 4/13 done — next = C.2-3.5）
+## 起手指引（Wave 5 implementation; Stage C.2 mid-stage 5/13 done — next = C.2-5）
 
-Wave 5 plan v1.1 ✅ locked. 13 PRs done (5 Pre-A + 3 C.1 + 4 C.2 + 1 v1.1 meta). **Next = C.2-3.5 mdx-bridge hard-throw flip + sample MDX backfill + 17 RTT fixtures grid-aware update**. Per Wave 5 plan v1.1 row C.2-3.5: ~250-350 LOC, codex-generic-executor, D2 row 1 (CONTRACT) + row 5 (cross mdx-bridge + content/notes). Removes `_gridAttrsExplicit` defensive default + adds hard-throw on missing grid attrs per ADR-0016 D7 end-state invariant. **CRITICAL**: per Q2 v1.1 absorbtion downstream-must-reference 硬约束, C.2-3.5 MUST land before C.2-5..C.2-11 PRs (which already cite hard-throw as contract-active end-state — see C.2-4 PR #63 Risk #6).
+Wave 5 plan v1.1 ✅ locked. 14 PRs done (5 Pre-A + 3 C.1 + 5 C.2 + 1 v1.1 meta). R14 first real-test ✅ closed end-to-end (v1.1 amendment PR #61 → C.2-3.5 implementation PR #65). **Next = C.2-5 drag/drop UX 实施**. Per Wave 5 plan v1.1 row C.2-5: ~500 LOC, codex-generic-executor, D2 row 1 (CONTRACT) + row 5. Per ADR-0017 D5 选项 1 (snapshot hit-test 预计算 edge rects) + D3 tiebreak (距离 abs+velocity+spatial) + D4 outline overlay 方案 A (静态底层 + per-affected-block dashed accent overlay).
 
-### C.2-3.5 file scope (per plan v1.1 row)
-- `packages/mdx-bridge/src/parse.ts` (remove `_gridAttrsExplicit` defensive branch + add hard-throw)
-- `packages/mdx-bridge/src/serialize.ts` (remove `_gridAttrsExplicit` marker tracking)
-- `packages/mdx-bridge/CONTRACT.md` (transitional-prose removal + end-state lock per ADR-0016 D7)
-- 17 RTT fixtures: `packages/mdx-bridge/src/__tests__/fixtures/22-callout..29-agent-flow.mdx` (8 component-block: `backfill-required`) + `01-paragraph..09-link-title-comparator.mdx` (9 prose: `audit-only-verified` per Q1 v1.1 absorbtion)
-- 4 `content/notes/**/*.mdx`: `sample-blocks/index.mdx` (`backfill-required`; primary 8-block target) + `sample-mdx-note/index.mdx` + `__test_cjk__/laptop/index.mdx` + `__test_cjk__/zh-note/index.mdx` (3 `audit-only-verified` per Q1 v1.1 absorbtion)
+### C.2-5 file scope (per plan v1.1 row)
+- `packages/editor-shell/src/drag-drop/edge-rects.ts` (NEW; snapshot hit-test 预计算 + 距离 tiebreak)
+- `packages/editor-shell/src/drag-drop/tiebreak.ts` (NEW; abs+velocity+spatial)
+- `packages/editor-shell/src/drag-drop/outline-overlay.ts` (NEW; 方案 A 底层 + accent overlay)
+- `packages/editor-shell/CONTRACT.md` (extend; drag-drop public surface + W5-2 forward-pointer)
+- vitest tests for above
 - 1 PR.md self
+
+### Authoritative refs for C.2-5
+- ADR-0017 D5 (option 1 snapshot hit-test) + D3 (tiebreak distance formula) + D4 (outline overlay scheme A) + D8 (EDGE_W=28px half-in/half-out) + D11+D10+D8+D12 (drop-pulse scheduled at C.2-8)
+- ADR-0016 D11 (Tiptap inside / grid outside 分层 — drag/drop layer is editor-shell, NOT Tiptap NodeView)
+- ADR-0016 D12 (layoutEpoch reducer schema — actual reducer impl at C.2-8; C.2-5 emits drag/drop events that feed the future reducer)
+- C.2-4 PR.md `## R14 self-check` Risk #4 mitigation (mechanical AC#13 + AC#14 hard-fail gates pattern; reusable for C.2-5)
 
 ### Pre-flight (next session start)
 
