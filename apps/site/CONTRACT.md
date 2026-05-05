@@ -4,7 +4,7 @@
 
 - Routes:
   - `/` — notes index
-  - `/notes/<slug>` — rendered note
+  - `/notes/{slug}` — rendered note
 - MDX component blocks: `src/components.ts` exports `componentsMap`, the static-site
   PascalCase MDX tag map consumed by note pages.
 - Content collection schema: `src/content.config.ts` imports `frontmatterSchema` from `@skb/content-types`. apps/site MUST NOT redefine the schema inline (single-authority rule per `packages/content-types/CONTRACT.md`).
@@ -27,7 +27,7 @@
   `isWordLevelMatch(query, content, locale?)`; `SearchBox.astro` wires it via
   `@pagefind/default-ui` `processTerm` + `processResult` callbacks plus a
   `MutationObserver` that applies `[data-skb-word-level-mismatch="true"]` to
-  substring-only-match `<li>` ancestors (CSS `display: none`) and patches the
+  substring-only-match list item ancestors (CSS `display: none`) and patches the
   `.pagefind-ui__message` count display. This restores the ADR-0012 v0.1.1
   criterion 4 paired discriminator at runtime; PagefindUI's index-time
   tokenization is unchanged.
@@ -70,6 +70,41 @@
   changes produces new chunk names/bytes, so CDN or proxy stale-cache reuse of an
   old index is avoided without client-side reindexing.
 
+## Grid layout (Wave 5)
+
+- W5-1 source of truth: `packages/block-foundation/CONTRACT.md` owns the grid
+  dimension invariant for `BlockGridPosition`, `COL_SNAPS`,
+  `proseGridDefaults`, and the grid geometry helpers. apps/site is a consumer
+  and must not redefine those data-model rules.
+- Selector contract: `apps/site/src/styles/grid.css` is the single authority
+  for the SSR-phase `.skb-grid` container CSS. Notes routes must wrap rendered
+  block content in `.skb-grid`; they must not hand-roll page-local grid styles.
+- Responsive breakpoints mirror ADR-0016 D5:
+
+  | Viewport | Columns | Rendering semantics |
+  | --- | ---: | --- |
+  | `>= 1024px` desktop | 12 | Full `COL_SNAPS` ladder applies. |
+  | `768px-1024px` tablet | 6 | Effective snaps reduce to 2 / 3 / 6. |
+  | `< 768px` mobile | 1 | Blocks stack in one column. |
+
+- Mobile override: `.skb-grid` switches to `grid-template-columns: 1fr`, and
+  direct children render with `grid-column: 1`. This is a rendering-only
+  preview path: `rowSpan='auto'` is derived for layout, but persisted
+  `rowSpan` values are unchanged per ADR-0016 D5.
+- C.2-3 is container-only. Per-block `gridColumn` and `gridRow` style emission
+  is deferred to C.2-4 editor-shell grid container work or a future
+  componentsMap-wrapper PR; apps/site must not add that style chain in this PR.
+- Transitional fallback (Wave 5 C.2-3 → C.2-4): MDX children inside `.skb-grid`
+  without an inline `style` attribute matching `grid-column` get `grid-column: 1 / -1`
+  via `.skb-grid > *:not([style*="grid-column"])` so unstyled prose remains
+  full-width readable until per-block grid emission lands. `grid-auto-rows`
+  uses `minmax(var(--row-h), auto)` so content height drives row height
+  rather than clamping to 48px.
+- Architectural pointers: ADR-0016 D8 defines the Astro renderer `.skb-grid`
+  wrapper, D9 defines the SSR vs hydration phase split, D11 keeps Tiptap inside
+  blocks while the grid stays outside, and ADR-0017 D11 is the downstream visual
+  feedback scope referenced by the grid architecture.
+
 ## Invariants
 
 - **Static build only** (spec §1.8 constraint #3): the project must not introduce SSR; `astro build` outputs prerendered HTML.
@@ -91,7 +126,7 @@
   `Pdf`) wrap the corresponding block package `*RenderView` exports via
   the `makeMdxAdapter` from `./lib/mdx-adapter.ts`. Values for the 3
   heavy keys (`Jupyter` / `NnViz` / `AgentFlow`) reference Astro
-  wrappers under `./components/<Kind>.astro` per ADR-0014 v0.3 D10
+  wrappers under `./components/{Kind}.astro` per ADR-0014 v0.3 D10
   (production hydration boundary) — the wrappers render React islands
   with `client:load` directives. In Wave 5 (ADR-0014 v0.4 amendment)
   those islands render the `plugin-placeholder` tier — a static React

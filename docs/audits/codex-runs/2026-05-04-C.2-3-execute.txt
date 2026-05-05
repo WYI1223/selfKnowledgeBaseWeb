@@ -1,0 +1,2000 @@
+Reading prompt from stdin...
+OpenAI Codex v0.125.0 (research preview)
+--------
+workdir: /home/weiyi/selfKnowledgeBaseWeb
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: danger-full-access
+reasoning effort: xhigh
+reasoning summaries: none
+session id: 019df5ee-429d-79d0-9503-203f608dd0af
+--------
+user
+You are codex-generic-executor in `--yolo` workspace-write sandbox at `/home/weiyi/selfKnowledgeBaseWeb`. Branch: `wave-5-main/C.2-3-astro-grid` (already checked out from main HEAD `b15ba24`). Stage 2 EXECUTE for Wave 5 PR C.2-3 (3rd of 12 Stage C.2 PRs).
+
+## Source of truth
+
+`docs/plans/wave-5-main/C.2-3-astro-grid.md` (1135 LOC). Read it FIRST. Locked. `## files`, `## test_cases`, `## acceptance`, `## verification required` are authoritative.
+
+## Architectural authority
+
+- **ADR-0016 D5**: Responsive 12/6/1 breakpoints (≥1024px desktop 12-col / 768-1024px tablet 6-col / <768px mobile 1-col)
+- **ADR-0016 D8**: Astro renderer wraps notes content in `<div class="skb-grid">`, emits `@media` breakpoints
+- **ADR-0016 D9**: W5-1 SSR vs hydration phase strategy (SSR emits `repeat(N, minmax(0, 1fr))` baseline; browser resolves at layout time)
+- **ADR-0017 D11**: Tiptap inside / grid outside 分层
+- **W5-1 invariant** at `packages/block-foundation/CONTRACT.md` (Pre-A2 + C.2-2; this PR forward-points only — DO NOT edit block-foundation files)
+
+## What to do (TDD-front)
+
+1. **Read** PR.md, ADR-0016 D5 / D8 / D9, current state of:
+   - `apps/site/src/styles/global.css` (existing; do NOT modify; just confirm coexistence)
+   - `apps/site/src/layouts/BaseLayout.astro` (74 LOC; extend with grid.css import)
+   - `apps/site/src/pages/notes/[...slug].astro` (existing; extend with skb-grid wrapper)
+   - `apps/site/CONTRACT.md` (165 LOC; extend with NEW `## Grid layout (Wave 5)` section)
+   - `packages/block-foundation/CONTRACT.md` L41 (W5-1 invariant prose; forward-pointer target — DO NOT edit)
+
+2. **Write failing vitest first**:
+   - `apps/site/src/__tests__/grid-css.test.ts` (NEW): import `../styles/grid.css` raw (or `readFileSync` the file path); assert key selectors exist (`.skb-grid`, `@media (max-width: 1024px)`, `@media (max-width: 768px)`); assert `grid-template-columns: repeat(12, ...)` + `repeat(6, ...)` + `1fr` mobile; assert prefers-reduced-motion handling (no transitions when matchMedia matches OR transition rule scoped accordingly); minimum 12 assertions per PR.md TC matrix. Use `readFileSync` import not Vite `import` (CSS as side-effect; can't unit-test without DOM).
+   - Run `pnpm --filter @skb/site exec vitest run src/__tests__/grid-css.test.ts` — confirm RED on new test.
+
+3. **Implement**:
+   - `apps/site/src/styles/grid.css` (NEW): 
+     - `.skb-grid` container: `display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: var(--gap, 14px); grid-auto-flow: row;` (NOT dense per ADR-0016 D1)
+     - CSS vars at `.skb-grid` scope: `--row-h: 48px; --gap: 14px; --total-cols: 12;` (avoid global `:root` pollution per PR.md Risk #7)
+     - `@media (max-width: 1024px) { .skb-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); } }` — tablet
+     - `@media (max-width: 768px) { .skb-grid { grid-template-columns: 1fr; } .skb-grid > * { grid-column: 1; } }` — mobile (per D5 1-col stack)
+     - `@media (prefers-reduced-motion: reduce) { .skb-grid { transition: none; } }` — a11y
+     - Optional: transition rules for grid-column/grid-row (per ADR-0016 D5 转场态 FSM 180ms cubic-bezier(.2,.7,.2,1)) — only if your tests assert them
+   - `apps/site/src/layouts/BaseLayout.astro`: add `import '../styles/grid.css';` next to existing `global.css` import
+   - `apps/site/src/pages/notes/[...slug].astro`: wrap MDX `<Content components={...} />` in `<div class="skb-grid">...</div>`. Verify the wrapper sits inside the prose `<main>` from BaseLayout (or move to outside `<main>` if Tailwind prose-margin conflicts; prefer inside-main first, test, adjust if Tailwind interferes per PR.md Risk #5).
+   - Run vitest again — confirm GREEN.
+
+4. **CONTRACT.md**: append NEW section `## Grid layout (Wave 5)` per PR.md `## files` step 4. Include: (a) `.skb-grid` selector contract; (b) responsive 12/6/1 breakpoint table; (c) W5-1 forward-pointer to `packages/block-foundation/CONTRACT.md` (per ADR-0016 §502 Sister-document sync); (d) per-block `gridColumn`/`gridRow` style emission deferral note (C.2-4 editor-shell scope); (e) mobile 1-col override semantics (rowSpan='auto' rendering-derived; persistence unchanged per ADR-0016 D5 conscious-cognition rule).
+
+5. **Run full local quality gates**:
+   - `pnpm --filter @skb/site lint` PASS
+   - `pnpm --filter @skb/site typecheck` PASS
+   - `pnpm --filter @skb/site test` PASS (existing 11 test files unchanged + new grid-css.test.ts)
+   - `pnpm lint` PASS
+   - `pnpm typecheck` PASS
+   - `pnpm test` PASS
+   - `pnpm build` PASS (Astro build emits 7 pages cleanly; .skb-grid wrapper visible in built HTML)
+   - `pnpm size-check` PASS
+   - `pnpm typecheck:packages` PASS
+   - `pnpm test:packages` PASS
+
+## Hard discipline
+
+- DO NOT run `git commit / branch / push / rebase`.
+- DO NOT touch files outside PR.md `## files` whitelist.
+- DO NOT edit `packages/**/*` (block-foundation W5-1 prose preserved; mdx-bridge unchanged from C.2-1; etc.).
+- DO NOT edit `apps/site/src/components.ts` (per-block gridColumn/gridRow deferred to C.2-4).
+- DO NOT add sample MDX backfill (col/colSpan attrs) — deferred per PR.md `## Out of scope`.
+- DO NOT flip mdx-bridge hard-throw — deferred per PR.md `## Out of scope`.
+- DO NOT add new packages or workspace deps.
+- LOC budget: ~200 (impl + tests + CONTRACT update); hard cap 500 per file.
+
+## Lychee pre-empt for CONTRACT.md update
+
+`grep -nE '`[^`]*<\w+>[^`]*`' apps/site/CONTRACT.md` MUST return zero hits before finish. Use `{kind}` curly braces; fenced code blocks for code; no `:line` suffix; no `npmjs.com` URLs; no markdown-link tilde paths.
+
+## Output expectation
+
+```
+=== EXECUTE PASS ===
+Files modified: <comma list>
+Files added: <comma list>
+LOC delta: +<add> -<rem>
+apps/site vitest: <files passed | tests passed | new grid-css count>
+existing apps/site tests preserved: <count>
+build: PASS (Astro emits 7 pages; .skb-grid wrapper visible in /notes/sample-blocks/index.html)
+W5-1 prose preserved: PASS (git diff origin/main -- packages/block-foundation/CONTRACT.md returns 0 lines)
+lint: PASS
+typecheck: PASS
+size-check: PASS
+typecheck:packages: PASS
+test:packages: PASS
+=== END ===
+```
+
+If gates fail, fix before printing. Max 3 attempts per gate. NO bypass.
+
+Begin.
+
+exec
+/bin/bash -lc "sed -n '1,220p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/c5debd62/skills/using-superpowers/SKILL.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+---
+name: using-superpowers
+description: Use when starting any conversation - establishes how to find and use skills, requiring Skill tool invocation before ANY response including clarifying questions
+---
+
+<SUBAGENT-STOP>
+If you were dispatched as a subagent to execute a specific task, skip this skill.
+</SUBAGENT-STOP>
+
+<EXTREMELY-IMPORTANT>
+If you think there is even a 1% chance a skill might apply to what you are doing, you ABSOLUTELY MUST invoke the skill.
+
+IF A SKILL APPLIES TO YOUR TASK, YOU DO NOT HAVE A CHOICE. YOU MUST USE IT.
+
+This is not negotiable. This is not optional. You cannot rationalize your way out of this.
+</EXTREMELY-IMPORTANT>
+
+## Instruction Priority
+
+Superpowers skills override default system prompt behavior, but **user instructions always take precedence**:
+
+1. **User's explicit instructions** (AGENTS.md, GEMINI.md, direct requests) — highest priority
+2. **Superpowers skills** — override default system behavior where they conflict
+3. **Default system prompt** — lowest priority
+
+If AGENTS.md or GEMINI.md says "don't use TDD" and a skill says "always use TDD," follow the user's instructions. The user is in control.
+
+## How to Access Skills
+
+**In Codex:** Use the `Skill` tool. When you invoke a skill, its content is loaded and presented to you—follow it directly. Never use the Read tool on skill files.
+
+**In Copilot CLI:** Use the `skill` tool. Skills are auto-discovered from installed plugins. The `skill` tool works the same as Codex's `Skill` tool.
+
+**In Gemini CLI:** Skills activate via the `activate_skill` tool. Gemini loads skill metadata at session start and activates the full content on demand.
+
+**In other environments:** Check your platform's documentation for how skills are loaded.
+
+## Platform Adaptation
+
+Skills may mention tool names that vary by runtime. Other platforms: see `references/copilot-tools.md` (Copilot CLI), `references/codex-tools.md` (Codex) for tool equivalents. Gemini CLI users get the tool mapping loaded automatically via GEMINI.md.
+
+# Using Skills
+
+## The Rule
+
+**Invoke relevant or requested skills BEFORE any response or action.** Even a 1% chance a skill might apply means that you should invoke the skill to check. If an invoked skill turns out to be wrong for the situation, you don't need to use it.
+
+```dot
+digraph skill_flow {
+    "User message received" [shape=doublecircle];
+    "About to EnterPlanMode?" [shape=doublecircle];
+    "Already brainstormed?" [shape=diamond];
+    "Invoke brainstorming skill" [shape=box];
+    "Might any skill apply?" [shape=diamond];
+    "Invoke Skill tool" [shape=box];
+    "Announce: 'Using [skill] to [purpose]'" [shape=box];
+    "Has checklist?" [shape=diamond];
+    "Create TodoWrite todo per item" [shape=box];
+    "Follow skill exactly" [shape=box];
+    "Respond (including clarifications)" [shape=doublecircle];
+
+    "About to EnterPlanMode?" -> "Already brainstormed?";
+    "Already brainstormed?" -> "Invoke brainstorming skill" [label="no"];
+    "Already brainstormed?" -> "Might any skill apply?" [label="yes"];
+    "Invoke brainstorming skill" -> "Might any skill apply?";
+
+    "User message received" -> "Might any skill apply?";
+    "Might any skill apply?" -> "Invoke Skill tool" [label="yes, even 1%"];
+    "Might any skill apply?" -> "Respond (including clarifications)" [label="definitely not"];
+    "Invoke Skill tool" -> "Announce: 'Using [skill] to [purpose]'";
+    "Announce: 'Using [skill] to [purpose]'" -> "Has checklist?";
+    "Has checklist?" -> "Create TodoWrite todo per item" [label="yes"];
+    "Has checklist?" -> "Follow skill exactly" [label="no"];
+    "Create TodoWrite todo per item" -> "Follow skill exactly";
+}
+```
+
+## Red Flags
+
+These thoughts mean STOP—you're rationalizing:
+
+| Thought | Reality |
+|---------|---------|
+| "This is just a simple question" | Questions are tasks. Check for skills. |
+| "I need more context first" | Skill check comes BEFORE clarifying questions. |
+| "Let me explore the codebase first" | Skills tell you HOW to explore. Check first. |
+| "I can check git/files quickly" | Files lack conversation context. Check for skills. |
+| "Let me gather information first" | Skills tell you HOW to gather information. |
+| "This doesn't need a formal skill" | If a skill exists, use it. |
+| "I remember this skill" | Skills evolve. Read current version. |
+| "This doesn't count as a task" | Action = task. Check for skills. |
+| "The skill is overkill" | Simple things become complex. Use it. |
+| "I'll just do this one thing first" | Check BEFORE doing anything. |
+| "This feels productive" | Undisciplined action wastes time. Skills prevent this. |
+| "I know what that means" | Knowing the concept ≠ using the skill. Invoke it. |
+
+## Skill Priority
+
+When multiple skills could apply, use this order:
+
+1. **Process skills first** (brainstorming, debugging) - these determine HOW to approach the task
+2. **Implementation skills second** (frontend-design, mcp-builder) - these guide execution
+
+"Let's build X" → brainstorming first, then implementation skills.
+"Fix this bug" → debugging first, then domain-specific skills.
+
+## Skill Types
+
+**Rigid** (TDD, debugging): Follow exactly. Don't adapt away discipline.
+
+**Flexible** (patterns): Adapt principles to context.
+
+The skill itself tells you which.
+
+## User Instructions
+
+Instructions say WHAT, not HOW. "Add X" or "Fix Y" doesn't mean skip workflows.
+
+exec
+/bin/bash -lc "sed -n '1,260p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/c5debd62/skills/test-driven-development/SKILL.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+---
+name: test-driven-development
+description: Use when implementing any feature or bugfix, before writing implementation code
+---
+
+# Test-Driven Development (TDD)
+
+## Overview
+
+Write the test first. Watch it fail. Write minimal code to pass.
+
+**Core principle:** If you didn't watch the test fail, you don't know if it tests the right thing.
+
+**Violating the letter of the rules is violating the spirit of the rules.**
+
+## When to Use
+
+**Always:**
+- New features
+- Bug fixes
+- Refactoring
+- Behavior changes
+
+**Exceptions (ask your human partner):**
+- Throwaway prototypes
+- Generated code
+- Configuration files
+
+Thinking "skip TDD just this once"? Stop. That's rationalization.
+
+## The Iron Law
+
+```
+NO PRODUCTION CODE WITHOUT A FAILING TEST FIRST
+```
+
+Write code before the test? Delete it. Start over.
+
+**No exceptions:**
+- Don't keep it as "reference"
+- Don't "adapt" it while writing tests
+- Don't look at it
+- Delete means delete
+
+Implement fresh from tests. Period.
+
+## Red-Green-Refactor
+
+```dot
+digraph tdd_cycle {
+    rankdir=LR;
+    red [label="RED\nWrite failing test", shape=box, style=filled, fillcolor="#ffcccc"];
+    verify_red [label="Verify fails\ncorrectly", shape=diamond];
+    green [label="GREEN\nMinimal code", shape=box, style=filled, fillcolor="#ccffcc"];
+    verify_green [label="Verify passes\nAll green", shape=diamond];
+    refactor [label="REFACTOR\nClean up", shape=box, style=filled, fillcolor="#ccccff"];
+    next [label="Next", shape=ellipse];
+
+    red -> verify_red;
+    verify_red -> green [label="yes"];
+    verify_red -> red [label="wrong\nfailure"];
+    green -> verify_green;
+    verify_green -> refactor [label="yes"];
+    verify_green -> green [label="no"];
+    refactor -> verify_green [label="stay\ngreen"];
+    verify_green -> next;
+    next -> red;
+}
+```
+
+### RED - Write Failing Test
+
+Write one minimal test showing what should happen.
+
+<Good>
+```typescript
+test('retries failed operations 3 times', async () => {
+  let attempts = 0;
+  const operation = () => {
+    attempts++;
+    if (attempts < 3) throw new Error('fail');
+    return 'success';
+  };
+
+  const result = await retryOperation(operation);
+
+  expect(result).toBe('success');
+  expect(attempts).toBe(3);
+});
+```
+Clear name, tests real behavior, one thing
+</Good>
+
+<Bad>
+```typescript
+test('retry works', async () => {
+  const mock = jest.fn()
+    .mockRejectedValueOnce(new Error())
+    .mockRejectedValueOnce(new Error())
+    .mockResolvedValueOnce('success');
+  await retryOperation(mock);
+  expect(mock).toHaveBeenCalledTimes(3);
+});
+```
+Vague name, tests mock not code
+</Bad>
+
+**Requirements:**
+- One behavior
+- Clear name
+- Real code (no mocks unless unavoidable)
+
+### Verify RED - Watch It Fail
+
+**MANDATORY. Never skip.**
+
+```bash
+npm test path/to/test.test.ts
+```
+
+Confirm:
+- Test fails (not errors)
+- Failure message is expected
+- Fails because feature missing (not typos)
+
+**Test passes?** You're testing existing behavior. Fix test.
+
+**Test errors?** Fix error, re-run until it fails correctly.
+
+### GREEN - Minimal Code
+
+Write simplest code to pass the test.
+
+<Good>
+```typescript
+async function retryOperation<T>(fn: () => Promise<T>): Promise<T> {
+  for (let i = 0; i < 3; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      if (i === 2) throw e;
+    }
+  }
+  throw new Error('unreachable');
+}
+```
+Just enough to pass
+</Good>
+
+<Bad>
+```typescript
+async function retryOperation<T>(
+  fn: () => Promise<T>,
+  options?: {
+    maxRetries?: number;
+    backoff?: 'linear' | 'exponential';
+    onRetry?: (attempt: number) => void;
+  }
+): Promise<T> {
+  // YAGNI
+}
+```
+Over-engineered
+</Bad>
+
+Don't add features, refactor other code, or "improve" beyond the test.
+
+### Verify GREEN - Watch It Pass
+
+**MANDATORY.**
+
+```bash
+npm test path/to/test.test.ts
+```
+
+Confirm:
+- Test passes
+- Other tests still pass
+- Output pristine (no errors, warnings)
+
+**Test fails?** Fix code, not test.
+
+**Other tests fail?** Fix now.
+
+### REFACTOR - Clean Up
+
+After green only:
+- Remove duplication
+- Improve names
+- Extract helpers
+
+Keep tests green. Don't add behavior.
+
+### Repeat
+
+Next failing test for next feature.
+
+## Good Tests
+
+| Quality | Good | Bad |
+|---------|------|-----|
+| **Minimal** | One thing. "and" in name? Split it. | `test('validates email and domain and whitespace')` |
+| **Clear** | Name describes behavior | `test('test1')` |
+| **Shows intent** | Demonstrates desired API | Obscures what code should do |
+
+## Why Order Matters
+
+**"I'll write tests after to verify it works"**
+
+Tests written after code pass immediately. Passing immediately proves nothing:
+- Might test wrong thing
+- Might test implementation, not behavior
+- Might miss edge cases you forgot
+- You never saw it catch the bug
+
+Test-first forces you to see the test fail, proving it actually tests something.
+
+**"I already manually tested all the edge cases"**
+
+Manual testing is ad-hoc. You think you tested everything but:
+- No record of what you tested
+- Can't re-run when code changes
+- Easy to forget cases under pressure
+- "It worked when I tried it" ≠ comprehensive
+
+Automated tests are systematic. They run the same way every time.
+
+**"Deleting X hours of work is wasteful"**
+
+Sunk cost fallacy. The time is already gone. Your choice now:
+- Delete and rewrite with TDD (X more hours, high confidence)
+- Keep it and add tests after (30 min, low confidence, likely bugs)
+
+The "waste" is keeping code you can't trust. Working code without real tests is technical debt.
+
+**"TDD is dogmatic, being pragmatic means adapting"**
+
+TDD IS pragmatic:
+- Finds bugs before commit (faster than debugging after)
+- Prevents regressions (tests catch breaks immediately)
+- Documents behavior (tests show how to use code)
+- Enables refactoring (change freely, tests catch breaks)
+
+"Pragmatic" shortcuts = debugging in production = slower.
+
+**"Tests after achieve the same goals - it's spirit not ritual"**
+
+No. Tests-after answer "What does this do?" Tests-first answer "What should this do?"
+
+Tests-after are biased by your implementation. You test what you built, not what's required. You verify remembered edge cases, not discovered ones.
+
+Tests-first force edge case discovery before implementing. Tests-after verify you remembered everything (you didn't).
+
+30 minutes of tests after ≠ TDD. You get coverage, lose proof tests work.
+
+## Common Rationalizations
+
+| Excuse | Reality |
+|--------|---------|
+| "Too simple to test" | Simple code breaks. Test takes 30 seconds. |
+
+exec
+/bin/bash -lc "sed -n '1,220p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/c5debd62/skills/verification-before-completion/SKILL.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+---
+name: verification-before-completion
+description: Use when about to claim work is complete, fixed, or passing, before committing or creating PRs - requires running verification commands and confirming output before making any success claims; evidence before assertions always
+---
+
+# Verification Before Completion
+
+## Overview
+
+Claiming work is complete without verification is dishonesty, not efficiency.
+
+**Core principle:** Evidence before claims, always.
+
+**Violating the letter of this rule is violating the spirit of this rule.**
+
+## The Iron Law
+
+```
+NO COMPLETION CLAIMS WITHOUT FRESH VERIFICATION EVIDENCE
+```
+
+If you haven't run the verification command in this message, you cannot claim it passes.
+
+## The Gate Function
+
+```
+BEFORE claiming any status or expressing satisfaction:
+
+1. IDENTIFY: What command proves this claim?
+2. RUN: Execute the FULL command (fresh, complete)
+3. READ: Full output, check exit code, count failures
+4. VERIFY: Does output confirm the claim?
+   - If NO: State actual status with evidence
+   - If YES: State claim WITH evidence
+5. ONLY THEN: Make the claim
+
+Skip any step = lying, not verifying
+```
+
+## Common Failures
+
+| Claim | Requires | Not Sufficient |
+|-------|----------|----------------|
+| Tests pass | Test command output: 0 failures | Previous run, "should pass" |
+| Linter clean | Linter output: 0 errors | Partial check, extrapolation |
+| Build succeeds | Build command: exit 0 | Linter passing, logs look good |
+| Bug fixed | Test original symptom: passes | Code changed, assumed fixed |
+| Regression test works | Red-green cycle verified | Test passes once |
+| Agent completed | VCS diff shows changes | Agent reports "success" |
+| Requirements met | Line-by-line checklist | Tests passing |
+
+## Red Flags - STOP
+
+- Using "should", "probably", "seems to"
+- Expressing satisfaction before verification ("Great!", "Perfect!", "Done!", etc.)
+- About to commit/push/PR without verification
+- Trusting agent success reports
+- Relying on partial verification
+- Thinking "just this once"
+- Tired and wanting work over
+- **ANY wording implying success without having run verification**
+
+## Rationalization Prevention
+
+| Excuse | Reality |
+|--------|---------|
+| "Should work now" | RUN the verification |
+| "I'm confident" | Confidence ≠ evidence |
+| "Just this once" | No exceptions |
+| "Linter passed" | Linter ≠ compiler |
+| "Agent said success" | Verify independently |
+| "I'm tired" | Exhaustion ≠ excuse |
+| "Partial check is enough" | Partial proves nothing |
+| "Different words so rule doesn't apply" | Spirit over letter |
+
+## Key Patterns
+
+**Tests:**
+```
+✅ [Run test command] [See: 34/34 pass] "All tests pass"
+❌ "Should pass now" / "Looks correct"
+```
+
+**Regression tests (TDD Red-Green):**
+```
+✅ Write → Run (pass) → Revert fix → Run (MUST FAIL) → Restore → Run (pass)
+❌ "I've written a regression test" (without red-green verification)
+```
+
+**Build:**
+```
+✅ [Run build] [See: exit 0] "Build passes"
+❌ "Linter passed" (linter doesn't check compilation)
+```
+
+**Requirements:**
+```
+✅ Re-read plan → Create checklist → Verify each → Report gaps or completion
+❌ "Tests pass, phase complete"
+```
+
+**Agent delegation:**
+```
+✅ Agent reports success → Check VCS diff → Verify changes → Report actual state
+❌ Trust agent report
+```
+
+## Why This Matters
+
+From 24 failure memories:
+- your human partner said "I don't believe you" - trust broken
+- Undefined functions shipped - would crash
+- Missing requirements shipped - incomplete features
+- Time wasted on false completion → redirect → rework
+- Violates: "Honesty is a core value. If you lie, you'll be replaced."
+
+## When To Apply
+
+**ALWAYS before:**
+- ANY variation of success/completion claims
+- ANY expression of satisfaction
+- ANY positive statement about work state
+- Committing, PR creation, task completion
+- Moving to next task
+- Delegating to agents
+
+**Rule applies to:**
+- Exact phrases
+- Paraphrases and synonyms
+- Implications of success
+- ANY communication suggesting completion/correctness
+
+## The Bottom Line
+
+**No shortcuts for verification.**
+
+Run the command. Read the output. THEN claim the result.
+
+This is non-negotiable.
+
+exec
+/bin/bash -lc "sed -n '1,260p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/c5debd62/skills/brainstorming/SKILL.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+---
+name: brainstorming
+description: "You MUST use this before any creative work - creating features, building components, adding functionality, or modifying behavior. Explores user intent, requirements and design before implementation."
+---
+
+# Brainstorming Ideas Into Designs
+
+Help turn ideas into fully formed designs and specs through natural collaborative dialogue.
+
+Start by understanding the current project context, then ask questions one at a time to refine the idea. Once you understand what you're building, present the design and get user approval.
+
+<HARD-GATE>
+Do NOT invoke any implementation skill, write any code, scaffold any project, or take any implementation action until you have presented a design and the user has approved it. This applies to EVERY project regardless of perceived simplicity.
+</HARD-GATE>
+
+## Anti-Pattern: "This Is Too Simple To Need A Design"
+
+Every project goes through this process. A todo list, a single-function utility, a config change — all of them. "Simple" projects are where unexamined assumptions cause the most wasted work. The design can be short (a few sentences for truly simple projects), but you MUST present it and get approval.
+
+## Checklist
+
+You MUST create a task for each of these items and complete them in order:
+
+1. **Explore project context** — check files, docs, recent commits
+2. **Offer visual companion** (if topic will involve visual questions) — this is its own message, not combined with a clarifying question. See the Visual Companion section below.
+3. **Ask clarifying questions** — one at a time, understand purpose/constraints/success criteria
+4. **Propose 2-3 approaches** — with trade-offs and your recommendation
+5. **Present design** — in sections scaled to their complexity, get user approval after each section
+6. **Write design doc** — save to `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md` and commit
+7. **Spec self-review** — quick inline check for placeholders, contradictions, ambiguity, scope (see below)
+8. **User reviews written spec** — ask user to review the spec file before proceeding
+9. **Transition to implementation** — invoke writing-plans skill to create implementation plan
+
+## Process Flow
+
+```dot
+digraph brainstorming {
+    "Explore project context" [shape=box];
+    "Visual questions ahead?" [shape=diamond];
+    "Offer Visual Companion\n(own message, no other content)" [shape=box];
+    "Ask clarifying questions" [shape=box];
+    "Propose 2-3 approaches" [shape=box];
+    "Present design sections" [shape=box];
+    "User approves design?" [shape=diamond];
+    "Write design doc" [shape=box];
+    "Spec self-review\n(fix inline)" [shape=box];
+    "User reviews spec?" [shape=diamond];
+    "Invoke writing-plans skill" [shape=doublecircle];
+
+    "Explore project context" -> "Visual questions ahead?";
+    "Visual questions ahead?" -> "Offer Visual Companion\n(own message, no other content)" [label="yes"];
+    "Visual questions ahead?" -> "Ask clarifying questions" [label="no"];
+    "Offer Visual Companion\n(own message, no other content)" -> "Ask clarifying questions";
+    "Ask clarifying questions" -> "Propose 2-3 approaches";
+    "Propose 2-3 approaches" -> "Present design sections";
+    "Present design sections" -> "User approves design?";
+    "User approves design?" -> "Present design sections" [label="no, revise"];
+    "User approves design?" -> "Write design doc" [label="yes"];
+    "Write design doc" -> "Spec self-review\n(fix inline)";
+    "Spec self-review\n(fix inline)" -> "User reviews spec?";
+    "User reviews spec?" -> "Write design doc" [label="changes requested"];
+    "User reviews spec?" -> "Invoke writing-plans skill" [label="approved"];
+}
+```
+
+**The terminal state is invoking writing-plans.** Do NOT invoke frontend-design, mcp-builder, or any other implementation skill. The ONLY skill you invoke after brainstorming is writing-plans.
+
+## The Process
+
+**Understanding the idea:**
+
+- Check out the current project state first (files, docs, recent commits)
+- Before asking detailed questions, assess scope: if the request describes multiple independent subsystems (e.g., "build a platform with chat, file storage, billing, and analytics"), flag this immediately. Don't spend questions refining details of a project that needs to be decomposed first.
+- If the project is too large for a single spec, help the user decompose into sub-projects: what are the independent pieces, how do they relate, what order should they be built? Then brainstorm the first sub-project through the normal design flow. Each sub-project gets its own spec → plan → implementation cycle.
+- For appropriately-scoped projects, ask questions one at a time to refine the idea
+- Prefer multiple choice questions when possible, but open-ended is fine too
+- Only one question per message - if a topic needs more exploration, break it into multiple questions
+- Focus on understanding: purpose, constraints, success criteria
+
+**Exploring approaches:**
+
+- Propose 2-3 different approaches with trade-offs
+- Present options conversationally with your recommendation and reasoning
+- Lead with your recommended option and explain why
+
+**Presenting the design:**
+
+- Once you believe you understand what you're building, present the design
+- Scale each section to its complexity: a few sentences if straightforward, up to 200-300 words if nuanced
+- Ask after each section whether it looks right so far
+- Cover: architecture, components, data flow, error handling, testing
+- Be ready to go back and clarify if something doesn't make sense
+
+**Design for isolation and clarity:**
+
+- Break the system into smaller units that each have one clear purpose, communicate through well-defined interfaces, and can be understood and tested independently
+- For each unit, you should be able to answer: what does it do, how do you use it, and what does it depend on?
+- Can someone understand what a unit does without reading its internals? Can you change the internals without breaking consumers? If not, the boundaries need work.
+- Smaller, well-bounded units are also easier for you to work with - you reason better about code you can hold in context at once, and your edits are more reliable when files are focused. When a file grows large, that's often a signal that it's doing too much.
+
+**Working in existing codebases:**
+
+- Explore the current structure before proposing changes. Follow existing patterns.
+- Where existing code has problems that affect the work (e.g., a file that's grown too large, unclear boundaries, tangled responsibilities), include targeted improvements as part of the design - the way a good developer improves code they're working in.
+- Don't propose unrelated refactoring. Stay focused on what serves the current goal.
+
+## After the Design
+
+**Documentation:**
+
+- Write the validated design (spec) to `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md`
+  - (User preferences for spec location override this default)
+- Use elements-of-style:writing-clearly-and-concisely skill if available
+- Commit the design document to git
+
+**Spec Self-Review:**
+After writing the spec document, look at it with fresh eyes:
+
+1. **Placeholder scan:** Any "TBD", "TODO", incomplete sections, or vague requirements? Fix them.
+2. **Internal consistency:** Do any sections contradict each other? Does the architecture match the feature descriptions?
+3. **Scope check:** Is this focused enough for a single implementation plan, or does it need decomposition?
+4. **Ambiguity check:** Could any requirement be interpreted two different ways? If so, pick one and make it explicit.
+
+Fix any issues inline. No need to re-review — just fix and move on.
+
+**User Review Gate:**
+After the spec review loop passes, ask the user to review the written spec before proceeding:
+
+> "Spec written and committed to `<path>`. Please review it and let me know if you want to make any changes before we start writing out the implementation plan."
+
+Wait for the user's response. If they request changes, make them and re-run the spec review loop. Only proceed once the user approves.
+
+**Implementation:**
+
+- Invoke the writing-plans skill to create a detailed implementation plan
+- Do NOT invoke any other skill. writing-plans is the next step.
+
+## Key Principles
+
+- **One question at a time** - Don't overwhelm with multiple questions
+- **Multiple choice preferred** - Easier to answer than open-ended when possible
+- **YAGNI ruthlessly** - Remove unnecessary features from all designs
+- **Explore alternatives** - Always propose 2-3 approaches before settling
+- **Incremental validation** - Present design, get approval before moving on
+- **Be flexible** - Go back and clarify when something doesn't make sense
+
+## Visual Companion
+
+A browser-based companion for showing mockups, diagrams, and visual options during brainstorming. Available as a tool — not a mode. Accepting the companion means it's available for questions that benefit from visual treatment; it does NOT mean every question goes through the browser.
+
+**Offering the companion:** When you anticipate that upcoming questions will involve visual content (mockups, layouts, diagrams), offer it once for consent:
+> "Some of what we're working on might be easier to explain if I can show it to you in a web browser. I can put together mockups, diagrams, comparisons, and other visuals as we go. This feature is still new and can be token-intensive. Want to try it? (Requires opening a local URL)"
+
+**This offer MUST be its own message.** Do not combine it with clarifying questions, context summaries, or any other content. The message should contain ONLY the offer above and nothing else. Wait for the user's response before continuing. If they decline, proceed with text-only brainstorming.
+
+**Per-question decision:** Even after the user accepts, decide FOR EACH QUESTION whether to use the browser or the terminal. The test: **would the user understand this better by seeing it than reading it?**
+
+- **Use the browser** for content that IS visual — mockups, wireframes, layout comparisons, architecture diagrams, side-by-side visual designs
+- **Use the terminal** for content that is text — requirements questions, conceptual choices, tradeoff lists, A/B/C/D text options, scope decisions
+
+A question about a UI topic is not automatically a visual question. "What does personality mean in this context?" is a conceptual question — use the terminal. "Which wizard layout works better?" is a visual question — use the browser.
+
+If they agree to the companion, read the detailed guide before proceeding:
+`skills/brainstorming/visual-companion.md`
+
+codex
+Using `superpowers:test-driven-development` for the required red-green cycle and `superpowers:verification-before-completion` before any pass claims. The locked PR plan is the approved design artifact for this stage, so I’m following it directly rather than opening a separate brainstorming/spec loop.
+  → Read locked PR plan and architectural contracts
+  • Add failing grid CSS Vitest and confirm RED
+  • Implement grid CSS, layout import, and notes wrapper
+  • Update apps/site CONTRACT.md and lychee precheck
+  • Run required quality gates and build HTML check
+  • Summarize execution pass with files and evidence
+exec
+/bin/bash -lc "sed -n '1,260p' docs/plans/wave-5-main/C.2-3-astro-grid.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+# C.2-3 — apps/site Astro renderer `.skb-grid` container + Responsive 12/6/1 CSS
+
+> **Wave 5 Stage C.2 3rd implementation PR** of the locked 12-PR sequence
+> (C.2-1 → C.2-12; per Wave 5 plan v1.0 §469-481). Lands the **SSR-side**
+> `.skb-grid` container CSS + `@media` viewport breakpoints (12 / 6 / 1)
+> in `apps/site` per ADR-0016 D5 + D8 + D9. C.2-1 (mdx-bridge serialize,
+> squash `e54497d`) shipped the wire format; C.2-2 (block-foundation grid
+> primitives, squash `b15ba24`) shipped the `BlockGridPosition` +
+> `COL_SNAPS` + `proseGridDefaults` + `effectiveCellHeight` /
+> `effectiveColWidth` authority. C.2-3 wires the **Astro static-build
+> rendering layer** so prerendered HTML emits `<div class="skb-grid">`
+> wrapping note content + `grid-template-columns: repeat(12, minmax(0,
+> 1fr))` baseline + tablet (1024px) / mobile (768px) `@media` switches
+> per ADR-0016 D5. **Per-block** `style.gridColumn` / `style.gridRow`
+> emission is **NOT** in scope here (deferred to C.2-4 editor-shell grid
+> container OR a componentsMap-wrapper PR; per ADR-0016 D11 "Tiptap
+> inside / grid outside 分层" + Risk register row 2). **PRE-COMMIT
+> CLAUDE REVIEW (D1 stage 4) FIRES** per `## D2 trigger judgment` (Row 1
+> `apps/site/CONTRACT.md` `## Grid layout (Wave 5)` section addition +
+> Row 5 boundary contract change since Astro renderer is the static
+> consumer of `BlockGridPosition` / `COL_SNAPS` from C.2-2).
+
+## title
+
+Wire the **SSR-phase** grid container in `apps/site` per ADR-0016 D8 +
+D9 phase 1: emit `.skb-grid` wrapper + 12-col baseline grid CSS + tablet
+6-col + mobile 1-col `@media` breakpoints. Specifically:
+
+1. NEW `apps/site/src/styles/grid.css` (~50-80 LOC) housing the
+   `.skb-grid` container rule + 3 `@media` breakpoints + scoped CSS
+   variables. Concretely:
+   - `.skb-grid` selector with `display: grid;` +
+     `grid-template-columns: repeat(12, minmax(0, 1fr));` +
+     `grid-auto-rows: var(--row-h);` + `grid-auto-flow: row;` (NOT
+     `dense`; per ADR-0016 D8 invariant) + `gap: var(--gap);` +
+     scoped `--row-h: 48px` / `--gap: 14px` / `--total-cols: 12`
+     CSS variables (declared inside `.skb-grid` to avoid global
+     pollution per Risk register row 7).
+   - `@media (max-width: 1024px)` block: re-declares
+     `grid-template-columns: repeat(6, minmax(0, 1fr));` and overrides
+     `--total-cols: 6` (per ADR-0016 D5 tablet path).
+   - `@media (max-width: 768px)` block: re-declares
+     `grid-template-columns: 1fr;` + `> *` direct-child rule
+     `grid-column: 1;` (per ADR-0016 D5 mobile path; all blocks stack
+     full-width regardless of persisted `col` / `colSpan` values; per
+     D8 mobile = preview-mode rowSpan='auto' rendering-derived).
+   - `@media (prefers-reduced-motion: reduce)` block: any future grid
+     transitions / animations are gated behind this query — at C.2-3
+     no transitions exist yet (placeholder; documents the
+     accessibility seam) but the `@media` block itself is emitted to
+     ensure audit-grep + future drag/resize handles (C.2-5..C.2-6)
+     have a co-located override site.
+
+2. EXTEND `apps/site/src/layouts/BaseLayout.astro` (~1-3 LOC net delta).
+   Add `import '../styles/grid.css';` immediately after the existing
+   `import '../styles/global.css';` line at L2. NO change to body / main
+   / nav / header structure (Tailwind `prose` class on the
+   {main} element preserved; the `.skb-grid` wrapper lives **inside**
+   the {main} slot per item 3 below; see Risk register row 5 for
+   prose-stacking rationale).
+
+3. EXTEND `apps/site/src/pages/notes/[...slug].astro` (~3-7 LOC net
+   delta). Wrap the existing
+   {Content components={componentsMap} /} JSX node in a
+   {div class="skb-grid"}...{/div} wrapper immediately inside the
+   existing {article} block. Final shape:
+   ```astro
+   <BaseLayout title={note.data.title}>
+     <article>
+       <h1>{note.data.title}</h1>
+       <div class="skb-grid">
+         <Content components={componentsMap} />
+       </div>
+     </article>
+   </BaseLayout>
+   ```
+   The {h1} stays outside the grid wrapper (title is page chrome,
+   not a grid block; per ADR-0016 D8 grid wraps "notes content" =
+   block sequence). **WHITELIST EXTENSION**: Wave 5 plan v1.0 §471 row
+   C.2-3 listed only `BaseLayout.astro` for the Astro renderer side;
+   adding the wrapper at the `[...slug].astro` notes route is a
+   within-`apps/site` detail refinement per Wave 5 plan v1.0 D4
+   thresholds (single-package detail; doesn't widen Stage C.2 PR count
+   OR shift success criteria). Document in `## R14 self-check` row 4
+   + Risk register row 1.
+
+4. EXTEND `apps/site/CONTRACT.md` (~30-40 LOC net delta) — add NEW
+   section `## Grid layout (Wave 5)` between `## Search index` and
+   `## Invariants`. Section contents:
+   - W5-1 forward-pointer to `packages/block-foundation/CONTRACT.md`
+     L41 (W5-1 invariant prose; landed Pre-A2 + types materialised
+     C.2-2).
+   - `.skb-grid` selector contract: declares `apps/site/src/styles/grid.css`
+     as the single authority for the SSR-phase grid container CSS;
+     forbids hand-rolled grid styles on note pages.
+   - 12 / 6 / 1 breakpoint table (desktop ≥ 1024px / tablet 768-1024px
+     / mobile < 768px) mirroring ADR-0016 D5 row schema.
+   - Per-block `gridColumn` / `gridRow` deferral note: explicitly
+     states C.2-3 ships **container-only** CSS; per-block style
+     emission lands at C.2-4 editor-shell grid container OR a
+     componentsMap-wrapper PR.
+   - Forward-pointer to ADR-0016 D8 / D9 / D11 (Tiptap inside / grid
+     outside 分层) + ADR-0017 D11 (referenced by D8).
+   - Forward-pointer to `packages/block-foundation/CONTRACT.md` for
+     `COL_SNAPS` / `BlockGridPosition` / `proseGridDefaults` / 5
+     grid-math helpers (cross-package consumer link; per ADR-0006
+     class 6 sister-doc audit).
+
+5. NEW `apps/site/src/__tests__/grid-css.test.ts` (~50-90 LOC). Reads
+   `apps/site/src/styles/grid.css` raw via `fs.readFileSync` and
+   asserts key selectors / properties / breakpoints exist via `grep`-
+   substring assertions (NOT happy-dom layout — pure string + light
+   regex parsing avoids the WSL2 chromium launch cost per memory
+   `feedback_wsl2_chromium_launch`). Vitest suite runs under
+   `pnpm --filter @skb/site test`. See `## test_cases` for full TC
+   matrix.
+
+6. PR.md self-listed per ADR-0006 D8 strict-whitelist.
+
+NEW vitest suite `grid-css.test.ts` covers ~12 string-level assertions
+on the CSS source. NO new npm dependency (uses node `fs` + vitest
+already wired).
+
+The `apps/site/src/components.ts` componentsMap entries are NOT touched
+— per-block `style.gridColumn` / `style.gridRow` injection on each
+block adapter is deferred per `## Out of scope`. The 8 `@skb/block-*`
+packages are NOT touched — they own NO grid logic per ADR-0016 D11.
+`@skb/mdx-bridge` is NOT touched — C.2-1 already shipped serialize / parse,
+defensive-default path is preserved (Risk register row 4). The
+`COL_SNAPS` byte-equivalent literal across mdx-bridge + block-foundation
+remains the C.2-2 transitional dual-source state — unification deferred
+beyond C.2-3 (Risk register row 4).
+
+LOCKED implementation path: **container-only SSR CSS** —
+`.skb-grid` wraps note content; per-block style attrs deferred. Path
+"emit `style={{ gridColumn, gridRow }}` per block in the Astro
+componentsMap adapters now" is **EXPLICITLY FORBIDDEN** in this PR
+(reason in Risk register row 2; LOC budget + componentsMap touch would
+push beyond ~200 LOC budget + pull in adapter contract changes).
+
+PR.md self-listed per ADR-0006 D8 strict-whitelist.
+
+## files
+
+6 canonical files at PLAN time. NO `package.json` / `pnpm-lock.yaml`
+change (no new deps; pure CSS + Astro template + contract). NO new ADR
+file (D2 row 4 NOT hit; ADR-0016 already authorises the entire
+surface). NO change to the 8 `@skb/block-*` packages (block-side grid
+adoption deferred to C.2-3 / C.2-4 consumer wiring per ADR-0016 D11).
+NO change to `@skb/mdx-bridge` (C.2-1 scope; defensive-default path
+preserved). NO change to `@skb/block-foundation` (C.2-2 scope). NO
+change to `@skb/heavy-block-boundary` (C.2-7 scope; ADR-0014 v0.5
+amendment). NO change to `@skb/editor-shell` (C.2-4 scope). NO change
+to `packages/design-tokens/**` (C.3 scope; OKLCH + breakpoint vars).
+NO sample MDX backfill / no 17 RTT fixture update (Risk register row
+3 + 4). PR.md self-listed.
+
+- `apps/site/src/styles/grid.css` (**NEW**, ~50-80 LOC). Houses the
+  `.skb-grid` container rule + 3 `@media` breakpoints. Scoped CSS
+  variables (`--row-h`, `--gap`, `--total-cols`) declared **inside**
+  `.skb-grid` (not `:root`) to avoid leaking to global cascade — per
+  Risk register row 7. The 12-col baseline is the desktop default
+  (no `@media` query needed for desktop; mobile-first pattern is
+  rejected here because the existing project Tailwind-prose default
+  is desktop-content-first). The `@media (max-width: 1024px)` tablet
+  block re-declares `grid-template-columns: repeat(6, minmax(0,
+  1fr))` and overrides `--total-cols: 6`. The `@media (max-width:
+  768px)` mobile block re-declares `grid-template-columns: 1fr` AND
+  applies a `> *` direct-child rule `grid-column: 1` to force all
+  blocks into the single column regardless of their persisted `col`
+  / `colSpan` values (per ADR-0016 D5 mobile path "rowSpan='auto'
+  forced; rendering-derived not data-mutating"). The
+  `@media (prefers-reduced-motion: reduce)` block is a placeholder
+  for future drag / resize transitions (C.2-5..C.2-6); at C.2-3 it
+  contains an empty rule body OR a comment-only `/* future */`
+  marker — verifiable via grep. JSDoc at file head cites ADR-0016
+  D5 + D8 + D9 explicitly.
+
+- `apps/site/src/layouts/BaseLayout.astro` — **MODIFIED** (~1-3 LOC
+  net delta). Insert `import '../styles/grid.css';` immediately
+  after the existing `import '../styles/global.css';` line at L2.
+  NO other changes — body / main / nav / header / FOUC inline
+  script ALL UNCHANGED. The Tailwind `prose` class on the {main}
+  element remains; the `.skb-grid` wrapper lives **inside** the
+  {main} element via the notes route (item 3); see Risk register
+  row 5 for the prose-vs-grid stacking rationale.
+
+- `apps/site/src/pages/notes/[...slug].astro` — **MODIFIED** (~3-7
+  LOC net delta). Wrap the existing
+  {Content components={componentsMap} /} JSX node in a
+  {div class="skb-grid"}...{/div} wrapper inside the existing
+  {article} element. The {h1}{note.data.title}{/h1} title node stays
+  **outside** the grid wrapper (title is page chrome, not a grid
+  block; per ADR-0016 D8 grid wraps "notes content" = block
+  sequence). NO other changes — `getStaticPaths` /
+  `componentBlockTag` regex / `componentsMap` lazy-import /
+  `BaseLayout` props ALL UNCHANGED.
+
+- `apps/site/CONTRACT.md` — **MODIFIED** (~30-40 LOC net delta).
+  Insert NEW section `## Grid layout (Wave 5)` between the existing
+  `## Search index` section (ends ~L72) and `## Invariants` section
+  (starts ~L73-74). NO change to existing sections (search index /
+  invariants / modifying / related ALL UNCHANGED). The new section
+  follows the structure outlined in `## title` item 4 above:
+  forward-pointer + `.skb-grid` selector contract + 12/6/1
+  breakpoint table + per-block deferral note + ADR + sister-CONTRACT
+  cross-references. Per ADR-0016 §502 sister-doc sync row 3 of 4
+  (`apps/site/CONTRACT.md`) — this PR is the documented
+  same-PR-with-implementation sync site. The
+  `## Modifying this file` clause already covers contract section
+  additions (triggers reviewer scrutiny per high-risk surface
+  classification).
+
+- `apps/site/src/__tests__/grid-css.test.ts` (**NEW**, ~50-90 LOC,
+  ~12-15 assertions). Reads `apps/site/src/styles/grid.css` source
+  via `fs.readFileSync` (NOT happy-dom rendering — pure-string +
+  regex assertions avoid WSL2 chromium per memory
+  `feedback_wsl2_chromium_launch`). Covers: `.skb-grid` selector
+  presence; `grid-template-columns: repeat(12, minmax(0, 1fr))`
+  desktop baseline; `grid-auto-flow: row` (NOT `dense`); `gap:
+  var(--gap)` reference; `--row-h`, `--gap`, `--total-cols` CSS
+  variables declared inside `.skb-grid`; `@media (max-width:
+  1024px)` block presence + `repeat(6, minmax(0, 1fr))` inside it;
+  `@media (max-width: 768px)` block presence + `1fr` re-declaration
+  + `grid-column: 1` direct-child rule; `@media
+  (prefers-reduced-motion: reduce)` placeholder block presence;
+  zero `dense` keyword anywhere in the file (ADR-0016 D8 invariant
+  guard). See `## test_cases` for full TC matrix.
+
+- `docs/plans/wave-5-main/C.2-3-astro-grid.md` (**NEW**, this PR.md).
+  Self-listed.
+
+NO `pnpm-lock.yaml` change (no new dependency). NO `package.json` change
+(no new dep; no exports field update). NO `tsconfig.json` change. NO
+`astro.config.mjs` change (no new integration; the new CSS is imported
+via the existing `BaseLayout.astro` import chain). NO content / sample
+MDX change (deferred per Risk register row 3). NO playwright spec
+change (visual smoke skip pattern preserved per existing
+`visual-smoke.spec.ts`).
+
+## test_cases
+
+TDD-front order (codex-generic-executor): write failing
+`grid-css.test.ts` first → write `grid.css` (test cases turn GREEN
+one-by-one) → wire `BaseLayout.astro` import → wire notes route
+wrapper → CONTRACT.md section.
+
+### TC-1 — `.skb-grid` selector present in grid.css
+
+- input: `readFileSync('apps/site/src/styles/grid.css', 'utf8')`
+- expected: contains the substring `.skb-grid {` (start of rule block)
+- location: `apps/site/src/__tests__/grid-css.test.ts` describe
+  "grid.css selectors"
+
+### TC-2 — Desktop 12-col baseline `grid-template-columns: repeat(12, minmax(0, 1fr))`
+
+- input: same source
+- expected: contains substring
+  `grid-template-columns: repeat(12, minmax(0, 1fr))`
+- location: same file, same describe
+
+exec
+/bin/bash -lc "sed -n '261,560p' docs/plans/wave-5-main/C.2-3-astro-grid.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+
+### TC-3 — `grid-auto-flow: row` (NOT dense) per ADR-0016 D8 invariant
+
+- input: same source
+- expected: contains substring `grid-auto-flow: row` AND does NOT
+  contain `grid-auto-flow: dense` AND does NOT contain `\bdense\b`
+  anywhere (regex `/\bdense\b/` returns false)
+- location: same file, describe "grid.css invariants"
+
+### TC-4 — `gap: var(--gap)` reference
+
+- input: same source
+- expected: contains substring `gap: var(--gap)`
+- location: same file, describe "grid.css selectors"
+
+### TC-5 — Scoped CSS variables `--row-h`, `--gap`, `--total-cols` declared inside `.skb-grid`
+
+- input: same source
+- expected: contains substrings `--row-h: 48px` AND `--gap: 14px`
+  AND `--total-cols: 12`. AND these declarations appear AFTER the
+  `.skb-grid {` opening brace (regex check: index of `--row-h:` >
+  index of `.skb-grid {`).
+- location: same file, describe "grid.css scoped vars"
+
+### TC-6 — Tablet `@media (max-width: 1024px)` block present
+
+- input: same source
+- expected: regex `/^@media\s*\(\s*max-width:\s*1024px\s*\)/m`
+  matches; AND a `repeat(6, minmax(0, 1fr))` substring exists
+  AFTER the `@media (max-width: 1024px)` block opening
+- location: same file, describe "grid.css responsive"
+
+### TC-7 — Mobile `@media (max-width: 768px)` block present
+
+- input: same source
+- expected: regex `/^@media\s*\(\s*max-width:\s*768px\s*\)/m`
+  matches; AND a `grid-template-columns: 1fr` substring exists
+  AFTER that block opening; AND a `grid-column: 1` substring exists
+  AFTER the same block opening (direct-child rule)
+- location: same file, same describe
+
+### TC-8 — `@media (prefers-reduced-motion: reduce)` placeholder
+
+- input: same source
+- expected: contains substring `prefers-reduced-motion: reduce`
+- location: same file, same describe
+
+### TC-9 — `BaseLayout.astro` imports `grid.css`
+
+- input: `readFileSync('apps/site/src/layouts/BaseLayout.astro',
+  'utf8')`
+- expected: contains substring `import '../styles/grid.css'`
+- location: same file, describe "BaseLayout integration"
+
+### TC-10 — `BaseLayout.astro` global.css import preserved
+
+- input: same source
+- expected: contains substring `import '../styles/global.css'` (no
+  regression on existing import)
+- location: same file, same describe
+
+### TC-11 — Notes route wraps `<Content />` in `<div class="skb-grid">`
+
+- input: `readFileSync('apps/site/src/pages/notes/[...slug].astro',
+  'utf8')`
+- expected: contains substring `<div class="skb-grid">` AND the
+  `<Content components={componentsMap} />` substring appears AFTER
+  that opening tag (index check)
+- location: same file, describe "notes route grid wrapper"
+
+### TC-12 — Notes route h1 title stays OUTSIDE grid wrapper
+
+- input: same source
+- expected: substring index of literal `{note.data.title}` (the h1
+  title binding) < substring index of `<div class="skb-grid">`
+  (verifies the h1 title appears first in the article body per
+  ADR-0016 D8 grid-wraps-content invariant; the literal binding
+  expression is a stable anchor unique to the title h1 line)
+- location: same file, same describe
+
+### TC-13 — `apps/site/CONTRACT.md` has `## Grid layout (Wave 5)` section
+
+- input: `readFileSync('apps/site/CONTRACT.md', 'utf8')`
+- expected: regex `/^## Grid layout \(Wave 5\)/m` matches
+- location: same file, describe "CONTRACT.md grid section"
+
+### TC-14 — `apps/site/CONTRACT.md` cites W5-1 forward-pointer
+
+- input: same source
+- expected: contains substring `W5-1` AND contains substring
+  `block-foundation/CONTRACT.md` (forward-pointer target)
+- location: same file, same describe
+
+### TC-15 — `apps/site/CONTRACT.md` 12/6/1 breakpoint mention
+
+- input: same source
+- expected: contains substring `12` AND `6` AND `1` in proximity
+  (loose: each digit appears at least once in the new section);
+  AND contains substring `1024px` AND `768px` (breakpoint values)
+- location: same file, same describe
+
+### TC-16 — Existing `sample-blocks-page.test.ts` UNCHANGED + still PASS
+
+- input: existing test file (not modified by this PR; verified by
+  `git diff origin/main -- apps/site/src/__tests__/sample-blocks-page.test.ts
+  | wc -l == 0`)
+- expected: zero diff against `origin/main`; `pnpm --filter @skb/site
+  test` runs the existing 8-block-marker assertions against the new
+  build output (which now emits `<div class="skb-grid">` wrapping the
+  block sequence) and ALL 8 markers still match because the block
+  HTML output is unchanged structurally — the wrapper is purely
+  additive
+- location: meta-test (no new file; `git diff` + vitest re-run)
+
+## contracts_affected
+
+- `apps/site/CONTRACT.md` — NEW section `## Grid layout (Wave 5)`
+  added between `## Search index` and `## Invariants`. D2 row 1 hit
+  (CONTRACT.md change). Per ADR-0016 §502 sister-doc sync row 3 of
+  4 (`apps/site/CONTRACT.md`) this is the documented same-PR-with-
+  implementation sync site.
+- `packages/block-foundation/CONTRACT.md` — **NOT** modified. The
+  W5-1 invariant prose at L41 is the **target** of the new
+  forward-pointer in `apps/site/CONTRACT.md`; the source-of-truth
+  text is unchanged. AC#10 verifies via grep on
+  `apps/site/CONTRACT.md` (NOT on `block-foundation/CONTRACT.md`,
+  which would conflict with C.2-2 AC#10 W5-1-untouched lock).
+- `packages/mdx-bridge/CONTRACT.md` — **NOT** modified. C.2-1
+  already extended its `## Grid context attrs (Wave 5)` section +
+  W5-1 forward-pointer at PR #58 merge.
+- `packages/heavy-block-boundary/CONTRACT.md` — **NOT** modified
+  (C.2-7 scope; ADR-0014 v0.5 amendment).
+- 8 `@skb/block-*` CONTRACT.md files — **NOT** modified.
+
+D2 row 5 (boundary contract change) hit because the new
+`apps/site/CONTRACT.md` `## Grid layout (Wave 5)` section codifies
+the SSR-side grid container contract that downstream consumers
+(`@skb/editor-shell` C.2-4 grid container — must respect the same
+`.skb-grid` selector + variable scope; `@skb/heavy-block-boundary`
+C.2-7 `heavyBoundaryDimensions` — must respect the same 12 / 6 / 1
+breakpoint thresholds at SSR vs hydration phase per ADR-0016 D9)
+will depend on. PRE-COMMIT CLAUDE REVIEW (D1 stage 4) FIRES.
+
+## adr_touched
+
+NONE (D2 row 4 NOT hit). ADR-0016 D5 + D8 + D9 + D11 + §502 row 3 of
+4 already authorise the entire surface (Pre-A2 lock). PR cites
+ADR-0016 D-list anchors in CSS comments + CONTRACT.md section + this
+PR.md but does NOT amend the ADR.
+
+ADR-0017 D11 (Tiptap inside / grid outside 分层) is referenced by
+ADR-0016 D8 as the architectural rationale for SSR-only grid emission;
+not amended.
+
+ADR-0014 v0.5 amendment (heavy-block boundary `heavyBoundaryDimensions`
+联动 colSpan / rowSpan) is on the C.2-7 row — out of scope here; the
+`apps/site/CONTRACT.md` new section forward-points to the future
+ADR-0014 v0.5 amendment without itself amending.
+
+ADR-0006 class 6 (sister-doc sync) is operationally satisfied (NOT
+amended).
+
+## acceptance
+
+13 verifiable acceptance criteria. Each is a single shell command
+producing an objectively checkable result. ACCEPT-stage pr-writer
+(D1 stage 6) re-runs all 13 against the post-commit working tree.
+
+### AC#1 — `grid.css` exists + `.skb-grid` selector present
+
+```bash
+test -f apps/site/src/styles/grid.css && \
+  grep -F '.skb-grid' apps/site/src/styles/grid.css | wc -l
+```
+
+Expected: ≥ `1`. Verifies the file exists AND the selector appears
+at least once.
+
+### AC#2 — Tablet breakpoint `@media (max-width: 1024px)`
+
+```bash
+grep -E '^@media\s*\(\s*max-width:\s*1024px' \
+  apps/site/src/styles/grid.css | wc -l
+```
+
+Expected: ≥ `1`. Verifies the tablet `@media` block opening line
+exists at column 0 (top-level, not nested).
+
+### AC#3 — Mobile breakpoint `@media (max-width: 768px)`
+
+```bash
+grep -E '^@media\s*\(\s*max-width:\s*768px' \
+  apps/site/src/styles/grid.css | wc -l
+```
+
+Expected: ≥ `1`. Verifies the mobile `@media` block opening line
+exists at column 0.
+
+### AC#4 — Desktop 12-col baseline `repeat(12, minmax(0, 1fr))`
+
+```bash
+grep -F 'grid-template-columns: repeat(12, minmax(0, 1fr))' \
+  apps/site/src/styles/grid.css | wc -l
+```
+
+Expected: ≥ `1`. Verifies the desktop default grid-template-columns
+declaration is byte-equal to the literal in ADR-0016 D8 prose.
+
+### AC#5 — `BaseLayout.astro` imports `grid.css`
+
+```bash
+grep -F "import '../styles/grid.css'" \
+  apps/site/src/layouts/BaseLayout.astro | wc -l
+```
+
+Expected: ≥ `1`. Verifies the import was added; existing
+`global.css` import is preserved (TC-10 covers — but no separate AC
+because the AC is about the new addition, not regression).
+
+### AC#6 — Notes route wraps content in `<div class="skb-grid">`
+
+```bash
+grep -F 'class="skb-grid"' \
+  apps/site/src/pages/notes/\[...slug\].astro | wc -l
+```
+
+Expected: ≥ `1`. (Note: the bracketed filename
+`[...slug].astro` requires `\[...\]` shell escaping; orchestrator
++ codex executor at stage 5 staging will use the literal path.)
+
+### AC#7 — `apps/site/CONTRACT.md` has new `## Grid layout (Wave 5)` section
+
+```bash
+grep -E '^## Grid layout' apps/site/CONTRACT.md | wc -l
+```
+
+Expected: ≥ `1`. Verifies the section header is present.
+
+### AC#8 — `apps/site/CONTRACT.md` cites W5-1 forward-pointer
+
+```bash
+grep -F 'W5-1' apps/site/CONTRACT.md | wc -l
+```
+
+Expected: ≥ `1`. Verifies the forward-pointer to W5-1 invariant
+prose at `block-foundation/CONTRACT.md` L41.
+
+### AC#9 — `apps/site/CONTRACT.md` cross-references `block-foundation/CONTRACT.md`
+
+```bash
+grep -F 'block-foundation/CONTRACT.md' \
+  apps/site/CONTRACT.md | wc -l
+```
+
+Expected: ≥ `1`. Verifies the forward-pointer target path appears
+at least once in the new section (the existing `## Related` section
+lower in the file may also have a separate hit — total ≥ 1
+suffices; the new section addition is verified by AC#7).
+
+### AC#10 — `pnpm --filter @skb/site test` PASS
+
+```bash
+pnpm --filter @skb/site test
+```
+
+Expected: exit 0. All existing test cases continue to PASS (12-13
+pre-existing test files: sample-blocks-page / sample-blocks-astro-page
+/ heavy-block-plugin-placeholder / fouc-script / lazy-chunking /
+search-cjk / search-reindex / search-ui / word-level-match /
+components-map / dims-source) PLUS the new `grid-css.test.ts` (12+
+assertions). No skipped tests beyond the existing
+`visual-smoke.spec.ts` Playwright skip pattern (per memory
+`feedback_wsl2_chromium_launch`).
+
+### AC#11 — `pnpm check:affected` PASS
+
+```bash
+pnpm check:affected
+```
+
+Expected: exit 0. Lint + typecheck + test + build + size-check
+all PASS for `@skb/site` and any package transitively affected
+(should be only `@skb/site` at C.2-3; no upstream churn).
+
+### AC#12 — Lychee link-check pre-empt clean (PR.md only — orchestrator-self walk)
+
+Manual walk per orchestrator: scan with the autolink-in-backticks
+regex (per memory `feedback_lychee_autolink_in_backticks`) and
+confirm zero hits — no `{word}`-shaped autolinks inside backticks;
+no `:line` suffix on file links; no `npmjs.com` URLs; no
+markdown-link tilde paths. Pre-flight grep:
+
+```bash
+grep -nE '`[^`]*<\w+>[^`]*`' \
+  docs/plans/wave-5-main/C.2-3-astro-grid.md
+```
+
+Expected: zero matches. CI Lychee runs against the merged tree as
+canonical; orchestrator pre-empts locally.
+
+
+exec
+/bin/bash -lc "sed -n '561,860p' docs/plans/wave-5-main/C.2-3-astro-grid.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+### AC#13 — D2 trigger Row 1 + Row 5 acknowledged in PR.md
+
+```bash
+grep -E '^## D2 trigger judgment' \
+  docs/plans/wave-5-main/C.2-3-astro-grid.md | wc -l
+# AND
+grep -F 'Row 1' \
+  docs/plans/wave-5-main/C.2-3-astro-grid.md | wc -l
+grep -F 'Row 5' \
+  docs/plans/wave-5-main/C.2-3-astro-grid.md | wc -l
+grep -F 'PRE-COMMIT CLAUDE REVIEW' \
+  docs/plans/wave-5-main/C.2-3-astro-grid.md | wc -l
+```
+
+Expected: section header `1`; each row label ≥ `1`; PRE-COMMIT
+mention ≥ `1`. Acknowledges D1 stage 4 firing.
+
+## verification required
+
+The following commands run by orchestrator-self at D1 stage 4
+(PRE-COMMIT CLAUDE REVIEW) and re-run by pr-writer at D1 stage 6
+(ACCEPT). All 13 ACs (above) plus the D1 stage-3 codex-pr-reviewer-55
+8-class checklist, plus the following augmented checks:
+
+- `pnpm --filter @skb/site typecheck` PASS (uncached; per memory
+  `feedback_git_operator_ci_verification` — turbo cache + vitest
+  miss tsc errors).
+- `pnpm --filter @skb/site lint` PASS (per memory
+  `feedback_codex_spark_lint_gap` — codex executor doesn't
+  auto-run lint; orchestrator runs independently).
+- `pnpm --filter @skb/site build` PASS — `dist/` regenerates with
+  the new grid CSS bundled (Astro emits it under `dist/_astro/*.css`
+  via the BaseLayout import chain).
+- `git diff --cached --stat` post-staging shows exactly the 6
+  whitelisted files (no incidental snapshot / `pnpm-lock.yaml` /
+  cache contamination — per memory
+  `feedback_git_operator_explicit_stage`).
+- Manual sanity (post-build): `grep -F '.skb-grid' apps/site/dist/_astro/*.css`
+  returns ≥ 1 hit (the rule landed in the bundled output);
+  `grep -F 'grid-auto-flow: row' apps/site/dist/_astro/*.css`
+  returns ≥ 1; `grep -F 'dense' apps/site/dist/_astro/*.css`
+  returns 0 (ADR-0016 D8 invariant; per ADR-0016 AC#6 phrasing).
+  This `dist/_astro` grep set is **strongly recommended** but NOT
+  formally listed as an AC (the AC#10 vitest run subsumes the
+  build, and the new `grid-css.test.ts` reads the source CSS
+  directly which is the authoritative input — bundled output
+  drift would still PASS source AC, so reviewer codex 8-class
+  audit picks up bundle-output issues if any).
+- Manual sanity: `pnpm --filter @skb/site dev` — open
+  `http://localhost:4321/notes/sample-blocks` → DevTools →
+  inspect the {main} element → confirm
+  `<div class="skb-grid">` is the direct child wrapping the block
+  sequence; resize viewport from
+  1280px → 1000px → 600px → confirm `grid-template-columns`
+  switches from `repeat(12, ...)` → `repeat(6, ...)` →
+  `1fr` per ADR-0016 D5. (Manual; not gated.)
+
+## Plan-challenger absorbtion
+
+NOT APPLICABLE for an implementation PR per ADR-0011 D7. The Wave 5
+plan v1.0 §471 row C.2-3 + ADR-0016 D5 + D8 + D9 + D11 + §502 row 3
+of 4 + ADR-0006 8-class audit checklist are the authoritative inputs.
+No plan-challenger dispatch occurred at PLAN stage; the Wave 5 plan
+was already plan-challenger-vetted at Pre-A5 lock.
+
+If pr-writer encounters a substantive open question during PLAN draft
+(beyond the container-only-vs-per-block question which is LOCKED at
+orchestrator-recommended container-only path), it surfaces the
+question in the PLAN-stage SendMessage to orchestrator BEFORE lock —
+none surfaced in this draft.
+
+## R14 self-check
+
+R14 = the 14-point pre-flight per ADR-0011 / Wave 5 plan §232 D12
+"PR.md PLAN-stage validation":
+
+1. ✅ **Stage scope-fence** — only files inside the locked Stage
+   C.2-3 whitelist (6 files; cross-package files NOT touched).
+   Row C.2-3 in plan v1.0 §471 cites `apps/site/src/styles/grid.css`
+   + `apps/site/src/layouts/BaseLayout.astro` + `apps/site/CONTRACT.md`;
+   this PR adds `apps/site/src/pages/notes/[...slug].astro` as the
+   wrapper site (D4 scope refinement; documented in row 4 below).
+2. ✅ **ADR authoritative source** — ADR-0016 D5 (responsive 12/6/1)
+   / D8 (Astro renderer grid layout) / D9 (W5-1 SSR vs hydration
+   phase strategy) / D11 (Tiptap inside / grid outside 分层) +
+   §502 sister-doc-sync row 3 of 4 cited; ADR-0017 D11 referenced
+   for layered architecture rationale; ADR-0006 class 6 (sister-doc
+   sync) operationally satisfied.
+3. ✅ **LOC budget** — ~200 LOC target (plan v1.0 row); breakdown:
+   grid.css ~70 + BaseLayout.astro +2 + [...slug].astro +5 +
+   CONTRACT.md +35 + grid-css.test.ts ~70 + PR.md (this file)
+   excluded from app LOC count = ~180 (under target; well within
+   500-line/file cap on every individual file).
+4. ✅ **Whitelist refinement (notes route)** — Wave 5 plan v1.0 §471
+   row C.2-3 listed only `BaseLayout.astro` for the Astro renderer
+   side; this PR adds `pages/notes/[...slug].astro` as a within-
+   `apps/site` detail. Per Wave 5 plan v1.0 D4 thresholds = scope
+   refinement (single-package detail; doesn't widen Stage C.2 PR
+   count materially OR shift success criteria; absorbable without
+   plan amendment). Documented explicitly here AND in
+   `## Risk register` row 1.
+5. ✅ **No new package** — only `apps/site` modified.
+6. ✅ **No `pnpm-lock.yaml` change** — no new dependency.
+7. ✅ **D2 trigger judgment** — Row 1 (CONTRACT.md change) + Row 5
+   (boundary contract change since Astro renderer is the static
+   consumer of `BlockGridPosition` / `COL_SNAPS` from C.2-2) both
+   hit; PRE-COMMIT CLAUDE REVIEW (D1 stage 4) FIRES; acknowledged
+   in `## D2 trigger judgment`.
+8. ✅ **Plan v1.0 §471 row honored** — slight whitelist refinement
+   (notes route added inline; tablet+mobile `@media` plus
+   prefers-reduced-motion seam) is within D4 scope-refinement
+   absorption.
+9. ✅ **TDD-front order** — `## test_cases` enumerates 16 cases;
+   `grid-css.test.ts` is the first file written by codex executor
+   (RED) before `grid.css` impl (GREEN).
+10. ✅ **Deferred items documented** — sample MDX backfill,
+    mdx-bridge hard-throw flip, per-block `gridColumn` / `gridRow`
+    emission, design-tokens-derived geometry vars all listed in
+    `## Out of scope` with target-PR-row references.
+11. ✅ **Sister-doc sync** — `apps/site/CONTRACT.md` `## Grid layout
+    (Wave 5)` extended in same PR as code change (ADR-0006 D8 +
+    D2 row 1 + ADR-0016 §502 row 3 of 4 satisfied).
+12. ✅ **Lychee pre-empt** — backtick-autolink scan + `:line`-suffix
+    + `npmjs.com` + tilde-path manual checks committed in
+    `## acceptance` AC#12.
+13. ✅ **Out-of-scope explicit list** — `## Out of scope` section
+    enumerates C.2-4 / C.2-5..C.2-12 / mdx-bridge hard-throw flip /
+    sample MDX backfill / 17 RTT fixture update / per-block style
+    emission / design-tokens / ADR amendments / `astro.config.mjs`
+    changes.
+14. ✅ **Codex executor profile** — `codex-generic-executor`
+    declared in `## executor`; D1 stage 5 commit staging pre-listed
+    in `## Codex commit (D1 stage 5) staging`.
+
+## D2 trigger judgment
+
+Per ADR-0007 D2 trigger matrix:
+
+- **Row 1 — CONTRACT.md change**: ✅ HIT.
+  `apps/site/CONTRACT.md` has a NEW section `## Grid layout (Wave 5)`
+  inserted between `## Search index` and `## Invariants`. Existing
+  sections UNCHANGED. Row 1 → PRE-COMMIT CLAUDE REVIEW (D1 stage 4)
+  FIRES.
+- **Row 2 — package add/remove**: NOT hit. No new package; no
+  removal.
+- **Row 3 — schema strict-narrowing**: NOT hit. The grid CSS adds
+  presentation rules only; no schema tightening; no breaking change
+  to any existing block render contract.
+- **Row 4 — new ADR required**: NOT hit. ADR-0016 already
+  authorises; no amendment.
+- **Row 5 — boundary contract change**: ✅ HIT. The
+  `apps/site/CONTRACT.md` `## Grid layout (Wave 5)` section codifies
+  the SSR-side grid container contract that downstream consumers
+  (`@skb/editor-shell` C.2-4 grid container — must respect the
+  same `.skb-grid` selector + scoped variable names;
+  `@skb/heavy-block-boundary` C.2-7 — must respect the same 12 / 6 /
+  1 breakpoint thresholds at SSR vs hydration phase per ADR-0016
+  D9) will depend on. Row 5 → PRE-COMMIT CLAUDE REVIEW (D1 stage 4)
+  FIRES (already firing from Row 1; Row 5 reinforces).
+- **Row 6 — sister-doc sync gap**: NOT hit.
+  `apps/site/CONTRACT.md` is updated in the same PR as the code
+  change; no sister-doc lag. Per ADR-0016 §502 row 3 of 4 this is
+  the documented sync site.
+- **Row 7 — fixture invalidation**: NOT hit. No fixture change. The
+  17 RTT fixtures in `@skb/mdx-bridge` are unchanged (Risk register
+  row 4 — fixture grid-aware update deferred).
+- **Row 8 — CI / deploy / auth / security**: NOT hit. No CI
+  pipeline / GitHub Actions / auth / secrets touched.
+
+Conclusion: **PRE-COMMIT CLAUDE REVIEW (D1 stage 4) FIRES** on Row 1
++ Row 5. Heightened reviewer scrutiny in stage 3 NOT additionally
+required (Row 2 + Row 8 NOT hit).
+
+## Risk register
+
+### Risk #1 — Whitelist extension: notes route added beyond plan v1.0 §471 enumerated set
+
+Wave 5 plan v1.0 §471 row C.2-3 explicitly listed
+`apps/site/src/styles/grid.css` (NEW) +
+`apps/site/src/layouts/BaseLayout.astro` (extend) +
+`apps/site/CONTRACT.md` (extend). This PR adds
+`apps/site/src/pages/notes/[...slug].astro` (extend ~5-7 LOC) as the
+actual `<div class="skb-grid">` wrapper site. Without the wrapper,
+the grid CSS would only apply if a parent element gets the
+`.skb-grid` class — and there is no such parent in the current
+template (the {main} element has the Tailwind `prose` class only;
+adding `skb-grid` directly to the {main} element would conflict
+with `prose` margin / padding stacking; per Risk register row 5).
+Hence the notes route
+must wrap content. **Resolution**: Wave 5 plan v1.0 D4 scope-
+refinement threshold permits within-package detail refinements
+without amendment when (a) PR count not widened, (b) success
+criteria not shifted, (c) single-package only. All 3 conditions
+hold. **Mitigation**: documented explicitly in `## title` item 3 +
+`## files` item 3 + this row + R14 self-check row 4. Reviewer codex
+stage 3 audit will flag if the wrapper expands further (e.g., to
+landing-page index `/`); reviewer escalates to orchestrator if so.
+**Residue**: zero acceptable; the addition is documented and
+narrow.
+
+### Risk #2 — Per-block `style.gridColumn` / `style.gridRow` emission deferred to C.2-4 — partial-functional grid
+
+C.2-3 ships only the **container CSS** (`.skb-grid` rule + 3
+breakpoints). Per-block `gridColumn` / `gridRow` CSS-style attrs
+(derived from `BlockGridPosition.col` / `colSpan` / `row` / `rowSpan`
+on each block in the MDX content) are NOT emitted. Result: blocks
+appear in grid-flow order with implicit `grid-column: auto` / `span 1`
+defaults — visually NOT yet positioned according to their persisted
+grid coordinates. **Mitigation**: (a) ADR-0016 D11 "Tiptap inside /
+grid outside 分层" explicitly schedules per-block style emission to
+the editor-shell grid container at C.2-4 (Tiptap NodeView wrappers)
+OR a componentsMap-wrapper PR if the Astro componentsMap adapters
+get a similar per-block style chain landed earlier; (b) the partial-
+functional state at C.2-3 merge is acceptable because all current
+sample MDX content lacks `col` / `colSpan` attrs anyway (Risk row 3
+— sample MDX is pre-grid-aware); (c) the grid CSS is functionally
+COMPLETE for the "all blocks span full row 12-col grid" path, which
+is the natural rendering of un-attributed content per ADR-0016 D2
+defaults (`col: 1, colSpan: 12, rowSpan: 1`). **Residue**: ≤ 1
+sister PR (C.2-4); acceptable. The C.2-4 PR.md will explicitly cite
+this row as the wire-up target.
+
+### Risk #3 — Sample MDX still pre-grid-aware at C.2-3 merge
+
+The existing notes content under `content/notes/sample-blocks/index.mdx`
++ `content/notes/sample-mdx-note.mdx` does NOT have `col` / `colSpan`
+attrs on block tags yet. Per ADR-0016 D2 defaults +
+`@skb/mdx-bridge` defensive-default path (C.2-1 lock — path (a)
+defensive-default during transition), this is fine: parse fills in
+the `col=1` / `colSpan=12` / `rowSpan=1` defaults silently. The grid CSS
+emitted by C.2-3 will then render all blocks full-width stacking
+naturally. **Mitigation**: deferred to a later Stage C.2 PR (likely
+fold into C.2-4 editor-shell when the editor adopts grid attrs OR a
+separate scope-refinement PR if C.2-4 doesn't touch sample MDX).
+Documented in `## Out of scope`. **Residue**: ≤ several sister PRs;
+acceptable while mdx-bridge defensive-default path is in effect.
+
+### Risk #4 — mdx-bridge hard-throw flip deferred (C.2-1 over-promise reframed)
+
+C.2-1 PR #58 PR.md `## Out of scope` mentioned: "Hard-throw flip
+on missing col/colSpan during parse — deferred to C.2-3 (paired
+with sample MDX grid attrs backfill + 17-fixture grid-aware
+update)". This was an over-promise: Wave 5 plan v1.0 §471 row
+C.2-3 has narrow scope (Astro renderer + grid CSS) and ~200 LOC
+budget. Adding hard-throw flip + sample MDX backfill + 17-fixture
+update would expand scope to ~400+ LOC AND pull in `mdx-bridge`
+files which are forbidden in C.2-3 (see `## files` enumeration of
+non-touched packages). **Resolution**: the mdx-bridge hard-throw
+flip + sample MDX backfill + 17-fixture grid-aware update are
+deferred to a later Stage C.2 PR. **Likely landing site**: fold
+into C.2-4 editor-shell (when mdx-bridge is naturally touched for
+grid-container attribute integration) OR a dedicated C.2-X scope-
+refinement PR if C.2-4 doesn't fit. Per Wave 5 plan v1.0 D4
+thresholds, this re-classification is a "scope refinement" (does
+NOT shift Stage C.2 success criteria; PR count widening = at most
++1 if a dedicated scope-refinement PR is needed). Documented in
+`## Out of scope` AND in this row AND PR.md cross-reference
+forward-pointer to the C.2-1 over-promise.
+**Mitigation**: (a) defensive-default path in mdx-bridge
+`parse.ts` continues to fill `col: 1, colSpan: 12, rowSpan: 1` on
+missing attrs — no breakage; (b) the deferral is explicit and
+audit-trail-able (this row + Out of scope + cross-references to
+C.2-1 PR #58 squash `e54497d` PR.md `## Out of scope`);
+(c) reviewer codex stage 3 audit will cross-reference the C.2-1
+over-promise and accept the deferral once this row + `## Out of
+scope` clarify the path. **Residue**: ≤ 1-2 sister PRs;
+acceptable.
+
+### Risk #5 — Tailwind `prose` interaction with `.skb-grid` wrapper inside the {main} element
+
+The existing `BaseLayout.astro` opens
+`<main class="prose mx-auto max-w-3xl py-12 px-4">` which applies
+Tailwind Typography `prose` styles to all descendants (including
+the new `.skb-grid` wrapper). The `prose` plugin sets margin /
+padding / max-width on direct children matching specific element
+selectors (`p`, `h2`, `pre`, etc.). The `.skb-grid` element is a
+plain `div` and is NOT a `prose`-styled element type, so direct
+margin / padding from `prose` does NOT apply to it. However, blocks
+**inside** the grid (rendered as `p` / `pre` / `figure` /
+etc. tags via the componentsMap) WILL pick up `prose` styles —
+which is the existing C.2-2 / Wave 4 visual contract and must be
+preserved. **Mitigation**: (a) the `.skb-grid` wrapper introduces
+no margin / padding of its own (only `display: grid` + grid-
+specific properties); blocks inside continue to inherit the Tailwind
+`prose` defaults; (b) the {article} element in the notes route also
+has no Tailwind class; the wrapper sits between the {article} and
+{Content /} JSX — visually equivalent to
+pre-C.2-3 layout for the desktop ≥ 1024px path because all
+existing blocks default to full-row span (Risk #3). (c) the
+mobile `< 768px` path forces `grid-template-columns: 1fr` +
+`grid-column: 1` on direct children, which is functionally
+identical to no-grid stacking. **Residue**: zero on visual
+regression; existing `sample-blocks-page.test.ts` 8-block-marker
+assertions still PASS (TC-16). The visual smoke
+`visual-smoke.spec.ts` Playwright suite is skipped per
+WSL2 chromium-launch memory; CI canonical run will catch any
+unexpected layout shift if it manifests. (d) If `prose` margin /
+padding ever needs override **inside** `.skb-grid`, that's a C.3
+visual-tokens scope; out of C.2-3 scope.
+
+
+exec
+/bin/bash -lc "sed -n '861,1160p' docs/plans/wave-5-main/C.2-3-astro-grid.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+### Risk #6 — Existing test suites must continue to PASS — wrapper introduction may break selectors
+
+The introduction of a `<div class="skb-grid">` wrapper between the
+{article} element and the {Content /} JSX node changes DOM structure
+on the notes route. **Audit**: pre-flight grep for selectors in
+existing tests
+that depend on direct-child relationships:
+`grep -nE 'main\s*>|article\s*>|skb-grid' \
+  apps/site/src/__tests__/*.ts` — at PLAN time confirms zero
+hits in `sample-blocks-page.test.ts` /
+`sample-blocks-astro-page.test.ts` /
+`heavy-block-plugin-placeholder.test.ts` (those tests rely on
+`data-*` attribute markers + block content presence, NOT DOM
+hierarchy). **Mitigation**: TC-16 explicitly verifies
+`sample-blocks-page.test.ts` continues to PASS. Reviewer codex
+stage 3 audit will catch any test-file change that contradicts
+the C.2-3 contract. **Residue**: zero acceptable; if a hidden
+selector dependency surfaces during stage 3 + 4 review,
+orchestrator will absorb a minor selector update (still
+single-package; D4 scope refinement) before stage 5 commit OR
+revert to a wrapper-free structure (which would invalidate the
+grid CSS — extreme rollback case).
+
+### Risk #7 — CSS variable cascade pollution if declared at `:root`
+
+`--row-h` / `--gap` / `--total-cols` are common identifiers that
+might collide with future design-tokens variables (Stage C.3
+OKLCH switchover). **Mitigation**: declare them **inside** the
+`.skb-grid` selector scope (NOT at `:root`) so they don't leak
+into the global cascade — overrides at `:root` from
+design-tokens (C.3) won't accidentally affect grid geometry, and
+grid-specific values can be tuned independently. JSDoc / CSS
+comment at the top of `grid.css` notes "scope MUST stay
+`.skb-grid` until Stage C.3 design-tokens unification; do NOT
+move to `:root` without coordinated C.3 update". **Residue**:
+documentation-only forward-pointer; acceptable.
+
+## Out of scope (deferred — explicit list)
+
+The following are LOCKED OUT of C.2-3 (executor MUST NOT touch them;
+reviewer MUST flag as scope creep if encountered):
+
+- **Sample MDX backfill** — `col` / `colSpan` attrs in
+  `content/notes/**/*.mdx` block tags (per Risk row 3; deferred to
+  C.2-4 OR a separate scope-refinement PR).
+- **mdx-bridge hard-throw flip** — `@skb/mdx-bridge` `parse.ts`
+  defensive-default → throw on missing `col` / `colSpan` (per Risk
+  row 4; C.2-1 over-promise reframed; deferred).
+- **17 RTT fixtures grid-aware update** —
+  `packages/mdx-bridge/src/__tests__/fixtures/**` (Risk row 4
+  paired item; deferred).
+- **Per-block `gridColumn` / `gridRow` style emission** —
+  componentsMap adapter wrappers OR editor-shell grid container
+  per-block style chain (deferred to C.2-4 editor-shell grid
+  container OR a componentsMap-wrapper PR; per Risk row 2).
+- **Editor-shell grid container** — `@skb/editor-shell` (C.2-4
+  scope; consumes the `.skb-grid` selector contract from this PR).
+- **Drag/drop UX** — drag handles + keyboard re-order + ghost
+  preview (C.2-5 per ADR-0017).
+- **Resize handles** — colSpan / rowSpan resize via drag (C.2-6
+  per ADR-0017).
+- **`@skb/heavy-block-boundary` v0.5 amendment** —
+  `heavyBoundaryDimensions` 联动 `colSpan` / `rowSpan` (C.2-7;
+  ADR-0014 v0.5 amendment).
+- **C.2-8..C.2-12** — playwright visual smoke / audit / Stage C.2
+  close.
+- **`packages/design-tokens/**`** — design-tokens-derived
+  breakpoint variables (`--bp-tablet: 768px` /
+  `--bp-desktop: 1024px`) + `--row-h` / `--gap` unification
+  (Stage C.3 OKLCH scope per Wave 5 plan v1.0 §C.3 + ADR-0016 D9).
+  Until C.3 lands, the grid.css hard-codes the 1024 / 768 / 48 / 14
+  literals scoped inside `.skb-grid`.
+- **`apps/site/components.ts` componentsMap entries** — per-block
+  adapter wrappers that emit `style.gridColumn` / `style.gridRow`
+  (deferred per Risk row 2).
+- **`astro.config.mjs` changes** — no integration / Vite / Rollup
+  manualChunks updates (the grid CSS is a static side-effect import
+  via BaseLayout; no bundler config required).
+- **ADR amendments** — none in C.2-3; ADR-0016 + ADR-0014 +
+  ADR-0017 all unchanged.
+- **`pnpm-lock.yaml` / `package.json`** changes — no new
+  dependencies; no `exports` field updates.
+- **Visual smoke `visual-smoke.spec.ts` update** — Playwright
+  visual snapshot baseline regeneration deferred to a Wave 5 visual
+  smoke refresh PR (Stage C.4 likely; per Wave 5 plan v1.0 §C.4).
+
+## executor
+
+- **D1 stage 1 PLAN**: `pr-writer` Claude subagent (this dispatch).
+  Output: this PR.md, locked by orchestrator after ≤ 2 rounds.
+- **D1 stage 2 EXECUTE**: `codex-generic-executor` `--yolo`
+  (gpt-5.5 + workspace-write sandbox; per ADR-0011 D6). TDD-front
+  order:
+  1. Write `apps/site/src/__tests__/grid-css.test.ts` (RED —
+     `grid.css` doesn't exist yet, BaseLayout import line missing,
+     notes route wrapper absent, CONTRACT.md section missing).
+  2. Write `apps/site/src/styles/grid.css` (TC-1..TC-8 turn GREEN
+     one-by-one as the rule + 3 breakpoints + scoped vars land).
+  3. Add `import '../styles/grid.css';` to `BaseLayout.astro`
+     (TC-9 + TC-10 GREEN).
+  4. Wrap `<Content />` in `<div class="skb-grid">` in
+     `pages/notes/[...slug].astro` (TC-11 + TC-12 GREEN).
+  5. Insert `## Grid layout (Wave 5)` section in
+     `apps/site/CONTRACT.md` between `## Search index` and
+     `## Invariants` (TC-13..TC-15 GREEN).
+  6. Re-run `pnpm --filter @skb/site test` + `lint` + `typecheck`
+     + `build` + `size-check` until all PASS (TC-16 + AC#10 +
+     AC#11 GREEN).
+  7. Stop. SendMessage orchestrator with diff summary.
+- **D1 stage 3 REVIEW**: `codex-pr-reviewer-55`. ADR-0006 8-class
+  checklist mandatory; specific high-risk classes:
+  - **class 4 (single-authority schema)**: scoped CSS variables
+    (`--row-h`, `--gap`, `--total-cols`) inside `.skb-grid` — must
+    accept the scope choice per Risk row 7; reviewer pre-empt =
+    forward-pointer JSDoc / CSS comment.
+  - **class 5 (algorithm replication)**: 1024 / 768 / 48 / 14
+    breakpoint + geometry literals — must accept the transitional
+    hard-coded state per Risk row 7 (design-tokens unification at
+    C.3).
+  - **class 6 (sister-doc sync)**: `apps/site/CONTRACT.md`
+    `## Grid layout (Wave 5)` extended in same PR as code change —
+    PASS; per ADR-0016 §502 row 3 of 4.
+  - **class 8 (CI / deploy / auth)**: NOT hit; no CI / auth /
+    secret touched.
+- **D1 stage 4 PRE-COMMIT CLAUDE REVIEW**: orchestrator-self.
+  **REQUIRED** (D2 row 1 + row 5). Re-run all 13 ACs + verification
+  required commands; verify W5-1 prose untouched in
+  `block-foundation/CONTRACT.md` (cross-package — no diff expected
+  but spot-grep `git diff origin/main -- packages/block-foundation/`
+  returns empty); verify path "container-only" preserved (no
+  per-block style attr injection in componentsMap or block adapter
+  files).
+- **D1 stage 5 COMMIT**: reviewer codex with ADR-0006 D8
+  explicit-file-list staging (see `## Codex commit (D1 stage 5)
+  staging` below).
+- **D1 stage 6 ACCEPT**: `pr-writer` Claude subagent (second
+  invocation; this same subagent re-dispatched). Re-run all 13 ACs
+  against post-commit working tree. Output: ACCEPT or
+  REJECT-with-residue.
+
+## Codex commit (D1 stage 5) staging
+
+Per ADR-0006 D8 explicit-file-list 4-step protocol (per memory
+`feedback_git_operator_explicit_stage`):
+
+```bash
+# Step 1: clean stage
+git reset HEAD
+
+# Step 2: explicit file list (6 files)
+git add apps/site/src/styles/grid.css
+git add apps/site/src/layouts/BaseLayout.astro
+git add 'apps/site/src/pages/notes/[...slug].astro'
+git add apps/site/CONTRACT.md
+git add apps/site/src/__tests__/grid-css.test.ts
+git add docs/plans/wave-5-main/C.2-3-astro-grid.md
+
+# Step 3: verify staged set matches whitelist exactly
+git diff --cached --name-only | sort
+# Expected output (exactly 6 lines, alphabetically):
+#   apps/site/CONTRACT.md
+#   apps/site/src/__tests__/grid-css.test.ts
+#   apps/site/src/layouts/BaseLayout.astro
+#   apps/site/src/pages/notes/[...slug].astro
+#   apps/site/src/styles/grid.css
+#   docs/plans/wave-5-main/C.2-3-astro-grid.md
+
+git diff --cached --stat | tail -1
+# Expected: 6 files changed, ~180 insertions(+), ~1-3 deletions(-)
+# (deletions ≈ 0-3; the BaseLayout.astro change is pure additive
+# import; the [...slug].astro change is wrapping insertion;
+# CONTRACT.md is additive section; tests + grid.css brand new)
+
+# Step 4: confirm pnpm-lock.yaml NOT staged (no new deps)
+git diff --cached --name-only | grep -F 'pnpm-lock.yaml' | wc -l
+# Expected: 0
+
+# Step 5: commit
+git commit -m "$(cat <<'EOF'
+Wave 5 C.2-3 — Astro renderer .skb-grid container + Responsive 12/6/1
+
+Wire the SSR-phase grid container in apps/site per ADR-0016 D8 + D9
+phase 1: emit .skb-grid wrapper around notes content + 12-col baseline
+grid CSS + tablet 6-col + mobile 1-col @media breakpoints.
+
+- NEW apps/site/src/styles/grid.css: .skb-grid container rule (display:
+  grid + grid-template-columns: repeat(12, minmax(0, 1fr)) +
+  grid-auto-flow: row + scoped --row-h / --gap / --total-cols vars) +
+  @media (max-width: 1024px) tablet 6-col + @media (max-width: 768px)
+  mobile 1-col with > * grid-column: 1 + @media (prefers-reduced-motion:
+  reduce) placeholder (per ADR-0016 D5 + D8 + D9).
+- BaseLayout.astro: import '../styles/grid.css' added alongside
+  existing global.css import.
+- pages/notes/[...slug].astro: wrap <Content /> in
+  <div class="skb-grid"> inside <article> (h1 stays outside wrapper —
+  per ADR-0016 D8 grid wraps notes-content block sequence).
+- apps/site/CONTRACT.md: NEW section "## Grid layout (Wave 5)" with
+  W5-1 forward-pointer to block-foundation/CONTRACT.md + .skb-grid
+  selector contract + 12/6/1 breakpoint table + per-block deferral
+  note (per ADR-0016 §502 sister-doc sync row 3 of 4).
+- NEW grid-css.test.ts (16 string-level assertions on CSS source +
+  BaseLayout import + notes route wrapper + CONTRACT.md section).
+
+Container-only SSR path locked: per-block style.gridColumn /
+style.gridRow emission deferred to C.2-4 editor-shell grid container
+OR a componentsMap-wrapper PR (per ADR-0016 D11 Tiptap inside / grid
+outside 分层).
+
+Sample MDX backfill + mdx-bridge hard-throw flip + 17 RTT fixture
+grid-aware update deferred to a later Stage C.2 PR (C.2-1 over-
+promise reframed; per Risk register row 4).
+
+D2 row 1 (CONTRACT.md) + row 5 (boundary contract) hit; PRE-COMMIT
+CLAUDE REVIEW (D1 stage 4) FIRED.
+
+Refs: ADR-0016 D5 / D8 / D9 / D11 / §502 row 3 of 4; Wave 5 plan v1.0
+§471 row C.2-3.
+PR.md: docs/plans/wave-5-main/C.2-3-astro-grid.md
+EOF
+)"
+
+# Step 6: push
+git push -u origin wave-5-main/C.2-3-astro-grid
+```
+
+NO `--no-verify` flag. NO `git add -A` / `git add .`. NO `git commit
+--amend`. Pre-commit hook PASS expected; on hook fail, follow ADR-0006
+D8 + memory `feedback_git_operator_explicit_stage` "fix the underlying
+issue, re-stage, NEW commit" flow — not amend.
+
+Note: the bracketed filename `apps/site/src/pages/notes/[...slug].astro`
+must be quoted at the shell `git add` step to prevent shell glob
+expansion (no globbed match would then return zero files +
+git-add-noop). The single-quoted form
+`'apps/site/src/pages/notes/[...slug].astro'` is shown above; reviewer
+codex at stage 5 staging will use the same form.
+
+## Related
+
+- Wave 5 plan v1.0 §471 row C.2-3 + §502 sister-doc sync row 3 of 4
+  (`docs/plans/wave-5-main/Pre-A5-plan-v1-lock.md`)
+- ADR-0016 D5 (responsive 12/6/1) / D8 (Astro renderer grid layout
+  support) / D9 (W5-1 SSR vs hydration phase strategy) / D11 (Tiptap
+  inside / grid outside 分层) / §502 row 3 of 4 (sister-doc sync)
+  (`docs/decisions/ADR-0016-grid-data-model.md`)
+- ADR-0017 D11 (referenced by ADR-0016 D8 for layered architecture
+  rationale) (`docs/decisions/ADR-0017-drag-drop-ux.md`)
+- ADR-0014 v0.5 amendment (heavy-block boundary; C.2-7 future)
+  (`docs/decisions/ADR-0014-heavy-block-runtime-tiers.md`)
+- ADR-0006 class 4 (single-authority schema) + class 5 (algorithm
+  replication) + class 6 (sister-doc sync) + class 8 (CI / deploy)
+  (`docs/decisions/ADR-0006-asymmetry-audit-checklist.md`)
+- ADR-0011 D1 (linear pipeline 6 stages) + D2 (trigger matrix) + D6
+  (Wave 3 default executor) + D7 (subagent roster)
+  (`docs/decisions/ADR-0011-linear-pipeline-execution-model.md`)
+- Wave 5 C.2-1 PR squash `e54497d` — `@skb/mdx-bridge` grid serialize
+  (predecessor; mdx-bridge dual-source `COL_SNAPS` at
+  `packages/mdx-bridge/src/serialize.ts` L50 +
+  `packages/mdx-bridge/src/parse.ts` L57; defensive-default path
+  preserved per Risk row 3 + 4)
+- Wave 5 C.2-2 PR squash `b15ba24` —
+  `@skb/block-foundation` `BlockGridPosition` + `COL_SNAPS` +
+  `proseGridDefaults` + `effectiveCellHeight` + `effectiveColWidth` +
+  `effectiveRowSpan` + `validateGridPosition` + `isAutoRowSpan`
+  authority (predecessor; consumed by `apps/site/CONTRACT.md`
+  forward-pointer in this PR)
+- `packages/block-foundation/CONTRACT.md` L41 W5-1 invariant prose
+  (Pre-A2 lock; cross-package forward-pointer target from this PR)
+- `apps/site/src/layouts/BaseLayout.astro` — current FOUC inline
+  script + Tailwind `prose` on the {main} element (extension target)
+- `apps/site/src/pages/notes/[...slug].astro` — current notes route
+  template (wrapper insertion target)
+- `apps/site/CONTRACT.md` — current 8-block componentsMap + chunking
+  invariants (extension target with NEW `## Grid layout (Wave 5)`
+  section)
+
+codex
+I’ve read the locked C.2-3 plan end to end. Next I’m gathering only the named authority and target files so the test covers the exact contract before touching production code.
+exec
+/bin/bash -lc "sed -n '1,220p' CLAUDE.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+# CLAUDE.md
+
+> **GENERATED FROM agent-contract.md — DO NOT EDIT BY HAND.**
+>
+> Edit `agent-contract.md` then run `pnpm generate:configs`. CI fails if drift detected.
+
+This file is the Claude Code entry point for the **SelfKnowledgeBaseWeb** monorepo. It tells
+every Claude session what the project is, the hard rules, the agent roster, and the workflow.
+
+- Spec: [docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md](docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md)
+- Active plan: [docs/plans/active.md](docs/plans/active.md)
+- Single source for agents: [agent-contract.md](agent-contract.md)
+- Codex tool invocations: [docs/runbooks/codex-tool-invocations.md](docs/runbooks/codex-tool-invocations.md)
+
+## Hard rules
+
+1. **File size**: 200 lines (target) / 300 lines (ESLint `max-lines` warn) / 500 lines
+   (`pnpm size-check` hard fail). Spec §3.6.
+2. **Cross-file references**: every doc/code change must keep doc cross-references and
+   contract files in sync (`packages/*/CONTRACT.md`, `agent-contract.md`).
+3. **Lychee link-check**: broken markdown links block merge. Run `pnpm link-check` locally.
+4. **`pnpm check` is mandatory before review** (lint + typecheck + test + build + size).
+5. **Git mutation discipline (ADR-0011 D1+D4)**: `git commit / branch / rebase / push`
+   only at D1 stage 5 (reviewer codex commit phase) or by orchestrator self for bootstrap
+   scope. Subagents (pr-writer / ux-ui-lead / refactorer / researcher) never run mutating
+   git commands.
+6. **Web access discipline (ADR-0011 D7)**: only the `researcher` Claude subagent (one-shot
+   per dispatch) may run `web_search` / `web_fetch`.
+7. **Cross-package moves (ADR-0011 D7)**: only the `refactorer` Claude subagent may
+   reorganize packages, and every reorganization requires an ADR under `docs/decisions/`.
+
+## Commands cheat-sheet
+
+| Command                 | Purpose                                               |
+| ----------------------- | ----------------------------------------------------- |
+| `pnpm install`          | Install workspace dependencies                        |
