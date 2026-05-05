@@ -640,7 +640,7 @@ Lockfile blob discipline per memory `feedback_git_operator_explicit_stage.md`: `
 - [ADR-0015 Wave 4 close](../../decisions/ADR-0015-wave-4-close.md) R14 retrospective
 - [ADR-0011 D1 6-stage linear pipeline](../../decisions/ADR-0011-linear-pipeline-execution-model.md)
 - [ADR-0007 D2 trigger judgment](../../decisions/ADR-0007-job-function-codex-heavy-execution.md)
-- [ADR-0006 D8 explicit-file-list staging](../../decisions/ADR-0006-block-package-contract.md)
+- [ADR-0006 D8 explicit-file-list staging](../../decisions/ADR-0006-asymmetry-audit-checklist.md)
 - [`@skb/mdx-bridge` CONTRACT](../../../packages/mdx-bridge/CONTRACT.md) — target of contract edit
 - [`@skb/block-foundation` CONTRACT](../../../packages/block-foundation/CONTRACT.md) — W5-1 authority (consumed transitively)
 - [`@skb/editor-shell` CONTRACT](../../../packages/editor-shell/CONTRACT.md) — W5-2 authority (downstream consumer)
