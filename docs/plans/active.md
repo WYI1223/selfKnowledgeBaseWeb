@@ -3,9 +3,9 @@
 > SessionStart hook 读取此文件，把当前 wave 印在 session 起手位置。
 
 **当前 phase**: 1
-**当前 wave**: **Wave 5 plan v1.0 locked** (Pre-A5 done 2026-05-04 — Pre-A roadmap closed; [Wave 5 plan v1.0](../superpowers/plans/2026-05-04-phase-1-wave-5-integration.md) with Stage C.1-C.4 per-PR breakdown locked; Stage C.1 ready to start). MVP target = v2 demo 整体体验 functional minimum (heavy block plugin placeholder + grid + drag/drop + v2 视觉 + editor-shell wire to apps/site). **5 Pre-A done + 25 Stage C planned = 30 PRs total**; 49 plan-challenger challenges absorbed across 4 rounds. Per-stage MVP-judgment escape valve (D3) + handoff pack (D15). R14 discipline enforced. Wave 4 ✅ closed 2026-05-04 (HEAD `de39e07` substance + `a157168` close-ceremony) by [ADR-0015](../decisions/ADR-0015-wave-4-close.md).
+**当前 wave**: **Wave 5 plan v1.1 locked** (Pre-A5 v1.0 lock 2026-05-04; v1.0 → v1.1 R14 amendment 2026-05-05 via PR #61 squash `1304111` per [ADR-0015](../decisions/ADR-0015-wave-4-close.md) R14 — defer-defer chain for hard-throw flip + sample MDX backfill + 17 RTT fixtures formalized via NEW Stage C.2 row C.2-3.5 LOCKED at fractional index 3.5; 5/5 plan-challenger challenges absorbed; reviewer R3 PASS; R14 first real-test enforcement validated). [Wave 5 plan v1.1](../superpowers/plans/2026-05-04-phase-1-wave-5-integration.md). MVP target = v2 demo 整体体验 functional minimum. **5 Pre-A done + 3 C.1 done + 3 C.2 done (3/13 with v1.1) + 1 v1.1 meta = 12 PRs done; 22 implementation PRs remaining**. Total = **31 implementation + 1 meta = 32 roster entries**. 54 plan-challenger challenges absorbed across 5 rounds (49 v1.0 + 5 v1.1 light). Per-stage MVP-judgment escape valve (D3) + handoff pack (D15). R14 discipline ✅ operative. Wave 4 ✅ closed 2026-05-04 by [ADR-0015](../decisions/ADR-0015-wave-4-close.md).
 
-**Wave 5 PR roster** (in progress; 5 Pre-A done; Stage C.1 ready):
+**Wave 5 PR roster** (in progress; 12 PRs done; **next = C.2-4 editor-shell grid 集成**):
 
 | PR | Squash HEAD | Stage | Subject |
 |---|---|---|---|
@@ -13,11 +13,17 @@
 | #51 | `6e2c1d9` | Pre-A2 | ADR-0016 grid 数据模型 + W5-1 invariant + 12/12 absorbed (R2) |
 | #52 | `157a4f7` | Pre-A3 | ADR-0017 drag/drop UX + 13/13 absorbed (R4) |
 | #53 | `7e487ec` | Pre-A4 | ADR-0018 v2 视觉 migration + save-path 接口冻结 + 14/14 absorbed (R6) |
-| #TBD (this) | TBD | Pre-A5 | Wave 5 plan v0.2 → v1.0 final lock + Stage C.1-C.4 PR breakdown (25 PRs) + 6 Pre-A4 audit logs bundled |
-| (Stage C.1 = 3) | TBD | C.1 | C.1-1 plugin placeholder + ADR-0014 v0.4 amend / C.1-2 PDF + chunk-leak / C.1-3 gitignore |
-| (Stage C.2 = 12) | TBD | C.2 | C.2-1..12 mdx-bridge serialize → editor-shell grid → drag/drop UX → resize → ADR-0014 v0.5 amend → playwright |
-| (Stage C.3 = 5) | TBD | C.3 | C.3-1..5 OKLCH + Inter/JetBrains Mono → 8 kind hue → prose customization → 8 light block calibration → visual smoke baseline |
-| (Stage C.4 = 5) | TBD | C.4 | C.4-1..5 NoteSaveAdapter → /notes/[slug]/edit route → BlockRegistry wire → save/load → e2e + Wave 5 close 候选 |
+| #54 | `2bc129a` | Pre-A5 | Wave 5 plan v0.2 → v1.0 final lock + Stage C.1-C.4 PR breakdown (25 PRs) |
+| #55 | `44a2e53` | C.1-1 | Heavy block plugin placeholder + ADR-0014 v0.4 amendment |
+| #56 | `6b350d6` | C.1-2 | PDF iframe dark-theme fix + C-4 chunk-leak NO-OP audit |
+| #57 | `587835c` | C.1-3 | `apps/site/.gitignore` housekeeping + Stage C.1 close handoff pack |
+| #58 | `e54497d` | C.2-1 | mdx-bridge col/row/colSpan/rowSpan serialize (1 of 13 Stage C.2; w/ defensive defaults — transition removed at C.2-3.5) |
+| #59 | `b15ba24` | C.2-2 | block-foundation BlockUIDefinition grid + grid-math.ts (2 of 13 Stage C.2) |
+| #60 | `2586328` | C.2-3 | Astro renderer grid + Responsive 12/6/1 (3 of 13 Stage C.2) |
+| #61 | `1304111` | **v1.1 amend** | **Wave 5 plan v1.0 → v1.1 R14 amendment + NEW row C.2-3.5 (formalize C.2-1→C.2-3 hard-throw + sample-MDX + 17 RTT fixtures defer-chain; 5/5 absorbed; R3 PASS; R14 first real-test ✅)** |
+| (Stage C.2 = 13 PRs post v1.1) | TBD | C.2 | C.2-4 editor-shell grid → C.2-3.5 hard-throw flip → C.2-5..C.2-12 drag/drop/resize/playwright |
+| (Stage C.3 = 5 PRs) | TBD | C.3 | C.3-1..5 OKLCH + Inter/JetBrains Mono → visual smoke baseline |
+| (Stage C.4 = 5 PRs) | TBD | C.4 | C.4-1..5 NoteSaveAdapter → /notes/[slug]/edit → BlockRegistry → save/load → e2e |
 
 **Wave 4 PR roster** (in-progress; merged 2026-05-03):
 
@@ -110,26 +116,42 @@ Wave 3 main pipeline PR roster (2026-05-01 → 2026-05-02, all merged via auto-m
 
 ---
 
-## 起手指引（Wave 5 implementation; Pre-A roadmap closed — Stage C.1 ready）
+## 起手指引（Wave 5 implementation; Stage C.2 mid-stage 3/13 done — next = C.2-4）
 
-Wave 5 plan v1.0 ✅ locked at Pre-A5 ([Wave 5 plan](../superpowers/plans/2026-05-04-phase-1-wave-5-integration.md)). All 4 ADRs locked (ADR-0016/0017/0018 status proposed at Pre-A2/3/4; ADR-0014 v0.4 + v0.5 amendments scheduled in Stage C.1 + Stage C.2). 5 Pre-A done + 25 Stage C planned = **30 PRs total Wave 5**. **Next session = Stage C.1 implementation (3 PRs)**.
+Wave 5 plan v1.1 ✅ locked. 12 PRs done (5 Pre-A + 3 C.1 + 3 C.2 + 1 v1.1 meta). **Next session = C.2-4 editor-shell grid 集成 + useAutoRowSpan hook**. Per Wave 5 plan v1.1 row C.2-4: ~400 LOC, codex-generic-executor, D2 row 1 (CONTRACT W5-2 NEW) + row 5 fires; ADR-0016 D3 (两阶段稳态 / 3-stage 抖动收敛) + D11 (Tiptap inside / grid outside 分层) 是核心引用。**重要**: C.2-4 不再 carry hard-throw flip — 已剥离到 NEW C.2-3.5 (per v1.1 R14 amendment).
 
-### Pre-flight (Stage C.1 session start)
+### Pre-flight (next session start)
 
-1. 读 [Wave 5 plan v1.0](../superpowers/plans/2026-05-04-phase-1-wave-5-integration.md) — Stage C.1 PR breakdown (3 PRs locked) + Risk matrix + handoff pack template + ADR 编号映射表 + cross-referenced absorbtion tables
-2. 读 [ADR-0014 HeavyBlockBoundary](../decisions/ADR-0014-heavy-block-boundary.md) — v0.4 amendment scope in C.1-1 (plugin placeholder vs plugin-real-runtime split)
-3. 读 [ADR-0016 grid 数据模型](../decisions/ADR-0016-grid-data-model.md) — Stage C.2 reference (locked at Pre-A2)
-4. 读 [ADR-0017 drag/drop UX](../decisions/ADR-0017-drag-drop-ux.md) — Stage C.2 reference (locked at Pre-A3)
-5. 读 [ADR-0018 v2 视觉 migration + save-path 接口冻结](../decisions/ADR-0018-v2-visual-migration.md) — Stage C.3 + C.4 reference (locked at Pre-A4)
-6. 读 [ADR-0015 Wave 4 close](../decisions/ADR-0015-wave-4-close.md) — D3 Wave 5 deferred items + D4 R14 discipline source
-7. 读 [ADR-0011 D1-D8](../decisions/ADR-0011-linear-pipeline-execution-model.md) — execution model (Stage C.1 onwards 走标准 D1 6-stage pipeline)
+1. `git pull` verify HEAD = `1304111` (Wave 5 v1.1 amendment squash)
+2. 读 [Wave 5 plan v1.1](../superpowers/plans/2026-05-04-phase-1-wave-5-integration.md) — Stage C.2 PR breakdown (13 PRs post v1.1) + `## v1.1 R14 amendment` section + Risk matrix
+3. 读 [ADR-0016 grid 数据模型](../decisions/ADR-0016-grid-data-model.md) — D3 两阶段稳态 (C.2-4 useAutoRowSpan core) + D11 Tiptap-inside-grid-outside + D9 W5-1 SSR vs hydration phase + §502 sister-doc-sync (mdx-bridge row references C.2-3.5 post v1.1)
+4. 读 [ADR-0017 drag/drop UX](../decisions/ADR-0017-drag-drop-ux.md) — Stage C.2 D5..D12 reference (drag/drop/resize land at C.2-5..C.2-8)
+5. 读 PR.md exemplar [C.2-3 Astro renderer grid PR.md](wave-5-main/C.2-3-astro-grid.md) — for structure + content patterns
+6. 读 [Wave 5 plan v1.1 PR.md](wave-5-main/v1.1-plan-amendment-r14.md) — R14 first real-test reference + 5-row absorbtion table + AC#13/14 mechanical R14 hard-fail patterns
 
-### Stage C.1 ready (locked PR breakdown)
+### Stage C.2 remaining (10 of 13 PRs)
 
-- C.1-1: Heavy block plugin placeholder + ADR-0014 v0.4 amendment (apps/site islands rewrite + componentsMap + ADR amendment) — codex-generic-executor; Row 4 + Row 1 D2 trigger
-- C.1-2: C-3 PDF iframe 黑屏 fix + C-4 chunk-leak measure (data-driven; NO-OP if plugin placeholder makes moot) — codex-generic-executor
-- C.1-3: `apps/site/test-results/` gitignore housekeeping — orchestrator-self
-- **Stage C.1 close** = user MVP-judgment escape valve + handoff pack mandatory (per Wave 5 plan v1.0 D3 + D15)
+| Order | Subject | LOC |
+|---|---|---|
+| C.2-4 (next) | editor-shell grid 集成 + useAutoRowSpan hook (ADR-0016 D3 两阶段稳态) | ~400 |
+| **C.2-3.5** (NEW v1.1) | mdx-bridge hard-throw flip + sample MDX backfill + 17 RTT fixtures grid-aware update | ~250-350 |
+| C.2-5 | drag/drop UX 实施 (per ADR-0017 D5+D3+D4) | ~500 |
+| C.2-6 | resize UX 实施 (col-ruler + size-tooltip + COL_SNAPS snap) | ~300 |
+| C.2-7 | ADR-0014 v0.5 amendment (HeavyBlockBoundary dims grid context) | ~150 |
+| C.2-8 | drop-pulse + drag-ghost + Esc cancel + layoutEpoch reducer | ~400 |
+| C.2-9 | Responsive 12/6/1 切换 + rowSpan adapt path | ~150 |
+| C.2-10 | playwright drag scenarios + edge-rect tiebreak fixtures | ~600 |
+| C.2-11 | playwright resize + responsive switch + rowSpan adapt | ~400 |
+| C.2-12 | Stage C.2 close: visual smoke baseline + perf budget + handoff pack | ~200 |
+
+**Per Q2 v1.1 absorbtion downstream constraint**: C.2-4..C.2-11 PRs MUST reference C.2-3.5 hard-throw flip as active mdx-bridge contract; MUST NOT reuse C.2-3 era defensive default `_gridAttrsExplicit` marker (removed at C.2-3.5 execution).
+
+### R14 first real-test ✅ PASSED (this v1.1 amendment)
+
+ADR-0019 Wave 5 close R24-shaped retrospective candidate (verbatim from plan v1.1 §455+):
+> "R14 first real-test enforcement — defer-defer chain (hard-throw flip + sample MDX backfill + 17 RTT fixtures: C.2-1 → C.2-3 → v1.1 amendment) → plan amendment PR (v1.1) 5-stage D1 pipeline 形式化处理而非 handoff pack 跟踪. 证明 R14 discipline operative."
+
+R14 mechanical hard-fail layer codified: AC#13 (diff-only-N-docs check) + AC#14 (no implementation-string leak in non-PR.md files). Pattern reusable for any future v1.X plan amendment PRs.
 
 ### MVP escape valve (Stage close decision points)
 
