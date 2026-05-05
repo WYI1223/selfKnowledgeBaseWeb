@@ -249,7 +249,7 @@ Astro renderer grid layout). PR.md self-listed.
     sync row 2): "Component blocks carry grid context attrs `{col,
     row?, colSpan, rowSpan}` per ADR-0016 D2. The grid-context
     invariant W5-1 is the authoritative source — see
-    [packages/block-foundation/CONTRACT.md](../block-foundation/CONTRACT.md)
+    [packages/block-foundation/CONTRACT.md](../../../packages/block-foundation/CONTRACT.md)
     `## Invariants` (W5-1 lands there in Wave 5 Stage C.2-2). The
     bidirectional MDX serialize spec for these attrs is below."
   - **Serialize spec subsection**: paraphrase ADR-0016 D7 with the
@@ -274,7 +274,7 @@ Astro renderer grid layout). PR.md self-listed.
     defensive branches, restoring ADR-0016 D7's literal throws as
     the end-state invariant. Forward-pointer to ADR-0016 D7
     (end-state invariant) + W5-1 sister-doc reference at
-    [block-foundation/CONTRACT.md](../block-foundation/CONTRACT.md)
+    [block-foundation/CONTRACT.md](../../../packages/block-foundation/CONTRACT.md)
     (lands at C.2-2)."
   - **D3 asymmetry subsection**: prose-shaped blocks (mdxComponent
     `Markdown` at v0.1; will widen to `gridKind === 'prose'` /
