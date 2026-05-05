@@ -2,7 +2,7 @@
 
 | 字段 | 值 |
 | ---- | --- |
-| 状态 | **locked v1.0** (Pre-A5 final lock 2026-05-04; v0.2 → v1.0 with Stage C.1-C.4 per-PR breakdown post Pre-A2/3/4 ADR locks; v0.1 draft + v0.2 absorbtion superseded) |
+| 状态 | **locked v1.1** (R14 amendment 2026-05-05; v1.0 → v1.1 to formalize C.2-1→C.2-3 defer-chain via NEW row C.2-3.5; per [ADR-0015](../../decisions/ADR-0015-wave-4-close.md) R14 + memory `feedback_r14_defer_chain_plan_amendment.md`; v1.0 lock evidence preserved in `## v1.0 Pre-A5 final lock amendments` section; v1.1 amendment evidence in NEW `## v1.1 R14 amendment (2026-05-05)` section) |
 | Wave | Phase 1 Wave 5 |
 | 起步 HEAD | `a157168` (Wave 4 close ceremony PR #49 squash; ADR-0015 ratifying 21-PR Wave 4 + Wave 5 deferred set) |
 | 起步预备 | (Pre-A1 [this lock] is the first Wave 5 PR) |
@@ -452,6 +452,29 @@ Pre-A2 (HEAD `6e2c1d9` ADR-0016 grid 数据模型) + Pre-A3 (HEAD `157a4f7` ADR-
 
 **Total**: 49 challenges across 4 plan-challenger rounds; 41 ABSORBED + 8 PARTIALLY ABSORBED. ratio 84% full absorbtion + 16% partial. Wave 4 Pre-A2 ADR-0014 12/12 + Pre-A3 plan-draft 15/15 比较 → Wave 5 absorbtion ratio 略低 (合理: Wave 5 4 个独立 plan-challenger 累积, 比 Wave 4 单 plan-draft 高度 narrow).
 
+## v1.1 R14 amendment (2026-05-05)
+
+**Trigger**: defer-defer chain detected at C.2-1 (squash `e54497d`) → C.2-3 (squash `2586328`) for the `@skb/mdx-bridge` `parse.ts` hard-throw flip (replacing transitional `_gridAttrsExplicit` defensive default `col=1, colSpan=12` + `console.warn` with literal throw on missing grid attrs per [ADR-0016](../../decisions/ADR-0016-grid-data-model.md) D7 end-state invariant) + `content/notes/**/*.mdx` sample MDX backfill + 17 RTT fixtures grid-aware update in `packages/mdx-bridge/src/__tests__/fixtures/`. Per [ADR-0015](../../decisions/ADR-0015-wave-4-close.md) R14 + memory `feedback_r14_defer_chain_plan_amendment.md`: 2+ defers across consecutive PRs = STOP forward execution + open formal plan amendment PR running 5-stage D1 pipeline + plan-challenger light round (3-5 challenges, NOT full 12-Q). NOT handoff-pack-only; NOT fold into next PR (= R14 second violation).
+
+**3 prose edits + 1 cross-doc edit** (per Wave 5 plan v1.1 amendment PR — `docs/plans/wave-5-main/v1.1-plan-amendment-r14.md`):
+
+1. **Sub-edit a**: frontmatter `状态` field bumped v1.0 → v1.1.
+2. **Sub-edit b**: §471 row C.2-3 Subject column appended `[OUT OF SCOPE — hard-throw flip + sample-MDX backfill + 17 RTT fixtures grid-aware update deferred to NEW C.2-3.5 per v1.1 amendment]` marker.
+3. **Sub-edit c**: NEW Stage C.2 row C.2-3.5 inserted between C.2-3 and C.2-4 at fractional index 3.5. Subject = "mdx-bridge hard-throw flip + sample MDX backfill + RTT fixtures grid-aware update". Whitelist scoped to `packages/mdx-bridge/src/{parse,serialize}.ts` + `packages/mdx-bridge/CONTRACT.md` + 17 RTT fixtures + 4 `content/notes/**/*.mdx` files (primary target = `sample-blocks/index.mdx`). LOC budget ~250-350. Executor = `codex-generic-executor`. D2 trigger Row 1 + Row 5.
+4. **Sub-edit d** (this section): v1.1 amendment record + R24-shaped retrospective candidate.
+5. **Sub-edit e**: Wave 5 PR roster table (§517+) extended with v1.1 amendment row; final PR count bumped 30 → 31.
+6. **Cross-doc edit (ADR-0016 §502)**: sister-doc-sync table mdx-bridge row scope-column extended to reference C.2-3.5 as transition end-state lock site (alongside existing C.2-1 transitional-defensive-defaults primary serialize PR).
+
+**Pipeline**: 5-stage D1 (PLAN pr-writer → EXECUTE orchestrator-self per Wave 5 plan v1.0 D6 "pure-doc PR" exception → plan-challenger light round 3-5 challenges → REVIEW codex-pr-reviewer-55 → PRE-COMMIT CLAUDE REVIEW orchestrator-self per D2 row 1+5 fires → COMMIT reviewer codex with ADR-0006 D8 explicit-file-list staging → ACCEPT pr-writer 2nd invocation).
+
+**Cumulative PR delta tracker**: v1.0 → v1.1 = +1 PR; cumulative delta 1/30 = 3.3%, well below D4 R14 threshold ("PR 总量变化 > 15%"). Future v1.2 / v1.3 amendments must re-check cumulative delta against this baseline.
+
+**Plan-challenger absorbtion (v1.1 light round)**: 5/5 challenges raised + absorbed at Stage 3 (codex `plan-challenger` profile dispatch 2026-05-05; raw audit at `/tmp/codex-runs/2026-05-05-v1.1-plan-challenge.txt` 1732 lines / 136 KB; curated archive at `docs/audits/codex-runs/2026-05-05-v1.1-plan-challenge.txt` 100 lines). 5/5 ABSORBED (3 ABSORB-RECOMMENDED Q1+Q2+Q5 + 2 ABSORB-OPTIONAL clarification Q3+Q4). Q1 = file 二分类 `backfill-required` vs `audit-only-verified` (sub-edit c whitelist update); Q2 = LOCK fractional index 3.5 + downstream-must-reference 硬约束; Q3 = §502 sister-doc 同步 deferred-not-open per scope-fence (本 PR 限定 mdx-bridge 行); Q4 = NEW D2 ROW 4 门槛规则 codified; Q5 = AC#13 + AC#14 mechanical R14 self-test hard-fail gates added. Full 5-row absorbtion table lives in PR.md `## Plan-challenger absorbtion` section (`docs/plans/wave-5-main/v1.1-plan-amendment-r14.md`); reviewer codex Stage 4 verifies absorbtion accuracy.
+
+**Wave 5 close ADR-0019 R24-shaped retrospective candidate**:
+
+> R14 first real-test enforcement — defer-defer chain (hard-throw flip + sample MDX backfill + 17 RTT fixtures: C.2-1 → C.2-3 → v1.1 amendment) → plan amendment PR (v1.1) 5-stage D1 pipeline 形式化处理而非 handoff pack 跟踪. 证明 R14 discipline operative.
+
 ### Stage C.1 — Cleanup PR breakdown (locked at v1.0)
 
 | PR | Subject | Files (whitelist per scope-fence D12) | Estimated LOC | Executor | D2 trigger |
@@ -468,7 +491,8 @@ Pre-A2 (HEAD `6e2c1d9` ADR-0016 grid 数据模型) + Pre-A3 (HEAD `157a4f7` ADR-
 |---|---|---|---|---|---|
 | C.2-1 | mdx-bridge col/row/colSpan/rowSpan serialize | `packages/mdx-bridge/src/**/*` + `packages/mdx-bridge/CONTRACT.md` (+ W5-1 forward-pointer + serialize boundary) + RTT fixtures | ~300 LOC | codex-generic-executor | Row 1 (CONTRACT) + Row 5 (cross mdx-bridge + block-foundation + apps/site) |
 | C.2-2 | block-foundation BlockUIDefinition grid 字段 (gridDefault + rowSpanSemantic + gridKind + proseGridDefaults + grid-math.ts helpers) | `packages/block-foundation/src/types.ts` + `packages/block-foundation/src/grid-math.ts` (NEW) + `packages/block-foundation/CONTRACT.md` (W5-1 invariant 已 Pre-A2 加; 此 PR 加 helpers public surface) + tests | ~250 LOC | codex-generic-executor | Row 1 (CONTRACT) + Row 5 |
-| C.2-3 | Astro renderer grid layout + Responsive 12/6/1 | `apps/site/src/styles/grid.css` (NEW; `.skb-grid` container + `@media` breakpoints) + `apps/site/src/layouts/BaseLayout.astro` + `apps/site/CONTRACT.md` | ~200 LOC | codex-generic-executor | Row 1 + Row 5 |
+| C.2-3 | Astro renderer grid layout + Responsive 12/6/1 **[OUT OF SCOPE — hard-throw flip + sample-MDX backfill + 17 RTT fixtures grid-aware update deferred to NEW C.2-3.5 per v1.1 amendment]** | `apps/site/src/styles/grid.css` (NEW; `.skb-grid` container + `@media` breakpoints) + `apps/site/src/layouts/BaseLayout.astro` + `apps/site/CONTRACT.md` | ~200 LOC | codex-generic-executor | Row 1 + Row 5 |
+| **C.2-3.5** (v1.1 amendment NEW; LOCKED at fractional index 3.5 post Q2 plan-challenger absorbtion) | **mdx-bridge hard-throw flip + sample MDX backfill + RTT fixtures grid-aware update** | `packages/mdx-bridge/src/parse.ts` (remove `_gridAttrsExplicit` defensive branch + add hard-throw on missing grid attrs per ADR-0016 D7) + `packages/mdx-bridge/src/serialize.ts` (remove `_gridAttrsExplicit` marker tracking) + `packages/mdx-bridge/CONTRACT.md` (transitional-prose removal + end-state lock per ADR-0016 D7) + `packages/mdx-bridge/src/__tests__/fixtures/22-callout.mdx` .. `29-agent-flow.mdx` (8 component-block fixtures: `backfill-required`) + `01-paragraph.mdx` .. `09-link-title-comparator.mdx` (9 prose fixtures: `audit-only-verified`; `proseGridDefaults` derive-not-emit invariant refresh) + `content/notes/sample-blocks/index.mdx` (`backfill-required`; primary 8-block target; 5689 B at HEAD `2586328`) + `content/notes/sample-mdx-note/index.mdx` (`audit-only-verified`; PR.acceptance MUST emit "zero component blocks" evidence) + `content/notes/__test_cjk__/laptop/index.mdx` (`audit-only-verified`; same evidence req) + `content/notes/__test_cjk__/zh-note/index.mdx` (`audit-only-verified`; same evidence req) + 1 PR.md | ~250-350 LOC | codex-generic-executor | Row 1 (CONTRACT) + Row 5 (cross mdx-bridge + content/notes) |
 | C.2-4 | editor-shell grid 集成 + useAutoRowSpan hook (per ADR-0016 D3 两阶段稳态) | `packages/editor-shell/src/grid-container.tsx` (NEW) + `packages/editor-shell/src/use-auto-row-span.ts` (NEW) + `packages/editor-shell/CONTRACT.md` (W5-2 invariant 加 + grid container API public surface) | ~400 LOC | codex-generic-executor | Row 1 (CONTRACT W5-2 NEW) + Row 5 |
 | C.2-5 | drag/drop UX 实施 (per ADR-0017 D5 选项 1 + D3 tiebreak + D4 outline overlay) | `packages/editor-shell/src/drag-drop/{edge-rects,tiebreak,outline-overlay}.ts` (NEW) + tests | ~500 LOC | codex-generic-executor | Row 1 (CONTRACT) + Row 5 |
 | C.2-6 | resize UX 实施 (col-ruler + size-tooltip + COL_SNAPS snap; per ADR-0017 D9) | `packages/editor-shell/src/resize/{col-ruler,size-tooltip}.tsx` (NEW) + tests | ~300 LOC | codex-generic-executor | Row 1 (CONTRACT) |
@@ -521,13 +545,14 @@ Updates to Pre-A1 v0.2 risk list based on Pre-A2/3/4 plan-challenger findings:
 | #51 | `6e2c1d9` | Pre-A2 | ADR-0016 grid 数据模型 + W5-1 invariant + 12/12 absorbed (R2) |
 | #52 | `157a4f7` | Pre-A3 | ADR-0017 drag/drop UX + 13/13 absorbed (R4) |
 | #53 | `7e487ec` | Pre-A4 | ADR-0018 v2 视觉 + save-path 接口冻结 + 14/14 absorbed (R6) |
-| TBD (this) | TBD | Pre-A5 | Wave 5 plan v0.2 → v1.0 final lock + Stage C.1-C.4 PR breakdown |
+| #54 | `2bc129a` | Pre-A5 | Wave 5 plan v0.2 → v1.0 final lock + Stage C.1-C.4 PR breakdown |
+| TBD (this) | TBD | v1.1 amend | Wave 5 plan v1.0 → v1.1 R14 amendment + NEW row C.2-3.5 (formalize C.2-1→C.2-3 hard-throw + sample-MDX + 17 RTT fixtures defer-chain per ADR-0015 R14) |
 | (Stage C.1 = 3 PRs) | TBD | C.1 | C.1-1 plugin placeholder + v0.4 amend / C.1-2 PDF + chunk-leak / C.1-3 gitignore |
-| (Stage C.2 = 12 PRs) | TBD | C.2 | C.2-1 mdx-bridge serialize → C.2-12 Stage C.2 close |
+| (Stage C.2 = 13 PRs post v1.1) | TBD | C.2 | C.2-1 mdx-bridge serialize → C.2-3 Astro grid → **NEW C.2-3.5 hard-throw flip + sample-MDX backfill** → C.2-4 editor-shell grid → C.2-12 Stage C.2 close (C.2 grew 12 → 13 per v1.1 R14 amendment) |
 | (Stage C.3 = 5 PRs) | TBD | C.3 | C.3-1 OKLCH + fonts → C.3-5 visual smoke baseline |
 | (Stage C.4 = 5 PRs) | TBD | C.4 | C.4-1 NoteSaveAdapter → C.4-5 e2e + Wave 5 close 候选 |
 
-**Wave 5 final PR count locked**: 5 Pre-A + 3 + 12 + 5 + 5 = **30 PRs total** (within Wave 5 plan v0.2 estimate 23-30 PRs). 3-5 sessions estimate maintained.
+**Wave 5 final PR count locked at v1.1**: 5 Pre-A + 3 (C.1) + **13** (C.2: 12 v1.0 baseline + 1 NEW C.2-3.5) + 5 (C.3) + 5 (C.4) = **31 implementation PRs total**. (Plus 1 meta amendment PR — this v1.1 amendment PR — logged separately in the roster table immediately above; total roster entries = 32 = 31 implementation + 1 meta. The "implementation PR count" 31 is what matters for session-budget estimate; the meta PR is workflow overhead.) v1.0 baseline = 30 implementation PRs; v1.1 delta = +1 PR (Stage C.2 grew 12 → 13). Within Wave 5 plan v0.2 estimate 23-30 PRs (re-baseline at v1.1 = 23-31 implementation). 3-5 sessions estimate maintained. Cumulative delta tracker: 1/30 = 3.3%, well below D4 R14 15% threshold per `## v1.1 R14 amendment` section "Cumulative PR delta tracker".
 
 **Plan v1.0 lock evidence**: Pre-A5 PR.md `## acceptance` walks each amendment + Stage C.1-C.4 per-PR table presence + Wave 5 PR roster table.
 
