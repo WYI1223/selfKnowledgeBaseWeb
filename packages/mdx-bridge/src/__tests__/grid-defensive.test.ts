@@ -1,4 +1,7 @@
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
+import { readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { BlockRegistry, type BlockCoreDefinition } from '@skb/block-foundation';
 import { calloutCore, parseCallout, serializeCallout } from '@skb/block-callout/core';
 import {
@@ -11,10 +14,11 @@ import {
   type TiptapDoc,
 } from '../index';
 
-const MISSING_GRID_WARN =
-  'mdx-bridge: grid attrs missing on block callout; defaulted to col=1 colSpan=12. ADR-0016 D7 hard-throw lands at C.2-3.';
-const ROWSPAN_WARN =
-  'mdx-bridge: grid attr default rowSpan=1 on non-prose block callout; explicit value recommended per ADR-0016 D3+D7.';
+const SRC_DIR = fileURLToPath(new URL('../', import.meta.url));
+const MISSING_COL_SPAN_ERROR =
+  /mdx-bridge: required grid attrs col(?: \+ colSpan)? missing on block "callout".*ADR-0016 D7.*Wave 5 plan v1\.1 row C\.2-3\.5/i;
+const MISSING_ROWSPAN_ERROR =
+  /mdx-bridge: required grid attr rowSpan missing on block "callout".*ADR-0016 D7.*Wave 5 plan v1\.1 row C\.2-3\.5/i;
 
 const markdownCore: BlockCoreDefinition = {
   name: 'markdown',
@@ -60,50 +64,34 @@ function buildOptions(includeMarkdown = false): MdxBridgeOptions {
   return { blockRegistry };
 }
 
-describe('grid attr defensive defaults', () => {
+function sourceFiles(dir = SRC_DIR): string[] {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) return sourceFiles(path);
+    return entry.isFile() && entry.name.endsWith('.ts') ? [path] : [];
+  });
+}
+
+describe('grid attr hard-throw end-state', () => {
   beforeAll(() => {
     ensureDispatches();
   });
 
-  beforeEach(() => {
-    vi.spyOn(console, 'warn').mockImplementation(() => {});
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
   it.each([
-    [
-      'missing col',
-      '<Callout colSpan={6} rowSpan={2} variant="note" />',
-      { col: 1, colSpan: 6, rowSpan: 2 },
-    ],
-    [
-      'missing colSpan',
-      '<Callout col={1} rowSpan={2} variant="note" />',
-      { col: 1, colSpan: 12, rowSpan: 2 },
-    ],
-    [
-      'missing both col and colSpan',
-      '<Callout rowSpan={1} variant="note" />',
-      { col: 1, colSpan: 12, rowSpan: 1 },
-    ],
-  ])('defaults %s with the pinned transitional warning', (_label, source, expectedAttrs) => {
-    const doc = mdxToTiptap(source, buildOptions());
-
-    expect(doc.content[0]?.attrs).toMatchObject(expectedAttrs);
-    expect(console.warn).toHaveBeenCalledWith(MISSING_GRID_WARN);
+    ['missing col', '<Callout colSpan={6} rowSpan={2} variant="note" />'],
+    ['missing colSpan', '<Callout col={1} rowSpan={2} variant="note" />'],
+    ['missing both col and colSpan', '<Callout rowSpan={1} variant="note" />'],
+  ])('throws on %s for non-prose blocks', (_label, source) => {
+    expect(() => mdxToTiptap(source, buildOptions())).toThrowError(MISSING_COL_SPAN_ERROR);
   });
 
-  it('defaults missing rowSpan on non-prose blocks with the pinned rowSpan warning', () => {
-    const doc = mdxToTiptap('<Callout col={1} colSpan={12} variant="note" />', buildOptions());
-
-    expect(doc.content[0]?.attrs).toMatchObject({ col: 1, colSpan: 12, rowSpan: 1 });
-    expect(console.warn).toHaveBeenCalledWith(ROWSPAN_WARN);
+  it('throws on missing rowSpan for non-prose blocks', () => {
+    expect(() =>
+      mdxToTiptap('<Callout col={1} colSpan={12} variant="note" />', buildOptions()),
+    ).toThrowError(MISSING_ROWSPAN_ERROR);
   });
 
-  it('treats missing Markdown grid attrs as transitional prose defaults without warnings', () => {
+  it('treats missing Markdown grid attrs as prose defaults', () => {
     const doc = mdxToTiptap('<Markdown>\n  Some content here.\n</Markdown>', buildOptions(true));
 
     expect(doc.content[0]?.attrs).toMatchObject({
@@ -111,7 +99,16 @@ describe('grid attr defensive defaults', () => {
       colSpan: 12,
       rowSpan: 'auto',
     });
-    expect(console.warn).not.toHaveBeenCalled();
+  });
+
+  it('round-trips explicit grid attrs without retaining the transitional marker', () => {
+    const source =
+      '<Callout col={1} colSpan={12} rowSpan={1} variant="note" title="Heads up" />';
+    const doc = mdxToTiptap(source, buildOptions());
+    const marker = ['_gridAttrs', 'Explicit'].join('');
+
+    expect(JSON.stringify(doc)).not.toContain(marker);
+    expect(tiptapToMdx(doc, buildOptions()).trim()).toBe(source);
   });
 
   it.each([
@@ -164,7 +161,6 @@ describe('grid attr defensive defaults', () => {
             col: 1,
             colSpan: 12,
             rowSpan: 'auto',
-            _gridAttrsExplicit: true,
             variant: 'note',
           },
         },
@@ -174,7 +170,7 @@ describe('grid attr defensive defaults', () => {
     expect(() => tiptapToMdx(doc, buildOptions())).toThrowError(/rowSpan='auto'.*non-prose/);
   });
 
-  it('preserves no-grid serialization for editor-built nodes with no grid attrs', () => {
+  it('serializes default grid attrs for editor-built nodes with no grid attrs', () => {
     const doc: TiptapDoc = {
       type: 'doc',
       content: [{ type: 'callout', attrs: { variant: 'note' } }],
@@ -182,13 +178,10 @@ describe('grid attr defensive defaults', () => {
 
     const source = tiptapToMdx(doc, buildOptions()).trim();
 
-    expect(source).toBe('<Callout variant="note" />');
-    expect(source).not.toContain('col=');
-    expect(source).not.toContain('colSpan=');
-    expect(source).not.toContain('rowSpan=');
+    expect(source).toBe('<Callout col={1} colSpan={12} rowSpan={1} variant="note" />');
   });
 
-  it('does NOT serialize markerless non-default col/colSpan (path (a) strict gating)', () => {
+  it('serializes markerless non-default col/colSpan in canonical grid order', () => {
     const doc: TiptapDoc = {
       type: 'doc',
       content: [
@@ -201,9 +194,20 @@ describe('grid attr defensive defaults', () => {
 
     const source = tiptapToMdx(doc, buildOptions()).trim();
 
-    expect(source).toBe('<Callout variant="note" />');
-    expect(source).not.toContain('col=');
-    expect(source).not.toContain('colSpan=');
-    expect(source).not.toContain('rowSpan=');
+    expect(source).toBe('<Callout col={2} colSpan={6} rowSpan={2} variant="note" />');
+  });
+
+  it('keeps the transitional marker out of mdx-bridge source', () => {
+    const marker = ['_gridAttrs', 'Explicit'].join('');
+
+    for (const file of sourceFiles()) {
+      expect(readFileSync(file, 'utf8'), file).not.toContain(marker);
+    }
+  });
+
+  it('keeps transitional console warnings out of parse and serialize source', () => {
+    for (const file of ['parse.ts', 'serialize.ts']) {
+      expect(readFileSync(join(SRC_DIR, file), 'utf8'), file).not.toMatch(/console\.warn/);
+    }
   });
 });

@@ -61,8 +61,9 @@ must add at least one fixture exercising its MDX form, and that fixture must
 satisfy both invariants, before its block PR can merge. `mdx-doctor` enforces.
 Grid context attrs (Wave 5; see `## Grid context attrs (Wave 5)` below) use
 the same invariants: explicit attrs round-trip byte-equivalently, while the
-C.2-1 to C.2-3 transition defaults missing attrs in memory and preserves
-pre-grid MDX output through the internal `_gridAttrsExplicit` marker.
+ADR-0016 D7 end-state lock now hard-throws on missing required grid attrs for
+non-prose component blocks per Wave 5 plan v1.1 row C.2-3.5 (R14 amendment
+2026-05-05).
 
 ## Implementation notes
 
@@ -205,18 +206,18 @@ Parse validates `col` in `[1,12]`, `colSpan` in `COL_SNAPS = [2,3,4,6,8,12]`,
 non-prose blocks. Prose-shaped `Markdown` uses `rowSpan='auto'`, and serialize
 omits `rowSpan` for it per ADR-0016 D3.
 
-Stage C.2 transition: C.2-1 defensively defaults missing `col` to `1`,
-`colSpan` to `12`, and missing non-prose `rowSpan` to `1`; C.2-3 removes those
-branches after sample MDX and RTT fixture backfill, restoring ADR-0016 D7
-hard-throws for missing required attrs. Serialize emits grid attrs only when
-`_gridAttrsExplicit === true` (strict path (a) gating), preserving the 17
-pre-grid fixtures until C.2-3.
+ADR-0016 D7 end-state lock (post Wave 5 plan v1.1 row C.2-3.5; R14 amendment
+2026-05-05): parse hard-throws on missing required grid attrs (`col` and
+`colSpan` for non-prose blocks; `rowSpan` for non-prose blocks). Markdown
+`rowSpan='auto'` continues to derive-not-emit per ADR-0016 D3. The C.2-1-era
+transitional marker has been removed; both parse-emission and serialize-gating
+paths are gone.
 
-Pinned warnings:
+Pinned hard-throw errors:
 
 ```text
-mdx-bridge: grid attrs missing on block {type}; defaulted to col=1 colSpan=12. ADR-0016 D7 hard-throw lands at C.2-3.
-mdx-bridge: grid attr default rowSpan=1 on non-prose block {type}; explicit value recommended per ADR-0016 D3+D7.
+mdx-bridge: required grid attrs col + colSpan missing on block "{type}"; per ADR-0016 D7 end-state invariant (Wave 5 plan v1.1 row C.2-3.5; R14 amendment 2026-05-05).
+mdx-bridge: required grid attr rowSpan missing on block "{type}"; per ADR-0016 D7 end-state invariant (Wave 5 plan v1.1 row C.2-3.5; R14 amendment 2026-05-05).
 ```
 
 The v0.1 prose discriminator is `mdxComponent === 'Markdown'`. C.2-2 lands
