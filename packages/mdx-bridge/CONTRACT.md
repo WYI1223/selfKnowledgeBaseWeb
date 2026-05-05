@@ -59,6 +59,10 @@ Stage B closed (post-B8 final: 9 prose + 8 component fixtures = 17 fixtures
 Wave 3+ rule: every new component block (callout, math, pdf, jupyter, etc.)
 must add at least one fixture exercising its MDX form, and that fixture must
 satisfy both invariants, before its block PR can merge. `mdx-doctor` enforces.
+Grid context attrs (Wave 5; see `## Grid context attrs (Wave 5)` below) use
+the same invariants: explicit attrs round-trip byte-equivalently, while the
+C.2-1 to C.2-3 transition defaults missing attrs in memory and preserves
+pre-grid MDX output through the internal `_gridAttrsExplicit` marker.
 
 ## Implementation notes
 
@@ -168,14 +172,57 @@ hidden mdx-bridge registry state is involved.
 Fail-loud behavior remains mandatory. With no `options.blockRegistry`, JSX
 blocks fall through to the historical unsupported `mdxJsxFlowElement` branch.
 With a registry present but no matching `mdxComponent`, parse throws
-`unsupported block type "<ComponentName>"`. With a registry present but an
-unknown component-typed Tiptap node, serialize throws `unsupported block type
-"<typeName>"`.
+`unsupported block type "{ComponentName}"`. With a registry present but an
+unknown component-typed Tiptap node, serialize throws
+`unsupported block type "{typeName}"`.
 
 Per [ADR-0008](../../docs/decisions/ADR-0008-wave-2-entry-policies.md) D1
 (dead-dep policy = tighten), the `@skb/block-foundation` workspace dependency,
 `tsconfig.json#references` edge, and source import must stay in three-way
 symmetry.
+
+## Grid context attrs (Wave 5)
+
+Component blocks carry grid context attrs `{col, row?, colSpan, rowSpan}` per
+ADR-0016 D2 (single schema authority). W5-1 is the authoritative
+grid-dimension invariant per ADR-0016 D9; see
+[block-foundation/CONTRACT.md](../block-foundation/CONTRACT.md) `## Invariants`
+(W5-1 lands there in Wave 5 Stage C.2-2 per ADR-0016 §502 Sister-document
+sync). mdx-bridge owns only the MDX serialize boundary for these attrs.
+
+ADR-0016 D7 serializes grid attrs as MDX expression attrs in canonical order:
+`col`, optional `row`, `colSpan`, then non-prose `rowSpan`; block-specific attrs
+follow.
+
+```mdx
+<Canvas col={7} row={2} colSpan={6} rowSpan={6} title="Neuron map" />
+<Code col={1} colSpan={6} rowSpan={4} language="python" code="print(1)" />
+<Image col={7} colSpan={6} rowSpan={3} src="cat.png" alt="A cat" />
+```
+
+Parse validates `col` in `[1,12]`, `colSpan` in `COL_SNAPS = [2,3,4,6,8,12]`,
+`col + colSpan - 1 <= 12`, optional `row >= 1`, and `rowSpan >= 1` for
+non-prose blocks. Prose-shaped `Markdown` uses `rowSpan='auto'`, and serialize
+omits `rowSpan` for it per ADR-0016 D3.
+
+Stage C.2 transition: C.2-1 defensively defaults missing `col` to `1`,
+`colSpan` to `12`, and missing non-prose `rowSpan` to `1`; C.2-3 removes those
+branches after sample MDX and RTT fixture backfill, restoring ADR-0016 D7
+hard-throws for missing required attrs. Serialize emits grid attrs only when
+`_gridAttrsExplicit === true` (strict path (a) gating), preserving the 17
+pre-grid fixtures until C.2-3.
+
+Pinned warnings:
+
+```text
+mdx-bridge: grid attrs missing on block {type}; defaulted to col=1 colSpan=12. ADR-0016 D7 hard-throw lands at C.2-3.
+mdx-bridge: grid attr default rowSpan=1 on non-prose block {type}; explicit value recommended per ADR-0016 D3+D7.
+```
+
+The v0.1 prose discriminator is `mdxComponent === 'Markdown'`. C.2-2 lands
+`BlockUIDefinition.gridKind`, `rowSpanSemantic`, and `proseGridDefaults`; this
+path must switch to that schema-owned discriminator without importing
+block-foundation UI types here.
 
 ## Canonicalization rules
 
