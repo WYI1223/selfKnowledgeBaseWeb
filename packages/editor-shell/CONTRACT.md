@@ -60,6 +60,97 @@ editor surface. Closes the "editor-shell composition" deferral from
 The component does NOT include a `'use client'` pragma — consumers (Stage C
 apps/site) decide the client/server boundary at integration time.
 
+## Grid layout (Wave 5)
+
+**W5-2: editor-shell `layoutReducer` + `layoutEpoch` single-source mutation 是
+grid block position 的唯一权威 mutation site.** 所有 block grid mutations (drag
+from grid container / resize from handle / `useAutoRowSpan` auto-measure /
+responsive transition / undo-redo / mdx-load) 必经过此 reducer; 冲突仲裁规则 per
+ADR-0016 D12 + 权威矩阵 section. CRDT/OT 协同编辑 OUT OF SCOPE (Phase 2+);
+editor-shell `layoutEpoch` 是 single-source ordering, NOT 分布式 vector clock.
+**C.2-4 forward-pointer only**: `layoutReducer` + `layoutEpoch` impl 落地 C.2-8
+(per Wave 5 plan v1.1 row C.2-8); 此 PR 仅 lock invariant prose +
+`GridContainer` thin wrapper + `useAutoRowSpan` hook public surface.
+
+`GridContainer` public surface:
+
+```ts
+export interface GridContainerProps {
+  children?: React.ReactNode;
+  className?: string;
+  style?: React.CSSProperties;
+}
+
+export function GridContainer(props: GridContainerProps): JSX.Element;
+```
+
+`GridContainer` emits a passive `div` with the required `skb-grid` class and
+forwards arbitrary React children. It does not walk the Tiptap document, mutate
+NodeView attrs, or inject per-block `style.gridColumn` / `style.gridRow`;
+those mutation and placement paths remain deferred to the later Wave 5 editor
+grid PRs. Minimal usage:
+
+```tsx
+<GridContainer>
+  <EditorContent editor={editor} />
+</GridContainer>
+```
+
+The `.skb-grid` selector authority is `apps/site/src/styles/grid.css` (C.2-3
+PR squash `2586328`). The editor-shell consumer at the mount site MUST import
+that stylesheet, mirroring the SSR phase emission per ADR-0016 D9 phase
+strategy.
+
+`useAutoRowSpan` public surface:
+
+```ts
+export function useAutoRowSpan(
+  contentRef: RefObject<HTMLElement | null>,
+  rowHeightPx = 48,           // matches --row-h
+  gapPx = 14,                  // matches --gap
+): number;
+```
+
+The hook returns an integer rowSpan greater than or equal to 1. It implements
+ADR-0016 D3's rendering-derived markdown rowSpan behavior: rowSpan is computed
+from `scrollHeight` and is not itself a persistent document write. Its 3-stage
+抖动收敛 behavior is:
+
+1. Stage 1: first ResizeObserver event establishes the initial rowSpan.
+2. Stage 2: later font, image, and code-fence height changes inside one rAF
+   window coalesce into a single render commit.
+3. Stage 3: subsequent ResizeObserver events update only when the integer
+   rowSpan delta is at least 1; delta 0 is ignored as pixel noise.
+
+Forward-pointers:
+
+- ADR-0016 D3 owns the auto-rowSpan hook spec and ResizeObserver constraints.
+- ADR-0016 D11 owns the Tiptap inside / grid outside layering.
+- ADR-0016 D12 owns the layout reducer schema and conflict arbitration; code
+  implementation is deferred to C.2-8.
+- ADR-0016 section 502 row 4 of 4 names this CONTRACT.md as the editor-shell
+  sister-doc sync site.
+
+Cross-package consumer note: `BlockGridPosition` from `@skb/block-foundation`
+(W5-1 invariant authority; Pre-A2 ADR-0016 D2 lock + C.2-2 type
+materialisation) is the type contract editor-shell reads from Tiptap NodeView
+attrs. Per ADR-0016 D11 those attrs are passive data; active mutation flows
+through the future W5-2 reducer.
+
+Q2 v1.1 absorbtion downstream-must-reference lock: editor-shell grid container
+reads NodeView attrs assuming explicit `col` / `colSpan` / `rowSpan` per
+Wave 5 plan v1.1 row C.2-3.5 hard-throw flip end-state (mdx-bridge defensive
+defaults removed); `_gridAttrsExplicit` marker (C.2-1 to C.2-3 transitional)
+SHALL NOT be referenced from editor-shell source. The ADR-0016 D2 defaults
+(`col=1`, `colSpan=12`, `rowSpan=1`) MAY be honored at editor-shell as
+React-side defensive-rendering defaults, an orthogonal concern from mdx-bridge
+defensive defaults with the same numeric values but a distinct enforcement
+layer.
+
+`layoutReducer` + `layoutEpoch` implementation remains deferred to C.2-8 per
+Wave 5 plan v1.1 row C.2-8; C.2-4 establishes the W5-2 invariant prose, thin
+grid container, and auto-row-span hook only.
+
 ## Wave 3 Stage A expansion outline
 
 A2-A5 each Modify this CONTRACT.md as new exports land:
