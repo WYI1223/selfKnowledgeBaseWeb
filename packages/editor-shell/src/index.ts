@@ -14,3 +14,7 @@ export { tiebreak, findMatches } from './drag-drop/tiebreak';
 export type { EdgeMatch, DragVelocity } from './drag-drop/tiebreak';
 export { OutlineOverlay } from './drag-drop/outline-overlay';
 export type { OutlineOverlayProps } from './drag-drop/outline-overlay';
+export { ColRuler } from './resize/col-ruler';
+export type { ColRulerProps } from './resize/col-ruler';
+export { SizeTooltip, colSpanToFraction } from './resize/size-tooltip';
+export type { SizeTooltipProps } from './resize/size-tooltip';

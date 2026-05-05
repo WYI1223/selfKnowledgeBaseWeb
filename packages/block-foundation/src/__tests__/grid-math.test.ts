@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_GRID_GEOMETRY,
   effectiveCellHeight,
+  effectiveColSnaps,
   effectiveColWidth,
   effectiveRowSpan,
   isAutoRowSpan,
@@ -94,5 +95,28 @@ describe('grid exported constants', () => {
       gridKind: 'prose',
       defaultColSpan: 12,
     });
+  });
+});
+
+describe('effectiveColSnaps', () => {
+  it('12-col returns 6 stops', () => {
+    expect(effectiveColSnaps(12)).toEqual([2, 3, 4, 6, 8, 12]);
+  });
+
+  it('6-col returns 3 stops', () => {
+    expect(effectiveColSnaps(6)).toEqual([2, 3, 6]);
+  });
+
+  it('1-col returns forced full', () => {
+    expect(effectiveColSnaps(1)).toEqual([1]);
+  });
+
+  it('result is readonly', () => {
+    const result = effectiveColSnaps(12);
+
+    expect(Object.isFrozen(result)).toBe(true);
+    expect(() => {
+      (result as unknown as number[]).push(1);
+    }).toThrow(TypeError);
   });
 });

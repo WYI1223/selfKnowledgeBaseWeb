@@ -22,6 +22,7 @@
 - `GridGeometry` interface + `DEFAULT_GRID_GEOMETRY` const — ADR-0016 D9 defaults `{rowH: 48, gap: 14, totalCols: 12}`
 - `effectiveCellHeight(rowSpan, geometry?)` — ADR-0016 D9 helper for `rowSpan * row-h + (rowSpan - 1) * gap`
 - `effectiveColWidth(colSpan, containerWidth, geometry?)` — ADR-0016 D9 helper for `colSpan * 1fr + (colSpan - 1) * gap`
+- `effectiveColSnaps(viewportCols)` — ADR-0016 D6 Q4 helper that maps responsive viewport columns to valid resize snap sets: `12 -> [2, 3, 4, 6, 8, 12]`, `6 -> [2, 3, 6]`, `1 -> [1]`
 - `effectiveRowSpan(rowSpan, autoIntegerHint)` — ADR-0016 D2/D10 helper that resolves `'auto'` to the measured integer hint
 - `validateGridPosition(pos, totalCols?)` — ADR-0016 D2/D6/D7 helper that throws on explicit invalid grid positions
 - `isAutoRowSpan(uiDef)` — ADR-0016 D10 helper for `rowSpanSemantic === 'auto'` or `gridKind === 'prose'`

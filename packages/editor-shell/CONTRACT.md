@@ -193,6 +193,41 @@ hard-throw enforcement.
 Wave 5 plan v1.1 row C.2-8; C.2-4 establishes the W5-2 invariant prose, thin
 grid container, and auto-row-span hook only.
 
+### Resize layer (C.2-6)
+
+C.2-6 adds the editor-side resize visual primitives under
+`packages/editor-shell/src/resize/`:
+
+- `col-ruler.tsx` exports `ColRuler` and `ColRulerProps`. It renders the
+  active column snap stops during resize and returns `null` when
+  `totalCols === 1` per ADR-0017 D9's mobile 1-col view-only branch.
+- `size-tooltip.tsx` exports `SizeTooltip`, `SizeTooltipProps`, and
+  `colSpanToFraction(colSpan, totalCols)`. It renders the fixed cursor tooltip
+  at `cursorX + 12` / `cursorY - 8` and uses ADR-0017 D9's canonical fraction
+  tokens such as `1/2`, `2/3`, and `full`.
+
+`ColRuler` consumes snap sets produced by `effectiveColSnaps(viewportCols)` from
+`@skb/block-foundation` (ADR-0016 D6 Q4 authority). That helper is intentionally
+not re-exported from the editor-shell barrel; consumers import it from
+`@skb/block-foundation` directly while importing `ColRuler`, `SizeTooltip`, and
+`colSpanToFraction` from editor-shell.
+
+The stop highlight literal `oklch(58% 0.16 35 / 0.4)` remains in the C.2-6
+source per ADR-0017 D9, with migration to design tokens deferred to ADR-0018
+and Stage C.3. Resize-handle DOM emission, pointer event wiring, snap commit,
+and the `.skb-grid--mobile` state machine remain deferred to C.2-8/C.2-9 per
+Wave 5 plan v1.1.
+
+Cross-package consumer parity: the `gap` default in `ColRuler` comes from
+`@skb/block-foundation` `DEFAULT_GRID_GEOMETRY.gap` and MUST stay byte-equal to
+`apps/site/src/styles/grid.css` `.skb-grid { --gap: 14px }` plus
+`@skb/editor-shell` `drag-drop/edge-rects.ts` `GAP = 14`. Drift here is an
+algorithmic-constant replication failure, not a visual-token preference.
+
+Wave 5 plan v1.1 row C.2-3.5 remains the active downstream constraint for the
+resize layer: modules MUST NOT reference `_gridAttrsExplicit`, the mdx-bridge
+transitional marker removed at the hard-throw flip end-state (`b019a31`).
+
 ## Wave 3 Stage A expansion outline
 
 A2-A5 each Modify this CONTRACT.md as new exports land:

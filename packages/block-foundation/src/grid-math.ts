@@ -24,6 +24,12 @@ export const DEFAULT_GRID_GEOMETRY: GridGeometry = {
   totalCols: 12,
 } as const;
 
+const COL_SNAPS_12 = Object.freeze([2, 3, 4, 6, 8, 12]);
+const COL_SNAPS_6 = Object.freeze([2, 3, 6]);
+const COL_SNAPS_1 = Object.freeze([1]);
+
+export type EffectiveViewportCols = 12 | 6 | 1;
+
 type GridPositionValidationInput = BlockGridPosition & {
   readonly gridKind?: BlockGridKind;
 };
@@ -58,6 +64,29 @@ export function effectiveColWidth(
     (containerWidth - (resolved.totalCols - 1) * resolved.gap) /
     resolved.totalCols;
   return colSpan * oneFr + (colSpan - 1) * resolved.gap;
+}
+
+/**
+ * ADR-0016 D6 Q4 snap-set authority for responsive resize UX.
+ *
+ * The 1-col mobile viewport still has one valid snap (`[1]`); callers that
+ * need a view-only branch suppress their UI separately.
+ */
+export function effectiveColSnaps(
+  viewportCols: EffectiveViewportCols,
+): readonly number[] {
+  switch (viewportCols) {
+    case 12:
+      return COL_SNAPS_12;
+    case 6:
+      return COL_SNAPS_6;
+    case 1:
+      return COL_SNAPS_1;
+    default: {
+      viewportCols satisfies never;
+      throw new Error('unsupported viewportCols');
+    }
+  }
 }
 
 /**
