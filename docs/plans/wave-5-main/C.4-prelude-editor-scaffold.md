@@ -917,7 +917,7 @@ memory `feedback_git_operator_explicit_stage.md`).
   — D1 stage 4 PRE-COMMIT CLAUDE REVIEW trigger conditions
 - [ADR-0007 D2 trigger judgment](../../decisions/ADR-0007-job-function-codex-heavy-execution.md)
   — Row 1 (CONTRACT) + Row 5 (cross-package boundary) judgment table
-- [ADR-0006 D8 explicit-file-list staging](../../decisions/ADR-0006-pr-gate-and-claude-review-protocol.md)
+- [ADR-0006 D8 explicit-file-list staging](../../decisions/ADR-0006-asymmetry-audit-checklist.md)
   — reviewer codex COMMIT discipline
 - [ADR-0014 v0.4 plugin-placeholder tier](../../decisions/ADR-0014-heavy-block-boundary.md)
   — heavy-block harmless-at-MVP rationale
@@ -932,9 +932,9 @@ memory `feedback_git_operator_explicit_stage.md`).
   — `## Grid layout (Wave 5)` section ends at L106 (this PR appends
   NEW `## Edit route (Wave 5)` section between Grid layout and
   Invariants)
-- [Wave 5 plan v1.2 amendment PR squash `56ff476` (#70)](https://github.com/W-YI/selfKnowledgeBaseWeb/pull/70)
+- [Wave 5 plan v1.2 amendment PR squash `56ff476` (#70)](https://github.com/WYI1223/selfKnowledgeBaseWeb/pull/70)
   + active.md sync squash `722bbb0` (#71) — v1.2 R14 SECOND real-test
   formalize
 - previous Stage C.2 implementation PR exemplars:
-  [C.2-6 resize UX](./C.2-6-resize-ux.md) + [C.2-5 drag/drop UX](./C.2-5-drag-drop.md)
+  [C.2-6 resize UX](./C.2-6-resize-ux.md) + [C.2-5 drag/drop UX](./C.2-5-drag-drop-ux.md)
   + [C.2-4 editor-shell grid](./C.2-4-editor-shell-grid.md)
