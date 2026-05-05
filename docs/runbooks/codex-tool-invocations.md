@@ -119,18 +119,26 @@ ADR-0011 D6 NEW Wave 3 默认 executor。gpt-5.5 + workspace-write sandbox。
 
 D1 stage 2 标准流程：
 1. 读 PR.md（locked at stage 1）：files / test_cases / contracts_affected /
-   adr_touched / acceptance
+   adr_touched / acceptance / **ui_touch / e2e_smoke (v0.2 amendment)**
 2. **TDD 前置**：先按 test_cases 字段写 vitest 测试（input/expected/location
    三元组逐一落到 src/__tests__/）
-3. 实现代码满足测试（限制在 PR.md `files:` 白名单内；超出 = scope creep）
-4. 自跑 `pnpm test --filter=<package>` 全部 PASS（不 PASS 不进 stage 3）
-5. 自跑 `pnpm lint --filter=<package>` + `pnpm typecheck --filter=<package>`
+3. **UI-touch PR 必先写 Playwright spec** (ADR-0011 D9.3 v0.2 amendment)：
+   按 PR.md `e2e_smoke` 字段每条 entry 在 `apps/site/src/__tests__/e2e/` 目录
+   写对应 spec；spec naming = entry.playwright_spec 字段引用路径；spec 内
+   assertions 覆盖 entry.assertions 列表。spec 必先于 impl 写，且初始 expect
+   可红（impl 还没写），impl 推进后转绿。**"vitest unit only" 不替代 Playwright
+   E2E**（参 D9.7 Wave 5 C.4-prelude 失职 evidence）。
+4. 实现代码满足测试（限制在 PR.md `files:` 白名单内；超出 = scope creep）
+5. 自跑 `pnpm test --filter=<package>` 全部 PASS（不 PASS 不进 stage 3）
+6. **UI-touch PR 自跑 `pnpm --filter @skb/site test:visual`** (D9.3) 全 PASS
+7. 自跑 `pnpm lint --filter=<package>` + `pnpm typecheck --filter=<package>`
    clean（per WE-007）
-6. 写 commit-ready summary 报 orchestrator；orchestrator dispatch
+8. 写 commit-ready summary 报 orchestrator；orchestrator dispatch
    codex-pr-reviewer-55 进 stage 3
 
 你**不**调用其他 codex tool；不 git mutate（commit 由 reviewer 兼任，per D1
-stage 5）。如发现 PR.md 写错 / 缺信息，停止并 SendMessage orchestrator 修订。
+stage 5）。如发现 PR.md 写错 / 缺信息（特别是 UI-touch PR 缺 e2e_smoke
+字段），停止并 SendMessage orchestrator 修订。
 
 ## `codex-mdx-doctor`
 
@@ -238,7 +246,7 @@ code-reviewer（5.3-spark）双层链路。gpt-5.5（贵但严谨）。**绝不�
 - lockfile 完整性（pnpm-lock.yaml 与 package.json diff 一致）
 - PR.md `acceptance:` 块条目逐条对照 diff 验证（spec match）
 
-**强制：ADR-0006 8-point asymmetry-audit checklist**（见 `docs/decisions/ADR-0006-asymmetry-audit-checklist.md`）必须按可适用项目逐条审查；每条 verdict 给结论。8 项概要：
+**强制：ADR-0006 9-point asymmetry-audit checklist (v0.2 amendment)**（见 `docs/decisions/ADR-0006-asymmetry-audit-checklist.md`）必须按可适用项目逐条审查；每条 verdict 给结论。9 项概要：
 (1) 字段/属性新增 → 审 comparator/序列化；
 (2) 状态码新增 → 审同 status 的所有 handler（RFC 7235 等强制头）；
 (3) `.strict()` 加于一层 → 审所有嵌套 ZodObject；
@@ -250,11 +258,16 @@ code-reviewer（5.3-spark）双层链路。gpt-5.5（贵但严谨）。**绝不�
    generated/consumed surface（`.claude/agents/*`、`docs/review-checklist.md`、
    `team-operations.md`、`docs/runbooks/codex-tool-invocations.md`、
    Codex profiles、**pnpm-lock.yaml**）是否在同一 commit 里同步
-   （commit `e15ec36` 教训：lockfile 也属 generated-from-authority artifact）。
+   （commit `e15ec36` 教训：lockfile 也属 generated-from-authority artifact）；
+(9) **UI-touch + E2E spec audit (v0.2 amendment, ADR-0011 D9)** → PR.md
+   `ui_touch: true` 时必含 `e2e_smoke` 字段非空 + 每条引用的 Playwright spec
+   文件存在 + 必跑 `pnpm --filter @skb/site test:visual` PASS。
+   "vitest unit PASS" 不等于 "production user-visible PASS"。
+   详见 ADR-0011 D9.7 (Wave 5 C.4-prelude 失职 evidence)。
 
 verdict 结构应包含
-`asymmetry-audit applied: items {1..8} verdicts: ...` 与（如适用）
-`8th-class hunt: <findings>`。
+`asymmetry-audit applied: items {1..9} verdicts: ...` 与（如适用）
+`8th-class hunt: <findings>` 与（v0.2; UI-touch PR）`9th-item e2e: PASS|FAIL with playwright run log`。
 
 **D1 stage 5 commit 兼任**：PASS verdict 后由本 profile 在同一 invocation 内
 执行 commit + push（per ADR-0006 D8 explicit-file-list staging：`git reset HEAD`

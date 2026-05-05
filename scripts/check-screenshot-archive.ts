@@ -35,8 +35,19 @@ function parseArgs(argv: ReadonlyArray<string>): CliArgs {
   let base = 'origin/main';
   let prMd: string | null = null;
   for (let i = 0; i < argv.length; i++) {
-    if (argv[i] === '--base' && i + 1 < argv.length) base = argv[++i];
-    else if (argv[i] === '--pr-md' && i + 1 < argv.length) prMd = argv[++i];
+    if (argv[i] === '--base') {
+      const next = argv[i + 1];
+      if (next !== undefined) {
+        base = next;
+        i++;
+      }
+    } else if (argv[i] === '--pr-md') {
+      const next = argv[i + 1];
+      if (next !== undefined) {
+        prMd = next;
+        i++;
+      }
+    }
   }
   return { base, prMd };
 }
@@ -57,7 +68,7 @@ function extractScreenshotPaths(prMdContent: string): ReadonlyArray<string> {
   const re = /screenshot_archive:\s*(\S+)/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(prMdContent)) !== null) {
-    paths.push(m[1].trim());
+    if (m[1] !== undefined) paths.push(m[1].trim());
   }
   return paths;
 }

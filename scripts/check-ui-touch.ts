@@ -46,8 +46,12 @@ function parseArgs(argv: ReadonlyArray<string>): CliArgs {
   let explicitFiles: string[] | null = null;
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
-    if (arg === '--base' && i + 1 < argv.length) {
-      base = argv[++i];
+    if (arg === '--base') {
+      const next = argv[i + 1];
+      if (next !== undefined) {
+        base = next;
+        i++;
+      }
     } else if (arg === '--files') {
       explicitFiles = argv.slice(i + 1);
       break;

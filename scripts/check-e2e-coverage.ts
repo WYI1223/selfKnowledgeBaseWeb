@@ -50,8 +50,12 @@ interface E2eEntry {
 function parseArgs(argv: ReadonlyArray<string>): { base: string } {
   let base = 'origin/main';
   for (let i = 0; i < argv.length; i++) {
-    if (argv[i] === '--base' && i + 1 < argv.length) {
-      base = argv[++i];
+    if (argv[i] === '--base') {
+      const next = argv[i + 1];
+      if (next !== undefined) {
+        base = next;
+        i++;
+      }
     }
   }
   return { base };
@@ -85,7 +89,7 @@ function parsePrMdSections(content: string): Record<string, string> {
   let currentBuf: string[] = [];
   for (const line of lines) {
     const headingMatch = /^##\s+(\S.*?)\s*$/.exec(line);
-    if (headingMatch !== null) {
+    if (headingMatch !== null && headingMatch[1] !== undefined) {
       if (currentName !== null) sections[currentName] = currentBuf.join('\n');
       currentName = headingMatch[1].toLowerCase();
       currentBuf = [];
@@ -110,10 +114,10 @@ function parseE2eSmoke(section: string): ReadonlyArray<E2eEntry> {
     const urlMatch = /target_url:\s*(.+)/.exec(trimmed);
     const specMatch = /playwright_spec:\s*(.+)/.exec(trimmed);
     const shotMatch = /screenshot_archive:\s*(.+)/.exec(trimmed);
-    if (flowMatch !== null) entry.flow = flowMatch[1].trim();
-    if (urlMatch !== null) entry.target_url = urlMatch[1].trim();
-    if (specMatch !== null) entry.playwright_spec = specMatch[1].trim();
-    if (shotMatch !== null) entry.screenshot_archive = shotMatch[1].trim();
+    if (flowMatch?.[1] !== undefined) entry.flow = flowMatch[1].trim();
+    if (urlMatch?.[1] !== undefined) entry.target_url = urlMatch[1].trim();
+    if (specMatch?.[1] !== undefined) entry.playwright_spec = specMatch[1].trim();
+    if (shotMatch?.[1] !== undefined) entry.screenshot_archive = shotMatch[1].trim();
     if (entry.flow !== undefined || entry.playwright_spec !== undefined) {
       entries.push(entry);
     }
