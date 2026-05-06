@@ -2,7 +2,7 @@
 
 | 字段 | 值 |
 | ---- | --- |
-| 状态 | **locked v1.2** (R14 SECOND real-test 2026-05-05; v1.1 → v1.2 to formalize user-gatekeeper-sequencing-pushback via NEW row C.4-prelude minimal editor scaffold; per [ADR-0015](../../decisions/ADR-0015-wave-4-close.md) R14 + memory `feedback_r14_defer_chain_plan_amendment.md` extended to gatekeeper-sequencing class; v1.0 lock evidence preserved in `## v1.0 Pre-A5 final lock amendments` section; v1.1 amendment evidence in `## v1.1 R14 amendment (2026-05-05)` section; v1.2 amendment evidence in NEW `## v1.2 R14 amendment (2026-05-05) — SECOND real-test` section) |
+| 状态 | **locked v1.3** (R14 THIRD real-test 2026-05-05; v1.2 → v1.3 to absorb standards landing PR #74 squash `2f67ef0` schema additions [ADR-0011 v0.2 NEW D9 Product Experience Quality Gate + NEW D10 anti prompt-patching forbidden + D2 schema additions `ui_touch: bool` + `e2e_smoke: list`; ADR-0006 v0.2 NEW 9th asymmetry-audit item; 3 NEW CI gate scripts (`scripts/check-{ui-touch,e2e-coverage,screenshot-archive}.ts`); NEW `e2e-coverage-check` CI job at `.github/workflows/ci.yml`; `agent-contract.md` profile updates with downstream regen synced] onto 11 Wave 5 plan PR roster rows (C.2-7 + 5 C.3 + 5 C.4 — C.4-prelude exempt as already merged via PR #72; D9 enforcement forward-only per ADR-0011 D9 v0.2 Amendments §"非破坏性 / 向后兼容") per [ADR-0015](../../decisions/ADR-0015-wave-4-close.md) R14 broad reading + [ADR-0011 D10](../../decisions/ADR-0011-linear-pipeline-execution-model.md) anti prompt-patching authority + [ADR-0011 D9](../../decisions/ADR-0011-linear-pipeline-execution-model.md) Product Experience Quality Gate + [ADR-0006 item 9](../../decisions/ADR-0006-asymmetry-audit-checklist.md) v0.2 amendment; v1.0/v1.1/v1.2 lock evidence preserved in `## v1.0 Pre-A5 final lock amendments` and `## v1.1 R14 amendment (2026-05-05)` and `## v1.2 R14 amendment (2026-05-05) — SECOND real-test` sections; v1.3 amendment evidence in NEW `## v1.3 R14 amendment (2026-05-05) — THIRD real-test` section) |
 | Wave | Phase 1 Wave 5 |
 | 起步 HEAD | `a157168` (Wave 4 close ceremony PR #49 squash; ADR-0015 ratifying 21-PR Wave 4 + Wave 5 deferred set) |
 | 起步预备 | (Pre-A1 [this lock] is the first Wave 5 PR) |
@@ -522,6 +522,148 @@ Per ADR-0015 R14 + memory illustrative reference: STOP forward execution + open 
 
 > R14 SECOND real-test enforcement (2026-05-05) — user gatekeeper sequencing pushback ("交付了但 /notes/[slug]/edit 没有，我怎么试？") triggered v1.1 → v1.2 plan amendment PR via D1 pipeline + plan-challenger light round + NEW row C.4-prelude minimal editor scaffold. Together with v1.1 defer-defer chain absorbtion, R14 discipline operative beyond first test. Pattern: plan amendment 不只在 PR scope narrowing 时触发，也在 user gatekeeper sequencing pushback 时触发. 两次都走 D1 pipeline 形式化 = R14 discipline operative across multiple trigger classes.
 
+## v1.3 R14 amendment (2026-05-05) — THIRD real-test
+
+**Trigger**: Standards landing PR #74 (squash `2f67ef0`; merged 2026-05-05; bootstrap-direct gatekeeper-self exception per ADR-0011 §Implementation) introduced ADR-0011 v0.2 amendment (NEW D9 Product Experience Quality Gate + NEW D10 anti prompt-patching forbidden + D2 schema additions `ui_touch: bool` + `e2e_smoke: list` + D1 stages 2/3/6 acquired UI-touch Playwright responsibilities) + ADR-0006 v0.2 amendment (NEW 9th asymmetry-audit item; "vitest unit PASS" vs "production user-visible PASS" load-bearing pair; product-experience-defect codified as third forward-fix class) + 3 NEW CI gate scripts (`scripts/check-{ui-touch,e2e-coverage,screenshot-archive}.ts`) + NEW `e2e-coverage-check` CI job at `.github/workflows/ci.yml` + `agent-contract.md` profile updates on pr-writer + codex-pr-reviewer-55 + codex-generic-executor with downstream regen synced. **Wave 5 plan v1.2 row schemas predated these standards additions**; without v1.3 amendment, all subsequent UI-touch PRs (C.2-7 + 5 C.3 + 5 C.4 — C.4-prelude already merged via PR #72 is exempt per D9 forward-only enforcement) would draft PR.md missing `ui_touch` + `e2e_smoke` fields → CI gate `e2e-coverage-check` blocks merge → orchestrator falls into ADR-0011 D10 anti-prompt-patching trap (ad hoc field additions instead of canonical plan source).
+
+**Trigger source two-layer (post Q-N plan-challenger absorbtion)**:
+- **Canonical authority (规范依据)**: [ADR-0015](../../decisions/ADR-0015-wave-4-close.md) R14 broad reading covers ANY R14-class trigger including new **standards-landing-absorbtion / consistency-correction class** + [ADR-0011 D10](../../decisions/ADR-0011-linear-pipeline-execution-model.md) anti prompt-patching forbidden — must run via ADR amendment / agent-contract update / CI gate / plan amendment; v1.3 invokes the "plan amendment" channel.
+- **Illustrative reference**: v1.1 + v1.2 amendment precedents establish the 5-stage D1 + plan-challenger light round + sub-edit pattern; v1.3 extends-by-illustration to standards-landing-absorbtion class. Memory `feedback_r14_defer_chain_plan_amendment.md` continues to record original defer-chain class only; v1.3's class is NEW (parallel to v1.2's NEW gatekeeper-sequencing class extension).
+
+**R14 THIRD real-test classification**: v1.1 absorbed defer-defer chain (PR scope narrowing class); v1.2 absorbed user gatekeeper sequencing pushback (delivery sequence vs MVP framework class); v1.3 absorbs standards-landing schema retrofit (consistency-correction class). Together: R14 discipline operative across **three trigger classes** beyond first test.
+
+**7 prose-only edits** (per Wave 5 plan v1.3 amendment PR — `docs/plans/wave-5-main/v1.3-plan-amendment-r14-third.md`):
+
+1. **Sub-edit a**: frontmatter `状态` field bumped v1.2 → v1.3 (line 5).
+2. **Sub-edit b**: Stage C.2 PR breakdown table row C.2-7 (line ~546) D2 column appended `; **ui_touch: true** (e2e_smoke per v1.3 R14 amendment §)` annotation; canonical `e2e_smoke` entry below in this section's "Per-row UI-touch + e2e_smoke retrofit catalog" subsection.
+3. **Sub-edit c**: Stage C.3 PR breakdown table 5 rows (C.3-1..C.3-5; lines ~559-563) D2 columns appended same annotation; canonical `e2e_smoke` entries below.
+4. **Sub-edit d**: Stage C.4 PR breakdown table 5 rows (C.4-1..C.4-5; lines ~572-576) D2 columns appended same annotation; canonical `e2e_smoke` entries below. C.4-prelude row (line ~571) intentionally NOT annotated — already merged via PR #72; D9 enforcement forward-only per ADR-0011 D9 v0.2 Amendments §"非破坏性 / 向后兼容".
+5. **Sub-edit e**: C.4-1 row description prose enhanced with explicit "ApiAdapter forward-stub" language per Pre-A4 ADR-0018 D8 NoteSaveAdapter 接口冻结 dual-path acknowledgement — at C.4-1 EXECUTE the codex-generic-executor MUST add `// TODO Phase 2+ ApiAdapter implementing NoteSaveAdapter for /api/notes endpoint` commented stub at `packages/editor-shell/src/save-adapter.ts` (NOT impl; comment + commented-import scaffold only for IDE discoverability). Forward stub serves Wave 5 close-readiness signal that LocalStorageAdapter is not the end-state.
+6. **Sub-edit f** (this section): v1.3 amendment record + canonical retrofit catalog + R26-shaped retrospective candidate.
+7. **Sub-edit g**: Wave 5 PR roster table extended with v1.3 amendment row; final implementation PR count text preserved at `**32 implementation PRs total**` (NO PR count change — v1.3 is annotation-only retrofit) with parenthetical bumped to reflect 3 meta amendment PRs (35 roster entries = 32 implementation + 3 meta). Cumulative delta tracker: v1.0 30 → v1.1 31 → v1.2 32 → **v1.3 32**, cumulative 2/30 = 6.7%, still well below D4 R14 15% threshold; re-check at v1.4+ amendments.
+
+**Pipeline**: 5-stage D1 (PLAN pr-writer → EXECUTE orchestrator-self per Wave 5 plan v1.0 D6 "pure-doc PR" exception → plan-challenger light round 3-5 challenges → REVIEW codex-pr-reviewer-55 → PRE-COMMIT CLAUDE REVIEW orchestrator-self per D2 row 1+4 fires → COMMIT reviewer codex with ADR-0006 D8 explicit-file-list staging → ACCEPT pr-writer 2nd invocation). v1.3 PR itself is **NOT UI-touch** (touches `docs/superpowers/plans/...` + `docs/audits/codex-runs/...` + `docs/plans/wave-5-main/...` — none in D9.1 path patterns) → CI gate `e2e-coverage-check` auto-skips via `ui_touch=false` (no Playwright spec required for THIS PR; per AC#15 D2 trigger judgment).
+
+### Per-row UI-touch + e2e_smoke retrofit catalog (canonical source for per-PR PR.md)
+
+Each subsequent C.2-7 / C.3 / C.4 implementation PR's PR.md MUST copy the corresponding row's canonical `e2e_smoke` entry from this catalog into the PR's own `## e2e_smoke` section. CI gate `scripts/check-e2e-coverage.ts` validates `playwright_spec` file existence at PR.md authoring; `scripts/check-screenshot-archive.ts` validates screenshot archive ≥ 5KB at ACCEPT stage.
+
+> **Q1 plan-challenger absorbtion clarification (mechanical D9.1 detection)**: catalog `ui_touch: true` annotations indicate the PR's *purpose* is UI-touch verification per ADR-0011 D9 framework. Mechanical D9.1 path-pattern detection happens at PR.md authoring time via `pnpm exec tsx scripts/check-ui-touch.ts`. For most rows (C.2-7 + C.3-1..4 + C.4-1..4) the mechanical detection AGREES with this catalog: their primary diff hits D9.1 patterns (`packages/heavy-block-boundary/src/**`, `packages/design-tokens/**`, `packages/*/src/ui-default/**`, `apps/site/src/{pages,components,styles}/**`, `packages/editor-shell/src/**`). For **C.3-5 + C.4-5** specifically: their primary diff is `apps/site/playwright/visual-smoke-baseline/*.png` + spec files at `apps/site/src/__tests__/e2e/...` which do NOT match D9.1 patterns directly; mechanical detection MAY return `ui_touch: false`. Their PR.md remains valid with mechanical `ui_touch: false` and `e2e_smoke: []` (CI gate auto-skips); the catalog entry below serves as informational meta-doc of what those PRs' Playwright specs assert (Stage close coverage). If C.3-5 / C.4-5 execution diff incidentally also touches a D9.1 path (e.g., `apps/site/src/components/SampleBlocksLayout.astro` modified for baseline screenshot generation), mechanical detection flips to `ui_touch: true` and the catalog `e2e_smoke` entry becomes the canonical PR.md source. Per ADR-0011 D9.6 CI gate auto-skip on `ui_touch: false` keeps merge unblocked regardless.
+
+#### C.2-7 — ADR-0014 v0.5 amendment (HeavyBlockBoundary dims grid context 联动 W5-1)
+
+- `ui_touch: true` (touches `packages/heavy-block-boundary/src/HeavyBlockBoundary.tsx` per D9.1 path pattern `packages/heavy-block-boundary/src/**`)
+- `e2e_smoke`:
+  - flow: heavy block plugin placeholder renders consuming grid `effectiveColWidth` + `effectiveCellHeight` (no NaN / no overflow / dimensions match adjacent light blocks)
+  - target_url: `/sample-blocks`
+  - playwright_spec: `apps/site/src/__tests__/e2e/c2-7-heavy-grid-dims.spec.ts:"plugin placeholder consumes grid effectiveColWidth/effectiveCellHeight"`
+  - screenshot_archive: `docs/audits/screenshots/wave-5-c2-7-heavy-grid-dims.png`
+
+#### C.3-1 — design-tokens OKLCH 14 color + Inter/JetBrains Mono fonts (per ADR-0018 D1+D2)
+
+- `ui_touch: true` (touches `packages/design-tokens/**` + `apps/site/src/styles/**` per D9.1)
+- `e2e_smoke`:
+  - flow: site loads with OKLCH cream surface + accent color visible + Inter font available in computed styles
+  - target_url: `/`
+  - playwright_spec: `apps/site/src/__tests__/e2e/c3-1-tokens-fonts.spec.ts:"OKLCH cream + accent + Inter font computed"`
+  - screenshot_archive: `docs/audits/screenshots/wave-5-c3-1-tokens-fonts.png`
+
+#### C.3-2 — block kind 顶 2px 彩色横条 8 kind hue (per ADR-0018 D3)
+
+- `ui_touch: true` (touches `packages/design-tokens/src/**` + `packages/block-*/src/ui-default/**`)
+- `e2e_smoke`:
+  - flow: 8 block kinds render distinct top 2px hue accent (paragraph + image + math + callout + code + pdf + jupyter + nn-viz + agent-flow as covered)
+  - target_url: `/sample-blocks`
+  - playwright_spec: `apps/site/src/__tests__/e2e/c3-2-block-hues.spec.ts:"8 block kinds render distinct top 2px hue"`
+  - screenshot_archive: `docs/audits/screenshots/wave-5-c3-2-block-hues.png`
+
+#### C.3-3 — prose customization (b-quote / b-callout / b-code / aref + .skb-prose namespace + typography CSS vars)
+
+- `ui_touch: true` (touches `apps/site/src/styles/**` + `apps/site/src/layouts/**` + `packages/design-tokens/**`)
+- `e2e_smoke`:
+  - flow: `.skb-prose` namespace renders b-quote / b-callout / b-code / aref affordances (each component-block prose affordance distinct per Q5 prose customization)
+  - target_url: `/sample-blocks`
+  - playwright_spec: `apps/site/src/__tests__/e2e/c3-3-prose.spec.ts:".skb-prose b-quote/b-callout/b-code/aref affordances"`
+  - screenshot_archive: `docs/audits/screenshots/wave-5-c3-3-prose.png`
+
+#### C.3-4 — shadow rgba(20,15,10) refresh + 8 light block CSS calibration
+
+- `ui_touch: true` (touches `packages/block-{callout,code,image,math,pdf}/src/ui-default/**/*.css` per D9.1 path pattern `packages/*/src/ui-default/**`)
+- `e2e_smoke`:
+  - flow: 5 light blocks (callout / code / image / math / pdf) render OKLCH-calibrated CSS without visual regress; shadow `rgba(20,15,10, ...)` refresh applied
+  - target_url: `/sample-blocks`
+  - playwright_spec: `apps/site/src/__tests__/e2e/c3-4-light-block-cal.spec.ts:"5 light blocks OKLCH calibration + shadow refresh"`
+  - screenshot_archive: `docs/audits/screenshots/wave-5-c3-4-light-block-cal.png`
+
+#### C.3-5 — Stage C.3 close: visual smoke baseline diff < 5% (per ADR-0018 AC#8)
+
+- `ui_touch: true` (touches `apps/site/playwright/visual-smoke-baseline/*.png`; baseline is part of apps/site visual surface)
+- `e2e_smoke`:
+  - flow: visual smoke baseline diff < 5% across calibrated pages (per ADR-0018 AC#8); spec runs sequentially against `/sample-blocks` (canonical baseline page; landing `/` covered by C.3-1's tokens-fonts spec to avoid duplicate baseline assertion per Q2 plan-challenger absorbtion concrete-target_url discipline)
+  - target_url: `/sample-blocks`
+  - playwright_spec: `apps/site/src/__tests__/e2e/c3-5-baseline-diff.spec.ts:"visual smoke baseline diff < 5%"`
+  - screenshot_archive: `docs/audits/screenshots/wave-5-c3-5-baseline-diff.png`
+
+#### C.4-1 — NoteSaveAdapter interface contract hardening + W5-2 + adapter contract tests + ApiAdapter forward stub (per sub-edit e)
+
+- `ui_touch: true` (touches `packages/editor-shell/src/save-adapter.ts` + `packages/editor-shell/CONTRACT.md` per D9.1 path pattern `packages/editor-shell/src/**`)
+- **Q3 plan-challenger absorbtion — ApiAdapter forward-stub comment-only hard AC**: C.4-1 execution PR's `## acceptance` section MUST include explicit AC enforcing comment-only boundary. Specifically, C.4-1 PR's AC#14-equivalent anti-leak gate MUST grep for ZERO occurrences of executable-form `class\s+ApiAdapter|interface\s+ApiAdapter|export\s+(const|function|class|interface)\s+ApiAdapter|import.*ApiAdapter\s+from` in committed diff. ONLY comment-form (`//\s*TODO\s+Phase\s+2\+\s+ApiAdapter` or equivalent prose-comment shape) is allowed. The forward-stub LANGUAGE serves close-readiness signal that LocalStorageAdapter is not the end-state; the comment-only boundary prevents scope-creep into Phase 2+ ApiAdapter implementation during Wave 5.
+- `e2e_smoke`:
+  - flow: `NoteSaveAdapter` interface allows `LocalStorageAdapter` MVP load + roundtrip with ApiAdapter Phase 2+ stub commented (`// TODO Phase 2+ ApiAdapter implementing NoteSaveAdapter for /api/notes endpoint`)
+  - target_url: `/notes/[slug]/edit`
+  - playwright_spec: `apps/site/src/__tests__/e2e/c4-1-note-save-adapter.spec.ts:"NoteSaveAdapter interface allows LocalStorageAdapter MVP load + roundtrip; ApiAdapter forward stub commented"`
+  - screenshot_archive: `docs/audits/screenshots/wave-5-c4-1-note-save-adapter.png`
+
+#### C.4-2 — apps/site `/notes/[slug]/edit` route + EditorShellMount full BlockRegistry/KernelRegistry wire
+
+- `ui_touch: true` (touches `apps/site/src/pages/notes/[slug]/edit.astro` + `apps/site/src/components/EditorShellMount.{astro,tsx}` per D9.1)
+- `e2e_smoke`:
+  - flow: navigate `/notes/<slug>/edit` + verify all 8 block kinds render correct affordance (5 light real: callout / code / image / math / pdf + 3 heavy plugin placeholder: jupyter / nn-viz / agent-flow)
+  - target_url: `/notes/<slug>/edit`
+  - playwright_spec: `apps/site/src/__tests__/e2e/c4-2-block-registry.spec.ts:"8 block kinds render correct (5 light real + 3 heavy plugin placeholder)"`
+  - screenshot_archive: `docs/audits/screenshots/wave-5-c4-2-block-registry.png`
+
+#### C.4-3 — palette + slash-menu + drag-handle + toolbar 完整组装 (canonical user-affordance-rich PR; 6 e2e_smoke entries)
+
+- `ui_touch: true` (touches `packages/editor-shell/src/**` + `apps/site/src/components/EditorShellMount.{astro,tsx}` per D9.1)
+- `e2e_smoke`:
+  1. flow: palette opens via shortcut + lists block kinds; spec: `apps/site/src/__tests__/e2e/c4-3-palette.spec.ts:"palette opens via shortcut + lists block kinds"`; screenshot: `docs/audits/screenshots/wave-5-c4-3-palette.png`
+  2. flow: slash menu (`/`) opens + selecting kind inserts new block; spec: `apps/site/src/__tests__/e2e/c4-3-slash-menu.spec.ts:"slash menu (/) opens + insert block on kind select"`; screenshot: `docs/audits/screenshots/wave-5-c4-3-slash-menu.png`
+  3. flow: drag-handle visible per block + drag triggers grid drop preview; spec: `apps/site/src/__tests__/e2e/c4-3-drag-handle.spec.ts:"drag-handle visible per block + drag triggers grid drop preview"`; screenshot: `docs/audits/screenshots/wave-5-c4-3-drag-handle.png`
+  4. flow: toolbar bold/italic buttons toggle Tiptap marks; spec: `apps/site/src/__tests__/e2e/c4-3-toolbar.spec.ts:"toolbar bold/italic toggles Tiptap marks"`; screenshot: `docs/audits/screenshots/wave-5-c4-3-toolbar.png`
+  5. flow: Edit Mode banner visible distinguishing `/notes/<slug>/edit` from `/notes/<slug>`; spec: `apps/site/src/__tests__/e2e/c4-3-banner.spec.ts:"Edit Mode banner visible on /notes/<slug>/edit not on /notes/<slug>"`; screenshot: `docs/audits/screenshots/wave-5-c4-3-banner.png`
+  6. flow: save state indicator shows saving → saved transitions on edit; spec: `apps/site/src/__tests__/e2e/c4-3-save-indicator.spec.ts:"save state indicator transitions saving → saved on edit"`; screenshot: `docs/audits/screenshots/wave-5-c4-3-save-indicator.png`
+
+#### C.4-4 — Save/load 双向 implementation + layoutEpoch sync + version increment
+
+- `ui_touch: true` (touches `packages/editor-shell/src/**` save/load wire per D9.1)
+- `e2e_smoke`:
+  - flow: edit prose → 800ms-debounced save to LocalStorage → reload preserves content + layoutEpoch + version increment
+  - target_url: `/notes/<slug>/edit`
+  - playwright_spec: `apps/site/src/__tests__/e2e/c4-4-save-roundtrip.spec.ts:"edit → 800ms debounce save to LocalStorage → reload preserves content + layoutEpoch + version"`
+  - screenshot_archive: `docs/audits/screenshots/wave-5-c4-4-save-roundtrip.png`
+
+#### C.4-5 — Stage C.4 close: 真验收 10-item E2E coverage path (canonical Wave 5 close MVP-ready test sweep)
+
+- `ui_touch: true` (touches `apps/site/playwright/edit-flow-e2e.spec.ts` covering full editor surface per D9.1)
+- `e2e_smoke` — **10 entries each mapped 1:1 to user MVP item per ADR-0011 D9 Product Experience Quality Gate** (verifies all 10 functional minimum items the user listed for Wave 5 MVP-ready judgment; per Q2 plan-challenger absorbtion all 10 entries carry concrete `target_url` for direct Playwright executionability):
+  1. **mvp-1 Edit Mode banner** — target_url: `/notes/<slug>/edit`; spec: `apps/site/src/__tests__/e2e/c4-5-mvp-1-edit-mode-banner.spec.ts:"Edit Mode banner visible on /notes/<slug>/edit"`; screenshot: `docs/audits/screenshots/wave-5-c4-5-mvp-1-banner.png`
+  2. **mvp-2 Tiptap WYSIWYG (bold/italic toolbar + 即时反馈)** — target_url: `/notes/<slug>/edit`; spec: `apps/site/src/__tests__/e2e/c4-5-mvp-2-tiptap-wysiwyg.spec.ts:"Tiptap WYSIWYG bold/italic toolbar 即时反馈"`; screenshot: `docs/audits/screenshots/wave-5-c4-5-mvp-2-wysiwyg.png`
+  3. **mvp-3 slash menu OR palette 拖拽插入新块** — target_url: `/notes/<slug>/edit`; spec: `apps/site/src/__tests__/e2e/c4-5-mvp-3-block-insert.spec.ts:"slash menu OR palette inserts new block"`; screenshot: `docs/audits/screenshots/wave-5-c4-5-mvp-3-insert.png`
+  4. **mvp-4 块拖拽 4 边缘 split** — target_url: `/notes/<slug>/edit`; spec: `apps/site/src/__tests__/e2e/c4-5-mvp-4-edge-split-drag.spec.ts:"block drag to 4 edges triggers split"`; screenshot: `docs/audits/screenshots/wave-5-c4-5-mvp-4-drag.png`
+  5. **mvp-5 块 resize (col-ruler + size-tooltip + COL_SNAPS)** — target_url: `/notes/<slug>/edit`; spec: `apps/site/src/__tests__/e2e/c4-5-mvp-5-resize.spec.ts:"block resize col-ruler + size-tooltip + COL_SNAPS"`; screenshot: `docs/audits/screenshots/wave-5-c4-5-mvp-5-resize.png`
+  6. **mvp-6 save state indicator (saved / saving / unsaved)** — target_url: `/notes/<slug>/edit`; spec: `apps/site/src/__tests__/e2e/c4-5-mvp-6-save-indicator.spec.ts:"save state indicator saved/saving/unsaved"`; screenshot: `docs/audits/screenshots/wave-5-c4-5-mvp-6-save-state.png`
+  7. **mvp-7 localStorage 跨刷新持久化** — target_url: `/notes/<slug>/edit`; spec: `apps/site/src/__tests__/e2e/c4-5-mvp-7-localstorage-persist.spec.ts:"localStorage 跨刷新持久化"`; screenshot: `docs/audits/screenshots/wave-5-c4-5-mvp-7-persist.png`
+  8. **mvp-8 v2 视觉 identity (cream + 橙红 + Inter + JetBrains Mono visible)** — target_url: `/notes/<slug>/edit` (visual identity visible site-wide; edit page chosen for end-to-end coverage parity with mvp-1..7,9,10); spec: `apps/site/src/__tests__/e2e/c4-5-mvp-8-v2-visual.spec.ts:"v2 visual identity cream + 橙红 + Inter + JetBrains Mono"`; screenshot: `docs/audits/screenshots/wave-5-c4-5-mvp-8-visual.png`
+  9. **mvp-9 8 block kinds render correct (5 light real + 3 heavy plugin placeholder)** — target_url: `/notes/<slug>/edit`; spec: `apps/site/src/__tests__/e2e/c4-5-mvp-9-block-kinds.spec.ts:"8 block kinds render correct"`; screenshot: `docs/audits/screenshots/wave-5-c4-5-mvp-9-blocks.png`
+  10. **mvp-10 heavy block "🔌 plugin" affordance (NOT loading spinner)** — target_url: `/notes/<slug>/edit`; spec: `apps/site/src/__tests__/e2e/c4-5-mvp-10-heavy-plugin.spec.ts:"heavy block plugin affordance NOT loading spinner"`; screenshot: `docs/audits/screenshots/wave-5-c4-5-mvp-10-plugin.png`
+
+**Wave 5 close ADR-0019 R26-shaped retrospective candidate**:
+
+> R14 THIRD real-test enforcement (2026-05-05) — standards landing PR #74 (squash `2f67ef0`) merged ADR-0011 v0.2 (D9 + D10 + D2 schema) + ADR-0006 v0.2 (item 9) + 3 CI gate scripts as bootstrap exception, but Wave 5 plan v1.2 row schemas predated these additions; without v1.3 amendment, all subsequent UI-touch PRs (C.2-7 + 5 C.3 + 5 C.4) would draft PR.md missing `ui_touch` + `e2e_smoke` fields → CI gate block + ADR-0011 D10 anti-prompt-patching trap. v1.3 retrofits 11 PR roster rows with full `e2e_smoke` entries + codifies C.4-5 真验收 10-item E2E coverage path 1:1 mapped to user MVP item list. Together with v1.1 defer-chain + v1.2 gatekeeper-sequencing absorbtions, R14 discipline operative across **three trigger classes**: PR scope narrowing + delivery sequence pushback + standards-landing schema retrofit. Pattern: any standards-level change that affects PR row schema MUST run plan amendment via D1 pipeline (NOT prompt-only patching per ADR-0011 D10).
+
+**Plan-challenger absorbtion (v1.3 light round)**: Stage 3 plan-challenger light round dispatched 2026-05-05 (codex `plan-challenger` profile; raw audit at `/tmp/codex-runs/2026-05-05-v1.3-plan-challenge.txt` 2246 lines; curated archive at `docs/audits/codex-runs/2026-05-05-v1.3-plan-challenge.txt` 88 lines). 4 challenges raised; **4/4 absorbed** (Q1 RE-LITIGATE absorbed via mechanical-vs-purpose two-layer clarification at catalog top; Q2 ABSORB-RECOMMENDED absorbed via target_url addition to 10 mvp-N entries + C.3-5 concrete URL; Q3+Q4 ABSORB-OPTIONAL absorbed as full per orchestrator low-cost evaluation). Light round (NOT full 12-Q) per ADR-0015 R14 light-round prescription. Full 4-row absorbtion table lives in PR.md `## Plan-challenger absorbtion` section (`docs/plans/wave-5-main/v1.3-plan-amendment-r14-third.md`); reviewer codex Stage 4 verifies absorbtion accuracy.
+
 ### Stage C.1 — Cleanup PR breakdown (locked at v1.0)
 
 | PR | Subject | Files (whitelist per scope-fence D12) | Estimated LOC | Executor | D2 trigger |
@@ -543,7 +685,7 @@ Per ADR-0015 R14 + memory illustrative reference: STOP forward execution + open 
 | C.2-4 | editor-shell grid 集成 + useAutoRowSpan hook (per ADR-0016 D3 两阶段稳态) | `packages/editor-shell/src/grid-container.tsx` (NEW) + `packages/editor-shell/src/use-auto-row-span.ts` (NEW) + `packages/editor-shell/CONTRACT.md` (W5-2 invariant 加 + grid container API public surface) | ~400 LOC | codex-generic-executor | Row 1 (CONTRACT W5-2 NEW) + Row 5 |
 | C.2-5 | drag/drop UX 实施 (per ADR-0017 D5 选项 1 + D3 tiebreak + D4 outline overlay) | `packages/editor-shell/src/drag-drop/{edge-rects,tiebreak,outline-overlay}.ts` (NEW) + tests | ~500 LOC | codex-generic-executor | Row 1 (CONTRACT) + Row 5 |
 | C.2-6 | resize UX 实施 (col-ruler + size-tooltip + COL_SNAPS snap; per ADR-0017 D9) | `packages/editor-shell/src/resize/{col-ruler,size-tooltip}.tsx` (NEW) + tests | ~300 LOC | codex-generic-executor | Row 1 (CONTRACT) |
-| C.2-7 | ADR-0014 v0.5 amendment (HeavyBlockBoundary dims grid context 联动 W5-1) | `docs/decisions/ADR-0014-heavy-block-boundary.md` (v0.5 Amendments §) + `packages/heavy-block-boundary/src/HeavyBlockBoundary.tsx` (consume W5-1 公式) + `packages/heavy-block-boundary/CONTRACT.md` (sister-doc-sync per ADR-0016 D9 Sister-document sync) | ~150 LOC | orchestrator-self (doc-policy ADR amendment) + codex for impl | Row 4 (ADR amendment) + Row 1 (CONTRACT sync) |
+| C.2-7 | ADR-0014 v0.5 amendment (HeavyBlockBoundary dims grid context 联动 W5-1) | `docs/decisions/ADR-0014-heavy-block-boundary.md` (v0.5 Amendments §) + `packages/heavy-block-boundary/src/HeavyBlockBoundary.tsx` (consume W5-1 公式) + `packages/heavy-block-boundary/CONTRACT.md` (sister-doc-sync per ADR-0016 D9 Sister-document sync) | ~150 LOC | orchestrator-self (doc-policy ADR amendment) + codex for impl | Row 4 (ADR amendment) + Row 1 (CONTRACT sync); **ui_touch: true** (e2e_smoke per v1.3 R14 amendment §) |
 | C.2-8 | drop-pulse 720ms + drag-ghost + 全局 Esc cancel + layoutEpoch reducer (per ADR-0017 D11+D10+D8+D12) | `packages/editor-shell/src/drag-drop/{drop-pulse,drag-ghost,esc-cancel,layout-reducer}.ts` (NEW) + tests | ~400 LOC | codex-generic-executor | Row 1 + Row 5 |
 | C.2-9 | Responsive 12/6/1 切换 + rowSpan adapt path (per ADR-0016 D5 转场态 FSM) | `packages/editor-shell/src/grid-container.tsx` (转场态 FSM) + tests | ~150 LOC | codex-generic-executor | Standard |
 | C.2-10 | playwright drag scenarios + edge-rect tiebreak fixtures (per ADR-0017 AC#1-#12) | `apps/site/playwright/grid-drag-drop.spec.ts` (NEW; 12 fixture per AC) | ~600 LOC | codex-generic-executor | Standard |
@@ -556,11 +698,11 @@ Per ADR-0015 R14 + memory illustrative reference: STOP forward execution + open 
 
 | PR | Subject | Whitelist | LOC | Executor | D2 |
 |---|---|---|---|---|---|
-| C.3-1 | design-tokens OKLCH 14 color + 1 hex `--surface` + 3 layout + Inter/JetBrains Mono fonts (per ADR-0018 D1+D2) | `packages/design-tokens/src/tokens.css` + `packages/design-tokens/CONTRACT.md` (token additions) + `tokens-fallback.css` (NEW; OKLCH→hex via Culori build script) + tests | ~300 LOC | codex-generic-executor + ux-ui-lead subagent | Row 1 (CONTRACT) + Row 5 (cross design-tokens + apps/site + 5 light blocks + heavy-block-boundary) |
-| C.3-2 | block kind 顶 2px 彩色横条 8 kind hue (per ADR-0018 D3 locked values) | `packages/design-tokens/src/tokens.css` (8 kind hue token) + 5 light block ui-default 加 顶 2px 横条 CSS | ~200 LOC | codex-generic-executor + ux-ui-lead | Row 1 + Row 5 |
-| C.3-3 | prose customization (b-quote/b-callout/b-code/aref + .skb-prose namespace per Q5) + typography CSS vars (font-size-* per Q6) | `apps/site/src/styles/prose.css` (NEW) + `apps/site/src/layouts/BaseLayout.astro` (load) + design-tokens font-size-* tokens | ~250 LOC | codex-generic-executor + ux-ui-lead | Row 1 |
-| C.3-4 | shadow rgba(20,15,10) refresh + 8 light block CSS calibration (visual smoke baseline + screenshot 比对) | `packages/block-{callout,code,image,math,pdf}/src/ui-default/**/*.css` (5 light blocks) + `apps/site/playwright/visual-smoke.spec.ts` (baseline screenshots) | ~300 LOC | ux-ui-lead subagent (one-shot dispatch) | Row 5 (cross 5 block packages) |
-| C.3-5 | Stage C.3 close: visual smoke vs baseline diff < 5% (per ADR-0018 AC#8) + Stage C.3 handoff pack | `apps/site/playwright/visual-smoke-baseline/*.png` (commit baselines) + handoff pack | ~50 LOC + binaries | orchestrator | Standard |
+| C.3-1 | design-tokens OKLCH 14 color + 1 hex `--surface` + 3 layout + Inter/JetBrains Mono fonts (per ADR-0018 D1+D2) | `packages/design-tokens/src/tokens.css` + `packages/design-tokens/CONTRACT.md` (token additions) + `tokens-fallback.css` (NEW; OKLCH→hex via Culori build script) + tests | ~300 LOC | codex-generic-executor + ux-ui-lead subagent | Row 1 (CONTRACT) + Row 5 (cross design-tokens + apps/site + 5 light blocks + heavy-block-boundary); **ui_touch: true** (e2e_smoke per v1.3 R14 amendment §) |
+| C.3-2 | block kind 顶 2px 彩色横条 8 kind hue (per ADR-0018 D3 locked values) | `packages/design-tokens/src/tokens.css` (8 kind hue token) + 5 light block ui-default 加 顶 2px 横条 CSS | ~200 LOC | codex-generic-executor + ux-ui-lead | Row 1 + Row 5; **ui_touch: true** (e2e_smoke per v1.3 R14 amendment §) |
+| C.3-3 | prose customization (b-quote/b-callout/b-code/aref + .skb-prose namespace per Q5) + typography CSS vars (font-size-* per Q6) | `apps/site/src/styles/prose.css` (NEW) + `apps/site/src/layouts/BaseLayout.astro` (load) + design-tokens font-size-* tokens | ~250 LOC | codex-generic-executor + ux-ui-lead | Row 1; **ui_touch: true** (e2e_smoke per v1.3 R14 amendment §) |
+| C.3-4 | shadow rgba(20,15,10) refresh + 8 light block CSS calibration (visual smoke baseline + screenshot 比对) | `packages/block-{callout,code,image,math,pdf}/src/ui-default/**/*.css` (5 light blocks) + `apps/site/playwright/visual-smoke.spec.ts` (baseline screenshots) | ~300 LOC | ux-ui-lead subagent (one-shot dispatch) | Row 5 (cross 5 block packages); **ui_touch: true** (e2e_smoke per v1.3 R14 amendment §) |
+| C.3-5 | Stage C.3 close: visual smoke vs baseline diff < 5% (per ADR-0018 AC#8) + Stage C.3 handoff pack | `apps/site/playwright/visual-smoke-baseline/*.png` (commit baselines) + handoff pack | ~50 LOC + binaries | orchestrator | Standard; **ui_touch: true** (e2e_smoke per v1.3 R14 amendment §) |
 
 **Stage C.3 close criterion**: apps/site 整套界面与 v2 demo 视觉对齐; 8 light blocks OKLCH switchover collateral 通过 visual smoke; handoff pack mandatory. Sub-stage close = user MVP-judgment escape valve.
 
@@ -569,11 +711,11 @@ Per ADR-0015 R14 + memory illustrative reference: STOP forward execution + open 
 | PR | Subject | Whitelist | LOC | Executor | D2 |
 |---|---|---|---|---|---|
 | **C.4-prelude** (v1.2 amendment NEW; LOCKED at semantic identifier post Q1 plan-challenger absorbtion; orchestrator preliminary recommendation) | **minimal editor scaffold (MVP smoke-test enable; per Wave 5 plan v1.2 R14 SECOND real-test 2026-05-05)** | `apps/site/src/pages/notes/[slug]/edit.astro` (NEW; basic route mounting editor-shell) + `apps/site/src/components/EditorShellMount.{astro,tsx}` (NEW; minimal mount wrapper) + `apps/site/CONTRACT.md` (route + mount contract; minimal section) + `packages/editor-shell/src/save-adapter.ts` (NEW; LocalStorageAdapter MVP per ADR-0018 D8) + tests + 1 PR.md. **In-scope**: `/notes/[slug]/edit` route + EditorShellMount + grid container (C.2-4) + drag/drop layer (C.2-5) + resize layer (C.2-6) + LocalStorageAdapter MVP + minimal hardcoded BlockRegistry (callout/code/markdown subset). **Out-of-scope (deferred to C.4-1..C.4-5 full set)**: palette / slash-menu / drag-handle / toolbar 完整组装 (C.4-3); BlockRegistry/KernelRegistry full wire (C.4-3); save/load layoutEpoch sync (C.4-4); e2e playwright (C.4-5); v2 visual + fonts (Stage C.3). | ~200 LOC | codex-generic-executor | Row 1 (CONTRACT) |
-| C.4-1 (post v1.2 Q3 ownership refinement) | NoteSaveAdapter interface contract hardening + NoteState shape + W5-2 contract surface + adapter contract tests (LocalStorageAdapter MVP impl already shipped at C.4-prelude per v1.2 R14 SECOND amendment; C.4-1 NO LONGER re-implements impl — only hardens interface + adds contract tests) | `packages/editor-shell/src/save-adapter.ts` (modify; interface + types only — impl stays at MVP shipped by C.4-prelude) + `packages/editor-shell/CONTRACT.md` (W5-2 invariant + NoteSaveAdapter public surface section) + adapter contract tests | ~150 LOC (reduced from ~250 v1.0; impl LOC moved to C.4-prelude) | codex-generic-executor | Row 1 (CONTRACT W5-2 + NoteSaveAdapter surface) + Row 5 |
-| C.4-2 (post v1.2 ownership refinement) | apps/site `/notes/[slug]/edit` route + `EditorShellMount` enhancement (full BlockRegistry/KernelRegistry wire-up; route already shipped at C.4-prelude as MVP scaffold per v1.2 R14 SECOND amendment) | `apps/site/src/pages/notes/[slug]/edit.astro` (modify; enhance MVP route shipped at C.4-prelude with full block registry wire) + `apps/site/src/components/EditorShellMount.{astro,tsx}` (modify; enhance MVP mount with full registry props) + `apps/site/CONTRACT.md` (route + mount contract enhancement) | ~150 LOC (reduced from ~300 v1.0; route + mount NEW LOC moved to C.4-prelude) | codex-generic-executor | Row 1 + Row 5 |
-| C.4-3 | BlockRegistry + KernelRegistry + mdx-bridge wire-up + palette/slash-menu/drag-handle/toolbar 组装 | editor-shell composition glue + apps/site consumption | ~400 LOC | codex-generic-executor | Row 1 + Row 5 |
-| C.4-4 | Save/load 双向 implementation (per Pre-A4 接口冻结) + layoutEpoch sync + version increment trigger | editor-shell save/load wire + LocalStorageAdapter consumer + tests | ~300 LOC | codex-generic-executor | Row 1 |
-| C.4-5 | Stage C.4 close: vitest + playwright 端到端 (load → edit → save → reload → verify content/grid intact) + Stage C.4 handoff pack = Wave 5 close 候选 | `apps/site/playwright/edit-flow-e2e.spec.ts` + handoff pack + Wave 5 close-prep readiness check | ~400 LOC | codex-generic-executor + orchestrator | Standard |
+| C.4-1 (post v1.2 Q3 ownership refinement; **v1.3 sub-edit e ApiAdapter forward stub**) | NoteSaveAdapter interface contract hardening + NoteState shape + W5-2 contract surface + adapter contract tests (LocalStorageAdapter MVP impl already shipped at C.4-prelude per v1.2 R14 SECOND amendment; C.4-1 NO LONGER re-implements impl — only hardens interface + adds contract tests) **+ NEW per v1.3 R14 amendment sub-edit e: ApiAdapter forward-stub language — codex-generic-executor MUST add `// TODO Phase 2+ ApiAdapter implementing NoteSaveAdapter for /api/notes endpoint` commented stub at `packages/editor-shell/src/save-adapter.ts` (NOT impl; comment + commented-import scaffold only for IDE discoverability) per Pre-A4 ADR-0018 D8 NoteSaveAdapter 接口冻结 dual-path acknowledgement** | `packages/editor-shell/src/save-adapter.ts` (modify; interface + types only — impl stays at MVP shipped by C.4-prelude; v1.3 adds ApiAdapter forward-stub COMMENT only) + `packages/editor-shell/CONTRACT.md` (W5-2 invariant + NoteSaveAdapter public surface section) + adapter contract tests | ~150 LOC (reduced from ~250 v1.0; impl LOC moved to C.4-prelude) | codex-generic-executor | Row 1 (CONTRACT W5-2 + NoteSaveAdapter surface) + Row 5; **ui_touch: true** (e2e_smoke per v1.3 R14 amendment §) |
+| C.4-2 (post v1.2 ownership refinement) | apps/site `/notes/[slug]/edit` route + `EditorShellMount` enhancement (full BlockRegistry/KernelRegistry wire-up; route already shipped at C.4-prelude as MVP scaffold per v1.2 R14 SECOND amendment) | `apps/site/src/pages/notes/[slug]/edit.astro` (modify; enhance MVP route shipped at C.4-prelude with full block registry wire) + `apps/site/src/components/EditorShellMount.{astro,tsx}` (modify; enhance MVP mount with full registry props) + `apps/site/CONTRACT.md` (route + mount contract enhancement) | ~150 LOC (reduced from ~300 v1.0; route + mount NEW LOC moved to C.4-prelude) | codex-generic-executor | Row 1 + Row 5; **ui_touch: true** (e2e_smoke per v1.3 R14 amendment §) |
+| C.4-3 | BlockRegistry + KernelRegistry + mdx-bridge wire-up + palette/slash-menu/drag-handle/toolbar 组装 (canonical user-affordance-rich PR — 6 e2e_smoke entries per v1.3 R14 amendment §) | `packages/editor-shell/src/{palette,slash-menu,drag-handle,toolbar}/**/*` (NEW or modify; D9.1 path pattern `packages/editor-shell/src/**` HIT) + `apps/site/src/components/EditorShellMount.{astro,tsx}` (modify; D9.1 path pattern `apps/site/src/components/**` HIT) + `packages/editor-shell/src/registry-wire.{ts,tsx}` (NEW; BlockRegistry/KernelRegistry composition glue) + `packages/editor-shell/CONTRACT.md` (W5-2 update for palette/menu/handle/toolbar surfaces) — per Q4 plan-challenger absorbtion: D9.1 path-pattern enumeration tightened from "editor-shell composition glue + apps/site consumption" generic prose to specific D9.1-matching path enumerate; executor at C.4-3 PR.md authoring still verifies via `pnpm exec tsx scripts/check-ui-touch.ts` against actual diff | ~400 LOC | codex-generic-executor | Row 1 + Row 5; **ui_touch: true** (e2e_smoke per v1.3 R14 amendment §) |
+| C.4-4 | Save/load 双向 implementation (per Pre-A4 接口冻结) + layoutEpoch sync + version increment trigger | editor-shell save/load wire + LocalStorageAdapter consumer + tests | ~300 LOC | codex-generic-executor | Row 1; **ui_touch: true** (e2e_smoke per v1.3 R14 amendment §) |
+| C.4-5 | Stage C.4 close: vitest + playwright 端到端 (load → edit → save → reload → verify content/grid intact) + **真验收 10-item E2E coverage path (canonical Wave 5 close MVP-ready test sweep — 10 e2e_smoke entries 1:1 mapped to user MVP item per v1.3 R14 amendment §)** + Stage C.4 handoff pack = Wave 5 close 候选 | `apps/site/playwright/edit-flow-e2e.spec.ts` + 10 mvp-N spec files (per v1.3 R14 amendment § canonical catalog) + handoff pack + Wave 5 close-prep readiness check | ~400 LOC | codex-generic-executor + orchestrator | Standard; **ui_touch: true** (e2e_smoke per v1.3 R14 amendment §) |
 
 **Stage C.4 close criterion**: user navigate `/notes/<slug>/edit` → mount editor-shell → load notes → edit → save → reload → content + grid intact. **Sub-stage close = user MVP-judgment escape valve = Wave 5 close 候选** (Phase 1 完成 = MVP-ready). Handoff pack mandatory.
 
@@ -595,13 +737,14 @@ Updates to Pre-A1 v0.2 risk list based on Pre-A2/3/4 plan-challenger findings:
 | #53 | `7e487ec` | Pre-A4 | ADR-0018 v2 视觉 + save-path 接口冻结 + 14/14 absorbed (R6) |
 | #54 | `2bc129a` | Pre-A5 | Wave 5 plan v0.2 → v1.0 final lock + Stage C.1-C.4 PR breakdown |
 | #61 | `1304111` | v1.1 amend | Wave 5 plan v1.0 → v1.1 R14 amendment + NEW row C.2-3.5 (formalize C.2-1→C.2-3 hard-throw + sample-MDX + 17 RTT fixtures defer-chain per ADR-0015 R14) |
-| TBD (this) | TBD | v1.2 amend | Wave 5 plan v1.1 → v1.2 R14 SECOND real-test amendment + NEW row C.4-prelude (formalize user gatekeeper sequencing pushback "交付了但 /notes/[slug]/edit 没有，我怎么试？" → minimal editor scaffold MVP smoke-test enable per ADR-0015 R14 extended to gatekeeper-sequencing class) |
+| #70 | `56ff476` | v1.2 amend | Wave 5 plan v1.1 → v1.2 R14 SECOND real-test amendment + NEW row C.4-prelude (formalize user gatekeeper sequencing pushback "交付了但 /notes/[slug]/edit 没有，我怎么试？" → minimal editor scaffold MVP smoke-test enable per ADR-0015 R14 extended to gatekeeper-sequencing class) |
+| TBD (this) | TBD | v1.3 amend | Wave 5 plan v1.2 → v1.3 R14 THIRD real-test amendment + standards-landing schema retrofit (annotate `ui_touch` + `e2e_smoke` onto 11 PR roster rows: C.2-7 + 5 C.3 + 5 C.4; C.4-1 add ApiAdapter forward-stub language; C.4-5 codifies 真验收 10-item E2E coverage path 1:1 mapped to user MVP item list per ADR-0015 R14 extended to standards-landing-absorbtion class + ADR-0011 D10 anti-prompt-patching authority) |
 | (Stage C.1 = 3 PRs) | TBD | C.1 | C.1-1 plugin placeholder + v0.4 amend / C.1-2 PDF + chunk-leak / C.1-3 gitignore |
 | (Stage C.2 = 13 PRs post v1.1) | TBD | C.2 | C.2-1 mdx-bridge serialize → C.2-3 Astro grid → **NEW C.2-3.5 hard-throw flip + sample-MDX backfill** → C.2-4 editor-shell grid → C.2-12 Stage C.2 close (C.2 grew 12 → 13 per v1.1 R14 amendment) |
 | (Stage C.3 = 5 PRs) | TBD | C.3 | C.3-1 OKLCH + fonts → C.3-5 visual smoke baseline |
 | (Stage C.4 = 6 PRs post v1.2) | TBD | C.4 | **NEW C.4-prelude minimal editor scaffold (MVP smoke-test enable)** → C.4-1 NoteSaveAdapter → C.4-5 e2e + Wave 5 close 候选 (C.4 grew 5 → 6 per v1.2 R14 SECOND real-test amendment) |
 
-**Wave 5 final PR count locked at v1.2**: 5 Pre-A + 3 (C.1) + **13** (C.2: 12 v1.0 baseline + 1 NEW C.2-3.5 per v1.1) + 5 (C.3) + **6** (C.4: 5 v1.0 baseline + 1 NEW C.4-prelude per v1.2) = **32 implementation PRs total**. (Plus 2 meta amendment PRs — v1.1 amendment PR squash `1304111` + this v1.2 amendment PR — logged separately in the roster table; total roster entries = 34 = 32 implementation + 2 meta. The "implementation PR count" 32 is what matters for session-budget estimate.) v1.0 baseline = 30 implementation PRs; v1.1 delta = +1 PR (Stage C.2 grew 12 → 13); v1.2 delta = +1 PR (Stage C.4 grew 5 → 6). Cumulative delta tracker: 2/30 = 6.7%, still well below D4 R14 15% threshold per `## v1.2 R14 amendment` section "Cumulative PR delta tracker". 3-5 sessions estimate maintained.
+**Wave 5 final PR count locked at v1.3**: 5 Pre-A + 3 (C.1) + **13** (C.2: 12 v1.0 baseline + 1 NEW C.2-3.5 per v1.1) + 5 (C.3) + **6** (C.4: 5 v1.0 baseline + 1 NEW C.4-prelude per v1.2) = **32 implementation PRs total** (NO change at v1.3 — v1.3 R14 THIRD real-test class = annotation-only retrofit; no PR count delta). (Plus 3 meta amendment PRs — v1.1 amendment PR squash `1304111` + v1.2 amendment PR squash `56ff476` + this v1.3 amendment PR — logged separately in the roster table; total roster entries = 35 = 32 implementation + 3 meta. The "implementation PR count" 32 is what matters for session-budget estimate.) v1.0 baseline = 30 implementation PRs; v1.1 delta = +1 PR (Stage C.2 grew 12 → 13); v1.2 delta = +1 PR (Stage C.4 grew 5 → 6); v1.3 delta = +0 PR (annotation-only retrofit). Cumulative delta tracker: 2/30 = 6.7%, still well below D4 R14 15% threshold per `## v1.3 R14 amendment` section "Cumulative PR delta tracker"; v1.4+ amendments must re-check 15% threshold. 3-5 sessions estimate maintained.
 
 **Plan v1.0 lock evidence**: Pre-A5 PR.md `## acceptance` walks each amendment + Stage C.1-C.4 per-PR table presence + Wave 5 PR roster table.
 
