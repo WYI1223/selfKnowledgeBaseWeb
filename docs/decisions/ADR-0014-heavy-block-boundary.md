@@ -722,3 +722,153 @@ scope, not Wave 5 C.1 scope.
 | AgentFlow placeholder | `apps/site/src/islands/AgentFlowIsland.tsx` contains `🔌`, `aria-busy='false'`, `data-loaded='true'` |
 | ADR v0.4 anchor | grep `Plugin tier split` in this amendment |
 | Playwright AC#16 | CI runs `apps/site/playwright/heavy-block-layout-shift.spec.ts`; squash HEAD TBD post-commit |
+
+### v0.5 (2026-05-05 — Wave 5 Stage C.2) — gridContext-derived dims path: HeavyBlockBoundary consumes W5-1 公式 from `@skb/block-foundation`
+
+**Gap framing**: Wave 5 Stage C.2 grid integration (PR #58 mdx-bridge
+serialize → PR #65 mdx-bridge hard-throw flip → PR #63 editor-shell
+grid + `useAutoRowSpan` → PR #67 drag/drop + PR #68 resize) shipped
+the W5-1 公式 single authority at
+[`packages/block-foundation/src/grid-math.ts`](../../packages/block-foundation/src/grid-math.ts):
+`effectiveColWidth(colSpan, containerWidth, geometry?)` +
+`effectiveCellHeight(rowSpan, geometry?)` + `GridGeometry` +
+`DEFAULT_GRID_GEOMETRY`. HeavyBlockBoundary at v0.4 consumes a
+fully-resolved `dims: HeavyBlockDimensions` prop, requiring callers
+to pre-compute width/height before invoking the boundary. Apps/site
+`.astro` consumers compute these from each block package's
+`heavyBoundaryDimensions` (per AC#5 zero-layout-shift) — but future
+grid-context consumers (editor-shell at C.4 plus the
+`plugin-real-runtime` tier at Phase 2+) need the boundary itself to
+derive dims from grid coordinates (`colSpan` + `rowSpan` + container
+metrics) without ad-hoc local re-implementation of W5-1 公式
+(ADR-0006 class 4 single-authority violation; memory
+`feedback_cross_package_consumer_pattern`).
+
+#### NEW D12 — gridContext field + dims-derivation precedence
+
+`HeavyBlockBoundaryProps` (D1 component API; P-generic) acquires an
+optional `gridContext` field, and `dims` is widened from required to
+optional:
+
+```typescript
+import type { GridGeometry } from '@skb/block-foundation/grid-math';
+
+interface HeavyBlockBoundaryProps<P> {
+  // ... v0.4 surface preserved ...
+  readonly dims?: HeavyBlockDimensions; // v0.5: now optional — was required at v0.4
+  readonly gridContext?: {
+    readonly colSpan: number;
+    readonly rowSpan: number;
+    readonly containerWidth: number;
+    readonly geometry?: Partial<GridGeometry>;
+  };
+}
+```
+
+`gridContext.containerWidth` (NOT `viewportCols`) — the field name
+matches the live `effectiveColWidth(colSpan, containerWidth, geometry?)`
+signature at HEAD per memory
+`feedback_pr_reviewer_authority_at_head`. `viewportCols` is the
+`effectiveColSnaps` input only (resize UX snap-set authority), not
+the width-derivation input.
+
+**Dims-derivation precedence (call-time resolution, NOT useEffect)**:
+
+1. If neither `dims` nor `gridContext` supplied → throw
+   `Error('HeavyBlockBoundary requires either dims or gridContext')` at
+   function-body entry, BEFORE any `useState` calls. Throwing at
+   call time fails the React render fast (before async load), so
+   misuse surfaces in dev/prod equally, NOT silently rendering with
+   `NaN` widths.
+2. If `dims` supplied (regardless of whether `gridContext` is also
+   supplied) → use `dims` directly. Backward-compatible with v0.4
+   consumers; explicit wins over derivation.
+3. If only `gridContext` supplied → derive
+   `width = effectiveColWidth(gridContext.colSpan, gridContext.containerWidth, gridContext.geometry)`
+   and
+   `height = effectiveCellHeight(gridContext.rowSpan, gridContext.geometry)`
+   via single-authority delegation to
+   `@skb/block-foundation/grid-math` (NO local re-implementation of
+   either formula).
+
+#### Single-authority delegation
+
+The boundary imports `effectiveColWidth` + `effectiveCellHeight`
+from `@skb/block-foundation` per ADR-0016 D6 + D9 (W5-1 公式
+single-authority placement) + memory
+`feedback_cross_package_consumer_pattern`. Local re-implementation of
+either formula is forbidden; AC#17 (vitest snapshot) ensures
+byte-equal parity between boundary-derived dims and direct
+block-foundation invocation.
+
+#### Backward compatibility
+
+v0.4 consumers passing only `dims` (apps/site `.astro` islands)
+work unchanged. Existing AC#5 zero-layout-shift dimensions remain
+authoritative for the `plugin-placeholder` tier path. NO migration
+of existing consumers is required at v0.5; `gridContext` is
+forward-compatible additive surface. The 3 island files
+(`apps/site/src/islands/{Jupyter,NnViz,AgentFlow}Island.tsx`)
+continue passing explicit `dims` per the v0.4 D11 placeholder tier
+path; NO change to AC#5 or AC#16 invariants.
+
+#### NEW AC#17 — gridContext-derived dims byte-equal to direct block-foundation invocation
+
+Vitest test renders
+`<HeavyBlockBoundary kind='jupyter' gridContext={{ colSpan: 6, rowSpan: 4, containerWidth: 1200 }} load={...} childProps={{}} />`
+and asserts the rendered outer container's inline `style="width:..px;
+min-height:..px"` matches `effectiveColWidth(6, 1200) + 'px'` and
+`effectiveCellHeight(4) + 'px'` byte-equal — verifying single-authority
+delegation has no implicit drift. Plus three negative-path tests:
+(a) neither `dims` nor `gridContext` throws the locked error message;
+(b) explicit `dims` wins precedence when both supplied; (c)
+`gridContext` only path passes through when `dims` is `undefined`.
+
+#### Input validation policy (deferred)
+
+The v0.5 boundary does NOT validate `gridContext` numeric inputs.
+Negative spans, zero/decimal spans, or non-positive `containerWidth`
+propagate raw to `effectiveColWidth` / `effectiveCellHeight` (which
+themselves perform no input validation at HEAD `2026-05-05`).
+Consumers are responsible for passing positive integer `colSpan` /
+`rowSpan` and a positive measured `containerWidth`. The current
+consumer set (apps/site `.astro` islands at v0.4 path; future
+editor-shell at C.4) all source these values from grid layout
+primitives that already guarantee positivity. Hardening (throw or
+clamp on invalid inputs at boundary entry) is intentionally deferred
+to keep v0.5 scope minimal and avoid duplicating validation that
+ought to live closer to consumer call sites. If invalid inputs
+become a real problem (downstream NaN propagation seen in CI), a
+follow-up amendment lands a boundary-side validator without
+re-amending the gridContext shape.
+
+#### Forward-reference correction
+
+ADR-0014 v0.4's visual-contract sub-section reserved
+`.heavy-block-skeleton--placeholder` BEM modifier "for future Stage
+C.3 / ADR-0014 v0.5 OKLCH wiring". v0.5 is hereby **gridContext-derived
+dims** (Wave 5 plan v1.3 row C.2-7 canonical authority); the OKLCH
+wiring originally forecast at v0.5 is now planned for **v0.6 at
+Stage C.3** per Wave 5 plan v1.3 row C.3-1 (design-tokens OKLCH 14
+color + Inter/JetBrains Mono fonts). The v0.4 forward-reference is
+hereby reassigned to v0.6.
+
+#### Wave 5 plan authority
+
+Wave 5 plan v1.3 (locked 2026-05-05; squash `5bd5112`) row C.2-7
+explicitly names this amendment as "ADR-0014 v0.5 amendment
+(HeavyBlockBoundary dims grid context 联动 W5-1)" — canonical
+authority for the v0.5 scope per the v1.3 retrofit catalog (lines
+553-560).
+
+#### Implementation evidence stub
+
+| Item | Evidence |
+|---|---|
+| `gridContext` field added | grep `gridContext\??:.*colSpan` in `packages/heavy-block-boundary/src/HeavyBlockBoundary.tsx` |
+| Single-authority import | grep `effectiveColWidth\|effectiveCellHeight` import-from `@skb/block-foundation` in HeavyBlockBoundary.tsx |
+| Throw on neither | grep `'HeavyBlockBoundary requires either dims or gridContext'` in HeavyBlockBoundary.tsx |
+| CONTRACT.md sister-doc-sync | grep `gridContext` in `packages/heavy-block-boundary/CONTRACT.md` |
+| AC#17 vitest | `packages/heavy-block-boundary/src/__tests__/HeavyBlockBoundary.v0.5.test.tsx` PASSES locally |
+| Playwright e2e_smoke | `apps/site/src/__tests__/e2e/c2-7-heavy-grid-dims.spec.ts` PASSES on CI per ADR-0011 D9 |
+| ADR v0.5 anchor | grep `gridContext-derived dims` in this amendment |

@@ -1,5 +1,11 @@
+/**
+ * ADR-0014 v0.5 adds the gridContext-derived dims path for heavy blocks.
+ * ADR-0016 D9 keeps the W5-1 formulae in @skb/block-foundation; this
+ * boundary delegates to that single authority instead of reimplementing math.
+ */
 import type { CSSProperties, ComponentType, ReactElement, ReactNode } from 'react';
 import { useEffect, useRef, useState } from 'react';
+import { effectiveCellHeight, effectiveColWidth, type GridGeometry } from '@skb/block-foundation';
 
 // These public types mirror ADR-0014 D1.
 export interface HeavyBlockKindRegistry {
@@ -18,7 +24,7 @@ export interface HeavyBlockDimensions {
 
 export interface HeavyBlockBoundaryProps<P> {
   readonly kind: HeavyBlockKind;
-  readonly dims: HeavyBlockDimensions;
+  readonly dims?: HeavyBlockDimensions;
   readonly load: (init?: { signal?: AbortSignal }) => Promise<{ default: ComponentType<P> }>;
   readonly loadingText?: string; // default: `Loading ${kind}...`
   readonly errorText?: string; // default: `Failed to load ${kind}`
@@ -27,11 +33,18 @@ export interface HeavyBlockBoundaryProps<P> {
   readonly childProps: P; // forwarded to loaded component
   readonly fallback?: ReactNode; // optional override of SSR placeholder
   readonly onLoadError?: (e: unknown, attempt: number) => void; // telemetry hook
+  readonly gridContext?: {
+    readonly colSpan: number;
+    readonly rowSpan: number;
+    readonly containerWidth: number;
+    readonly geometry?: Partial<GridGeometry>;
+  };
 }
 
 export function HeavyBlockBoundary<P>({
   kind,
   dims,
+  gridContext,
   load,
   loadingText,
   errorText,
@@ -40,6 +53,21 @@ export function HeavyBlockBoundary<P>({
   childProps,
   onLoadError,
 }: HeavyBlockBoundaryProps<P>): ReactElement {
+  if (dims === undefined && gridContext === undefined) {
+    throw new Error('HeavyBlockBoundary requires either dims or gridContext');
+  }
+  const resolvedDims: HeavyBlockDimensions = dims ?? {
+    width: effectiveColWidth(
+      gridContext!.colSpan,
+      gridContext!.containerWidth,
+      gridContext!.geometry,
+    ),
+    height: effectiveCellHeight(
+      gridContext!.rowSpan,
+      gridContext!.geometry,
+    ),
+  };
+
   const [Component, setComponent] = useState<ComponentType<P> | null>(null);
   const [attempt, setAttempt] = useState<number>(1);
   const [error, setError] = useState<unknown>(null);
@@ -87,8 +115,8 @@ export function HeavyBlockBoundary<P>({
   };
 
   const skeletonStyle: CSSProperties = {
-    width: `${dims.width}px`,
-    minHeight: `${dims.height}px`,
+    width: `${resolvedDims.width}px`,
+    minHeight: `${resolvedDims.height}px`,
   };
 
   return (

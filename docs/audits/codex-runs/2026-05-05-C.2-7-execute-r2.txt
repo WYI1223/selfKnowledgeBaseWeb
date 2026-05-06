@@ -1,0 +1,2000 @@
+Reading prompt from stdin...
+OpenAI Codex v0.125.0 (research preview)
+--------
+workdir: /home/weiyi/selfKnowledgeBaseWeb
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: danger-full-access
+reasoning effort: xhigh
+reasoning summaries: none
+session id: 019dfb44-cc3e-7d92-ab83-382a712a5e97
+--------
+user
+You are the D1 stage-2 EXECUTOR for Wave 5 C.2-7 — ADR-0014 v0.5 amendment + HeavyBlockBoundary consume W5-1 公式 from `@skb/block-foundation`. **Round 2** dispatch (R1 stopped correctly per R14 discipline at the package-metadata blocker; orchestrator has now applied the metadata foundation; resume from Step 2).
+
+# R1 → R2 status (read first)
+
+R1 stopped at Step 3a imports check because `@skb/heavy-block-boundary` did NOT declare `@skb/block-foundation` as a dependency. **Orchestrator has now applied the metadata foundation** (extends whitelist 5 → 8 per scope refinement, NOT R14 reframe — see PR.md `## files` § scope-refinement evidence):
+
+- `packages/heavy-block-boundary/package.json` ALREADY MODIFIED — `@skb/block-foundation: workspace:*` added to `dependencies` (verify via `grep -n '@skb/block-foundation' packages/heavy-block-boundary/package.json`)
+- `packages/heavy-block-boundary/tsconfig.json` ALREADY MODIFIED — `{ "path": "../block-foundation" }` added to `references` (verify via `cat packages/heavy-block-boundary/tsconfig.json`)
+- `pnpm-lock.yaml` ALREADY MODIFIED via `pnpm install --filter @skb/heavy-block-boundary` (single `@skb/block-foundation: link:../block-foundation` entry added under `packages/heavy-block-boundary` importer block; verify via `git diff --stat pnpm-lock.yaml`)
+- Symlink ALREADY EXISTS — `packages/heavy-block-boundary/node_modules/@skb/block-foundation` points to `../../../block-foundation` (verify via `ls -la packages/heavy-block-boundary/node_modules/@skb/`)
+
+You can now safely `import { effectiveColWidth, effectiveCellHeight, type GridGeometry } from '@skb/block-foundation';` in HeavyBlockBoundary.tsx.
+
+# Updated whitelist (8 files)
+
+Original 5 (your impl scope) + 3 metadata foundation (orchestrator-applied; do NOT touch — already done):
+
+**Your impl scope (4 files; you write/modify these)**:
+1. `packages/heavy-block-boundary/src/HeavyBlockBoundary.tsx` (MODIFIED — Step 3 below)
+2. `packages/heavy-block-boundary/CONTRACT.md` (MODIFIED — Step 5 below)
+3. `apps/site/src/__tests__/e2e/c2-7-heavy-grid-dims.spec.ts` (NEW — Step 6 below)
+4. `packages/heavy-block-boundary/src/__tests__/HeavyBlockBoundary.v0.5.test.tsx` (NEW — Step 2 below; vitest sibling per ambiguity #2 resolution)
+
+**Orchestrator-owned (do NOT touch — already in place; staged at D1 stage 5 with your work)**:
+5. `docs/decisions/ADR-0014-heavy-block-boundary.md` (orchestrator-written; v0.5 Amendments § appended with NEW D12 + AC#17 + Forward-reference correction)
+6. `packages/heavy-block-boundary/package.json` (orchestrator-modified; dep added)
+7. `packages/heavy-block-boundary/tsconfig.json` (orchestrator-modified; reference added)
+8. `pnpm-lock.yaml` (orchestrator-regenerated; 3-line dep entry added)
+9. `docs/plans/wave-5-main/C.2-7-adr-0014-v0.5-amendment.md` (PR.md self; orchestrator-maintained)
+
+# Read the locked PR.md (now 8-file whitelist)
+
+`/home/weiyi/selfKnowledgeBaseWeb/docs/plans/wave-5-main/C.2-7-adr-0014-v0.5-amendment.md` — sections to attend to: `## files` (now 8 entries with `## scope-refinement evidence` block), `## test_cases`, `## acceptance` (15 ACs), `## ambiguity flagged` (both RESOLVED).
+
+# Step 2 — TDD-front: write vitest cases FIRST at NEW sibling file
+
+Write `packages/heavy-block-boundary/src/__tests__/HeavyBlockBoundary.v0.5.test.tsx` BEFORE touching impl. Cases (minimum 5):
+
+1. **gridContext-derived dims byte-equal**: render `<HeavyBlockBoundary kind='jupyter' gridContext={{ colSpan: 6, rowSpan: 4, containerWidth: 1200 }} load={...} childProps={{}} />`; assert outer container has `style="width:Xpx;min-height:Ypx"` where `X = effectiveColWidth(6, 1200)` and `Y = effectiveCellHeight(4)` (import directly from `@skb/block-foundation` and assert byte-equal).
+2. **gridContext only path** (no `dims`): same as case 1; verify width/height come from derivation, NOT NaN.
+3. **explicit dims wins**: render with both `dims={{ width: 999, height: 888 }}` AND `gridContext={{ colSpan: 6, rowSpan: 4, containerWidth: 1200 }}`; assert rendered style uses 999/888 (explicit wins).
+4. **throws on neither supplied**: assert `() => render(<HeavyBlockBoundary kind='jupyter' load={...} childProps={{}} />)` throws `'HeavyBlockBoundary requires either dims or gridContext'`.
+5. **dims still works v0.4-style** (regression): render with explicit `dims={{ width: 480, height: 360 }}`; assert v0.4 path renders correctly (backward compat).
+
+Use vitest + @testing-library/react + happy-dom (note: this package uses happy-dom NOT jsdom — see `packages/heavy-block-boundary/vitest.config.ts` and existing `__tests__/HeavyBlockBoundary.test.tsx` for setup pattern; mirror it). Mock `load` with `() => new Promise<{ default: any }>(() => {})` (never-resolving) to keep boundary in loading state.
+
+Run cases first → must FAIL (impl doesn't exist yet). Then proceed to Step 3.
+
+# Step 3 — Modify `packages/heavy-block-boundary/src/HeavyBlockBoundary.tsx`
+
+Per ADR-0014 v0.5 amendment (already landed by orchestrator at `docs/decisions/ADR-0014-heavy-block-boundary.md` § v0.5):
+
+3a. **Imports** (top of file): add
+```typescript
+import { effectiveColWidth, effectiveCellHeight, type GridGeometry } from '@skb/block-foundation';
+```
+This works now — block-foundation barrel re-exports grid-math. Symlink + tsconfig reference + lockfile all in place.
+
+3b. **Widen `HeavyBlockBoundaryProps<P>`** (interface declaration):
+- Change `readonly dims: HeavyBlockDimensions;` → `readonly dims?: HeavyBlockDimensions;`
+- Add NEW field at the end of the interface:
+```typescript
+  readonly gridContext?: {
+    readonly colSpan: number;
+    readonly rowSpan: number;
+    readonly containerWidth: number;
+    readonly geometry?: Partial<GridGeometry>;
+  };
+```
+
+NOTE: project tsconfig has `exactOptionalPropertyTypes: true`; the `readonly dims?: HeavyBlockDimensions` with `?` makes the field genuinely optional (vs `HeavyBlockDimensions | undefined`). Same for `gridContext`. Test cases must NOT pass `dims: undefined` explicitly — instead omit the prop entirely.
+
+3c. **Function body — call-time precedence resolution** (BEFORE any `useState`/`useRef`):
+```typescript
+export function HeavyBlockBoundary<P>({
+  kind,
+  dims,
+  gridContext,
+  load,
+  // ... rest of props ...
+}: HeavyBlockBoundaryProps<P>): ReactElement {
+  // v0.5 D12 dims-derivation precedence (call-time, NOT useEffect):
+  if (dims === undefined && gridContext === undefined) {
+    throw new Error('HeavyBlockBoundary requires either dims or gridContext');
+  }
+  const resolvedDims: HeavyBlockDimensions = dims ?? {
+    width: effectiveColWidth(
+      gridContext!.colSpan,
+      gridContext!.containerWidth,
+      gridContext!.geometry,
+    ),
+    height: effectiveCellHeight(
+      gridContext!.rowSpan,
+      gridContext!.geometry,
+    ),
+  };
+  // ... continue with existing useState/useRef/useEffect using resolvedDims instead of dims ...
+}
+```
+
+Replace ALL existing in-body uses of `dims.width` / `dims.height` (typically in inline `style` for the skeleton container) with `resolvedDims.width` / `resolvedDims.height`.
+
+3d. **JSDoc file-head**: Add comment block citing ADR-0014 v0.5 (gridContext-derived dims path) + ADR-0016 D9 (W5-1 公式 single-authority delegation).
+
+3e. Verify file LOC stays under 300 (warn) / 500 (hard fail). Current 128 + ~40-70 delta = ~170-200; safe.
+
+# Step 4 — Run vitest
+
+```bash
+pnpm --filter @skb/heavy-block-boundary test
+```
+
+All v0.5 cases (5+) MUST pass green. Existing v0.4 cases in `HeavyBlockBoundary.test.tsx` MUST still pass (backward compat). If any fail, fix the impl (NOT the tests) until green.
+
+NOTE: existing `HeavyBlockBoundary.test.tsx` may have test cases that pass `dims` as a positional prop. Those should still work since `dims?` is just optional — explicit dims passing is unchanged. If TypeScript narrowing fails (`exactOptionalPropertyTypes` strict), report and STOP.
+
+# Step 5 — Modify `packages/heavy-block-boundary/CONTRACT.md`
+
+Sister-doc-sync per ADR-0016 §502 row 1 of 4. Two surgical edits:
+
+5a. **Public Surface section** — locate the `HeavyBlockBoundaryProps<P>` enumeration. Modify the existing `dims:` bullet to `dims?:` (now optional v0.5). After the `onLoadError?` bullet, append:
+
+```markdown
+- `gridContext?: { colSpan: number; rowSpan: number; containerWidth: number; geometry?: Partial<GridGeometry> }` (v0.5 NEW; W5-1 公式-derived dims path; consumes `effectiveColWidth` + `effectiveCellHeight` from `@skb/block-foundation`)
+```
+
+5b. **Invariants section** — after the existing `Plugin extensibility (A4; AC#13)` invariant, append:
+
+```markdown
+- **Dims-derivation precedence (v0.5; AC#17)**: when both `dims` and `gridContext` are supplied, `dims` wins (explicit beats derivation). When only `gridContext` is supplied, the boundary derives `width = effectiveColWidth(gridContext.colSpan, gridContext.containerWidth, gridContext.geometry)` + `height = effectiveCellHeight(gridContext.rowSpan, gridContext.geometry)` via single-authority delegation to `@skb/block-foundation` (NO local re-implementation of W5-1 公式 per ADR-0006 class 4 single-authority + memory `feedback_cross_package_consumer_pattern`). When neither is supplied, the function throws `Error('HeavyBlockBoundary requires either dims or gridContext')` at call time (BEFORE useState), surfacing mis-wiring fast in dev/prod equally. Per ADR-0014 v0.5 D12.
+```
+
+5c. (Recommended) Append a tail "Cross-package authority" sub-section citing W5-1 公式 single authority at `@skb/block-foundation/src/grid-math.ts` per ADR-0016 D9 + ADR-0014 D12 (v0.5).
+
+Keep CONTRACT.md under 300 LOC (current 63 + ~15-25 delta = ~80-90).
+
+# Step 6 — Write `apps/site/src/__tests__/e2e/c2-7-heavy-grid-dims.spec.ts`
+
+Per ADR-0011 D9.3 v0.2 + Wave 5 plan v1.3 retrofit catalog (lines 553-560 verbatim):
+
+- **Spec name**: `"plugin placeholder consumes grid effectiveColWidth/effectiveCellHeight"`
+- **Target URL**: `/sample-blocks`
+- **Screenshot archive**: `docs/audits/screenshots/wave-5-c2-7-heavy-grid-dims.png` (≥ 5 KB at ACCEPT)
+
+Spec template (~80 LOC) — adjust selectors based on actual `/sample-blocks` DOM:
+
+```typescript
+import { test, expect } from '@playwright/test';
+import { existsSync, mkdirSync } from 'node:fs';
+import { dirname } from 'node:path';
+
+test.describe('C.2-7 heavy block plugin placeholder grid dimensions', () => {
+  test.skip(
+    Boolean(process.env.WSL_DISTRO_NAME),
+    'WSL2 missing libnss3/libdbus/libatk/libcups; CI-only execution per Wave 3 D5 memory.',
+  );
+
+  test('plugin placeholder consumes grid effectiveColWidth/effectiveCellHeight', async ({ page }) => {
+    await page.goto('/sample-blocks');
+
+    const heavy = page.locator('[data-block="jupyter"], [data-block="nn-viz"], [data-block="agent-flow"]').first();
+    await expect(heavy).toBeVisible({ timeout: 10_000 });
+
+    const styleAttr = await heavy.getAttribute('style');
+    expect(styleAttr ?? '').not.toMatch(/NaN/);
+    expect(styleAttr ?? '').toMatch(/width:\s*\d+(?:\.\d+)?px/);
+    expect(styleAttr ?? '').toMatch(/min-height:\s*\d+(?:\.\d+)?px/);
+
+    const heavyBox = await heavy.boundingBox();
+    expect(heavyBox).not.toBeNull();
+    expect(heavyBox!.width).toBeGreaterThan(0);
+    expect(heavyBox!.height).toBeGreaterThan(0);
+    expect(Number.isFinite(heavyBox!.width)).toBe(true);
+    expect(Number.isFinite(heavyBox!.height)).toBe(true);
+
+    const light = page.locator('[data-block="callout"], [data-block="code"], [data-block="image"]').first();
+    if ((await light.count()) > 0 && (await light.isVisible())) {
+      const lightBox = await light.boundingBox();
+      if (lightBox) {
+        expect(heavyBox!.width).toBeLessThanOrEqual(lightBox.width * 4);
+      }
+    }
+
+    const archivePath = 'docs/audits/screenshots/wave-5-c2-7-heavy-grid-dims.png';
+    if (!existsSync(dirname(archivePath))) {
+      mkdirSync(dirname(archivePath), { recursive: true });
+    }
+    await page.screenshot({ path: archivePath, fullPage: false });
+  });
+});
+```
+
+Verify `data-block` attribute pattern by `grep -rn 'data-block=' apps/site/src/` first; adjust selectors to match actual DOM emission (likely already works since v0.4 boundary emits `data-block={kind}` — see `HeavyBlockBoundary.tsx` lines ~80+).
+
+# Step 7 — Run lint + typecheck + test + build (full validation per WE-007)
+
+```bash
+pnpm --filter @skb/heavy-block-boundary lint
+pnpm --filter @skb/heavy-block-boundary typecheck
+pnpm --filter @skb/heavy-block-boundary test
+pnpm --filter @skb/heavy-block-boundary build
+```
+
+All four MUST be clean. Memory `feedback_codex_spark_lint_gap`: must explicitly run `pnpm lint`.
+
+Also run downstream check to confirm no consumer regression:
+```bash
+pnpm --filter @skb/site typecheck
+```
+
+# Step 8 — UI-touch Playwright smoke (best-effort)
+
+Per ADR-0011 D9.3, attempt `pnpm --filter @skb/site test:visual` if the script exists. WSL2 chromium launch may fail; if so, skip locally + note in summary. CI executes.
+
+# Step 9 — Final summary to orchestrator
+
+Report (in your final stdout):
+1. Files modified/created (4 in your scope) with line counts
+2. vitest result for `@skb/heavy-block-boundary`: PASS count + failure list (should be 0 failures)
+3. lint + typecheck + build clean status
+4. apps/site typecheck downstream check status (no consumer regression)
+5. Playwright local result (likely WSL2 skip)
+6. Any AC that you couldn't self-verify (orchestrator runs at stage 4 + 6)
+7. Any issue requiring orchestrator follow-up
+
+You do NOT call other codex tools. You do NOT git mutate. If you find PR.md error → include in final summary, do NOT silently fix.
+
+codex
+I’m using the Superpowers workflow skills required for this turn: baseline skill routing, TDD for the behavior change, planning from the locked PR, and verification before completion. I’ll read only the relevant instructions, then work within the four executor-owned files.
+exec
+/bin/bash -lc "sed -n '1,220p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/82fd64bc/skills/using-superpowers/SKILL.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+---
+name: using-superpowers
+description: Use when starting any conversation - establishes how to find and use skills, requiring Skill tool invocation before ANY response including clarifying questions
+---
+
+<SUBAGENT-STOP>
+If you were dispatched as a subagent to execute a specific task, skip this skill.
+</SUBAGENT-STOP>
+
+<EXTREMELY-IMPORTANT>
+If you think there is even a 1% chance a skill might apply to what you are doing, you ABSOLUTELY MUST invoke the skill.
+
+IF A SKILL APPLIES TO YOUR TASK, YOU DO NOT HAVE A CHOICE. YOU MUST USE IT.
+
+This is not negotiable. This is not optional. You cannot rationalize your way out of this.
+</EXTREMELY-IMPORTANT>
+
+## Instruction Priority
+
+Superpowers skills override default system prompt behavior, but **user instructions always take precedence**:
+
+1. **User's explicit instructions** (AGENTS.md, GEMINI.md, direct requests) — highest priority
+2. **Superpowers skills** — override default system behavior where they conflict
+3. **Default system prompt** — lowest priority
+
+If AGENTS.md or GEMINI.md says "don't use TDD" and a skill says "always use TDD," follow the user's instructions. The user is in control.
+
+## How to Access Skills
+
+**In Codex:** Use the `Skill` tool. When you invoke a skill, its content is loaded and presented to you—follow it directly. Never use the Read tool on skill files.
+
+**In Copilot CLI:** Use the `skill` tool. Skills are auto-discovered from installed plugins. The `skill` tool works the same as Codex's `Skill` tool.
+
+**In Gemini CLI:** Skills activate via the `activate_skill` tool. Gemini loads skill metadata at session start and activates the full content on demand.
+
+**In other environments:** Check your platform's documentation for how skills are loaded.
+
+## Platform Adaptation
+
+Skills may mention tool names that vary by runtime. Other platforms: see `references/copilot-tools.md` (Copilot CLI), `references/codex-tools.md` (Codex) for tool equivalents. Gemini CLI users get the tool mapping loaded automatically via GEMINI.md.
+
+# Using Skills
+
+## The Rule
+
+**Invoke relevant or requested skills BEFORE any response or action.** Even a 1% chance a skill might apply means that you should invoke the skill to check. If an invoked skill turns out to be wrong for the situation, you don't need to use it.
+
+```dot
+digraph skill_flow {
+    "User message received" [shape=doublecircle];
+    "About to EnterPlanMode?" [shape=doublecircle];
+    "Already brainstormed?" [shape=diamond];
+    "Invoke brainstorming skill" [shape=box];
+    "Might any skill apply?" [shape=diamond];
+    "Invoke Skill tool" [shape=box];
+    "Announce: 'Using [skill] to [purpose]'" [shape=box];
+    "Has checklist?" [shape=diamond];
+    "Create TodoWrite todo per item" [shape=box];
+    "Follow skill exactly" [shape=box];
+    "Respond (including clarifications)" [shape=doublecircle];
+
+    "About to EnterPlanMode?" -> "Already brainstormed?";
+    "Already brainstormed?" -> "Invoke brainstorming skill" [label="no"];
+    "Already brainstormed?" -> "Might any skill apply?" [label="yes"];
+    "Invoke brainstorming skill" -> "Might any skill apply?";
+
+    "User message received" -> "Might any skill apply?";
+    "Might any skill apply?" -> "Invoke Skill tool" [label="yes, even 1%"];
+    "Might any skill apply?" -> "Respond (including clarifications)" [label="definitely not"];
+    "Invoke Skill tool" -> "Announce: 'Using [skill] to [purpose]'";
+    "Announce: 'Using [skill] to [purpose]'" -> "Has checklist?";
+    "Has checklist?" -> "Create TodoWrite todo per item" [label="yes"];
+    "Has checklist?" -> "Follow skill exactly" [label="no"];
+    "Create TodoWrite todo per item" -> "Follow skill exactly";
+}
+```
+
+## Red Flags
+
+These thoughts mean STOP—you're rationalizing:
+
+| Thought | Reality |
+|---------|---------|
+| "This is just a simple question" | Questions are tasks. Check for skills. |
+| "I need more context first" | Skill check comes BEFORE clarifying questions. |
+| "Let me explore the codebase first" | Skills tell you HOW to explore. Check first. |
+| "I can check git/files quickly" | Files lack conversation context. Check for skills. |
+| "Let me gather information first" | Skills tell you HOW to gather information. |
+| "This doesn't need a formal skill" | If a skill exists, use it. |
+| "I remember this skill" | Skills evolve. Read current version. |
+| "This doesn't count as a task" | Action = task. Check for skills. |
+| "The skill is overkill" | Simple things become complex. Use it. |
+| "I'll just do this one thing first" | Check BEFORE doing anything. |
+| "This feels productive" | Undisciplined action wastes time. Skills prevent this. |
+| "I know what that means" | Knowing the concept ≠ using the skill. Invoke it. |
+
+## Skill Priority
+
+When multiple skills could apply, use this order:
+
+1. **Process skills first** (brainstorming, debugging) - these determine HOW to approach the task
+2. **Implementation skills second** (frontend-design, mcp-builder) - these guide execution
+
+"Let's build X" → brainstorming first, then implementation skills.
+"Fix this bug" → debugging first, then domain-specific skills.
+
+## Skill Types
+
+**Rigid** (TDD, debugging): Follow exactly. Don't adapt away discipline.
+
+**Flexible** (patterns): Adapt principles to context.
+
+The skill itself tells you which.
+
+## User Instructions
+
+Instructions say WHAT, not HOW. "Add X" or "Fix Y" doesn't mean skip workflows.
+
+exec
+/bin/bash -lc "sed -n '1,220p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/82fd64bc/skills/test-driven-development/SKILL.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+---
+name: test-driven-development
+description: Use when implementing any feature or bugfix, before writing implementation code
+---
+
+# Test-Driven Development (TDD)
+
+## Overview
+
+Write the test first. Watch it fail. Write minimal code to pass.
+
+**Core principle:** If you didn't watch the test fail, you don't know if it tests the right thing.
+
+**Violating the letter of the rules is violating the spirit of the rules.**
+
+## When to Use
+
+**Always:**
+- New features
+- Bug fixes
+- Refactoring
+- Behavior changes
+
+**Exceptions (ask your human partner):**
+- Throwaway prototypes
+- Generated code
+- Configuration files
+
+Thinking "skip TDD just this once"? Stop. That's rationalization.
+
+## The Iron Law
+
+```
+NO PRODUCTION CODE WITHOUT A FAILING TEST FIRST
+```
+
+Write code before the test? Delete it. Start over.
+
+**No exceptions:**
+- Don't keep it as "reference"
+- Don't "adapt" it while writing tests
+- Don't look at it
+- Delete means delete
+
+Implement fresh from tests. Period.
+
+## Red-Green-Refactor
+
+```dot
+digraph tdd_cycle {
+    rankdir=LR;
+    red [label="RED\nWrite failing test", shape=box, style=filled, fillcolor="#ffcccc"];
+    verify_red [label="Verify fails\ncorrectly", shape=diamond];
+    green [label="GREEN\nMinimal code", shape=box, style=filled, fillcolor="#ccffcc"];
+    verify_green [label="Verify passes\nAll green", shape=diamond];
+    refactor [label="REFACTOR\nClean up", shape=box, style=filled, fillcolor="#ccccff"];
+    next [label="Next", shape=ellipse];
+
+    red -> verify_red;
+    verify_red -> green [label="yes"];
+    verify_red -> red [label="wrong\nfailure"];
+    green -> verify_green;
+    verify_green -> refactor [label="yes"];
+    verify_green -> green [label="no"];
+    refactor -> verify_green [label="stay\ngreen"];
+    verify_green -> next;
+    next -> red;
+}
+```
+
+### RED - Write Failing Test
+
+Write one minimal test showing what should happen.
+
+<Good>
+```typescript
+test('retries failed operations 3 times', async () => {
+  let attempts = 0;
+  const operation = () => {
+    attempts++;
+    if (attempts < 3) throw new Error('fail');
+    return 'success';
+  };
+
+  const result = await retryOperation(operation);
+
+  expect(result).toBe('success');
+  expect(attempts).toBe(3);
+});
+```
+Clear name, tests real behavior, one thing
+</Good>
+
+<Bad>
+```typescript
+test('retry works', async () => {
+  const mock = jest.fn()
+    .mockRejectedValueOnce(new Error())
+    .mockRejectedValueOnce(new Error())
+    .mockResolvedValueOnce('success');
+  await retryOperation(mock);
+  expect(mock).toHaveBeenCalledTimes(3);
+});
+```
+Vague name, tests mock not code
+</Bad>
+
+**Requirements:**
+- One behavior
+- Clear name
+- Real code (no mocks unless unavoidable)
+
+### Verify RED - Watch It Fail
+
+**MANDATORY. Never skip.**
+
+```bash
+npm test path/to/test.test.ts
+```
+
+Confirm:
+- Test fails (not errors)
+- Failure message is expected
+- Fails because feature missing (not typos)
+
+**Test passes?** You're testing existing behavior. Fix test.
+
+**Test errors?** Fix error, re-run until it fails correctly.
+
+### GREEN - Minimal Code
+
+Write simplest code to pass the test.
+
+<Good>
+```typescript
+async function retryOperation<T>(fn: () => Promise<T>): Promise<T> {
+  for (let i = 0; i < 3; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      if (i === 2) throw e;
+    }
+  }
+  throw new Error('unreachable');
+}
+```
+Just enough to pass
+</Good>
+
+<Bad>
+```typescript
+async function retryOperation<T>(
+  fn: () => Promise<T>,
+  options?: {
+    maxRetries?: number;
+    backoff?: 'linear' | 'exponential';
+    onRetry?: (attempt: number) => void;
+  }
+): Promise<T> {
+  // YAGNI
+}
+```
+Over-engineered
+</Bad>
+
+Don't add features, refactor other code, or "improve" beyond the test.
+
+### Verify GREEN - Watch It Pass
+
+**MANDATORY.**
+
+```bash
+npm test path/to/test.test.ts
+```
+
+Confirm:
+- Test passes
+- Other tests still pass
+- Output pristine (no errors, warnings)
+
+**Test fails?** Fix code, not test.
+
+**Other tests fail?** Fix now.
+
+### REFACTOR - Clean Up
+
+After green only:
+- Remove duplication
+- Improve names
+- Extract helpers
+
+Keep tests green. Don't add behavior.
+
+### Repeat
+
+Next failing test for next feature.
+
+## Good Tests
+
+| Quality | Good | Bad |
+|---------|------|-----|
+| **Minimal** | One thing. "and" in name? Split it. | `test('validates email and domain and whitespace')` |
+| **Clear** | Name describes behavior | `test('test1')` |
+| **Shows intent** | Demonstrates desired API | Obscures what code should do |
+
+## Why Order Matters
+
+**"I'll write tests after to verify it works"**
+
+Tests written after code pass immediately. Passing immediately proves nothing:
+- Might test wrong thing
+- Might test implementation, not behavior
+- Might miss edge cases you forgot
+- You never saw it catch the bug
+
+Test-first forces you to see the test fail, proving it actually tests something.
+
+**"I already manually tested all the edge cases"**
+
+Manual testing is ad-hoc. You think you tested everything but:
+
+exec
+/bin/bash -lc "sed -n '1,220p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/82fd64bc/skills/writing-plans/SKILL.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+---
+name: writing-plans
+description: Use when you have a spec or requirements for a multi-step task, before touching code
+---
+
+# Writing Plans
+
+## Overview
+
+Write comprehensive implementation plans assuming the engineer has zero context for our codebase and questionable taste. Document everything they need to know: which files to touch for each task, code, testing, docs they might need to check, how to test it. Give them the whole plan as bite-sized tasks. DRY. YAGNI. TDD. Frequent commits.
+
+Assume they are a skilled developer, but know almost nothing about our toolset or problem domain. Assume they don't know good test design very well.
+
+**Announce at start:** "I'm using the writing-plans skill to create the implementation plan."
+
+**Context:** This should be run in a dedicated worktree (created by brainstorming skill).
+
+**Save plans to:** `docs/superpowers/plans/YYYY-MM-DD-<feature-name>.md`
+- (User preferences for plan location override this default)
+
+## Scope Check
+
+If the spec covers multiple independent subsystems, it should have been broken into sub-project specs during brainstorming. If it wasn't, suggest breaking this into separate plans — one per subsystem. Each plan should produce working, testable software on its own.
+
+## File Structure
+
+Before defining tasks, map out which files will be created or modified and what each one is responsible for. This is where decomposition decisions get locked in.
+
+- Design units with clear boundaries and well-defined interfaces. Each file should have one clear responsibility.
+- You reason best about code you can hold in context at once, and your edits are more reliable when files are focused. Prefer smaller, focused files over large ones that do too much.
+- Files that change together should live together. Split by responsibility, not by technical layer.
+- In existing codebases, follow established patterns. If the codebase uses large files, don't unilaterally restructure - but if a file you're modifying has grown unwieldy, including a split in the plan is reasonable.
+
+This structure informs the task decomposition. Each task should produce self-contained changes that make sense independently.
+
+## Bite-Sized Task Granularity
+
+**Each step is one action (2-5 minutes):**
+- "Write the failing test" - step
+- "Run it to make sure it fails" - step
+- "Implement the minimal code to make the test pass" - step
+- "Run the tests and make sure they pass" - step
+- "Commit" - step
+
+## Plan Document Header
+
+**Every plan MUST start with this header:**
+
+```markdown
+# [Feature Name] Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** [One sentence describing what this builds]
+
+**Architecture:** [2-3 sentences about approach]
+
+**Tech Stack:** [Key technologies/libraries]
+
+---
+```
+
+## Task Structure
+
+````markdown
+### Task N: [Component Name]
+
+**Files:**
+- Create: `exact/path/to/file.py`
+- Modify: `exact/path/to/existing.py:123-145`
+- Test: `tests/exact/path/to/test.py`
+
+- [ ] **Step 1: Write the failing test**
+
+```python
+def test_specific_behavior():
+    result = function(input)
+    assert result == expected
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `pytest tests/path/test.py::test_name -v`
+Expected: FAIL with "function not defined"
+
+- [ ] **Step 3: Write minimal implementation**
+
+```python
+def function(input):
+    return expected
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `pytest tests/path/test.py::test_name -v`
+Expected: PASS
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add tests/path/test.py src/path/file.py
+git commit -m "feat: add specific feature"
+```
+````
+
+## No Placeholders
+
+Every step must contain the actual content an engineer needs. These are **plan failures** — never write them:
+- "TBD", "TODO", "implement later", "fill in details"
+- "Add appropriate error handling" / "add validation" / "handle edge cases"
+- "Write tests for the above" (without actual test code)
+- "Similar to Task N" (repeat the code — the engineer may be reading tasks out of order)
+- Steps that describe what to do without showing how (code blocks required for code steps)
+- References to types, functions, or methods not defined in any task
+
+## Remember
+- Exact file paths always
+- Complete code in every step — if a step changes code, show the code
+- Exact commands with expected output
+- DRY, YAGNI, TDD, frequent commits
+
+## Self-Review
+
+After writing the complete plan, look at the spec with fresh eyes and check the plan against it. This is a checklist you run yourself — not a subagent dispatch.
+
+**1. Spec coverage:** Skim each section/requirement in the spec. Can you point to a task that implements it? List any gaps.
+
+**2. Placeholder scan:** Search your plan for red flags — any of the patterns from the "No Placeholders" section above. Fix them.
+
+**3. Type consistency:** Do the types, method signatures, and property names you used in later tasks match what you defined in earlier tasks? A function called `clearLayers()` in Task 3 but `clearFullLayers()` in Task 7 is a bug.
+
+If you find issues, fix them inline. No need to re-review — just fix and move on. If you find a spec requirement with no task, add the task.
+
+## Execution Handoff
+
+After saving the plan, offer execution choice:
+
+**"Plan complete and saved to `docs/superpowers/plans/<filename>.md`. Two execution options:**
+
+**1. Subagent-Driven (recommended)** - I dispatch a fresh subagent per task, review between tasks, fast iteration
+
+**2. Inline Execution** - Execute tasks in this session using executing-plans, batch execution with checkpoints
+
+**Which approach?"**
+
+**If Subagent-Driven chosen:**
+- **REQUIRED SUB-SKILL:** Use superpowers:subagent-driven-development
+- Fresh subagent per task + two-stage review
+
+**If Inline Execution chosen:**
+- **REQUIRED SUB-SKILL:** Use superpowers:executing-plans
+- Batch execution with checkpoints for review
+
+exec
+/bin/bash -lc "sed -n '1,220p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/82fd64bc/skills/verification-before-completion/SKILL.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+---
+name: verification-before-completion
+description: Use when about to claim work is complete, fixed, or passing, before committing or creating PRs - requires running verification commands and confirming output before making any success claims; evidence before assertions always
+---
+
+# Verification Before Completion
+
+## Overview
+
+Claiming work is complete without verification is dishonesty, not efficiency.
+
+**Core principle:** Evidence before claims, always.
+
+**Violating the letter of this rule is violating the spirit of this rule.**
+
+## The Iron Law
+
+```
+NO COMPLETION CLAIMS WITHOUT FRESH VERIFICATION EVIDENCE
+```
+
+If you haven't run the verification command in this message, you cannot claim it passes.
+
+## The Gate Function
+
+```
+BEFORE claiming any status or expressing satisfaction:
+
+1. IDENTIFY: What command proves this claim?
+2. RUN: Execute the FULL command (fresh, complete)
+3. READ: Full output, check exit code, count failures
+4. VERIFY: Does output confirm the claim?
+   - If NO: State actual status with evidence
+   - If YES: State claim WITH evidence
+5. ONLY THEN: Make the claim
+
+Skip any step = lying, not verifying
+```
+
+## Common Failures
+
+| Claim | Requires | Not Sufficient |
+|-------|----------|----------------|
+| Tests pass | Test command output: 0 failures | Previous run, "should pass" |
+| Linter clean | Linter output: 0 errors | Partial check, extrapolation |
+| Build succeeds | Build command: exit 0 | Linter passing, logs look good |
+| Bug fixed | Test original symptom: passes | Code changed, assumed fixed |
+| Regression test works | Red-green cycle verified | Test passes once |
+| Agent completed | VCS diff shows changes | Agent reports "success" |
+| Requirements met | Line-by-line checklist | Tests passing |
+
+## Red Flags - STOP
+
+- Using "should", "probably", "seems to"
+- Expressing satisfaction before verification ("Great!", "Perfect!", "Done!", etc.)
+- About to commit/push/PR without verification
+- Trusting agent success reports
+- Relying on partial verification
+- Thinking "just this once"
+- Tired and wanting work over
+- **ANY wording implying success without having run verification**
+
+## Rationalization Prevention
+
+| Excuse | Reality |
+|--------|---------|
+| "Should work now" | RUN the verification |
+| "I'm confident" | Confidence ≠ evidence |
+| "Just this once" | No exceptions |
+| "Linter passed" | Linter ≠ compiler |
+| "Agent said success" | Verify independently |
+| "I'm tired" | Exhaustion ≠ excuse |
+| "Partial check is enough" | Partial proves nothing |
+| "Different words so rule doesn't apply" | Spirit over letter |
+
+## Key Patterns
+
+**Tests:**
+```
+✅ [Run test command] [See: 34/34 pass] "All tests pass"
+❌ "Should pass now" / "Looks correct"
+```
+
+**Regression tests (TDD Red-Green):**
+```
+✅ Write → Run (pass) → Revert fix → Run (MUST FAIL) → Restore → Run (pass)
+❌ "I've written a regression test" (without red-green verification)
+```
+
+**Build:**
+```
+✅ [Run build] [See: exit 0] "Build passes"
+❌ "Linter passed" (linter doesn't check compilation)
+```
+
+**Requirements:**
+```
+✅ Re-read plan → Create checklist → Verify each → Report gaps or completion
+❌ "Tests pass, phase complete"
+```
+
+**Agent delegation:**
+```
+✅ Agent reports success → Check VCS diff → Verify changes → Report actual state
+❌ Trust agent report
+```
+
+## Why This Matters
+
+From 24 failure memories:
+- your human partner said "I don't believe you" - trust broken
+- Undefined functions shipped - would crash
+- Missing requirements shipped - incomplete features
+- Time wasted on false completion → redirect → rework
+- Violates: "Honesty is a core value. If you lie, you'll be replaced."
+
+## When To Apply
+
+**ALWAYS before:**
+- ANY variation of success/completion claims
+- ANY expression of satisfaction
+- ANY positive statement about work state
+- Committing, PR creation, task completion
+- Moving to next task
+- Delegating to agents
+
+**Rule applies to:**
+- Exact phrases
+- Paraphrases and synonyms
+- Implications of success
+- ANY communication suggesting completion/correctness
+
+## The Bottom Line
+
+**No shortcuts for verification.**
+
+Run the command. Read the output. THEN claim the result.
+
+This is non-negotiable.
+
+codex
+The locked request already contains the execution plan, so I’m not going to create a separate plan document. I’m doing a brief plan/intent check against the existing PR.md, then following the user’s ordered TDD steps.
+exec
+/bin/bash -lc "sed -n '1,220p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/82fd64bc/skills/brainstorming/SKILL.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+---
+name: brainstorming
+description: "You MUST use this before any creative work - creating features, building components, adding functionality, or modifying behavior. Explores user intent, requirements and design before implementation."
+---
+
+# Brainstorming Ideas Into Designs
+
+Help turn ideas into fully formed designs and specs through natural collaborative dialogue.
+
+Start by understanding the current project context, then ask questions one at a time to refine the idea. Once you understand what you're building, present the design and get user approval.
+
+<HARD-GATE>
+Do NOT invoke any implementation skill, write any code, scaffold any project, or take any implementation action until you have presented a design and the user has approved it. This applies to EVERY project regardless of perceived simplicity.
+</HARD-GATE>
+
+## Anti-Pattern: "This Is Too Simple To Need A Design"
+
+Every project goes through this process. A todo list, a single-function utility, a config change — all of them. "Simple" projects are where unexamined assumptions cause the most wasted work. The design can be short (a few sentences for truly simple projects), but you MUST present it and get approval.
+
+## Checklist
+
+You MUST create a task for each of these items and complete them in order:
+
+1. **Explore project context** — check files, docs, recent commits
+2. **Offer visual companion** (if topic will involve visual questions) — this is its own message, not combined with a clarifying question. See the Visual Companion section below.
+3. **Ask clarifying questions** — one at a time, understand purpose/constraints/success criteria
+4. **Propose 2-3 approaches** — with trade-offs and your recommendation
+5. **Present design** — in sections scaled to their complexity, get user approval after each section
+6. **Write design doc** — save to `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md` and commit
+7. **Spec self-review** — quick inline check for placeholders, contradictions, ambiguity, scope (see below)
+8. **User reviews written spec** — ask user to review the spec file before proceeding
+9. **Transition to implementation** — invoke writing-plans skill to create implementation plan
+
+## Process Flow
+
+```dot
+digraph brainstorming {
+    "Explore project context" [shape=box];
+    "Visual questions ahead?" [shape=diamond];
+    "Offer Visual Companion\n(own message, no other content)" [shape=box];
+    "Ask clarifying questions" [shape=box];
+    "Propose 2-3 approaches" [shape=box];
+    "Present design sections" [shape=box];
+    "User approves design?" [shape=diamond];
+    "Write design doc" [shape=box];
+    "Spec self-review\n(fix inline)" [shape=box];
+    "User reviews spec?" [shape=diamond];
+    "Invoke writing-plans skill" [shape=doublecircle];
+
+    "Explore project context" -> "Visual questions ahead?";
+    "Visual questions ahead?" -> "Offer Visual Companion\n(own message, no other content)" [label="yes"];
+    "Visual questions ahead?" -> "Ask clarifying questions" [label="no"];
+    "Offer Visual Companion\n(own message, no other content)" -> "Ask clarifying questions";
+    "Ask clarifying questions" -> "Propose 2-3 approaches";
+    "Propose 2-3 approaches" -> "Present design sections";
+    "Present design sections" -> "User approves design?";
+    "User approves design?" -> "Present design sections" [label="no, revise"];
+    "User approves design?" -> "Write design doc" [label="yes"];
+    "Write design doc" -> "Spec self-review\n(fix inline)";
+    "Spec self-review\n(fix inline)" -> "User reviews spec?";
+    "User reviews spec?" -> "Write design doc" [label="changes requested"];
+    "User reviews spec?" -> "Invoke writing-plans skill" [label="approved"];
+}
+```
+
+**The terminal state is invoking writing-plans.** Do NOT invoke frontend-design, mcp-builder, or any other implementation skill. The ONLY skill you invoke after brainstorming is writing-plans.
+
+## The Process
+
+**Understanding the idea:**
+
+- Check out the current project state first (files, docs, recent commits)
+- Before asking detailed questions, assess scope: if the request describes multiple independent subsystems (e.g., "build a platform with chat, file storage, billing, and analytics"), flag this immediately. Don't spend questions refining details of a project that needs to be decomposed first.
+- If the project is too large for a single spec, help the user decompose into sub-projects: what are the independent pieces, how do they relate, what order should they be built? Then brainstorm the first sub-project through the normal design flow. Each sub-project gets its own spec → plan → implementation cycle.
+- For appropriately-scoped projects, ask questions one at a time to refine the idea
+- Prefer multiple choice questions when possible, but open-ended is fine too
+- Only one question per message - if a topic needs more exploration, break it into multiple questions
+- Focus on understanding: purpose, constraints, success criteria
+
+**Exploring approaches:**
+
+- Propose 2-3 different approaches with trade-offs
+- Present options conversationally with your recommendation and reasoning
+- Lead with your recommended option and explain why
+
+**Presenting the design:**
+
+- Once you believe you understand what you're building, present the design
+- Scale each section to its complexity: a few sentences if straightforward, up to 200-300 words if nuanced
+- Ask after each section whether it looks right so far
+- Cover: architecture, components, data flow, error handling, testing
+- Be ready to go back and clarify if something doesn't make sense
+
+**Design for isolation and clarity:**
+
+- Break the system into smaller units that each have one clear purpose, communicate through well-defined interfaces, and can be understood and tested independently
+- For each unit, you should be able to answer: what does it do, how do you use it, and what does it depend on?
+- Can someone understand what a unit does without reading its internals? Can you change the internals without breaking consumers? If not, the boundaries need work.
+- Smaller, well-bounded units are also easier for you to work with - you reason better about code you can hold in context at once, and your edits are more reliable when files are focused. When a file grows large, that's often a signal that it's doing too much.
+
+**Working in existing codebases:**
+
+- Explore the current structure before proposing changes. Follow existing patterns.
+- Where existing code has problems that affect the work (e.g., a file that's grown too large, unclear boundaries, tangled responsibilities), include targeted improvements as part of the design - the way a good developer improves code they're working in.
+- Don't propose unrelated refactoring. Stay focused on what serves the current goal.
+
+## After the Design
+
+**Documentation:**
+
+- Write the validated design (spec) to `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md`
+  - (User preferences for spec location override this default)
+- Use elements-of-style:writing-clearly-and-concisely skill if available
+- Commit the design document to git
+
+**Spec Self-Review:**
+After writing the spec document, look at it with fresh eyes:
+
+1. **Placeholder scan:** Any "TBD", "TODO", incomplete sections, or vague requirements? Fix them.
+2. **Internal consistency:** Do any sections contradict each other? Does the architecture match the feature descriptions?
+3. **Scope check:** Is this focused enough for a single implementation plan, or does it need decomposition?
+4. **Ambiguity check:** Could any requirement be interpreted two different ways? If so, pick one and make it explicit.
+
+Fix any issues inline. No need to re-review — just fix and move on.
+
+**User Review Gate:**
+After the spec review loop passes, ask the user to review the written spec before proceeding:
+
+> "Spec written and committed to `<path>`. Please review it and let me know if you want to make any changes before we start writing out the implementation plan."
+
+Wait for the user's response. If they request changes, make them and re-run the spec review loop. Only proceed once the user approves.
+
+**Implementation:**
+
+- Invoke the writing-plans skill to create a detailed implementation plan
+- Do NOT invoke any other skill. writing-plans is the next step.
+
+## Key Principles
+
+- **One question at a time** - Don't overwhelm with multiple questions
+- **Multiple choice preferred** - Easier to answer than open-ended when possible
+- **YAGNI ruthlessly** - Remove unnecessary features from all designs
+- **Explore alternatives** - Always propose 2-3 approaches before settling
+- **Incremental validation** - Present design, get approval before moving on
+- **Be flexible** - Go back and clarify when something doesn't make sense
+
+## Visual Companion
+
+A browser-based companion for showing mockups, diagrams, and visual options during brainstorming. Available as a tool — not a mode. Accepting the companion means it's available for questions that benefit from visual treatment; it does NOT mean every question goes through the browser.
+
+**Offering the companion:** When you anticipate that upcoming questions will involve visual content (mockups, layouts, diagrams), offer it once for consent:
+> "Some of what we're working on might be easier to explain if I can show it to you in a web browser. I can put together mockups, diagrams, comparisons, and other visuals as we go. This feature is still new and can be token-intensive. Want to try it? (Requires opening a local URL)"
+
+**This offer MUST be its own message.** Do not combine it with clarifying questions, context summaries, or any other content. The message should contain ONLY the offer above and nothing else. Wait for the user's response before continuing. If they decline, proceed with text-only brainstorming.
+
+**Per-question decision:** Even after the user accepts, decide FOR EACH QUESTION whether to use the browser or the terminal. The test: **would the user understand this better by seeing it than reading it?**
+
+- **Use the browser** for content that IS visual — mockups, wireframes, layout comparisons, architecture diagrams, side-by-side visual designs
+- **Use the terminal** for content that is text — requirements questions, conceptual choices, tradeoff lists, A/B/C/D text options, scope decisions
+
+A question about a UI topic is not automatically a visual question. "What does personality mean in this context?" is a conceptual question — use the terminal. "Which wizard layout works better?" is a visual question — use the browser.
+
+If they agree to the companion, read the detailed guide before proceeding:
+`skills/brainstorming/visual-companion.md`
+
+exec
+/bin/bash -lc "sed -n '1,220p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/82fd64bc/skills/executing-plans/SKILL.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+---
+name: executing-plans
+description: Use when you have a written implementation plan to execute in a separate session with review checkpoints
+---
+
+# Executing Plans
+
+## Overview
+
+Load plan, review critically, execute all tasks, report when complete.
+
+**Announce at start:** "I'm using the executing-plans skill to implement this plan."
+
+**Note:** Tell your human partner that Superpowers works much better with access to subagents. The quality of its work will be significantly higher if run on a platform with subagent support such as Codex. If subagents are available, use superpowers:subagent-driven-development instead of this skill.
+
+## The Process
+
+### Step 1: Load and Review Plan
+1. Read plan file
+2. Review critically - identify any questions or concerns about the plan
+3. If concerns: Raise them with your human partner before starting
+4. If no concerns: Create TodoWrite and proceed
+
+### Step 2: Execute Tasks
+
+For each task:
+1. Mark as in_progress
+2. Follow each step exactly (plan has bite-sized steps)
+3. Run verifications as specified
+4. Mark as completed
+
+### Step 3: Complete Development
+
+After all tasks complete and verified:
+- Announce: "I'm using the finishing-a-development-branch skill to complete this work."
+- **REQUIRED SUB-SKILL:** Use superpowers:finishing-a-development-branch
+- Follow that skill to verify tests, present options, execute choice
+
+## When to Stop and Ask for Help
+
+**STOP executing immediately when:**
+- Hit a blocker (missing dependency, test fails, instruction unclear)
+- Plan has critical gaps preventing starting
+- You don't understand an instruction
+- Verification fails repeatedly
+
+**Ask for clarification rather than guessing.**
+
+## When to Revisit Earlier Steps
+
+**Return to Review (Step 1) when:**
+- Partner updates the plan based on your feedback
+- Fundamental approach needs rethinking
+
+**Don't force through blockers** - stop and ask.
+
+## Remember
+- Review plan critically first
+- Follow plan steps exactly
+- Don't skip verifications
+- Reference skills when plan says to
+- Stop when blocked, don't guess
+- Never start implementation on main/master branch without explicit user consent
+
+## Integration
+
+**Required workflow skills:**
+- **superpowers:using-git-worktrees** - REQUIRED: Set up isolated workspace before starting
+- **superpowers:writing-plans** - Creates the plan this skill executes
+- **superpowers:finishing-a-development-branch** - Complete development after all tasks
+
+Executing the locked PR.md steps in order, with TDD first and no git mutations.
+  → Read PR.md scope and verify metadata foundation
+  • Write v0.5 Vitest tests and confirm RED
+  • Implement gridContext dims resolution
+  • Run heavy-block-boundary tests and fix failures
+  • Update CONTRACT.md sister docs
+  • Add site Playwright smoke spec
+  • Run lint, typecheck, test, build, downstream checks
+  • Attempt site visual smoke if available and summarize
+codex
+I’m reading the locked plan and the local package patterns now. I’ll also verify the orchestrator-owned metadata exists but won’t edit those files.
+exec
+/bin/bash -lc "sed -n '1,260p' docs/plans/wave-5-main/C.2-7-adr-0014-v0.5-amendment.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+# C.2-7 — ADR-0014 v0.5 amendment + HeavyBlockBoundary consume W5-1 公式 from `@skb/block-foundation`
+
+> **Wave 5 Stage C.2 8th implementation PR** of the locked 13-PR sequence
+> (C.2-1 → C.2-12; per Wave 5 plan v1.3 row C.2-7). Lands the
+> **ADR-0014 v0.5 substantive Amendment** that widens
+> HeavyBlockBoundaryProps (P-generic) with an optional `gridContext` field
+> (W5-1 公式-derived dims path) plus the `HeavyBlockBoundary` impl
+> consuming `effectiveColWidth` + `effectiveCellHeight` from
+> `@skb/block-foundation/grid-math` as the single authority + the
+> sister-doc `packages/heavy-block-boundary/CONTRACT.md` sync per
+> ADR-0016 §502 + the canonical Playwright spec
+> `apps/site/src/__tests__/e2e/c2-7-heavy-grid-dims.spec.ts` covering
+> the user-visible heavy block plugin placeholder dimension
+> consistency on `/sample-blocks`. C.2-1 (mdx-bridge serialize, squash
+> `e54497d`) + C.2-2 (block-foundation grid primitives, squash
+> `b15ba24`) + C.2-3 (Astro renderer grid + Responsive 12/6/1, squash
+> `2586328`) + C.2-3.5 (mdx-bridge hard-throw flip, squash `b019a31`) +
+> C.2-4 (editor-shell grid container + `useAutoRowSpan`, squash
+> `de13d15`) + C.2-5 (drag/drop UX 3 modules, squash `2df71b6`) + C.2-6
+> (resize UX col-ruler + size-tooltip + `effectiveColSnaps`, squash
+> assumed merged before C.2-7 PLAN dispatch) all merged. C.2-7 wires
+> the **`@skb/heavy-block-boundary` runtime consumer** of the W5-1
+> `effectiveColWidth` + `effectiveCellHeight` block-foundation
+> authority + the **ADR-0014 v0.5 Amendments § entry** codifying the
+> gridContext-derived dims path (substantive Amendment per v0.2.1 +
+> v0.3 + v0.4 precedent; status remains `accepted`, NOT a status flip).
+> Existing `dims` consumers in `apps/site` (.astro pages) keep passing
+> explicit `dims` per v0.4 path — explicit `dims` is forward-compatible
+> + wins precedence when both supplied. **PRE-COMMIT CLAUDE REVIEW (D1
+> stage 4) FIRES** per `## D2 trigger judgment` (Row 4 NEW ADR
+> amendment + Row 1 CONTRACT.md change in `@skb/heavy-block-boundary` +
+> Row 5 cross-package boundary contract change since the boundary now
+> consumes block-foundation `grid-math` exports as a runtime
+> dependency).
+
+## title
+
+Land **ADR-0014 v0.5 Amendments § entry** (substantive Amendment;
+status remains `accepted`) widening HeavyBlockBoundaryProps (P-generic) with
+an optional `gridContext` field that lets the boundary derive `dims`
+internally from W5-1 公式 (`effectiveColWidth` + `effectiveCellHeight`
+from `@skb/block-foundation/grid-math`). Add the consumer impl in
+`packages/heavy-block-boundary/src/HeavyBlockBoundary.tsx` with the
+locked precedence: explicit `dims` wins → fall back to gridContext
+derivation → throw at call time when neither is supplied (fail-loud
+mis-wiring surface, NOT silent render with NaN). Sister-doc-sync
+`packages/heavy-block-boundary/CONTRACT.md` per ADR-0016 §502 (Public
+Surface lists `gridContext`; Invariants codify the precedence + the
+W5-1 single-authority delegation cross-reference). Land canonical
+Playwright spec at `apps/site/src/__tests__/e2e/c2-7-heavy-grid-dims.spec.ts`
+covering the user-visible heavy block plugin placeholder dimension
+consistency on `/sample-blocks` per ADR-0011 D9 Product Experience
+Quality Gate + v1.3 retrofit catalog (lines 553-560 verbatim).
+
+Specifically:
+
+1. NEW ADR-0014 v0.5 Amendments § entry (~50-80 LOC append at the
+   tail of `## Amendments` section, parallel to v0.2.1 + v0.3 + v0.4
+   precedent at lines 558+ / 593+ / etc.). Substantive Amendment
+   widens D1 component API with optional `gridContext` field +
+   defines D11 dims-derivation precedence (explicit `dims` wins →
+   gridContext-derived fallback → throw on neither) + cites W5-1
+   single-authority delegation (`effectiveColWidth` +
+   `effectiveCellHeight` from `@skb/block-foundation/grid-math`).
+   Status remains `accepted` (NOT flipped); date `2026-05-05`;
+   Wave-tag `Wave 5 Stage C.2`. Optional new AC#17 if applicable
+   (boundary derivation matches W5-1 公式 byte-equal to direct
+   block-foundation invocation).
+
+2. MODIFIED `packages/heavy-block-boundary/src/HeavyBlockBoundary.tsx`
+   (~40-70 LOC delta on top of current 128 LOC; final ~170-200 LOC,
+   well under 500 LOC cap). Add `gridContext` to
+   HeavyBlockBoundaryProps (P-generic) interface; add internal derivation
+   path in the component body that:
+
+   - At call time (function entry, BEFORE `useState` calls): if both
+     `dims` and `gridContext` are `undefined`, throw
+     `Error('HeavyBlockBoundary requires either dims or gridContext')`.
+     Throwing at call time (NOT in `useEffect`) surfaces mis-wiring
+     immediately + fails the React render fast, NOT after async load.
+   - If `dims` is supplied (regardless of `gridContext`), use
+     `dims` directly (explicit wins; backward-compatible with v0.4
+     consumers).
+   - If only `gridContext` is supplied, derive
+     `width = effectiveColWidth(gridContext.colSpan, gridContext.containerWidth, gridContext.geometry)`
+     and `height = effectiveCellHeight(gridContext.rowSpan, gridContext.geometry)`,
+     then construct an internal `HeavyBlockDimensions { width, height }`
+     used in the `skeletonStyle` inline-style emission.
+
+   Import `effectiveColWidth` + `effectiveCellHeight` from
+   `@skb/block-foundation/grid-math` (single-authority per ADR-0016
+   D6 + memory `feedback_cross_package_consumer_pattern`). NO local
+   re-implementation of the W5-1 formulae.
+
+   File-head JSDoc cites ADR-0014 v0.5 (gridContext path) + ADR-0016
+   D9 (W5-1 公式 single-authority delegation).
+
+   **GridContext shape**: `{ colSpan: number; rowSpan: number;
+   containerWidth: number; geometry?: Partial<GridGeometry> }`. The
+   `containerWidth` field name matches the actual
+   `effectiveColWidth(colSpan, containerWidth, geometry?)` signature
+   at `packages/block-foundation/src/grid-math.ts` lines 57-67 (per
+   memory `feedback_pr_reviewer_authority_at_head` — read live source
+   at HEAD, not the briefing-prose paraphrase). The optional
+   `geometry` defaults to `DEFAULT_GRID_GEOMETRY` per the
+   block-foundation helper's own default fallback (single-authority).
+
+3. MODIFIED `packages/heavy-block-boundary/CONTRACT.md` (~15-25 LOC
+   delta on top of current 63 LOC; final ~80 LOC). Two surgical
+   edits:
+
+   - **Public Surface section (lines 21-32)**: append `gridContext?:
+     { colSpan: number; rowSpan: number; containerWidth: number;
+     geometry?: Partial<GridGeometry> }` bullet to the
+     HeavyBlockBoundaryProps (P-generic) enumeration (positioned after
+     `onLoadError?` per ADR-0014 v0.5 Amendments §; group at the
+     end as v0.5 NEW field).
+   - **Invariants section (lines 34-43)**: append a NEW invariant
+     `**Dims-derivation precedence (v0.5; AC#17)**: explicit `dims`
+     prop wins over `gridContext`-derived dims when both are
+     supplied; with only `gridContext`, the boundary derives
+     `width = effectiveColWidth(colSpan, containerWidth, geometry?)`
+     and `height = effectiveCellHeight(rowSpan, geometry?)` from the
+     `@skb/block-foundation/grid-math` single authority (per ADR-0016
+     D6 + D9 W5-1 公式); with neither supplied, the boundary throws
+     `Error('HeavyBlockBoundary requires either dims or gridContext')`
+     at call time (fail-loud mis-wiring surface, NOT silent render
+     with NaN dimensions).` Cross-reference inline to
+     `packages/block-foundation/src/grid-math.ts` (the W5-1 authority
+     site).
+
+   Authority Links section gets ONE additional bullet appended:
+   `[ADR-0016 D6 + D9](../../docs/decisions/ADR-0016-grid-data-model.md)
+   — `effectiveColWidth` + `effectiveCellHeight` W5-1 公式 single
+   authority that the v0.5 gridContext path delegates to.`
+
+   NO change to the existing v0.4 prose for `dims` /
+   `HeavyBlockDimensions` shape (backward-compatible widening).
+
+4. NEW `apps/site/src/__tests__/e2e/c2-7-heavy-grid-dims.spec.ts`
+   (~80 LOC). Playwright spec covering the canonical e2e_smoke flow
+   per v1.3 retrofit catalog (lines 553-560 verbatim). Spec body:
+
+   - `test.describe('plugin placeholder consumes grid effectiveColWidth/effectiveCellHeight', ...)`.
+   - WSL2 chromium launch skip per memory
+     `feedback_wsl2_chromium_launch` — `test.skip(process.platform
+     === 'linux' && /Microsoft/i.test(process.release.osRelease ?? ''))`
+     guard at suite head; CI executes (Linux non-WSL).
+   - `test('plugin placeholder consumes grid effectiveColWidth/effectiveCellHeight', async ({ page }) => { ... })`
+     Body:
+     1. `await page.goto('/sample-blocks')`.
+     2. Wait for grid container `.skb-grid` to be visible.
+     3. Locate the heavy block plugin placeholder (one of jupyter /
+        nn-viz / agent-flow surfaces from C.1-1 squash; selector via
+        `[data-block="jupyter"]` or `[data-deferred="wave-4"]`).
+     4. Locate an adjacent light block (e.g., callout / image) for
+        dimension parity comparison.
+     5. Read `boundingBox()` of both. Assert: heavy block `width`
+        is finite (NOT NaN), heavy block `height >= 0`, heavy block
+        `width` matches the same colSpan-equivalent light block
+        within ±2px tolerance (rounding allowance per CSS subpixel
+        rendering).
+     6. Assert: no grid overflow — heavy block `boundingBox.x +
+        width <= grid container `boundingBox.x + width` + 1px.
+     7. Take screenshot to
+        `docs/audits/screenshots/wave-5-c2-7-heavy-grid-dims.png` per
+        ADR-0011 D9.5 archive flow + canonical screenshot_archive
+        catalog field. File MUST be ≥ 5KB at ACCEPT (placeholder
+        guard per `scripts/check-screenshot-archive.ts`).
+
+   Spec is keyed on the canonical `it`/`test` description string
+   `"plugin placeholder consumes grid effectiveColWidth/effectiveCellHeight"`
+   (verbatim per v1.3 catalog line 559) so
+   `scripts/check-e2e-coverage.ts` resolves it via the
+   `playwright_spec` field's `:"…"` suffix.
+
+5. PR.md self-listed per ADR-0006 D8 strict-whitelist.
+
+NEW Playwright spec runs under `pnpm --filter @skb/site test:visual`
+(or equivalent Playwright-running command per `apps/site/package.json`
+script). Vitest unit tests for the dims-derivation precedence + throw
+paths are added in-line to the existing
+`packages/heavy-block-boundary/src/__tests__/` suite (NOT in the
+whitelist below as separate file — see `## test_cases` for the
+structural decision; suite file may already exist from A2 + A3 + A4
+era and is amended in-place via grep-and-add pattern by the codex
+executor).
+
+The 8 `@skb/block-*` packages are NOT touched (heavy-block boundary is
+a runtime consumer of block-foundation, not a sibling). `@skb/mdx-bridge`
+is NOT touched. `@skb/editor-shell` is NOT touched. `@skb/design-tokens`
+is NOT touched. `apps/site/src/{islands,components}/` is NOT touched
+(C.1-1 plugin placeholder squash already shipped; existing `dims`-pass
+consumers stay v0.4 path). NO change to grid-math (`effectiveColWidth`
++ `effectiveCellHeight` already shipped at C.2-2 squash `b15ba24`).
+NO new BlockKind additions. NO retry-flow / lifecycle / a11y changes;
+v0.5 ONLY widens the dims authoring surface to allow grid-derived path.
+
+LOCKED implementation path: **ADR-0014 v0.5 Amendments § append**
+(substantive Amendment; status remains `accepted`); **dims-derivation
+precedence: explicit `dims` wins → gridContext-derived → throw on
+neither**; **block-foundation `grid-math` single-authority delegation**
+(NO local re-impl of W5-1 公式). Path "migrate existing apps/site
+.astro consumers from explicit `dims` to `gridContext` now" is
+**EXPLICITLY FORBIDDEN** in this PR (reason in Risk register row 1;
+LOC budget would balloon ≥ 500 LOC + cross-package consumer-side
+churn; explicit `dims` is forward-compatible per the precedence rule;
+migration is a separate follow-up if and when needed).
+
+PR.md self-listed per ADR-0006 D8 strict-whitelist.
+
+## files
+
+**8 canonical files** at PLAN time (orchestrator hand-off whitelist;
+extended from 5 → 8 by orchestrator scope refinement at exec time
+2026-05-05). The 3 added entries are mechanical metadata foundation
+required to enable the locked behavior (boundary package depends on
+block-foundation runtime + tsc project reference + lockfile sync); per
+ADR-0011 + ADR-0015 R14 thresholds, mechanical metadata to support
+already-locked behavior is **scope refinement** (NOT reframe → no v1.4
+plan amendment required). NO change to the 8 `@skb/block-*`
+packages. NO change to `@skb/mdx-bridge` / `@skb/editor-shell` /
+`@skb/design-tokens`. NO change to `apps/site/src/{islands,components,pages}/`.
+PR.md self-listed.
+
+> **Scope-refinement evidence (orchestrator-recorded 2026-05-05)**:
+> codex-generic-executor first dispatch correctly stopped at Step 3a
+> imports check per R14 discipline (memory
+> `feedback_r14_defer_chain_plan_amendment`). It verified
+> `@skb/heavy-block-boundary` did NOT declare `@skb/block-foundation`
+> as dependency (Wave 4 Stage A1 shipped boundary with only
+> `@skb/design-tokens` dep; `@skb/block-foundation` was not added at
+> the time because v0.4 boundary did not consume W5-1 公式). Pr-writer
+> PLAN-time check ("verify at exec time") flagged the assumption;
+> codex confirmed FALSE; orchestrator extends whitelist by 3 metadata
+> entries (package.json + tsconfig.json + pnpm-lock.yaml). Pr-writer
+> ACCEPT (D1 stage 6) re-verifies the extended whitelist.
+
+Whitelist (exhaustive; codex executor MUST stage exactly these 8
+paths and no others — per ADR-0006 D8 explicit-file-list staging
+discipline + memory `feedback_git_operator_explicit_stage`):
+
+1. `docs/decisions/ADR-0014-heavy-block-boundary.md` (MODIFIED — append
+   v0.5 Amendments § entry; status remains `accepted`; substantive
+   Amendment per v0.2.1 + v0.3 + v0.4 precedent)
+2. `packages/heavy-block-boundary/src/HeavyBlockBoundary.tsx` (MODIFIED
+   — add `gridContext` field to HeavyBlockBoundaryProps (P-generic); import
+   `effectiveColWidth` + `effectiveCellHeight` from `@skb/block-foundation`;
+   add precedence-resolved internal dims derivation; throw at call
+   time when neither `dims` nor `gridContext` supplied)
+3. `packages/heavy-block-boundary/CONTRACT.md` (MODIFIED — append
+   `gridContext` to Public Surface; append dims-derivation precedence
+   Invariant; append ADR-0016 D6 + D9 cross-reference to Authority
+   Links)
+4. `apps/site/src/__tests__/e2e/c2-7-heavy-grid-dims.spec.ts` (NEW —
+   Playwright spec covering canonical e2e_smoke flow per v1.3 catalog)
+5. `docs/plans/wave-5-main/C.2-7-adr-0014-v0.5-amendment.md` (MODIFIED;
+   this PR.md — scope-refinement note + 8-file whitelist)
+6. `packages/heavy-block-boundary/package.json` (MODIFIED — add
+   `@skb/block-foundation: workspace:*` to `dependencies`; preserves
+
+exec
+/bin/bash -lc "grep -n '@skb/block-foundation' packages/heavy-block-boundary/package.json" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+19:    "@skb/block-foundation": "workspace:*",
+
+exec
+/bin/bash -lc 'cat packages/heavy-block-boundary/tsconfig.json' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "dist"
+  },
+  "include": ["src/**/*", "vitest.config.ts"],
+  "references": [
+    { "path": "../block-foundation" },
+    { "path": "../design-tokens" }
+  ]
+}
+
+exec
+/bin/bash -lc 'git diff --stat pnpm-lock.yaml' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+ pnpm-lock.yaml | 3 +++
+ 1 file changed, 3 insertions(+)
+
+exec
+/bin/bash -lc 'ls -la packages/heavy-block-boundary/node_modules/@skb/' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+total 8
+drwxr-xr-x 2 weiyi weiyi 4096 May  5 23:08 .
+drwxr-xr-x 8 weiyi weiyi 4096 May  3 14:45 ..
+lrwxrwxrwx 1 weiyi weiyi   25 May  5 23:08 block-foundation -> ../../../block-foundation
+lrwxrwxrwx 1 weiyi weiyi   22 May  3 14:45 design-tokens -> ../../../design-tokens
+
+exec
+/bin/bash -lc "sed -n '260,620p' docs/plans/wave-5-main/C.2-7-adr-0014-v0.5-amendment.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+   `@skb/block-foundation: workspace:*` to `dependencies`; preserves
+   existing `@skb/design-tokens` dep + peerDependencies + devDependencies
+   unchanged)
+7. `packages/heavy-block-boundary/tsconfig.json` (MODIFIED — add
+   `{ "path": "../block-foundation" }` to `references` array; preserves
+   existing `../design-tokens` reference + compilerOptions + include unchanged)
+8. `pnpm-lock.yaml` (MODIFIED — single `@skb/block-foundation: link:../block-foundation`
+   entry added under `packages/heavy-block-boundary` importer block;
+   no other lockfile churn — verified via `git diff --stat pnpm-lock.yaml`
+   2026-05-05 post `pnpm install --filter @skb/heavy-block-boundary`)
+
+**LOC budget**: ADR (~50-80) + impl (~40-70 delta) + CONTRACT (~15-25
+delta) + Playwright spec (~80) + PR.md self (~600-800) ≈ ~785-1055
+total; under typical Wave 5 PR ceiling. No source file approaches
+500-LOC cap (HeavyBlockBoundary.tsx final ~170-200 LOC; CONTRACT.md
+final ~80 LOC; Playwright spec ~80 LOC; ADR delta appended to
+existing ~700-line file but no individual section exceeds 200 LOC).
+
+**Vitest unit tests for the new dims-derivation precedence + throw
+paths**: added in-place to the existing
+`packages/heavy-block-boundary/src/__tests__/` suite via grep-and-add
+pattern at exec time (codex executor decides whether to amend the
+existing file or create a new sibling test file under
+`__tests__/v0.5/`). Either decision is in-scope of the file 2 entry
+(HeavyBlockBoundary.tsx is the sole impl; tests co-locate with impl
+package). Whitelist NOT extended — `__tests__/` paths are
+self-contained inside the `@skb/heavy-block-boundary` package and
+inherit ADR-0006 D8 implicit allowance per package-internal test
+file convention. **Open question for orchestrator**: prefer in-place
+amendment of existing test file OR new sibling under `__tests__/v0.5/`?
+See `## Plan-challenger absorbtion` Open Question #4.
+
+## test_cases
+
+TDD-front authoritative list. Each test case names a vitest `it(...)`
+description (input fixture + expected assertion + file location) OR a
+Playwright `test(...)` description. The TDD-front discipline per
+ADR-0011 D1 stage 2 + memory `feedback_codex_spark_lint_gap` requires
+the codex-generic-executor to **land all test files first** (red),
+then implementation files (green), verifying via `pnpm --filter
+@skb/heavy-block-boundary test` + `pnpm --filter @skb/site test:visual`
+(or equivalent Playwright runner; WSL2 skip path applies).
+
+### Suite 1: `packages/heavy-block-boundary/src/__tests__/HeavyBlockBoundary.v0.5.test.tsx` (vitest unit tests for v0.5 precedence + throw paths)
+
+5 test cases per ADR-0014 v0.5 Amendments § (gridContext-derived dims
++ precedence + throw):
+
+1. **TC1.1 — explicit `dims` wins over `gridContext` derivation when
+   both supplied**. Input: `<HeavyBlockBoundary kind="jupyter"
+   dims={{ width: 800, height: 400 }} gridContext={{ colSpan: 12,
+   rowSpan: 4, containerWidth: 1200 }} load={mockLoad}
+   childProps={{}} />`. Expected: rendered DOM `style.width === '800px'`
+   and `style.minHeight === '400px'` (explicit `dims` values used,
+   NOT gridContext-derived). Location:
+   `HeavyBlockBoundary.v0.5.test.tsx > precedence > explicit dims wins`.
+
+2. **TC1.2 — gridContext-derived dims used when only `gridContext`
+   supplied**. Input: `<HeavyBlockBoundary kind="jupyter"
+   gridContext={{ colSpan: 12, rowSpan: 4, containerWidth: 1200 }}
+   load={mockLoad} childProps={{}} />`. Expected: rendered DOM
+   `style.width` matches `effectiveColWidth(12, 1200) === 1200`px
+   (full 12-col span at 1200px container; per W5-1 公式 line 57-67)
+   and `style.minHeight` matches `effectiveCellHeight(4) === 4*48 +
+   3*14 === 234`px (per W5-1 公式 line 45-51 with
+   `DEFAULT_GRID_GEOMETRY.rowH === 48`, `gap === 14`). Location:
+   `HeavyBlockBoundary.v0.5.test.tsx > precedence > gridContext derives dims`.
+
+3. **TC1.3 — throw at call time when neither `dims` nor
+   `gridContext` supplied**. Input: `() => render(<HeavyBlockBoundary
+   kind="jupyter" load={mockLoad} childProps={{}} />)`. Expected:
+   throws `Error('HeavyBlockBoundary requires either dims or
+   gridContext')` synchronously during render (NOT after async load
+   resolves). Location:
+   `HeavyBlockBoundary.v0.5.test.tsx > precedence > throws on neither`.
+
+4. **TC1.4 — gridContext `geometry` override propagates to W5-1
+   derivation**. Input: `<HeavyBlockBoundary kind="jupyter"
+   gridContext={{ colSpan: 6, rowSpan: 2, containerWidth: 600,
+   geometry: { rowH: 60 } }} load={mockLoad} childProps={{}} />`.
+   Expected: `style.minHeight === effectiveCellHeight(2, { rowH: 60 })
+   === 2*60 + 1*14 === 134`px (custom rowH propagates per
+   Partial GridGeometry merge in `resolveGeometry`). Location:
+   `HeavyBlockBoundary.v0.5.test.tsx > precedence > geometry override propagates`.
+
+5. **TC1.5 — backward compat: existing `dims`-only call sites unchanged**.
+   Input: `<HeavyBlockBoundary kind="jupyter" dims={{ width: 600,
+   height: 300 }} load={mockLoad} childProps={{}} />`. Expected:
+   same render output as v0.4 (style.width 600px, style.minHeight
+   300px); no regression on the v0.4 path. Location:
+   `HeavyBlockBoundary.v0.5.test.tsx > backward-compat > dims-only path unchanged`.
+
+(Suite 1 final count: 5 cases — TC1.1 to TC1.5. Existing A2 + A3 +
+A4 era test cases preserved unchanged in their original suite files.)
+
+### Suite 2: `apps/site/src/__tests__/e2e/c2-7-heavy-grid-dims.spec.ts` (Playwright e2e per v1.3 catalog)
+
+1 test case per v1.3 retrofit catalog line 553-560:
+
+1. **TC2.1 — `"plugin placeholder consumes grid
+   effectiveColWidth/effectiveCellHeight"`**. Input: navigate
+   `/sample-blocks`; locate heavy block plugin placeholder + adjacent
+   light block. Expected:
+   - heavy block `boundingBox.width` is finite (NOT NaN);
+   - heavy block `boundingBox.height >= 0`;
+   - heavy block `width` matches adjacent same-colSpan light block
+     within ±2px tolerance;
+   - heavy block does NOT overflow grid container right edge (heavy
+     `box.x + width <= container.x + width + 1px`);
+   - screenshot saved to
+     `docs/audits/screenshots/wave-5-c2-7-heavy-grid-dims.png` (≥ 5KB
+     at ACCEPT per `scripts/check-screenshot-archive.ts`).
+   Location:
+   `c2-7-heavy-grid-dims.spec.ts > "plugin placeholder consumes grid effectiveColWidth/effectiveCellHeight"`.
+
+(Suite 2 final count: 1 case — TC2.1 canonical e2e_smoke.)
+
+**Suite total: 5 vitest + 1 Playwright = 6 test cases**. All MUST PASS
+at AC#9 (`pnpm --filter @skb/heavy-block-boundary test` exit 0) +
+AC#13 (Playwright spec PASS on CI; WSL2 skip locally per memory
+`feedback_wsl2_chromium_launch`).
+
+## contracts_affected
+
+- `packages/heavy-block-boundary/CONTRACT.md` — **MODIFIED**. Public
+  Surface section gets `gridContext?: { colSpan; rowSpan;
+  containerWidth; geometry? }` bullet appended after `onLoadError?`.
+  Invariants section gets a NEW `**Dims-derivation precedence (v0.5;
+  AC#17)**` invariant codifying explicit-dims-wins → gridContext-
+  derived → throw-on-neither precedence + W5-1 single-authority
+  delegation cross-reference. Authority Links section gets ADR-0016
+  D6 + D9 cross-reference appended. D2 row 1 hit. Per ADR-0014 v0.5
+  + ADR-0016 §502 sister-doc-sync — same-PR-with-implementation site
+  for the v0.5 public surface bullet + invariant.
+
+- `packages/block-foundation/CONTRACT.md` — **NOT** modified. The
+  W5-1 公式 (`effectiveColWidth` + `effectiveCellHeight` +
+  `GridGeometry` + `DEFAULT_GRID_GEOMETRY`) public surface was
+  already authored at C.2-2 squash `b15ba24`; C.2-7 is a
+  consumer-side wire-up that imports the existing surface (no
+  upstream change required).
+
+- `packages/editor-shell/CONTRACT.md` — **NOT** modified (C.2-7 does
+  not touch editor-shell; resize / drag-drop / grid-container
+  surfaces unchanged).
+
+- `apps/site/CONTRACT.md` — **NOT** modified. C.2-3 already shipped
+  the `## Grid layout (Wave 5)` section with `.skb-grid` selector
+  authority + 12/6/1 breakpoint table at PR squash `2586328`; C.2-7
+  spec consumes the existing selector authority + `/sample-blocks`
+  page surface (C.1-1 plugin placeholder squash) but does NOT modify
+  apps/site.
+
+- 8 `@skb/block-*` CONTRACT.md files — **NOT** modified.
+  `@skb/mdx-bridge` / `@skb/design-tokens` CONTRACT.md — **NOT**
+  modified.
+
+D2 row 5 (boundary contract change) hit because the new
+`packages/heavy-block-boundary/CONTRACT.md` v0.5 invariant codifies
+the runtime consumer relationship from `@skb/heavy-block-boundary`
+to `@skb/block-foundation/grid-math` — heavy-block-boundary now
+consumes block-foundation as a runtime dependency for the dims
+derivation path (was a typecheck-only / no-runtime-import dep at
+v0.4). Downstream consumers (Stage C.4 `apps/site/src/pages/notes/[slug]/edit.astro`
+mount site at C.4-2 + C.4-3 + the editor-shell heavy-block wrap path
+at C.4-4) may opt to use the gridContext path once integrated; v0.4
+explicit-dims path remains forward-compatible.
+
+Plus D2 row 1 hit on `@skb/heavy-block-boundary/CONTRACT.md` (single,
+not double — block-foundation contract not modified). Plus D2 row 4
+hit (NEW ADR amendment) per Wave 5 plan v1.3 ROW 4 门槛规则 — v0.5
+Amendments § append is a substantive Amendment per v0.2.1 + v0.3 +
+v0.4 precedent.
+
+PRE-COMMIT CLAUDE REVIEW (D1 stage 4) FIRES.
+
+## adr_touched
+
+ADR-0014 v0.5 Amendments § entry appended (substantive Amendment;
+status remains `accepted`; date `2026-05-05`; Wave-tag `Wave 5 Stage
+C.2`). Amendment widens D1 component API with optional `gridContext`
+field + adds D11 dims-derivation precedence rule (explicit `dims`
+wins → gridContext-derived → throw on neither). Optional new AC#17
+(boundary derivation matches W5-1 公式 byte-equal to direct
+block-foundation invocation; per Suite 1 TC1.2 + TC1.4 vitest evidence).
+
+D2 row 4 HIT per Wave 5 plan v1.3 ROW 4 门槛规则 — substantive
+Amendment to an accepted ADR. PRE-COMMIT CLAUDE REVIEW (D1 stage 4)
+FIRES per D2 row 4.
+
+ADR-0016 D6 + D9 (W5-1 公式 single authority `effectiveColWidth` +
+`effectiveCellHeight` + `GridGeometry`) referenced in the v0.5
+Amendments § + the HeavyBlockBoundary.tsx file-head JSDoc + the
+CONTRACT.md Authority Links — NOT amended (consumer-side wire-up
+only; ADR-0016 surface unchanged).
+
+ADR-0016 §502 sister-doc-sync row 1 of 4 (CONTRACT.md sync
+requirement) operationally satisfied for
+`packages/heavy-block-boundary/CONTRACT.md` (same-PR-with-
+implementation sync site).
+
+ADR-0011 D1 (linear pipeline) + D2 (trigger schema) + D6 (codex
+patterns) + D9 (Product Experience Quality Gate) + D9.1 (path
+patterns) + D9.5 (screenshot archive flow) + D10 (anti-prompt-
+patching) — operational enforcement, NOT amended.
+
+ADR-0006 D8 (explicit-file-list staging) + 8-point checklist + 9th
+item (UI-touch + E2E spec) — operational enforcement, NOT amended.
+
+ADR-0014 D5 (Dimensions ownership; `heavyBoundaryDimensions` field
+on the block UI definition) — referenced as the v0.4 surface that
+v0.5 widens; v0.5 keeps D5 backward-compatible (explicit-dims
+consumers unchanged).
+
+**Wave 5 plan v1.3 row C.2-7 + UI-touch retrofit catalog (lines
+553-560)** referenced as the canonical e2e_smoke source per ADR-0011
+D10 anti-prompt-patching (catalog wins over inline paraphrase). PR
+#75 squash `5bd5112` (Wave 5 plan v1.3 amendment) + PR #76 squash
+`ad42f71` (symmetric ui_touch=false skip in
+`scripts/check-screenshot-archive.ts`) cited as the upstream
+enabling work that landed the catalog + the symmetric skip pattern
+(plan-PR forward-declaration paths no longer trip CI).
+
+## acceptance
+
+15 verifiable acceptance criteria. Each is a single shell command
+producing an objectively checkable result. ACCEPT-stage pr-writer
+(D1 stage 6) re-runs all 15 against the post-commit working tree.
+
+### AC#1 — ADR-0014 v0.5 Amendments § entry exists with date `2026-05-05` + Wave-tag
+
+```bash
+grep -nE '^### v0\.5 \(2026-05-05.*Wave 5 Stage C\.2' \
+  docs/decisions/ADR-0014-heavy-block-boundary.md | wc -l
+```
+
+Expected: `≥ 1`. Verifies the v0.5 sub-section header was appended
+to `## Amendments` with the correct date + Wave-tag (parallel to
+v0.2.1 + v0.3 + v0.4 precedent).
+
+### AC#2 — ADR-0014 status remains `accepted` (NOT flipped)
+
+```bash
+grep -nE '^status:\s*accepted' \
+  docs/decisions/ADR-0014-heavy-block-boundary.md | wc -l
+```
+
+Expected: `≥ 1`. Verifies the front-matter / header `status:`
+field was NOT flipped; v0.5 is a substantive Amendment, NOT a
+status promotion.
+
+### AC#3 — HeavyBlockBoundaryProps (P-generic) exposes new optional `gridContext` field
+
+```bash
+grep -nE 'gridContext\??:.*colSpan' \
+  packages/heavy-block-boundary/src/HeavyBlockBoundary.tsx | wc -l
+```
+
+Expected: `≥ 1`. Verifies the `gridContext` field was added to the
+interface (anchored on `colSpan` keyword which appears in the inline
+shape `{ colSpan: number; rowSpan: number; containerWidth: number;
+geometry?: ... }`).
+
+### AC#4 — HeavyBlockBoundary imports `effectiveColWidth` + `effectiveCellHeight` from `@skb/block-foundation`
+
+```bash
+grep -nE "from\s+['\"]@skb/block-foundation" \
+  packages/heavy-block-boundary/src/HeavyBlockBoundary.tsx | wc -l
+grep -nE "import.*effectiveColWidth" \
+  packages/heavy-block-boundary/src/HeavyBlockBoundary.tsx | wc -l
+grep -nE "import.*effectiveCellHeight" \
+  packages/heavy-block-boundary/src/HeavyBlockBoundary.tsx | wc -l
+```
+
+Expected: each `≥ 1`. Verifies single-authority delegation to
+block-foundation (NO local re-impl of W5-1 公式 per ADR-0006 class
+4 single-authority + memory `feedback_cross_package_consumer_pattern`).
+
+### AC#5 — Throw at call time when neither `dims` nor `gridContext` supplied
+
+```bash
+grep -nF "HeavyBlockBoundary requires either dims or gridContext" \
+  packages/heavy-block-boundary/src/HeavyBlockBoundary.tsx | wc -l
+```
+
+Expected: `≥ 1`. Verifies the verbatim error string is present
+(matches the canonical message from the briefing + Suite 1 TC1.3
+vitest assertion).
+
+### AC#6 — `HeavyBlockBoundary.tsx` does NOT contain a local re-implementation of W5-1 公式
+
+```bash
+grep -nE "function effectiveColWidth|function effectiveCellHeight" \
+  packages/heavy-block-boundary/src/HeavyBlockBoundary.tsx | wc -l
+```
+
+Expected: `0`. Verifies single-authority compliance — the helpers are
+imported from `@skb/block-foundation`, NOT re-defined locally.
+
+### AC#7 — CONTRACT.md Public Surface lists `gridContext`
+
+```bash
+grep -nF 'gridContext' packages/heavy-block-boundary/CONTRACT.md | wc -l
+```
+
+Expected: `≥ 1`. Verifies the sister-doc Public Surface bullet add
+(ADR-0016 §502 row 1 of 4 sync requirement satisfied).
+
+### AC#8 — CONTRACT.md Invariants codify the dims-derivation precedence + W5-1 delegation
+
+```bash
+grep -nF 'Dims-derivation precedence' \
+  packages/heavy-block-boundary/CONTRACT.md | wc -l
+grep -nF 'effectiveColWidth' \
+  packages/heavy-block-boundary/CONTRACT.md | wc -l
+grep -nF 'effectiveCellHeight' \
+  packages/heavy-block-boundary/CONTRACT.md | wc -l
+```
+
+Expected: each `≥ 1`. Verifies the v0.5 Invariant entry is present
++ cross-references both W5-1 公式 helpers by name.
+
+### AC#9 — `pnpm --filter @skb/heavy-block-boundary test` PASS (5 new + existing cases)
+
+```bash
+pnpm --filter @skb/heavy-block-boundary test
+```
+
+Expected: exit 0. All existing A2 + A3 + A4 vitest cases continue to
+PASS plus the 5 new v0.5 cases (TC1.1 explicit-dims-wins; TC1.2
+gridContext-derives; TC1.3 throw-on-neither; TC1.4 geometry-override;
+TC1.5 backward-compat). No skipped tests.
+
+### AC#10 — `pnpm exec tsx scripts/check-ui-touch.ts` returns `ui_touch: true`
+
+```bash
+pnpm exec tsx scripts/check-ui-touch.ts \
+  docs/plans/wave-5-main/C.2-7-adr-0014-v0.5-amendment.md
+```
+
+Expected: stdout contains `ui_touch: true`. Verifies mechanical D9.1
+detection AGREES with the v1.3 catalog annotation (touches
+`packages/heavy-block-boundary/src/**` per D9.1 path pattern).
+
+### AC#11 — `pnpm exec tsx scripts/check-e2e-coverage.ts` validates `playwright_spec` resolvable
+
+```bash
+pnpm exec tsx scripts/check-e2e-coverage.ts \
+  docs/plans/wave-5-main/C.2-7-adr-0014-v0.5-amendment.md
+```
+
+Expected: exit 0. Verifies the `playwright_spec:
+apps/site/src/__tests__/e2e/c2-7-heavy-grid-dims.spec.ts:"plugin
+placeholder consumes grid effectiveColWidth/effectiveCellHeight"`
+file exists + the named `test(...)` block is resolvable.
+
+### AC#12 — Playwright spec file exists + uses the canonical test description string verbatim
+
+```bash
+test -f apps/site/src/__tests__/e2e/c2-7-heavy-grid-dims.spec.ts && \
+  grep -nF 'plugin placeholder consumes grid effectiveColWidth/effectiveCellHeight' \
+
+exec
+/bin/bash -lc "sed -n '1,240p' packages/heavy-block-boundary/src/HeavyBlockBoundary.tsx" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+import type { CSSProperties, ComponentType, ReactElement, ReactNode } from 'react';
+import { useEffect, useRef, useState } from 'react';
+
+// These public types mirror ADR-0014 D1.
+export interface HeavyBlockKindRegistry {
+  readonly jupyter: 'jupyter';
+  readonly 'nn-viz': 'nn-viz';
+  readonly 'agent-flow': 'agent-flow';
+}
+export type HeavyBlockKind =
+  | keyof HeavyBlockKindRegistry
+  | (string & { readonly __heavyBlockKind?: never }); // intentional widening
+
+export interface HeavyBlockDimensions {
+  readonly width: number; // CSS px; min-width
+  readonly height: number; // CSS px; min-height
+}
+
+export interface HeavyBlockBoundaryProps<P> {
+  readonly kind: HeavyBlockKind;
+  readonly dims: HeavyBlockDimensions;
+  readonly load: (init?: { signal?: AbortSignal }) => Promise<{ default: ComponentType<P> }>;
+  readonly loadingText?: string; // default: `Loading ${kind}...`
+  readonly errorText?: string; // default: `Failed to load ${kind}`
+  readonly retryLabel?: string; // default: `Retry`
+  readonly maxRetries?: number; // default: 2 (after which retry button disables; per C5 bounded)
+  readonly childProps: P; // forwarded to loaded component
+  readonly fallback?: ReactNode; // optional override of SSR placeholder
+  readonly onLoadError?: (e: unknown, attempt: number) => void; // telemetry hook
+}
+
+export function HeavyBlockBoundary<P>({
+  kind,
+  dims,
+  load,
+  loadingText,
+  errorText,
+  retryLabel,
+  maxRetries,
+  childProps,
+  onLoadError,
+}: HeavyBlockBoundaryProps<P>): ReactElement {
+  const [Component, setComponent] = useState<ComponentType<P> | null>(null);
+  const [attempt, setAttempt] = useState<number>(1);
+  const [error, setError] = useState<unknown>(null);
+  const mountedRef = useRef<boolean>(true);
+
+  const resolvedLoadingText = loadingText ?? `Loading ${kind}...`;
+  const resolvedErrorText = errorText ?? `Failed to load ${kind}`;
+  const resolvedRetryLabel = retryLabel ?? 'Retry';
+  const resolvedMaxRetries = maxRetries ?? 2;
+  const canRetry = attempt <= resolvedMaxRetries;
+
+  useEffect(() => {
+    mountedRef.current = true;
+    const controller = new AbortController();
+
+    load({ signal: controller.signal })
+      .then((mod) => {
+        if (mountedRef.current) {
+          setComponent(() => mod.default);
+          setError(null);
+        }
+      })
+      .catch((err) => {
+        // Suppress abort-driven rejections so unmount cleanup is silent.
+        if (controller.signal.aborted) return;
+        if (mountedRef.current) {
+          setError(err);
+          onLoadError?.(err, attempt);
+        }
+      });
+
+    return () => {
+      mountedRef.current = false;
+      controller.abort();
+    };
+    // load + kind are intentionally omitted from deps - referential stability
+    // is the consumer's responsibility. attempt is included to drive retry
+    // re-runs when handleRetry increments attempt.
+  }, [attempt]);
+
+  const handleRetry = (): void => {
+    if (!canRetry) return;
+    setError(null);
+    setAttempt((prev) => prev + 1);
+  };
+
+  const skeletonStyle: CSSProperties = {
+    width: `${dims.width}px`,
+    minHeight: `${dims.height}px`,
+  };
+
+  return (
+    <div
+      data-block={kind}
+      data-deferred="wave-4"
+      className={`heavy-block-skeleton heavy-block-skeleton--${kind}`}
+      role="status"
+      aria-busy={Component === null && error === null ? 'true' : 'false'}
+      style={skeletonStyle}
+    >
+      {Component ? (
+        <Component {...(childProps as JSX.IntrinsicAttributes & P)} />
+      ) : error ? (
+        <div className="heavy-block-skeleton__error" role="alert">
+          <div className="heavy-block-skeleton__error-text">{resolvedErrorText}</div>
+          <button
+            type="button"
+            onClick={handleRetry}
+            disabled={!canRetry}
+            className="heavy-block-skeleton__retry"
+          >
+            {resolvedRetryLabel}
+          </button>
+        </div>
+      ) : (
+        <>
+          <div className="heavy-block-skeleton__frame" aria-hidden="true" />
+          <div className="heavy-block-skeleton__spinner" aria-hidden="true" />
+          <div className="heavy-block-skeleton__text" aria-live="polite">
+            {resolvedLoadingText}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+exec
+/bin/bash -lc "sed -n '1,240p' packages/heavy-block-boundary/src/__tests__/HeavyBlockBoundary.test.tsx" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
+import { cleanup, act, render, fireEvent } from '@testing-library/react';
+import { createElement, type ComponentType } from 'react';
+import { hydrateRoot } from 'react-dom/client';
+import { renderToString } from 'react-dom/server';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+import { HeavyBlockBoundary } from '../index';
+
+afterEach(() => {
+  cleanup();
+});
+
+describe('HeavyBlockBoundary', () => {
+  it('AC#1 - exported as a function from the package barrel', () => {
+    expect(HeavyBlockBoundary).toBeDefined();
+    expect(typeof HeavyBlockBoundary).toBe('function');
+  });
+
+  it('AC#3 - SSR/hydration byte-equivalence (no React mismatch warning)', () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const props = {
+      kind: 'jupyter' as const,
+      dims: { width: 600, height: 400 },
+      load: () => new Promise<{ default: ComponentType<Record<string, never>> }>(() => {}),
+      childProps: {} as Record<string, never>,
+    };
+    const ssrHtml = renderToString(
+      createElement(HeavyBlockBoundary<Record<string, never>>, props),
+    );
+    const container = document.createElement('div');
+    container.innerHTML = ssrHtml;
+    document.body.appendChild(container);
+
+    let root: ReturnType<typeof hydrateRoot> | undefined;
+    act(() => {
+      root = hydrateRoot(
+        container,
+        createElement(HeavyBlockBoundary<Record<string, never>>, props),
+      );
+    });
+
+    const calls = errorSpy.mock.calls.flat().map((arg) => String(arg));
+    const hasMismatch = calls.some(
+      (msg) => msg.includes('Hydration') || msg.includes('did not match'),
+    );
+    expect(hasMismatch).toBe(false);
+
+    act(() => {
+      root?.unmount();
+    });
+    document.body.removeChild(container);
+    errorSpy.mockRestore();
+  });
+
+  it('AC#6 - successful load path forwards childProps', async () => {
+    const Loaded: ComponentType<{ name: string }> = ({ name }) =>

@@ -1,0 +1,2000 @@
+Reading prompt from stdin...
+OpenAI Codex v0.125.0 (research preview)
+--------
+workdir: /home/weiyi/selfKnowledgeBaseWeb
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: danger-full-access
+reasoning effort: xhigh
+reasoning summaries: none
+session id: 019dfb4e-b16f-72d2-90b8-aca9e74c73b3
+--------
+user
+You are the D1 stage-3 REVIEWER for Wave 5 C.2-7 — ADR-0014 v0.5 amendment + HeavyBlockBoundary consume W5-1 公式 from `@skb/block-foundation`.
+
+**SCOPE: REVIEW ONLY. DO NOT COMMIT.** Per ADR-0011 D1 + CLAUDE.md workflow, this PR fires D2 Row 1+4+5 → PRE-COMMIT CLAUDE REVIEW (D1 stage 4) MANDATORY before stage 5 commit. Orchestrator runs stage 4 self-review AFTER you finish, then re-dispatches you for stage 5 commit if all clear. Your scope is REVIEW only.
+
+# Read these first
+
+1. **Locked PR.md**: `/home/weiyi/selfKnowledgeBaseWeb/docs/plans/wave-5-main/C.2-7-adr-0014-v0.5-amendment.md`
+   - 8-file whitelist (extended from 5 → 8 by orchestrator scope refinement at exec time; see `## files` § scope-refinement evidence block)
+   - 15 ACs in `## acceptance` section (each AC is a single shell command; verify each by running it against the working tree)
+   - D2 trigger judgment: Row 1 (CONTRACT.md change) + Row 4 (NEW ADR amendment) + Row 5 (cross-package boundary contract change)
+   - ui_touch: true; e2e_smoke per v1.3 retrofit catalog (lines 553-560) verbatim
+
+2. **Worktree state** (uncommitted; `git status --short`):
+   ```
+    M docs/decisions/ADR-0014-heavy-block-boundary.md   (orchestrator-written v0.5 § appended)
+    M packages/heavy-block-boundary/CONTRACT.md           (codex-written v0.5 sister-doc-sync)
+    M packages/heavy-block-boundary/package.json          (orchestrator dep add: @skb/block-foundation)
+    M packages/heavy-block-boundary/src/HeavyBlockBoundary.tsx (codex impl: gridContext + precedence)
+    M packages/heavy-block-boundary/tsconfig.json         (orchestrator reference add: ../block-foundation)
+    M pnpm-lock.yaml                                      (orchestrator lockfile regen post pnpm install)
+   ?? apps/site/src/__tests__/e2e/                        (codex NEW: c2-7-heavy-grid-dims.spec.ts)
+   ?? docs/plans/wave-5-main/C.2-7-adr-0014-v0.5-amendment.md (PR.md self)
+   ?? packages/heavy-block-boundary/src/__tests__/HeavyBlockBoundary.v0.5.test.tsx (codex NEW)
+   ```
+
+3. **Round info**:
+   - Codex executor R1 STOPPED CORRECTLY at imports check per R14 discipline (`@skb/block-foundation` not declared as boundary dep). Orchestrator extended whitelist by 3 metadata files (mechanical scope refinement, NOT R14 reframe). Codex executor R2 completed all 4 impl files.
+   - vitest: 18/18 PASS for `@skb/heavy-block-boundary`
+   - lint + typecheck + build: clean for `@skb/heavy-block-boundary`
+   - apps/site typecheck: clean (no consumer regression)
+   - `pnpm check:affected`: 38/38 tasks PASS
+
+# Review tasks
+
+## Task A — Line-level review
+
+Read the 8 changed files. Identify:
+- Type errors / lint warnings the executor missed
+- Contract drift (CONTRACT.md vs HeavyBlockBoundary.tsx — do they describe the same surface?)
+- File size warnings (300 LOC ESLint warn; 500 LOC hard fail)
+- Style inconsistency vs existing code
+- Edge cases not covered (NaN propagation in `effectiveColWidth` when `containerWidth=0`? Negative colSpan? Decimal colSpan?)
+
+## Task B — ADR-0006 v0.2 9-point asymmetry-audit checklist (MANDATORY per profile)
+
+Walk each item and produce a per-item verdict (PASS / N/A / FAIL):
+
+1. **Field/property added**: `gridContext` field added to `HeavyBlockBoundaryProps<P>`; `dims` widened from required → optional. Audit: serialization comparators, prop type tests, downstream consumer types. Are all consumers (apps/site islands, MDX bridge) compatible with `dims?` being optional?
+
+2. **Status code added**: N/A (no HTTP layer)
+
+3. **`.strict()` on one layer**: N/A (no Zod schema added)
+
+4. **Single-authority schema**: `effectiveColWidth` + `effectiveCellHeight` are single-authority at `@skb/block-foundation/src/grid-math.ts`. Verify: HeavyBlockBoundary.tsx imports them, does NOT re-implement W5-1 公式 locally. Per memory `feedback_cross_package_consumer_pattern`.
+
+5. **Algorithm + runtime constants replicated**: Verify HeavyBlockBoundary.tsx does NOT inline `(containerWidth - (totalCols - 1) * gap) / totalCols` or any W5-1 fragment. Verify byte-equal regression test exists in `HeavyBlockBoundary.v0.5.test.tsx` (case 1 — gridContext-derived dims byte-equal to direct block-foundation invocation).
+
+6. **CONTRACT.md change → sister sync**: `packages/heavy-block-boundary/CONTRACT.md` modified. Sister docs:
+   - `packages/block-foundation/CONTRACT.md` — does it need update? (Likely not — block-foundation is unchanged; only consumer changed.)
+   - `apps/site/CONTRACT.md` — does it need update? (Likely not — apps/site is consumer; v0.4 path unchanged.)
+   - Verify the cross-package authority section in HBB CONTRACT.md cites ADR-0016 D9.
+
+7. **try/catch scope**: N/A (no try/catch added; throw at call-time is intentional fail-fast per ADR-0014 v0.5 D12)
+
+8. **Authority doc change → generated/consumed surface sync**: ADR-0014 amended (v0.5 §). Verify:
+   - `agent-contract.md` — does it reference ADR-0014? (No major surface)
+   - `.claude/agents/*` — does it reference HeavyBlockBoundary? (No)
+   - **`pnpm-lock.yaml`** — synced (orchestrator ran `pnpm install --filter @skb/heavy-block-boundary`); verify `git diff --stat pnpm-lock.yaml` shows ONLY the `@skb/block-foundation: link:../block-foundation` entry under `packages/heavy-block-boundary` importer block, nothing else
+   - `tmp/codex-profiles.toml` — N/A (no codex profile change)
+   - Forward-reference correction: ADR-0014 v0.4 prose "future Stage C.3 / ADR-0014 v0.5 OKLCH wiring" is reassigned to v0.6 in v0.5 § "Forward-reference correction"; verify this clarification is present.
+
+9. **9th item — UI-touch + E2E spec audit (ADR-0011 D9 v0.2)**:
+   - PR.md `ui_touch: true` ✓ (touches `packages/heavy-block-boundary/src/**` per D9.1)
+   - PR.md `e2e_smoke` non-empty ✓ (1 entry per v1.3 catalog)
+   - Playwright spec exists at `apps/site/src/__tests__/e2e/c2-7-heavy-grid-dims.spec.ts` ✓
+   - Spec test name matches catalog: `"plugin placeholder consumes grid effectiveColWidth/effectiveCellHeight"` ✓
+   - **Note**: `pnpm --filter @skb/site test:visual` cannot run locally on WSL2 (memory `feedback_wsl2_chromium_launch.md` — missing libnss3/libdbus/libatk/libcups). Per memory: CI-only execution; reviewer treats local skip as ACCEPTABLE-WITH-CI-DEFERRED, NOT FAIL.
+   - Catalog `target_url: /sample-blocks` vs actual route `/notes/sample-blocks`: spec uses fallback (try `/sample-blocks` → if 404 try `/notes/sample-blocks`). Verify fallback is correct + flag as v1.4 catalog data-error candidate (NOT a blocker for this PR; document for orchestrator follow-up).
+   - Catalog `screenshot_archive: docs/audits/screenshots/wave-5-c2-7-heavy-grid-dims.png`: spec emits to this path on PASS. Local skip means archive not produced; CI run will produce. Per ADR-0011 D9.5 + AC#14 — verify at ACCEPT (D1 stage 6) post-CI, not at REVIEW.
+
+## Task C — PR.md `## acceptance` block diff verification
+
+Run each of the 15 ACs (shell command per AC) and report PASS / FAIL with output. Include the exact command + exit-code/output.
+
+## Task D — Lockfile diff sanity (per ADR-0006 D8 lockfile blob rule)
+
+```bash
+git diff --stat pnpm-lock.yaml
+git diff pnpm-lock.yaml | head -30
+```
+
+Verify:
+- Only the boundary package importer block has new entries
+- No unrelated workspace package versions changed
+- The `link:../block-foundation` entry matches expected workspace dep semantics
+
+## Task E — Cross-package consumer impact
+
+The boundary now imports `@skb/block-foundation` as runtime dep. Verify:
+- `packages/block-foundation/package.json` does NOT list `@skb/heavy-block-boundary` as dep (avoid circular)
+- All EXISTING boundary consumers (`packages/block-jupyter`, `packages/block-nn-viz`, `packages/block-agent-flow`, `apps/site`) still typecheck — confirmed by `pnpm check:affected` 38/38 PASS earlier
+- `packages/block-jupyter/tsconfig.json` lists `../heavy-block-boundary` → `../block-foundation` is now indirectly required; verify project-references graph stays acyclic
+
+## Task F — 8th-class hunt (memory-driven)
+
+For D2 Row 4 + Row 5 (cross-package boundary contract change), scan for:
+- Has the orchestrator stage-2 EXECUTE skipped any "obvious" follow-up that's not in the whitelist? (e.g., `apps/site/src/islands/*Island.tsx` consume `@skb/heavy-block-boundary` — do they need migration to gridContext path? PR.md says NO, they keep v0.4 explicit `dims` path. Verify this is internally consistent.)
+- Any silent-NaN risks if `gridContext.containerWidth` is 0 or negative? (Codex impl uses `effectiveColWidth(colSpan, 0, ...)` → `(0 - (12-1) * 14) / 12 = -12.83` → negative width. Should the boundary throw on `containerWidth <= 0`? Or let it propagate? PR.md does not specify; flag for orchestrator to decide.)
+
+# Verdict structure
+
+Your final stdout must include (in this order):
+
+```
+=== Verdict ===
+PASS | PASS-WITH-RESIDUE | FAIL
+
+=== ADR-0006 9-point asymmetry-audit applied ===
+Item 1 (field/property added): PASS|N/A|FAIL — <one-line reason>
+Item 2 (status code): N/A
+Item 3 (.strict()): N/A
+Item 4 (single-authority schema): PASS|N/A|FAIL — ...
+Item 5 (algorithm + runtime constants replicated): PASS|N/A|FAIL — ...
+Item 6 (CONTRACT.md sister-sync): PASS|N/A|FAIL — ...
+Item 7 (try/catch scope): N/A
+Item 8 (authority doc generated/consumed sync): PASS|N/A|FAIL — ...
+Item 9 (UI-touch + E2E spec audit, v0.2): PASS|PASS-WITH-CI-DEFERRED|FAIL — ...
+
+=== 8th-class hunt ===
+<findings>
+
+=== 9th-item e2e ===
+PASS | PASS-WITH-CI-DEFERRED | FAIL with playwright run log
+
+=== AC verification (15 items) ===
+AC#1: PASS | FAIL — <command + output>
+... (continue for all 15)
+
+=== Issues found ===
+1. <severity HIGH|MED|LOW> — <description> — <file:line> — <suggested fix>
+   ...
+
+=== Recommendation ===
+PASS → orchestrator runs Stage 4 PRE-COMMIT CLAUDE → re-dispatch reviewer for Stage 5 commit
+PASS-WITH-RESIDUE → list residue items + recommend orchestrator decision
+FAIL → block; codex-generic-executor must re-dispatch with fixes
+```
+
+You do **NOT** commit. You do **NOT** modify any file. You read + analyze + report only. If you find a HIGH severity issue requiring code change, report it; orchestrator dispatches a codex-generic-executor R3 to apply the fix.
+
+exec
+/bin/bash -lc "sed -n '1,220p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/82fd64bc/skills/using-superpowers/SKILL.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+---
+name: using-superpowers
+description: Use when starting any conversation - establishes how to find and use skills, requiring Skill tool invocation before ANY response including clarifying questions
+---
+
+<SUBAGENT-STOP>
+If you were dispatched as a subagent to execute a specific task, skip this skill.
+</SUBAGENT-STOP>
+
+<EXTREMELY-IMPORTANT>
+If you think there is even a 1% chance a skill might apply to what you are doing, you ABSOLUTELY MUST invoke the skill.
+
+IF A SKILL APPLIES TO YOUR TASK, YOU DO NOT HAVE A CHOICE. YOU MUST USE IT.
+
+This is not negotiable. This is not optional. You cannot rationalize your way out of this.
+</EXTREMELY-IMPORTANT>
+
+## Instruction Priority
+
+Superpowers skills override default system prompt behavior, but **user instructions always take precedence**:
+
+1. **User's explicit instructions** (AGENTS.md, GEMINI.md, direct requests) — highest priority
+2. **Superpowers skills** — override default system behavior where they conflict
+3. **Default system prompt** — lowest priority
+
+If AGENTS.md or GEMINI.md says "don't use TDD" and a skill says "always use TDD," follow the user's instructions. The user is in control.
+
+## How to Access Skills
+
+**In Codex:** Use the `Skill` tool. When you invoke a skill, its content is loaded and presented to you—follow it directly. Never use the Read tool on skill files.
+
+**In Copilot CLI:** Use the `skill` tool. Skills are auto-discovered from installed plugins. The `skill` tool works the same as Codex's `Skill` tool.
+
+**In Gemini CLI:** Skills activate via the `activate_skill` tool. Gemini loads skill metadata at session start and activates the full content on demand.
+
+**In other environments:** Check your platform's documentation for how skills are loaded.
+
+## Platform Adaptation
+
+Skills may mention tool names that vary by runtime. Other platforms: see `references/copilot-tools.md` (Copilot CLI), `references/codex-tools.md` (Codex) for tool equivalents. Gemini CLI users get the tool mapping loaded automatically via GEMINI.md.
+
+# Using Skills
+
+## The Rule
+
+**Invoke relevant or requested skills BEFORE any response or action.** Even a 1% chance a skill might apply means that you should invoke the skill to check. If an invoked skill turns out to be wrong for the situation, you don't need to use it.
+
+```dot
+digraph skill_flow {
+    "User message received" [shape=doublecircle];
+    "About to EnterPlanMode?" [shape=doublecircle];
+    "Already brainstormed?" [shape=diamond];
+    "Invoke brainstorming skill" [shape=box];
+    "Might any skill apply?" [shape=diamond];
+    "Invoke Skill tool" [shape=box];
+    "Announce: 'Using [skill] to [purpose]'" [shape=box];
+    "Has checklist?" [shape=diamond];
+    "Create TodoWrite todo per item" [shape=box];
+    "Follow skill exactly" [shape=box];
+    "Respond (including clarifications)" [shape=doublecircle];
+
+    "About to EnterPlanMode?" -> "Already brainstormed?";
+    "Already brainstormed?" -> "Invoke brainstorming skill" [label="no"];
+    "Already brainstormed?" -> "Might any skill apply?" [label="yes"];
+    "Invoke brainstorming skill" -> "Might any skill apply?";
+
+    "User message received" -> "Might any skill apply?";
+    "Might any skill apply?" -> "Invoke Skill tool" [label="yes, even 1%"];
+    "Might any skill apply?" -> "Respond (including clarifications)" [label="definitely not"];
+    "Invoke Skill tool" -> "Announce: 'Using [skill] to [purpose]'";
+    "Announce: 'Using [skill] to [purpose]'" -> "Has checklist?";
+    "Has checklist?" -> "Create TodoWrite todo per item" [label="yes"];
+    "Has checklist?" -> "Follow skill exactly" [label="no"];
+    "Create TodoWrite todo per item" -> "Follow skill exactly";
+}
+```
+
+## Red Flags
+
+These thoughts mean STOP—you're rationalizing:
+
+| Thought | Reality |
+|---------|---------|
+| "This is just a simple question" | Questions are tasks. Check for skills. |
+| "I need more context first" | Skill check comes BEFORE clarifying questions. |
+| "Let me explore the codebase first" | Skills tell you HOW to explore. Check first. |
+| "I can check git/files quickly" | Files lack conversation context. Check for skills. |
+| "Let me gather information first" | Skills tell you HOW to gather information. |
+| "This doesn't need a formal skill" | If a skill exists, use it. |
+| "I remember this skill" | Skills evolve. Read current version. |
+| "This doesn't count as a task" | Action = task. Check for skills. |
+| "The skill is overkill" | Simple things become complex. Use it. |
+| "I'll just do this one thing first" | Check BEFORE doing anything. |
+| "This feels productive" | Undisciplined action wastes time. Skills prevent this. |
+| "I know what that means" | Knowing the concept ≠ using the skill. Invoke it. |
+
+## Skill Priority
+
+When multiple skills could apply, use this order:
+
+1. **Process skills first** (brainstorming, debugging) - these determine HOW to approach the task
+2. **Implementation skills second** (frontend-design, mcp-builder) - these guide execution
+
+"Let's build X" → brainstorming first, then implementation skills.
+"Fix this bug" → debugging first, then domain-specific skills.
+
+## Skill Types
+
+**Rigid** (TDD, debugging): Follow exactly. Don't adapt away discipline.
+
+**Flexible** (patterns): Adapt principles to context.
+
+The skill itself tells you which.
+
+## User Instructions
+
+Instructions say WHAT, not HOW. "Add X" or "Fix Y" doesn't mean skip workflows.
+
+codex
+Using `superpowers:using-superpowers` to follow the required skill workflow before starting this review. I’ll keep this read-only: inspect the changed files, run the locked acceptance commands, and report findings without modifying or committing anything.
+exec
+/bin/bash -lc "sed -n '1,220p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/82fd64bc/skills/verification-before-completion/SKILL.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+---
+name: verification-before-completion
+description: Use when about to claim work is complete, fixed, or passing, before committing or creating PRs - requires running verification commands and confirming output before making any success claims; evidence before assertions always
+---
+
+# Verification Before Completion
+
+## Overview
+
+Claiming work is complete without verification is dishonesty, not efficiency.
+
+**Core principle:** Evidence before claims, always.
+
+**Violating the letter of this rule is violating the spirit of this rule.**
+
+## The Iron Law
+
+```
+NO COMPLETION CLAIMS WITHOUT FRESH VERIFICATION EVIDENCE
+```
+
+If you haven't run the verification command in this message, you cannot claim it passes.
+
+## The Gate Function
+
+```
+BEFORE claiming any status or expressing satisfaction:
+
+1. IDENTIFY: What command proves this claim?
+2. RUN: Execute the FULL command (fresh, complete)
+3. READ: Full output, check exit code, count failures
+4. VERIFY: Does output confirm the claim?
+   - If NO: State actual status with evidence
+   - If YES: State claim WITH evidence
+5. ONLY THEN: Make the claim
+
+Skip any step = lying, not verifying
+```
+
+## Common Failures
+
+| Claim | Requires | Not Sufficient |
+|-------|----------|----------------|
+| Tests pass | Test command output: 0 failures | Previous run, "should pass" |
+| Linter clean | Linter output: 0 errors | Partial check, extrapolation |
+| Build succeeds | Build command: exit 0 | Linter passing, logs look good |
+| Bug fixed | Test original symptom: passes | Code changed, assumed fixed |
+| Regression test works | Red-green cycle verified | Test passes once |
+| Agent completed | VCS diff shows changes | Agent reports "success" |
+| Requirements met | Line-by-line checklist | Tests passing |
+
+## Red Flags - STOP
+
+- Using "should", "probably", "seems to"
+- Expressing satisfaction before verification ("Great!", "Perfect!", "Done!", etc.)
+- About to commit/push/PR without verification
+- Trusting agent success reports
+- Relying on partial verification
+- Thinking "just this once"
+- Tired and wanting work over
+- **ANY wording implying success without having run verification**
+
+## Rationalization Prevention
+
+| Excuse | Reality |
+|--------|---------|
+| "Should work now" | RUN the verification |
+| "I'm confident" | Confidence ≠ evidence |
+| "Just this once" | No exceptions |
+| "Linter passed" | Linter ≠ compiler |
+| "Agent said success" | Verify independently |
+| "I'm tired" | Exhaustion ≠ excuse |
+| "Partial check is enough" | Partial proves nothing |
+| "Different words so rule doesn't apply" | Spirit over letter |
+
+## Key Patterns
+
+**Tests:**
+```
+✅ [Run test command] [See: 34/34 pass] "All tests pass"
+❌ "Should pass now" / "Looks correct"
+```
+
+**Regression tests (TDD Red-Green):**
+```
+✅ Write → Run (pass) → Revert fix → Run (MUST FAIL) → Restore → Run (pass)
+❌ "I've written a regression test" (without red-green verification)
+```
+
+**Build:**
+```
+✅ [Run build] [See: exit 0] "Build passes"
+❌ "Linter passed" (linter doesn't check compilation)
+```
+
+**Requirements:**
+```
+✅ Re-read plan → Create checklist → Verify each → Report gaps or completion
+❌ "Tests pass, phase complete"
+```
+
+**Agent delegation:**
+```
+✅ Agent reports success → Check VCS diff → Verify changes → Report actual state
+❌ Trust agent report
+```
+
+## Why This Matters
+
+From 24 failure memories:
+- your human partner said "I don't believe you" - trust broken
+- Undefined functions shipped - would crash
+- Missing requirements shipped - incomplete features
+- Time wasted on false completion → redirect → rework
+- Violates: "Honesty is a core value. If you lie, you'll be replaced."
+
+## When To Apply
+
+**ALWAYS before:**
+- ANY variation of success/completion claims
+- ANY expression of satisfaction
+- ANY positive statement about work state
+- Committing, PR creation, task completion
+- Moving to next task
+- Delegating to agents
+
+**Rule applies to:**
+- Exact phrases
+- Paraphrases and synonyms
+- Implications of success
+- ANY communication suggesting completion/correctness
+
+## The Bottom Line
+
+**No shortcuts for verification.**
+
+Run the command. Read the output. THEN claim the result.
+
+This is non-negotiable.
+
+  → Read locked PR.md, CLAUDE workflow context, and changed-file diffs
+  • Perform line-level and ADR-0006 checklist review
+  • Run all 15 PR.md acceptance commands and lockfile sanity checks
+  • Audit cross-package consumer graph and e2e residue
+  • Compile final verdict in requested format
+codex
+I’m reading the locked plan and changed files first so the review is anchored to the actual contract, not the summary. After that I’ll run the acceptance commands exactly as listed in `## acceptance`.
+exec
+/bin/bash -lc "nl -ba docs/plans/wave-5-main/C.2-7-adr-0014-v0.5-amendment.md | sed -n '1,260p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	# C.2-7 — ADR-0014 v0.5 amendment + HeavyBlockBoundary consume W5-1 公式 from `@skb/block-foundation`
+     2	
+     3	> **Wave 5 Stage C.2 8th implementation PR** of the locked 13-PR sequence
+     4	> (C.2-1 → C.2-12; per Wave 5 plan v1.3 row C.2-7). Lands the
+     5	> **ADR-0014 v0.5 substantive Amendment** that widens
+     6	> HeavyBlockBoundaryProps (P-generic) with an optional `gridContext` field
+     7	> (W5-1 公式-derived dims path) plus the `HeavyBlockBoundary` impl
+     8	> consuming `effectiveColWidth` + `effectiveCellHeight` from
+     9	> `@skb/block-foundation/grid-math` as the single authority + the
+    10	> sister-doc `packages/heavy-block-boundary/CONTRACT.md` sync per
+    11	> ADR-0016 §502 + the canonical Playwright spec
+    12	> `apps/site/src/__tests__/e2e/c2-7-heavy-grid-dims.spec.ts` covering
+    13	> the user-visible heavy block plugin placeholder dimension
+    14	> consistency on `/sample-blocks`. C.2-1 (mdx-bridge serialize, squash
+    15	> `e54497d`) + C.2-2 (block-foundation grid primitives, squash
+    16	> `b15ba24`) + C.2-3 (Astro renderer grid + Responsive 12/6/1, squash
+    17	> `2586328`) + C.2-3.5 (mdx-bridge hard-throw flip, squash `b019a31`) +
+    18	> C.2-4 (editor-shell grid container + `useAutoRowSpan`, squash
+    19	> `de13d15`) + C.2-5 (drag/drop UX 3 modules, squash `2df71b6`) + C.2-6
+    20	> (resize UX col-ruler + size-tooltip + `effectiveColSnaps`, squash
+    21	> assumed merged before C.2-7 PLAN dispatch) all merged. C.2-7 wires
+    22	> the **`@skb/heavy-block-boundary` runtime consumer** of the W5-1
+    23	> `effectiveColWidth` + `effectiveCellHeight` block-foundation
+    24	> authority + the **ADR-0014 v0.5 Amendments § entry** codifying the
+    25	> gridContext-derived dims path (substantive Amendment per v0.2.1 +
+    26	> v0.3 + v0.4 precedent; status remains `accepted`, NOT a status flip).
+    27	> Existing `dims` consumers in `apps/site` (.astro pages) keep passing
+    28	> explicit `dims` per v0.4 path — explicit `dims` is forward-compatible
+    29	> + wins precedence when both supplied. **PRE-COMMIT CLAUDE REVIEW (D1
+    30	> stage 4) FIRES** per `## D2 trigger judgment` (Row 4 NEW ADR
+    31	> amendment + Row 1 CONTRACT.md change in `@skb/heavy-block-boundary` +
+    32	> Row 5 cross-package boundary contract change since the boundary now
+    33	> consumes block-foundation `grid-math` exports as a runtime
+    34	> dependency).
+    35	
+    36	## title
+    37	
+    38	Land **ADR-0014 v0.5 Amendments § entry** (substantive Amendment;
+    39	status remains `accepted`) widening HeavyBlockBoundaryProps (P-generic) with
+    40	an optional `gridContext` field that lets the boundary derive `dims`
+    41	internally from W5-1 公式 (`effectiveColWidth` + `effectiveCellHeight`
+    42	from `@skb/block-foundation/grid-math`). Add the consumer impl in
+    43	`packages/heavy-block-boundary/src/HeavyBlockBoundary.tsx` with the
+    44	locked precedence: explicit `dims` wins → fall back to gridContext
+    45	derivation → throw at call time when neither is supplied (fail-loud
+    46	mis-wiring surface, NOT silent render with NaN). Sister-doc-sync
+    47	`packages/heavy-block-boundary/CONTRACT.md` per ADR-0016 §502 (Public
+    48	Surface lists `gridContext`; Invariants codify the precedence + the
+    49	W5-1 single-authority delegation cross-reference). Land canonical
+    50	Playwright spec at `apps/site/src/__tests__/e2e/c2-7-heavy-grid-dims.spec.ts`
+    51	covering the user-visible heavy block plugin placeholder dimension
+    52	consistency on `/sample-blocks` per ADR-0011 D9 Product Experience
+    53	Quality Gate + v1.3 retrofit catalog (lines 553-560 verbatim).
+    54	
+    55	Specifically:
+    56	
+    57	1. NEW ADR-0014 v0.5 Amendments § entry (~50-80 LOC append at the
+    58	   tail of `## Amendments` section, parallel to v0.2.1 + v0.3 + v0.4
+    59	   precedent at lines 558+ / 593+ / etc.). Substantive Amendment
+    60	   widens D1 component API with optional `gridContext` field +
+    61	   defines D11 dims-derivation precedence (explicit `dims` wins →
+    62	   gridContext-derived fallback → throw on neither) + cites W5-1
+    63	   single-authority delegation (`effectiveColWidth` +
+    64	   `effectiveCellHeight` from `@skb/block-foundation/grid-math`).
+    65	   Status remains `accepted` (NOT flipped); date `2026-05-05`;
+    66	   Wave-tag `Wave 5 Stage C.2`. Optional new AC#17 if applicable
+    67	   (boundary derivation matches W5-1 公式 byte-equal to direct
+    68	   block-foundation invocation).
+    69	
+    70	2. MODIFIED `packages/heavy-block-boundary/src/HeavyBlockBoundary.tsx`
+    71	   (~40-70 LOC delta on top of current 128 LOC; final ~170-200 LOC,
+    72	   well under 500 LOC cap). Add `gridContext` to
+    73	   HeavyBlockBoundaryProps (P-generic) interface; add internal derivation
+    74	   path in the component body that:
+    75	
+    76	   - At call time (function entry, BEFORE `useState` calls): if both
+    77	     `dims` and `gridContext` are `undefined`, throw
+    78	     `Error('HeavyBlockBoundary requires either dims or gridContext')`.
+    79	     Throwing at call time (NOT in `useEffect`) surfaces mis-wiring
+    80	     immediately + fails the React render fast, NOT after async load.
+    81	   - If `dims` is supplied (regardless of `gridContext`), use
+    82	     `dims` directly (explicit wins; backward-compatible with v0.4
+    83	     consumers).
+    84	   - If only `gridContext` is supplied, derive
+    85	     `width = effectiveColWidth(gridContext.colSpan, gridContext.containerWidth, gridContext.geometry)`
+    86	     and `height = effectiveCellHeight(gridContext.rowSpan, gridContext.geometry)`,
+    87	     then construct an internal `HeavyBlockDimensions { width, height }`
+    88	     used in the `skeletonStyle` inline-style emission.
+    89	
+    90	   Import `effectiveColWidth` + `effectiveCellHeight` from
+    91	   `@skb/block-foundation/grid-math` (single-authority per ADR-0016
+    92	   D6 + memory `feedback_cross_package_consumer_pattern`). NO local
+    93	   re-implementation of the W5-1 formulae.
+    94	
+    95	   File-head JSDoc cites ADR-0014 v0.5 (gridContext path) + ADR-0016
+    96	   D9 (W5-1 公式 single-authority delegation).
+    97	
+    98	   **GridContext shape**: `{ colSpan: number; rowSpan: number;
+    99	   containerWidth: number; geometry?: Partial<GridGeometry> }`. The
+   100	   `containerWidth` field name matches the actual
+   101	   `effectiveColWidth(colSpan, containerWidth, geometry?)` signature
+   102	   at `packages/block-foundation/src/grid-math.ts` lines 57-67 (per
+   103	   memory `feedback_pr_reviewer_authority_at_head` — read live source
+   104	   at HEAD, not the briefing-prose paraphrase). The optional
+   105	   `geometry` defaults to `DEFAULT_GRID_GEOMETRY` per the
+   106	   block-foundation helper's own default fallback (single-authority).
+   107	
+   108	3. MODIFIED `packages/heavy-block-boundary/CONTRACT.md` (~15-25 LOC
+   109	   delta on top of current 63 LOC; final ~80 LOC). Two surgical
+   110	   edits:
+   111	
+   112	   - **Public Surface section (lines 21-32)**: append `gridContext?:
+   113	     { colSpan: number; rowSpan: number; containerWidth: number;
+   114	     geometry?: Partial<GridGeometry> }` bullet to the
+   115	     HeavyBlockBoundaryProps (P-generic) enumeration (positioned after
+   116	     `onLoadError?` per ADR-0014 v0.5 Amendments §; group at the
+   117	     end as v0.5 NEW field).
+   118	   - **Invariants section (lines 34-43)**: append a NEW invariant
+   119	     `**Dims-derivation precedence (v0.5; AC#17)**: explicit `dims`
+   120	     prop wins over `gridContext`-derived dims when both are
+   121	     supplied; with only `gridContext`, the boundary derives
+   122	     `width = effectiveColWidth(colSpan, containerWidth, geometry?)`
+   123	     and `height = effectiveCellHeight(rowSpan, geometry?)` from the
+   124	     `@skb/block-foundation/grid-math` single authority (per ADR-0016
+   125	     D6 + D9 W5-1 公式); with neither supplied, the boundary throws
+   126	     `Error('HeavyBlockBoundary requires either dims or gridContext')`
+   127	     at call time (fail-loud mis-wiring surface, NOT silent render
+   128	     with NaN dimensions).` Cross-reference inline to
+   129	     `packages/block-foundation/src/grid-math.ts` (the W5-1 authority
+   130	     site).
+   131	
+   132	   Authority Links section gets ONE additional bullet appended:
+   133	   `[ADR-0016 D6 + D9](../../docs/decisions/ADR-0016-grid-data-model.md)
+   134	   — `effectiveColWidth` + `effectiveCellHeight` W5-1 公式 single
+   135	   authority that the v0.5 gridContext path delegates to.`
+   136	
+   137	   NO change to the existing v0.4 prose for `dims` /
+   138	   `HeavyBlockDimensions` shape (backward-compatible widening).
+   139	
+   140	4. NEW `apps/site/src/__tests__/e2e/c2-7-heavy-grid-dims.spec.ts`
+   141	   (~80 LOC). Playwright spec covering the canonical e2e_smoke flow
+   142	   per v1.3 retrofit catalog (lines 553-560 verbatim). Spec body:
+   143	
+   144	   - `test.describe('plugin placeholder consumes grid effectiveColWidth/effectiveCellHeight', ...)`.
+   145	   - WSL2 chromium launch skip per memory
+   146	     `feedback_wsl2_chromium_launch` — `test.skip(process.platform
+   147	     === 'linux' && /Microsoft/i.test(process.release.osRelease ?? ''))`
+   148	     guard at suite head; CI executes (Linux non-WSL).
+   149	   - `test('plugin placeholder consumes grid effectiveColWidth/effectiveCellHeight', async ({ page }) => { ... })`
+   150	     Body:
+   151	     1. `await page.goto('/sample-blocks')`.
+   152	     2. Wait for grid container `.skb-grid` to be visible.
+   153	     3. Locate the heavy block plugin placeholder (one of jupyter /
+   154	        nn-viz / agent-flow surfaces from C.1-1 squash; selector via
+   155	        `[data-block="jupyter"]` or `[data-deferred="wave-4"]`).
+   156	     4. Locate an adjacent light block (e.g., callout / image) for
+   157	        dimension parity comparison.
+   158	     5. Read `boundingBox()` of both. Assert: heavy block `width`
+   159	        is finite (NOT NaN), heavy block `height >= 0`, heavy block
+   160	        `width` matches the same colSpan-equivalent light block
+   161	        within ±2px tolerance (rounding allowance per CSS subpixel
+   162	        rendering).
+   163	     6. Assert: no grid overflow — heavy block `boundingBox.x +
+   164	        width <= grid container `boundingBox.x + width` + 1px.
+   165	     7. Take screenshot to
+   166	        `docs/audits/screenshots/wave-5-c2-7-heavy-grid-dims.png` per
+   167	        ADR-0011 D9.5 archive flow + canonical screenshot_archive
+   168	        catalog field. File MUST be ≥ 5KB at ACCEPT (placeholder
+   169	        guard per `scripts/check-screenshot-archive.ts`).
+   170	
+   171	   Spec is keyed on the canonical `it`/`test` description string
+   172	   `"plugin placeholder consumes grid effectiveColWidth/effectiveCellHeight"`
+   173	   (verbatim per v1.3 catalog line 559) so
+   174	   `scripts/check-e2e-coverage.ts` resolves it via the
+   175	   `playwright_spec` field's `:"…"` suffix.
+   176	
+   177	5. PR.md self-listed per ADR-0006 D8 strict-whitelist.
+   178	
+   179	NEW Playwright spec runs under `pnpm --filter @skb/site test:visual`
+   180	(or equivalent Playwright-running command per `apps/site/package.json`
+   181	script). Vitest unit tests for the dims-derivation precedence + throw
+   182	paths are added in-line to the existing
+   183	`packages/heavy-block-boundary/src/__tests__/` suite (NOT in the
+   184	whitelist below as separate file — see `## test_cases` for the
+   185	structural decision; suite file may already exist from A2 + A3 + A4
+   186	era and is amended in-place via grep-and-add pattern by the codex
+   187	executor).
+   188	
+   189	The 8 `@skb/block-*` packages are NOT touched (heavy-block boundary is
+   190	a runtime consumer of block-foundation, not a sibling). `@skb/mdx-bridge`
+   191	is NOT touched. `@skb/editor-shell` is NOT touched. `@skb/design-tokens`
+   192	is NOT touched. `apps/site/src/{islands,components}/` is NOT touched
+   193	(C.1-1 plugin placeholder squash already shipped; existing `dims`-pass
+   194	consumers stay v0.4 path). NO change to grid-math (`effectiveColWidth`
+   195	+ `effectiveCellHeight` already shipped at C.2-2 squash `b15ba24`).
+   196	NO new BlockKind additions. NO retry-flow / lifecycle / a11y changes;
+   197	v0.5 ONLY widens the dims authoring surface to allow grid-derived path.
+   198	
+   199	LOCKED implementation path: **ADR-0014 v0.5 Amendments § append**
+   200	(substantive Amendment; status remains `accepted`); **dims-derivation
+   201	precedence: explicit `dims` wins → gridContext-derived → throw on
+   202	neither**; **block-foundation `grid-math` single-authority delegation**
+   203	(NO local re-impl of W5-1 公式). Path "migrate existing apps/site
+   204	.astro consumers from explicit `dims` to `gridContext` now" is
+   205	**EXPLICITLY FORBIDDEN** in this PR (reason in Risk register row 1;
+   206	LOC budget would balloon ≥ 500 LOC + cross-package consumer-side
+   207	churn; explicit `dims` is forward-compatible per the precedence rule;
+   208	migration is a separate follow-up if and when needed).
+   209	
+   210	PR.md self-listed per ADR-0006 D8 strict-whitelist.
+   211	
+   212	## files
+   213	
+   214	**8 canonical files** at PLAN time (orchestrator hand-off whitelist;
+   215	extended from 5 → 8 by orchestrator scope refinement at exec time
+   216	2026-05-05). The 3 added entries are mechanical metadata foundation
+   217	required to enable the locked behavior (boundary package depends on
+   218	block-foundation runtime + tsc project reference + lockfile sync); per
+   219	ADR-0011 + ADR-0015 R14 thresholds, mechanical metadata to support
+   220	already-locked behavior is **scope refinement** (NOT reframe → no v1.4
+   221	plan amendment required). NO change to the 8 `@skb/block-*`
+   222	packages. NO change to `@skb/mdx-bridge` / `@skb/editor-shell` /
+   223	`@skb/design-tokens`. NO change to `apps/site/src/{islands,components,pages}/`.
+   224	PR.md self-listed.
+   225	
+   226	> **Scope-refinement evidence (orchestrator-recorded 2026-05-05)**:
+   227	> codex-generic-executor first dispatch correctly stopped at Step 3a
+   228	> imports check per R14 discipline (memory
+   229	> `feedback_r14_defer_chain_plan_amendment`). It verified
+   230	> `@skb/heavy-block-boundary` did NOT declare `@skb/block-foundation`
+   231	> as dependency (Wave 4 Stage A1 shipped boundary with only
+   232	> `@skb/design-tokens` dep; `@skb/block-foundation` was not added at
+   233	> the time because v0.4 boundary did not consume W5-1 公式). Pr-writer
+   234	> PLAN-time check ("verify at exec time") flagged the assumption;
+   235	> codex confirmed FALSE; orchestrator extends whitelist by 3 metadata
+   236	> entries (package.json + tsconfig.json + pnpm-lock.yaml). Pr-writer
+   237	> ACCEPT (D1 stage 6) re-verifies the extended whitelist.
+   238	
+   239	Whitelist (exhaustive; codex executor MUST stage exactly these 8
+   240	paths and no others — per ADR-0006 D8 explicit-file-list staging
+   241	discipline + memory `feedback_git_operator_explicit_stage`):
+   242	
+   243	1. `docs/decisions/ADR-0014-heavy-block-boundary.md` (MODIFIED — append
+   244	   v0.5 Amendments § entry; status remains `accepted`; substantive
+   245	   Amendment per v0.2.1 + v0.3 + v0.4 precedent)
+   246	2. `packages/heavy-block-boundary/src/HeavyBlockBoundary.tsx` (MODIFIED
+   247	   — add `gridContext` field to HeavyBlockBoundaryProps (P-generic); import
+   248	   `effectiveColWidth` + `effectiveCellHeight` from `@skb/block-foundation`;
+   249	   add precedence-resolved internal dims derivation; throw at call
+   250	   time when neither `dims` nor `gridContext` supplied)
+   251	3. `packages/heavy-block-boundary/CONTRACT.md` (MODIFIED — append
+   252	   `gridContext` to Public Surface; append dims-derivation precedence
+   253	   Invariant; append ADR-0016 D6 + D9 cross-reference to Authority
+   254	   Links)
+   255	4. `apps/site/src/__tests__/e2e/c2-7-heavy-grid-dims.spec.ts` (NEW —
+   256	   Playwright spec covering canonical e2e_smoke flow per v1.3 catalog)
+   257	5. `docs/plans/wave-5-main/C.2-7-adr-0014-v0.5-amendment.md` (MODIFIED;
+   258	   this PR.md — scope-refinement note + 8-file whitelist)
+   259	6. `packages/heavy-block-boundary/package.json` (MODIFIED — add
+   260	   `@skb/block-foundation: workspace:*` to `dependencies`; preserves
+
+exec
+/bin/bash -lc "nl -ba CLAUDE.md | sed -n '1,220p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	# CLAUDE.md
+     2	
+     3	> **GENERATED FROM agent-contract.md — DO NOT EDIT BY HAND.**
+     4	>
+     5	> Edit `agent-contract.md` then run `pnpm generate:configs`. CI fails if drift detected.
+     6	
+     7	This file is the Claude Code entry point for the **SelfKnowledgeBaseWeb** monorepo. It tells
+     8	every Claude session what the project is, the hard rules, the agent roster, and the workflow.
+     9	
+    10	- Spec: [docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md](docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md)
+    11	- Active plan: [docs/plans/active.md](docs/plans/active.md)
+    12	- Single source for agents: [agent-contract.md](agent-contract.md)
+    13	- Codex tool invocations: [docs/runbooks/codex-tool-invocations.md](docs/runbooks/codex-tool-invocations.md)
+    14	
+    15	## Hard rules
+    16	
+    17	1. **File size**: 200 lines (target) / 300 lines (ESLint `max-lines` warn) / 500 lines
+    18	   (`pnpm size-check` hard fail). Spec §3.6.
+    19	2. **Cross-file references**: every doc/code change must keep doc cross-references and
+    20	   contract files in sync (`packages/*/CONTRACT.md`, `agent-contract.md`).
+    21	3. **Lychee link-check**: broken markdown links block merge. Run `pnpm link-check` locally.
+    22	4. **`pnpm check` is mandatory before review** (lint + typecheck + test + build + size).
+    23	5. **Git mutation discipline (ADR-0011 D1+D4)**: `git commit / branch / rebase / push`
+    24	   only at D1 stage 5 (reviewer codex commit phase) or by orchestrator self for bootstrap
+    25	   scope. Subagents (pr-writer / ux-ui-lead / refactorer / researcher) never run mutating
+    26	   git commands.
+    27	6. **Web access discipline (ADR-0011 D7)**: only the `researcher` Claude subagent (one-shot
+    28	   per dispatch) may run `web_search` / `web_fetch`.
+    29	7. **Cross-package moves (ADR-0011 D7)**: only the `refactorer` Claude subagent may
+    30	   reorganize packages, and every reorganization requires an ADR under `docs/decisions/`.
+    31	
+    32	## Commands cheat-sheet
+    33	
+    34	| Command                 | Purpose                                               |
+    35	| ----------------------- | ----------------------------------------------------- |
+    36	| `pnpm install`          | Install workspace dependencies                        |
+    37	| `pnpm dev`              | Run all `dev` scripts (parallel)                      |
+    38	| `pnpm check`            | Lint + typecheck + test + build + size-check          |
+    39	| `pnpm check:affected`   | Same, scoped to packages affected since `origin/main` |
+    40	| `pnpm size-check`       | Hard 500-line limit on every source file              |
+    41	| `pnpm link-check`       | Lychee scan over `./**/*.md`                          |
+    42	| `pnpm generate:configs` | Re-derive everything from `agent-contract.md`         |
+    43	| `pnpm format`           | Prettier write across the repo                        |
+    44	
+    45	## Review workflow (ADR-0011 D1 linear pipeline; supersedes Wave 1+2 tree workflow)
+    46	
+    47	Per PR (PRs run strictly serial; the next PR's PLAN waits for the previous PR's ACCEPT):
+    48	
+    49	```
+    50	1. PLAN              pr-writer Claude subagent ↔ orchestrator → lock PR.md (D2 schema)
+    51	       │
+    52	       ▼
+    53	2. EXECUTE           codex `codex-generic-executor` (or specialized scaffolder; or
+    54	                     `ux-ui-lead` Claude subagent for UI/UX). TDD-front:
+    55	                     write tests → write impl → vitest all PASS.
+    56	       │
+    57	       ▼
+    58	3. REVIEW            codex `codex-pr-reviewer-55` (5.5) — line-level + spec-match.
+    59	                     ADR-0006 8-point checklist mandatory. PASS → next stage.
+    60	       │
+    61	       ├── (D2 row 1+4 hit) → 4. PRE-COMMIT CLAUDE REVIEW   orchestrator self.
+    62	       │                          Mitigates same-model echo chamber.
+    63	       │
+    64	       ▼
+    65	5. COMMIT (+ push)   reviewer codex commits. Per ADR-0006 D8 explicit-file-list
+    66	                     staging (`git reset HEAD` → `git add <list>` →
+    67	                     `git diff --cached --stat` verify → `git commit`).
+    68	       │
+    69	       ▼
+    70	6. ACCEPT            pr-writer Claude subagent (second invocation): verify the
+    71	                     PR's diff actually meets PR.md's `acceptance:` block.
+    72	```
+    73	
+    74	D2 trigger judgment (ADR-0007 D2 rows; locked by orchestrator at PLAN):
+    75	- **D1 stage 4 PRE-COMMIT CLAUDE REVIEW fires** on D2 rows 1+4 (contract change OR new
+    76	  ADR required). Other rows skip this stage but still go through codex review.
+    77	- **High-risk classes** (rows 2 package add/remove, row 8 CI/deploy/auth/security) also
+    78	  receive heightened reviewer scrutiny within stage 3 — ADR-0006 D8 staging discipline +
+    79	  ADR-0006 8-point checklist 8th-class hunt.
+    80	
+    81	See [ADR-0011](docs/decisions/ADR-0011-linear-pipeline-execution-model.md) D1-D8 +
+    82	[ADR-0007 D2](docs/decisions/ADR-0007-job-function-codex-heavy-execution.md).
+    83	
+    84	Codex tools (11 patterns: 5 scaffolders + plan-challenger + codex-pr-reviewer-55 +
+    85	4 audit/exec profiles) are
+    86	[orchestrator-direct Bash invocations](docs/runbooks/codex-tool-invocations.md) post
+    87	ADR-0007 D5 + ADR-0011 D6.
+    88	
+    89	## Claude teammates (5)
+    90	
+    91	| Tier            | Name           | Role                                                                           |
+    92	| --------------- | -------------- | ------------------------------------------------------------------------------ |
+    93	| T0 Orchestrator | `orchestrator` | 整体规划 + dispatch 工种 + 维护 docs/plans/ + D1 pipeline 协调                 |
+    94	| T2 Subagent     | `pr-writer`    | PR.md 起草（PLAN 调）+ ACCEPT 验收（COMMIT 后调）                              |
+    95	| T2 Subagent     | `refactorer`   | 唯一跨包重组权（ADR-0011 D7 沿用，按需 one-shot dispatch）                     |
+    96	| T2 Subagent     | `researcher`   | 唯一外网访问权（ADR-0011 D7 沿用，按需 one-shot dispatch）                     |
+    97	| T2 Subagent     | `ux-ui-lead`   | 视觉单一权威 — 横跨 ui-default + apps/site + editor 子模块（仅 UI/UX PR 触发） |
+    98	
+    99	## Codex tool patterns (11)
+   100	
+   101	orchestrator-direct Bash invocations (ADR-0007 D5). Full canonical bash + triggers + audit-log paths in [docs/runbooks/codex-tool-invocations.md](docs/runbooks/codex-tool-invocations.md).
+   102	
+   103	| Pattern                   | Profile                   | Summary                                                                                            |
+   104	| ------------------------- | ------------------------- | -------------------------------------------------------------------------------------------------- |
+   105	| `codex-generic-executor`  | `codex-generic-executor`  | ADR-0011 D6 NEW Wave 3 默认 executor。gpt-5.5 + workspace-write sandbox。                          |
+   106	| `codex-mdx-doctor`        | `codex-mdx-doctor`        | ADR-0011 D5 + D6 NEW Wave 3 audit profile。从 Wave 1+2 Tier 3                                      |
+   107	| `codex-perf-auditor`      | `codex-perf-auditor`      | ADR-0011 D5 + D6 NEW Wave 3 audit profile。从 Wave 1+2 Tier 3                                      |
+   108	| `codex-pr-reviewer-55`    | `codex-pr-reviewer-55`    | ADR-0011 D1 stage 3 默认 reviewer。replaces Wave 1+2 的 pr-gate（5.5）+                            |
+   109	| `codex-structure-auditor` | `codex-structure-auditor` | ADR-0011 D5 + D6 NEW Wave 3 audit profile。从 Wave 1+2 Tier 3                                      |
+   110	| `plan-challenger`         | `plan-challenger`         | lock 前挑战 orchestrator 的 wave / track / PR plan：检查 task 大小、可测性、边界场景。             |
+   111	| `codex-api-crud-builder`  | `scaffolder`              | 在 apps/api 按 RESTful 风格生成 CRUD 端点骨架（Pydantic schema + 路由）。                          |
+   112	| `codex-block-generator`   | `scaffolder`              | 在 simple-block-eng / ux-ui-lead / editor-eng 提交 template 后，按模板仿造其余 block / submodule。 |
+   113	| `codex-css-stylist`       | `scaffolder`              | 写 packages/design-tokens / packages/ui 的 design tokens（颜色 / 间距 / 字体）+                    |
+   114	| `codex-script-builder`    | `scaffolder`              | 写 scripts/refactor-move.ts / scripts/new-block.ts / scripts/extract-pdf-text.ts 等工具。          |
+   115	| `codex-test-scaffolder`   | `scaffolder`              | 为每个 packages/<name> 生成 src/__tests__/ 下的 vitest 套件骨架，                                  |
+   116	
+   117	## Footer
+   118	
+   119	This file is GENERATED FROM `agent-contract.md`. Edits to this file will be overwritten
+   120	on the next `pnpm generate:configs` run.
+
+exec
+/bin/bash -lc 'git status --short' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+ M docs/decisions/ADR-0014-heavy-block-boundary.md
+ M packages/heavy-block-boundary/CONTRACT.md
+ M packages/heavy-block-boundary/package.json
+ M packages/heavy-block-boundary/src/HeavyBlockBoundary.tsx
+ M packages/heavy-block-boundary/tsconfig.json
+ M pnpm-lock.yaml
+?? apps/site/src/__tests__/e2e/
+?? docs/audits/codex-runs/2026-05-05-C.2-7-execute-r2.txt
+?? docs/audits/codex-runs/2026-05-05-C.2-7-execute.txt
+?? docs/plans/wave-5-main/C.2-7-adr-0014-v0.5-amendment.md
+?? packages/heavy-block-boundary/src/__tests__/HeavyBlockBoundary.v0.5.test.tsx
+
+exec
+/bin/bash -lc 'git diff --stat' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+ docs/decisions/ADR-0014-heavy-block-boundary.md    | 132 +++++++++++++++++++++
+ packages/heavy-block-boundary/CONTRACT.md          |  15 ++-
+ packages/heavy-block-boundary/package.json         |   1 +
+ .../src/HeavyBlockBoundary.tsx                     |  34 +++++-
+ packages/heavy-block-boundary/tsconfig.json        |   5 +-
+ pnpm-lock.yaml                                     |   3 +
+ 6 files changed, 185 insertions(+), 5 deletions(-)
+
+exec
+/bin/bash -lc "nl -ba docs/plans/wave-5-main/C.2-7-adr-0014-v0.5-amendment.md | sed -n '260,720p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+   260	   `@skb/block-foundation: workspace:*` to `dependencies`; preserves
+   261	   existing `@skb/design-tokens` dep + peerDependencies + devDependencies
+   262	   unchanged)
+   263	7. `packages/heavy-block-boundary/tsconfig.json` (MODIFIED — add
+   264	   `{ "path": "../block-foundation" }` to `references` array; preserves
+   265	   existing `../design-tokens` reference + compilerOptions + include unchanged)
+   266	8. `pnpm-lock.yaml` (MODIFIED — single `@skb/block-foundation: link:../block-foundation`
+   267	   entry added under `packages/heavy-block-boundary` importer block;
+   268	   no other lockfile churn — verified via `git diff --stat pnpm-lock.yaml`
+   269	   2026-05-05 post `pnpm install --filter @skb/heavy-block-boundary`)
+   270	
+   271	**LOC budget**: ADR (~50-80) + impl (~40-70 delta) + CONTRACT (~15-25
+   272	delta) + Playwright spec (~80) + PR.md self (~600-800) ≈ ~785-1055
+   273	total; under typical Wave 5 PR ceiling. No source file approaches
+   274	500-LOC cap (HeavyBlockBoundary.tsx final ~170-200 LOC; CONTRACT.md
+   275	final ~80 LOC; Playwright spec ~80 LOC; ADR delta appended to
+   276	existing ~700-line file but no individual section exceeds 200 LOC).
+   277	
+   278	**Vitest unit tests for the new dims-derivation precedence + throw
+   279	paths**: added in-place to the existing
+   280	`packages/heavy-block-boundary/src/__tests__/` suite via grep-and-add
+   281	pattern at exec time (codex executor decides whether to amend the
+   282	existing file or create a new sibling test file under
+   283	`__tests__/v0.5/`). Either decision is in-scope of the file 2 entry
+   284	(HeavyBlockBoundary.tsx is the sole impl; tests co-locate with impl
+   285	package). Whitelist NOT extended — `__tests__/` paths are
+   286	self-contained inside the `@skb/heavy-block-boundary` package and
+   287	inherit ADR-0006 D8 implicit allowance per package-internal test
+   288	file convention. **Open question for orchestrator**: prefer in-place
+   289	amendment of existing test file OR new sibling under `__tests__/v0.5/`?
+   290	See `## Plan-challenger absorbtion` Open Question #4.
+   291	
+   292	## test_cases
+   293	
+   294	TDD-front authoritative list. Each test case names a vitest `it(...)`
+   295	description (input fixture + expected assertion + file location) OR a
+   296	Playwright `test(...)` description. The TDD-front discipline per
+   297	ADR-0011 D1 stage 2 + memory `feedback_codex_spark_lint_gap` requires
+   298	the codex-generic-executor to **land all test files first** (red),
+   299	then implementation files (green), verifying via `pnpm --filter
+   300	@skb/heavy-block-boundary test` + `pnpm --filter @skb/site test:visual`
+   301	(or equivalent Playwright runner; WSL2 skip path applies).
+   302	
+   303	### Suite 1: `packages/heavy-block-boundary/src/__tests__/HeavyBlockBoundary.v0.5.test.tsx` (vitest unit tests for v0.5 precedence + throw paths)
+   304	
+   305	5 test cases per ADR-0014 v0.5 Amendments § (gridContext-derived dims
+   306	+ precedence + throw):
+   307	
+   308	1. **TC1.1 — explicit `dims` wins over `gridContext` derivation when
+   309	   both supplied**. Input: `<HeavyBlockBoundary kind="jupyter"
+   310	   dims={{ width: 800, height: 400 }} gridContext={{ colSpan: 12,
+   311	   rowSpan: 4, containerWidth: 1200 }} load={mockLoad}
+   312	   childProps={{}} />`. Expected: rendered DOM `style.width === '800px'`
+   313	   and `style.minHeight === '400px'` (explicit `dims` values used,
+   314	   NOT gridContext-derived). Location:
+   315	   `HeavyBlockBoundary.v0.5.test.tsx > precedence > explicit dims wins`.
+   316	
+   317	2. **TC1.2 — gridContext-derived dims used when only `gridContext`
+   318	   supplied**. Input: `<HeavyBlockBoundary kind="jupyter"
+   319	   gridContext={{ colSpan: 12, rowSpan: 4, containerWidth: 1200 }}
+   320	   load={mockLoad} childProps={{}} />`. Expected: rendered DOM
+   321	   `style.width` matches `effectiveColWidth(12, 1200) === 1200`px
+   322	   (full 12-col span at 1200px container; per W5-1 公式 line 57-67)
+   323	   and `style.minHeight` matches `effectiveCellHeight(4) === 4*48 +
+   324	   3*14 === 234`px (per W5-1 公式 line 45-51 with
+   325	   `DEFAULT_GRID_GEOMETRY.rowH === 48`, `gap === 14`). Location:
+   326	   `HeavyBlockBoundary.v0.5.test.tsx > precedence > gridContext derives dims`.
+   327	
+   328	3. **TC1.3 — throw at call time when neither `dims` nor
+   329	   `gridContext` supplied**. Input: `() => render(<HeavyBlockBoundary
+   330	   kind="jupyter" load={mockLoad} childProps={{}} />)`. Expected:
+   331	   throws `Error('HeavyBlockBoundary requires either dims or
+   332	   gridContext')` synchronously during render (NOT after async load
+   333	   resolves). Location:
+   334	   `HeavyBlockBoundary.v0.5.test.tsx > precedence > throws on neither`.
+   335	
+   336	4. **TC1.4 — gridContext `geometry` override propagates to W5-1
+   337	   derivation**. Input: `<HeavyBlockBoundary kind="jupyter"
+   338	   gridContext={{ colSpan: 6, rowSpan: 2, containerWidth: 600,
+   339	   geometry: { rowH: 60 } }} load={mockLoad} childProps={{}} />`.
+   340	   Expected: `style.minHeight === effectiveCellHeight(2, { rowH: 60 })
+   341	   === 2*60 + 1*14 === 134`px (custom rowH propagates per
+   342	   Partial GridGeometry merge in `resolveGeometry`). Location:
+   343	   `HeavyBlockBoundary.v0.5.test.tsx > precedence > geometry override propagates`.
+   344	
+   345	5. **TC1.5 — backward compat: existing `dims`-only call sites unchanged**.
+   346	   Input: `<HeavyBlockBoundary kind="jupyter" dims={{ width: 600,
+   347	   height: 300 }} load={mockLoad} childProps={{}} />`. Expected:
+   348	   same render output as v0.4 (style.width 600px, style.minHeight
+   349	   300px); no regression on the v0.4 path. Location:
+   350	   `HeavyBlockBoundary.v0.5.test.tsx > backward-compat > dims-only path unchanged`.
+   351	
+   352	(Suite 1 final count: 5 cases — TC1.1 to TC1.5. Existing A2 + A3 +
+   353	A4 era test cases preserved unchanged in their original suite files.)
+   354	
+   355	### Suite 2: `apps/site/src/__tests__/e2e/c2-7-heavy-grid-dims.spec.ts` (Playwright e2e per v1.3 catalog)
+   356	
+   357	1 test case per v1.3 retrofit catalog line 553-560:
+   358	
+   359	1. **TC2.1 — `"plugin placeholder consumes grid
+   360	   effectiveColWidth/effectiveCellHeight"`**. Input: navigate
+   361	   `/sample-blocks`; locate heavy block plugin placeholder + adjacent
+   362	   light block. Expected:
+   363	   - heavy block `boundingBox.width` is finite (NOT NaN);
+   364	   - heavy block `boundingBox.height >= 0`;
+   365	   - heavy block `width` matches adjacent same-colSpan light block
+   366	     within ±2px tolerance;
+   367	   - heavy block does NOT overflow grid container right edge (heavy
+   368	     `box.x + width <= container.x + width + 1px`);
+   369	   - screenshot saved to
+   370	     `docs/audits/screenshots/wave-5-c2-7-heavy-grid-dims.png` (≥ 5KB
+   371	     at ACCEPT per `scripts/check-screenshot-archive.ts`).
+   372	   Location:
+   373	   `c2-7-heavy-grid-dims.spec.ts > "plugin placeholder consumes grid effectiveColWidth/effectiveCellHeight"`.
+   374	
+   375	(Suite 2 final count: 1 case — TC2.1 canonical e2e_smoke.)
+   376	
+   377	**Suite total: 5 vitest + 1 Playwright = 6 test cases**. All MUST PASS
+   378	at AC#9 (`pnpm --filter @skb/heavy-block-boundary test` exit 0) +
+   379	AC#13 (Playwright spec PASS on CI; WSL2 skip locally per memory
+   380	`feedback_wsl2_chromium_launch`).
+   381	
+   382	## contracts_affected
+   383	
+   384	- `packages/heavy-block-boundary/CONTRACT.md` — **MODIFIED**. Public
+   385	  Surface section gets `gridContext?: { colSpan; rowSpan;
+   386	  containerWidth; geometry? }` bullet appended after `onLoadError?`.
+   387	  Invariants section gets a NEW `**Dims-derivation precedence (v0.5;
+   388	  AC#17)**` invariant codifying explicit-dims-wins → gridContext-
+   389	  derived → throw-on-neither precedence + W5-1 single-authority
+   390	  delegation cross-reference. Authority Links section gets ADR-0016
+   391	  D6 + D9 cross-reference appended. D2 row 1 hit. Per ADR-0014 v0.5
+   392	  + ADR-0016 §502 sister-doc-sync — same-PR-with-implementation site
+   393	  for the v0.5 public surface bullet + invariant.
+   394	
+   395	- `packages/block-foundation/CONTRACT.md` — **NOT** modified. The
+   396	  W5-1 公式 (`effectiveColWidth` + `effectiveCellHeight` +
+   397	  `GridGeometry` + `DEFAULT_GRID_GEOMETRY`) public surface was
+   398	  already authored at C.2-2 squash `b15ba24`; C.2-7 is a
+   399	  consumer-side wire-up that imports the existing surface (no
+   400	  upstream change required).
+   401	
+   402	- `packages/editor-shell/CONTRACT.md` — **NOT** modified (C.2-7 does
+   403	  not touch editor-shell; resize / drag-drop / grid-container
+   404	  surfaces unchanged).
+   405	
+   406	- `apps/site/CONTRACT.md` — **NOT** modified. C.2-3 already shipped
+   407	  the `## Grid layout (Wave 5)` section with `.skb-grid` selector
+   408	  authority + 12/6/1 breakpoint table at PR squash `2586328`; C.2-7
+   409	  spec consumes the existing selector authority + `/sample-blocks`
+   410	  page surface (C.1-1 plugin placeholder squash) but does NOT modify
+   411	  apps/site.
+   412	
+   413	- 8 `@skb/block-*` CONTRACT.md files — **NOT** modified.
+   414	  `@skb/mdx-bridge` / `@skb/design-tokens` CONTRACT.md — **NOT**
+   415	  modified.
+   416	
+   417	D2 row 5 (boundary contract change) hit because the new
+   418	`packages/heavy-block-boundary/CONTRACT.md` v0.5 invariant codifies
+   419	the runtime consumer relationship from `@skb/heavy-block-boundary`
+   420	to `@skb/block-foundation/grid-math` — heavy-block-boundary now
+   421	consumes block-foundation as a runtime dependency for the dims
+   422	derivation path (was a typecheck-only / no-runtime-import dep at
+   423	v0.4). Downstream consumers (Stage C.4 `apps/site/src/pages/notes/[slug]/edit.astro`
+   424	mount site at C.4-2 + C.4-3 + the editor-shell heavy-block wrap path
+   425	at C.4-4) may opt to use the gridContext path once integrated; v0.4
+   426	explicit-dims path remains forward-compatible.
+   427	
+   428	Plus D2 row 1 hit on `@skb/heavy-block-boundary/CONTRACT.md` (single,
+   429	not double — block-foundation contract not modified). Plus D2 row 4
+   430	hit (NEW ADR amendment) per Wave 5 plan v1.3 ROW 4 门槛规则 — v0.5
+   431	Amendments § append is a substantive Amendment per v0.2.1 + v0.3 +
+   432	v0.4 precedent.
+   433	
+   434	PRE-COMMIT CLAUDE REVIEW (D1 stage 4) FIRES.
+   435	
+   436	## adr_touched
+   437	
+   438	ADR-0014 v0.5 Amendments § entry appended (substantive Amendment;
+   439	status remains `accepted`; date `2026-05-05`; Wave-tag `Wave 5 Stage
+   440	C.2`). Amendment widens D1 component API with optional `gridContext`
+   441	field + adds D11 dims-derivation precedence rule (explicit `dims`
+   442	wins → gridContext-derived → throw on neither). Optional new AC#17
+   443	(boundary derivation matches W5-1 公式 byte-equal to direct
+   444	block-foundation invocation; per Suite 1 TC1.2 + TC1.4 vitest evidence).
+   445	
+   446	D2 row 4 HIT per Wave 5 plan v1.3 ROW 4 门槛规则 — substantive
+   447	Amendment to an accepted ADR. PRE-COMMIT CLAUDE REVIEW (D1 stage 4)
+   448	FIRES per D2 row 4.
+   449	
+   450	ADR-0016 D6 + D9 (W5-1 公式 single authority `effectiveColWidth` +
+   451	`effectiveCellHeight` + `GridGeometry`) referenced in the v0.5
+   452	Amendments § + the HeavyBlockBoundary.tsx file-head JSDoc + the
+   453	CONTRACT.md Authority Links — NOT amended (consumer-side wire-up
+   454	only; ADR-0016 surface unchanged).
+   455	
+   456	ADR-0016 §502 sister-doc-sync row 1 of 4 (CONTRACT.md sync
+   457	requirement) operationally satisfied for
+   458	`packages/heavy-block-boundary/CONTRACT.md` (same-PR-with-
+   459	implementation sync site).
+   460	
+   461	ADR-0011 D1 (linear pipeline) + D2 (trigger schema) + D6 (codex
+   462	patterns) + D9 (Product Experience Quality Gate) + D9.1 (path
+   463	patterns) + D9.5 (screenshot archive flow) + D10 (anti-prompt-
+   464	patching) — operational enforcement, NOT amended.
+   465	
+   466	ADR-0006 D8 (explicit-file-list staging) + 8-point checklist + 9th
+   467	item (UI-touch + E2E spec) — operational enforcement, NOT amended.
+   468	
+   469	ADR-0014 D5 (Dimensions ownership; `heavyBoundaryDimensions` field
+   470	on the block UI definition) — referenced as the v0.4 surface that
+   471	v0.5 widens; v0.5 keeps D5 backward-compatible (explicit-dims
+   472	consumers unchanged).
+   473	
+   474	**Wave 5 plan v1.3 row C.2-7 + UI-touch retrofit catalog (lines
+   475	553-560)** referenced as the canonical e2e_smoke source per ADR-0011
+   476	D10 anti-prompt-patching (catalog wins over inline paraphrase). PR
+   477	#75 squash `5bd5112` (Wave 5 plan v1.3 amendment) + PR #76 squash
+   478	`ad42f71` (symmetric ui_touch=false skip in
+   479	`scripts/check-screenshot-archive.ts`) cited as the upstream
+   480	enabling work that landed the catalog + the symmetric skip pattern
+   481	(plan-PR forward-declaration paths no longer trip CI).
+   482	
+   483	## acceptance
+   484	
+   485	15 verifiable acceptance criteria. Each is a single shell command
+   486	producing an objectively checkable result. ACCEPT-stage pr-writer
+   487	(D1 stage 6) re-runs all 15 against the post-commit working tree.
+   488	
+   489	### AC#1 — ADR-0014 v0.5 Amendments § entry exists with date `2026-05-05` + Wave-tag
+   490	
+   491	```bash
+   492	grep -nE '^### v0\.5 \(2026-05-05.*Wave 5 Stage C\.2' \
+   493	  docs/decisions/ADR-0014-heavy-block-boundary.md | wc -l
+   494	```
+   495	
+   496	Expected: `≥ 1`. Verifies the v0.5 sub-section header was appended
+   497	to `## Amendments` with the correct date + Wave-tag (parallel to
+   498	v0.2.1 + v0.3 + v0.4 precedent).
+   499	
+   500	### AC#2 — ADR-0014 status remains `accepted` (NOT flipped)
+   501	
+   502	```bash
+   503	grep -nE '^status:\s*accepted' \
+   504	  docs/decisions/ADR-0014-heavy-block-boundary.md | wc -l
+   505	```
+   506	
+   507	Expected: `≥ 1`. Verifies the front-matter / header `status:`
+   508	field was NOT flipped; v0.5 is a substantive Amendment, NOT a
+   509	status promotion.
+   510	
+   511	### AC#3 — HeavyBlockBoundaryProps (P-generic) exposes new optional `gridContext` field
+   512	
+   513	```bash
+   514	grep -nE 'gridContext\??:.*colSpan' \
+   515	  packages/heavy-block-boundary/src/HeavyBlockBoundary.tsx | wc -l
+   516	```
+   517	
+   518	Expected: `≥ 1`. Verifies the `gridContext` field was added to the
+   519	interface (anchored on `colSpan` keyword which appears in the inline
+   520	shape `{ colSpan: number; rowSpan: number; containerWidth: number;
+   521	geometry?: ... }`).
+   522	
+   523	### AC#4 — HeavyBlockBoundary imports `effectiveColWidth` + `effectiveCellHeight` from `@skb/block-foundation`
+   524	
+   525	```bash
+   526	grep -nE "from\s+['\"]@skb/block-foundation" \
+   527	  packages/heavy-block-boundary/src/HeavyBlockBoundary.tsx | wc -l
+   528	grep -nE "import.*effectiveColWidth" \
+   529	  packages/heavy-block-boundary/src/HeavyBlockBoundary.tsx | wc -l
+   530	grep -nE "import.*effectiveCellHeight" \
+   531	  packages/heavy-block-boundary/src/HeavyBlockBoundary.tsx | wc -l
+   532	```
+   533	
+   534	Expected: each `≥ 1`. Verifies single-authority delegation to
+   535	block-foundation (NO local re-impl of W5-1 公式 per ADR-0006 class
+   536	4 single-authority + memory `feedback_cross_package_consumer_pattern`).
+   537	
+   538	### AC#5 — Throw at call time when neither `dims` nor `gridContext` supplied
+   539	
+   540	```bash
+   541	grep -nF "HeavyBlockBoundary requires either dims or gridContext" \
+   542	  packages/heavy-block-boundary/src/HeavyBlockBoundary.tsx | wc -l
+   543	```
+   544	
+   545	Expected: `≥ 1`. Verifies the verbatim error string is present
+   546	(matches the canonical message from the briefing + Suite 1 TC1.3
+   547	vitest assertion).
+   548	
+   549	### AC#6 — `HeavyBlockBoundary.tsx` does NOT contain a local re-implementation of W5-1 公式
+   550	
+   551	```bash
+   552	grep -nE "function effectiveColWidth|function effectiveCellHeight" \
+   553	  packages/heavy-block-boundary/src/HeavyBlockBoundary.tsx | wc -l
+   554	```
+   555	
+   556	Expected: `0`. Verifies single-authority compliance — the helpers are
+   557	imported from `@skb/block-foundation`, NOT re-defined locally.
+   558	
+   559	### AC#7 — CONTRACT.md Public Surface lists `gridContext`
+   560	
+   561	```bash
+   562	grep -nF 'gridContext' packages/heavy-block-boundary/CONTRACT.md | wc -l
+   563	```
+   564	
+   565	Expected: `≥ 1`. Verifies the sister-doc Public Surface bullet add
+   566	(ADR-0016 §502 row 1 of 4 sync requirement satisfied).
+   567	
+   568	### AC#8 — CONTRACT.md Invariants codify the dims-derivation precedence + W5-1 delegation
+   569	
+   570	```bash
+   571	grep -nF 'Dims-derivation precedence' \
+   572	  packages/heavy-block-boundary/CONTRACT.md | wc -l
+   573	grep -nF 'effectiveColWidth' \
+   574	  packages/heavy-block-boundary/CONTRACT.md | wc -l
+   575	grep -nF 'effectiveCellHeight' \
+   576	  packages/heavy-block-boundary/CONTRACT.md | wc -l
+   577	```
+   578	
+   579	Expected: each `≥ 1`. Verifies the v0.5 Invariant entry is present
+   580	+ cross-references both W5-1 公式 helpers by name.
+   581	
+   582	### AC#9 — `pnpm --filter @skb/heavy-block-boundary test` PASS (5 new + existing cases)
+   583	
+   584	```bash
+   585	pnpm --filter @skb/heavy-block-boundary test
+   586	```
+   587	
+   588	Expected: exit 0. All existing A2 + A3 + A4 vitest cases continue to
+   589	PASS plus the 5 new v0.5 cases (TC1.1 explicit-dims-wins; TC1.2
+   590	gridContext-derives; TC1.3 throw-on-neither; TC1.4 geometry-override;
+   591	TC1.5 backward-compat). No skipped tests.
+   592	
+   593	### AC#10 — `pnpm exec tsx scripts/check-ui-touch.ts` returns `ui_touch: true`
+   594	
+   595	```bash
+   596	pnpm exec tsx scripts/check-ui-touch.ts \
+   597	  docs/plans/wave-5-main/C.2-7-adr-0014-v0.5-amendment.md
+   598	```
+   599	
+   600	Expected: stdout contains `ui_touch: true`. Verifies mechanical D9.1
+   601	detection AGREES with the v1.3 catalog annotation (touches
+   602	`packages/heavy-block-boundary/src/**` per D9.1 path pattern).
+   603	
+   604	### AC#11 — `pnpm exec tsx scripts/check-e2e-coverage.ts` validates `playwright_spec` resolvable
+   605	
+   606	```bash
+   607	pnpm exec tsx scripts/check-e2e-coverage.ts \
+   608	  docs/plans/wave-5-main/C.2-7-adr-0014-v0.5-amendment.md
+   609	```
+   610	
+   611	Expected: exit 0. Verifies the `playwright_spec:
+   612	apps/site/src/__tests__/e2e/c2-7-heavy-grid-dims.spec.ts:"plugin
+   613	placeholder consumes grid effectiveColWidth/effectiveCellHeight"`
+   614	file exists + the named `test(...)` block is resolvable.
+   615	
+   616	### AC#12 — Playwright spec file exists + uses the canonical test description string verbatim
+   617	
+   618	```bash
+   619	test -f apps/site/src/__tests__/e2e/c2-7-heavy-grid-dims.spec.ts && \
+   620	  grep -nF 'plugin placeholder consumes grid effectiveColWidth/effectiveCellHeight' \
+   621	    apps/site/src/__tests__/e2e/c2-7-heavy-grid-dims.spec.ts | wc -l
+   622	```
+   623	
+   624	Expected: `≥ 1`. Verifies the Playwright spec was authored at the
+   625	canonical path with the exact test description string from the v1.3
+   626	catalog (so `scripts/check-e2e-coverage.ts` resolves it).
+   627	
+   628	### AC#13 — Playwright spec PASSES on CI (WSL2 skip locally per memory)
+   629	
+   630	```bash
+   631	# Local (WSL2) — auto-skip per memory `feedback_wsl2_chromium_launch`
+   632	pnpm --filter @skb/site exec playwright test \
+   633	  apps/site/src/__tests__/e2e/c2-7-heavy-grid-dims.spec.ts || \
+   634	  echo 'WSL2 skip path expected; CI runs the actual spec'
+   635	
+   636	# CI (Linux non-WSL): the spec MUST exit 0 + emit screenshot ≥ 5KB
+   637	```
+   638	
+   639	Expected (CI): exit 0; screenshot `docs/audits/screenshots/wave-5-c2-7-heavy-grid-dims.png`
+   640	emitted ≥ 5KB. Local (WSL2): skip is acceptable per memory; CI is
+   641	the canonical PASS path.
+   642	
+   643	### AC#14 — `pnpm exec tsx scripts/check-screenshot-archive.ts` PASS at ACCEPT (≥ 5KB)
+   644	
+   645	```bash
+   646	pnpm exec tsx scripts/check-screenshot-archive.ts \
+   647	  docs/plans/wave-5-main/C.2-7-adr-0014-v0.5-amendment.md
+   648	```
+   649	
+   650	Expected: exit 0. Run at ACCEPT (D1 stage 6) after CI executes the
+   651	Playwright spec + emits the screenshot. Verifies the screenshot
+   652	exists at the canonical path + is ≥ 5KB (placeholder guard per
+   653	PR #76 symmetric ui_touch skip + ≥ 5KB threshold).
+   654	
+   655	### AC#15 — `pnpm check` clean (lint + typecheck + test + build + size)
+   656	
+   657	```bash
+   658	pnpm check
+   659	```
+   660	
+   661	Expected: exit 0. Lint + typecheck + test + build + size-check all
+   662	PASS for `@skb/heavy-block-boundary` + `@skb/site` + any package
+   663	transitively affected. Per memory `feedback_codex_spark_lint_gap`
+   664	— orchestrator independently runs `pnpm --filter
+   665	@skb/heavy-block-boundary lint` to catch lint-only issues; per memory
+   666	`feedback_git_operator_ci_verification` — uncached `pnpm --filter
+   667	@skb/heavy-block-boundary typecheck` is also re-run independently
+   668	because turbo cache + vitest miss tsc errors. NO file > 500 LOC
+   669	(HeavyBlockBoundary.tsx final ~170-200 LOC; CONTRACT.md ~80 LOC;
+   670	Playwright spec ~80 LOC).
+   671	
+   672	PR.md self-listed in this whitelist (AC#15 + listed in the `## files`
+   673	section as item 5) per ADR-0006 D8.
+   674	
+   675	## verification required
+   676	
+   677	The following commands run by orchestrator-self at D1 stage 4
+   678	(PRE-COMMIT CLAUDE REVIEW) and re-run by pr-writer at D1 stage 6
+   679	(ACCEPT). All 15 ACs (above) plus the D1 stage-3 codex-pr-reviewer-55
+   680	8-class checklist + 9th item (UI-touch + E2E spec), plus the
+   681	following augmented checks:
+   682	
+   683	- `pnpm --filter @skb/heavy-block-boundary typecheck` PASS (uncached;
+   684	  per memory `feedback_git_operator_ci_verification`).
+   685	- `pnpm --filter @skb/heavy-block-boundary lint` PASS (per memory
+   686	  `feedback_codex_spark_lint_gap`).
+   687	- `pnpm --filter @skb/heavy-block-boundary build` PASS — `dist/`
+   688	  regenerates with the v0.5 `gridContext` field typed emit + the
+   689	  `@skb/block-foundation` import surfaced in the d.ts emit.
+   690	- `pnpm --filter @skb/site typecheck` PASS — the new Playwright spec
+   691	  imports type-resolve cleanly.
+   692	- `pnpm size-check` PASS — every file in the whitelist under 500 LOC.
+   693	- `git diff --cached --stat` post-staging shows exactly the 5
+   694	  whitelisted files (no incidental snapshot / `pnpm-lock.yaml` /
+   695	  cache contamination — per memory
+   696	  `feedback_git_operator_explicit_stage`).
+   697	- Lychee discipline (per memories
+   698	  `feedback_lychee_autolink_in_backticks` +
+   699	  `feedback_lychee_line_anchor` + `feedback_lychee_npmjs_403` +
+   700	  `feedback_lychee_user_local_paths`):
+   701	
+   702	  ```bash
+   703	  grep -nE '`[^`]*<\w+>[^`]*`' \
+   704	    docs/plans/wave-5-main/C.2-7-adr-0014-v0.5-amendment.md \
+   705	    docs/decisions/ADR-0014-heavy-block-boundary.md \
+   706	    packages/heavy-block-boundary/CONTRACT.md
+   707	  ```
+   708	
+   709	  Expected: zero matches inside backtick spans for the v0.5 added
+   710	  prose. CI Lychee runs against the merged tree as canonical;
+   711	  orchestrator pre-empts locally.
+   712	
+   713	- Cross-package consumer parity check (per memory
+   714	  `feedback_cross_package_consumer_pattern`):
+   715	
+   716	  ```bash
+   717	  # W5-1 公式 single authority lives at block-foundation
+   718	  grep -nF 'export function effectiveColWidth' \
+   719	    packages/block-foundation/src/grid-math.ts
+   720	  grep -nF 'export function effectiveCellHeight' \
+
+exec
+/bin/bash -lc "nl -ba docs/plans/wave-5-main/C.2-7-adr-0014-v0.5-amendment.md | sed -n '713,980p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+   713	- Cross-package consumer parity check (per memory
+   714	  `feedback_cross_package_consumer_pattern`):
+   715	
+   716	  ```bash
+   717	  # W5-1 公式 single authority lives at block-foundation
+   718	  grep -nF 'export function effectiveColWidth' \
+   719	    packages/block-foundation/src/grid-math.ts
+   720	  grep -nF 'export function effectiveCellHeight' \
+   721	    packages/block-foundation/src/grid-math.ts
+   722	
+   723	  # heavy-block-boundary IMPORTS (not re-defines)
+   724	  grep -nF 'effectiveColWidth' \
+   725	    packages/heavy-block-boundary/src/HeavyBlockBoundary.tsx
+   726	  grep -nF 'effectiveCellHeight' \
+   727	    packages/heavy-block-boundary/src/HeavyBlockBoundary.tsx
+   728	  ```
+   729	
+   730	  All four must produce hits — single-authority delegation, not
+   731	  algorithmic replication.
+   732	
+   733	- Manual sanity (post-build): `apps/site/src/{islands,components}/`
+   734	  consumers still pass explicit `dims` (v0.4 path; precedence
+   735	  guarantees backward compat); no inadvertent `gridContext` migration
+   736	  leaked in by codex.
+   737	
+   738	- Post-merge auto-merge-script verification (per memory
+   739	  `feedback_gh_pr_ci_conclusion_vs_status`): orchestrator post-merge
+   740	  CI verification MUST use `gh run view --json conclusion` parsing
+   741	  `conclusion === "SUCCESS"` (NOT `status === "COMPLETED"` which
+   742	  marks runs that may have failed). See `## executor` Stage 7
+   743	  ACCEPT note.
+   744	
+   745	## ui_touch
+   746	
+   747	`true` (touches `packages/heavy-block-boundary/src/HeavyBlockBoundary.tsx`
+   748	per ADR-0011 D9.1 path pattern `packages/heavy-block-boundary/src/**`).
+   749	
+   750	Mechanical detection via `pnpm exec tsx scripts/check-ui-touch.ts`
+   751	(AC#10) AGREES with this catalog annotation. Per ADR-0011 D9 +
+   752	v1.3 retrofit catalog (line 555).
+   753	
+   754	## e2e_smoke
+   755	
+   756	Verbatim from Wave 5 plan v1.3 retrofit catalog lines 553-560:
+   757	
+   758	- flow: heavy block plugin placeholder renders consuming grid
+   759	  `effectiveColWidth` + `effectiveCellHeight` (no NaN / no overflow /
+   760	  dimensions match adjacent light blocks)
+   761	- target_url: `/sample-blocks`
+   762	- playwright_spec: `apps/site/src/__tests__/e2e/c2-7-heavy-grid-dims.spec.ts:"plugin placeholder consumes grid effectiveColWidth/effectiveCellHeight"`
+   763	- screenshot_archive: `docs/audits/screenshots/wave-5-c2-7-heavy-grid-dims.png`
+   764	
+   765	Canonical D2 schema field name `screenshot_archive:` used (PR #76
+   766	squash `ad42f71` shipped the symmetric ui_touch=false skip in
+   767	`scripts/check-screenshot-archive.ts`, so the canonical name no
+   768	longer trips CI on plan-PR forward-declaration paths).
+   769	
+   770	Per ADR-0011 D9.5 archive flow: orchestrator at ACCEPT (D1 stage 6)
+   771	runs `pnpm --filter @skb/site test:visual` PASS + verifies the
+   772	screenshot file ≥ 5KB at
+   773	`docs/audits/screenshots/wave-5-c2-7-heavy-grid-dims.png` (placeholder
+   774	guard). Missing or < 5KB = REJECT-with-residue (ACCEPT does not pass
+   775	until CI emits the screenshot).
+   776	
+   777	## Plan-challenger absorbtion
+   778	
+   779	NOT APPLICABLE for an implementation PR per ADR-0011 D7. The Wave 5
+   780	plan v1.3 row C.2-7 + ADR-0014 v0.4 (current accepted) + ADR-0016 D6
+   781	+ D9 W5-1 公式 + ADR-0006 8-class audit checklist + 9th item are the
+   782	authoritative inputs. No plan-challenger dispatch occurred at PLAN
+   783	stage; the Wave 5 plan was already plan-challenger-vetted at v1.3
+   784	amendment (4-row absorbtion table per PR #75 squash `5bd5112`);
+   785	ADR-0014 was already plan-challenger-vetted at Wave 4 Stage A close
+   786	+ v0.3 + v0.4 amendments; ADR-0016 D6 + D9 absorbtion was already
+   787	plan-challenger-vetted at Pre-A2 lock.
+   788	
+   789	**Open questions surfaced during PLAN draft** (none blocking lock;
+   790	documented for orchestrator):
+   791	
+   792	1. **Should the throw fire at call time (function entry) or at
+   793	   render time (inside the component body before `useEffect`)?**
+   794	   **Resolved**: at call time, BEFORE `useState` calls. Throwing
+   795	   before any state initialization surfaces mis-wiring with the
+   796	   cleanest stack trace + zero risk of partial state corruption.
+   797	   The briefing language ("at call time, not render time") is
+   798	   honored: function entry → check args → throw if invalid → only
+   799	   then proceed to useState. The phrase "at render time" in the
+   800	   briefing referred to deferring the throw to `useEffect` async
+   801	   path, which would surface the error AFTER the load attempt
+   802	   resolves (slow, opaque). Resolution: synchronous fail-fast at
+   803	   function entry.
+   804	
+   805	2. **Should the gridContext shape use `containerWidth` (matches
+   806	   `effectiveColWidth(colSpan, containerWidth, geometry?)` HEAD
+   807	   signature) or `viewportCols` (briefing prose paraphrase)?**
+   808	   **Resolved**: `containerWidth: number` — the live signature at
+   809	   `packages/block-foundation/src/grid-math.ts` lines 57-67 takes
+   810	   `containerWidth: number` as the second parameter (NOT `viewportCols`;
+   811	   `viewportCols` is the parameter for `effectiveColSnaps` per C.2-6
+   812	   squash). Per memory `feedback_pr_reviewer_authority_at_head` —
+   813	   read live source at HEAD, not the briefing-prose paraphrase. The
+   814	   briefing prose mentioned `viewportCols` as the gridContext shape
+   815	   field which would require an additional internal lookup
+   816	   (viewportCols → containerWidth) that the W5-1 helper does not
+   817	   provide. Resolution: pass `containerWidth` directly. **FLAGGED**
+   818	   for orchestrator confirmation — see `## ambiguity flagged`.
+   819	
+   820	3. **Should the v0.5 Amendments § entry add a NEW AC#17 to
+   821	   ADR-0014 acceptance criteria, or just append the prose under
+   822	   `## Amendments` without a numbered AC?** **Resolved**: add NEW
+   823	   AC#17 (boundary derivation matches W5-1 公式 byte-equal to direct
+   824	   block-foundation invocation; per Suite 1 TC1.2 + TC1.4 vitest
+   825	   evidence). Follows v0.3 precedent (added AC#16 per the v0.3
+   826	   sub-section header "NEW D10 + AC#16"). Numbered ACs are
+   827	   easier to cite from downstream PRs + CI gates than free prose.
+   828	   **NOT BLOCKING** — if orchestrator prefers prose-only (no AC#17),
+   829	   the Amendment is still substantive on the D-list addition alone.
+   830	
+   831	4. **Should the v0.5 vitest suite live at
+   832	   `packages/heavy-block-boundary/src/__tests__/HeavyBlockBoundary.v0.5.test.tsx`
+   833	   (NEW sibling) OR amend an existing
+   834	   `packages/heavy-block-boundary/src/__tests__/HeavyBlockBoundary.test.tsx`
+   835	   in-place?** **Resolved**: NEW sibling at `.v0.5.test.tsx`.
+   836	   Co-locating v0.5 cases in a versioned sibling file keeps the
+   837	   v0.4 test file unchanged (zero risk of regression on existing
+   838	   A2-A4 coverage) + makes the v0.5 surface trivially auditable
+   839	   (`grep -lF 'gridContext' packages/heavy-block-boundary/src/__tests__/`).
+   840	   **FLAGGED** for orchestrator — if the existing test file pattern
+   841	   in the package is a single `HeavyBlockBoundary.test.tsx` with
+   842	   `describe` blocks per concern, the codex executor may prefer
+   843	   in-place amendment instead. See `## ambiguity flagged`.
+   844	
+   845	5. **Should the Playwright spec use a specific heavy block kind
+   846	   (jupyter / nn-viz / agent-flow) for the dimension parity assertion,
+   847	   or test all 3 in a `forEach` loop?** **Resolved**: test ONE
+   848	   (jupyter, deterministic selector `[data-block="jupyter"]`) for
+   849	   the canonical e2e_smoke. Testing all 3 in a loop would multiply
+   850	   screenshot output (3 PNG instead of 1) + slow the spec without
+   851	   adding meaningful coverage (the dims-derivation logic is identical
+   852	   across kinds; per-kind CSS variation is C.3 scope). Single-kind
+   853	   coverage satisfies the v1.3 catalog flow as worded ("heavy block
+   854	   plugin placeholder renders consuming grid…"; singular "placeholder").
+   855	
+   856	## ambiguity flagged
+   857	
+   858	Two ambiguities surfaced during PLAN draft that orchestrator should
+   859	confirm before EXECUTE:
+   860	
+   861	1. **`gridContext` shape field name `containerWidth` vs `viewportCols`**:
+   862	   the briefing prose suggested `viewportCols` but the live HEAD
+   863	   signature `effectiveColWidth(colSpan, containerWidth, geometry?)`
+   864	   at `packages/block-foundation/src/grid-math.ts` line 57-67 uses
+   865	   `containerWidth: number`. PLAN locks `containerWidth` per memory
+   866	   `feedback_pr_reviewer_authority_at_head`. Orchestrator: confirm
+   867	   `containerWidth` is correct OR if the intent was to add a new
+   868	   `viewportCols → containerWidth` resolver helper (would require
+   869	   ADR-0016 amendment, NOT in this PR scope per briefing's "NO new
+   870	   grid-math additions" constraint). **PLAN ASSUMES** `containerWidth`
+   871	   matches HEAD signature.
+   872	
+   873	2. **v0.5 vitest suite location**: NEW sibling file
+   874	   `HeavyBlockBoundary.v0.5.test.tsx` vs in-place amendment of
+   875	   existing `HeavyBlockBoundary.test.tsx` (or whatever the existing
+   876	   suite file is named under
+   877	   `packages/heavy-block-boundary/src/__tests__/`). PLAN prefers NEW
+   878	   sibling for cleanest v0.5 surface auditing. Orchestrator: confirm
+   879	   OR direct codex executor to inspect existing `__tests__/` layout
+   880	   at exec time + amend in-place if existing pattern demands it.
+   881	   Either decision satisfies `## files` whitelist (test files are
+   882	   package-internal + inherit ADR-0006 D8 implicit allowance).
+   883	
+   884	## R14 self-check
+   885	
+   886	R14 = the 14-point pre-flight per ADR-0011 / Wave 5 plan §232 D12
+   887	"PR.md PLAN-stage validation":
+   888	
+   889	1. Stage scope-fence — only files inside the locked Stage C.2-7
+   890	   whitelist (5 files; cross-package files NOT touched beyond the
+   891	   `@skb/block-foundation` runtime import — block-foundation surface
+   892	   unchanged, consumer-side wire-up only). Row C.2-7 in plan v1.3
+   893	   cites `docs/decisions/ADR-0014-heavy-block-boundary.md` (v0.5
+   894	   Amendments §) + `packages/heavy-block-boundary/src/HeavyBlockBoundary.tsx`
+   895	   (consume W5-1 公式) + `packages/heavy-block-boundary/CONTRACT.md`
+   896	   (sister-doc-sync per ADR-0016 D9); this PR adds the canonical
+   897	   Playwright spec at `apps/site/src/__tests__/e2e/c2-7-heavy-grid-dims.spec.ts`
+   898	   per v1.3 catalog enforcement.
+   899	
+   900	2. TDD-front discipline — `## test_cases` section enumerates 5
+   901	   vitest + 1 Playwright = 6 test cases before any implementation
+   902	   file per ADR-0011 D1 stage 2; codex-generic-executor MUST land
+   903	   tests first (red), then impl (green).
+   904	
+   905	3. Cross-package consumer parity — per memory
+   906	   `feedback_cross_package_consumer_pattern`. The W5-1 公式
+   907	   (`effectiveColWidth` + `effectiveCellHeight`) single authority is
+   908	   `@skb/block-foundation/grid-math` (C.2-2 squash `b15ba24`); this
+   909	   PR's heavy-block-boundary consumer IMPORTS from authority (NOT
+   910	   re-defines). Verification block at AC#4 + AC#6 grep-asserts
+   911	   import-not-redefine.
+   912	
+   913	4. R14 third real-test — per Wave 5 plan v1.3 amendment (PR #75
+   914	   squash `5bd5112`) + memory implicit (R14 third
+   915	   real-test). C.2-7 PR.md `## ui_touch` + `## e2e_smoke` sections
+   916	   are populated VERBATIM from the v1.3 retrofit catalog (lines
+   917	   553-560), NOT paraphrased; Playwright spec authored at the
+   918	   canonical path with the canonical test description string per
+   919	   v1.3 catalog enforcement. ADR-0011 D10 anti-prompt-patching
+   920	   discipline observed.
+   921	
+   922	5. Codex spark lint gap — per memory `feedback_codex_spark_lint_gap`
+   923	   — orchestrator-self runs `pnpm --filter @skb/heavy-block-boundary
+   924	   lint` post-codex independently before authorising commit;
+   925	   verification block enumerates this.
+   926	
+   927	6. Codex audit-log self-recursion — per memory
+   928	   `feedback_codex_audit_log_recursion` — codex executor invocation
+   929	   pipes audit log to `/tmp/codex-runs/...` first, NOT directly to
+   930	   `docs/audits/codex-runs/...`; orchestrator copies post-completion.
+   931	
+   932	7. Lychee discipline — per memories
+   933	   `feedback_lychee_autolink_in_backticks` +
+   934	   `feedback_lychee_line_anchor` + `feedback_lychee_npmjs_403` +
+   935	   `feedback_lychee_user_local_paths`. PR.md uses no
+   936	   angle-bracketed-word-shape autolinks inside backticks; no `:line`
+   937	   suffix on file links; no `npmjs.com` URLs; no markdown-link
+   938	   tilde paths. Pre-empt grep:
+   939	
+   940	   ```bash
+   941	   grep -nE '`[^`]*<\w+>[^`]*`' \
+   942	     docs/plans/wave-5-main/C.2-7-adr-0014-v0.5-amendment.md
+   943	   ```
+   944	
+   945	   Expected: zero matches.
+   946	
+   947	8. WE-009 multi-worker lint contamination — per memory
+   948	   `feedback_multi_worker_lint_contamination`. C.2-7 is single-PR
+   949	   serial work (no concurrent worker B); standard lockfile
+   950	   isolation suffices. orchestrator runs `pnpm --filter
+   951	   @skb/heavy-block-boundary` + `pnpm --filter @skb/site` filtered
+   952	   scope to avoid neighbouring package lint contamination.
+   953	
+   954	9. PR Reviewer authority at HEAD — per memory
+   955	   `feedback_pr_reviewer_authority_at_head`. ADR-0014 v0.4 +
+   956	   ADR-0016 D6 + D9 + the actual `effectiveColWidth(colSpan,
+   957	   containerWidth, geometry?)` HEAD signature at
+   958	   `packages/block-foundation/src/grid-math.ts` lines 57-67 read at
+   959	   HEAD `b2fdd8f` for this PR.md draft; not from earlier review-
+   960	   report quotes. The briefing prose's `viewportCols` paraphrase
+   961	   was overridden in favour of `containerWidth` per HEAD signature
+   962	   (see `## ambiguity flagged`).
+   963	
+   964	10. WE-011 active-writer break WE-009 — per memory
+   965	    `feedback_active_writer_break_we009`. C.2-7 scope is
+   966	    `packages/heavy-block-boundary/` (1 src file + 1 CONTRACT edit) +
+   967	    1 ADR edit + 1 NEW Playwright spec under `apps/site/` only;
+   968	    siblings (`packages/block-*` / `packages/mdx-bridge` /
+   969	    `packages/editor-shell` / `packages/design-tokens`) are quiescent
+   970	    for the duration of this PR.
+   971	
+   972	11. WSL2 chromium launch — per memory
+   973	    `feedback_wsl2_chromium_launch`. C.2-7 NEW Playwright spec
+   974	    `apps/site/src/__tests__/e2e/c2-7-heavy-grid-dims.spec.ts` MUST
+   975	    skip on WSL2 (`process.platform === 'linux' &&
+   976	    /Microsoft/i.test(process.release.osRelease ?? '')`) per the
+   977	    memory pattern. CI executes the actual test on Linux non-WSL
+   978	    + emits the screenshot. AC#13 documents the skip-locally /
+   979	    PASS-on-CI path.
+   980	
+
+exec
+/bin/bash -lc "nl -ba docs/plans/wave-5-main/C.2-7-adr-0014-v0.5-amendment.md | sed -n '980,1180p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+   980	
+   981	12. Wave 3 main pipeline auto-merge — per memory
+   982	    `feedback_wave3_auto_merge`. orchestrator post-merge uses `gh
+   983	    pr merge --squash --delete-branch` once ACCEPT-PASS + all CI
+   984	    SUCCESS (with the post-merge `conclusion = "SUCCESS"` correctness
+   985	    check per memory `feedback_gh_pr_ci_conclusion_vs_status`).
+   986	
+   987	13. R14 defer-chain — per memory
+   988	    `feedback_r14_defer_chain_plan_amendment`. C.2-7 is a fresh
+   989	    PR off main `b2fdd8f` (post v1.3 amendment + symmetric skip
+   990	    fix merges); no defer-chain residue carried over. Open questions
+   991	    in `## Plan-challenger absorbtion` resolved IN FAVOR of plan; 2
+   992	    ambiguities flagged for orchestrator (see `## ambiguity flagged`)
+   993	    are NOT defer-chain residue (PLAN-stage clarifications, not
+   994	    cross-PR carry-overs).
+   995	
+   996	14. gh PR CI conclusion vs status — per memory
+   997	    `feedback_gh_pr_ci_conclusion_vs_status`. The `## executor`
+   998	    Stage 7 ACCEPT block names `gh run view --json conclusion`
+   999	    parsing `conclusion === "SUCCESS"` (NOT `status === "COMPLETED"`);
+  1000	    orchestrator post-merge auto-merge script will use the hardened
+  1001	    pattern.
+  1002	
+  1003	## D2 trigger judgment
+  1004	
+  1005	ADR-0011 D2 v0.2 (post-PR #74 standards-landing) trigger row evaluation
+  1006	for C.2-7:
+  1007	
+  1008	- **Row 1 (CONTRACT change)** — **HIT**.
+  1009	  `packages/heavy-block-boundary/CONTRACT.md` modified (Public
+  1010	  Surface bullet + Invariants entry + Authority Links bullet). Per
+  1011	  ADR-0014 v0.5 + ADR-0016 §502 sister-doc-sync — same-PR-with-
+  1012	  implementation site for the v0.5 contract additions.
+  1013	
+  1014	- **Row 2 (package add/remove)** — **NOT HIT**. No new package; no
+  1015	  package removal.
+  1016	
+  1017	- **Row 3 (≥1 npm dep change)** — **NOT HIT**. NO `package.json` /
+  1018	  `pnpm-lock.yaml` change. `@skb/block-foundation` already declared
+  1019	  as runtime dep at heavy-block-boundary A1 (verify at exec time).
+  1020	
+  1021	- **Row 4 (NEW ADR required OR substantive ADR amendment)** — **HIT**.
+  1022	  ADR-0014 v0.5 Amendments § entry appended (substantive Amendment
+  1023	  per v0.2.1 + v0.3 + v0.4 precedent; status remains `accepted`,
+  1024	  NOT a status flip). Substantive Amendment widens D1 component API
+  1025	  with `gridContext` field + adds D11 dims-derivation precedence
+  1026	  rule + optionally adds AC#17. Per Wave 5 plan v1.3 ROW 4 门槛规则.
+  1027	
+  1028	- **Row 5 (cross ≥3 packages OR boundary contract change)** — **HIT**.
+  1029	  `packages/heavy-block-boundary/CONTRACT.md` boundary contract
+  1030	  extended (v0.5 widens public surface + adds Invariant codifying
+  1031	  runtime consumer relationship from heavy-block-boundary to
+  1032	  block-foundation/grid-math). Heavy-block-boundary now consumes
+  1033	  block-foundation as a runtime dependency for the dims derivation
+  1034	  path (was a typecheck-only / no-runtime-import dep at v0.4).
+  1035	
+  1036	- **Row 6 (deploy / CI / security touched)** — **NOT HIT**. No CI
+  1037	  config / deploy / auth change.
+  1038	
+  1039	- **Row 7 (≥3 reviewers required)** — **NOT HIT** by file-count
+  1040	  triage. C.2-7 is 5-file serial work; D1 stage 3
+  1041	  codex-pr-reviewer-55 + D1 stage 4 PRE-COMMIT CLAUDE REVIEW
+  1042	  (orchestrator-self) suffice.
+  1043	
+  1044	- **Row 8 (high-risk class: deploy / auth / security)** — **NOT HIT**.
+  1045	
+  1046	**Verdict**: Row 1 + Row 4 + Row 5 HIT → **PRE-COMMIT CLAUDE REVIEW
+  1047	(D1 stage 4) FIRES** (Row 4 alone fires the gate; Row 1 + Row 5 also
+  1048	strengthen stage 3 reviewer scrutiny per ADR-0006 D8 staging). ADR-0006
+  1049	8-point checklist + 9th item (UI-touch + E2E spec) mandatory at codex
+  1050	review (D1 stage 3) per ADR-0011 D6 + D9. orchestrator runs PRE-COMMIT
+  1051	CLAUDE REVIEW between stage 3 PASS and stage 5 commit — same-model
+  1052	echo-chamber mitigation per ADR-0011 D2 design rationale.
+  1053	
+  1054	## Risk register
+  1055	
+  1056	7 known risks — pre-flight mitigations enumerated. Stage 3 codex
+  1057	review + Stage 4 PRE-COMMIT CLAUDE REVIEW evaluate each.
+  1058	
+  1059	### Row 1 — codex migrates existing apps/site .astro consumers from `dims` to `gridContext` prematurely
+  1060	
+  1061	**Risk**: codex-generic-executor reads the v0.5 Amendments § entry +
+  1062	decides to "migrate" existing `apps/site/src/{islands,components}/`
+  1063	consumers from explicit `dims` to `gridContext` to "demonstrate" the
+  1064	new path. LOC budget balloons ≥ 500 LOC + cross-package consumer-side
+  1065	churn + breaks v0.4 backward-compat guarantee.
+  1066	
+  1067	**Mitigation**: PR.md `## title` LOCKED implementation path block
+  1068	explicitly forbids this scope. AC#3 + AC#4 + AC#7 + AC#8 only check
+  1069	the heavy-block-boundary package surface. Stage 3 codex review checks
+  1070	the diff stays inside the 5-file whitelist. PR.md `## files` and
+  1071	`## title` enumerate explicit "NO change to apps/site" deferrals.
+  1072	
+  1073	### Row 2 — local re-implementation of W5-1 公式 in HeavyBlockBoundary.tsx
+  1074	
+  1075	**Risk**: codex authors a local `function effectiveColWidth(...)`
+  1076	or `function effectiveCellHeight(...)` inside HeavyBlockBoundary.tsx
+  1077	instead of importing from `@skb/block-foundation`. Single-authority
+  1078	violation per ADR-0006 class 4 + memory
+  1079	`feedback_cross_package_consumer_pattern`.
+  1080	
+  1081	**Mitigation**: AC#4 grep-asserts the import. AC#6 grep-asserts
+  1082	ZERO local re-impl. Source JSDoc cites ADR-0016 D9 single authority.
+  1083	Stage 3 codex review + Stage 4 PRE-COMMIT CLAUDE REVIEW both check.
+  1084	
+  1085	### Row 3 — throw fires too late (in `useEffect`, not at function entry)
+  1086	
+  1087	**Risk**: codex authors the throw inside `useEffect` async path
+  1088	(`if (!dims && !gridContext) throw new Error(...)` after `useState`
+  1089	calls). The error then surfaces AFTER the component has rendered the
+  1090	initial null state + load attempt resolves; opaque stack trace +
+  1091	slow user-feedback for mis-wiring.
+  1092	
+  1093	**Mitigation**: PR.md `## Plan-challenger absorbtion` Open Question #1
+  1094	explicitly resolves throw at function entry, BEFORE `useState` calls.
+  1095	TC1.3 vitest asserts synchronous throw on render attempt. AC#5 grep
+  1096	asserts the verbatim error string is present.
+  1097	
+  1098	### Row 4 — `gridContext` shape uses `viewportCols` (briefing paraphrase) instead of `containerWidth` (HEAD signature)
+  1099	
+  1100	**Risk**: codex reads the briefing prose `viewportCols` and authors
+  1101	the gridContext shape as `{ colSpan; rowSpan; viewportCols; geometry? }`
+  1102	instead of `{ colSpan; rowSpan; containerWidth; geometry? }`. The
+  1103	import then fails to typecheck because `effectiveColWidth(colSpan,
+  1104	viewportCols, geometry?)` does not match the HEAD signature
+  1105	`(colSpan: number, containerWidth: number, geometry?)`.
+  1106	
+  1107	**Mitigation**: PR.md `## ambiguity flagged` item 1 explicitly names
+  1108	`containerWidth` as the locked field name + cites the HEAD signature
+  1109	location. PR.md `## test_cases` Suite 1 TC1.2 asserts on
+  1110	`effectiveColWidth(12, 1200) === 1200`px — the `1200` argument
+  1111	position is `containerWidth` per HEAD. PR.md `## R14 self-check`
+  1112	item 9 reinforces.
+  1113	
+  1114	### Row 5 — ADR-0014 status accidentally flipped from `accepted`
+  1115	
+  1116	**Risk**: codex reads the v0.5 Amendments § append + decides to also
+  1117	"reflect" the v0.5 in the front-matter / header `status:` field.
+  1118	v0.5 is a substantive Amendment, NOT a status promotion; status
+  1119	should remain `accepted` per the v0.2.1 precedent.
+  1120	
+  1121	**Mitigation**: AC#2 grep asserts `status: accepted` remains in the
+  1122	ADR file. PR.md `## title` + `## adr_touched` repeatedly note
+  1123	"status remains `accepted`, NOT a status flip". PR.md acceptance
+  1124	list opens with AC#1 (v0.5 entry exists with date) + AC#2 (status
+  1125	unchanged) as a paired anti-flip guard.
+  1126	
+  1127	### Row 6 — Playwright spec WSL2 skip path missing → CI green but local always skipped
+  1128	
+  1129	**Risk**: codex authors the Playwright spec WITHOUT the WSL2 skip
+  1130	guard per memory `feedback_wsl2_chromium_launch`. CI passes (Linux
+  1131	non-WSL) but local development on WSL2 throws chromium-launch errors,
+  1132	fails noisily, contaminates `pnpm check` output.
+  1133	
+  1134	**Mitigation**: PR.md `## test_cases` Suite 2 TC2.1 + AC#13 both
+  1135	explicitly call out the WSL2 skip path. Source comment in the
+  1136	spec file MUST reference the memory by name
+  1137	(`feedback_wsl2_chromium_launch`) so codex review surfaces the
+  1138	intent.
+  1139	
+  1140	### Row 7 — Lychee autolink-in-backticks regression in PR.md OR ADR-0014 v0.5 entry OR CONTRACT.md
+  1141	
+  1142	**Risk**: PR.md / ADR amendment / CONTRACT.md prose contains an
+  1143	angle-bracketed-word shape inside backticks. Lychee parses as
+  1144	autolink and fails the link-check. Pre-empted by R14 self-check
+  1145	item 7 grep at PR.md draft time + ACCEPT-stage grep across all
+  1146	3 modified prose files.
+  1147	
+  1148	**Mitigation**: R14 item 7 grep pre-empt; ACCEPT-stage grep across
+  1149	PR.md + ADR + CONTRACT.md (verification required block).
+  1150	orchestrator scans before push. PR.md author (this draft)
+  1151	self-checked: no angle-bracketed-word-shape autolinks inside
+  1152	backticks.
+  1153	
+  1154	## Out of scope
+  1155	
+  1156	Explicitly out of scope per the briefing's anti-scope-creep section
+  1157	+ Wave 5 plan v1.3 row C.2-8 / C.3 / C.4 enumeration:
+  1158	
+  1159	- **Migration of existing `apps/site/src/{islands,components}/`
+  1160	  `.astro` consumers from explicit `dims` to `gridContext`** —
+  1161	  v0.4 path is forward-compatible per the precedence rule
+  1162	  (explicit `dims` wins); migration is a separate follow-up if
+  1163	  and when needed. Out of this PR.
+  1164	
+  1165	- **NEW BlockKind additions** — `HeavyBlockKind` widening already
+  1166	  ships at v0.4 via ADR-0014 C6 branded widening; no new kinds
+  1167	  added in v0.5.
+  1168	
+  1169	- **NEW grid-math additions** — `effectiveColSnaps` (C.2-6 squash)
+  1170	  + `effectiveColWidth` + `effectiveCellHeight` (C.2-2 squash) all
+  1171	  already shipped; v0.5 is a consumer-side wire-up only, no
+  1172	  upstream block-foundation surface change.
+  1173	
+  1174	- **Retry-flow / lifecycle / a11y changes** — A2 + A3 + A4 already
+  1175	  shipped. v0.5 ONLY widens the dims authoring surface to allow
+  1176	  grid-derived path; existing retry semantics + mount-guard +
+  1177	  AbortSignal cancellation + A11y semantics + reduced-motion
+  1178	  + plugin extensibility invariants unchanged.
+  1179	
+  1180	- **`@skb/editor-shell` heavy-block wrap path** (Stage C.4 wire-up
+
+exec
+/bin/bash -lc "nl -ba docs/plans/wave-5-main/C.2-7-adr-0014-v0.5-amendment.md | sed -n '1180,1320p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+  1180	- **`@skb/editor-shell` heavy-block wrap path** (Stage C.4 wire-up
+  1181	  at `apps/site/src/pages/notes/[slug]/edit.astro`) — deferred to
+  1182	  Stage C.4 PRs per Wave 5 plan v1.3 Stage C.4 row table.
+  1183	
+  1184	- **Token application** for skeleton color / spinner color — Stage
+  1185	  C.3 ADR-0018 token migration scope.
+  1186	
+  1187	- **Playwright `performance.now()` 60fps budget assertion** for
+  1188	  heavy-block render — deferred to Stage C.4 (perf budget gates
+  1189	  per ADR-0017 AC#6 + memory `feedback_wsl2_chromium_launch`
+  1190	  resolution).
+  1191	
+  1192	- **Modal canvas heavy-block resize internal behavior** — out of
+  1193	  Wave 5 entirely; Phase 2+ (ADR-0019+).
+  1194	
+  1195	- **CRDT/OT collaborative editing for heavy-block dimension
+  1196	  conflicts** — out of Wave 5 entirely; Phase 2+ per ADR-0016 D12 +
+  1197	  ADR-0017 D12 single-user single-session assumption.
+  1198	
+  1199	## execution plan
+  1200	
+  1201	**Hybrid execution split** — orchestrator-self + codex-generic-executor:
+  1202	
+  1203	- **orchestrator-self for ADR amendment** (file 1: `docs/decisions/ADR-0014-heavy-block-boundary.md`).
+  1204	  Per Wave 5 plan v1.0 D6 pure-doc PR exception + the doc-policy
+  1205	  precedent at v0.2.1 + v0.3 + v0.4 amendment authoring (orchestrator
+  1206	  authored each Amendment § entry directly). The v0.5 entry follows
+  1207	  the same pattern: orchestrator writes the substantive Amendment
+  1208	  prose codifying the gridContext-derived dims path + D11 precedence
+  1209	  rule + optionally AC#17. NO codex involvement for the ADR file.
+  1210	
+  1211	- **codex-generic-executor for impl + Playwright spec + CONTRACT.md**
+  1212	  (files 2 + 3 + 4: HeavyBlockBoundary.tsx + CONTRACT.md + Playwright
+  1213	  spec). Per ADR-0011 D6 default executor for source + spec + sister-
+  1214	  doc edits. Approval policy: `never`. Sandbox: `workspace-write`.
+  1215	  Audit log: pipe to `/tmp/codex-runs/2026-05-05-C.2-7-adr-0014-v0.5-amendment.txt`
+  1216	  first per memory `feedback_codex_audit_log_recursion`; orchestrator
+  1217	  copies to `docs/audits/codex-runs/2026-05-05-C.2-7-adr-0014-v0.5-amendment.txt`
+  1218	  after exec completes (head -50 + R21 grep verdicts if log > 500 KB).
+  1219	
+  1220	Codex prompt synthesis: orchestrator-self walks PR.md sections
+  1221	`## title` + `## files` (whitelist subset = files 2 + 3 + 4) +
+  1222	`## test_cases` (TDD-front 5 vitest + 1 Playwright cases) +
+  1223	`## acceptance` (15 ACs subset 3-15 minus 1+2 which are ADR-only) +
+  1224	`## ambiguity flagged` resolutions into the codex-generic-executor
+  1225	stdin prompt; codex executor MUST land tests first (red), then impl
+  1226	(green), then verify all relevant ACs locally before SendMessage to
+  1227	orchestrator.
+  1228	
+  1229	Per memory `feedback_codex_stdin` — pipe `< /dev/null` to `codex
+  1230	exec` invocation to avoid stdin-hang.
+  1231	
+  1232	Per memory `feedback_orchestrator_owns_approval` — codex profile
+  1233	uses `approval_policy = "never"`; orchestrator-self is the only
+  1234	human-in-the-loop interface.
+  1235	
+  1236	### Stage 7 ACCEPT post-commit verification (orchestrator-self after pr-writer ACCEPT-PASS)
+  1237	
+  1238	Per memory `feedback_gh_pr_ci_conclusion_vs_status` (codified
+  1239	2026-05-05): orchestrator's auto-merge script MUST use:
+  1240	
+  1241	```bash
+  1242	gh pr view "$PR_URL" --json statusCheckRollup --jq \
+  1243	  '[.statusCheckRollup[] | select(.conclusion != null) | .conclusion] | unique'
+  1244	```
+  1245	
+  1246	Acceptance: result `["SUCCESS"]` (single-element array) — all
+  1247	non-null `conclusion` values are `"SUCCESS"`. NOT
+  1248	`status === "COMPLETED"` (which would also accept failed runs).
+  1249	
+  1250	Once PASS, `gh pr merge "$PR_URL" --squash --delete-branch` per
+  1251	memory `feedback_wave3_auto_merge` (user 2026-05-01 authorization).
+  1252	
+  1253	Post-merge: `git checkout main && git pull` then update
+  1254	`docs/plans/active.md` row C.2-7 from `WIP` to `MERGED` plus the
+  1255	new squash hash (separate fast-follow PR per active.md sync
+  1256	discipline).
+  1257	
+  1258	ACCEPT (D1 stage 6) MUST also run the screenshot-archive verification
+  1259	per ADR-0011 D9.5 + AC#14 — `pnpm exec tsx
+  1260	scripts/check-screenshot-archive.ts ...` exit 0; missing or < 5KB =
+  1261	REJECT-with-residue.
+  1262	
+  1263	## Codex commit (D1 stage 5) staging
+  1264	
+  1265	Per ADR-0006 D8 explicit-file-list staging discipline + memory
+  1266	`feedback_git_operator_explicit_stage` 4-step protocol:
+  1267	
+  1268	```bash
+  1269	# Step 1: reset HEAD to clean staging area (race-proof against concurrent
+  1270	# stagers; single-PR serial work but discipline is universal).
+  1271	git reset HEAD
+  1272	
+  1273	# Step 2: explicit add (no -A / no .) — exactly the 5 whitelisted files.
+  1274	git add docs/decisions/ADR-0014-heavy-block-boundary.md \
+  1275	        packages/heavy-block-boundary/src/HeavyBlockBoundary.tsx \
+  1276	        packages/heavy-block-boundary/CONTRACT.md \
+  1277	        apps/site/src/__tests__/e2e/c2-7-heavy-grid-dims.spec.ts \
+  1278	        docs/plans/wave-5-main/C.2-7-adr-0014-v0.5-amendment.md
+  1279	
+  1280	# (Test files added under packages/heavy-block-boundary/src/__tests__/
+  1281	# inherit the package-internal allowance; if codex executor created a
+  1282	# new sibling file at __tests__/HeavyBlockBoundary.v0.5.test.tsx, add
+  1283	# it explicitly here as well.)
+  1284	
+  1285	# Step 3: verify --cached --stat shows exactly 5 entries (or 6 if v0.5
+  1286	# test file is a new sibling); no pnpm-lock.yaml; no incidental
+  1287	# snapshot file.
+  1288	git diff --cached --stat
+  1289	# Expected: 5-6 files; expected line-delta totals roughly:
+  1290	#   ADR-0014-heavy-block-boundary.md +50-80 LOC (Amendment append)
+  1291	#   HeavyBlockBoundary.tsx           +40-70 LOC (delta on 128 LOC base)
+  1292	#   heavy-block-boundary CONTRACT.md +15-25 LOC (delta on 63 LOC base)
+  1293	#   c2-7-heavy-grid-dims.spec.ts     ~80 LOC (NEW)
+  1294	#   C.2-7-adr-0014-v0.5-amendment.md ~700 LOC (NEW; this PR.md)
+  1295	#   [HeavyBlockBoundary.v0.5.test.tsx ~70 LOC (NEW; if sibling path)]
+  1296	
+  1297	# Step 4: commit (NO --amend; new commit per WE-009 worker-side
+  1298	# memory).
+  1299	git commit -m "Wave 5 C.2-7 — ADR-0014 v0.5 + HeavyBlockBoundary consume W5-1 公式 from @skb/block-foundation (8 of 12 Stage C.2)
+  1300	
+  1301	Lands the ADR-0014 v0.5 substantive Amendment widening
+  1302	HeavyBlockBoundaryProps<P> with optional gridContext field +
+  1303	HeavyBlockBoundary impl consuming effectiveColWidth +
+  1304	effectiveCellHeight from @skb/block-foundation/grid-math (W5-1
+  1305	公式 single authority per ADR-0016 D9) + sister-doc CONTRACT.md
+  1306	sync per ADR-0016 §502 + canonical Playwright spec at
+  1307	apps/site/src/__tests__/e2e/c2-7-heavy-grid-dims.spec.ts covering
+  1308	heavy block plugin placeholder dimension consistency on
+  1309	/sample-blocks per ADR-0011 D9 + Wave 5 plan v1.3 catalog.
+  1310	
+  1311	* ADR-0014 v0.5 Amendments § entry appended (status remains
+  1312	  accepted; substantive Amendment per v0.2.1 + v0.3 + v0.4
+  1313	  precedent).
+  1314	* HeavyBlockBoundary.tsx: + gridContext field; + import
+  1315	  effectiveColWidth + effectiveCellHeight from @skb/block-foundation;
+  1316	  + precedence-resolved internal dims derivation (explicit dims wins
+  1317	  → gridContext-derived → throw at call time on neither).
+  1318	* CONTRACT.md: + gridContext to Public Surface; + Dims-derivation
+  1319	  precedence Invariant + W5-1 single-authority delegation.
+  1320	* c2-7-heavy-grid-dims.spec.ts (NEW): canonical e2e_smoke per v1.3
+
+exec
+/bin/bash -lc "nl -ba docs/plans/wave-5-main/C.2-7-adr-0014-v0.5-amendment.md | sed -n '1320,1395p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+  1320	* c2-7-heavy-grid-dims.spec.ts (NEW): canonical e2e_smoke per v1.3
+  1321	  catalog; WSL2 skip per memory feedback_wsl2_chromium_launch; CI
+  1322	  emits screenshot to docs/audits/screenshots/wave-5-c2-7-heavy-grid-dims.png.
+  1323	
+  1324	Existing apps/site .astro consumers unchanged — v0.4 explicit-dims
+  1325	path remains forward-compatible per the precedence rule.
+  1326	
+  1327	Per ADR-0014 v0.5 + ADR-0016 D6 + D9 + ADR-0011 D9 (Product Experience
+  1328	Quality Gate) + Wave 5 plan v1.3 row C.2-7 (UI-touch + e2e_smoke
+  1329	catalog lines 553-560).
+  1330	
+  1331	Co-authored-by: codex-generic-executor"
+  1332	```
+  1333	
+  1334	Reviewer codex (D1 stage 5; reviewer = `codex-pr-reviewer-55`)
+  1335	performs the actual commit + push under `codex exec --yolo --profile
+  1336	codex-pr-reviewer-55` — NOT pr-writer (per ADR-0011 D7 forbidden-
+  1337	permission rule for pr-writer subagent). orchestrator dispatches
+  1338	the reviewer codex with the PR.md as input.
+  1339	
+  1340	## Related
+  1341	
+  1342	- [ADR-0014 v0.5 (NEW Amendments § entry)](../../decisions/ADR-0014-heavy-block-boundary.md)
+  1343	  — gridContext-derived dims path lock; D11 dims-derivation
+  1344	  precedence rule (explicit dims wins → gridContext-derived → throw
+  1345	  on neither).
+  1346	- [ADR-0016 D6 + D9](../../decisions/ADR-0016-grid-data-model.md)
+  1347	  — `effectiveColWidth` + `effectiveCellHeight` W5-1 公式 single
+  1348	  authority that the v0.5 gridContext path delegates to;
+  1349	  `GridGeometry` + `DEFAULT_GRID_GEOMETRY` shape.
+  1350	- [ADR-0016 §502 sister-doc-sync](../../decisions/ADR-0016-grid-data-model.md)
+  1351	  — row 1 of 4 CONTRACT.md sync requirement satisfied via
+  1352	  `packages/heavy-block-boundary/CONTRACT.md` v0.5 Public Surface +
+  1353	  Invariants edits.
+  1354	- [ADR-0011 D1 / D2 / D6 / D9 / D9.1 / D9.5 / D10](../../decisions/ADR-0011-linear-pipeline-execution-model.md)
+  1355	  — Linear pipeline; D2 row 1 + row 4 + row 5 trigger judgment; D6
+  1356	  codex patterns; D9 Product Experience Quality Gate + D9.1 path
+  1357	  patterns + D9.5 screenshot archive flow + D10 anti-prompt-patching.
+  1358	- [ADR-0006 D8 + 8-point checklist + 9th item](../../decisions/ADR-0006-asymmetry-audit-checklist.md)
+  1359	  — explicit-file-list staging + 8-class checklist + UI-touch + E2E
+  1360	  spec 9th item.
+  1361	- [Wave 5 plan v1.3 row C.2-7 + UI-touch retrofit catalog](../../superpowers/plans/2026-05-04-phase-1-wave-5-integration.md)
+  1362	  — Wave 5 plan v1.3 amendment lock (PR #75 squash `5bd5112`); row
+  1363	  C.2-7 cite + canonical e2e_smoke catalog lines 553-560.
+  1364	- [PR #75 (v1.3 amendment)](https://github.com/skb-org/selfKnowledgeBaseWeb/pull/75)
+  1365	  — Wave 5 plan v1.3 amendment squash `5bd5112`; landed UI-touch +
+  1366	  e2e_smoke catalog for C.2-7 + 5 C.3 + 5 C.4 PRs.
+  1367	- [PR #76 (symmetric ui_touch=false skip fix)](https://github.com/skb-org/selfKnowledgeBaseWeb/pull/76)
+  1368	  — `scripts/check-screenshot-archive.ts` symmetric ui_touch=false
+  1369	  skip squash `ad42f71`; canonical `screenshot_archive` field name
+  1370	  no longer trips CI on plan-PR forward-declaration paths.
+  1371	- [C.2-6 resize UX (col-ruler + size-tooltip + effectiveColSnaps)](C.2-6-resize-ux.md)
+  1372	  — Sibling C.2 PR. Established the
+  1373	  `### Resize layer (C.2-6)` subsection pattern in editor-shell
+  1374	  CONTRACT.md that C.2-7 mirrors structurally for the
+  1375	  heavy-block-boundary CONTRACT.md v0.5 Invariants edit.
+  1376	- [C.2-2 block-foundation grid primitives](C.2-2-block-foundation-grid.md)
+  1377	  — Sibling C.2 PR; squash `b15ba24`. Established
+  1378	  `effectiveColWidth(colSpan, containerWidth, geometry?)` +
+  1379	  `effectiveCellHeight(rowSpan, geometry?)` + `GridGeometry` +
