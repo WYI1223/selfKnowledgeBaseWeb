@@ -1,0 +1,2000 @@
+Reading prompt from stdin...
+OpenAI Codex v0.125.0 (research preview)
+--------
+workdir: /home/weiyi/selfKnowledgeBaseWeb
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: danger-full-access
+reasoning effort: xhigh
+reasoning summaries: none
+session id: 019dfb5c-3790-79d1-b9bf-fb21104da3fb
+--------
+user
+You are the D1 stage-2 EXECUTOR **R3** for Wave 5 C.2-7 — applying reviewer-flagged fixes from codex-pr-reviewer-55 R1 verdict (FAIL with 8 issues; orchestrator absorbed 6, codex R3 handles 2).
+
+# Background
+
+Codex R2 implemented all 4 impl files; reviewer R1 found:
+- HIGH (3): orchestrator-side fixes in PR.md AC patterns + staging block + audit log archive — **already done by orchestrator**
+- MED (3): orchestrator-fixed CONTRACT.md `Partial<GridGeometry>` lychee risk + ADR input validation note + reviewer item 4 (TC1.4 missing) + reviewer item 6 (E2E spec parity loose) — **reviewer items 4 + 6 are codex R3 scope**
+- LOW (2): orchestrator absorbed input validation policy as deferred + audit log whitelist extension
+
+Your scope = exactly 2 files:
+
+1. **MODIFIED** `packages/heavy-block-boundary/src/__tests__/HeavyBlockBoundary.v0.5.test.tsx` — add TC1.4 geometry override test
+2. **MODIFIED** `apps/site/src/__tests__/e2e/c2-7-heavy-grid-dims.spec.ts` — tighten parity assertion per PR.md TC2.1 spec
+
+DO NOT TOUCH any other file.
+
+# Step 1 — Add TC1.4 to HeavyBlockBoundary.v0.5.test.tsx
+
+PR.md `## test_cases` Suite 1 line 336-343 specifies:
+
+> **TC1.4 — gridContext `geometry` override propagates to W5-1 derivation**.
+> Input: `<HeavyBlockBoundary kind="jupyter" gridContext={{ colSpan: 6, rowSpan: 2, containerWidth: 600, geometry: { rowH: 60 } }} load={mockLoad} childProps={{}} />`.
+> Expected: `style.minHeight === effectiveCellHeight(2, { rowH: 60 }) === 2*60 + 1*14 === 134`px (custom rowH propagates per Partial GridGeometry merge in `resolveGeometry`).
+> Location: `HeavyBlockBoundary.v0.5.test.tsx > precedence > geometry override propagates`.
+
+Add this case to the existing `describe('HeavyBlockBoundary v0.5 dims precedence', ...)` block. Use the same `pendingLoad` + `getOuter` helpers already defined at the top of the file. Use `effectiveCellHeight(2, { rowH: 60 })` directly to assert byte-equal (single-authority delegation; matches case 1 pattern). Also assert `style.width` matches `effectiveColWidth(6, 600, { rowH: 60 })` byte-equal (geometry partial merge applies to width-related geometry too — `gap` and `totalCols` defaults preserved unless overridden).
+
+Suggested code:
+
+```typescript
+it('geometry override propagates to W5-1 derivation', () => {
+  const expectedWidth = effectiveColWidth(6, 600, { rowH: 60 });
+  const expectedHeight = effectiveCellHeight(2, { rowH: 60 });
+
+  const { container } = render(
+    <HeavyBlockBoundary
+      kind="jupyter"
+      gridContext={{
+        colSpan: 6,
+        rowSpan: 2,
+        containerWidth: 600,
+        geometry: { rowH: 60 },
+      }}
+      load={pendingLoad}
+      childProps={{}}
+    />,
+  );
+
+  const outer = getOuter(container);
+  expect(outer.style.minHeight).toBe(`${expectedHeight}px`);
+  expect(outer.style.width).toBe(`${expectedWidth}px`);
+  // Sanity: minHeight should reflect custom rowH=60 not default 48.
+  // 2*60 + 1*14 = 134; 2*48 + 1*14 = 110; verify it's the custom-geometry value.
+  expect(outer.style.minHeight).toBe('134px');
+});
+```
+
+Run vitest after add:
+```bash
+pnpm --filter @skb/heavy-block-boundary test
+```
+All cases must PASS.
+
+# Step 2 — Tighten E2E spec parity assertion
+
+Reviewer item 6: existing spec at `apps/site/src/__tests__/e2e/c2-7-heavy-grid-dims.spec.ts:51` only asserts `heavy <= light * 4` — too loose. PR.md `## test_cases` Suite 2 TC2.1 specifies:
+
+> heavy block `width` matches adjacent same-colSpan light block within ±2px tolerance
+
+This requires reading colSpan from each block's DOM attribute and asserting per-cell-width parity. The blocks emit grid metadata; verify the attribute name by `grep -rn 'data-.*colspan\|data-col-span\|data-grid-col' apps/site/src/ packages/block-*/src/` first.
+
+Strategy:
+1. Locate heavy block + adjacent light block on `/notes/sample-blocks` (the `/sample-blocks` route 404s; fallback already handled in spec)
+2. Read `data-block-colspan` (or the actual attribute name you discover) from each
+3. Assert: `(heavy.width / heavy.colSpan)` ≈ `(light.width / light.colSpan)` within ±2px tolerance — i.e. per-cell width parity
+
+If the apps/site grid renderer doesn't emit colSpan as a DOM attribute (it might encode only via inline `style.gridColumn` like `span 6 / auto`), parse the gridColumn style attr instead via `getComputedStyle().gridColumn`.
+
+Suggested fix block (replacing existing `light` parity check at lines 51-61):
+
+```typescript
+// Per-cell width parity assertion (PR.md TC2.1 ±2px tolerance).
+// Heavy block width / heavy colSpan should match light block width / light colSpan
+// within ±2px (W5-1 effectiveColWidth single authority — same per-cell width
+// regardless of colSpan).
+
+async function readColSpan(locator: Locator): Promise<number> {
+  // Try data attribute first; fall back to computed gridColumn parsing.
+  const dataAttr = await locator.getAttribute('data-block-colspan');
+  if (dataAttr !== null) return Number.parseInt(dataAttr, 10);
+
+  const gridColumn = await locator.evaluate((el) => getComputedStyle(el).gridColumn);
+  // Format: "span 6 / auto" or "auto / span 6" → extract the integer after "span"
+  const match = gridColumn.match(/span\s+(\d+)/);
+  if (match) return Number.parseInt(match[1], 10);
+
+  throw new Error(`Could not determine colSpan for locator (gridColumn=${gridColumn})`);
+}
+
+const light = page
+  .locator(
+    '[data-callout-variant], [data-code-language], [data-image-loading], [data-block="math"], [data-block="pdf"]',
+  )
+  .first();
+
+if ((await light.count()) > 0 && (await light.isVisible())) {
+  const lightBox = await light.boundingBox();
+  if (lightBox) {
+    const heavyColSpan = await readColSpan(heavy);
+    const lightColSpan = await readColSpan(light);
+    const heavyPerCell = heavyBox!.width / heavyColSpan;
+    const lightPerCell = lightBox.width / lightColSpan;
+    expect(Math.abs(heavyPerCell - lightPerCell)).toBeLessThanOrEqual(2);
+  }
+}
+```
+
+Add `import type { Locator } from '@playwright/test';` to the imports block.
+
+If the actual DOM does not emit colSpan as either `data-block-colspan` or `gridColumn` style, fall back to a documented loose check (heavy and light block widths within `Math.max(heavy.width, light.width) * 1.5` of each other) AND add a clear PR.md follow-up note that exact per-cell parity requires v0.6 attr-shape work. Document this in your final summary.
+
+# Step 3 — Verify lint/typecheck/test still clean
+
+```bash
+pnpm --filter @skb/heavy-block-boundary lint
+pnpm --filter @skb/heavy-block-boundary typecheck
+pnpm --filter @skb/heavy-block-boundary test
+pnpm --filter @skb/site typecheck
+```
+
+All four must be clean (no regression).
+
+# Step 4 — Final summary
+
+Report:
+1. TC1.4 added — vitest count delta (was 18 → now 19 ideally for `@skb/heavy-block-boundary` at the package-level run)
+2. E2E spec parity tightening done — describe the per-cell-width strategy + which attr/style you used (data-block-colspan vs gridColumn)
+3. lint/typecheck/test all clean
+4. Any apps/site emit attribute discovery findings (where colSpan lives in the rendered DOM)
+5. Anything that needs orchestrator follow-up
+
+You do NOT commit. You do NOT modify ANY file outside the 2 in scope. If you discover the apps/site DOM doesn't emit colSpan in a reachable form, fall back to the looser-but-documented assertion (per Step 2 fallback path) — do NOT add new attributes to apps/site components (out of scope; would be a v0.6 PR).
+
+exec
+/bin/bash -lc "sed -n '1,220p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/82fd64bc/skills/receiving-code-review/SKILL.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+---
+name: receiving-code-review
+description: Use when receiving code review feedback, before implementing suggestions, especially if feedback seems unclear or technically questionable - requires technical rigor and verification, not performative agreement or blind implementation
+---
+
+# Code Review Reception
+
+## Overview
+
+Code review requires technical evaluation, not emotional performance.
+
+**Core principle:** Verify before implementing. Ask before assuming. Technical correctness over social comfort.
+
+## The Response Pattern
+
+```
+WHEN receiving code review feedback:
+
+1. READ: Complete feedback without reacting
+2. UNDERSTAND: Restate requirement in own words (or ask)
+3. VERIFY: Check against codebase reality
+4. EVALUATE: Technically sound for THIS codebase?
+5. RESPOND: Technical acknowledgment or reasoned pushback
+6. IMPLEMENT: One item at a time, test each
+```
+
+## Forbidden Responses
+
+**NEVER:**
+- "You're absolutely right!" (explicit AGENTS.md violation)
+- "Great point!" / "Excellent feedback!" (performative)
+- "Let me implement that now" (before verification)
+
+**INSTEAD:**
+- Restate the technical requirement
+- Ask clarifying questions
+- Push back with technical reasoning if wrong
+- Just start working (actions > words)
+
+## Handling Unclear Feedback
+
+```
+IF any item is unclear:
+  STOP - do not implement anything yet
+  ASK for clarification on unclear items
+
+WHY: Items may be related. Partial understanding = wrong implementation.
+```
+
+**Example:**
+```
+your human partner: "Fix 1-6"
+You understand 1,2,3,6. Unclear on 4,5.
+
+❌ WRONG: Implement 1,2,3,6 now, ask about 4,5 later
+✅ RIGHT: "I understand items 1,2,3,6. Need clarification on 4 and 5 before proceeding."
+```
+
+## Source-Specific Handling
+
+### From your human partner
+- **Trusted** - implement after understanding
+- **Still ask** if scope unclear
+- **No performative agreement**
+- **Skip to action** or technical acknowledgment
+
+### From External Reviewers
+```
+BEFORE implementing:
+  1. Check: Technically correct for THIS codebase?
+  2. Check: Breaks existing functionality?
+  3. Check: Reason for current implementation?
+  4. Check: Works on all platforms/versions?
+  5. Check: Does reviewer understand full context?
+
+IF suggestion seems wrong:
+  Push back with technical reasoning
+
+IF can't easily verify:
+  Say so: "I can't verify this without [X]. Should I [investigate/ask/proceed]?"
+
+IF conflicts with your human partner's prior decisions:
+  Stop and discuss with your human partner first
+```
+
+**your human partner's rule:** "External feedback - be skeptical, but check carefully"
+
+## YAGNI Check for "Professional" Features
+
+```
+IF reviewer suggests "implementing properly":
+  grep codebase for actual usage
+
+  IF unused: "This endpoint isn't called. Remove it (YAGNI)?"
+  IF used: Then implement properly
+```
+
+**your human partner's rule:** "You and reviewer both report to me. If we don't need this feature, don't add it."
+
+## Implementation Order
+
+```
+FOR multi-item feedback:
+  1. Clarify anything unclear FIRST
+  2. Then implement in this order:
+     - Blocking issues (breaks, security)
+     - Simple fixes (typos, imports)
+     - Complex fixes (refactoring, logic)
+  3. Test each fix individually
+  4. Verify no regressions
+```
+
+## When To Push Back
+
+Push back when:
+- Suggestion breaks existing functionality
+- Reviewer lacks full context
+- Violates YAGNI (unused feature)
+- Technically incorrect for this stack
+- Legacy/compatibility reasons exist
+- Conflicts with your human partner's architectural decisions
+
+**How to push back:**
+- Use technical reasoning, not defensiveness
+- Ask specific questions
+- Reference working tests/code
+- Involve your human partner if architectural
+
+**Signal if uncomfortable pushing back out loud:** "Strange things are afoot at the Circle K"
+
+## Acknowledging Correct Feedback
+
+When feedback IS correct:
+```
+✅ "Fixed. [Brief description of what changed]"
+✅ "Good catch - [specific issue]. Fixed in [location]."
+✅ [Just fix it and show in the code]
+
+❌ "You're absolutely right!"
+❌ "Great point!"
+❌ "Thanks for catching that!"
+❌ "Thanks for [anything]"
+❌ ANY gratitude expression
+```
+
+**Why no thanks:** Actions speak. Just fix it. The code itself shows you heard the feedback.
+
+**If you catch yourself about to write "Thanks":** DELETE IT. State the fix instead.
+
+## Gracefully Correcting Your Pushback
+
+If you pushed back and were wrong:
+```
+✅ "You were right - I checked [X] and it does [Y]. Implementing now."
+✅ "Verified this and you're correct. My initial understanding was wrong because [reason]. Fixing."
+
+❌ Long apology
+❌ Defending why you pushed back
+❌ Over-explaining
+```
+
+State the correction factually and move on.
+
+## Common Mistakes
+
+| Mistake | Fix |
+|---------|-----|
+| Performative agreement | State requirement or just act |
+| Blind implementation | Verify against codebase first |
+| Batch without testing | One at a time, test each |
+| Assuming reviewer is right | Check if breaks things |
+| Avoiding pushback | Technical correctness > comfort |
+| Partial implementation | Clarify all items first |
+| Can't verify, proceed anyway | State limitation, ask for direction |
+
+## Real Examples
+
+**Performative Agreement (Bad):**
+```
+Reviewer: "Remove legacy code"
+❌ "You're absolutely right! Let me remove that..."
+```
+
+**Technical Verification (Good):**
+```
+Reviewer: "Remove legacy code"
+✅ "Checking... build target is 10.15+, this API needs 13+. Need legacy for backward compat. Current impl has wrong bundle ID - fix it or drop pre-13 support?"
+```
+
+**YAGNI (Good):**
+```
+Reviewer: "Implement proper metrics tracking with database, date filters, CSV export"
+✅ "Grepped codebase - nothing calls this endpoint. Remove it (YAGNI)? Or is there usage I'm missing?"
+```
+
+**Unclear Item (Good):**
+```
+your human partner: "Fix items 1-6"
+You understand 1,2,3,6. Unclear on 4,5.
+✅ "Understand 1,2,3,6. Need clarification on 4 and 5 before implementing."
+```
+
+## GitHub Thread Replies
+
+When replying to inline review comments on GitHub, reply in the comment thread (`gh api repos/{owner}/{repo}/pulls/{pr}/comments/{id}/replies`), not as a top-level PR comment.
+
+## The Bottom Line
+
+**External feedback = suggestions to evaluate, not orders to follow.**
+
+Verify. Question. Then implement.
+
+No performative agreement. Technical rigor always.
+
+exec
+/bin/bash -lc "sed -n '1,220p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/82fd64bc/skills/test-driven-development/SKILL.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+---
+name: test-driven-development
+description: Use when implementing any feature or bugfix, before writing implementation code
+---
+
+# Test-Driven Development (TDD)
+
+## Overview
+
+Write the test first. Watch it fail. Write minimal code to pass.
+
+**Core principle:** If you didn't watch the test fail, you don't know if it tests the right thing.
+
+**Violating the letter of the rules is violating the spirit of the rules.**
+
+## When to Use
+
+**Always:**
+- New features
+- Bug fixes
+- Refactoring
+- Behavior changes
+
+**Exceptions (ask your human partner):**
+- Throwaway prototypes
+- Generated code
+- Configuration files
+
+Thinking "skip TDD just this once"? Stop. That's rationalization.
+
+## The Iron Law
+
+```
+NO PRODUCTION CODE WITHOUT A FAILING TEST FIRST
+```
+
+Write code before the test? Delete it. Start over.
+
+**No exceptions:**
+- Don't keep it as "reference"
+- Don't "adapt" it while writing tests
+- Don't look at it
+- Delete means delete
+
+Implement fresh from tests. Period.
+
+## Red-Green-Refactor
+
+```dot
+digraph tdd_cycle {
+    rankdir=LR;
+    red [label="RED\nWrite failing test", shape=box, style=filled, fillcolor="#ffcccc"];
+    verify_red [label="Verify fails\ncorrectly", shape=diamond];
+    green [label="GREEN\nMinimal code", shape=box, style=filled, fillcolor="#ccffcc"];
+    verify_green [label="Verify passes\nAll green", shape=diamond];
+    refactor [label="REFACTOR\nClean up", shape=box, style=filled, fillcolor="#ccccff"];
+    next [label="Next", shape=ellipse];
+
+    red -> verify_red;
+    verify_red -> green [label="yes"];
+    verify_red -> red [label="wrong\nfailure"];
+    green -> verify_green;
+    verify_green -> refactor [label="yes"];
+    verify_green -> green [label="no"];
+    refactor -> verify_green [label="stay\ngreen"];
+    verify_green -> next;
+    next -> red;
+}
+```
+
+### RED - Write Failing Test
+
+Write one minimal test showing what should happen.
+
+<Good>
+```typescript
+test('retries failed operations 3 times', async () => {
+  let attempts = 0;
+  const operation = () => {
+    attempts++;
+    if (attempts < 3) throw new Error('fail');
+    return 'success';
+  };
+
+  const result = await retryOperation(operation);
+
+  expect(result).toBe('success');
+  expect(attempts).toBe(3);
+});
+```
+Clear name, tests real behavior, one thing
+</Good>
+
+<Bad>
+```typescript
+test('retry works', async () => {
+  const mock = jest.fn()
+    .mockRejectedValueOnce(new Error())
+    .mockRejectedValueOnce(new Error())
+    .mockResolvedValueOnce('success');
+  await retryOperation(mock);
+  expect(mock).toHaveBeenCalledTimes(3);
+});
+```
+Vague name, tests mock not code
+</Bad>
+
+**Requirements:**
+- One behavior
+- Clear name
+- Real code (no mocks unless unavoidable)
+
+### Verify RED - Watch It Fail
+
+**MANDATORY. Never skip.**
+
+```bash
+npm test path/to/test.test.ts
+```
+
+Confirm:
+- Test fails (not errors)
+- Failure message is expected
+- Fails because feature missing (not typos)
+
+**Test passes?** You're testing existing behavior. Fix test.
+
+**Test errors?** Fix error, re-run until it fails correctly.
+
+### GREEN - Minimal Code
+
+Write simplest code to pass the test.
+
+<Good>
+```typescript
+async function retryOperation<T>(fn: () => Promise<T>): Promise<T> {
+  for (let i = 0; i < 3; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      if (i === 2) throw e;
+    }
+  }
+  throw new Error('unreachable');
+}
+```
+Just enough to pass
+</Good>
+
+<Bad>
+```typescript
+async function retryOperation<T>(
+  fn: () => Promise<T>,
+  options?: {
+    maxRetries?: number;
+    backoff?: 'linear' | 'exponential';
+    onRetry?: (attempt: number) => void;
+  }
+): Promise<T> {
+  // YAGNI
+}
+```
+Over-engineered
+</Bad>
+
+Don't add features, refactor other code, or "improve" beyond the test.
+
+### Verify GREEN - Watch It Pass
+
+**MANDATORY.**
+
+```bash
+npm test path/to/test.test.ts
+```
+
+Confirm:
+- Test passes
+- Other tests still pass
+- Output pristine (no errors, warnings)
+
+**Test fails?** Fix code, not test.
+
+**Other tests fail?** Fix now.
+
+### REFACTOR - Clean Up
+
+After green only:
+- Remove duplication
+- Improve names
+- Extract helpers
+
+Keep tests green. Don't add behavior.
+
+### Repeat
+
+Next failing test for next feature.
+
+## Good Tests
+
+| Quality | Good | Bad |
+|---------|------|-----|
+| **Minimal** | One thing. "and" in name? Split it. | `test('validates email and domain and whitespace')` |
+| **Clear** | Name describes behavior | `test('test1')` |
+| **Shows intent** | Demonstrates desired API | Obscures what code should do |
+
+## Why Order Matters
+
+**"I'll write tests after to verify it works"**
+
+Tests written after code pass immediately. Passing immediately proves nothing:
+- Might test wrong thing
+- Might test implementation, not behavior
+- Might miss edge cases you forgot
+- You never saw it catch the bug
+
+Test-first forces you to see the test fail, proving it actually tests something.
+
+**"I already manually tested all the edge cases"**
+
+Manual testing is ad-hoc. You think you tested everything but:
+
+exec
+/bin/bash -lc "sed -n '1,220p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/82fd64bc/skills/using-superpowers/SKILL.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+---
+name: using-superpowers
+description: Use when starting any conversation - establishes how to find and use skills, requiring Skill tool invocation before ANY response including clarifying questions
+---
+
+<SUBAGENT-STOP>
+If you were dispatched as a subagent to execute a specific task, skip this skill.
+</SUBAGENT-STOP>
+
+<EXTREMELY-IMPORTANT>
+If you think there is even a 1% chance a skill might apply to what you are doing, you ABSOLUTELY MUST invoke the skill.
+
+IF A SKILL APPLIES TO YOUR TASK, YOU DO NOT HAVE A CHOICE. YOU MUST USE IT.
+
+This is not negotiable. This is not optional. You cannot rationalize your way out of this.
+</EXTREMELY-IMPORTANT>
+
+## Instruction Priority
+
+Superpowers skills override default system prompt behavior, but **user instructions always take precedence**:
+
+1. **User's explicit instructions** (AGENTS.md, GEMINI.md, direct requests) — highest priority
+2. **Superpowers skills** — override default system behavior where they conflict
+3. **Default system prompt** — lowest priority
+
+If AGENTS.md or GEMINI.md says "don't use TDD" and a skill says "always use TDD," follow the user's instructions. The user is in control.
+
+## How to Access Skills
+
+**In Codex:** Use the `Skill` tool. When you invoke a skill, its content is loaded and presented to you—follow it directly. Never use the Read tool on skill files.
+
+**In Copilot CLI:** Use the `skill` tool. Skills are auto-discovered from installed plugins. The `skill` tool works the same as Codex's `Skill` tool.
+
+**In Gemini CLI:** Skills activate via the `activate_skill` tool. Gemini loads skill metadata at session start and activates the full content on demand.
+
+**In other environments:** Check your platform's documentation for how skills are loaded.
+
+## Platform Adaptation
+
+Skills may mention tool names that vary by runtime. Other platforms: see `references/copilot-tools.md` (Copilot CLI), `references/codex-tools.md` (Codex) for tool equivalents. Gemini CLI users get the tool mapping loaded automatically via GEMINI.md.
+
+# Using Skills
+
+## The Rule
+
+**Invoke relevant or requested skills BEFORE any response or action.** Even a 1% chance a skill might apply means that you should invoke the skill to check. If an invoked skill turns out to be wrong for the situation, you don't need to use it.
+
+```dot
+digraph skill_flow {
+    "User message received" [shape=doublecircle];
+    "About to EnterPlanMode?" [shape=doublecircle];
+    "Already brainstormed?" [shape=diamond];
+    "Invoke brainstorming skill" [shape=box];
+    "Might any skill apply?" [shape=diamond];
+    "Invoke Skill tool" [shape=box];
+    "Announce: 'Using [skill] to [purpose]'" [shape=box];
+    "Has checklist?" [shape=diamond];
+    "Create TodoWrite todo per item" [shape=box];
+    "Follow skill exactly" [shape=box];
+    "Respond (including clarifications)" [shape=doublecircle];
+
+    "About to EnterPlanMode?" -> "Already brainstormed?";
+    "Already brainstormed?" -> "Invoke brainstorming skill" [label="no"];
+    "Already brainstormed?" -> "Might any skill apply?" [label="yes"];
+    "Invoke brainstorming skill" -> "Might any skill apply?";
+
+    "User message received" -> "Might any skill apply?";
+    "Might any skill apply?" -> "Invoke Skill tool" [label="yes, even 1%"];
+    "Might any skill apply?" -> "Respond (including clarifications)" [label="definitely not"];
+    "Invoke Skill tool" -> "Announce: 'Using [skill] to [purpose]'";
+    "Announce: 'Using [skill] to [purpose]'" -> "Has checklist?";
+    "Has checklist?" -> "Create TodoWrite todo per item" [label="yes"];
+    "Has checklist?" -> "Follow skill exactly" [label="no"];
+    "Create TodoWrite todo per item" -> "Follow skill exactly";
+}
+```
+
+## Red Flags
+
+These thoughts mean STOP—you're rationalizing:
+
+| Thought | Reality |
+|---------|---------|
+| "This is just a simple question" | Questions are tasks. Check for skills. |
+| "I need more context first" | Skill check comes BEFORE clarifying questions. |
+| "Let me explore the codebase first" | Skills tell you HOW to explore. Check first. |
+| "I can check git/files quickly" | Files lack conversation context. Check for skills. |
+| "Let me gather information first" | Skills tell you HOW to gather information. |
+| "This doesn't need a formal skill" | If a skill exists, use it. |
+| "I remember this skill" | Skills evolve. Read current version. |
+| "This doesn't count as a task" | Action = task. Check for skills. |
+| "The skill is overkill" | Simple things become complex. Use it. |
+| "I'll just do this one thing first" | Check BEFORE doing anything. |
+| "This feels productive" | Undisciplined action wastes time. Skills prevent this. |
+| "I know what that means" | Knowing the concept ≠ using the skill. Invoke it. |
+
+## Skill Priority
+
+When multiple skills could apply, use this order:
+
+1. **Process skills first** (brainstorming, debugging) - these determine HOW to approach the task
+2. **Implementation skills second** (frontend-design, mcp-builder) - these guide execution
+
+"Let's build X" → brainstorming first, then implementation skills.
+"Fix this bug" → debugging first, then domain-specific skills.
+
+## Skill Types
+
+**Rigid** (TDD, debugging): Follow exactly. Don't adapt away discipline.
+
+**Flexible** (patterns): Adapt principles to context.
+
+The skill itself tells you which.
+
+## User Instructions
+
+Instructions say WHAT, not HOW. "Add X" or "Fix Y" doesn't mean skip workflows.
+
+exec
+/bin/bash -lc "sed -n '1,220p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/82fd64bc/skills/verification-before-completion/SKILL.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+---
+name: verification-before-completion
+description: Use when about to claim work is complete, fixed, or passing, before committing or creating PRs - requires running verification commands and confirming output before making any success claims; evidence before assertions always
+---
+
+# Verification Before Completion
+
+## Overview
+
+Claiming work is complete without verification is dishonesty, not efficiency.
+
+**Core principle:** Evidence before claims, always.
+
+**Violating the letter of this rule is violating the spirit of this rule.**
+
+## The Iron Law
+
+```
+NO COMPLETION CLAIMS WITHOUT FRESH VERIFICATION EVIDENCE
+```
+
+If you haven't run the verification command in this message, you cannot claim it passes.
+
+## The Gate Function
+
+```
+BEFORE claiming any status or expressing satisfaction:
+
+1. IDENTIFY: What command proves this claim?
+2. RUN: Execute the FULL command (fresh, complete)
+3. READ: Full output, check exit code, count failures
+4. VERIFY: Does output confirm the claim?
+   - If NO: State actual status with evidence
+   - If YES: State claim WITH evidence
+5. ONLY THEN: Make the claim
+
+Skip any step = lying, not verifying
+```
+
+## Common Failures
+
+| Claim | Requires | Not Sufficient |
+|-------|----------|----------------|
+| Tests pass | Test command output: 0 failures | Previous run, "should pass" |
+| Linter clean | Linter output: 0 errors | Partial check, extrapolation |
+| Build succeeds | Build command: exit 0 | Linter passing, logs look good |
+| Bug fixed | Test original symptom: passes | Code changed, assumed fixed |
+| Regression test works | Red-green cycle verified | Test passes once |
+| Agent completed | VCS diff shows changes | Agent reports "success" |
+| Requirements met | Line-by-line checklist | Tests passing |
+
+## Red Flags - STOP
+
+- Using "should", "probably", "seems to"
+- Expressing satisfaction before verification ("Great!", "Perfect!", "Done!", etc.)
+- About to commit/push/PR without verification
+- Trusting agent success reports
+- Relying on partial verification
+- Thinking "just this once"
+- Tired and wanting work over
+- **ANY wording implying success without having run verification**
+
+## Rationalization Prevention
+
+| Excuse | Reality |
+|--------|---------|
+| "Should work now" | RUN the verification |
+| "I'm confident" | Confidence ≠ evidence |
+| "Just this once" | No exceptions |
+| "Linter passed" | Linter ≠ compiler |
+| "Agent said success" | Verify independently |
+| "I'm tired" | Exhaustion ≠ excuse |
+| "Partial check is enough" | Partial proves nothing |
+| "Different words so rule doesn't apply" | Spirit over letter |
+
+## Key Patterns
+
+**Tests:**
+```
+✅ [Run test command] [See: 34/34 pass] "All tests pass"
+❌ "Should pass now" / "Looks correct"
+```
+
+**Regression tests (TDD Red-Green):**
+```
+✅ Write → Run (pass) → Revert fix → Run (MUST FAIL) → Restore → Run (pass)
+❌ "I've written a regression test" (without red-green verification)
+```
+
+**Build:**
+```
+✅ [Run build] [See: exit 0] "Build passes"
+❌ "Linter passed" (linter doesn't check compilation)
+```
+
+**Requirements:**
+```
+✅ Re-read plan → Create checklist → Verify each → Report gaps or completion
+❌ "Tests pass, phase complete"
+```
+
+**Agent delegation:**
+```
+✅ Agent reports success → Check VCS diff → Verify changes → Report actual state
+❌ Trust agent report
+```
+
+## Why This Matters
+
+From 24 failure memories:
+- your human partner said "I don't believe you" - trust broken
+- Undefined functions shipped - would crash
+- Missing requirements shipped - incomplete features
+- Time wasted on false completion → redirect → rework
+- Violates: "Honesty is a core value. If you lie, you'll be replaced."
+
+## When To Apply
+
+**ALWAYS before:**
+- ANY variation of success/completion claims
+- ANY expression of satisfaction
+- ANY positive statement about work state
+- Committing, PR creation, task completion
+- Moving to next task
+- Delegating to agents
+
+**Rule applies to:**
+- Exact phrases
+- Paraphrases and synonyms
+- Implications of success
+- ANY communication suggesting completion/correctness
+
+## The Bottom Line
+
+**No shortcuts for verification.**
+
+Run the command. Read the output. THEN claim the result.
+
+This is non-negotiable.
+
+codex
+Using `receiving-code-review`, `test-driven-development`, and `verification-before-completion` for this pass: I’ll verify the reviewer requests against the current code, make only the two scoped test edits, and use fresh command output before reporting status.
+  → Inspect scoped tests and colSpan rendering evidence
+  • Add TC1.4 heavy-boundary geometry override test
+  • Tighten E2E per-cell width parity assertion
+  • Run scoped lint/typecheck/test verification
+  • Review diff confirms only two files changed
+codex
+I’m checking the two target tests, the project guidance, and where grid metadata is currently exposed. The main thing to validate before editing is whether the E2E test can read colSpan from an attribute or has to fall back to computed grid placement.
+exec
+/bin/bash -lc "sed -n '1,220p' CLAUDE.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+# CLAUDE.md
+
+> **GENERATED FROM agent-contract.md — DO NOT EDIT BY HAND.**
+>
+> Edit `agent-contract.md` then run `pnpm generate:configs`. CI fails if drift detected.
+
+This file is the Claude Code entry point for the **SelfKnowledgeBaseWeb** monorepo. It tells
+every Claude session what the project is, the hard rules, the agent roster, and the workflow.
+
+- Spec: [docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md](docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md)
+- Active plan: [docs/plans/active.md](docs/plans/active.md)
+- Single source for agents: [agent-contract.md](agent-contract.md)
+- Codex tool invocations: [docs/runbooks/codex-tool-invocations.md](docs/runbooks/codex-tool-invocations.md)
+
+## Hard rules
+
+1. **File size**: 200 lines (target) / 300 lines (ESLint `max-lines` warn) / 500 lines
+   (`pnpm size-check` hard fail). Spec §3.6.
+2. **Cross-file references**: every doc/code change must keep doc cross-references and
+   contract files in sync (`packages/*/CONTRACT.md`, `agent-contract.md`).
+3. **Lychee link-check**: broken markdown links block merge. Run `pnpm link-check` locally.
+4. **`pnpm check` is mandatory before review** (lint + typecheck + test + build + size).
+5. **Git mutation discipline (ADR-0011 D1+D4)**: `git commit / branch / rebase / push`
+   only at D1 stage 5 (reviewer codex commit phase) or by orchestrator self for bootstrap
+   scope. Subagents (pr-writer / ux-ui-lead / refactorer / researcher) never run mutating
+   git commands.
+6. **Web access discipline (ADR-0011 D7)**: only the `researcher` Claude subagent (one-shot
+   per dispatch) may run `web_search` / `web_fetch`.
+7. **Cross-package moves (ADR-0011 D7)**: only the `refactorer` Claude subagent may
+   reorganize packages, and every reorganization requires an ADR under `docs/decisions/`.
+
+## Commands cheat-sheet
+
+| Command                 | Purpose                                               |
+| ----------------------- | ----------------------------------------------------- |
+| `pnpm install`          | Install workspace dependencies                        |
+| `pnpm dev`              | Run all `dev` scripts (parallel)                      |
+| `pnpm check`            | Lint + typecheck + test + build + size-check          |
+| `pnpm check:affected`   | Same, scoped to packages affected since `origin/main` |
+| `pnpm size-check`       | Hard 500-line limit on every source file              |
+| `pnpm link-check`       | Lychee scan over `./**/*.md`                          |
+| `pnpm generate:configs` | Re-derive everything from `agent-contract.md`         |
+| `pnpm format`           | Prettier write across the repo                        |
+
+## Review workflow (ADR-0011 D1 linear pipeline; supersedes Wave 1+2 tree workflow)
+
+Per PR (PRs run strictly serial; the next PR's PLAN waits for the previous PR's ACCEPT):
+
+```
+1. PLAN              pr-writer Claude subagent ↔ orchestrator → lock PR.md (D2 schema)
+       │
+       ▼
+2. EXECUTE           codex `codex-generic-executor` (or specialized scaffolder; or
+                     `ux-ui-lead` Claude subagent for UI/UX). TDD-front:
+                     write tests → write impl → vitest all PASS.
+       │
+       ▼
+3. REVIEW            codex `codex-pr-reviewer-55` (5.5) — line-level + spec-match.
+                     ADR-0006 8-point checklist mandatory. PASS → next stage.
+       │
+       ├── (D2 row 1+4 hit) → 4. PRE-COMMIT CLAUDE REVIEW   orchestrator self.
+       │                          Mitigates same-model echo chamber.
+       │
+       ▼
+5. COMMIT (+ push)   reviewer codex commits. Per ADR-0006 D8 explicit-file-list
+                     staging (`git reset HEAD` → `git add <list>` →
+                     `git diff --cached --stat` verify → `git commit`).
+       │
+       ▼
+6. ACCEPT            pr-writer Claude subagent (second invocation): verify the
+                     PR's diff actually meets PR.md's `acceptance:` block.
+```
+
+D2 trigger judgment (ADR-0007 D2 rows; locked by orchestrator at PLAN):
+- **D1 stage 4 PRE-COMMIT CLAUDE REVIEW fires** on D2 rows 1+4 (contract change OR new
+  ADR required). Other rows skip this stage but still go through codex review.
+- **High-risk classes** (rows 2 package add/remove, row 8 CI/deploy/auth/security) also
+  receive heightened reviewer scrutiny within stage 3 — ADR-0006 D8 staging discipline +
+  ADR-0006 8-point checklist 8th-class hunt.
+
+See [ADR-0011](docs/decisions/ADR-0011-linear-pipeline-execution-model.md) D1-D8 +
+[ADR-0007 D2](docs/decisions/ADR-0007-job-function-codex-heavy-execution.md).
+
+Codex tools (11 patterns: 5 scaffolders + plan-challenger + codex-pr-reviewer-55 +
+4 audit/exec profiles) are
+[orchestrator-direct Bash invocations](docs/runbooks/codex-tool-invocations.md) post
+ADR-0007 D5 + ADR-0011 D6.
+
+## Claude teammates (5)
+
+| Tier            | Name           | Role                                                                           |
+| --------------- | -------------- | ------------------------------------------------------------------------------ |
+| T0 Orchestrator | `orchestrator` | 整体规划 + dispatch 工种 + 维护 docs/plans/ + D1 pipeline 协调                 |
+| T2 Subagent     | `pr-writer`    | PR.md 起草（PLAN 调）+ ACCEPT 验收（COMMIT 后调）                              |
+| T2 Subagent     | `refactorer`   | 唯一跨包重组权（ADR-0011 D7 沿用，按需 one-shot dispatch）                     |
+| T2 Subagent     | `researcher`   | 唯一外网访问权（ADR-0011 D7 沿用，按需 one-shot dispatch）                     |
+| T2 Subagent     | `ux-ui-lead`   | 视觉单一权威 — 横跨 ui-default + apps/site + editor 子模块（仅 UI/UX PR 触发） |
+
+## Codex tool patterns (11)
+
+orchestrator-direct Bash invocations (ADR-0007 D5). Full canonical bash + triggers + audit-log paths in [docs/runbooks/codex-tool-invocations.md](docs/runbooks/codex-tool-invocations.md).
+
+| Pattern                   | Profile                   | Summary                                                                                            |
+| ------------------------- | ------------------------- | -------------------------------------------------------------------------------------------------- |
+| `codex-generic-executor`  | `codex-generic-executor`  | ADR-0011 D6 NEW Wave 3 默认 executor。gpt-5.5 + workspace-write sandbox。                          |
+| `codex-mdx-doctor`        | `codex-mdx-doctor`        | ADR-0011 D5 + D6 NEW Wave 3 audit profile。从 Wave 1+2 Tier 3                                      |
+| `codex-perf-auditor`      | `codex-perf-auditor`      | ADR-0011 D5 + D6 NEW Wave 3 audit profile。从 Wave 1+2 Tier 3                                      |
+| `codex-pr-reviewer-55`    | `codex-pr-reviewer-55`    | ADR-0011 D1 stage 3 默认 reviewer。replaces Wave 1+2 的 pr-gate（5.5）+                            |
+| `codex-structure-auditor` | `codex-structure-auditor` | ADR-0011 D5 + D6 NEW Wave 3 audit profile。从 Wave 1+2 Tier 3                                      |
+| `plan-challenger`         | `plan-challenger`         | lock 前挑战 orchestrator 的 wave / track / PR plan：检查 task 大小、可测性、边界场景。             |
+| `codex-api-crud-builder`  | `scaffolder`              | 在 apps/api 按 RESTful 风格生成 CRUD 端点骨架（Pydantic schema + 路由）。                          |
+| `codex-block-generator`   | `scaffolder`              | 在 simple-block-eng / ux-ui-lead / editor-eng 提交 template 后，按模板仿造其余 block / submodule。 |
+| `codex-css-stylist`       | `scaffolder`              | 写 packages/design-tokens / packages/ui 的 design tokens（颜色 / 间距 / 字体）+                    |
+| `codex-script-builder`    | `scaffolder`              | 写 scripts/refactor-move.ts / scripts/new-block.ts / scripts/extract-pdf-text.ts 等工具。          |
+| `codex-test-scaffolder`   | `scaffolder`              | 为每个 packages/<name> 生成 src/__tests__/ 下的 vitest 套件骨架，                                  |
+
+## Footer
+
+This file is GENERATED FROM `agent-contract.md`. Edits to this file will be overwritten
+on the next `pnpm generate:configs` run.
+
+exec
+/bin/bash -lc "sed -n '1,260p' packages/heavy-block-boundary/src/__tests__/HeavyBlockBoundary.v0.5.test.tsx" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+import { cleanup, render } from '@testing-library/react';
+import { type ComponentType } from 'react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+import { effectiveCellHeight, effectiveColWidth } from '@skb/block-foundation';
+
+import { HeavyBlockBoundary } from '../index';
+
+const pendingLoad = (): Promise<{
+  default: ComponentType<Record<string, never>>;
+}> => new Promise(() => {});
+
+function getOuter(container: HTMLElement, kind = 'jupyter'): HTMLElement {
+  const outer = container.querySelector<HTMLElement>(`[data-block="${kind}"]`);
+  if (!outer) {
+    throw new Error(`Expected ${kind} boundary container`);
+  }
+  return outer;
+}
+
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
+
+describe('HeavyBlockBoundary v0.5 dims precedence', () => {
+  it('gridContext-derived dims are byte-equal to block-foundation helpers', () => {
+    const expectedWidth = effectiveColWidth(6, 1200);
+    const expectedHeight = effectiveCellHeight(4);
+
+    const { container } = render(
+      <HeavyBlockBoundary
+        kind="jupyter"
+        gridContext={{ colSpan: 6, rowSpan: 4, containerWidth: 1200 }}
+        load={pendingLoad}
+        childProps={{}}
+      />,
+    );
+
+    const outer = getOuter(container);
+    expect(outer.getAttribute('style')).toBe(
+      `width: ${expectedWidth}px; min-height: ${expectedHeight}px;`,
+    );
+    expect(outer.style.width).toBe(`${expectedWidth}px`);
+    expect(outer.style.minHeight).toBe(`${expectedHeight}px`);
+  });
+
+  it('gridContext-only path derives finite dimensions without NaN', () => {
+    const expectedWidth = effectiveColWidth(6, 1200);
+    const expectedHeight = effectiveCellHeight(4);
+
+    const { container } = render(
+      <HeavyBlockBoundary
+        kind="jupyter"
+        gridContext={{ colSpan: 6, rowSpan: 4, containerWidth: 1200 }}
+        load={pendingLoad}
+        childProps={{}}
+      />,
+    );
+
+    const outer = getOuter(container);
+    const styleAttr = outer.getAttribute('style') ?? '';
+    expect(styleAttr).not.toMatch(/NaN/);
+    expect(outer.style.width).toBe(`${expectedWidth}px`);
+    expect(outer.style.minHeight).toBe(`${expectedHeight}px`);
+  });
+
+  it('explicit dims wins when dims and gridContext are both supplied', () => {
+    const { container } = render(
+      <HeavyBlockBoundary
+        kind="jupyter"
+        dims={{ width: 999, height: 888 }}
+        gridContext={{ colSpan: 6, rowSpan: 4, containerWidth: 1200 }}
+        load={pendingLoad}
+        childProps={{}}
+      />,
+    );
+
+    const outer = getOuter(container);
+    expect(outer.style.width).toBe('999px');
+    expect(outer.style.minHeight).toBe('888px');
+  });
+
+  it('throws on neither dims nor gridContext supplied', () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    expect(() =>
+      render(
+        <HeavyBlockBoundary
+          kind="jupyter"
+          load={pendingLoad}
+          childProps={{}}
+        />,
+      ),
+    ).toThrow('HeavyBlockBoundary requires either dims or gridContext');
+  });
+
+  it('dims-only path remains backward compatible with v0.4 call sites', () => {
+    const { container } = render(
+      <HeavyBlockBoundary
+        kind="jupyter"
+        dims={{ width: 480, height: 360 }}
+        load={pendingLoad}
+        childProps={{}}
+      />,
+    );
+
+    const outer = getOuter(container);
+    expect(outer.style.width).toBe('480px');
+    expect(outer.style.minHeight).toBe('360px');
+  });
+});
+
+exec
+/bin/bash -lc "sed -n '1,180p' apps/site/src/__tests__/e2e/c2-7-heavy-grid-dims.spec.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+import { test, expect } from '@playwright/test';
+import { existsSync, mkdirSync } from 'node:fs';
+import { release } from 'node:os';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const here = dirname(fileURLToPath(import.meta.url));
+const workspaceRoot = resolve(here, '../../../../..');
+
+test.describe('C.2-7 heavy block plugin placeholder grid dimensions', () => {
+  test.skip(
+    process.platform === 'linux' &&
+      (Boolean(process.env.WSL_DISTRO_NAME) || /microsoft/i.test(release())),
+    'WSL2 missing libnss3/libdbus/libatk/libcups; CI-only execution per Wave 3 D5 memory.',
+  );
+
+  test('plugin placeholder consumes grid effectiveColWidth/effectiveCellHeight', async ({
+    page,
+  }) => {
+    const response = await page.goto('/sample-blocks');
+    if (response?.status() === 404) {
+      await page.goto('/notes/sample-blocks');
+    }
+
+    const grid = page.locator('.skb-grid').first();
+    await expect(grid).toBeVisible({ timeout: 10_000 });
+
+    const heavy = page
+      .locator('[data-block="jupyter"], [data-block="nn-viz"], [data-block="agent-flow"]')
+      .first();
+    await expect(heavy).toBeVisible({ timeout: 10_000 });
+
+    const styleAttr = await heavy.getAttribute('style');
+    expect(styleAttr ?? '').not.toMatch(/NaN/);
+    expect(styleAttr ?? '').toMatch(/width:\s*\d+(?:\.\d+)?px/);
+    expect(styleAttr ?? '').toMatch(/min-height:\s*\d+(?:\.\d+)?px/);
+
+    const heavyBox = await heavy.boundingBox();
+    expect(heavyBox).not.toBeNull();
+    expect(heavyBox!.width).toBeGreaterThan(0);
+    expect(heavyBox!.height).toBeGreaterThan(0);
+    expect(Number.isFinite(heavyBox!.width)).toBe(true);
+    expect(Number.isFinite(heavyBox!.height)).toBe(true);
+
+    const gridBox = await grid.boundingBox();
+    expect(gridBox).not.toBeNull();
+    expect(heavyBox!.x + heavyBox!.width).toBeLessThanOrEqual(
+      gridBox!.x + gridBox!.width + 1,
+    );
+
+    const light = page
+      .locator(
+        '[data-callout-variant], [data-code-language], [data-image-loading], [data-block="math"], [data-block="pdf"]',
+      )
+      .first();
+    if ((await light.count()) > 0 && (await light.isVisible())) {
+      const lightBox = await light.boundingBox();
+      if (lightBox) {
+        expect(heavyBox!.width).toBeLessThanOrEqual(lightBox.width * 4);
+      }
+    }
+
+    const archivePath = resolve(
+      workspaceRoot,
+      'docs/audits/screenshots/wave-5-c2-7-heavy-grid-dims.png',
+    );
+    if (!existsSync(dirname(archivePath))) {
+      mkdirSync(dirname(archivePath), { recursive: true });
+    }
+    await page.screenshot({ path: archivePath, fullPage: false });
+  });
+});
+
+exec
+/bin/bash -lc 'git status --short -- packages/heavy-block-boundary/src/__tests__/HeavyBlockBoundary.v0.5.test.tsx apps/site/src/__tests__/e2e/c2-7-heavy-grid-dims.spec.ts' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+?? apps/site/src/__tests__/e2e/c2-7-heavy-grid-dims.spec.ts
+?? packages/heavy-block-boundary/src/__tests__/HeavyBlockBoundary.v0.5.test.tsx
+
+exec
+/bin/bash -lc 'rg -n "data-.*colspan|data-col-span|data-grid-col" apps/site/src packages/block-*/src' in /home/weiyi/selfKnowledgeBaseWeb
+ exited 1 in 0ms:
+codex
+The scoped files are currently untracked in git, so I’ll preserve that state and only edit those two paths. The requested data attribute search returned no matches under `apps/site/src` or `packages/block-*/src`, so I’m checking the renderer for computed `gridColumn` support before deciding the E2E path.
+exec
+/bin/bash -lc "rg -n \"colSpan|gridColumn|grid-column|data-block|skb-grid\" apps/site/src packages -g '*.tsx' -g '*.ts'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+apps/site/src/islands/JupyterIsland.tsx:13:      data-block="jupyter"
+apps/site/src/islands/AgentFlowIsland.tsx:13:      data-block="agent-flow"
+apps/site/src/islands/NnVizIsland.tsx:13:      data-block="nn-viz"
+packages/editor-shell/src/index.ts:21:export { SizeTooltip, colSpanToFraction } from './resize/size-tooltip';
+packages/editor-shell/src/resize/size-tooltip.tsx:61:export function colSpanToFraction(colSpan: number, totalCols: number): string {
+packages/editor-shell/src/resize/size-tooltip.tsx:62:  const fraction = FRACTIONS_BY_TOTAL_COLS[totalCols]?.[colSpan];
+packages/editor-shell/src/resize/size-tooltip.tsx:68:  throw new Error(`unsupported colSpan/totalCols pair: ${colSpan}/${totalCols}`);
+packages/editor-shell/src/grid-container.tsx:7: * container outside: this component only emits the `.skb-grid` host
+packages/editor-shell/src/grid-container.tsx:18:  /** Optional consumer class appended after the required `skb-grid` class. */
+packages/editor-shell/src/grid-container.tsx:26:  const gridClassName = className ? `skb-grid ${className}` : 'skb-grid';
+packages/editor-shell/src/__tests__/grid-container.test.tsx:23:  it('mounts and wraps a single child in the skb-grid container', () => {
+packages/editor-shell/src/__tests__/grid-container.test.tsx:32:    expect(child.parentElement?.className).toContain('skb-grid');
+packages/editor-shell/src/__tests__/grid-container.test.tsx:37:  it('concatenates className after skb-grid with a space separator', () => {
+packages/editor-shell/src/__tests__/grid-container.test.tsx:40:    expect(getGridRoot(container).className).toBe('skb-grid custom-x');
+packages/editor-shell/src/__tests__/grid-container.test.tsx:43:  it('emits exactly skb-grid when className is omitted', () => {
+packages/editor-shell/src/__tests__/grid-container.test.tsx:46:    expect(getGridRoot(container).className).toBe('skb-grid');
+packages/editor-shell/src/__tests__/grid-container.test.tsx:103:    const wrapper = container.querySelector('.skb-grid');
+packages/mdx-bridge/src/parse.ts:48:  readonly colSpan: number;
+packages/mdx-bridge/src/parse.ts:52:// Grid attr shape `{col, row?, colSpan, rowSpan}` per ADR-0016 D2 (single
+packages/mdx-bridge/src/parse.ts:59:const GRID_ATTR_NAMES = new Set(['col', 'row', 'colSpan', 'rowSpan']);
+packages/mdx-bridge/src/parse.ts:184:  const colSpanAttr = getGridAttr(node, 'colSpan');
+packages/mdx-bridge/src/parse.ts:187:  if (!isProse && (!colAttr || !colSpanAttr)) {
+packages/mdx-bridge/src/parse.ts:189:      `mdx-bridge: required grid attrs col + colSpan missing on block "${blockType}"; ` +
+packages/mdx-bridge/src/parse.ts:196:  const colSpan = colSpanAttr
+packages/mdx-bridge/src/parse.ts:197:    ? parseGridInteger('colSpan', attrValue(colSpanAttr), blockType)
+packages/mdx-bridge/src/parse.ts:199:  validateGridPosition(col, colSpan, blockType);
+packages/mdx-bridge/src/parse.ts:207:    colSpan,
+packages/mdx-bridge/src/parse.ts:219:    colSpan: gridAttrs.colSpan,
+packages/mdx-bridge/src/parse.ts:261:  if (name === 'colSpan' && !COL_SNAPS.includes(numeric as (typeof COL_SNAPS)[number])) {
+packages/mdx-bridge/src/parse.ts:263:      `mdx-bridge: unsupported grid attr colSpan on block ${blockType}; ` +
+packages/mdx-bridge/src/parse.ts:301:function validateGridPosition(col: number, colSpan: number, blockType: string): void {
+packages/mdx-bridge/src/parse.ts:302:  const end = col + colSpan - 1;
+packages/mdx-bridge/src/parse.ts:306:        `col + colSpan - 1 = ${end}, expected col + colSpan - 1 ≤ 12.`,
+packages/editor-shell/src/__tests__/resize/size-tooltip.test.tsx:5:  colSpanToFraction,
+packages/editor-shell/src/__tests__/resize/size-tooltip.test.tsx:62:describe('colSpanToFraction', () => {
+packages/editor-shell/src/__tests__/resize/size-tooltip.test.tsx:64:    expect(colSpanToFraction(12, 12)).toBe('full');
+packages/editor-shell/src/__tests__/resize/size-tooltip.test.tsx:68:    expect(colSpanToFraction(8, 12)).toBe('2/3');
+packages/editor-shell/src/__tests__/resize/size-tooltip.test.tsx:72:    expect(colSpanToFraction(6, 12)).toBe('1/2');
+packages/editor-shell/src/__tests__/resize/size-tooltip.test.tsx:73:    expect(colSpanToFraction(4, 12)).toBe('1/3');
+packages/editor-shell/src/__tests__/resize/size-tooltip.test.tsx:74:    expect(colSpanToFraction(3, 12)).toBe('1/4');
+packages/editor-shell/src/__tests__/resize/size-tooltip.test.tsx:75:    expect(colSpanToFraction(2, 12)).toBe('1/6');
+packages/editor-shell/src/__tests__/resize/size-tooltip.test.tsx:79:    expect(colSpanToFraction(6, 6)).toBe('full');
+packages/editor-shell/src/__tests__/resize/size-tooltip.test.tsx:83:    expect(colSpanToFraction(3, 6)).toBe('1/2');
+packages/editor-shell/src/__tests__/resize/size-tooltip.test.tsx:84:    expect(colSpanToFraction(2, 6)).toBe('1/3');
+packages/editor-shell/src/__tests__/resize/size-tooltip.test.tsx:88:    expect(colSpanToFraction(1, 1)).toBe('full');
+packages/editor-shell/src/__tests__/resize/size-tooltip.test.tsx:92:    expect(() => colSpanToFraction(5, 12)).toThrow(Error);
+packages/mdx-bridge/src/serialize.ts:54:const GRID_ATTR_NAMES = new Set(['col', 'row', 'colSpan', 'rowSpan']);
+packages/mdx-bridge/src/serialize.ts:178:// Grid attr shape `{col, row?, colSpan, rowSpan}` per ADR-0016 D2 (single
+packages/mdx-bridge/src/serialize.ts:179:// schema authority). COL_SNAPS + col/colSpan/row/rowSpan validation rules
+packages/mdx-bridge/src/serialize.ts:195:  const colSpan = parseSerializableGridInteger('colSpan', attrs['colSpan'] ?? 12, node.type);
+packages/mdx-bridge/src/serialize.ts:196:  validateGridPosition(col, colSpan, node.type);
+packages/mdx-bridge/src/serialize.ts:203:    gridExpressionAttr('colSpan', colSpan),
+packages/mdx-bridge/src/serialize.ts:256:  if (name === 'colSpan' && !COL_SNAPS.includes(numeric as (typeof COL_SNAPS)[number])) {
+packages/mdx-bridge/src/serialize.ts:258:      `mdx-bridge: unsupported grid attr colSpan on block ${blockType}; ` +
+packages/mdx-bridge/src/serialize.ts:271:function validateGridPosition(col: number, colSpan: number, blockType: string): void {
+packages/mdx-bridge/src/serialize.ts:272:  const end = col + colSpan - 1;
+packages/mdx-bridge/src/serialize.ts:276:        `col + colSpan - 1 = ${end}, expected col + colSpan - 1 ≤ 12.`,
+packages/editor-shell/src/__tests__/drag-drop/outline-overlay.test.tsx:19:  const accent = container.querySelector('.skb-grid-outline-accent');
+packages/editor-shell/src/__tests__/drag-drop/outline-overlay.test.tsx:30:    expect(container.querySelectorAll('.skb-grid-outline-base')).toHaveLength(1);
+packages/editor-shell/src/__tests__/drag-drop/outline-overlay.test.tsx:31:    expect(container.querySelector('.skb-grid-outline-accent')).toBeNull();
+packages/editor-shell/src/__tests__/drag-drop/outline-overlay.test.tsx:41:    expect(accent.className).toContain('skb-grid-outline-accent--split-left');
+packages/editor-shell/src/__tests__/drag-drop/outline-overlay.test.tsx:63:      expect(accent.className).toContain(`skb-grid-outline-accent--${mode}`);
+packages/editor-shell/src/__tests__/drag-drop/outline-overlay.test.tsx:78:    expect(container.querySelectorAll('.skb-grid-outline-base')).toHaveLength(1);
+packages/editor-shell/src/__tests__/drag-drop/outline-overlay.test.tsx:79:    expect(container.querySelector('.skb-grid-outline-accent')).toBeNull();
+packages/mdx-bridge/src/__tests__/grid-rtt.test.ts:104:  { label: 'col + colSpan', attrs: { col: 1, colSpan: 12, rowSpan: 1 } },
+packages/mdx-bridge/src/__tests__/grid-rtt.test.ts:105:  { label: 'col + row + colSpan', attrs: { col: 7, row: 3, colSpan: 6, rowSpan: 4 } },
+packages/mdx-bridge/src/__tests__/grid-rtt.test.ts:106:  { label: 'col + colSpan + rowSpan', attrs: { col: 5, colSpan: 4, rowSpan: 3 } },
+packages/mdx-bridge/src/__tests__/grid-rtt.test.ts:175:  const colSpanIndex = source.indexOf(` colSpan={${gridAttrValue(gridAttrs, 'colSpan')}}`);
+packages/mdx-bridge/src/__tests__/grid-rtt.test.ts:180:  expect(colSpanIndex).toBeGreaterThan(colIndex);
+packages/mdx-bridge/src/__tests__/grid-rtt.test.ts:184:    expect(rowIndex).toBeLessThan(colSpanIndex);
+packages/mdx-bridge/src/__tests__/grid-rtt.test.ts:188:  expect(rowSpanIndex).toBeGreaterThan(colSpanIndex);
+packages/mdx-bridge/src/__tests__/grid-rtt.test.ts:235:          attrs: { col: 1, colSpan: 6, rowSpan: 'auto' },
+packages/mdx-bridge/src/__tests__/grid-rtt.test.ts:248:    expect(source).toContain('<Markdown col={1} colSpan={6}>');
+packages/mdx-bridge/src/__tests__/grid-rtt.test.ts:253:      colSpan: 6,
+packages/editor-shell/src/drag-drop/edge-rects.ts:7: * `apps/site/src/styles/grid.css` `.skb-grid { --gap: 14px }` until Stage
+packages/editor-shell/src/drag-drop/outline-overlay.tsx:21:  return className ? `skb-grid-outline-base ${className}` : 'skb-grid-outline-base';
+packages/editor-shell/src/drag-drop/outline-overlay.tsx:79:          className={`skb-grid-outline-accent skb-grid-outline-accent--${activeMatch.mode}`}
+packages/mdx-bridge/src/__tests__/grid-defensive.test.ts:19:  /mdx-bridge: required grid attrs col(?: \+ colSpan)? missing on block "callout".*ADR-0016 D7.*Wave 5 plan v1\.1 row C\.2-3\.5/i;
+packages/mdx-bridge/src/__tests__/grid-defensive.test.ts:81:    ['missing col', '<Callout colSpan={6} rowSpan={2} variant="note" />'],
+packages/mdx-bridge/src/__tests__/grid-defensive.test.ts:82:    ['missing colSpan', '<Callout col={1} rowSpan={2} variant="note" />'],
+packages/mdx-bridge/src/__tests__/grid-defensive.test.ts:83:    ['missing both col and colSpan', '<Callout rowSpan={1} variant="note" />'],
+packages/mdx-bridge/src/__tests__/grid-defensive.test.ts:90:      mdxToTiptap('<Callout col={1} colSpan={12} variant="note" />', buildOptions()),
+packages/mdx-bridge/src/__tests__/grid-defensive.test.ts:99:      colSpan: 12,
+packages/mdx-bridge/src/__tests__/grid-defensive.test.ts:106:      '<Callout col={1} colSpan={12} rowSpan={1} variant="note" title="Heads up" />';
+packages/mdx-bridge/src/__tests__/grid-defensive.test.ts:116:      'col + colSpan overflow',
+packages/mdx-bridge/src/__tests__/grid-defensive.test.ts:117:      '<Callout col={9} colSpan={6} rowSpan={1} variant="note" />',
+packages/mdx-bridge/src/__tests__/grid-defensive.test.ts:118:      /col \+ colSpan - 1.*≤ 12/,
+packages/mdx-bridge/src/__tests__/grid-defensive.test.ts:121:      'non-snap colSpan',
+packages/mdx-bridge/src/__tests__/grid-defensive.test.ts:122:      '<Callout col={1} colSpan={5} rowSpan={1} variant="note" />',
+packages/mdx-bridge/src/__tests__/grid-defensive.test.ts:127:      '<Callout col={0} colSpan={12} rowSpan={1} variant="note" />',
+packages/mdx-bridge/src/__tests__/grid-defensive.test.ts:132:      '<Callout col={13} colSpan={12} rowSpan={1} variant="note" />',
+packages/mdx-bridge/src/__tests__/grid-defensive.test.ts:137:      '<Callout col={1} row={0} colSpan={12} rowSpan={1} variant="note" />',
+packages/mdx-bridge/src/__tests__/grid-defensive.test.ts:142:      '<Callout col={1} colSpan={12} rowSpan="auto" variant="note" />',
+packages/mdx-bridge/src/__tests__/grid-defensive.test.ts:147:      '<Callout col={1} colSpan={12} rowSpan={0} variant="note" />',
+packages/mdx-bridge/src/__tests__/grid-defensive.test.ts:162:            colSpan: 12,
+packages/mdx-bridge/src/__tests__/grid-defensive.test.ts:181:    expect(source).toBe('<Callout col={1} colSpan={12} rowSpan={1} variant="note" />');
+packages/mdx-bridge/src/__tests__/grid-defensive.test.ts:184:  it('serializes markerless non-default col/colSpan in canonical grid order', () => {
+packages/mdx-bridge/src/__tests__/grid-defensive.test.ts:190:          attrs: { col: 2, colSpan: 6, rowSpan: 2, variant: 'note' },
+packages/mdx-bridge/src/__tests__/grid-defensive.test.ts:197:    expect(source).toBe('<Callout col={2} colSpan={6} rowSpan={2} variant="note" />');
+packages/mdx-bridge/src/__tests__/jsx-routing.test.ts:115:      '<TestCallout col={1} colSpan={12} rowSpan={1} type="info">\n  hello\n</TestCallout>';
+packages/mdx-bridge/src/__tests__/jsx-routing.test.ts:153:      '<TestCallout col={1} colSpan={12} rowSpan={1}>\n  <TestCallout col={1} colSpan={12} rowSpan={1} type="warn">\n    inner\n  </TestCallout>\n</TestCallout>';
+packages/mdx-bridge/src/__tests__/jsx-routing.test.ts:168:      '<TestCallout col={1} colSpan={12} rowSpan={1} type="info">\n  A\n</TestCallout>',
+packages/mdx-bridge/src/__tests__/jsx-routing.test.ts:172:      '<TestCallout col={1} colSpan={12} rowSpan={1} type="warn">\n  B\n</TestCallout>',
+apps/site/src/__tests__/grid-css.test.ts:29:    const gridStart = gridCss.indexOf('.skb-grid {');
+apps/site/src/__tests__/grid-css.test.ts:30:    expect(gridCss).toContain('.skb-grid {');
+apps/site/src/__tests__/grid-css.test.ts:49:    expect(mobile).toContain('.skb-grid > *');
+apps/site/src/__tests__/grid-css.test.ts:50:    expect(mobile).toContain('grid-column: 1');
+apps/site/src/__tests__/grid-css.test.ts:62:    // C.2-3 transitional: MDX children without explicit gridColumn span the
+apps/site/src/__tests__/grid-css.test.ts:64:    // per-block grid attrs. Per-block `style.gridColumn` overrides via
+apps/site/src/__tests__/grid-css.test.ts:67:    expect(gridCss).toContain('.skb-grid > *:not([style*="grid-column"])');
+apps/site/src/__tests__/grid-css.test.ts:68:    expect(gridCss).toMatch(/grid-column:\s*1\s*\/\s*-1/);
+apps/site/src/__tests__/grid-css.test.ts:80:    const wrapperIndex = notesRoute.indexOf('<div class="skb-grid">');
+apps/site/src/__tests__/grid-css.test.ts:93:    expect(gridSection).toContain('.skb-grid');
+apps/site/src/__tests__/grid-css.test.ts:104:    expect(gridSection).toContain('gridColumn');
+apps/site/src/__tests__/sample-blocks-page.test.ts:24:  ['Math', 'data-block="math"'],
+apps/site/src/__tests__/sample-blocks-page.test.ts:25:  ['Pdf', 'data-block="pdf"'],
+apps/site/src/__tests__/sample-blocks-page.test.ts:26:  ['Jupyter', 'data-block="jupyter"'],
+apps/site/src/__tests__/sample-blocks-page.test.ts:27:  ['NnViz', 'data-block="nn-viz"'],
+apps/site/src/__tests__/sample-blocks-page.test.ts:28:  ['AgentFlow', 'data-block="agent-flow"'],
+apps/site/src/__tests__/e2e/c2-7-heavy-grid-dims.spec.ts:25:    const grid = page.locator('.skb-grid').first();
+apps/site/src/__tests__/e2e/c2-7-heavy-grid-dims.spec.ts:29:      .locator('[data-block="jupyter"], [data-block="nn-viz"], [data-block="agent-flow"]')
+apps/site/src/__tests__/e2e/c2-7-heavy-grid-dims.spec.ts:53:        '[data-callout-variant], [data-code-language], [data-image-loading], [data-block="math"], [data-block="pdf"]',
+packages/block-nn-viz/src/ui-default/NnViz.tsx:75:    <div data-block="nn-viz" data-phase={phase.type}>
+packages/heavy-block-boundary/src/HeavyBlockBoundary.tsx:37:    readonly colSpan: number;
+packages/heavy-block-boundary/src/HeavyBlockBoundary.tsx:61:      gridContext!.colSpan,
+packages/heavy-block-boundary/src/HeavyBlockBoundary.tsx:124:      data-block={kind}
+packages/block-agent-flow/src/ui-default/AgentFlow.tsx:107:    <div data-block="agent-flow" data-phase={phase.type}>
+packages/block-nn-viz/src/__tests__/ui-default.test.tsx:94:  it('exposes data-block="nn-viz" + initial data-phase="loading" while load is in flight', () => {
+packages/block-nn-viz/src/__tests__/ui-default.test.tsx:110:    const root = container.querySelector('[data-block="nn-viz"]');
+packages/block-nn-viz/src/__tests__/ui-default.test.tsx:130:      const root = container.querySelector('[data-block="nn-viz"]');
+packages/block-nn-viz/src/__tests__/ui-default.test.tsx:150:      const root = container.querySelector('[data-block="nn-viz"]');
+packages/block-nn-viz/src/__tests__/ui-default.test.tsx:169:      const root = container.querySelector('[data-block="nn-viz"]');
+packages/block-nn-viz/src/__tests__/ui-default.test.tsx:189:      const root = container.querySelector('[data-block="nn-viz"]');
+packages/block-agent-flow/src/ui-default/flow-layout.ts:13: * `[data-block='agent-flow'][data-phase='errored']` ever appears for any
+packages/heavy-block-boundary/src/__tests__/HeavyBlockBoundary.test.tsx:77:    expect(document.querySelector('[data-block="jupyter"]')).toBeTruthy();
+packages/heavy-block-boundary/src/__tests__/HeavyBlockBoundary.test.tsx:282:    const outer = container.querySelector('[data-block="jupyter"]') as HTMLElement;
+packages/heavy-block-boundary/src/__tests__/HeavyBlockBoundary.test.tsx:299:    const outerAfter = container.querySelector('[data-block="jupyter"]') as HTMLElement;
+packages/heavy-block-boundary/src/__tests__/HeavyBlockBoundary.test.tsx:320:    const outer = container.querySelector('[data-block="jupyter"]') as HTMLElement;
+packages/heavy-block-boundary/src/__tests__/HeavyBlockBoundary.test.tsx:355:    const outer2 = c2.querySelector('[data-block="jupyter"]') as HTMLElement;
+packages/heavy-block-boundary/src/__tests__/HeavyBlockBoundary.test.tsx:379:    // Pre-resolve: skeleton renders with plugin kind class + data-block.
+packages/heavy-block-boundary/src/__tests__/HeavyBlockBoundary.test.tsx:380:    const outer = container.querySelector('[data-block="3d-graph"]') as HTMLElement;
+packages/heavy-block-boundary/src/__tests__/HeavyBlockBoundary.test.tsx:394:    expect(container.querySelector('[data-block="3d-graph"]')).toBe(outer);
+packages/heavy-block-boundary/src/__tests__/HeavyBlockBoundary.v0.5.test.tsx:14:  const outer = container.querySelector<HTMLElement>(`[data-block="${kind}"]`);
+packages/heavy-block-boundary/src/__tests__/HeavyBlockBoundary.v0.5.test.tsx:34:        gridContext={{ colSpan: 6, rowSpan: 4, containerWidth: 1200 }}
+packages/heavy-block-boundary/src/__tests__/HeavyBlockBoundary.v0.5.test.tsx:55:        gridContext={{ colSpan: 6, rowSpan: 4, containerWidth: 1200 }}
+packages/heavy-block-boundary/src/__tests__/HeavyBlockBoundary.v0.5.test.tsx:73:        gridContext={{ colSpan: 6, rowSpan: 4, containerWidth: 1200 }}
+packages/block-agent-flow/src/__tests__/ui-default.test.tsx:20: * (`[data-block="agent-flow"]` + status + error panel), not React Flow's
+packages/block-agent-flow/src/__tests__/ui-default.test.tsx:81:  it('exposes data-block="agent-flow" + transitions through phases on mount', async () => {
+packages/block-agent-flow/src/__tests__/ui-default.test.tsx:94:    const root = container.querySelector('[data-block="agent-flow"]');
+packages/block-agent-flow/src/__tests__/ui-default.test.tsx:130:      const root = container.querySelector('[data-block="agent-flow"]');
+packages/block-agent-flow/src/__tests__/ui-default.test.tsx:152:      const root = container.querySelector('[data-block="agent-flow"]');
+packages/block-foundation/src/grid-math.ts:55: * colSpan * 1fr + (colSpan - 1) * gap.
+packages/block-foundation/src/grid-math.ts:58:  colSpan: number,
+packages/block-foundation/src/grid-math.ts:66:  return colSpan * oneFr + (colSpan - 1) * resolved.gap;
+packages/block-foundation/src/grid-math.ts:115:  if (!COL_SNAPS.some((snap) => snap === pos.colSpan)) {
+packages/block-foundation/src/grid-math.ts:116:    throw new Error(`colSpan must be one of COL_SNAPS: ${COL_SNAPS.join(', ')}`);
+packages/block-foundation/src/grid-math.ts:119:  if (pos.col + pos.colSpan - 1 > totalCols) {
+packages/block-foundation/src/grid-math.ts:120:    throw new Error(`grid position overflow: col + colSpan - 1 exceeds ${totalCols}`);
+packages/block-jupyter/src/ui-default/Jupyter.tsx:135:    <div data-block="jupyter" data-phase={phase.type}>
+packages/block-pdf/src/ui-default/render-pdf.ts:41:    readonly 'data-block': 'pdf';
+packages/block-pdf/src/ui-default/render-pdf.ts:65:    'data-block': 'pdf',
+packages/block-foundation/src/types.ts:4: * Authority: ADR-0016 D2 defines the `{col, row?, colSpan, rowSpan}`
+packages/block-foundation/src/types.ts:13:  readonly colSpan: number;
+packages/block-pdf/src/ui-default/Pdf.tsx:25:      data-block={desc.dataAttrs['data-block']}
+packages/block-foundation/src/__tests__/registry.test.ts:107:      gridDefault: { col: 1, colSpan: 12, rowSpan: 1 },
+packages/block-foundation/src/__tests__/registry.test.ts:112:      colSpan: 12,
+packages/block-pdf/src/__tests__/byte-equivalence.test.tsx:19: *    `renderPdf` — `data-block` / `data-page` / `data-searchable` attributes
+packages/block-pdf/src/__tests__/byte-equivalence.test.tsx:52:    expect(html).toContain(`data-block="${desc.dataAttrs['data-block']}"`);
+packages/block-pdf/src/__tests__/byte-equivalence.test.tsx:77:    expect(astroSource).toMatch(/data-block=\{?desc\.dataAttrs\['data-block'\]/);
+packages/block-foundation/src/__tests__/grid-math.test.ts:41:      validateGridPosition({ col: 1, colSpan: 12, rowSpan: 1 }),
+packages/block-foundation/src/__tests__/grid-math.test.ts:44:      validateGridPosition({ col: 5, colSpan: 8, rowSpan: 'auto' }),
+packages/block-foundation/src/__tests__/grid-math.test.ts:50:      validateGridPosition({ col: 0, colSpan: 12, rowSpan: 1 }),
+packages/block-foundation/src/__tests__/grid-math.test.ts:53:      validateGridPosition({ col: 13, colSpan: 2, rowSpan: 1 }),
+packages/block-foundation/src/__tests__/grid-math.test.ts:56:      validateGridPosition({ col: 1, colSpan: 5, rowSpan: 1 }),
+packages/block-foundation/src/__tests__/grid-math.test.ts:57:    ).toThrow(/COL_SNAPS|colSpan/i);
+packages/block-foundation/src/__tests__/grid-math.test.ts:59:      validateGridPosition({ col: 6, colSpan: 8, rowSpan: 1 }),
+packages/block-foundation/src/__tests__/grid-math.test.ts:62:      validateGridPosition({ col: 1, colSpan: 12, rowSpan: 0 }),
+packages/block-foundation/src/__tests__/grid-math.test.ts:67:        colSpan: 12,
+packages/block-jupyter/src/__tests__/ui-default.test.tsx:145:  it('exposes data-block="jupyter" + initial data-phase="idle" before kernel boot', () => {
+packages/block-jupyter/src/__tests__/ui-default.test.tsx:158:    const root = container.querySelector('[data-block="jupyter"]');
+packages/block-jupyter/src/__tests__/ui-default.test.tsx:203:      const root = container.querySelector('[data-block="jupyter"]');
+packages/block-jupyter/src/__tests__/ui-default.test.tsx:235:      const root = container.querySelector('[data-block="jupyter"]');
+packages/block-pdf/src/__tests__/ssr-render.test.ts:29:    expect(desc.dataAttrs['data-block']).toBe('pdf');
+packages/block-pdf/src/__tests__/ssr-render.test.ts:57:    expect(desc.dataAttrs['data-block']).toBe('pdf');
+packages/block-math/src/ui-default/Math.tsx:22:      data-block="math"
+packages/block-math/src/__tests__/ssr-render.test.ts:50:    // source visible"). math.css uses [data-block='math'] [style*="cc0000"]
+
+exec
+/bin/bash -lc 'rg -n "sample-blocks|SampleBlocks|sample blocks" apps/site/src' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+apps/site/src/__tests__/lazy-chunking.test.ts:126:  // TC2 (heavy-chunk existence) deferred to C5 — when sample-blocks goes
+apps/site/src/__tests__/lazy-chunking.test.ts:134:  // sample-blocks flips draft.
+apps/site/src/__tests__/sample-blocks-page.test.ts:11:const sampleRouteHtml = resolve(distRoot, 'notes/sample-blocks/index.html');
+apps/site/src/__tests__/sample-blocks-page.test.ts:17:  resolve(workspaceRoot, 'content/notes/sample-blocks/index.mdx'),
+apps/site/src/__tests__/sample-blocks-page.test.ts:64:describe('sample-blocks route SSR output', () => {
+apps/site/src/__tests__/sample-blocks-page.test.ts:69:  it('builds the sample-blocks route HTML with non-zero size', () => {
+apps/site/src/__tests__/sample-blocks-astro-page.test.ts:5:const PAGE_PATH = resolve(process.cwd(), 'src/pages/sample-blocks-astro.astro');
+apps/site/src/__tests__/sample-blocks-astro-page.test.ts:14:describe('A7 sample-blocks-astro page', () => {
+apps/site/src/__tests__/e2e/c2-7-heavy-grid-dims.spec.ts:20:    const response = await page.goto('/sample-blocks');
+apps/site/src/__tests__/e2e/c2-7-heavy-grid-dims.spec.ts:22:      await page.goto('/notes/sample-blocks');
+
+exec
+/bin/bash -lc 'rg -n "effectiveColWidth|effectiveCellHeight|resolveGeometry" packages/heavy-block-boundary/src packages/block-foundation/src apps/site/src' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+packages/heavy-block-boundary/src/HeavyBlockBoundary.tsx:8:import { effectiveCellHeight, effectiveColWidth, type GridGeometry } from '@skb/block-foundation';
+packages/heavy-block-boundary/src/HeavyBlockBoundary.tsx:60:    width: effectiveColWidth(
+packages/heavy-block-boundary/src/HeavyBlockBoundary.tsx:65:    height: effectiveCellHeight(
+packages/block-foundation/src/__tests__/grid-math.test.ts:4:  effectiveCellHeight,
+packages/block-foundation/src/__tests__/grid-math.test.ts:6:  effectiveColWidth,
+packages/block-foundation/src/__tests__/grid-math.test.ts:15:    expect(effectiveCellHeight(1)).toBe(48);
+packages/block-foundation/src/__tests__/grid-math.test.ts:16:    expect(effectiveCellHeight(2)).toBe(110);
+packages/block-foundation/src/__tests__/grid-math.test.ts:17:    expect(effectiveCellHeight(3)).toBe(172);
+packages/block-foundation/src/__tests__/grid-math.test.ts:18:    expect(effectiveCellHeight(6)).toBe(358);
+packages/block-foundation/src/__tests__/grid-math.test.ts:19:    expect(effectiveCellHeight(2, { rowH: 64, gap: 10 })).toBe(138);
+packages/block-foundation/src/__tests__/grid-math.test.ts:25:    expect(effectiveColWidth(12, 1200)).toBe(1200);
+packages/block-foundation/src/__tests__/grid-math.test.ts:26:    expect(effectiveColWidth(6, 1200)).toBe(6 * oneFr + 5 * 14);
+packages/block-foundation/src/__tests__/grid-math.test.ts:27:    expect(effectiveColWidth(6, 1200)).toBe(593);
+packages/block-foundation/src/__tests__/grid-math.test.ts:28:    expect(effectiveColWidth(2, 1200)).toBeCloseTo(2 * oneFr + 14);
+packages/block-foundation/src/grid-math.ts:37:function resolveGeometry(geometry?: Partial<GridGeometry>): GridGeometry {
+packages/block-foundation/src/grid-math.ts:45:export function effectiveCellHeight(
+packages/block-foundation/src/grid-math.ts:49:  const resolved = resolveGeometry(geometry);
+packages/block-foundation/src/grid-math.ts:57:export function effectiveColWidth(
+packages/block-foundation/src/grid-math.ts:62:  const resolved = resolveGeometry(geometry);
+apps/site/src/__tests__/e2e/c2-7-heavy-grid-dims.spec.ts:17:  test('plugin placeholder consumes grid effectiveColWidth/effectiveCellHeight', async ({
+packages/heavy-block-boundary/src/__tests__/HeavyBlockBoundary.v0.5.test.tsx:5:import { effectiveCellHeight, effectiveColWidth } from '@skb/block-foundation';
+packages/heavy-block-boundary/src/__tests__/HeavyBlockBoundary.v0.5.test.tsx:28:    const expectedWidth = effectiveColWidth(6, 1200);
+packages/heavy-block-boundary/src/__tests__/HeavyBlockBoundary.v0.5.test.tsx:29:    const expectedHeight = effectiveCellHeight(4);
+packages/heavy-block-boundary/src/__tests__/HeavyBlockBoundary.v0.5.test.tsx:49:    const expectedWidth = effectiveColWidth(6, 1200);
+packages/heavy-block-boundary/src/__tests__/HeavyBlockBoundary.v0.5.test.tsx:50:    const expectedHeight = effectiveCellHeight(4);
+
+exec
+/bin/bash -lc "sed -n '1,180p' apps/site/src/__tests__/grid-css.test.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { describe, expect, it } from 'vitest';
+
+const here = dirname(fileURLToPath(import.meta.url));
+
+function readOptionalSource(relativePath: string): string {
+  try {
+    return readFileSync(resolve(here, relativePath), 'utf8');
+  } catch (error) {
+    if ((error as { code?: string }).code === 'ENOENT') return '';
+    throw error;
+  }
+}
+
+function fromMarker(source: string, marker: string): string {
+  const index = source.indexOf(marker);
+  return index < 0 ? '' : source.slice(index);
+}
+
+const gridCss = readOptionalSource('../styles/grid.css');
+const baseLayout = readOptionalSource('../layouts/BaseLayout.astro');
+const notesRoute = readOptionalSource('../pages/notes/[...slug].astro');
+const siteContract = readOptionalSource('../../CONTRACT.md');
+
+describe('grid.css contract', () => {
+  it('declares the desktop grid container with scoped variables', () => {
+    const gridStart = gridCss.indexOf('.skb-grid {');
+    expect(gridCss).toContain('.skb-grid {');
+    expect(gridCss).toContain('display: grid');
+    expect(gridCss).toContain('grid-template-columns: repeat(12, minmax(0, 1fr))');
+    expect(gridCss).toContain('grid-auto-rows: minmax(var(--row-h), auto)');
+    expect(gridCss).toContain('gap: var(--gap)');
+    expect(gridCss.indexOf('--row-h: 48px')).toBeGreaterThan(gridStart);
+    expect(gridCss.indexOf('--gap: 14px')).toBeGreaterThan(gridStart);
+    expect(gridCss.indexOf('--total-cols: 12')).toBeGreaterThan(gridStart);
+  });
+
+  it('declares tablet, mobile, and reduced-motion media rules', () => {
+    const tablet = fromMarker(gridCss, '@media (max-width: 1024px)');
+    const mobile = fromMarker(gridCss, '@media (max-width: 768px)');
+    const motion = fromMarker(gridCss, '@media (prefers-reduced-motion: reduce)');
+    expect(gridCss).toMatch(/^@media\s*\(\s*max-width:\s*1024px\s*\)/m);
+    expect(tablet).toContain('grid-template-columns: repeat(6, minmax(0, 1fr))');
+    expect(tablet).toContain('--total-cols: 6');
+    expect(gridCss).toMatch(/^@media\s*\(\s*max-width:\s*768px\s*\)/m);
+    expect(mobile).toContain('grid-template-columns: 1fr');
+    expect(mobile).toContain('.skb-grid > *');
+    expect(mobile).toContain('grid-column: 1');
+    expect(gridCss).toContain('prefers-reduced-motion: reduce');
+    expect(motion).toContain('transition: none');
+  });
+
+  it('uses row auto-flow without dense packing', () => {
+    expect(gridCss).toContain('grid-auto-flow: row');
+    expect(gridCss).not.toContain('grid-auto-flow: dense');
+    expect(gridCss).not.toMatch(/\bdense\b/);
+  });
+
+  it('emits transitional full-width fallback for unpositioned children', () => {
+    // C.2-3 transitional: MDX children without explicit gridColumn span the
+    // full grid width so unstyled prose stays readable until C.2-4 lands
+    // per-block grid attrs. Per-block `style.gridColumn` overrides via
+    // specificity. Also: grid-auto-rows must use `minmax(var(--row-h), auto)`
+    // so content height drives row height (NOT clamped to 48px).
+    expect(gridCss).toContain('.skb-grid > *:not([style*="grid-column"])');
+    expect(gridCss).toMatch(/grid-column:\s*1\s*\/\s*-1/);
+    expect(gridCss).toMatch(/grid-auto-rows:\s*minmax\(var\(--row-h\),\s*auto\)/);
+  });
+});
+
+describe('Astro grid integration', () => {
+  it('imports grid.css without removing global.css', () => {
+    expect(baseLayout).toContain("import '../styles/global.css'");
+    expect(baseLayout).toContain("import '../styles/grid.css'");
+  });
+
+  it('wraps MDX content while keeping the title outside the grid', () => {
+    const wrapperIndex = notesRoute.indexOf('<div class="skb-grid">');
+    const contentIndex = notesRoute.indexOf('<Content components={componentsMap} />');
+    expect(wrapperIndex).toBeGreaterThanOrEqual(0);
+    expect(contentIndex).toBeGreaterThan(wrapperIndex);
+    expect(notesRoute.indexOf('{note.data.title}')).toBeLessThan(wrapperIndex);
+  });
+});
+
+describe('CONTRACT.md grid section', () => {
+  const gridSection = fromMarker(siteContract, '## Grid layout (Wave 5)');
+
+  it('documents the Wave 5 selector and W5-1 forward-pointer', () => {
+    expect(siteContract).toMatch(/^## Grid layout \(Wave 5\)/m);
+    expect(gridSection).toContain('.skb-grid');
+    expect(gridSection).toContain('W5-1');
+    expect(gridSection).toContain('block-foundation/CONTRACT.md');
+  });
+
+  it('documents the 12/6/1 breakpoints and deferred style emission', () => {
+    expect(gridSection).toContain('1024px');
+    expect(gridSection).toContain('768px');
+    expect(gridSection).toMatch(/\b12\b/);
+    expect(gridSection).toMatch(/\b6\b/);
+    expect(gridSection).toMatch(/\b1\b/);
+    expect(gridSection).toContain('gridColumn');
+    expect(gridSection).toContain('gridRow');
+  });
+});
+
+exec
+/bin/bash -lc "sed -n '1,140p' apps/site/src/__tests__/sample-blocks-page.test.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+import { execSync } from 'node:child_process';
+import { existsSync, readFileSync, statSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { beforeAll, describe, expect, it } from 'vitest';
+
+const here = dirname(fileURLToPath(import.meta.url));
+const appRoot = resolve(here, '../..');
+const workspaceRoot = resolve(appRoot, '../..');
+const distRoot = resolve(appRoot, 'dist');
+const sampleRouteHtml = resolve(distRoot, 'notes/sample-blocks/index.html');
+
+const buildInputs = [
+  resolve(appRoot, 'astro.config.mjs'),
+  resolve(appRoot, 'src/components.ts'),
+  resolve(appRoot, 'src/pages/notes/[...slug].astro'),
+  resolve(workspaceRoot, 'content/notes/sample-blocks/index.mdx'),
+];
+
+const blockMarkers = [
+  ['Callout', 'data-callout-variant="note"'],
+  ['Code', 'data-code-language="python"'],
+  ['Image', 'src="/sample-assets/diagram-small.png"'],
+  ['Math', 'data-block="math"'],
+  ['Pdf', 'data-block="pdf"'],
+  ['Jupyter', 'data-block="jupyter"'],
+  ['NnViz', 'data-block="nn-viz"'],
+  ['AgentFlow', 'data-block="agent-flow"'],
+] as const;
+
+function newestMtime(paths: ReadonlyArray<string>): number {
+  return Math.max(...paths.map((path) => statSync(path).mtimeMs));
+}
+
+function runSiteBuild(): void {
+  execSync('pnpm build', {
+    cwd: appRoot,
+    env: { ...process.env, CI: '1' },
+    stdio: 'pipe',
+  });
+}
+
+function ensureFreshSampleRouteDist(): void {
+  const routeMissing = !existsSync(sampleRouteHtml);
+  const outputMtime = existsSync(sampleRouteHtml)
+    ? statSync(sampleRouteHtml).mtimeMs
+    : 0;
+  if (routeMissing || outputMtime < newestMtime(buildInputs)) {
+    try {
+      runSiteBuild();
+    } catch (error) {
+      if (
+        routeMissing &&
+        error instanceof Error &&
+        error.message.includes('EPERM')
+      ) {
+        return;
+      }
+      throw error;
+    }
+  }
+}
+
+describe('sample-blocks route SSR output', () => {
+  beforeAll(() => {
+    ensureFreshSampleRouteDist();
+  }, 120_000);
+
+  it('builds the sample-blocks route HTML with non-zero size', () => {
+    expect(existsSync(sampleRouteHtml)).toBe(true);
+    expect(statSync(sampleRouteHtml).size).toBeGreaterThan(0);
+  });
+
+  it('contains SSR markers for all 8 component blocks', () => {
+    expect(existsSync(sampleRouteHtml)).toBe(true);
+    const html = readFileSync(sampleRouteHtml, 'utf8');
+
+    for (const [blockName, marker] of blockMarkers) {
+      expect(html, `${blockName} marker: ${marker}`).toContain(marker);
+    }
+  });
+});
+
+exec
+/bin/bash -lc "sed -n '1,220p' content/notes/sample-blocks/index.mdx" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+---
+title: Wave 2 Block Sampler
+slug: sample-blocks
+tags: [smoke-test, wave-2, sample-blocks]
+date: 2026-04-30
+draft: false
+---
+
+This page is the Wave 2 close acceptance criterion (Z0). It exercises every component-block
+package shipped in Wave 2 by instantiating one or more concrete examples with PascalCase MDX
+components, and now serves as the live integration smoke for Wave 3 + Wave 4: Wave 3
+`mdx-bridge` shipped the BlockRegistry → MDX componentsMap routing in `apps/site`, and Wave 4
+Stage A wired the 3 heavy blocks (Jupyter / NnViz / AgentFlow) through the
+[`@skb/heavy-block-boundary`](../../../packages/heavy-block-boundary/CONTRACT.md) wrapper per
+[ADR-0014](../../../docs/decisions/ADR-0014-heavy-block-boundary.md) v0.2 (status accepted at
+Stage A close). All 5 light blocks (Callout / Code / Image / Math / Pdf) render synchronously;
+the 3 heavy blocks render the SSR skeleton then hydrate the real component on first mount.
+Sample assets ship at `/sample-assets/{diagram-small.png, figure-1.png, whitepaper.pdf}`
+(Wave 4 Stage B B2 placeholder binaries — replace with real content per future iteration).
+
+## Callout
+
+`@skb/block-callout` — variants: `note | tip | warning | danger`. Each variant is an
+independent semantic flavor; `title` is optional.
+
+{/* fixture-13: callout note */}
+<Callout col={1} colSpan={12} rowSpan={1} variant="note" title="Sampler scope">
+  This is the Wave 2 sampler page. Eight component-block packages are exercised below.
+</Callout>
+
+<Callout col={1} colSpan={12} rowSpan={1} variant="tip">
+  Tip variants drop the title to verify the optional prop path.
+</Callout>
+
+{/* fixture-14: callout warning + danger pair */}
+<Callout col={1} colSpan={12} rowSpan={1} variant="warning" title="Heavy blocks hydrate client-side">
+  The 3 heavy blocks (Jupyter / NnViz / AgentFlow) below render an SSR skeleton (per
+  ADR-0014 D2 zero-layout-shift) then hydrate the real component on first mount via the
+  HeavyBlockBoundary wrapper. The 5 light blocks render synchronously without hydration.
+</Callout>
+
+<Callout col={1} colSpan={12} rowSpan={1} variant="danger" title="Strict props">
+  Every block uses `.strict()` zod schemas; unknown props will fail validation once routed.
+</Callout>
+
+## Code
+
+`@skb/block-code` — `language` is required, `code` is the source string, `showLineNumbers`
+defaults `true`. The block is `.strict()`, so the code body is passed as a prop, not as MDX
+children.
+
+{/* fixture-15: code python */}
+<Code
+  col={1}
+  colSpan={12}
+  rowSpan={1}
+  language="python"
+  code={`def fibonacci(n: int) -> int:
+    a, b = 0, 1
+    for _ in range(n):
+        a, b = b, a + b
+    return a
+
+
+print(fibonacci(10))  # 55
+`}
+/>
+
+## Image
+
+`@skb/block-image` — `src` and `alt` required; `width`/`height` are optional positive
+integers. The schema has no `caption` field, so descriptive prose is rendered alongside the
+component.
+
+{/* fixture-16a: image small */}
+<Image col={1} colSpan={12} rowSpan={1} src="/sample-assets/diagram-small.png" alt="Small architecture diagram" width={320} height={180} />
+
+{/* fixture-16b: image with surrounding caption prose */}
+<Image col={1} colSpan={12} rowSpan={1} src="/sample-assets/figure-1.png" alt="Figure 1 — block-foundation registration flow" />
+
+*Figure 1.* The block-foundation registration flow as documented in `RFC.md`. Captions live
+in surrounding MDX prose, not in props (ADR-0006: schema is the contract).
+
+## Math
+
+`@skb/block-math` — `expression` is the LaTeX source; `display` toggles inline vs. block
+mode (defaults to inline).
+
+Inline math appears mid-sentence:
+{/* fixture-17a: math inline */}
+<Math col={1} colSpan={12} rowSpan={1} expression="e^{i\pi} + 1 = 0" />
+— Euler's identity.
+
+Display math stands alone:
+{/* fixture-17b: math display */}
+<Math col={1} colSpan={12} rowSpan={1} expression="\int_{-\infty}^{\infty} e^{-x^{2}} \, dx = \sqrt{\pi}" display />
+
+## Pdf
+
+`@skb/block-pdf` — `src` is the PDF URL, `page` is a 1-indexed page integer (default 1),
+`searchable` toggles text-layer extraction (default `false`).
+
+{/* fixture-18a: pdf basic */}
+<Pdf col={1} colSpan={12} rowSpan={1} src="/sample-assets/whitepaper.pdf" page={1} />
+
+{/* fixture-18b: pdf searchable */}
+<Pdf col={1} colSpan={12} rowSpan={1} src="/sample-assets/whitepaper.pdf" page={3} searchable />
+
+## Jupyter
+
+`@skb/block-jupyter` — wraps a JupyterLite kernel via the `kernel-pyodide` adapter. `code`
+is the cell source, `libraries` declares pip dependencies, `runOnLoad` auto-executes on
+mount.
+
+{/* fixture-19: jupyter numpy snippet */}
+<Jupyter
+  col={1}
+  colSpan={12}
+  rowSpan={1}
+  code={`import numpy as np
+
+x = np.linspace(0, 2 * np.pi, 100)
+y = np.sin(x)
+print(f"y[0]={y[0]:.4f}, y[-1]={y[-1]:.4f}")
+`}
+  runOnLoad
+  showLineNumbers
+  libraries={["numpy"]}
+/>
+
+## NnViz
+
+`@skb/block-nn-viz` — renders a layer-stack topology. `modelUrl` is required even when
+inline `layers` are provided (the URL is the Wave 3 hot-load source). Layers are strict
+objects: `{name, units, activation}`.
+
+{/* fixture-20: nn-viz simple model topology */}
+<NnViz
+  col={1}
+  colSpan={12}
+  rowSpan={1}
+  modelUrl="/sample-assets/models/mlp-mnist.json"
+  layers={[
+    { name: "input", units: 784, activation: "linear" },
+    { name: "hidden-1", units: 128, activation: "relu" },
+    { name: "hidden-2", units: 64, activation: "relu" },
+    { name: "output", units: 10, activation: "softmax" },
+  ]}
+  showWeights
+/>
+
+## AgentFlow
+
+`@skb/block-agent-flow` — directed-graph visualization built on React Flow. Node `type`
+is one of `agent | tool | memory | router`. Edges carry `id`, `source`, `target`, and an
+optional `label`. `interactive` defaults to `true`.
+
+{/* fixture-21: agent-flow 3-node + 2-edge graph */}
+<AgentFlow
+  col={1}
+  colSpan={12}
+  rowSpan={1}
+  nodes={[
+    { id: "n1", label: "Planner", type: "agent", position: { x: 0, y: 0 } },
+    { id: "n2", label: "Search", type: "tool", position: { x: 200, y: 0 } },
+    { id: "n3", label: "Scratchpad", type: "memory", position: { x: 100, y: 120 } },
+  ]}
+  edges={[
+    { id: "e1", source: "n1", target: "n2", label: "query" },
+    { id: "e2", source: "n2", target: "n3", label: "cache" },
+  ]}
+  interactive
+/>
+
+exec
+/bin/bash -lc "rg -n \"gridColumn|skb-grid|colSpan|style=|gridAttrs|grid\" apps/site/src/pages apps/site/src/layouts apps/site/src/components content packages/mdx-bridge/src -g '*.astro' -g '*.tsx' -g '*.ts' -g '*.mdx'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+packages/mdx-bridge/src/parse.ts:48:  readonly colSpan: number;
+packages/mdx-bridge/src/parse.ts:52:// Grid attr shape `{col, row?, colSpan, rowSpan}` per ADR-0016 D2 (single
+packages/mdx-bridge/src/parse.ts:59:const GRID_ATTR_NAMES = new Set(['col', 'row', 'colSpan', 'rowSpan']);
+packages/mdx-bridge/src/parse.ts:164:  const gridAttrs = parseGridAttrs(node, core.name, componentName === 'Markdown');
+packages/mdx-bridge/src/parse.ts:169:    attrs: mergeGridAttrs(parsed.attrs, gridAttrs),
+packages/mdx-bridge/src/parse.ts:184:  const colSpanAttr = getGridAttr(node, 'colSpan');
+packages/mdx-bridge/src/parse.ts:187:  if (!isProse && (!colAttr || !colSpanAttr)) {
+packages/mdx-bridge/src/parse.ts:189:      `mdx-bridge: required grid attrs col + colSpan missing on block "${blockType}"; ` +
+packages/mdx-bridge/src/parse.ts:196:  const colSpan = colSpanAttr
+packages/mdx-bridge/src/parse.ts:197:    ? parseGridInteger('colSpan', attrValue(colSpanAttr), blockType)
+packages/mdx-bridge/src/parse.ts:199:  validateGridPosition(col, colSpan, blockType);
+packages/mdx-bridge/src/parse.ts:207:    colSpan,
+packages/mdx-bridge/src/parse.ts:214:  gridAttrs: GridAttrs,
+packages/mdx-bridge/src/parse.ts:217:    col: gridAttrs.col,
+packages/mdx-bridge/src/parse.ts:218:    ...(gridAttrs.row !== undefined ? { row: gridAttrs.row } : {}),
+packages/mdx-bridge/src/parse.ts:219:    colSpan: gridAttrs.colSpan,
+packages/mdx-bridge/src/parse.ts:220:    rowSpan: gridAttrs.rowSpan,
+packages/mdx-bridge/src/parse.ts:251:      `mdx-bridge: unsupported grid attr ${name}=${JSON.stringify(value)} on block ${blockType}; ` +
+packages/mdx-bridge/src/parse.ts:257:      `mdx-bridge: unsupported grid attr col=${numeric} on block ${blockType}; ` +
+packages/mdx-bridge/src/parse.ts:261:  if (name === 'colSpan' && !COL_SNAPS.includes(numeric as (typeof COL_SNAPS)[number])) {
+packages/mdx-bridge/src/parse.ts:263:      `mdx-bridge: unsupported grid attr colSpan on block ${blockType}; ` +
+packages/mdx-bridge/src/parse.ts:269:      `mdx-bridge: unsupported grid attr ${name}=${numeric} on block ${blockType}; ` +
+packages/mdx-bridge/src/parse.ts:284:      `mdx-bridge: required grid attr rowSpan missing on block "${blockType}"; ` +
+packages/mdx-bridge/src/parse.ts:294:      `mdx-bridge: unsupported grid attr rowSpan='auto' on non-prose block ${blockType}; ` +
+packages/mdx-bridge/src/parse.ts:301:function validateGridPosition(col: number, colSpan: number, blockType: string): void {
+packages/mdx-bridge/src/parse.ts:302:  const end = col + colSpan - 1;
+packages/mdx-bridge/src/parse.ts:305:      `mdx-bridge: unsupported grid attrs on block ${blockType}; ` +
+packages/mdx-bridge/src/parse.ts:306:        `col + colSpan - 1 = ${end}, expected col + colSpan - 1 ≤ 12.`,
+packages/mdx-bridge/src/serialize.ts:54:const GRID_ATTR_NAMES = new Set(['col', 'row', 'colSpan', 'rowSpan']);
+packages/mdx-bridge/src/serialize.ts:162:  const gridAttrs = serializeGridAttrs(node, core.mdxComponent);
+packages/mdx-bridge/src/serialize.ts:164:  if (gridAttrs.length === 0) return element;
+packages/mdx-bridge/src/serialize.ts:167:    attributes: [...gridAttrs, ...element.attributes],
+packages/mdx-bridge/src/serialize.ts:178:// Grid attr shape `{col, row?, colSpan, rowSpan}` per ADR-0016 D2 (single
+packages/mdx-bridge/src/serialize.ts:179:// schema authority). COL_SNAPS + col/colSpan/row/rowSpan validation rules
+packages/mdx-bridge/src/serialize.ts:181:// (R14 amendment 2026-05-05): grid attrs emit unconditionally in canonical
+packages/mdx-bridge/src/serialize.ts:189:      `mdx-bridge: unsupported grid attr rowSpan='auto' on non-prose block ${node.type}; ` +
+packages/mdx-bridge/src/serialize.ts:195:  const colSpan = parseSerializableGridInteger('colSpan', attrs['colSpan'] ?? 12, node.type);
+packages/mdx-bridge/src/serialize.ts:196:  validateGridPosition(col, colSpan, node.type);
+packages/mdx-bridge/src/serialize.ts:199:    gridExpressionAttr('col', col),
+packages/mdx-bridge/src/serialize.ts:201:      ? [gridExpressionAttr('row', parseSerializableGridInteger('row', attrs['row'], node.type))]
+packages/mdx-bridge/src/serialize.ts:203:    gridExpressionAttr('colSpan', colSpan),
+packages/mdx-bridge/src/serialize.ts:208:      gridExpressionAttr(
+packages/mdx-bridge/src/serialize.ts:231:function gridExpressionAttr(name: string, value: number): MdastJsxAttribute {
+packages/mdx-bridge/src/serialize.ts:246:      `mdx-bridge: unsupported grid attr ${name}=${JSON.stringify(value)} on block ${blockType}; ` +
+packages/mdx-bridge/src/serialize.ts:252:      `mdx-bridge: unsupported grid attr col=${numeric} on block ${blockType}; ` +
+packages/mdx-bridge/src/serialize.ts:256:  if (name === 'colSpan' && !COL_SNAPS.includes(numeric as (typeof COL_SNAPS)[number])) {
+packages/mdx-bridge/src/serialize.ts:258:      `mdx-bridge: unsupported grid attr colSpan on block ${blockType}; ` +
+packages/mdx-bridge/src/serialize.ts:264:      `mdx-bridge: unsupported grid attr ${name}=${numeric} on block ${blockType}; ` +
+packages/mdx-bridge/src/serialize.ts:271:function validateGridPosition(col: number, colSpan: number, blockType: string): void {
+packages/mdx-bridge/src/serialize.ts:272:  const end = col + colSpan - 1;
+packages/mdx-bridge/src/serialize.ts:275:      `mdx-bridge: unsupported grid attrs on block ${blockType}; ` +
+packages/mdx-bridge/src/serialize.ts:276:        `col + colSpan - 1 = ${end}, expected col + colSpan - 1 ≤ 12.`,
+apps/site/src/layouts/BaseLayout.astro:3:import '../styles/grid.css';
+apps/site/src/pages/notes/[...slug]/edit.astro:5:import '../../../styles/grid.css';
+packages/mdx-bridge/src/__tests__/grid-rtt.test.ts:104:  { label: 'col + colSpan', attrs: { col: 1, colSpan: 12, rowSpan: 1 } },
+packages/mdx-bridge/src/__tests__/grid-rtt.test.ts:105:  { label: 'col + row + colSpan', attrs: { col: 7, row: 3, colSpan: 6, rowSpan: 4 } },
+packages/mdx-bridge/src/__tests__/grid-rtt.test.ts:106:  { label: 'col + colSpan + rowSpan', attrs: { col: 5, colSpan: 4, rowSpan: 3 } },
+packages/mdx-bridge/src/__tests__/grid-rtt.test.ts:161:function gridDoc(fixture: ComponentFixture, gridAttrs: Record<string, unknown>): TiptapDoc {
+packages/mdx-bridge/src/__tests__/grid-rtt.test.ts:167:        attrs: { ...gridAttrs, ...fixture.attrs },
+packages/mdx-bridge/src/__tests__/grid-rtt.test.ts:173:function assertGridOrder(source: string, gridAttrs: Record<string, unknown>, firstBlockAttr: string) {
+packages/mdx-bridge/src/__tests__/grid-rtt.test.ts:174:  const colIndex = source.indexOf(` col={${gridAttrValue(gridAttrs, 'col')}}`);
+packages/mdx-bridge/src/__tests__/grid-rtt.test.ts:175:  const colSpanIndex = source.indexOf(` colSpan={${gridAttrValue(gridAttrs, 'colSpan')}}`);
+packages/mdx-bridge/src/__tests__/grid-rtt.test.ts:176:  const rowSpanIndex = source.indexOf(` rowSpan={${gridAttrValue(gridAttrs, 'rowSpan')}}`);
+packages/mdx-bridge/src/__tests__/grid-rtt.test.ts:180:  expect(colSpanIndex).toBeGreaterThan(colIndex);
+packages/mdx-bridge/src/__tests__/grid-rtt.test.ts:181:  if (gridAttrs['row'] !== undefined) {
+packages/mdx-bridge/src/__tests__/grid-rtt.test.ts:182:    const rowIndex = source.indexOf(` row={${gridAttrValue(gridAttrs, 'row')}}`);
+packages/mdx-bridge/src/__tests__/grid-rtt.test.ts:184:    expect(rowIndex).toBeLessThan(colSpanIndex);
+packages/mdx-bridge/src/__tests__/grid-rtt.test.ts:188:  expect(rowSpanIndex).toBeGreaterThan(colSpanIndex);
+packages/mdx-bridge/src/__tests__/grid-rtt.test.ts:192:function gridAttrValue(gridAttrs: Record<string, unknown>, name: string): string {
+packages/mdx-bridge/src/__tests__/grid-rtt.test.ts:193:  const value = gridAttrs[name];
+packages/mdx-bridge/src/__tests__/grid-rtt.test.ts:195:    throw new Error(`test fixture expected numeric grid attr ${name}`);
+packages/mdx-bridge/src/__tests__/grid-rtt.test.ts:200:describe('grid attr round-trip', () => {
+packages/mdx-bridge/src/__tests__/grid-rtt.test.ts:207:      it(`${fixture.label} round-trips ${shape.label} grid attrs`, () => {
+packages/mdx-bridge/src/__tests__/grid-rtt.test.ts:209:        const doc = gridDoc(fixture, shape.attrs);
+packages/mdx-bridge/src/__tests__/grid-rtt.test.ts:235:          attrs: { col: 1, colSpan: 6, rowSpan: 'auto' },
+packages/mdx-bridge/src/__tests__/grid-rtt.test.ts:248:    expect(source).toContain('<Markdown col={1} colSpan={6}>');
+packages/mdx-bridge/src/__tests__/grid-rtt.test.ts:253:      colSpan: 6,
+apps/site/src/pages/notes/[...slug].astro:30:    <div class="skb-grid">
+packages/mdx-bridge/src/__tests__/grid-defensive.test.ts:19:  /mdx-bridge: required grid attrs col(?: \+ colSpan)? missing on block "callout".*ADR-0016 D7.*Wave 5 plan v1\.1 row C\.2-3\.5/i;
+packages/mdx-bridge/src/__tests__/grid-defensive.test.ts:21:  /mdx-bridge: required grid attr rowSpan missing on block "callout".*ADR-0016 D7.*Wave 5 plan v1\.1 row C\.2-3\.5/i;
+packages/mdx-bridge/src/__tests__/grid-defensive.test.ts:75:describe('grid attr hard-throw end-state', () => {
+packages/mdx-bridge/src/__tests__/grid-defensive.test.ts:81:    ['missing col', '<Callout colSpan={6} rowSpan={2} variant="note" />'],
+packages/mdx-bridge/src/__tests__/grid-defensive.test.ts:82:    ['missing colSpan', '<Callout col={1} rowSpan={2} variant="note" />'],
+packages/mdx-bridge/src/__tests__/grid-defensive.test.ts:83:    ['missing both col and colSpan', '<Callout rowSpan={1} variant="note" />'],
+packages/mdx-bridge/src/__tests__/grid-defensive.test.ts:90:      mdxToTiptap('<Callout col={1} colSpan={12} variant="note" />', buildOptions()),
+packages/mdx-bridge/src/__tests__/grid-defensive.test.ts:94:  it('treats missing Markdown grid attrs as prose defaults', () => {
+packages/mdx-bridge/src/__tests__/grid-defensive.test.ts:99:      colSpan: 12,
+packages/mdx-bridge/src/__tests__/grid-defensive.test.ts:104:  it('round-trips explicit grid attrs without retaining the transitional marker', () => {
+packages/mdx-bridge/src/__tests__/grid-defensive.test.ts:106:      '<Callout col={1} colSpan={12} rowSpan={1} variant="note" title="Heads up" />';
+packages/mdx-bridge/src/__tests__/grid-defensive.test.ts:108:    const marker = ['_gridAttrs', 'Explicit'].join('');
+packages/mdx-bridge/src/__tests__/grid-defensive.test.ts:116:      'col + colSpan overflow',
+packages/mdx-bridge/src/__tests__/grid-defensive.test.ts:117:      '<Callout col={9} colSpan={6} rowSpan={1} variant="note" />',
+packages/mdx-bridge/src/__tests__/grid-defensive.test.ts:118:      /col \+ colSpan - 1.*≤ 12/,
+packages/mdx-bridge/src/__tests__/grid-defensive.test.ts:121:      'non-snap colSpan',
+packages/mdx-bridge/src/__tests__/grid-defensive.test.ts:122:      '<Callout col={1} colSpan={5} rowSpan={1} variant="note" />',
+packages/mdx-bridge/src/__tests__/grid-defensive.test.ts:127:      '<Callout col={0} colSpan={12} rowSpan={1} variant="note" />',
+packages/mdx-bridge/src/__tests__/grid-defensive.test.ts:132:      '<Callout col={13} colSpan={12} rowSpan={1} variant="note" />',
+packages/mdx-bridge/src/__tests__/grid-defensive.test.ts:137:      '<Callout col={1} row={0} colSpan={12} rowSpan={1} variant="note" />',
+packages/mdx-bridge/src/__tests__/grid-defensive.test.ts:142:      '<Callout col={1} colSpan={12} rowSpan="auto" variant="note" />',
+packages/mdx-bridge/src/__tests__/grid-defensive.test.ts:147:      '<Callout col={1} colSpan={12} rowSpan={0} variant="note" />',
+packages/mdx-bridge/src/__tests__/grid-defensive.test.ts:150:  ])('throws on explicit invalid grid attr: %s', (_label, source, message) => {
+packages/mdx-bridge/src/__tests__/grid-defensive.test.ts:162:            colSpan: 12,
+packages/mdx-bridge/src/__tests__/grid-defensive.test.ts:173:  it('serializes default grid attrs for editor-built nodes with no grid attrs', () => {
+packages/mdx-bridge/src/__tests__/grid-defensive.test.ts:181:    expect(source).toBe('<Callout col={1} colSpan={12} rowSpan={1} variant="note" />');
+packages/mdx-bridge/src/__tests__/grid-defensive.test.ts:184:  it('serializes markerless non-default col/colSpan in canonical grid order', () => {
+packages/mdx-bridge/src/__tests__/grid-defensive.test.ts:190:          attrs: { col: 2, colSpan: 6, rowSpan: 2, variant: 'note' },
+packages/mdx-bridge/src/__tests__/grid-defensive.test.ts:197:    expect(source).toBe('<Callout col={2} colSpan={6} rowSpan={2} variant="note" />');
+packages/mdx-bridge/src/__tests__/grid-defensive.test.ts:201:    const marker = ['_gridAttrs', 'Explicit'].join('');
+packages/mdx-bridge/src/__tests__/jsx-routing.test.ts:115:      '<TestCallout col={1} colSpan={12} rowSpan={1} type="info">\n  hello\n</TestCallout>';
+packages/mdx-bridge/src/__tests__/jsx-routing.test.ts:153:      '<TestCallout col={1} colSpan={12} rowSpan={1}>\n  <TestCallout col={1} colSpan={12} rowSpan={1} type="warn">\n    inner\n  </TestCallout>\n</TestCallout>';
+packages/mdx-bridge/src/__tests__/jsx-routing.test.ts:168:      '<TestCallout col={1} colSpan={12} rowSpan={1} type="info">\n  A\n</TestCallout>',
+packages/mdx-bridge/src/__tests__/jsx-routing.test.ts:172:      '<TestCallout col={1} colSpan={12} rowSpan={1} type="warn">\n  B\n</TestCallout>',
+packages/mdx-bridge/src/__tests__/fixtures/29-agent-flow.mdx:5:<AgentFlow col={1} colSpan={12} rowSpan={1} nodes="[]" edges="[]" interactive="false" />
+packages/mdx-bridge/src/__tests__/fixtures/26-pdf.mdx:5:<Pdf col={1} colSpan={12} rowSpan={1} src="https://example.test/doc.pdf" page="1" searchable="false" />
+packages/mdx-bridge/src/__tests__/fixtures/27-jupyter.mdx:5:<Jupyter col={1} colSpan={12} rowSpan={1} code="x = 42" runOnLoad="false" showLineNumbers="true" libraries="[]" />
+packages/mdx-bridge/src/__tests__/fixtures/22-callout.mdx:6:<Callout col={1} colSpan={12} rowSpan={1} variant="note" title="Heads up">
+content/notes/sample-blocks/index.mdx:27:<Callout col={1} colSpan={12} rowSpan={1} variant="note" title="Sampler scope">
+content/notes/sample-blocks/index.mdx:31:<Callout col={1} colSpan={12} rowSpan={1} variant="tip">
+content/notes/sample-blocks/index.mdx:36:<Callout col={1} colSpan={12} rowSpan={1} variant="warning" title="Heavy blocks hydrate client-side">
+content/notes/sample-blocks/index.mdx:42:<Callout col={1} colSpan={12} rowSpan={1} variant="danger" title="Strict props">
+content/notes/sample-blocks/index.mdx:55:  colSpan={12}
+content/notes/sample-blocks/index.mdx:76:<Image col={1} colSpan={12} rowSpan={1} src="/sample-assets/diagram-small.png" alt="Small architecture diagram" width={320} height={180} />
+content/notes/sample-blocks/index.mdx:79:<Image col={1} colSpan={12} rowSpan={1} src="/sample-assets/figure-1.png" alt="Figure 1 — block-foundation registration flow" />
+content/notes/sample-blocks/index.mdx:91:<Math col={1} colSpan={12} rowSpan={1} expression="e^{i\pi} + 1 = 0" />
+content/notes/sample-blocks/index.mdx:96:<Math col={1} colSpan={12} rowSpan={1} expression="\int_{-\infty}^{\infty} e^{-x^{2}} \, dx = \sqrt{\pi}" display />
+content/notes/sample-blocks/index.mdx:104:<Pdf col={1} colSpan={12} rowSpan={1} src="/sample-assets/whitepaper.pdf" page={1} />
+content/notes/sample-blocks/index.mdx:107:<Pdf col={1} colSpan={12} rowSpan={1} src="/sample-assets/whitepaper.pdf" page={3} searchable />
+content/notes/sample-blocks/index.mdx:118:  colSpan={12}
+content/notes/sample-blocks/index.mdx:140:  colSpan={12}
+content/notes/sample-blocks/index.mdx:161:  colSpan={12}
+packages/mdx-bridge/src/__tests__/fixtures/25-math.mdx:5:<Math col={1} colSpan={12} rowSpan={1} expression="E = mc^2" display="true" />
+packages/mdx-bridge/src/__tests__/fixtures/23-code.mdx:5:<Code col={1} colSpan={12} rowSpan={1} language="ts" code="const x: number = 42;" showLineNumbers="false" />
+packages/mdx-bridge/src/__tests__/fixtures/28-nn-viz.mdx:5:<NnViz col={1} colSpan={12} rowSpan={1} modelUrl="https://example.test/model.json" layers="[]" showWeights="false" />
+packages/mdx-bridge/src/__tests__/fixtures/24-image.mdx:5:<Image col={1} colSpan={12} rowSpan={1} src="https://example.test/photo.jpg" alt="A scenic view" width="800" height="600" />
+
+exec
+/bin/bash -lc "sed -n '1,240p' apps/site/src/components.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+import { type ComponentType } from 'react';
+import { CalloutRenderView } from '@skb/block-callout/ui-default';
+import { CodeRenderView } from '@skb/block-code/ui-default';
+import { ImageRenderView } from '@skb/block-image/ui-default';
+import { MathRenderView } from '@skb/block-math/ui-default';
+import { PdfRenderView } from '@skb/block-pdf/ui-default';
+import Jupyter from './components/Jupyter.astro';
+import NnViz from './components/NnViz.astro';
+import AgentFlow from './components/AgentFlow.astro';
+import '@skb/heavy-block-boundary/heavy-block-skeleton.css';
+import { type FlatProps, makeMdxAdapter } from './lib/mdx-adapter';
+
+export type { FlatProps } from './lib/mdx-adapter';
+export { makeMdxAdapter } from './lib/mdx-adapter';
+
+const asMdxComponent = (component: ComponentType<FlatProps>): ComponentType<unknown> =>
+  component as unknown as ComponentType<unknown>;
+
+export const componentsMap = {
+  // 5 light blocks: server-rendered via prop-shape adapter
+  Callout: asMdxComponent(makeMdxAdapter(CalloutRenderView as never)),
+  Code: asMdxComponent(makeMdxAdapter(CodeRenderView as never)),
+  Image: asMdxComponent(makeMdxAdapter(ImageRenderView as never)),
+  Math: asMdxComponent(makeMdxAdapter(MathRenderView as never)),
+  Pdf: asMdxComponent(makeMdxAdapter(PdfRenderView as never)),
+  // 3 heavy blocks: Astro wrappers attach client:load hydration around React islands.
+  Jupyter,
+  NnViz,
+  AgentFlow,
+} satisfies Readonly<Record<string, unknown>>;
+
+exec
+/bin/bash -lc "sed -n '1,190p' packages/heavy-block-boundary/src/HeavyBlockBoundary.tsx" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+/**
+ * ADR-0014 v0.5 adds the gridContext-derived dims path for heavy blocks.
+ * ADR-0016 D9 keeps the W5-1 formulae in @skb/block-foundation; this
+ * boundary delegates to that single authority instead of reimplementing math.
+ */
+import type { CSSProperties, ComponentType, ReactElement, ReactNode } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { effectiveCellHeight, effectiveColWidth, type GridGeometry } from '@skb/block-foundation';
+
+// These public types mirror ADR-0014 D1.
+export interface HeavyBlockKindRegistry {
+  readonly jupyter: 'jupyter';
+  readonly 'nn-viz': 'nn-viz';
+  readonly 'agent-flow': 'agent-flow';
+}
+export type HeavyBlockKind =
+  | keyof HeavyBlockKindRegistry
+  | (string & { readonly __heavyBlockKind?: never }); // intentional widening
+
+export interface HeavyBlockDimensions {
+  readonly width: number; // CSS px; min-width
