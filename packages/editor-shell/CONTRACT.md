@@ -56,6 +56,14 @@ editor surface. Closes the "editor-shell composition" deferral from
   semantics as `saveToMdx`; component-block JSX throws until B1.
 - `SaveLoadOptions { blockRegistry?: BlockRegistry }` — public options type
   for the per-call BlockRegistry injection pattern. Threading lands in B1.
+- `useResponsiveCols(options?)` — Wave 5 C.2-9 responsive viewport hook.
+  Returns `ViewportCols` (`12 | 6 | 1`) and accepts optional
+  `onTransitionStart` / `onTransitionEnd` callbacks for consumers that dispatch
+  layout-reducer responsive transition actions.
+- `RESPONSIVE_BREAKPOINTS` — readonly `{ tablet: 768, desktop: 1024 }` numeric
+  bridge for ADR-0016 D5 until Stage C.3-1 lands design-token breakpoint vars.
+- `ViewportCols` and `UseResponsiveColsOptions` — public types for the
+  responsive viewport hook and `GridContainerProps.viewportCols` handoff.
 
 ### NoteSaveAdapter (Wave 5; MVP shipped at C.4-prelude)
 
@@ -111,6 +119,7 @@ export interface GridContainerProps {
   children?: React.ReactNode;
   className?: string;
   style?: React.CSSProperties;
+  viewportCols?: ViewportCols;
 }
 
 export function GridContainer(props: GridContainerProps): JSX.Element;
@@ -120,7 +129,9 @@ export function GridContainer(props: GridContainerProps): JSX.Element;
 forwards arbitrary React children. It does not walk the Tiptap document, mutate
 NodeView attrs, or inject per-block `style.gridColumn` / `style.gridRow`;
 those mutation and placement paths remain deferred to the later Wave 5 editor
-grid PRs. Minimal usage:
+grid PRs. When `viewportCols` is supplied, it emits
+`data-skb-viewport-cols` and adds `.skb-grid--mobile` for `viewportCols === 1`
+per ADR-0016 D5 and ADR-0017 D9. Minimal usage:
 
 ```tsx
 <GridContainer>
@@ -180,7 +191,7 @@ React-side defensive-rendering defaults, an orthogonal concern from mdx-bridge
 defensive defaults with the same numeric values but a distinct enforcement
 layer.
 
-### Drag/Drop layer (C.2-5 + C.2-8)
+### Drag/Drop layer (C.2-5 + C.2-8 + C.2-9)
 
 C.2-5 and C.2-8 add the editor-side drag/drop UX primitives under
 `packages/editor-shell/src/drag-drop/`:
@@ -223,7 +234,9 @@ C.2-5 and C.2-8 add the editor-side drag/drop UX primitives under
   no-op preview, `drag-end-success` commits S1 with `epoch + 1`, and
   `drag-end-cancel` / `drag-end-mode-none` roll back to S0 without changing
   epoch. `responsiveTransition: 'in-progress'` rejects `drag-start` inside
-  the pure reducer.
+  the pure reducer. C.2-9 adds `responsive-transition-start` and
+  `responsive-transition-end` action variants; both leave `epoch` unchanged and
+  only flip `responsiveTransition` between `'in-progress'` and `'idle'`.
 
 Drag/drop edge-width is coupled to grid `--gap` via `EDGE_W = 2 * GAP`.
 `EDGE_W = 28` and `GAP = 14` ensure the 14px gap between adjacent blocks is
@@ -275,10 +288,8 @@ not re-exported from the editor-shell barrel; consumers import it from
 The stop highlight literal `oklch(58% 0.16 35 / 0.4)` remains in the C.2-6
 source per ADR-0017 D9, with migration to design tokens deferred to ADR-0018
 and Stage C.3. Resize-handle DOM emission, pointer event wiring, and snap commit
-remain deferred to C.2-9/C.2-10 (full integration); the `.skb-grid--mobile`
-state machine remains in C.2-9 scope per Wave 5 plan v1.3. C.2-8 shipped the
-layoutReducer + drag-ghost + drop-pulse + useEscCancel modules consumed by
-future C.2-9/C.2-10 wiring.
+remain later integration scope. C.2-9 ships the `.skb-grid--mobile` state
+emission contract; the CSS rules under that selector land in C.2-11.
 
 Cross-package consumer parity: the `gap` default in `ColRuler` comes from
 `@skb/block-foundation` `DEFAULT_GRID_GEOMETRY.gap` and MUST stay byte-equal to
@@ -289,6 +300,35 @@ algorithmic-constant replication failure, not a visual-token preference.
 Wave 5 plan v1.1 row C.2-3.5 remains the active downstream constraint for the
 resize layer: modules MUST NOT reference `_gridAttrsExplicit`, the mdx-bridge
 transitional marker removed at the hard-throw flip end-state (`b019a31`).
+
+### Responsive viewport (C.2-9)
+
+C.2-9 adds `responsive-cols.ts` as the editor-shell owner for ADR-0016 D5's
+desktop/tablet/mobile viewport FSM. `useResponsiveCols(options?)` subscribes to
+two `matchMedia` queries, `(min-width: 1024px)` and `(min-width: 768px)`, and
+maps them to `ViewportCols = 12 | 6 | 1`. `RESPONSIVE_BREAKPOINTS` is the
+hardcoded bridge `{ tablet: 768, desktop: 1024 }` until Stage C.3-1 lands
+`--bp-tablet` and `--bp-desktop` in design tokens.
+
+Consumers that participate in the W5-2 single-source mutation pipeline pass
+`onTransitionStart` and `onTransitionEnd` callbacks which dispatch
+`responsive-transition-start` / `responsive-transition-end` through
+`layoutReducer`. Those actions do not mutate grid positions or increment
+`layoutEpoch`; they only mark the responsive transition as in progress or idle
+so the existing `drag-start` guard can reject drag during the transition per
+ADR-0016 D12 and ADR-0017 D12.
+
+`GridContainerProps.viewportCols` is optional for backward compatibility.
+When supplied, `GridContainer` emits `data-skb-viewport-cols` for test and
+consumer selectors. `viewportCols === 1` also emits `.skb-grid--mobile`, the
+ADR-0017 D9 class authority for the mobile 1-col view-only path. The CSS rules
+under `.skb-grid--mobile` land in C.2-11; C.2-9 owns the editor-shell emission
+side of the contract.
+
+Mobile rowSpan remains rendering-derived: consumers branch on
+`viewportCols === 1` and use the existing `useAutoRowSpan` path so
+`rowSpan='auto'` is measured at render time without persisting a replacement
+integer. The EditorShellMount wire-up for that per-block branch lands in C.4-2.
 
 ## Wave 3 Stage A expansion outline
 
