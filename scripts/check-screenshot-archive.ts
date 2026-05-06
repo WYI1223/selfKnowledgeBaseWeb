@@ -9,14 +9,28 @@
  * ACCEPT phase verification (after pr-writer subagent generates the
  * screenshots) AND in PR CI to enforce on merge.
  *
+ * **Symmetry with check-e2e-coverage.ts (Wave 5 v1.3 fix-forward 2026-05-XX)**:
+ * UI-touch detection runs first via the same path-pattern set as
+ * check-ui-touch.ts / check-e2e-coverage.ts. If `ui_touch=false` (e.g. plan-
+ * amendment PRs that forward-declare future screenshot paths in catalog form,
+ * or non-UI scope PRs), enforcement is **skipped** (exit 0). This matches
+ * D9.5 semantic intent: screenshot archives are an ACCEPT-phase obligation
+ * for UI-touch IMPLEMENTATION PRs, not for plan-doc forward declarations.
+ *
+ * Pre-fix bug (PR #75 v1.3 case): script greedy-grepped `screenshot_archive:`
+ * regex against any PR.md and validated each path. Plan PRs declaring 9
+ * future-implementation paths (none yet exist) tripped FAIL despite
+ * ui_touch=false. orchestrator workaround was field rename, flagged as D10
+ * anti-pattern. Correct fix = mirror check-e2e-coverage.ts ui_touch skip.
+ *
  * Usage:
  *   tsx scripts/check-screenshot-archive.ts
  *   tsx scripts/check-screenshot-archive.ts --base <ref>
  *   tsx scripts/check-screenshot-archive.ts --pr-md <path>
  *
  * Exit codes:
- *   0 — PASS (all referenced screenshots exist + size ≥ 5KB) OR no e2e_smoke entries
- *   1 — FAIL (any screenshot missing or < 5KB)
+ *   0 — PASS (ui_touch=false; OR all referenced screenshots exist + size ≥ 5KB)
+ *   1 — FAIL (ui_touch=true AND any screenshot missing or < 5KB)
  */
 
 import { execSync } from 'node:child_process';
@@ -25,6 +39,18 @@ import path from 'node:path';
 
 const PR_MD_PATTERN = /^docs\/plans\/wave-\d+(?:\.\d+)?-(?:main|prep)\/.*\.md$/;
 const MIN_SCREENSHOT_BYTES = 5 * 1024;
+
+// UI-touch path patterns (must stay in sync with check-ui-touch.ts and
+// check-e2e-coverage.ts; per ADR-0011 D9.1).
+const UI_TOUCH_PATTERNS: ReadonlyArray<RegExp> = [
+  /^apps\/site\/src\/pages\//,
+  /^apps\/site\/src\/components\//,
+  /^apps\/site\/src\/styles\//,
+  /^packages\/[^/]+\/src\/ui-default\//,
+  /^packages\/heavy-block-boundary\/src\//,
+  /^packages\/editor-shell\/src\//,
+  /^packages\/design-tokens\//,
+];
 
 interface CliArgs {
   base: string;
@@ -52,14 +78,22 @@ function parseArgs(argv: ReadonlyArray<string>): CliArgs {
   return { base, prMd };
 }
 
-function findPrMd(base: string): string | null {
+function changedFiles(base: string): ReadonlyArray<string> {
   const out = execSync(`git diff --name-only ${base}...HEAD`, { encoding: 'utf8' });
-  const files = out
+  return out
     .split('\n')
     .map((l) => l.trim())
-    .filter((l) => PR_MD_PATTERN.test(l));
-  const main = files.find((f) => f.includes('-main/'));
-  return main ?? files[0] ?? null;
+    .filter((l) => l.length > 0);
+}
+
+function isUiTouch(files: ReadonlyArray<string>): boolean {
+  return files.some((file) => UI_TOUCH_PATTERNS.some((p) => p.test(file)));
+}
+
+function findPrMd(files: ReadonlyArray<string>): string | null {
+  const candidates = files.filter((f) => PR_MD_PATTERN.test(f));
+  const main = candidates.find((c) => c.includes('-main/'));
+  return main ?? candidates[0] ?? null;
 }
 
 function extractScreenshotPaths(prMdContent: string): ReadonlyArray<string> {
@@ -75,11 +109,31 @@ function extractScreenshotPaths(prMdContent: string): ReadonlyArray<string> {
 
 function main(): void {
   const { base, prMd } = parseArgs(process.argv.slice(2));
-  const prMdPath = prMd ?? findPrMd(base);
+
+  // UI-touch detection FIRST — symmetric with check-e2e-coverage.ts. Plan PRs
+  // (e.g. v1.x amendments) forward-declare future screenshot paths in catalog
+  // form; those screenshots don't exist at plan-merge time. Per ADR-0011 D9.5
+  // semantic intent, screenshot enforcement fires only at ui_touch=true PR
+  // ACCEPT phase, not at plan-amendment merge.
+  const files = changedFiles(base);
+  const uiTouch = isUiTouch(files);
+
+  process.stderr.write(`[check-screenshot-archive] base=${base}\n`);
+  process.stderr.write(`[check-screenshot-archive] files scanned: ${files.length}\n`);
+  process.stderr.write(`[check-screenshot-archive] ui_touch=${uiTouch}\n`);
+
+  if (!uiTouch) {
+    process.stderr.write(
+      `[check-screenshot-archive] ui_touch=false → screenshot enforcement skipped (D9.5 plan-PR forward-declaration carve-out).\n`,
+    );
+    process.stderr.write(`[check-screenshot-archive] PASS\n`);
+    process.exit(0);
+  }
+
+  const prMdPath = prMd ?? findPrMd(files);
 
   if (prMdPath === null) {
-    // No PR.md → assume non-PR context or non-UI-touch; PASS by default.
-    process.stderr.write(`[check-screenshot-archive] no PR.md in diff; skip (PASS).\n`);
+    process.stderr.write(`[check-screenshot-archive] ui_touch=true but no PR.md in diff; skip (PASS).\n`);
     process.exit(0);
   }
 
@@ -99,7 +153,7 @@ function main(): void {
 
   if (screenshots.length === 0) {
     process.stderr.write(
-      `[check-screenshot-archive] no screenshot_archive entries; assuming non-UI-touch PR (PASS).\n`,
+      `[check-screenshot-archive] ui_touch=true but no screenshot_archive entries — likely PR.md schema gap; let check-e2e-coverage.ts FAIL on missing e2e_smoke instead. PASS here.\n`,
     );
     process.exit(0);
   }
