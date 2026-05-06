@@ -548,8 +548,6 @@ Per ADR-0015 R14 + memory illustrative reference: STOP forward execution + open 
 
 Each subsequent C.2-7 / C.3 / C.4 implementation PR's PR.md MUST copy the corresponding row's canonical `e2e_smoke` entry from this catalog into the PR's own `## e2e_smoke` section. CI gate `scripts/check-e2e-coverage.ts` validates `playwright_spec` file existence at PR.md authoring; `scripts/check-screenshot-archive.ts` validates screenshot archive ≥ 5KB at ACCEPT stage.
 
-> **Field-name note (post-merge fix-forward 2026-05-05)**: catalog entries below use the bare `screenshot` key (no `_archive` suffix) to avoid CI gate `scripts/check-screenshot-archive.ts` greedy-grep regex triggering on forward-declaration paths during v1.3 amendment merge (catalog screenshots reference future-PR artifacts that don't exist yet at v1.3 amendment merge time; D9.5 enforcement only applies at implementation PR ACCEPT, not at retrofit-catalog merge). When implementation PR authors its `## e2e_smoke` section, it MUST translate catalog bare-form back to canonical D2 schema field name (with `_archive` suffix) per ADR-0011 D2. (Per ADR-0011 D10 the right structural fix is amending `scripts/check-screenshot-archive.ts` to skip on `ui_touch=false`; tracked as v1.3 follow-up TODO. Out-of-scope for v1.3 plan-amendment per AC#13 mechanical hard-fail diff allowlist.)
->
 > **Q1 plan-challenger absorbtion clarification (mechanical D9.1 detection)**: catalog `ui_touch: true` annotations indicate the PR's *purpose* is UI-touch verification per ADR-0011 D9 framework. Mechanical D9.1 path-pattern detection happens at PR.md authoring time via `pnpm exec tsx scripts/check-ui-touch.ts`. For most rows (C.2-7 + C.3-1..4 + C.4-1..4) the mechanical detection AGREES with this catalog: their primary diff hits D9.1 patterns (`packages/heavy-block-boundary/src/**`, `packages/design-tokens/**`, `packages/*/src/ui-default/**`, `apps/site/src/{pages,components,styles}/**`, `packages/editor-shell/src/**`). For **C.3-5 + C.4-5** specifically: their primary diff is `apps/site/playwright/visual-smoke-baseline/*.png` + spec files at `apps/site/src/__tests__/e2e/...` which do NOT match D9.1 patterns directly; mechanical detection MAY return `ui_touch: false`. Their PR.md remains valid with mechanical `ui_touch: false` and `e2e_smoke: []` (CI gate auto-skips); the catalog entry below serves as informational meta-doc of what those PRs' Playwright specs assert (Stage close coverage). If C.3-5 / C.4-5 execution diff incidentally also touches a D9.1 path (e.g., `apps/site/src/components/SampleBlocksLayout.astro` modified for baseline screenshot generation), mechanical detection flips to `ui_touch: true` and the catalog `e2e_smoke` entry becomes the canonical PR.md source. Per ADR-0011 D9.6 CI gate auto-skip on `ui_touch: false` keeps merge unblocked regardless.
 
 #### C.2-7 — ADR-0014 v0.5 amendment (HeavyBlockBoundary dims grid context 联动 W5-1)
@@ -559,7 +557,7 @@ Each subsequent C.2-7 / C.3 / C.4 implementation PR's PR.md MUST copy the corres
   - flow: heavy block plugin placeholder renders consuming grid `effectiveColWidth` + `effectiveCellHeight` (no NaN / no overflow / dimensions match adjacent light blocks)
   - target_url: `/sample-blocks`
   - playwright_spec: `apps/site/src/__tests__/e2e/c2-7-heavy-grid-dims.spec.ts:"plugin placeholder consumes grid effectiveColWidth/effectiveCellHeight"`
-  - screenshot: `docs/audits/screenshots/wave-5-c2-7-heavy-grid-dims.png`
+  - screenshot_archive: `docs/audits/screenshots/wave-5-c2-7-heavy-grid-dims.png`
 
 #### C.3-1 — design-tokens OKLCH 14 color + Inter/JetBrains Mono fonts (per ADR-0018 D1+D2)
 
@@ -568,7 +566,7 @@ Each subsequent C.2-7 / C.3 / C.4 implementation PR's PR.md MUST copy the corres
   - flow: site loads with OKLCH cream surface + accent color visible + Inter font available in computed styles
   - target_url: `/`
   - playwright_spec: `apps/site/src/__tests__/e2e/c3-1-tokens-fonts.spec.ts:"OKLCH cream + accent + Inter font computed"`
-  - screenshot: `docs/audits/screenshots/wave-5-c3-1-tokens-fonts.png`
+  - screenshot_archive: `docs/audits/screenshots/wave-5-c3-1-tokens-fonts.png`
 
 #### C.3-2 — block kind 顶 2px 彩色横条 8 kind hue (per ADR-0018 D3)
 
@@ -577,7 +575,7 @@ Each subsequent C.2-7 / C.3 / C.4 implementation PR's PR.md MUST copy the corres
   - flow: 8 block kinds render distinct top 2px hue accent (paragraph + image + math + callout + code + pdf + jupyter + nn-viz + agent-flow as covered)
   - target_url: `/sample-blocks`
   - playwright_spec: `apps/site/src/__tests__/e2e/c3-2-block-hues.spec.ts:"8 block kinds render distinct top 2px hue"`
-  - screenshot: `docs/audits/screenshots/wave-5-c3-2-block-hues.png`
+  - screenshot_archive: `docs/audits/screenshots/wave-5-c3-2-block-hues.png`
 
 #### C.3-3 — prose customization (b-quote / b-callout / b-code / aref + .skb-prose namespace + typography CSS vars)
 
@@ -586,7 +584,7 @@ Each subsequent C.2-7 / C.3 / C.4 implementation PR's PR.md MUST copy the corres
   - flow: `.skb-prose` namespace renders b-quote / b-callout / b-code / aref affordances (each component-block prose affordance distinct per Q5 prose customization)
   - target_url: `/sample-blocks`
   - playwright_spec: `apps/site/src/__tests__/e2e/c3-3-prose.spec.ts:".skb-prose b-quote/b-callout/b-code/aref affordances"`
-  - screenshot: `docs/audits/screenshots/wave-5-c3-3-prose.png`
+  - screenshot_archive: `docs/audits/screenshots/wave-5-c3-3-prose.png`
 
 #### C.3-4 — shadow rgba(20,15,10) refresh + 8 light block CSS calibration
 
@@ -595,7 +593,7 @@ Each subsequent C.2-7 / C.3 / C.4 implementation PR's PR.md MUST copy the corres
   - flow: 5 light blocks (callout / code / image / math / pdf) render OKLCH-calibrated CSS without visual regress; shadow `rgba(20,15,10, ...)` refresh applied
   - target_url: `/sample-blocks`
   - playwright_spec: `apps/site/src/__tests__/e2e/c3-4-light-block-cal.spec.ts:"5 light blocks OKLCH calibration + shadow refresh"`
-  - screenshot: `docs/audits/screenshots/wave-5-c3-4-light-block-cal.png`
+  - screenshot_archive: `docs/audits/screenshots/wave-5-c3-4-light-block-cal.png`
 
 #### C.3-5 — Stage C.3 close: visual smoke baseline diff < 5% (per ADR-0018 AC#8)
 
@@ -604,7 +602,7 @@ Each subsequent C.2-7 / C.3 / C.4 implementation PR's PR.md MUST copy the corres
   - flow: visual smoke baseline diff < 5% across calibrated pages (per ADR-0018 AC#8); spec runs sequentially against `/sample-blocks` (canonical baseline page; landing `/` covered by C.3-1's tokens-fonts spec to avoid duplicate baseline assertion per Q2 plan-challenger absorbtion concrete-target_url discipline)
   - target_url: `/sample-blocks`
   - playwright_spec: `apps/site/src/__tests__/e2e/c3-5-baseline-diff.spec.ts:"visual smoke baseline diff < 5%"`
-  - screenshot: `docs/audits/screenshots/wave-5-c3-5-baseline-diff.png`
+  - screenshot_archive: `docs/audits/screenshots/wave-5-c3-5-baseline-diff.png`
 
 #### C.4-1 — NoteSaveAdapter interface contract hardening + W5-2 + adapter contract tests + ApiAdapter forward stub (per sub-edit e)
 
@@ -614,7 +612,7 @@ Each subsequent C.2-7 / C.3 / C.4 implementation PR's PR.md MUST copy the corres
   - flow: `NoteSaveAdapter` interface allows `LocalStorageAdapter` MVP load + roundtrip with ApiAdapter Phase 2+ stub commented (`// TODO Phase 2+ ApiAdapter implementing NoteSaveAdapter for /api/notes endpoint`)
   - target_url: `/notes/[slug]/edit`
   - playwright_spec: `apps/site/src/__tests__/e2e/c4-1-note-save-adapter.spec.ts:"NoteSaveAdapter interface allows LocalStorageAdapter MVP load + roundtrip; ApiAdapter forward stub commented"`
-  - screenshot: `docs/audits/screenshots/wave-5-c4-1-note-save-adapter.png`
+  - screenshot_archive: `docs/audits/screenshots/wave-5-c4-1-note-save-adapter.png`
 
 #### C.4-2 — apps/site `/notes/[slug]/edit` route + EditorShellMount full BlockRegistry/KernelRegistry wire
 
@@ -623,7 +621,7 @@ Each subsequent C.2-7 / C.3 / C.4 implementation PR's PR.md MUST copy the corres
   - flow: navigate `/notes/<slug>/edit` + verify all 8 block kinds render correct affordance (5 light real: callout / code / image / math / pdf + 3 heavy plugin placeholder: jupyter / nn-viz / agent-flow)
   - target_url: `/notes/<slug>/edit`
   - playwright_spec: `apps/site/src/__tests__/e2e/c4-2-block-registry.spec.ts:"8 block kinds render correct (5 light real + 3 heavy plugin placeholder)"`
-  - screenshot: `docs/audits/screenshots/wave-5-c4-2-block-registry.png`
+  - screenshot_archive: `docs/audits/screenshots/wave-5-c4-2-block-registry.png`
 
 #### C.4-3 — palette + slash-menu + drag-handle + toolbar 完整组装 (canonical user-affordance-rich PR; 6 e2e_smoke entries)
 
@@ -643,7 +641,7 @@ Each subsequent C.2-7 / C.3 / C.4 implementation PR's PR.md MUST copy the corres
   - flow: edit prose → 800ms-debounced save to LocalStorage → reload preserves content + layoutEpoch + version increment
   - target_url: `/notes/<slug>/edit`
   - playwright_spec: `apps/site/src/__tests__/e2e/c4-4-save-roundtrip.spec.ts:"edit → 800ms debounce save to LocalStorage → reload preserves content + layoutEpoch + version"`
-  - screenshot: `docs/audits/screenshots/wave-5-c4-4-save-roundtrip.png`
+  - screenshot_archive: `docs/audits/screenshots/wave-5-c4-4-save-roundtrip.png`
 
 #### C.4-5 — Stage C.4 close: 真验收 10-item E2E coverage path (canonical Wave 5 close MVP-ready test sweep)
 
