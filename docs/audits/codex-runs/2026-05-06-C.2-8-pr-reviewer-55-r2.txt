@@ -1,0 +1,2000 @@
+Reading prompt from stdin...
+OpenAI Codex v0.125.0 (research preview)
+--------
+workdir: /home/weiyi/selfKnowledgeBaseWeb
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: danger-full-access
+reasoning effort: xhigh
+reasoning summaries: none
+session id: 019dfdf1-0a0e-7540-833c-2515f00d341a
+--------
+user
+You are D1 stage-3 REVIEWER R2 for Wave 5 C.2-8. Round 2 — verify R1 issues absorbed.
+
+SCOPE: REVIEW ONLY. DO NOT COMMIT.
+
+R1 verdict: FAIL on 2 issues:
+1. HIGH: CONTRACT.md drift (3 stale "C.2-8 deferred" prose lines at line 162, 240, 276) — codex R2 fixed via past/present tense rewrite
+2. MED: file-head ADR JSDoc drift (esc-cancel.ts no JSDoc; others incomplete) — codex R2 added/replaced JSDoc on all 4 src modules with load-bearing constants
+
+Re-verify:
+
+1. CONTRACT.md no longer has "deferred to C.2-8" / "later C.2-8" / "remain deferred to C.2-8/C.2-9" stale prose:
+   grep -nE "deferred to C\.2-8|later C\.2-8|remain deferred to C\.2-8" packages/editor-shell/CONTRACT.md
+   Expected: zero matches (or only in historical context where appropriate)
+
+2. Each of 4 src modules has file-head JSDoc citing ADR + load-bearing constants:
+   - drop-pulse.ts: 720ms duration; box-shadow var(--accent-success...)
+   - drag-ghost.ts: position fixed; ±5° velocity ≥ 5; -1.5° baseline; 4 per-kind classNames
+   - esc-cancel.ts: dragActive priority + native passthrough; D8/Q8 cite
+   - layout-reducer.ts: epoch += 1 only on drag-end-success; rollback rules; D12 + Q12 cite
+   
+3. Re-run AC#1-AC#15 (per PR.md ## acceptance) — confirm all PASS or PASS-WITH-STAGE-6-DEFERRED
+
+4. ADR-0006 9-point re-applied — Item 6 (CONTRACT.md sister-sync) should now PASS post-R2 fixes; Items 1-5+8-9 should remain PASS
+
+5. Vitest sanity:
+   pnpm --filter @skb/editor-shell test
+   Expected: 99 PASS unchanged
+
+Verdict structure same as R1. If PASS → orchestrator runs stage 4 PRE-COMMIT CLAUDE → re-dispatch for stage 5 commit.
+
+You do NOT commit. You do NOT modify any file.
+
+codex
+Using `superpowers:using-superpowers` first, then I’ll keep this strictly read-only and verify the specific R2 absorption points plus the requested test gate.
+exec
+/bin/bash -lc "sed -n '1,220p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/9d07fd08/skills/using-superpowers/SKILL.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+---
+name: using-superpowers
+description: Use when starting any conversation - establishes how to find and use skills, requiring Skill tool invocation before ANY response including clarifying questions
+---
+
+<SUBAGENT-STOP>
+If you were dispatched as a subagent to execute a specific task, skip this skill.
+</SUBAGENT-STOP>
+
+<EXTREMELY-IMPORTANT>
+If you think there is even a 1% chance a skill might apply to what you are doing, you ABSOLUTELY MUST invoke the skill.
+
+IF A SKILL APPLIES TO YOUR TASK, YOU DO NOT HAVE A CHOICE. YOU MUST USE IT.
+
+This is not negotiable. This is not optional. You cannot rationalize your way out of this.
+</EXTREMELY-IMPORTANT>
+
+## Instruction Priority
+
+Superpowers skills override default system prompt behavior, but **user instructions always take precedence**:
+
+1. **User's explicit instructions** (AGENTS.md, GEMINI.md, direct requests) — highest priority
+2. **Superpowers skills** — override default system behavior where they conflict
+3. **Default system prompt** — lowest priority
+
+If AGENTS.md or GEMINI.md says "don't use TDD" and a skill says "always use TDD," follow the user's instructions. The user is in control.
+
+## How to Access Skills
+
+**In Codex:** Use the `Skill` tool. When you invoke a skill, its content is loaded and presented to you—follow it directly. Never use the Read tool on skill files.
+
+**In Copilot CLI:** Use the `skill` tool. Skills are auto-discovered from installed plugins. The `skill` tool works the same as Codex's `Skill` tool.
+
+**In Gemini CLI:** Skills activate via the `activate_skill` tool. Gemini loads skill metadata at session start and activates the full content on demand.
+
+**In other environments:** Check your platform's documentation for how skills are loaded.
+
+## Platform Adaptation
+
+Skills may mention tool names that vary by runtime. Other platforms: see `references/copilot-tools.md` (Copilot CLI), `references/codex-tools.md` (Codex) for tool equivalents. Gemini CLI users get the tool mapping loaded automatically via GEMINI.md.
+
+# Using Skills
+
+## The Rule
+
+**Invoke relevant or requested skills BEFORE any response or action.** Even a 1% chance a skill might apply means that you should invoke the skill to check. If an invoked skill turns out to be wrong for the situation, you don't need to use it.
+
+```dot
+digraph skill_flow {
+    "User message received" [shape=doublecircle];
+    "About to EnterPlanMode?" [shape=doublecircle];
+    "Already brainstormed?" [shape=diamond];
+    "Invoke brainstorming skill" [shape=box];
+    "Might any skill apply?" [shape=diamond];
+    "Invoke Skill tool" [shape=box];
+    "Announce: 'Using [skill] to [purpose]'" [shape=box];
+    "Has checklist?" [shape=diamond];
+    "Create TodoWrite todo per item" [shape=box];
+    "Follow skill exactly" [shape=box];
+    "Respond (including clarifications)" [shape=doublecircle];
+
+    "About to EnterPlanMode?" -> "Already brainstormed?";
+    "Already brainstormed?" -> "Invoke brainstorming skill" [label="no"];
+    "Already brainstormed?" -> "Might any skill apply?" [label="yes"];
+    "Invoke brainstorming skill" -> "Might any skill apply?";
+
+    "User message received" -> "Might any skill apply?";
+    "Might any skill apply?" -> "Invoke Skill tool" [label="yes, even 1%"];
+    "Might any skill apply?" -> "Respond (including clarifications)" [label="definitely not"];
+    "Invoke Skill tool" -> "Announce: 'Using [skill] to [purpose]'";
+    "Announce: 'Using [skill] to [purpose]'" -> "Has checklist?";
+    "Has checklist?" -> "Create TodoWrite todo per item" [label="yes"];
+    "Has checklist?" -> "Follow skill exactly" [label="no"];
+    "Create TodoWrite todo per item" -> "Follow skill exactly";
+}
+```
+
+## Red Flags
+
+These thoughts mean STOP—you're rationalizing:
+
+| Thought | Reality |
+|---------|---------|
+| "This is just a simple question" | Questions are tasks. Check for skills. |
+| "I need more context first" | Skill check comes BEFORE clarifying questions. |
+| "Let me explore the codebase first" | Skills tell you HOW to explore. Check first. |
+| "I can check git/files quickly" | Files lack conversation context. Check for skills. |
+| "Let me gather information first" | Skills tell you HOW to gather information. |
+| "This doesn't need a formal skill" | If a skill exists, use it. |
+| "I remember this skill" | Skills evolve. Read current version. |
+| "This doesn't count as a task" | Action = task. Check for skills. |
+| "The skill is overkill" | Simple things become complex. Use it. |
+| "I'll just do this one thing first" | Check BEFORE doing anything. |
+| "This feels productive" | Undisciplined action wastes time. Skills prevent this. |
+| "I know what that means" | Knowing the concept ≠ using the skill. Invoke it. |
+
+## Skill Priority
+
+When multiple skills could apply, use this order:
+
+1. **Process skills first** (brainstorming, debugging) - these determine HOW to approach the task
+2. **Implementation skills second** (frontend-design, mcp-builder) - these guide execution
+
+"Let's build X" → brainstorming first, then implementation skills.
+"Fix this bug" → debugging first, then domain-specific skills.
+
+## Skill Types
+
+**Rigid** (TDD, debugging): Follow exactly. Don't adapt away discipline.
+
+**Flexible** (patterns): Adapt principles to context.
+
+The skill itself tells you which.
+
+## User Instructions
+
+Instructions say WHAT, not HOW. "Add X" or "Fix Y" doesn't mean skip workflows.
+
+codex
+I’m going to capture the review surface first: current diff/status, the stale-contract grep, the PR acceptance text, ADR-0006 references, and the four implementation files.
+  → Gather review context and changed-file surface
+  • Verify CONTRACT.md stale C.2-8 prose is gone
+  • Verify four file-head JSDoc blocks cite ADRs and constants
+  • Run PR.md AC#1-AC#15 acceptance checks
+  • Re-apply ADR-0006 9-point checklist
+  • Run @skb/editor-shell vitest sanity
+  • Prepare read-only verdict
+exec
+/bin/bash -lc 'git status --short' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+ M packages/editor-shell/CONTRACT.md
+ M packages/editor-shell/src/index.ts
+?? apps/site/src/__tests__/e2e/c2-8-drag-modules-mount.spec.ts
+?? docs/audits/codex-runs/2026-05-06-C.2-8-execute-r2.txt
+?? docs/audits/codex-runs/2026-05-06-C.2-8-execute.txt
+?? docs/audits/codex-runs/2026-05-06-housekeeping-pr-reviewer-55.txt
+?? docs/audits/screenshots/wave-5-c2-8-drag-modules-mount.png
+?? docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md
+?? packages/editor-shell/src/__tests__/drag-drop/drag-ghost.test.tsx
+?? packages/editor-shell/src/__tests__/drag-drop/drop-pulse.test.tsx
+?? packages/editor-shell/src/__tests__/drag-drop/esc-cancel.test.tsx
+?? packages/editor-shell/src/__tests__/drag-drop/layout-reducer.test.ts
+?? packages/editor-shell/src/drag-drop/drag-ghost.ts
+?? packages/editor-shell/src/drag-drop/drop-pulse.ts
+?? packages/editor-shell/src/drag-drop/esc-cancel.ts
+?? packages/editor-shell/src/drag-drop/layout-reducer.ts
+
+exec
+/bin/bash -lc 'git diff --stat' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+ packages/editor-shell/CONTRACT.md  | 54 +++++++++++++++++++++++++++++---------
+ packages/editor-shell/src/index.ts |  8 ++++++
+ 2 files changed, 50 insertions(+), 12 deletions(-)
+
+exec
+/bin/bash -lc "grep -nE \"deferred to C\\.2-8|later C\\.2-8|remain deferred to C\\.2-8\" packages/editor-shell/CONTRACT.md" in /home/weiyi/selfKnowledgeBaseWeb
+ exited 1 in 0ms:
+exec
+/bin/bash -lc "rg --files -g 'PR.md' -g 'CONTRACT.md' -g 'ADR-0006*' -g 'drop-pulse.ts' -g 'drag-ghost.ts' -g 'esc-cancel.ts' -g 'layout-reducer.ts'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+apps/api/app/ws/CONTRACT.md
+apps/api/app/llm/CONTRACT.md
+apps/api/app/CONTRACT.md
+apps/site/CONTRACT.md
+packages/agent-tools/CONTRACT.md
+packages/heavy-block-boundary/CONTRACT.md
+packages/editor-commands/CONTRACT.md
+packages/editor-shell/src/drag-drop/drag-ghost.ts
+packages/editor-shell/src/drag-drop/esc-cancel.ts
+packages/editor-shell/src/drag-drop/layout-reducer.ts
+packages/editor-shell/src/drag-drop/drop-pulse.ts
+packages/editor-shell/CONTRACT.md
+packages/content-types/CONTRACT.md
+packages/block-jupyter/CONTRACT.md
+packages/editor-slash-menu/CONTRACT.md
+docs/decisions/ADR-0006-asymmetry-audit-checklist.md
+packages/block-pdf/CONTRACT.md
+packages/design-tokens/CONTRACT.md
+packages/block-callout/CONTRACT.md
+packages/kernel-pyodide/CONTRACT.md
+packages/block-nn-viz/CONTRACT.md
+packages/block-agent-flow/CONTRACT.md
+packages/block-math/CONTRACT.md
+packages/kernel-adapter/CONTRACT.md
+packages/editor-drag-handle/CONTRACT.md
+packages/kernel-registry/CONTRACT.md
+packages/block-code/CONTRACT.md
+packages/mdx-bridge/CONTRACT.md
+packages/block-image/CONTRACT.md
+packages/block-foundation/CONTRACT.md
+packages/editor-toolbar/CONTRACT.md
+
+codex
+The stale-contract grep returned exit 1 with no output, which is the expected “zero matches” state. I’m reading the acceptance criteria and module heads now so I can verify against the actual contract, not just filenames.
+  ✓ Gather review context and changed-file surface
+  ✓ Verify CONTRACT.md stale C.2-8 prose is gone
+  → Verify four file-head JSDoc blocks cite ADRs and constants
+  • Run PR.md AC#1-AC#15 acceptance checks
+  • Re-apply ADR-0006 9-point checklist
+  • Run @skb/editor-shell vitest sanity
+  • Prepare read-only verdict
+exec
+/bin/bash -lc "sed -n '1,220p' packages/editor-shell/src/drag-drop/drop-pulse.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+/**
+ * @skb/editor-shell drop-pulse — 720ms green halo on drag-end-success.
+ *
+ * Per ADR-0017 D11: drop-pulse fires ONLY on drag-end-success; cancel +
+ * mode-none + grid-外松手 do NOT trigger pulse (D11 explicit non-trigger).
+ *
+ * Visual contract:
+ *  - Duration: 720ms (load-bearing constant; ADR-0017 D11 line 342+)
+ *  - Box-shadow: `0 0 0 4px var(--accent-success, oklch(70% 0.12 145 / 0.5))` → fade-out
+ *  - Token source: ADR-0018 `--accent-success` (Stage C.3-1 forward-pointer); fallback hex bridges Wave 5 v0.5 → C.3 token landing.
+ */
+import { Fragment, createElement } from 'react';
+import type { CSSProperties, ReactElement } from 'react';
+
+export interface DropPulseProps {
+  className?: string;
+  onAnimationEnd?: () => void;
+}
+
+export const dropPulseClassName = 'skb-drop-pulse';
+
+const DROP_PULSE_SHADOW =
+  '0 0 0 4px var(--accent-success, oklch(70% 0.12 145 / 0.5))';
+
+const DROP_PULSE_ANIMATION = 'skb-drop-pulse-fadeout 720ms ease-out forwards';
+
+const DROP_PULSE_KEYFRAMES = `
+@keyframes skb-drop-pulse-fadeout {
+  from {
+    box-shadow: ${DROP_PULSE_SHADOW};
+    opacity: 1;
+  }
+  to {
+    box-shadow: 0 0 0 4px transparent;
+    opacity: 0;
+  }
+}`;
+
+const dropPulseStyle: CSSProperties = {
+  position: 'absolute',
+  inset: 0,
+  pointerEvents: 'none',
+  boxShadow: DROP_PULSE_SHADOW,
+  animation: DROP_PULSE_ANIMATION,
+};
+
+function pulseClassName(className: string | undefined): string {
+  return className ? `${dropPulseClassName} ${className}` : dropPulseClassName;
+}
+
+export function DropPulse(props: DropPulseProps): ReactElement {
+  const { className, onAnimationEnd } = props;
+
+  return createElement(
+    Fragment,
+    null,
+    createElement('style', { 'data-skb-drop-pulse-keyframes': '' }, DROP_PULSE_KEYFRAMES),
+    createElement('div', {
+      className: pulseClassName(className),
+      onAnimationEnd,
+      style: dropPulseStyle,
+    }),
+  );
+}
+
+exec
+/bin/bash -lc "sed -n '1,260p' packages/editor-shell/src/drag-drop/drag-ghost.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+/**
+ * @skb/editor-shell drag-ghost — cursor-tracking drag preview with per-kind coloring.
+ *
+ * Per ADR-0017 D10:
+ *  - position: fixed; transform: translate(x, y) rotate(angle)
+ *  - Per-kind className: .ghost-canvas / .ghost-runnable / .ghost-image / .ghost-markdown
+ *  - Cursor velocity ≥ 5px/frame → angle ±5° (sign matches velocity direction)
+ *  - Velocity < 5 → -1.5° baseline (load-bearing constant; ADR-0017 D10 line 333+)
+ *  - Glyph: plain text `◇` (Stage C.3 may upgrade to SVG/icon-font)
+ */
+import { createElement } from 'react';
+import type { CSSProperties, ReactElement } from 'react';
+
+export type GhostKind = 'canvas' | 'runnable' | 'image' | 'markdown';
+
+export interface DragGhostVelocity {
+  dx: number;
+  dy: number;
+}
+
+export interface DragGhostProps {
+  cursorX: number;
+  cursorY: number;
+  kind: GhostKind;
+  mode: 'create' | 'move';
+  velocity?: DragGhostVelocity;
+  className?: string;
+}
+
+const GHOST_CLASS_BY_KIND: Readonly<Record<GhostKind, string>> = {
+  canvas: 'ghost-canvas',
+  runnable: 'ghost-runnable',
+  image: 'ghost-image',
+  markdown: 'ghost-markdown',
+};
+
+const GHOST_LABEL_BY_KIND: Readonly<Record<GhostKind, string>> = {
+  canvas: 'Canvas',
+  runnable: 'Runnable',
+  image: 'Image',
+  markdown: 'Markdown',
+};
+
+const VELOCITY_THRESHOLD_PX_PER_FRAME = 5;
+const BASELINE_ROTATION_DEG = -1.5;
+const ACTIVE_ROTATION_DEG = 5;
+
+function rotationDeg(velocity: DragGhostVelocity | undefined): number {
+  if (!velocity) return BASELINE_ROTATION_DEG;
+
+  const magnitude = Math.hypot(velocity.dx, velocity.dy);
+  if (magnitude < VELOCITY_THRESHOLD_PX_PER_FRAME || velocity.dx === 0) {
+    return BASELINE_ROTATION_DEG;
+  }
+
+  return velocity.dx > 0 ? ACTIVE_ROTATION_DEG : -ACTIVE_ROTATION_DEG;
+}
+
+function ghostClassName(kind: GhostKind, className: string | undefined): string {
+  const baseClassName = `drag-ghost ${GHOST_CLASS_BY_KIND[kind]}`;
+  return className ? `${baseClassName} ${className}` : baseClassName;
+}
+
+function ghostLabel(kind: GhostKind, mode: DragGhostProps['mode']): string {
+  const prefix = mode === 'create' ? '+ ' : '⤴ ';
+  return `${prefix}◇ ${GHOST_LABEL_BY_KIND[kind]}`;
+}
+
+function ghostStyle(
+  cursorX: number,
+  cursorY: number,
+  velocity: DragGhostVelocity | undefined,
+): CSSProperties {
+  return {
+    position: 'fixed',
+    left: 0,
+    top: 0,
+    transform: `translate(${cursorX}px, ${cursorY}px) rotate(${rotationDeg(velocity)}deg)`,
+    pointerEvents: 'none',
+  };
+}
+
+export function DragGhost(props: DragGhostProps): ReactElement {
+  const { cursorX, cursorY, kind, mode, velocity, className } = props;
+
+  return createElement(
+    'div',
+    {
+      className: ghostClassName(kind, className),
+      style: ghostStyle(cursorX, cursorY, velocity),
+      'aria-hidden': true,
+    },
+    ghostLabel(kind, mode),
+  );
+}
+
+exec
+/bin/bash -lc "sed -n '1,220p' packages/editor-shell/src/drag-drop/esc-cancel.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+/**
+ * @skb/editor-shell useEscCancel — global Esc keydown subscription with drag-active priority.
+ *
+ * Per ADR-0017 D8 + Q8 absorbtion priority:
+ *  - dragActive === true: preventDefault + stopPropagation + dispatch drag-end-cancel; native Esc behavior suppressed (textarea blur / Tiptap deselect blocked during drag)
+ *  - dragActive === false: NO-OP (native Esc passthrough to Tiptap keymap / browser ESC)
+ *  - drag-end (cancel OR success): restore prior focus snapshot taken at drag-start
+ *
+ * Hook owns the subscription (per ADR-0017 D8 line 296: editor-shell 全局 keydown listener with key === 'Escape').
+ */
+import { useEffect, useRef } from 'react';
+
+export interface DragEndCancelAction {
+  type: 'drag-end-cancel';
+}
+
+export type EscCancelDispatch = (action: DragEndCancelAction) => void;
+
+export interface EscCancelOptions {
+  dragActive: boolean;
+  onCancel: () => void;
+  restoreFocusEl?: HTMLElement | null;
+}
+
+type EscCancelInput = EscCancelDispatch | EscCancelOptions;
+
+function activeElement(): HTMLElement | null {
+  return document.activeElement instanceof HTMLElement ? document.activeElement : null;
+}
+
+function resolveDragActive(input: EscCancelInput, dragActive: boolean | undefined): boolean {
+  return typeof input === 'function' ? dragActive === true : input.dragActive;
+}
+
+function resolveRestoreFocusEl(
+  input: EscCancelInput,
+  restoreFocusEl: HTMLElement | null | undefined,
+): HTMLElement | null | undefined {
+  return typeof input === 'function' ? restoreFocusEl : input.restoreFocusEl;
+}
+
+function resolveCancel(input: EscCancelInput): () => void {
+  return typeof input === 'function'
+    ? () => input({ type: 'drag-end-cancel' })
+    : input.onCancel;
+}
+
+export function useEscCancel(
+  dispatch: EscCancelDispatch,
+  dragActive: boolean,
+  restoreFocusEl?: HTMLElement | null,
+): void;
+export function useEscCancel(options: EscCancelOptions): void;
+export function useEscCancel(
+  input: EscCancelInput,
+  dragActiveArg?: boolean,
+  restoreFocusElArg?: HTMLElement | null,
+): void {
+  const dragActive = resolveDragActive(input, dragActiveArg);
+  const explicitRestoreFocusEl = resolveRestoreFocusEl(input, restoreFocusElArg);
+  const cancelRef = useRef<() => void>(() => undefined);
+  const focusAtDragStartRef = useRef<HTMLElement | null>(null);
+  const wasDragActiveRef = useRef(false);
+
+  cancelRef.current = resolveCancel(input);
+
+  useEffect(() => {
+    if (dragActive && !wasDragActiveRef.current) {
+      focusAtDragStartRef.current = explicitRestoreFocusEl ?? activeElement();
+    }
+
+    if (!dragActive && wasDragActiveRef.current) {
+      const focusTarget = explicitRestoreFocusEl ?? focusAtDragStartRef.current;
+      focusTarget?.focus();
+      focusAtDragStartRef.current = null;
+    }
+
+    wasDragActiveRef.current = dragActive;
+  }, [dragActive, explicitRestoreFocusEl]);
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent): void {
+      if (event.key !== 'Escape') return;
+      if (!dragActive) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      cancelRef.current();
+    }
+
+    window.addEventListener('keydown', onKeyDown);
+
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [dragActive]);
+}
+
+exec
+/bin/bash -lc "sed -n '1,260p' packages/editor-shell/src/drag-drop/layout-reducer.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+/**
+ * @skb/editor-shell layoutReducer — single-source mutation reducer for grid layout actions.
+ *
+ * Per ADR-0017 D12 + ADR-0016 D12 Q12 absorbtion table (load-bearing epoch rules):
+ *  - drag-start: epoch unchanged; save S0 snapshot
+ *  - drag-over: epoch unchanged; preview not committed
+ *  - drag-end-success: epoch += 1 (one-shot N → N+1); new S1 baseline
+ *  - drag-end-cancel: epoch unchanged; rollback to S0
+ *  - drag-end-mode-none: epoch unchanged; rollback to S0 (degenerate cancel)
+ *
+ * Conflict arbitration: drag (user-initiated) > auto-measure (markdown rowSpan='auto'); responsive transition rejects drag (per ADR-0016 D5 + D12). Single-user single-session assumption (CRDT/OT Phase 2+).
+ */
+import type { BlockGridPosition } from '@skb/block-foundation';
+
+export interface GridSnapshot {
+  readonly blocks: readonly BlockGridPosition[];
+}
+
+export interface LayoutState {
+  readonly epoch: number;
+  readonly snapshot: GridSnapshot | null;
+  readonly baseline: GridSnapshot;
+  readonly responsiveTransition?: 'idle' | 'in-progress';
+}
+
+export type LayoutAction =
+  | { type: 'drag-start'; sourceBlockId: string }
+  | { type: 'drag-over' }
+  | { type: 'drag-end-success'; mutation: GridSnapshot }
+  | { type: 'drag-end-cancel' }
+  | { type: 'drag-end-mode-none' };
+
+function rollbackToSnapshot(state: LayoutState): LayoutState {
+  return {
+    ...state,
+    baseline: state.snapshot ?? state.baseline,
+    snapshot: null,
+  };
+}
+
+export function layoutReducer(state: LayoutState, action: LayoutAction): LayoutState {
+  switch (action.type) {
+    case 'drag-start':
+      if (state.responsiveTransition === 'in-progress') return state;
+
+      return {
+        ...state,
+        snapshot: state.baseline,
+      };
+    case 'drag-over':
+      return state;
+    case 'drag-end-success':
+      return {
+        ...state,
+        epoch: state.epoch + 1,
+        baseline: action.mutation,
+        snapshot: null,
+      };
+    case 'drag-end-cancel':
+      return rollbackToSnapshot(state);
+    case 'drag-end-mode-none':
+      return rollbackToSnapshot(state);
+    default: {
+      const _exhaustive: never = action;
+      return _exhaustive;
+    }
+  }
+}
+
+exec
+/bin/bash -lc "sed -n '1,260p' docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+# C.2-8 — drop-pulse 720ms + drag-ghost + 全局 Esc cancel + layoutEpoch reducer
+
+> **Wave 5 Stage C.2 9th implementation PR** of the locked 13-PR sequence
+> (C.2-1 → C.2-12; per Wave 5 plan v1.3 row C.2-8 line 689). Lands the
+> **4 NEW editor-shell drag-drop modules** that complete ADR-0017 D8
+> (全局 Esc cancel) + D10 (drag-ghost cursor 跟随 + per-kind 着色) + D11
+> (drop-pulse 720ms token-driven `--accent-success`) + D12 (layoutEpoch
+> single-source mutation per Q12 absorbtion table). C.2-1 through C.2-7
+> all merged on main; C.2-5 (drag/drop UX 3 modules — `edge-rects.ts`,
+> `tiebreak.ts`, `outline-overlay.tsx`; squash `2df71b6`) + C.2-6 (resize
+> UX 2 modules — `col-ruler.tsx`, `size-tooltip.tsx`; squash `2fb7900`)
+> shipped the lower-half drag-drop primitives. C.2-7 (squash `dd860b9`)
+> shipped ADR-0014 v0.5 amendment + the FIRST UI-touch PR through the
+> ADR-0011 D9 + ADR-0006 9th-item Product Experience Quality Gate end
+> to end. C.2-8 wires the **upper half of ADR-0017 D-list** — the
+> visual reflection layer (drag-ghost + drop-pulse) + the global
+> keyboard cancel handler + the canonical `layoutReducer` /
+> `layoutEpoch` mutation pipeline — completing the editor-shell
+> drag-drop public surface that downstream C.2-10 Playwright drag
+> scenarios + future C.4 editor-scaffold integration consume.
+>
+> **PRE-COMMIT CLAUDE REVIEW (D1 stage 4) FIRES** per `## D2 trigger
+> judgment` (Row 1 — `packages/editor-shell/CONTRACT.md` sister-doc-sync
+> per ADR-0016 §502 row 4 + Row 5 — cross-package boundary contract
+> change since the editor-shell barrel now exports 4 NEW module
+> surfaces consumed by future C.2-10 Playwright drag scenarios + future
+> apps/site editor scaffold integration; same escalation pattern as the
+> Pre-A3 ADR-0017 Q13 absorbtion + Pre-A2 ADR-0016 Q12 absorbtion
+> "Stage C.2 D2 row 1 escalation note" prediction).
+>
+> **First UI-touch PR landed after WSL2 chromium deps install** (memory
+> `feedback_wsl2_chromium_launch.md` SUPERSEDED 2026-05-06 per active.md
+> standards-landing follow-up #7); orchestrator self-serves Playwright
+> on this PR + every future UI-touch PR. New Playwright specs do NOT
+> include the `test.skip(WSL2 ...)` block (PR #79 housekeeping stripped
+> the skip from C.2-7 spec; new specs follow the no-skip pattern).
+
+## title
+
+Land the 4 NEW editor-shell drag-drop modules under
+`packages/editor-shell/src/drag-drop/` — `drop-pulse.ts` (per ADR-0017
+D11; 720ms `box-shadow` halo animation consuming the
+`var(--accent-success, oklch(70% 0.12 145 / 0.5))` token with hex
+fallback per ADR-0018), `drag-ghost.ts` (per ADR-0017 D10;
+`position: fixed` + `transform: translate + rotate(-1.5deg)` baseline
++ per-kind `.ghost-canvas` / `.ghost-runnable` / `.ghost-image` /
+`.ghost-markdown` className + cursor-velocity-driven ±5° rotation
+feedback at velocity ≥ 5px/frame), `esc-cancel.ts` (per ADR-0017 D8 +
+Q8 absorbtion priority table; global keydown subscriber that calls
+`preventDefault()` + `stopPropagation()` ONLY when `dragActive === true`
+and dispatches a `drag-cancel` source layoutAction; restores prior
+focus on drag-end; native Esc passthrough when no drag is active),
+and `layout-reducer.ts` (per ADR-0017 D12 + ADR-0016 D12; the single
+authoritative `layoutReducer(state, action)` pipeline implementing
+the Q12 absorbtion epoch table — drag-start / drag-over: epoch
+unchanged + S0 saved; drag-end-success: `epoch += 1` one-shot + new
+S1 baseline; drag-end-cancel + drag-end-mode-none: epoch unchanged +
+rollback to S0). Wire all 4 surfaces through the editor-shell barrel
+`packages/editor-shell/src/index.ts`. Sync the sister-doc
+`packages/editor-shell/CONTRACT.md` `### Drag/Drop layer` subsection
+(line 182+ from C.2-5 squash `2df71b6`) with module-by-module Public
+Surface description + ADR-0017 D8 / D10 / D11 / D12 + ADR-0016 D12
+cross-references. Land canonical Playwright spec at
+`apps/site/src/__tests__/e2e/c2-8-drag-modules-mount.spec.ts`
+covering "editor scaffold mounts at /notes/sample-blocks/edit after
+drag-modules added; Esc with no drag-active does NOT crash editor +
+does not break Tiptap selection (D8 native pass-through priority)"
+per ADR-0011 D9 Product Experience Quality Gate + the canonical
+orchestrator-authored `e2e_smoke` block in this PR.md (this row was
+NOT in the v1.3 retrofit catalog because that catalog only annotated
+C.2-7 + 5 C.3 + 5 C.4 rows; per ADR-0011 D9.2 the orchestrator
+authors the `e2e_smoke` block fresh for newly-detected ui_touch PRs
+outside the catalog).
+
+Specifically:
+
+1. **NEW `packages/editor-shell/src/drag-drop/drop-pulse.ts`** (~80 LOC).
+   Exports `dropPulseClassName: string` + `DropPulse` React component
+   (function-component returning a div overlay positioned over
+   the dropped block via `position: absolute` + `inset: 0`). The
+   720ms halo animation is emitted via inline style
+   `box-shadow: 0 0 0 4px var(--accent-success, oklch(70% 0.12 145 / 0.5))`
+   + a paired CSS keyframe `@keyframes skb-drop-pulse-fadeout {
+   from { box-shadow: 0 0 0 4px ...; opacity: 1 } to { box-shadow:
+   0 0 0 4px transparent; opacity: 0 } }` with `animation:
+   skb-drop-pulse-fadeout 720ms ease-out forwards`. Component prop
+   `onAnimationEnd?: () => void` for consumer hooks (parent unmount
+   the overlay after the animation ends; the component does NOT
+   self-unmount). File-head JSDoc cites ADR-0017 D11 verbatim duration
+   `720ms` + ADR-0018 `--accent-success` token authority + the
+   D11 explicit non-trigger rule (drop-pulse NOT fired on drag-cancel
+   per D11 trailing prose line 351 + per Q11 absorbtion). The fallback
+   hex `oklch(70% 0.12 145 / 0.5)` is the Stage C.3 bridge value cited
+   in the file-head JSDoc with a forward-pointer to the
+   `--accent-success` token landing PR (Stage C.3-1 candidate).
+
+2. **NEW `packages/editor-shell/src/drag-drop/drag-ghost.ts`**
+   (~120 LOC). Exports `DragGhost` React component + `DragGhostProps`
+   interface + `GhostKind = 'canvas' | 'runnable' | 'image' | 'markdown'`
+   union (per ADR-0017 D10 four-kind classification, NOT BlockKind
+   per memory `feedback_pr_reviewer_authority_at_head` — the ghost-
+   coloring channel is a UX classification by gridKind label per
+   Q10 absorbtion, NOT a forced BlockUIDefinition path). Component
+   props: `cursorX: number`, `cursorY: number`, `kind: GhostKind`,
+   `mode: 'create' | 'move'` (palette-drag-out emits `'create'` glyph
+   `+ ◇`; existing-block-drag emits `'move'` glyph `⤴ ◇` per D10
+   prose), `velocity?: { dx: number; dy: number }` (per ADR-0017 D10
+   trailing prose: `velocity ≥ 5px/frame` triggers `±5°` rotation
+   feedback; magnitude computed as `Math.hypot(dx, dy)`). Render
+   path: `<div class="drag-ghost ghost-{kind}" style={{ position:
+   'fixed', left: `${cursorX}px`, top: `${cursorY}px`, transform:
+   `translate(0, 0) rotate(${baseRotationDeg}deg)`, pointerEvents:
+   'none' }}>{label}</div>`. The base rotation is `-1.5deg` (static
+   baseline per D10); when `Math.hypot(velocity?.dx ?? 0, velocity?.dy ??
+   0) >= 5`, rotation = `Math.sign(velocity.dx) * 5` (positive dx →
+   `+5deg`; negative → `-5deg`; zero or no velocity → `-1.5deg`
+   baseline). The 4 kind classNames `.ghost-canvas` / `.ghost-runnable`
+   / `.ghost-image` / `.ghost-markdown` are the Public Surface
+   contract (CSS rules for these classes are NOT shipped in this PR;
+   they land in Stage C.3 visual identity per ADR-0018 token map; the
+   classNames are stable now so consumers don't churn). File-head
+   JSDoc cites ADR-0017 D10 verbatim baseline rotation `-1.5deg` +
+   velocity threshold `5px/frame` + per-kind className roster + ADR-0017
+   Q10 absorbtion (gridKind label authority, NOT BlockUIDefinition
+   path).
+
+3. **NEW `packages/editor-shell/src/drag-drop/esc-cancel.ts`**
+   (~80 LOC). Exports `useEscCancel` React hook + `EscCancelOptions`
+   interface. Hook signature: `useEscCancel(options: { dragActive:
+   boolean; onCancel: () => void; restoreFocusEl?: HTMLElement | null }):
+   void`. Implementation: subscribes to `window.addEventListener('keydown',
+   handler)` on mount; cleans up on unmount. Inside the handler, if
+   `event.key !== 'Escape'` return early (let everything else
+   passthrough). If `dragActive === false`, return early too (Esc
+   walks native passthrough per ADR-0017 D8 priority 3 line 304:
+   textarea blur / Tiptap deselect / etc.). If `dragActive === true`,
+   the handler calls `event.preventDefault()` + `event.stopPropagation()`
+   first (per D8 priority 1 line 302 — Esc must NOT trigger textarea
+   blur / Tiptap selection-clear / native browser ESC behavior during
+   drag), then invokes `options.onCancel()` (the consumer wires this
+   to `dispatch({ type: 'drag-end-cancel' })` against the
+   `layoutReducer`). The hook also exposes `restoreFocusEl` semantics:
+   when `dragActive` flips from `true` to `false` (Esc cancel OR
+   normal drag-end), the hook calls `restoreFocusEl?.focus()`
+   matching D8 priority 2 line 303 (restore focus on drag-end; if
+   the drag-start active element was a textarea/Tiptap surface, the
+   consumer captures it as `restoreFocusEl` and the hook re-focuses
+   on drag-end). The hook does NOT own snapshot S0 / rollback / epoch
+   logic — those live in `layout-reducer.ts`; the hook is a pure
+   keyboard listener + focus-restore helper that delegates state
+   mutation to the reducer via the `onCancel` callback. File-head
+   JSDoc cites ADR-0017 D8 verbatim 3-priority table + Q8 absorbtion
+   trailing prose line 298+ (Esc focus textarea conflict priority).
+
+4. **NEW `packages/editor-shell/src/drag-drop/layout-reducer.ts`**
+   (~120 LOC). Exports `layoutReducer(state, action): LayoutState` +
+   `LayoutState` interface + `LayoutAction` discriminated union. The
+   `LayoutState` shape: `{ epoch: number; snapshot: GridSnapshot |
+   null; baseline: GridSnapshot }` where `GridSnapshot = { blocks:
+   readonly BlockGridPosition[] }` (consumes `BlockGridPosition` from
+   `@skb/block-foundation` per ADR-0016 D2 + the W5-2 invariant prose
+   from `packages/editor-shell/CONTRACT.md` C.2-4 squash). The
+   `LayoutAction` discriminated union (5 variants per ADR-0017 D12
+   Q12 absorbtion table line 359-365):
+
+   - `{ type: 'drag-start'; sourceBlockId: string }` → save
+     `snapshot: state.baseline` (S0 captured as the lifted-state
+     reference); epoch unchanged
+   - `{ type: 'drag-over' }` → no-op state change (preview lives in
+     overlay layer per ADR-0017 D4; reducer not consulted); returns
+     `state` reference-equal (allows React `useReducer` to skip
+     re-render)
+   - `{ type: 'drag-end-success'; mutation: GridSnapshot }` → `epoch:
+     state.epoch + 1`; `baseline: action.mutation` (new S1 committed);
+     `snapshot: null` (clear S0 since success path commits)
+   - `{ type: 'drag-end-cancel' }` → epoch unchanged; `baseline:
+     state.snapshot ?? state.baseline` (rollback to S0 if it exists,
+     else baseline unchanged); `snapshot: null`
+   - `{ type: 'drag-end-mode-none' }` → SAME behavior as
+     `drag-end-cancel` (per D12 table line 365: "degenerate cancel");
+     deliberately a separate variant for telemetry + future
+     differentiation, but the reducer body returns the same state
+     transformation
+
+   The reducer body is a `switch (action.type)` over the 5 variants
+   with an exhaustiveness check `const _exhaustive: never = action;`
+   in the default branch (TypeScript enforces all 5 are handled).
+   Single-user single-session assumption per ADR-0016 D12 line 434
+   ("Wave 5 假设 single-user single-session") — the reducer is NOT a
+   distributed CRDT/OT; epoch is a monotonic counter, not a vector
+   clock. Conflict arbitration cited at file-head JSDoc per ADR-0016
+   D12 conflict table (drag wins over auto-measure; responsive wins
+   over auto-measure; mdx-load wins as initial; undo-redo same-source
+   epoch wins). Responsive transition + drag conflict explicit: the
+   reducer accepts `drag-start` only when `state.responsiveTransition
+   !== 'in-progress'` (state field added if needed; for v0.5 a runtime
+   guard via `if (state.responsiveTransition === 'in-progress')
+   return state;` early-return suffices); rejected drags are silent
+   no-op at this stage per ADR-0016 D5 转场态 FSM. File-head JSDoc
+   cites ADR-0017 D12 verbatim Q12 absorbtion table + ADR-0016 D12
+   layoutEpoch authority + the single-user single-session assumption.
+
+5. **MODIFIED `packages/editor-shell/src/index.ts`** (barrel re-exports;
+   ~10 LOC delta on top of current 22 LOC; final ~32 LOC, well under
+   the 500 LOC hard fail and the 300 LOC ESLint warn). Add 4 new
+   re-export blocks immediately after the existing C.2-5 drag-drop
+   block (line 14-19) and C.2-6 resize block (line 20-22):
+
+   - `export { DropPulse, dropPulseClassName } from './drag-drop/drop-pulse';`
+   - `export { DragGhost } from './drag-drop/drag-ghost';`
+   - `export type { DragGhostProps, GhostKind } from './drag-drop/drag-ghost';`
+   - `export { useEscCancel } from './drag-drop/esc-cancel';`
+   - `export type { EscCancelOptions } from './drag-drop/esc-cancel';`
+   - `export { layoutReducer } from './drag-drop/layout-reducer';`
+   - `export type { LayoutState, LayoutAction, GridSnapshot } from './drag-drop/layout-reducer';`
+
+   Existing 11 export lines from C.2-1 through C.2-6 era are preserved
+   verbatim (no regression on `EDGE_W` / `GAP` / `computeEdgeRects` /
+   `tiebreak` / `findMatches` / `OutlineOverlay` / `ColRuler` /
+   `SizeTooltip` / `colSpanToFraction` + the prior EditorShell /
+   GridContainer / proseExtensions / save-adapter / saveLoad /
+   registerBlocks / registerKernels / useAutoRowSpan surfaces; AC#9
+   guards). Mechanical guard via grep for the 4 new module names in
+   the barrel (AC#10).
+
+6. **NEW vitest test files (4 files; total ~280 LOC)**:
+
+   - `packages/editor-shell/src/__tests__/drag-drop/drop-pulse.test.tsx`
+     (~70 LOC; 4 cases per `## test_cases` Suite 1)
+   - `packages/editor-shell/src/__tests__/drag-drop/drag-ghost.test.tsx`
+     (~80 LOC; 5 cases per Suite 2)
+   - `packages/editor-shell/src/__tests__/drag-drop/esc-cancel.test.tsx`
+     (~70 LOC; 4 cases per Suite 3)
+   - `packages/editor-shell/src/__tests__/drag-drop/layout-reducer.test.ts`
+     (~90 LOC; 6 cases per Suite 4)
+
+   The `__tests__/drag-drop/` directory was created at C.2-5 squash
+   `2df71b6` (alongside the 3 source modules); C.2-8 adds 4 sibling
+   test files. Existing edge-rects + tiebreak + outline-overlay tests
+   are NOT modified.
+
+7. **MODIFIED `packages/editor-shell/CONTRACT.md`** (~25-35 LOC delta
+   on top of current 360 LOC; final ~385-395 LOC). Surgical extension
+   of the `### Drag/Drop layer` subsection (line 182+ from C.2-5
+   squash `2df71b6`). Two parts:
+
+   - **Header rename** from `### Drag/Drop layer (C.2-5)` to
+     `### Drag/Drop layer (C.2-5 + C.2-8)` to reflect the multi-PR
+     contributor pattern; mirrors the existing `### Resize layer
+     (C.2-6)` style and forward-compatible with later C.2-10/C.2-11
+     Playwright additions.
+   - **NEW C.2-8 module roster**: 4 module bullets appended after the
+     existing C.2-5 3-module block (line 187-200). Each bullet
+     describes Public Surface signature in prose form (parameters +
+     return type) + cross-references the ADR-0017 D-item authority +
+     forwards to the consumer wiring expected at C.2-10 / C.4. Verbatim
+     bullet shapes per Public Surface contract:
+
+     - `drop-pulse.ts` exports `DropPulse` and `dropPulseClassName`.
+       It implements the C.2-8 subset of ADR-0017 D11: 720ms halo
+
+exec
+/bin/bash -lc "sed -n '1,240p' docs/decisions/ADR-0006-asymmetry-audit-checklist.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+# ADR-0006: Cross-location asymmetry-audit checklist (process rule)
+
+| 字段 | 值                                    |
+| ---- | ------------------------------------- |
+| 状态 | accepted                              |
+| 日期 | 2026-04-30                            |
+| 作者 | orchestrator (Claude Opus 4.7 1M ctx) |
+| 触发 | Wave 1 codex 5.5 reviews caught 12 instances of the same meta-class across 6 tracks + 5 close-ceremony fix iterations (8 distinct items + 4 close-ceremony reinforcements of items #6 and #8) |
+| 替代 | 不替代任何 ADR；扩展 [ADR-0001](ADR-0001-stack-selection.md) §3.2 review chain |
+
+## Context
+
+Wave 1 implementation produced strong empirical evidence that **a single bug class** dominates the failure mode at line-level review:
+
+> **Cross-location asymmetry**: a value, schema, algorithm, or invariant exists in two or more places, and an edit to one location is not symmetrically applied to all peers, so behavior diverges silently.
+
+Across 6 tracks + 5 close-ceremony fix iterations, codex 5.5 (`pr-gate`) caught **12 instances** of this meta-class (8 distinct failure-mode items + 4 close-ceremony reinforcements of items #6 and #8). Every PR that lasted ≥ 2 review rounds hit at least one instance. The pattern is so consistent that linear "fix the cited blocker, ship v_n+1" iteration would not have caught the second-order asymmetry; codex specifically catches the symmetric counterpart that the worker missed.
+
+### Wave 1 empirical record (12 instances)
+
+| # | Track | Round | Asymmetry pair | Bug behavior |
+|---|---|---|---|---|
+| 1 | Track B (block-foundation + content-types) | R1 → fixed v3 | `listUIs` mutability vs `listCores` defensive copy | Caller mutation of return value polluted registry singleton |
+| 2 | Track D (apps/api) | R2 → fixed v4 | RFC 7235 `WWW-Authenticate` on framework-raised 401 vs custom `SkbError` 401 | 4 of 5 401 paths emitted spec-mandated header; the custom-error path silently dropped it |
+| 3 | Track F (editor-commands) | R3 → fixed v4 | `.strict()` on top-level Zod object vs nested `frontmatterSchema` | Top-level rejected unknown keys; nested still silently stripped them |
+| 4 | Track C (mdx-bridge) | R2 → fixed v4 | `marksEqual` link comparator: `href` only vs `href + title` | Same href, different titles silently merged into one link with the first title preserved |
+| 5 | Track F v5 | R3 → fixed v6 | One CONTRACT.md updated to reflect code; sister CONTRACT.md (`agent-tools`) had stale wording | Documentation-vs-code drift in the file the worker did not edit |
+| 6 | Track A | R1 → fixed v2 | FOUC inline IIFE saved-value algorithm + content schema | Truthy-coerce diverges from strict-whitelist for invalid / case-mismatched values; inline `z.object` redefinition diverges from `frontmatterSchema` authority |
+| 7 | Track A v2 | R2 → fixed v3 | FOUC inline IIFE try/catch scope | Wide try/catch in IIFE swallowed `matchMedia` exceptions while authority's narrow try/catch propagated; storage-throws scenarios produced light→dark hydration flash |
+| 8 | Wave 1 close bundle v1 | R1 → fixed v2 | ADR-0006 mandated reviewer-prompt updates vs actual `agent-contract.md` / generated `.claude/agents/*.md` / `docs/review-checklist.md` / `team-operations.md` content | The close-ceremony commit codified a process rule that mandates downstream behavior; consumer-side artifacts (reviewer prompts + runbook) had not been updated to embed the rule, so Wave 2 reviewers would not have seen it |
+| 9 | Wave 1 close bundle v2 | R2 → fixed v3 | ADR-0006:81 within-document drift "7 distinct instances" | Single bullet missed during the v1→v2 count sweep — sister-bullet variant of item #6 within a single document |
+| 10 | Wave 1 close bundle v3 | R3 → fixed v4 | ADR-0006:117 within-document drift "7 empirical instances + 18+ erratum candidates" (both numbers stale) | Second sister-bullet drift in the same file, a different bullet — proved per-citation fixes are themselves item #6 traps; comprehensive sweep at fix time is the robust pattern |
+| 11 | Wave 1 close bundle v4 (informational) | R4 (informational) → fixed v5 | structure baseline:66 "× 7 endpoints" while apps/api has 4 routes / 11 tests | Pre-existing content-accuracy drift in the structure baseline document (authored at v1) — content number mismatched real code; surfaced during the broader 11th-class hunt |
+| 12 | Wave 1 close bundle v5 | R2 (pr-gate) → fixed v6 | Regenerated `.claude/agents/code-reviewer.md` + `.claude/agents/pr-gate.md` + `docs/review-checklist.md` were not staged in the bundle commit — authority + generator code updated, but generator outputs remained at pre-update HEAD content | Sub-form of item #8: regenerating an artifact and `git add`'ing it are separate steps; a bundle that updates authority + generator without staging the regenerated outputs is silently stale. Motivated the "verify by clean second-run" step now part of item #8. |
+
+Codex's structured review consistently caught these with three patterns:
+
+1. After fixing one location, **codex audits all peer locations** (not just the cited site)
+2. After a value/schema acquires an attribute, **codex audits every comparator/serialization function** for that attribute
+3. After a "happy path" fix, **codex audits the exception path** for the same equivalence
+
+These three habits collectively define the process rule below.
+
+## Decision
+
+Adopt an **9-point asymmetry-audit checklist** (8 from v0.1 + 1 new at v0.2 amendment 2026-05-XX) as a mandatory part of `codex-pr-reviewer-55` (Wave 3+ default reviewer per ADR-0011 D6) review prompts. Reviewers MUST work through every applicable item before declaring PASS. (Pre-Wave-3 `code-reviewer` / `pr-gate` profile prompts are deprecated per ADR-0011 D6.)
+
+### The 9 items
+
+1. **Field/attribute audit**: After adding a field to a data shape (Zod schema, Pydantic model, TS interface, mdast attrs, etc.), audit every comparator / equality / serialization / canonicalization function that handles this shape. (Wave 1 evidence: instance #4 — `marksEqual` link branch missed `title` when serialize emitted it.)
+
+2. **Status code audit**: After adding a status code to one HTTP handler (or, generally, an exit/error code to one branch), audit every other handler emitting the same code. RFC-mandated headers (RFC 7235 `WWW-Authenticate` on 401, RFC 7231 `Allow` on 405) attach to **the status code itself**, not the framework code path that emitted it. (Wave 1 evidence: instance #2 — custom `SkbError` 401 path missed `WWW-Authenticate`.)
+
+3. **Strictness audit**: After adding `.strict()` (Zod) / `extra='forbid'` (Pydantic) at one level of an object schema, audit every nested object/sub-schema. The strictness setting **does not propagate**; nested objects must opt in independently. (Wave 1 evidence: instance #3 — top-level `.strict()` shipped while nested `frontmatterSchema` still silently stripped unknown keys.)
+
+4. **Consumer schema audit**: After defining a schema in a single-authority package (e.g. `@skb/content-types/frontmatterSchema`), audit every consumer for inline duplicates or inline redefinitions that should `import` instead. The "deferred swap" pattern — "I'll inline now and import later" — is a contract break that compounds over time. (Wave 1 evidence: instance #6 part 2 — apps/site/content.config.ts inlined `z.object(...)` rather than importing `frontmatterSchema`.)
+
+5. **Algorithm + runtime constant replication audit**: When an algorithm or runtime constant is replicated outside its authority (e.g. inline FOUC scripts, login challenge derivation, pre-hydration boot logic that cannot import from packages), audit every consumer-side replica for byte-equivalent reproduction. The replica must register a **regression test** that asserts equivalence against the authority across a representative input corpus. (Wave 1 evidence: instance #6 part 1 — FOUC IIFE truthy-coerce vs `getInitialTheme()` strict-whitelist; remediated with `apps/site/src/__tests__/fouc-script.test.ts` 16-row corpus.)
+
+6. **Sister-file documentation audit**: After updating one CONTRACT.md (or any document that describes a code surface), audit ALL related CONTRACT.md files in the package family for sister-file drift. Two CONTRACT.md files that describe two halves of the same contract must use **identical terminology** for the shared identifiers (function names, schema names, refine predicate names). (Wave 1 evidence: instance #5 — `editor-commands/CONTRACT.md` updated to cite `editBlockInputSchema` while `agent-tools/CONTRACT.md` still referred to the old shape.)
+
+7. **Exception-scope equivalence audit**: When replicating an algorithm + its exception handling across files, audit BOTH the happy-path semantics AND the `try/catch` scope between authority and replica. Narrow vs wide `try/catch` can produce divergent fall-through behavior even with identical happy-path logic. Specifically: when `localStorage` / `sessionStorage` / `IndexedDB` / `matchMedia` / any browser API in the algorithm path can throw, the `try/catch` MUST wrap ONLY the throwing call, with the fall-through branch (matchMedia / system default / DOM apply) running AFTER the catch handler — not inside it. (Wave 1 evidence: instance #7 — FOUC IIFE wide-scope try/catch swallowed matchMedia exceptions; remediated with narrow try/catch + 2 storage-throws regression tests.)
+
+8. **Authority-document → generated/consumed surface audit**: When updating an authority document (ADR, spec, `agent-contract.md`, runbook, CONVENTIONS) **OR a dependency authority (`package.json`)** that mandates behavior in downstream consumers, audit every consumer-side replica/generated artifact for synchronized update **AND staged-in-the-git-index in the same bundle**. Specifically: an ADR section that says "X file MUST be updated to do Y" requires the same commit to update X and provide a way to verify the synchronization. Generated artifacts (e.g. `docs/review-checklist.md` and `.claude/agents/*.md` derived from `agent-contract.md`; **`pnpm-lock.yaml` derived from `package.json`** — see sub-form C below) MUST be regenerated via the documented codegen step (`pnpm generate:configs` / `pnpm install`) AND **explicitly `git add`'d** so the git **index** (not just the working tree) contains the new content; runbooks (`docs/runbooks/team-operations.md`) MUST be cross-linked; Codex/Claude subagent prompt files MUST embed or reference the new rule.
+
+   **Operational sequence** (do not skip steps):
+   ```bash
+   # 1. Edit authority + generator code
+   # 2. Run codegen
+   pnpm generate:configs
+   # 3. Stage regenerated outputs (CRITICAL — see Pitfall below)
+   git add <regenerated/path/foo.md> <regenerated/path/bar.md>
+   # 4. Verify index reflects content (NOT just working tree):
+   git diff --cached --stat -- <regenerated paths>
+   #    → expects non-empty diff with the expected line counts
+   # 5. Verify idempotence: re-run codegen + confirm working tree matches index:
+   pnpm generate:configs
+   git status --short -- <regenerated paths>
+   #    → expects column-1 'M' (staged) + column-2 blank (working tree clean)
+   ```
+
+   **Pitfall (this is the load-bearing step)**: `git status --short` shows two columns: column 1 is index-vs-HEAD; column 2 is working-tree-vs-index. After running the generator without `git add`, you see `' M'` (space + M) — **working tree differs from index, but index still matches HEAD**. `git commit` only commits the index. Skipping `git add` means the regenerated content is in your working tree but NOT in the next commit. The bundle would land authority + generator-code changes WITHOUT the regenerated outputs, leaving consumers (Wave 2 reviewers reading `.claude/agents/*.md`) at pre-update content. Use `git diff --cached` (not `git status`) as the canonical staging-verification command — `--cached` shows index-vs-HEAD only, which is what `git commit` will produce.
+
+   **Pitfall extension — `pnpm-lock.yaml` is a generated artifact too (sub-form C below)**: when the authority is `package.json` (any dependency add / remove / version bump / `@types/*` shift), `pnpm install` regenerates `pnpm-lock.yaml` as a deterministic derived artifact. Skipping `git add pnpm-lock.yaml` produces the same class of failure as skipping `git add .claude/agents/*.md`: working tree has the synced lockfile but the **index** still holds HEAD's stale lockfile, so the bundle ships `package.json` ahead of its lockfile. CI runs `pnpm install --frozen-lockfile` from the bundled state, sees the stale lockfile disagreeing with the new `package.json`, and fails install. The same `git diff --cached --stat -- pnpm-lock.yaml` canonical verification applies. (Wave 1 erratum commit `e15ec36`; codified as sub-form C below.)
+
+   Generated-from-authority files carry their own header comment ("GENERATED FROM agent-contract.md — DO NOT EDIT BY HAND") OR YAML frontmatter declaring authority source — both forms are acceptable. `pnpm-lock.yaml` lacks an explicit header (the format is fixed by pnpm) but is implicitly declared by `pnpm install`'s contract — its authority is `package.json` + the workspace `pnpm-workspace.yaml`.
+
+   **Wave 1 evidence**: **instance #8** — ADR-0006 v1 commit codified reviewer-prompt mandates but did not update `agent-contract.md` / regenerate `.claude/agents/code-reviewer.md` / regenerate `.claude/agents/pr-gate.md` / cross-link `team-operations.md` / regenerate `docs/review-checklist.md`; pr-gate caught the dogfood failure during R1 review of the close-ceremony bundle, forcing a v2 fix. **instance #12 (sub-form A — pre-regeneration omission)** — v5 bundle updated authority files (`agent-contract.md`, generator code, `team-operations.md` cross-link) but had not run the generator at all post-edit; the 3 regenerated outputs were stale at HEAD content; pr-gate caught this during R2 review, forcing a v6 fix. **instance #12 (sub-form B — staging-vs-working-tree confusion)** — v6 bundle ran the generator (so working tree had new content) but did NOT `git add` the regenerated outputs; the git **index** still held HEAD blob hashes for the 3 generated files; orchestrator confused `git status --short` "M" prefix (working-tree-vs-index) with index-vs-HEAD; pr-gate caught this via `git ls-files --stage` blob-hash comparison during R3 review, forcing the v7 fix that explicitly stages with `git add` + verifies via `git diff --cached`. **instance #12 (sub-form C — lockfile is a generated-from-authority artifact)** — Wave 1 close ceremony commit `e15ec36` ("fix(deps): commit pnpm-lock.yaml for @tailwindcss/typography (lockfile drift)"): the design-tokens erratum (commit `fdc86a8`) added the `@tailwindcss/typography` dependency to `package.json` but did not stage the regenerated `pnpm-lock.yaml`; CI install used the pre-update lockfile, drifted against the new `package.json`, and failed `pnpm install --frozen-lockfile`. Resolution: commit `e15ec36` staged the lockfile separately. Lesson codified: when the authority is `package.json` (any dependency add / remove / version bump), `pnpm-lock.yaml` is the consumer-side generated artifact and must ride the same bundle — the class equivalence to `.claude/agents/*.md` regeneration is exact (deterministic derive + git-index staging required). The four sub-forms of the same item #8 class — pre-regeneration omission, post-regeneration commit-staging confusion, conceptually-correct-but-operationally-incomplete fix, AND lockfile-as-generated-artifact — together motivate the explicit operational sequence and `git diff --cached` canonical verification command codified above.
+
+9. **UI-touch + E2E spec audit (v0.2 amendment 2026-05-XX, ADR-0011 D9)**: When PR diff touches user-facing UI surfaces (per ADR-0011 D9.1 path patterns: `apps/site/src/{pages,components,styles}/**`, `packages/*/src/ui-default/**`, `packages/heavy-block-boundary/src/**`, `packages/editor-shell/src/**`, `packages/design-tokens/**`), reviewer MUST verify: (a) PR.md `ui_touch: true` + `e2e_smoke` field non-empty, (b) each `e2e_smoke` entry has corresponding Playwright spec file existing + test name resolvable, (c) `pnpm --filter @skb/site test:visual` PASSES locally during review, (d) referenced `screenshot_archive` path exists with file size ≥ 5KB. (Wave 5 evidence: C.4-prelude PR #72 — vitest unit + jsdom all PASS + pr-writer ACCEPT 23/23 PASS, but editor page had no toolbar/slash/palette/save-indicator/Edit-Mode visual; user smoke test discovered "看不到任何一点进步"; root cause = no E2E spec validating user-visible affordances; codified ADR-0011 D9 + this 9th asymmetry class.)
+
+   The asymmetry: **"vitest unit PASS" vs "production user-visible behavior PASS"** is the load-bearing pair. Wave 5 R22 forward-fix two-class classification (impl-defect vs PR.md drift) was insufficient; D9.7 evidence demonstrates a third class — **product-experience-defect** — that vitest cannot catch. CI gate `scripts/check-e2e-coverage.ts` mechanically enforces (a)+(b); reviewer manual verifies (c)+(d).
+
+### Wave 2 prep notes (forward-compatibility application)
+
+The 8 items have specific Wave 2 trip-hazards already identified by Wave 1's review record:
+
+- **Item #1 + Wave 2 attr-bearing marks**: when the first attr-bearing mark beyond `link` is added to mdx-bridge (e.g. `highlight: {color}`, `kbd: {style}`), the worker MUST simultaneously update `wrapMark` AND `marksEqual` AND add a fixture exercising attr-equality + attr-distinction. Default `return true` in `marksEqual` is a silent-drop trap for any attr-bearing mark. (See pr-gate Track C v4 R3 caveat.)
+
+- **Item #2 + Wave 2 new error categories**: when Wave 2+ adds new HTTP error categories (e.g. `auth-rate-limit`, `kernel-timeout`), each new `SkbError` subclass MUST emit the same RFC-mandated headers as framework-raised peers. Add a unit test asserting header presence per error type. (See `apps/api/CONVENTIONS.md` §5 Pitfall + Pitfall continued.)
+
+- **Item #5 + Wave 2 client-side replications**: when apps/site adds new client-side algorithm replications (theme variants beyond light/dark, locale negotiation pre-hydration, etc.), the worker MUST audit both saved-value semantics AND try/catch scope against authority. (See `packages/design-tokens/CONTRACT.md` Inverse-direction obligation invariant.)
+
+- **Item #7 + future inline scripts**: ANY future `<script is:inline>` block in the project that needs pre-hydration replication of a package algorithm MUST follow the FOUC template (narrow try/catch + corpus regression test).
+
+## Consequences
+
+### Positive
+
+- **Catch the failure mode proactively**: Wave 1 evidence shows reviewer-applied checklist would have caught all 12 instances on the first review round (including the close-ceremony dogfood instance #8 + the 4 fix-loop reinforcements), eliminating 12 round-trip cycles
+- **Reviewer prompt clarity**: code-reviewer + pr-gate codex profile prompts gain a concrete, enumerable checklist rather than the implicit "look for symmetric counterparts" expectation
+- **Worker self-audit**: workers gain a pre-PR checklist they can run before reporting `ready-for-review`, catching their own asymmetries (memory: `feedback_verification_fresh_state.md` showed the verification-rigor lesson; this checklist is the analogous rigor at code-design level)
+- **Empirical grounding**: 12 distinct instances spread across 6 tracks + 5 close-ceremony fix iterations make this rule data-driven, not a "best practice" speculation; instances #9-12 reinforce items #6 + #8 specifically through close-ceremony fix-loop evidence
+
+### Costs
+
+- **Review-round time**: applying 8-point audit at every review adds ~5-10 minutes per round of code-reviewer + pr-gate runtime. Acceptable trade-off given Wave 1 round-counts (Track F: 5 rounds; Track A: 3 rounds; Track C: 4 rounds; Track D: 4 rounds) — front-loading review thoroughness reduces total cycles
+- **Worker prompt overhead**: each spawn prompt now needs a reference to this ADR + the 8-point checklist. Marginal cost.
+- **False-positive risk**: items that don't apply (e.g. #2 "status code" doesn't apply to TS-only packages) need to be triaged and skipped. Reviewer profile prompts must explicitly say "skip items not applicable to this PR's scope" to avoid bloat.
+
+### Risks (mitigated)
+
+- **Risk**: workers might mechanically check items without thinking, producing false confidence. **Mitigation**: each item enumerates concrete failure modes from Wave 1, not abstract heuristics — easier to apply
+- **Risk**: this list might grow unbounded as Wave 2+ surfaces new asymmetry classes. **Mitigation**: ADR amendments are cheap; each new instance produces an ADR-0006 erratum capturing item #N+1. Wave 2 close ceremony reviews instances and adds items as needed.
+
+## Implementation
+
+### Reviewer prompt updates
+
+`codex-pr-reviewer-55` (Wave 3+ default reviewer per ADR-0011 D6) profile prompt MUST be updated to:
+
+1. State the 9-point checklist verbatim (or by reference to this ADR)
+2. Require the reviewer's verdict structure to include "asymmetry-audit applied: items {1..9} verdicts: ..."
+3. Explicitly mark FAIL if any applicable item is left un-audited
+4. For item #9 (v0.2): if PR.md `ui_touch: true`, MUST run `pnpm --filter @skb/site test:visual` and verify PASS before declaring overall PASS verdict
+
+`docs/runbooks/team-operations.md` §"角色与触发器" Tier 2 reviewer rows should cross-link to this ADR.
+
+### Worker pre-flight (template addition)
+
+Worker `ready-for-review` reports SHOULD include a brief asymmetry-audit summary: which of the 8 items applied, and the worker's self-audit verdict. Reviewers cross-check.
+
+### Wave 1 retroactive
+
+This ADR is **forward-applicable**. Wave 1 PRs that already shipped under earlier review without this checklist remain valid; the empirical instances they revealed are exactly what grounded this ADR. No retroactive re-review required.
+
+## Amendments
+
+### v0.2 (2026-05-XX; Wave 5 C.4-prelude product-experience-defect 失职)
+
+新增第 9 项 **UI-touch + E2E spec audit**（与 ADR-0011 D9 配套）。codify 第三类 forward-fix：**product-experience-defect**（之外原 R22 两类：impl-defect + PR.md drift）。CI gate `scripts/check-e2e-coverage.ts` + `scripts/check-screenshot-archive.ts` 机械 enforce。
+
+强制起点：本 amend PR 合 main 起，所有后续 UI-touch PR（per ADR-0011 D9.1 path patterns）适用。Wave 5 v1.3+ 全套 UI-touch PR 必跑。
+
+非破坏性 / 向后兼容：items 1-8 不变；新加 item 9 仅 enforce 在 UI-touch PR；非 UI-touch PR 自动 skip item 9（CI gate via `ui_touch: false`）。
+
+实证依据：详见 ADR-0011 D9.7。Wave 5 PR #72 vitest unit / jsdom / pr-writer ACCEPT 全 PASS 但 user 烟测无 toolbar/slash/palette/save-indicator/Edit-Mode 任一 affordance = "看不到任何一点进步"。事后 codify。
+
+## Related
+
+- [ADR-0001](ADR-0001-stack-selection.md) §3.2 review chain — this ADR specifies what reviewers MUST do; ADR-0001 specifies who reviews
+- [ADR-0002](ADR-0002-wave-1-close.md) Wave 1 close — collects the 12 empirical instances + 22 erratum candidates
+- [ADR-0004](ADR-0004-agent-team-dispatch-model.md) team dispatch — orchestrator dispatches review chain per this checklist
+- [docs/runbooks/team-operations.md](../runbooks/team-operations.md) — operational reference for reviewers and workers
+- [packages/design-tokens/CONTRACT.md](../../packages/design-tokens/CONTRACT.md) Inverse-direction obligation — concrete application of items #5 + #7
+- [apps/api/CONVENTIONS.md](../../apps/api/CONVENTIONS.md) §5 Pitfalls — concrete application of item #2
+
+exec
+/bin/bash -lc "sed -n '130,310p' packages/editor-shell/CONTRACT.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+
+The `.skb-grid` selector authority is `apps/site/src/styles/grid.css` (C.2-3
+PR squash `2586328`). The editor-shell consumer at the mount site MUST import
+that stylesheet, mirroring the SSR phase emission per ADR-0016 D9 phase
+strategy.
+
+`useAutoRowSpan` public surface:
+
+```ts
+export function useAutoRowSpan(
+  contentRef: RefObject<HTMLElement | null>,
+  rowHeightPx = 48,           // matches --row-h
+  gapPx = 14,                  // matches --gap
+): number;
+```
+
+The hook returns an integer rowSpan greater than or equal to 1. It implements
+ADR-0016 D3's rendering-derived markdown rowSpan behavior: rowSpan is computed
+from `scrollHeight` and is not itself a persistent document write. Its 3-stage
+抖动收敛 behavior is:
+
+1. Stage 1: first ResizeObserver event establishes the initial rowSpan.
+2. Stage 2: later font, image, and code-fence height changes inside one rAF
+   window coalesce into a single render commit.
+3. Stage 3: subsequent ResizeObserver events update only when the integer
+   rowSpan delta is at least 1; delta 0 is ignored as pixel noise.
+
+Forward-pointers:
+
+- ADR-0016 D3 owns the auto-rowSpan hook spec and ResizeObserver constraints.
+- ADR-0016 D11 owns the Tiptap inside / grid outside layering.
+- ADR-0016 D12 owns the layout reducer schema and conflict arbitration; code
+  implementation shipped at C.2-8 in `src/drag-drop/layout-reducer.ts` (epoch += 1
+  only on drag-end-success; cancel + mode-none rollback to S0 snapshot).
+- ADR-0016 section 502 row 4 of 4 names this CONTRACT.md as the editor-shell
+  sister-doc sync site.
+
+Cross-package consumer note: `BlockGridPosition` from `@skb/block-foundation`
+(W5-1 invariant authority; Pre-A2 ADR-0016 D2 lock + C.2-2 type
+materialisation) is the type contract editor-shell reads from Tiptap NodeView
+attrs. Per ADR-0016 D11 those attrs are passive data; active mutation flows
+through the future W5-2 reducer.
+
+Q2 v1.1 absorbtion downstream-must-reference lock: editor-shell grid container
+reads NodeView attrs assuming explicit `col` / `colSpan` / `rowSpan` per
+Wave 5 plan v1.1 row C.2-3.5 hard-throw flip end-state (mdx-bridge defensive
+defaults removed); `_gridAttrsExplicit` marker (C.2-1 to C.2-3 transitional)
+SHALL NOT be referenced from editor-shell source. The ADR-0016 D2 defaults
+(`col=1`, `colSpan=12`, `rowSpan=1`) MAY be honored at editor-shell as
+React-side defensive-rendering defaults, an orthogonal concern from mdx-bridge
+defensive defaults with the same numeric values but a distinct enforcement
+layer.
+
+### Drag/Drop layer (C.2-5 + C.2-8)
+
+C.2-5 and C.2-8 add the editor-side drag/drop UX primitives under
+`packages/editor-shell/src/drag-drop/`:
+
+- `edge-rects.ts` exports `EDGE_W`, `GAP`, `EdgeRect`, `BlockLayout`, and
+  `computeEdgeRects(blocks)`. It pre-computes the 4 half-in / half-out edge
+  rectangles per snapshot block per ADR-0017 D2 and D5 option 1.
+- `tiebreak.ts` exports `EdgeMatch`, `DragVelocity`, `tiebreak(matches,
+  velocity)`, and `findMatches(cursorX, cursorY, edgeRects, blockRects)`.
+  It implements ADR-0017 D3's signed-distance formula, primary
+  `Math.abs(distance)` ordering, velocity-direction tiebreak at
+  epsilon 0.5px/frame, spatial fallback, and `blockId.localeCompare` stable
+  terminator.
+- `outline-overlay.tsx` exports `OutlineOverlay` and `OutlineOverlayProps`.
+  It implements the C.2-5 subset of ADR-0017 D4 scheme A: static base plus
+  one active dashed accent for the affected edge. The `host` and
+  `shifted-block` outline classes remain later integration scope.
+- `drop-pulse.ts` exports `DropPulse`, `DropPulseProps`, and
+  `dropPulseClassName`. It implements ADR-0017 D11: a 720ms success halo
+  using `box-shadow: 0 0 0 4px var(--accent-success, oklch(70% 0.12 145 / 0.5))`.
+  Consumers mount it only for `drag-end-success`; cancel, mode-none, and
+  outside-grid drops do not trigger the pulse. The fallback is the ADR-0018
+  Stage C.3 bridge until `--accent-success` lands in design tokens.
+- `drag-ghost.ts` exports `DragGhost`, `DragGhostProps`, and
+  `GhostKind = 'canvas' | 'runnable' | 'image' | 'markdown'`. It implements
+  ADR-0017 D10 with `position: fixed`, cursor `translate(...)`, a
+  `-1.5deg` baseline rotation, velocity-driven `+/-5deg` rotation at
+  5px/frame, and the public `.ghost-canvas` / `.ghost-runnable` /
+  `.ghost-image` / `.ghost-markdown` class roster. The glyph is plain text
+  `◇`; SVG or icon-font styling is Stage C.3 scope.
+- `esc-cancel.ts` exports `useEscCancel` and `EscCancelOptions`. It implements
+  ADR-0017 D8 + Q8: the hook owns the global `keydown` subscription, calls
+  `preventDefault()` and `stopPropagation()` only when `dragActive === true`,
+  dispatches `drag-end-cancel` through the consumer callback, lets native Esc
+  behavior pass through when inactive, and restores the drag-start focus target
+  on drag-end.
+- `layout-reducer.ts` exports `layoutReducer`, `LayoutAction`, `LayoutState`,
+  and `GridSnapshot`. It implements ADR-0017 D12 plus ADR-0016 D12/Q12:
+  `drag-start` saves S0 without changing epoch, `drag-over` is reference-equal
+  no-op preview, `drag-end-success` commits S1 with `epoch + 1`, and
+  `drag-end-cancel` / `drag-end-mode-none` roll back to S0 without changing
+  epoch. `responsiveTransition: 'in-progress'` rejects `drag-start` inside
+  the pure reducer.
+
+Drag/drop edge-width is coupled to grid `--gap` via `EDGE_W = 2 * GAP`.
+`EDGE_W = 28` and `GAP = 14` ensure the 14px gap between adjacent blocks is
+fully covered by both neighbours' edge rects, eliminating the dead zone where
+a cursor in the gap would miss every edge. Cross-package consumer parity:
+`apps/site/src/styles/grid.css` owns `.skb-grid { --gap: 14px }` from C.2-3;
+that value MUST stay byte-equal to the `GAP = 14` export from
+`edge-rects.ts`. Drift is an algorithm replication failure mode, not a visual
+token preference.
+
+The drag/drop layer consumes the W5-1 `BlockGridPosition` shape authority from
+`@skb/block-foundation` conceptually: block bounding boxes are derived from
+grid `{ col, row?, colSpan, rowSpan }` dimensions per ADR-0016 D11's Tiptap
+inside / grid outside layering. The modules do not mutate NodeView attrs; they
+emit geometric data and visual feedback for the layoutReducer (shipped at C.2-8)
+which arbitrates drag-end-success vs drag-end-cancel mutations.
+
+Wave 5 plan v1.1 row C.2-3.5 is the active downstream constraint: drag/drop
+modules MUST NOT reference `_gridAttrsExplicit`, the mdx-bridge transitional
+marker removed at the hard-throw flip end-state (`b019a31`). ADR-0016 D2
+numeric defaults may still be used as React-side defensive rendering defaults
+at a future `BlockLayout` input boundary; that is orthogonal to mdx-bridge
+hard-throw enforcement.
+
+`layoutReducer` + `layoutEpoch` shipped at C.2-8 per Wave 5 plan v1.3 row
+C.2-8. C.2-4 establishes the W5-2 invariant prose, thin grid container, and
+auto-row-span hook; C.2-8 realizes the ADR-0017 D8/D10/D11/D12 public surfaces
+and the ADR-0016 D12 single-user, single-session mutation pipeline.
+
+### Resize layer (C.2-6)
+
+C.2-6 adds the editor-side resize visual primitives under
+`packages/editor-shell/src/resize/`:
+
+- `col-ruler.tsx` exports `ColRuler` and `ColRulerProps`. It renders the
+  active column snap stops during resize and returns `null` when
+  `totalCols === 1` per ADR-0017 D9's mobile 1-col view-only branch.
+- `size-tooltip.tsx` exports `SizeTooltip`, `SizeTooltipProps`, and
+  `colSpanToFraction(colSpan, totalCols)`. It renders the fixed cursor tooltip
+  at `cursorX + 12` / `cursorY - 8` and uses ADR-0017 D9's canonical fraction
+  tokens such as `1/2`, `2/3`, and `full`.
+
+`ColRuler` consumes snap sets produced by `effectiveColSnaps(viewportCols)` from
+`@skb/block-foundation` (ADR-0016 D6 Q4 authority). That helper is intentionally
+not re-exported from the editor-shell barrel; consumers import it from
+`@skb/block-foundation` directly while importing `ColRuler`, `SizeTooltip`, and
+`colSpanToFraction` from editor-shell.
+
+The stop highlight literal `oklch(58% 0.16 35 / 0.4)` remains in the C.2-6
+source per ADR-0017 D9, with migration to design tokens deferred to ADR-0018
+and Stage C.3. Resize-handle DOM emission, pointer event wiring, and snap commit
+remain deferred to C.2-9/C.2-10 (full integration); the `.skb-grid--mobile`
+state machine remains in C.2-9 scope per Wave 5 plan v1.3. C.2-8 shipped the
+layoutReducer + drag-ghost + drop-pulse + useEscCancel modules consumed by
+future C.2-9/C.2-10 wiring.
+
+Cross-package consumer parity: the `gap` default in `ColRuler` comes from
+`@skb/block-foundation` `DEFAULT_GRID_GEOMETRY.gap` and MUST stay byte-equal to
+`apps/site/src/styles/grid.css` `.skb-grid { --gap: 14px }` plus
+`@skb/editor-shell` `drag-drop/edge-rects.ts` `GAP = 14`. Drift here is an
+algorithmic-constant replication failure, not a visual-token preference.
+
+Wave 5 plan v1.1 row C.2-3.5 remains the active downstream constraint for the
+resize layer: modules MUST NOT reference `_gridAttrsExplicit`, the mdx-bridge
+transitional marker removed at the hard-throw flip end-state (`b019a31`).
+
+## Wave 3 Stage A expansion outline
+
+A2-A5 each Modify this CONTRACT.md as new exports land:
+
+- **A2** — `EditorShell` React component delivered in this PR (Tiptap
+  `useEditor` + StarterKit prose extensions only; 4-prop API surface above).
+  Adds `@tiptap/{core,react,starter-kit}`, `react`, `react-dom` peer/runtime
+  deps + happy-dom + @testing-library/react devDeps.
+- **A3** — `registerBlocks(registry)` helper delivered in this PR. Wires the
+  8 block-* core + ui-default definitions into a `BlockRegistry` instance.
+  Added 8 `@skb/block-*` + `@skb/block-foundation` workspace deps + 9
+  composite-project tsconfig references. Also re-exports `proseExtensions`
+  from block-foundation as a barrel convenience. `proseExtensions` is NOT
+  exposed as an `EditorShell` prop in A3 (the speculative A2-outline form);
+  consumers compose it directly into their `useEditor` extensions array.
+- **A4** — `registerKernels(registry, adapter?)` helper delivered in this
+  PR. Wires `PyodideAdapter` (default) into `kernel-registry`. Added
+  `@skb/kernel-registry` + `@skb/kernel-pyodide` + `@skb/kernel-adapter`
+
+exec
+/bin/bash -lc 'rg -n "AC#|acceptance|Acceptance|ADR-0006|D12|D8|D10|D11|D5" docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md packages/editor-shell/CONTRACT.md docs/decisions/ADR-0006-asymmetry-audit-checklist.md' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+docs/decisions/ADR-0006-asymmetry-audit-checklist.md:1:# ADR-0006: Cross-location asymmetry-audit checklist (process rule)
+docs/decisions/ADR-0006-asymmetry-audit-checklist.md:30:| 8 | Wave 1 close bundle v1 | R1 → fixed v2 | ADR-0006 mandated reviewer-prompt updates vs actual `agent-contract.md` / generated `.claude/agents/*.md` / `docs/review-checklist.md` / `team-operations.md` content | The close-ceremony commit codified a process rule that mandates downstream behavior; consumer-side artifacts (reviewer prompts + runbook) had not been updated to embed the rule, so Wave 2 reviewers would not have seen it |
+docs/decisions/ADR-0006-asymmetry-audit-checklist.md:31:| 9 | Wave 1 close bundle v2 | R2 → fixed v3 | ADR-0006:81 within-document drift "7 distinct instances" | Single bullet missed during the v1→v2 count sweep — sister-bullet variant of item #6 within a single document |
+docs/decisions/ADR-0006-asymmetry-audit-checklist.md:32:| 10 | Wave 1 close bundle v3 | R3 → fixed v4 | ADR-0006:117 within-document drift "7 empirical instances + 18+ erratum candidates" (both numbers stale) | Second sister-bullet drift in the same file, a different bullet — proved per-citation fixes are themselves item #6 traps; comprehensive sweep at fix time is the robust pattern |
+docs/decisions/ADR-0006-asymmetry-audit-checklist.md:88:   **Wave 1 evidence**: **instance #8** — ADR-0006 v1 commit codified reviewer-prompt mandates but did not update `agent-contract.md` / regenerate `.claude/agents/code-reviewer.md` / regenerate `.claude/agents/pr-gate.md` / cross-link `team-operations.md` / regenerate `docs/review-checklist.md`; pr-gate caught the dogfood failure during R1 review of the close-ceremony bundle, forcing a v2 fix. **instance #12 (sub-form A — pre-regeneration omission)** — v5 bundle updated authority files (`agent-contract.md`, generator code, `team-operations.md` cross-link) but had not run the generator at all post-edit; the 3 regenerated outputs were stale at HEAD content; pr-gate caught this during R2 review, forcing a v6 fix. **instance #12 (sub-form B — staging-vs-working-tree confusion)** — v6 bundle ran the generator (so working tree had new content) but did NOT `git add` the regenerated outputs; the git **index** still held HEAD blob hashes for the 3 generated files; orchestrator confused `git status --short` "M" prefix (working-tree-vs-index) with index-vs-HEAD; pr-gate caught this via `git ls-files --stage` blob-hash comparison during R3 review, forcing the v7 fix that explicitly stages with `git add` + verifies via `git diff --cached`. **instance #12 (sub-form C — lockfile is a generated-from-authority artifact)** — Wave 1 close ceremony commit `e15ec36` ("fix(deps): commit pnpm-lock.yaml for @tailwindcss/typography (lockfile drift)"): the design-tokens erratum (commit `fdc86a8`) added the `@tailwindcss/typography` dependency to `package.json` but did not stage the regenerated `pnpm-lock.yaml`; CI install used the pre-update lockfile, drifted against the new `package.json`, and failed `pnpm install --frozen-lockfile`. Resolution: commit `e15ec36` staged the lockfile separately. Lesson codified: when the authority is `package.json` (any dependency add / remove / version bump), `pnpm-lock.yaml` is the consumer-side generated artifact and must ride the same bundle — the class equivalence to `.claude/agents/*.md` regeneration is exact (deterministic derive + git-index staging required). The four sub-forms of the same item #8 class — pre-regeneration omission, post-regeneration commit-staging confusion, conceptually-correct-but-operationally-incomplete fix, AND lockfile-as-generated-artifact — together motivate the explicit operational sequence and `git diff --cached` canonical verification command codified above.
+docs/decisions/ADR-0006-asymmetry-audit-checklist.md:124:- **Risk**: this list might grow unbounded as Wave 2+ surfaces new asymmetry classes. **Mitigation**: ADR amendments are cheap; each new instance produces an ADR-0006 erratum capturing item #N+1. Wave 2 close ceremony reviews instances and adds items as needed.
+packages/editor-shell/CONTRACT.md:62:ADR-0018 D8 lines 339-451 are the canonical interface authority for the
+packages/editor-shell/CONTRACT.md:64:[ADR-0018 D8](../../docs/decisions/ADR-0018-v2-visual-migration.md).
+packages/editor-shell/CONTRACT.md:79:- localStorage key prefix: `skb-note:{slug}` per ADR-0018 D8 lines 454-455.
+packages/editor-shell/CONTRACT.md:101:ADR-0016 D12 + 权威矩阵 section. CRDT/OT 协同编辑 OUT OF SCOPE (Phase 2+);
+packages/editor-shell/CONTRACT.md:160:- ADR-0016 D11 owns the Tiptap inside / grid outside layering.
+packages/editor-shell/CONTRACT.md:161:- ADR-0016 D12 owns the layout reducer schema and conflict arbitration; code
+packages/editor-shell/CONTRACT.md:170:attrs. Per ADR-0016 D11 those attrs are passive data; active mutation flows
+packages/editor-shell/CONTRACT.md:190:  rectangles per snapshot block per ADR-0017 D2 and D5 option 1.
+packages/editor-shell/CONTRACT.md:202:  `dropPulseClassName`. It implements ADR-0017 D11: a 720ms success halo
+packages/editor-shell/CONTRACT.md:209:  ADR-0017 D10 with `position: fixed`, cursor `translate(...)`, a
+packages/editor-shell/CONTRACT.md:215:  ADR-0017 D8 + Q8: the hook owns the global `keydown` subscription, calls
+packages/editor-shell/CONTRACT.md:221:  and `GridSnapshot`. It implements ADR-0017 D12 plus ADR-0016 D12/Q12:
+packages/editor-shell/CONTRACT.md:239:grid `{ col, row?, colSpan, rowSpan }` dimensions per ADR-0016 D11's Tiptap
+packages/editor-shell/CONTRACT.md:253:auto-row-span hook; C.2-8 realizes the ADR-0017 D8/D10/D11/D12 public surfaces
+packages/editor-shell/CONTRACT.md:254:and the ADR-0016 D12 single-user, single-session mutation pipeline.
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:5:> **4 NEW editor-shell drag-drop modules** that complete ADR-0017 D8
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:6:> (全局 Esc cancel) + D10 (drag-ghost cursor 跟随 + per-kind 着色) + D11
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:7:> (drop-pulse 720ms token-driven `--accent-success`) + D12 (layoutEpoch
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:14:> ADR-0011 D9 + ADR-0006 9th-item Product Experience Quality Gate end
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:42:D11; 720ms `box-shadow` halo animation consuming the
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:44:fallback per ADR-0018), `drag-ghost.ts` (per ADR-0017 D10;
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:48:feedback at velocity ≥ 5px/frame), `esc-cancel.ts` (per ADR-0017 D8 +
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:53:and `layout-reducer.ts` (per ADR-0017 D12 + ADR-0016 D12; the single
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:62:Surface description + ADR-0017 D8 / D10 / D11 / D12 + ADR-0016 D12
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:67:does not break Tiptap selection (D8 native pass-through priority)"
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:89:   self-unmount). File-head JSDoc cites ADR-0017 D11 verbatim duration
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:91:   D11 explicit non-trigger rule (drop-pulse NOT fired on drag-cancel
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:92:   per D11 trailing prose line 351 + per Q11 absorbtion). The fallback
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:100:   union (per ADR-0017 D10 four-kind classification, NOT BlockKind
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:106:   `+ ◇`; existing-block-drag emits `'move'` glyph `⤴ ◇` per D10
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:107:   prose), `velocity?: { dx: number; dy: number }` (per ADR-0017 D10
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:114:   baseline per D10); when `Math.hypot(velocity?.dx ?? 0, velocity?.dy ??
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:122:   JSDoc cites ADR-0017 D10 verbatim baseline rotation `-1.5deg` +
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:135:   walks native passthrough per ADR-0017 D8 priority 3 line 304:
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:138:   first (per D8 priority 1 line 302 — Esc must NOT trigger textarea
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:145:   matching D8 priority 2 line 303 (restore focus on drag-end; if
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:152:   JSDoc cites ADR-0017 D8 verbatim 3-priority table + Q8 absorbtion
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:163:   `LayoutAction` discriminated union (5 variants per ADR-0017 D12
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:180:     `drag-end-cancel` (per D12 table line 365: "degenerate cancel");
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:188:   Single-user single-session assumption per ADR-0016 D12 line 434
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:192:   D12 conflict table (drag wins over auto-measure; responsive wins
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:199:   no-op at this stage per ADR-0016 D5 转场态 FSM. File-head JSDoc
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:200:   cites ADR-0017 D12 verbatim Q12 absorbtion table + ADR-0016 D12
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:222:   registerBlocks / registerKernels / useAutoRowSpan surfaces; AC#9
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:224:   the barrel (AC#10).
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:260:       It implements the C.2-8 subset of ADR-0017 D11: 720ms halo
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:268:       union. It implements ADR-0017 D10: `position: fixed` plus
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:271:       D10 trailing prose triggers `±5deg` rotation feedback; the 4
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:275:       It implements ADR-0017 D8 plus Q8 absorbtion priority table.
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:285:       `LayoutAction`, and `GridSnapshot`. It implements ADR-0017 D12
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:286:       plus ADR-0016 D12: 5-variant discriminated-union action
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:294:       per ADR-0016 D12.
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:300:     689" + add ADR-0017 D8 / D10 / D11 / D12 + ADR-0016 D12 Q12
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:338:        is still visible). This validates the D8 priority 3 native
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:352:9. **PR.md self-listed** per ADR-0006 D8 strict-whitelist.
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:381:PR.md self-listed per ADR-0006 D8 strict-whitelist.
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:386:strictly to these — per ADR-0006 D8 explicit-file-list discipline +
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:396:   per ADR-0017 D11 720ms halo + `--accent-success` token consumption)
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:398:   per ADR-0017 D10 `position: fixed` + per-kind className + velocity-
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:401:   per ADR-0017 D8 + Q8 absorbtion 3-priority table)
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:403:   ~120 LOC; per ADR-0017 D12 + ADR-0016 D12 Q12 absorbtion epoch table)
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:465:2. **TC1.2 — animation duration is `720ms` per ADR-0017 D11**. Input:
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:470:   D11 line 345). Location:
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:478:   145 / 0.5)` per ADR-0017 D11 line 345 + ADR-0018 v0.5 fallback
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:482:4. **TC1.4 — drag-cancel does NOT trigger pulse (D11 explicit non-
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:488:   per D11 line 351 explicit non-trigger rule). The component itself
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:500:   `translate` and `rotate(-1.5deg)` (baseline per D10 line 336);
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:508:   className (D10 line 337 verbatim). Location:
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:515:   (positive dx → +5; per D10 line 340). Negative-dx counterpart:
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:524:   D10 line 340 explicit "velocity = 0 时 ghost 角度 = -1.5deg"
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:532:   destroyed on drag-end per D10 line 340 trailing prose; the consumer
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:544:   D8 priority 1 line 302); the spy `onCancel` was invoked exactly
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:549:   passthrough per D8 priority 3 line 304)**. Input: render the same
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:559:   `document.activeElement === restoreFocusEl` (per D8 priority 2
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:613:   per ADR-0016 D5/D12)**. Input: state with `responsiveTransition:
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:617:   true`); the drag-start is silently rejected per ADR-0016 D5 转场态
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:618:   FSM + D12 conflict arbitration ("responsive transition 期间 drag
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:633:     does NOT remove the editor mount root (D8 priority 3 native
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:642:cases**. All MUST PASS at AC#9 (`pnpm --filter @skb/editor-shell test`
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:643:exit 0) + AC#13 (Playwright spec PASS locally on WSL2 post deps
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:655:  D8 / D10 / D11 / D12 + ADR-0016 D12 Q12 absorbtion table forward-
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:694:D8/D10/D11/D12 + ADR-0016 D12 are already at lock since Pre-A2 + Pre-A3
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:704:- **ADR-0017 drag-drop UX**: D8 (全局 Esc cancel + Q8 absorbtion
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:705:  priority table line 298+), D10 (drag-ghost cursor 跟随 + per-kind
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:706:  着色 line 333+), D11 (drop-pulse 720ms token-driven `--accent-
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:707:  success` line 342+), D12 (layoutEpoch single-source mutation +
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:712:- **ADR-0016 grid 数据模型**: D12 (Layout mutation 单一源
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:717:  this PR is the canonical realization of ADR-0016 D12 + ADR-0017 D12.
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:731:  D9.5 (screenshot archive flow) + D10 (anti-prompt-patching) —
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:734:- **ADR-0006** D8 (explicit-file-list staging) + 8-point checklist +
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:739:  the canonical scope source per ADR-0011 D10 anti-prompt-patching
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:749:## acceptance
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:751:15 verifiable acceptance criteria. Each is a single shell command
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:755:### AC#1 — 4 NEW source modules exist at the canonical paths
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:768:### AC#2 — barrel re-exports include the 4 new module surfaces
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:782:### AC#3 — vitest 19 NEW cases PASS + existing editor-shell suites unchanged
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:802:### AC#4 — `layoutReducer` epoch rules byte-equal to ADR-0017 D12 Q12 absorbtion table
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:816:single +1 mutation site lock the reducer to the ADR-0017 D12 spec.
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:820:### AC#5 — `drop-pulse.ts` consumes `var(--accent-success, ...)` token with hex fallback
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:828:from ADR-0017 D11 line 345 + the ADR-0018 v0.5 fallback hex bridge.
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:833:### AC#6 — `drag-ghost.ts` per-kind className matches the 4 ADR-0017 D10 kinds
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:843:declared at ADR-0017 D10 line 337 verbatim. CSS rules for these
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:847:### AC#7 — `esc-cancel.ts` calls preventDefault + stopPropagation only when `dragActive === true`
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:856:ADR-0017 D8 priority 1 (Esc with `dragActive === true` calls
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:861:### AC#8 — `CONTRACT.md` sister-doc-sync subsection updated with 4 new module entries + ADR-0017 D8/D10/D11/D12 cross-references
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:869:grep -nE 'ADR-0017 D8|ADR-0017 D10|ADR-0017 D11|ADR-0017 D12' packages/editor-shell/CONTRACT.md | wc -l
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:877:### AC#9 — `pnpm exec tsx scripts/check-ui-touch.ts --files` (file list args) returns `ui_touch: true`
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:893:### AC#10 — `index.ts` preserves existing 11 exports (no regression)
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:908:C.2-5 AC#8 + C.2-6 AC#10 regression-guard pattern.
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:910:### AC#11 — Playwright spec exists at canonical path + has the canonical test name
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:923:### AC#12 — `pnpm check` clean (lint + typecheck + test + build + size)
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:948:### AC#13 — Playwright spec PASSES locally on WSL2 (orchestrator self-serves post deps install)
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:964:### AC#14 — screenshot archive at canonical path ≥ 5 KB
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:978:### AC#15 — `scripts/check-e2e-coverage.ts` resolves the canonical e2e_smoke flow
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:997:post-commit working tree. The 6 mechanical greps (AC#1, #2, #4-7,
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:998:#10) + 1 file-existence check (AC#11 ls part) are 1-line bash; the
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:999:2 pnpm-driven gates (AC#3 + AC#12) run the full vitest + lint +
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:1000:typecheck + build + size pipeline; AC#13 is the Playwright run on
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:1001:WSL2; AC#14 + AC#15 are the screenshot archive + e2e-coverage
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:1002:gate verification. AC#9 invokes the dedicated `check-ui-touch.ts`
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:1007:PR.md provides the explicit-file-list staging command per ADR-0006
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:1008:D8 + memory `feedback_git_operator_explicit_stage` 4-step protocol
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:1019:--files <list>` (AC#9) AGREES with this catalog annotation. C.2-8
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:1040:- flow: editor scaffold mounts at /notes/sample-blocks/edit after drag-modules added; Esc with no drag-active does NOT crash editor + does not break Tiptap selection (D8 native pass-through priority)
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:1048:plan v1.3 row C.2-8 (line 689) + ADR-0017 D8 + D10 + D11 + D12 (with
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:1049:Q8 + Q11 + Q12 absorbtion verdicts at lock-time) + ADR-0016 D12
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:1051:token D-list entry (Pre-A4 lock) + ADR-0006 8-class audit checklist
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:1071:   ADR-0016 D5 转场态 FSM) is owned by the consumer hook (future
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:1079:   ADR-0016 D5 implementation lands at C.2-9 with that pattern.
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:1081:2. **Should the `DragGhost` glyph + label rendering (D10 line 338
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:1086:   `⤴ Canvas`) to match the D10 contract. The glyph CSS styling
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:1091:   appearance) per D10 line 338 prose. **NOT BLOCKING**.
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:1099:   This matches D8 line 296 ("editor-shell 全局 keydown listener"
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:1119:   + 2nd file-size guard, doubling the AC#14 surface for marginal
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:1139:  shape per ADR-0017 D11 line 346 ("fallback `oklch(70% 0.12 145 /
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:1142:  D11 line 349 "Stage C.3 实施 OKLCH 切完全 token化后 fallback 可
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:1149:Standard 14-point pre-flight per Wave 5 plan v1.3 §232 D12 (R14
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:1161:| 6 | TDD-front discipline | ✅ | `## test_cases` Suite 1-4 enumerate 19 vitest cases authored RED before source; AC#3 mechanical guard verifies test files exist; codex executor follows red-green sequence per ADR-0011 D1 stage 2 |
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:1171:R14 mechanical hard-fail layer (per v1.1 amendment AC#13 + AC#14):
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:1173:- **AC#13 (diff-only-N-docs check) NOT APPLICABLE**: this is an
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:1176:- **AC#14 (no implementation-string leak in non-PR.md files) NOT
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:1194:| 4 | NEW ADR or substantive ADR amendment | ❌ — | ADR-0017 D8/D10/D11/D12 + ADR-0016 D12 + ADR-0018 `--accent-success` token D-list entry already at lock since Pre-A2 + Pre-A3 + Pre-A4; C.2-8 is a consumer-side wire-up (no ADR delta) |
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:1197:| 7 | Performance budget / SLO change | ❌ — | No perf budget delta (ADR-0017 AC#6 hit-test budget already at lock; C.2-8 modules don't touch hit-test path) |
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:1206:verify ADR-0006 8-point checklist class 5 algorithm replication
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:1214:1. ADR-0017 D8 / D10 / D11 / D12 prose vs `drop-pulse.ts` /
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:1218:2. ADR-0016 D12 layoutEpoch authority vs `layout-reducer.ts`
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:1223:4. ADR-0006 8-point asymmetry audit + 9th item (UI-touch + E2E
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:1232:| 1 | C.2-10 Playwright drag PR depends on these modules being correctly exported via barrel; barrel-export mistake silently breaks downstream consumer | medium | high | AC#2 (barrel re-export grep) + AC#10 (existing 11 exports preserved); reviewer ADR-0006 class 6 sister-doc-sync check at stage 3; codex spark reviewer R1 also exercises `pnpm --filter @skb/editor-shell test` which would surface a barrel typo as a test-file import failure |
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:1233:| 2 | layoutReducer epoch rules drift from ADR-0017 D12 / ADR-0016 D12 Q12 absorbtion epoch table — silent reducer behavior bug surfacing only after C.2-10 integration | medium | high | AC#4 (5-variant case keyword grep + `epoch + 1` expression grep) + Suite 4 vitest TC4.1-4.6 (6 cases enforcing the Q12 absorbtion table line-by-line) + reviewer ADR-0006 class 5 algorithm replication guard |
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:1234:| 3 | drag-ghost rotation magic number ±5° drift (D10 line 340 explicit threshold) | low | medium | AC#6 (per-kind className roster grep) + Suite 2 vitest TC2.3 (velocity ≥ 5 → ±5° rotation) + TC2.4 (zero baseline -1.5deg); single-source from ADR-0017 D10 prose; file-head JSDoc cites D10 verbatim |
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:1235:| 4 | drop-pulse fallback hex `oklch(70% 0.12 145 / 0.5)` drift from ADR-0017 D11 + ADR-0018 v0.5 bridge | low | medium | AC#5 (verbatim regex match against `var(--accent-success, oklch(70% 0.12 145 / 0.5))`); single-source from ADR-0017 D11 line 345 prose; file-head JSDoc cites D11 verbatim + ADR-0018 v0.5 bridge note |
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:1248:   drag/drop sequence + 4-mode visual verification per ADR-0017 AC#1).
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:1262:   ADR-0016 D12 line 434 (single-user single-session assumption);
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:1270:   active` flag wiring** — referenced at ADR-0017 D8 line 306 ("所有
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:1289:executor` (per ADR-0007 D5 + ADR-0011 D6 — Wave 3 default executor;
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:1327:   ADR-0006 reviewer surface) is a PR.md `## files` whitelist
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:1332:reviewer-55 ...` per ADR-0011 D1 stage 3 + ADR-0006 8-point + 9th
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:1341:Per ADR-0006 D8 explicit-file-list staging discipline + memory
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:1382:per ADR-0017 D8/D10/D11/D12 + ADR-0016 D12. Sister-doc-sync editor-shell
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:1386:per ADR-0017 D8 priority 3 (no drag-active = no preventDefault). 19 vitest
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:1419:- [ADR-0017 drag-drop UX](../../decisions/ADR-0017-drag-drop-ux.md) — D8 (Esc cancel + Q8 absorbtion line 298+) + D10 (drag-ghost line 333+) + D11 (drop-pulse line 342+) + D12 (layoutEpoch + Q12 absorbtion line 353+); CONSUMED, NOT amended
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:1420:- [ADR-0016 grid 数据模型](../../decisions/ADR-0016-grid-data-model.md) — D12 layoutEpoch authority line 401+ + 权威矩阵 line 436+ + §502 sister-doc-sync row 4 (editor-shell CONTRACT.md sync requirement); CONSUMED, NOT amended
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:1422:- [ADR-0011 linear pipeline](../../decisions/ADR-0011-linear-pipeline-execution-model.md) — D1 stage 1-6 + D2 row 1 + row 5 fire + D9 Product Experience Quality Gate + D9.1 path patterns + D9.2 catalog-gap orchestrator authoring + D9.5 screenshot archive flow + D10 anti-prompt-patching
+docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md:1423:- [ADR-0006 asymmetry audit checklist](../../decisions/ADR-0006-asymmetry-audit-checklist.md) — 8-point (class 5 algorithm replication + class 6 sister-doc-sync + class 7 cross-package consumer parity) + 9th item (UI-touch + E2E spec) + D8 explicit-file-list staging
+
+codex
+The file-head JSDoc blocks now cover the requested ADR references and load-bearing constants. One minor wording mismatch remains: both PR text and the drop-pulse JSDoc call the OKLCH fallback “hex,” even though the value is OKLCH; I’ll keep checking whether that is already acknowledged as known prose drift before deciding if it affects verdict.
+  ✓ Gather review context and changed-file surface
+  ✓ Verify CONTRACT.md stale C.2-8 prose is gone
+  ✓ Verify four file-head JSDoc blocks cite ADRs and constants
+  → Run PR.md AC#1-AC#15 acceptance checks
+  • Re-apply ADR-0006 9-point checklist
+  • Run @skb/editor-shell vitest sanity
+  • Prepare read-only verdict
+exec
+/bin/bash -lc "sed -n '749,990p' docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+## acceptance
+
+15 verifiable acceptance criteria. Each is a single shell command
+producing an objectively checkable result. ACCEPT-stage pr-writer
+(D1 stage 6) re-runs all 15 against the post-commit working tree.
+
+### AC#1 — 4 NEW source modules exist at the canonical paths
+
+```bash
+ls packages/editor-shell/src/drag-drop/drop-pulse.ts \
+   packages/editor-shell/src/drag-drop/drag-ghost.ts \
+   packages/editor-shell/src/drag-drop/esc-cancel.ts \
+   packages/editor-shell/src/drag-drop/layout-reducer.ts | wc -l
+```
+
+Expected: `4`. Verifies all 4 source modules exist on disk at the
+canonical paths declared in the Wave 5 plan v1.3 row C.2-8 whitelist
+(line 689 verbatim).
+
+### AC#2 — barrel re-exports include the 4 new module surfaces
+
+```bash
+grep -nE "from ['\"]\\./drag-drop/drop-pulse" packages/editor-shell/src/index.ts | wc -l
+grep -nE "from ['\"]\\./drag-drop/drag-ghost" packages/editor-shell/src/index.ts | wc -l
+grep -nE "from ['\"]\\./drag-drop/esc-cancel" packages/editor-shell/src/index.ts | wc -l
+grep -nE "from ['\"]\\./drag-drop/layout-reducer" packages/editor-shell/src/index.ts | wc -l
+```
+
+Expected: each `≥ 1`. Verifies the 4 module-level re-export
+statements were added to the barrel. The grep on the relative path
+form (`'./drag-drop/'` plus the module name) is robust to whether the executor
+chose `export { ... } from '...'` or `export * from '...'` shape.
+
+### AC#3 — vitest 19 NEW cases PASS + existing editor-shell suites unchanged
+
+```bash
+pnpm --filter @skb/editor-shell test
+```
+
+Expected: exit 0; the post-run summary reports `Tests <N> passed
+(<N>)` where N includes the 19 NEW cases (4 drop-pulse + 5 drag-ghost
++ 4 esc-cancel + 6 layout-reducer) on top of the existing C.2-1
+through C.2-6 vitest count. Mechanical guard for the 4 new test files:
+
+```bash
+ls packages/editor-shell/src/__tests__/drag-drop/drop-pulse.test.tsx \
+   packages/editor-shell/src/__tests__/drag-drop/drag-ghost.test.tsx \
+   packages/editor-shell/src/__tests__/drag-drop/esc-cancel.test.tsx \
+   packages/editor-shell/src/__tests__/drag-drop/layout-reducer.test.ts | wc -l
+```
+
+Expected: `4`. Verifies all 4 NEW test files exist.
+
+### AC#4 — `layoutReducer` epoch rules byte-equal to ADR-0017 D12 Q12 absorbtion table
+
+```bash
+grep -nE "case 'drag-start':" packages/editor-shell/src/drag-drop/layout-reducer.ts | wc -l
+grep -nE "case 'drag-over':" packages/editor-shell/src/drag-drop/layout-reducer.ts | wc -l
+grep -nE "case 'drag-end-success':" packages/editor-shell/src/drag-drop/layout-reducer.ts | wc -l
+grep -nE "case 'drag-end-cancel':" packages/editor-shell/src/drag-drop/layout-reducer.ts | wc -l
+grep -nE "case 'drag-end-mode-none':" packages/editor-shell/src/drag-drop/layout-reducer.ts | wc -l
+grep -nF "epoch + 1" packages/editor-shell/src/drag-drop/layout-reducer.ts | wc -l
+```
+
+Expected: each of the 5 case keywords `≥ 1`; the `epoch + 1`
+expression `≥ 1` (one-shot increment on drag-end-success per Q12
+absorbtion table line 363). Five-variant exhaustive switch + the
+single +1 mutation site lock the reducer to the ADR-0017 D12 spec.
+Vitest TC4.1-4.6 carry the runtime semantic guarantee; the AC
+provides a structural guard.
+
+### AC#5 — `drop-pulse.ts` consumes `var(--accent-success, ...)` token with hex fallback
+
+```bash
+grep -nE 'var\(--accent-success,\s*oklch\(70% 0\.12 145 / 0\.5\)\)' \
+  packages/editor-shell/src/drag-drop/drop-pulse.ts | wc -l
+```
+
+Expected: `≥ 1`. Verifies the verbatim token consumption pattern
+from ADR-0017 D11 line 345 + the ADR-0018 v0.5 fallback hex bridge.
+The pattern is byte-equal to the ADR prose to prevent drift; the
+Stage C.3-1 token landing PR will remove the fallback once
+design-tokens is shipped.
+
+### AC#6 — `drag-ghost.ts` per-kind className matches the 4 ADR-0017 D10 kinds
+
+```bash
+grep -nF 'ghost-canvas' packages/editor-shell/src/drag-drop/drag-ghost.ts | wc -l
+grep -nF 'ghost-runnable' packages/editor-shell/src/drag-drop/drag-ghost.ts | wc -l
+grep -nF 'ghost-image' packages/editor-shell/src/drag-drop/drag-ghost.ts | wc -l
+grep -nF 'ghost-markdown' packages/editor-shell/src/drag-drop/drag-ghost.ts | wc -l
+```
+
+Expected: each `≥ 1`. Verifies the 4-kind className contract
+declared at ADR-0017 D10 line 337 verbatim. CSS rules for these
+classNames land in Stage C.3 visual identity; the classNames are
+the stable Public Surface.
+
+### AC#7 — `esc-cancel.ts` calls preventDefault + stopPropagation only when `dragActive === true`
+
+```bash
+grep -nF 'preventDefault' packages/editor-shell/src/drag-drop/esc-cancel.ts | wc -l
+grep -nF 'stopPropagation' packages/editor-shell/src/drag-drop/esc-cancel.ts | wc -l
+grep -nE 'dragActive' packages/editor-shell/src/drag-drop/esc-cancel.ts | wc -l
+```
+
+Expected: each `≥ 1`. Verifies the 3 keyword tokens required by
+ADR-0017 D8 priority 1 (Esc with `dragActive === true` calls
+`preventDefault` + `stopPropagation`). Vitest TC3.1 + TC3.2 carry
+the runtime semantic guarantee (preventDefault is suppressed when
+`dragActive === false`).
+
+### AC#8 — `CONTRACT.md` sister-doc-sync subsection updated with 4 new module entries + ADR-0017 D8/D10/D11/D12 cross-references
+
+```bash
+grep -nE '^### Drag/Drop layer \(C\.2-5 \+ C\.2-8\)' packages/editor-shell/CONTRACT.md | wc -l
+grep -nF 'drop-pulse.ts' packages/editor-shell/CONTRACT.md | wc -l
+grep -nF 'drag-ghost.ts' packages/editor-shell/CONTRACT.md | wc -l
+grep -nF 'esc-cancel.ts' packages/editor-shell/CONTRACT.md | wc -l
+grep -nF 'layout-reducer.ts' packages/editor-shell/CONTRACT.md | wc -l
+grep -nE 'ADR-0017 D8|ADR-0017 D10|ADR-0017 D11|ADR-0017 D12' packages/editor-shell/CONTRACT.md | wc -l
+```
+
+Expected: header `≥ 1`; each module name `≥ 1`; ADR-0017 D-cite count
+`≥ 4` (one per D-item). Verifies the sister-doc-sync subsection
+covers all 4 new modules + cross-references the 4 D-items + the
+header was renamed to reflect multi-PR contributor pattern.
+
+### AC#9 — `pnpm exec tsx scripts/check-ui-touch.ts --files` (file list args) returns `ui_touch: true`
+
+```bash
+pnpm exec tsx scripts/check-ui-touch.ts --files \
+  packages/editor-shell/src/drag-drop/drop-pulse.ts \
+  packages/editor-shell/src/drag-drop/drag-ghost.ts \
+  packages/editor-shell/src/drag-drop/esc-cancel.ts \
+  packages/editor-shell/src/drag-drop/layout-reducer.ts \
+  apps/site/src/__tests__/e2e/c2-8-drag-modules-mount.spec.ts
+```
+
+Expected: stdout contains `ui_touch: true` (path matches the D9.1
+pattern `packages/editor-shell/src/**`); exit 0. Verifies the
+mechanical detection AGREES with the orchestrator-authored
+`## ui_touch` block declaration.
+
+### AC#10 — `index.ts` preserves existing 11 exports (no regression)
+
+```bash
+grep -nE "export \{ EditorShell \} from './EditorShell'" packages/editor-shell/src/index.ts | wc -l
+grep -nE "export \{ EDGE_W, GAP, computeEdgeRects \} from './drag-drop/edge-rects'" packages/editor-shell/src/index.ts | wc -l
+grep -nE "export \{ tiebreak, findMatches \} from './drag-drop/tiebreak'" packages/editor-shell/src/index.ts | wc -l
+grep -nE "export \{ OutlineOverlay \} from './drag-drop/outline-overlay'" packages/editor-shell/src/index.ts | wc -l
+grep -nE "export \{ ColRuler \} from './resize/col-ruler'" packages/editor-shell/src/index.ts | wc -l
+grep -nE "export \{ SizeTooltip, colSpanToFraction \} from './resize/size-tooltip'" packages/editor-shell/src/index.ts | wc -l
+grep -nE "export \{ GridContainer \} from './grid-container'" packages/editor-shell/src/index.ts | wc -l
+grep -nE "export \{ useAutoRowSpan \} from './use-auto-row-span'" packages/editor-shell/src/index.ts | wc -l
+```
+
+Expected: each `≥ 1`. Verifies no existing barrel export was
+accidentally removed during the C.2-8 module additions. Mirrors
+C.2-5 AC#8 + C.2-6 AC#10 regression-guard pattern.
+
+### AC#11 — Playwright spec exists at canonical path + has the canonical test name
+
+```bash
+ls apps/site/src/__tests__/e2e/c2-8-drag-modules-mount.spec.ts | wc -l
+grep -nF '"drag modules mount + Esc native passthrough"' \
+  apps/site/src/__tests__/e2e/c2-8-drag-modules-mount.spec.ts | wc -l
+```
+
+Expected: each `≥ 1`. Verifies the spec file exists + the canonical
+test description string (matches the `playwright_spec` field's
+`:"…"` suffix in the `## e2e_smoke` block) for
+`scripts/check-e2e-coverage.ts` resolution.
+
+### AC#12 — `pnpm check` clean (lint + typecheck + test + build + size)
+
+```bash
+pnpm check
+```
+
+Expected: exit 0. The full repo-wide gate: ESLint clean (no
+`max-lines` warn at 300+ on any new source file; per memory
+`feedback_codex_spark_lint_gap` orchestrator runs lint independently
+even though codex spark may report PASS without lint), `tsc
+--noEmit` clean across all packages + apps/site, vitest 100% PASS,
+`astro build` clean, `pnpm size-check` clean (no source file > 500
+LOC). Mechanical guard for the source size limit:
+
+```bash
+wc -l packages/editor-shell/src/drag-drop/drop-pulse.ts \
+      packages/editor-shell/src/drag-drop/drag-ghost.ts \
+      packages/editor-shell/src/drag-drop/esc-cancel.ts \
+      packages/editor-shell/src/drag-drop/layout-reducer.ts
+```
+
+Expected: each value `< 300` (under the ESLint `max-lines` warn
+threshold); `< 500` (under `pnpm size-check` hard fail). Target
+~80 / ~120 / ~80 / ~120 LOC per the Specifically section roster.
+
+### AC#13 — Playwright spec PASSES locally on WSL2 (orchestrator self-serves post deps install)
+
+```bash
+pnpm --filter @skb/site test:visual --grep 'drag modules mount'
+```
+
+Expected: exit 0. The spec runs end-to-end against an Astro dev
+server (or built preview) on the orchestrator workstation — WSL2
+chromium deps installed 2026-05-06 (memory
+`feedback_wsl2_chromium_launch.md` SUPERSEDED per active.md
+standards-landing follow-up #7); orchestrator self-serves Playwright
+on every UI-touch PR from C.2-8 onwards (PR #79 housekeeping squash
+`b2fdd8f` stripped the WSL2 skip block from C.2-7 spec; new specs
+follow no-skip pattern). The spec also runs on CI (Linux non-WSL)
+via the existing `visual-smoke` job in `.github/workflows/ci.yml`.
+
+### AC#14 — screenshot archive at canonical path ≥ 5 KB
+
+```bash
+test -f docs/audits/screenshots/wave-5-c2-8-drag-modules-mount.png && \
+  test "$(stat -c %s docs/audits/screenshots/wave-5-c2-8-drag-modules-mount.png)" -ge 5120
+```
+
+Expected: exit 0. Verifies the Playwright spec emitted a real
+screenshot to the canonical archive path + the file is ≥ 5 KB
+(placeholder guard per `scripts/check-screenshot-archive.ts` —
+catches `Buffer.from('')` smoke-fail or 1×1 pixel PNG bypass
+attempts). The `5120` byte threshold is the canonical 5 KB minimum
+codified at PR #74 squash `2f67ef0` (standards landing).
+
+### AC#15 — `scripts/check-e2e-coverage.ts` resolves the canonical e2e_smoke flow
+
+```bash
+pnpm exec tsx scripts/check-e2e-coverage.ts \
+  docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md
+```
+
+Expected: exit 0; stdout reports the `## e2e_smoke` block parsed
+successfully + the `playwright_spec` field's
+`apps/site/src/__tests__/e2e/c2-8-drag-modules-mount.spec.ts` path
+exists on disk + the spec contains the canonical `test(...)`
+description string `"drag modules mount + Esc native passthrough"`.
+Verifies the orchestrator-authored `## e2e_smoke` block satisfies
+
+exec
+/bin/bash -lc "sed -n '990,1048p' docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+Verifies the orchestrator-authored `## e2e_smoke` block satisfies
+the CI `e2e-coverage-check` job per ADR-0011 D9 + PR #76 squash
+`ad42f71` symmetric-skip fix.
+
+## verification required
+
+ACCEPT-stage pr-writer (D1 stage 6) re-runs all 15 ACs against the
+post-commit working tree. The 6 mechanical greps (AC#1, #2, #4-7,
+#10) + 1 file-existence check (AC#11 ls part) are 1-line bash; the
+2 pnpm-driven gates (AC#3 + AC#12) run the full vitest + lint +
+typecheck + build + size pipeline; AC#13 is the Playwright run on
+WSL2; AC#14 + AC#15 are the screenshot archive + e2e-coverage
+gate verification. AC#9 invokes the dedicated `check-ui-touch.ts`
+script with explicit `--files` list (REVIEW-stage runnable per
+PR #74 squash `2f67ef0` standards landing).
+
+The Codex commit (D1 stage 5) staging block at the tail of this
+PR.md provides the explicit-file-list staging command per ADR-0006
+D8 + memory `feedback_git_operator_explicit_stage` 4-step protocol
+(`git reset HEAD` then `git add` with the explicit file list then `git diff --cached --stat`
+verify count + scope → `git commit`).
+
+## ui_touch
+
+`true` (touches `packages/editor-shell/src/**` per ADR-0011 D9.1
+path pattern + `apps/site/src/__tests__/e2e/**` per the spec
+addition).
+
+Mechanical detection via `pnpm exec tsx scripts/check-ui-touch.ts
+--files <list>` (AC#9) AGREES with this catalog annotation. C.2-8
+was NOT in the v1.3 retrofit catalog (which annotated only C.2-7 +
+5 C.3 + 5 C.4 rows per Wave 5 plan v1.3 line 547+ retrofit catalog
+header); per ADR-0011 D9.2, the orchestrator authors a fresh
+`e2e_smoke` block for newly-detected ui_touch PRs outside the
+catalog. The block below is the orchestrator-authored canonical
+shape (single-bullet-with-indented-continuation form per PR #78
+reformat lesson + bare paths without surrounding backticks per
+`scripts/check-screenshot-archive.ts` parser shape).
+
+## e2e_smoke
+
+Orchestrator-authored canonical e2e_smoke entry per ADR-0011 D9.2
+catalog-gap procedure (single-bullet-with-indented-keys to satisfy
+`scripts/check-e2e-coverage.ts` parser; the script splits on
+`^\s*-\s+(?=key:)` so `target_url`/`playwright_spec`/
+`screenshot_archive` are continuation lines, not separate bullets;
+values shipped without surrounding backticks so
+`scripts/check-screenshot-archive.ts` regex `\S+` captures the bare
+path):
+
+- flow: editor scaffold mounts at /notes/sample-blocks/edit after drag-modules added; Esc with no drag-active does NOT crash editor + does not break Tiptap selection (D8 native pass-through priority)
+  target_url: /notes/sample-blocks/edit
+  playwright_spec: apps/site/src/__tests__/e2e/c2-8-drag-modules-mount.spec.ts:"drag modules mount + Esc native passthrough"
+  screenshot_archive: docs/audits/screenshots/wave-5-c2-8-drag-modules-mount.png
+
+## Plan-challenger absorbtion
+
+NOT APPLICABLE for an implementation PR per ADR-0011 D7. The Wave 5
+plan v1.3 row C.2-8 (line 689) + ADR-0017 D8 + D10 + D11 + D12 (with
+
+codex
+I’m running the mechanical AC checks first, then I’ll run the heavier pnpm gates serially so concurrent test/build work does not pollute the result.
+exec
+/bin/bash -lc 'ls packages/editor-shell/src/drag-drop/drop-pulse.ts packages/editor-shell/src/drag-drop/drag-ghost.ts packages/editor-shell/src/drag-drop/esc-cancel.ts packages/editor-shell/src/drag-drop/layout-reducer.ts | wc -l' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+4
+
+exec
+/bin/bash -lc "grep -nE \"from ['\\\"]\\./drag-drop/drop-pulse\" packages/editor-shell/src/index.ts | wc -l
+grep -nE \"from ['\\\"]\\./drag-drop/drag-ghost\" packages/editor-shell/src/index.ts | wc -l
+grep -nE \"from ['\\\"]\\./drag-drop/esc-cancel\" packages/editor-shell/src/index.ts | wc -l
+grep -nE \"from ['\\\"]\\./drag-drop/layout-reducer\" packages/editor-shell/src/index.ts | wc -l" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+2
+2
+2
+2
+
+exec
+/bin/bash -lc "grep -nE \"case 'drag-start':\" packages/editor-shell/src/drag-drop/layout-reducer.ts | wc -l
+grep -nE \"case 'drag-over':\" packages/editor-shell/src/drag-drop/layout-reducer.ts | wc -l
+grep -nE \"case 'drag-end-success':\" packages/editor-shell/src/drag-drop/layout-reducer.ts | wc -l
+grep -nE \"case 'drag-end-cancel':\" packages/editor-shell/src/drag-drop/layout-reducer.ts | wc -l
+grep -nE \"case 'drag-end-mode-none':\" packages/editor-shell/src/drag-drop/layout-reducer.ts | wc -l
+grep -nF \"epoch + 1\" packages/editor-shell/src/drag-drop/layout-reducer.ts | wc -l" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+1
+1
+1
+1
+1
+1
+
+exec
+/bin/bash -lc "grep -nE 'var\\(--accent-success,\\s*oklch\\(70% 0\\.12 145 / 0\\.5\\)\\)' packages/editor-shell/src/drag-drop/drop-pulse.ts | wc -l" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+2
+
+exec
+/bin/bash -lc "grep -nF 'ghost-canvas' packages/editor-shell/src/drag-drop/drag-ghost.ts | wc -l
+grep -nF 'ghost-runnable' packages/editor-shell/src/drag-drop/drag-ghost.ts | wc -l
+grep -nF 'ghost-image' packages/editor-shell/src/drag-drop/drag-ghost.ts | wc -l
+grep -nF 'ghost-markdown' packages/editor-shell/src/drag-drop/drag-ghost.ts | wc -l" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+2
+2
+2
+2
+
+exec
+/bin/bash -lc "grep -nF 'preventDefault' packages/editor-shell/src/drag-drop/esc-cancel.ts | wc -l
+grep -nF 'stopPropagation' packages/editor-shell/src/drag-drop/esc-cancel.ts | wc -l
+grep -nE 'dragActive' packages/editor-shell/src/drag-drop/esc-cancel.ts | wc -l" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+2
+2
+14
+
+exec
+/bin/bash -lc "grep -nE '"'^### Drag/Drop layer '"\\(C\\.2-5 \\+ C\\.2-8\\)' packages/editor-shell/CONTRACT.md | wc -l
+grep -nF 'drop-pulse.ts' packages/editor-shell/CONTRACT.md | wc -l
+grep -nF 'drag-ghost.ts' packages/editor-shell/CONTRACT.md | wc -l
+grep -nF 'esc-cancel.ts' packages/editor-shell/CONTRACT.md | wc -l
+grep -nF 'layout-reducer.ts' packages/editor-shell/CONTRACT.md | wc -l
+grep -nE 'ADR-0017 D8|ADR-0017 D10|ADR-0017 D11|ADR-0017 D12' packages/editor-shell/CONTRACT.md | wc -l" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+1
+1
+1
+1
+2
+5
+
+exec
+/bin/bash -lc "ls apps/site/src/__tests__/e2e/c2-8-drag-modules-mount.spec.ts | wc -l
+grep -nF '\"drag modules mount + Esc native passthrough\"' apps/site/src/__tests__/e2e/c2-8-drag-modules-mount.spec.ts | wc -l" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "grep -nE \"export \\{ EditorShell \\} from './EditorShell'\" packages/editor-shell/src/index.ts | wc -l
+grep -nE \"export \\{ EDGE_W, GAP, computeEdgeRects \\} from './drag-drop/edge-rects'\" packages/editor-shell/src/index.ts | wc -l
+grep -nE \"export \\{ tiebreak, findMatches \\} from './drag-drop/tiebreak'\" packages/editor-shell/src/index.ts | wc -l
+grep -nE \"export \\{ OutlineOverlay \\} from './drag-drop/outline-overlay'\" packages/editor-shell/src/index.ts | wc -l
+grep -nE \"export \\{ ColRuler \\} from './resize/col-ruler'\" packages/editor-shell/src/index.ts | wc -l
+grep -nE \"export \\{ SizeTooltip, colSpanToFraction \\} from './resize/size-tooltip'\" packages/editor-shell/src/index.ts | wc -l
+grep -nE \"export \\{ GridContainer \\} from './grid-container'\" packages/editor-shell/src/index.ts | wc -l
+grep -nE \"export \\{ useAutoRowSpan \\} from './use-auto-row-span'\" packages/editor-shell/src/index.ts | wc -l" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+1
+1
+
+ succeeded in 0ms:
+1
+1
+1
+1
+1
+1
+1
+1
+
+exec
+/bin/bash -lc 'wc -l packages/editor-shell/src/drag-drop/drop-pulse.ts packages/editor-shell/src/drag-drop/drag-ghost.ts packages/editor-shell/src/drag-drop/esc-cancel.ts packages/editor-shell/src/drag-drop/layout-reducer.ts' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+   64 packages/editor-shell/src/drag-drop/drop-pulse.ts
+   95 packages/editor-shell/src/drag-drop/drag-ghost.ts
+   97 packages/editor-shell/src/drag-drop/esc-cancel.ts
+   68 packages/editor-shell/src/drag-drop/layout-reducer.ts
+  324 total
+
+exec
+/bin/bash -lc 'ls packages/editor-shell/src/__tests__/drag-drop/drop-pulse.test.tsx packages/editor-shell/src/__tests__/drag-drop/drag-ghost.test.tsx packages/editor-shell/src/__tests__/drag-drop/esc-cancel.test.tsx packages/editor-shell/src/__tests__/drag-drop/layout-reducer.test.ts | wc -l' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+4
+
+exec
+/bin/bash -lc 'stat -c %s docs/audits/screenshots/wave-5-c2-8-drag-modules-mount.png' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+19014
+
+exec
+/bin/bash -lc 'test -f docs/audits/screenshots/wave-5-c2-8-drag-modules-mount.png' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+exec
+/bin/bash -lc 'pnpm exec tsx scripts/check-ui-touch.ts --files packages/editor-shell/src/drag-drop/drop-pulse.ts packages/editor-shell/src/drag-drop/drag-ghost.ts packages/editor-shell/src/drag-drop/esc-cancel.ts packages/editor-shell/src/drag-drop/layout-reducer.ts apps/site/src/__tests__/e2e/c2-8-drag-modules-mount.spec.ts' in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc 'pnpm exec tsx scripts/check-e2e-coverage.ts docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 455ms:
+[check-ui-touch] base=origin/main
+ui_touch=true
+[check-ui-touch] files scanned: 5
+[check-ui-touch] UI-touch matches: 4
+  packages/editor-shell/src/drag-drop/drop-pulse.ts  (matched: ^packages\/editor-shell\/src\/)
+  packages/editor-shell/src/drag-drop/drag-ghost.ts  (matched: ^packages\/editor-shell\/src\/)
+  packages/editor-shell/src/drag-drop/esc-cancel.ts  (matched: ^packages\/editor-shell\/src\/)
+  packages/editor-shell/src/drag-drop/layout-reducer.ts  (matched: ^packages\/editor-shell\/src\/)
+[check-ui-touch] verdict: ui_touch=true
+
+ succeeded in 430ms:
+[check-e2e-coverage] base=origin/main
+[check-e2e-coverage] files scanned: 0
+[check-e2e-coverage] ui_touch=false
+[check-e2e-coverage] non-UI-touch PR; D9 enforcement skipped.
+[check-e2e-coverage] PASS
+
+codex
+The quick mechanical ACs passed their numeric thresholds. AC#15 exited 0, but its stdout took the “non-UI-touch PR; skipped” path rather than the PR.md-parse path described in the acceptance text, so I’m checking whether that is a pre-commit/untracked-file limitation before assigning the verdict.
+exec
+/bin/bash -lc "sed -n '1,260p' scripts/check-e2e-coverage.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+/**
+ * scripts/check-e2e-coverage.ts
+ *
+ * Validates ADR-0011 D9 + ADR-0006 item 9 enforcement at CI: if a PR is
+ * UI-touch (per scripts/check-ui-touch.ts), its PR.md MUST declare
+ * `ui_touch: true` and a non-empty `e2e_smoke` field referencing existing
+ * Playwright spec files.
+ *
+ * Algorithm:
+ *   1. Detect changed files via `git diff --name-only ${base}...HEAD`
+ *   2. Determine ui_touch via path patterns (same as check-ui-touch.ts)
+ *   3. If ui_touch=true:
+ *      a. Find PR.md in diff (`docs/plans/wave-*-{main,prep}/*.md` added or modified)
+ *      b. Parse PR.md for `## ui_touch` and `## e2e_smoke` sections
+ *      c. Validate ui_touch declared as `true`
+ *      d. Validate e2e_smoke entries each reference a `playwright_spec` file that exists
+ *   4. Exit 0 PASS / exit 1 FAIL with clear message
+ *
+ * If ui_touch=false: exit 0 (skip enforcement; non-UI PRs unaffected).
+ *
+ * Usage:
+ *   tsx scripts/check-e2e-coverage.ts
+ *   tsx scripts/check-e2e-coverage.ts --base <ref>
+ */
+
+import { execSync } from 'node:child_process';
+import { existsSync, readFileSync } from 'node:fs';
+import path from 'node:path';
+
+const UI_TOUCH_PATTERNS: ReadonlyArray<RegExp> = [
+  /^apps\/site\/src\/pages\//,
+  /^apps\/site\/src\/components\//,
+  /^apps\/site\/src\/styles\//,
+  /^packages\/[^/]+\/src\/ui-default\//,
+  /^packages\/heavy-block-boundary\/src\//,
+  /^packages\/editor-shell\/src\//,
+  /^packages\/design-tokens\//,
+];
+
+const PR_MD_PATTERN = /^docs\/plans\/wave-\d+(?:\.\d+)?-(?:main|prep)\/.*\.md$/;
+
+interface E2eEntry {
+  flow?: string;
+  target_url?: string;
+  playwright_spec?: string;
+  screenshot_archive?: string;
+  raw: string;
+}
+
+function parseArgs(argv: ReadonlyArray<string>): { base: string } {
+  let base = 'origin/main';
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === '--base') {
+      const next = argv[i + 1];
+      if (next !== undefined) {
+        base = next;
+        i++;
+      }
+    }
+  }
+  return { base };
+}
+
+function changedFiles(base: string): ReadonlyArray<string> {
+  const out = execSync(`git diff --name-only ${base}...HEAD`, { encoding: 'utf8' });
+  return out
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0);
+}
+
+function isUiTouch(files: ReadonlyArray<string>): boolean {
+  return files.some((file) => UI_TOUCH_PATTERNS.some((p) => p.test(file)));
+}
+
+function findPrMd(files: ReadonlyArray<string>): string | null {
+  const candidates = files.filter((f) => PR_MD_PATTERN.test(f));
+  // Prefer `*-main/*.md` over `*-prep/*.md` if both present
+  const main = candidates.find((c) => c.includes('-main/'));
+  if (main !== undefined) return main;
+  return candidates[0] ?? null;
+}
+
+function parsePrMdSections(content: string): Record<string, string> {
+  // Sections are markdown ## headings; extract content between consecutive ## (or end).
+  const sections: Record<string, string> = {};
+  const lines = content.split('\n');
+  let currentName: string | null = null;
+  let currentBuf: string[] = [];
+  for (const line of lines) {
+    const headingMatch = /^##\s+(\S.*?)\s*$/.exec(line);
+    if (headingMatch !== null && headingMatch[1] !== undefined) {
+      if (currentName !== null) sections[currentName] = currentBuf.join('\n');
+      currentName = headingMatch[1].toLowerCase();
+      currentBuf = [];
+    } else if (currentName !== null) {
+      currentBuf.push(line);
+    }
+  }
+  if (currentName !== null) sections[currentName] = currentBuf.join('\n');
+  return sections;
+}
+
+function parseE2eSmoke(section: string): ReadonlyArray<E2eEntry> {
+  // Loose parse: split by `- flow:` or `- ` bullets at start; extract key:value lines per entry.
+  // Tolerant of yaml-like indentation; for production accuracy a real yaml lib could be added.
+  const entries: E2eEntry[] = [];
+  const blocks = section.split(/^\s*-\s+(?=flow:|playwright_spec:|target_url:)/m);
+  for (const block of blocks) {
+    const trimmed = block.trim();
+    if (trimmed.length === 0) continue;
+    const entry: E2eEntry = { raw: trimmed };
+    const flowMatch = /flow:\s*(.+)/.exec(trimmed);
+    const urlMatch = /target_url:\s*(.+)/.exec(trimmed);
+    const specMatch = /playwright_spec:\s*(.+)/.exec(trimmed);
+    const shotMatch = /screenshot_archive:\s*(.+)/.exec(trimmed);
+    if (flowMatch?.[1] !== undefined) entry.flow = flowMatch[1].trim();
+    if (urlMatch?.[1] !== undefined) entry.target_url = urlMatch[1].trim();
+    if (specMatch?.[1] !== undefined) entry.playwright_spec = specMatch[1].trim();
+    if (shotMatch?.[1] !== undefined) entry.screenshot_archive = shotMatch[1].trim();
+    if (entry.flow !== undefined || entry.playwright_spec !== undefined) {
+      entries.push(entry);
+    }
+  }
+  return entries;
+}
+
+function main(): void {
+  const { base } = parseArgs(process.argv.slice(2));
+  const files = changedFiles(base);
+  const uiTouch = isUiTouch(files);
+
+  process.stderr.write(`[check-e2e-coverage] base=${base}\n`);
+  process.stderr.write(`[check-e2e-coverage] files scanned: ${files.length}\n`);
+  process.stderr.write(`[check-e2e-coverage] ui_touch=${uiTouch}\n`);
+
+  if (!uiTouch) {
+    process.stderr.write(`[check-e2e-coverage] non-UI-touch PR; D9 enforcement skipped.\n`);
+    process.stderr.write(`[check-e2e-coverage] PASS\n`);
+    process.exit(0);
+  }
+
+  const prMdPath = findPrMd(files);
+  if (prMdPath === null) {
+    process.stderr.write(
+      `[check-e2e-coverage] FAIL: ui_touch=true but no PR.md found in diff (expected docs/plans/wave-*-{main,prep}/*.md per ADR-0011 D9.1)\n`,
+    );
+    process.exit(1);
+  }
+  process.stderr.write(`[check-e2e-coverage] PR.md = ${prMdPath}\n`);
