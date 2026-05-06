@@ -803,26 +803,18 @@ v1.3 retrofit catalog (line 555).
 
 ## e2e_smoke
 
-Verbatim from Wave 5 plan v1.3 retrofit catalog lines 553-560:
+Verbatim from Wave 5 plan v1.3 retrofit catalog lines 553-560 (re-formatted
+as single-bullet-with-indented-keys to satisfy
+`scripts/check-e2e-coverage.ts` parser; the script splits on `^\s*-\s+(?=key:)`
+so `target_url`/`playwright_spec`/`screenshot_archive` are continuation
+lines, not separate bullets; values shipped without surrounding backticks
+so `scripts/check-screenshot-archive.ts` regex `\S+` captures the bare
+path):
 
-- flow: heavy block plugin placeholder renders consuming grid
-  `effectiveColWidth` + `effectiveCellHeight` (no NaN / no overflow /
-  dimensions match adjacent light blocks)
-- target_url: `/sample-blocks`
-- playwright_spec: `apps/site/src/__tests__/e2e/c2-7-heavy-grid-dims.spec.ts:"plugin placeholder consumes grid effectiveColWidth/effectiveCellHeight"`
-- screenshot_archive: `docs/audits/screenshots/wave-5-c2-7-heavy-grid-dims.png`
-
-Canonical D2 schema field name `screenshot_archive:` used (PR #76
-squash `ad42f71` shipped the symmetric ui_touch=false skip in
-`scripts/check-screenshot-archive.ts`, so the canonical name no
-longer trips CI on plan-PR forward-declaration paths).
-
-Per ADR-0011 D9.5 archive flow: orchestrator at ACCEPT (D1 stage 6)
-runs `pnpm --filter @skb/site test:visual` PASS + verifies the
-screenshot file ≥ 5KB at
-`docs/audits/screenshots/wave-5-c2-7-heavy-grid-dims.png` (placeholder
-guard). Missing or < 5KB = REJECT-with-residue (ACCEPT does not pass
-until CI emits the screenshot).
+- flow: heavy block plugin placeholder renders consuming grid effectiveColWidth + effectiveCellHeight (no NaN / no overflow / dimensions match adjacent light blocks)
+  target_url: /sample-blocks
+  playwright_spec: apps/site/src/__tests__/e2e/c2-7-heavy-grid-dims.spec.ts
+  screenshot_archive: docs/audits/screenshots/wave-5-c2-7-heavy-grid-dims.png
 
 ## Plan-challenger absorbtion
 
@@ -1436,10 +1428,10 @@ the reviewer codex with the PR.md as input.
 - [Wave 5 plan v1.3 row C.2-7 + UI-touch retrofit catalog](../../superpowers/plans/2026-05-04-phase-1-wave-5-integration.md)
   — Wave 5 plan v1.3 amendment lock (PR #75 squash `5bd5112`); row
   C.2-7 cite + canonical e2e_smoke catalog lines 553-560.
-- [PR #75 (v1.3 amendment)](https://github.com/skb-org/selfKnowledgeBaseWeb/pull/75)
+- [PR #75 (v1.3 amendment)](https://github.com/WYI1223/selfKnowledgeBaseWeb/pull/75)
   — Wave 5 plan v1.3 amendment squash `5bd5112`; landed UI-touch +
   e2e_smoke catalog for C.2-7 + 5 C.3 + 5 C.4 PRs.
-- [PR #76 (symmetric ui_touch=false skip fix)](https://github.com/skb-org/selfKnowledgeBaseWeb/pull/76)
+- [PR #76 (symmetric ui_touch=false skip fix)](https://github.com/WYI1223/selfKnowledgeBaseWeb/pull/76)
   — `scripts/check-screenshot-archive.ts` symmetric ui_touch=false
   skip squash `ad42f71`; canonical `screenshot_archive` field name
   no longer trips CI on plan-PR forward-declaration paths.
