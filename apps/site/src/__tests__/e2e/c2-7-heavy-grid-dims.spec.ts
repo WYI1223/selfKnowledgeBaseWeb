@@ -1,6 +1,5 @@
 import { test, expect, type Locator } from '@playwright/test';
 import { existsSync, mkdirSync } from 'node:fs';
-import { release } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -23,12 +22,6 @@ async function readColSpan(locator: Locator): Promise<number | null> {
 }
 
 test.describe('C.2-7 heavy block plugin placeholder grid dimensions', () => {
-  test.skip(
-    process.platform === 'linux' &&
-      (Boolean(process.env.WSL_DISTRO_NAME) || /microsoft/i.test(release())),
-    'WSL2 missing libnss3/libdbus/libatk/libcups; CI-only execution per Wave 3 D5 memory.',
-  );
-
   test('plugin placeholder consumes grid effectiveColWidth/effectiveCellHeight', async ({
     page,
   }) => {
