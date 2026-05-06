@@ -1,0 +1,2000 @@
+Reading prompt from stdin...
+OpenAI Codex v0.125.0 (research preview)
+--------
+workdir: /home/weiyi/selfKnowledgeBaseWeb
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: danger-full-access
+reasoning effort: xhigh
+reasoning summaries: none
+session id: 019dfdec-daa9-7a13-8d65-26f65dd07aaf
+--------
+user
+You are codex-generic-executor R2 for Wave 5 C.2-8. Reviewer R1 verdict: FAIL on 2 issues — both fixable in code/contract files within current 11-file whitelist.
+
+# Scope (5 files; subset of original whitelist)
+
+1. packages/editor-shell/CONTRACT.md — fix 3 "C.2-8 deferred" stale prose lines (HIGH issue from reviewer)
+2-5. packages/editor-shell/src/drag-drop/{drop-pulse,drag-ghost,esc-cancel,layout-reducer}.ts — improve file-head JSDoc with load-bearing constants (MED issue)
+
+DO NOT touch any other file. DO NOT commit.
+
+# Step 1: Fix CONTRACT.md 3 stale prose lines
+
+The C.2-8 modules (drop-pulse + drag-ghost + esc-cancel + layout-reducer) are NOW SHIPPED at this commit. Update these 3 places to reflect shipped state:
+
+(a) Lines ~161-162 "ADR-0016 D12 owns the layout reducer schema and conflict arbitration; code implementation is deferred to C.2-8." → change to past tense: "ADR-0016 D12 owns the layout reducer schema and conflict arbitration; code implementation shipped at C.2-8 in `src/drag-drop/layout-reducer.ts` (epoch += 1 only on drag-end-success; cancel + mode-none rollback to S0 snapshot)."
+
+(b) Lines ~239-240 "for later C.2-8 reducer wiring." → change to past/present tense: "for the layoutReducer (shipped at C.2-8) which arbitrates drag-end-success vs drag-end-cancel mutations."
+
+(c) Lines ~275-277 "Resize-handle DOM emission, pointer event wiring, snap commit, and the `.skb-grid--mobile` state machine remain deferred to C.2-8/C.2-9 per Wave 5 plan v1.1." → change to: "Resize-handle DOM emission, pointer event wiring, and snap commit remain deferred to C.2-9/C.2-10 (full integration); the `.skb-grid--mobile` state machine remains in C.2-9 scope per Wave 5 plan v1.3. C.2-8 shipped the layoutReducer + drag-ghost + drop-pulse + useEscCancel modules consumed by future C.2-9/C.2-10 wiring."
+
+Read the file first to confirm the exact wording at HEAD (use Read tool); apply via Edit.
+
+# Step 2: Add/improve file-head JSDoc to 4 source modules
+
+Each NEW source file gets a concise file-head JSDoc citing ADRs + load-bearing constants required by PR.md:
+
+(a) packages/editor-shell/src/drag-drop/drop-pulse.ts (line 1+) — JSDoc:
+"""
+/**
+ * @skb/editor-shell drop-pulse — 720ms green halo on drag-end-success.
+ *
+ * Per ADR-0017 D11: drop-pulse fires ONLY on drag-end-success; cancel +
+ * mode-none + grid-外松手 do NOT trigger pulse (D11 explicit non-trigger).
+ *
+ * Visual contract:
+ *  - Duration: 720ms (load-bearing constant; ADR-0017 D11 line 342+)
+ *  - Box-shadow: `0 0 0 4px var(--accent-success, oklch(70% 0.12 145 / 0.5))` → fade-out
+ *  - Token source: ADR-0018 `--accent-success` (Stage C.3-1 forward-pointer); fallback hex bridges Wave 5 v0.5 → C.3 token landing.
+ */
+"""
+
+(b) packages/editor-shell/src/drag-drop/drag-ghost.ts — JSDoc:
+"""
+/**
+ * @skb/editor-shell drag-ghost — cursor-tracking drag preview with per-kind coloring.
+ *
+ * Per ADR-0017 D10:
+ *  - position: fixed; transform: translate(x, y) rotate(angle)
+ *  - Per-kind className: .ghost-canvas / .ghost-runnable / .ghost-image / .ghost-markdown
+ *  - Cursor velocity ≥ 5px/frame → angle ±5° (sign matches velocity direction)
+ *  - Velocity < 5 → -1.5° baseline (load-bearing constant; ADR-0017 D10 line 333+)
+ *  - Glyph: plain text `◇` (Stage C.3 may upgrade to SVG/icon-font)
+ */
+"""
+
+(c) packages/editor-shell/src/drag-drop/esc-cancel.ts — JSDoc (currently has none):
+"""
+/**
+ * @skb/editor-shell useEscCancel — global Esc keydown subscription with drag-active priority.
+ *
+ * Per ADR-0017 D8 + Q8 absorbtion priority:
+ *  - dragActive === true: preventDefault + stopPropagation + dispatch drag-end-cancel; native Esc behavior suppressed (textarea blur / Tiptap deselect blocked during drag)
+ *  - dragActive === false: NO-OP (native Esc passthrough to Tiptap keymap / browser ESC)
+ *  - drag-end (cancel OR success): restore prior focus snapshot taken at drag-start
+ *
+ * Hook owns the subscription (per ADR-0017 D8 line 296: editor-shell 全局 keydown listener with key === 'Escape').
+ */
+"""
+
+(d) packages/editor-shell/src/drag-drop/layout-reducer.ts — JSDoc:
+"""
+/**
+ * @skb/editor-shell layoutReducer — single-source mutation reducer for grid layout actions.
+ *
+ * Per ADR-0017 D12 + ADR-0016 D12 Q12 absorbtion table (load-bearing epoch rules):
+ *  - drag-start: epoch unchanged; save S0 snapshot
+ *  - drag-over: epoch unchanged; preview not committed
+ *  - drag-end-success: epoch += 1 (one-shot N → N+1); new S1 baseline
+ *  - drag-end-cancel: epoch unchanged; rollback to S0
+ *  - drag-end-mode-none: epoch unchanged; rollback to S0 (degenerate cancel)
+ *
+ * Conflict arbitration: drag (user-initiated) > auto-measure (markdown rowSpan='auto'); responsive transition rejects drag (per ADR-0016 D5 + D12). Single-user single-session assumption (CRDT/OT Phase 2+).
+ */
+"""
+
+If existing files already have partial file-head JSDoc, REPLACE it with the version above (don't merge — clean replacement with the canonical authority cite).
+
+# Step 3: Verify
+
+```bash
+pnpm --filter @skb/editor-shell test
+pnpm --filter @skb/editor-shell lint
+pnpm --filter @skb/editor-shell typecheck
+```
+
+Expected: all clean. No vitest regression.
+
+# Step 4: Final summary
+
+Report:
+1. Files modified (5 expected)
+2. Diff stat per file
+3. Vitest PASS count (should remain 99)
+4. Lint + typecheck status
+5. Any anomaly
+
+You do NOT commit. You do NOT modify other files.
+
+codex
+I’ll use the Superpowers review/verification workflow here because this is explicitly reviewer feedback. I’ll first confirm the current wording and file headers, then make only the five whitelisted edits.
+exec
+/bin/bash -lc "sed -n '1,220p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/9d07fd08/skills/using-superpowers/SKILL.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+---
+name: using-superpowers
+description: Use when starting any conversation - establishes how to find and use skills, requiring Skill tool invocation before ANY response including clarifying questions
+---
+
+<SUBAGENT-STOP>
+If you were dispatched as a subagent to execute a specific task, skip this skill.
+</SUBAGENT-STOP>
+
+<EXTREMELY-IMPORTANT>
+If you think there is even a 1% chance a skill might apply to what you are doing, you ABSOLUTELY MUST invoke the skill.
+
+IF A SKILL APPLIES TO YOUR TASK, YOU DO NOT HAVE A CHOICE. YOU MUST USE IT.
+
+This is not negotiable. This is not optional. You cannot rationalize your way out of this.
+</EXTREMELY-IMPORTANT>
+
+## Instruction Priority
+
+Superpowers skills override default system prompt behavior, but **user instructions always take precedence**:
+
+1. **User's explicit instructions** (AGENTS.md, GEMINI.md, direct requests) — highest priority
+2. **Superpowers skills** — override default system behavior where they conflict
+3. **Default system prompt** — lowest priority
+
+If AGENTS.md or GEMINI.md says "don't use TDD" and a skill says "always use TDD," follow the user's instructions. The user is in control.
+
+## How to Access Skills
+
+**In Codex:** Use the `Skill` tool. When you invoke a skill, its content is loaded and presented to you—follow it directly. Never use the Read tool on skill files.
+
+**In Copilot CLI:** Use the `skill` tool. Skills are auto-discovered from installed plugins. The `skill` tool works the same as Codex's `Skill` tool.
+
+**In Gemini CLI:** Skills activate via the `activate_skill` tool. Gemini loads skill metadata at session start and activates the full content on demand.
+
+**In other environments:** Check your platform's documentation for how skills are loaded.
+
+## Platform Adaptation
+
+Skills may mention tool names that vary by runtime. Other platforms: see `references/copilot-tools.md` (Copilot CLI), `references/codex-tools.md` (Codex) for tool equivalents. Gemini CLI users get the tool mapping loaded automatically via GEMINI.md.
+
+# Using Skills
+
+## The Rule
+
+**Invoke relevant or requested skills BEFORE any response or action.** Even a 1% chance a skill might apply means that you should invoke the skill to check. If an invoked skill turns out to be wrong for the situation, you don't need to use it.
+
+```dot
+digraph skill_flow {
+    "User message received" [shape=doublecircle];
+    "About to EnterPlanMode?" [shape=doublecircle];
+    "Already brainstormed?" [shape=diamond];
+    "Invoke brainstorming skill" [shape=box];
+    "Might any skill apply?" [shape=diamond];
+    "Invoke Skill tool" [shape=box];
+    "Announce: 'Using [skill] to [purpose]'" [shape=box];
+    "Has checklist?" [shape=diamond];
+    "Create TodoWrite todo per item" [shape=box];
+    "Follow skill exactly" [shape=box];
+    "Respond (including clarifications)" [shape=doublecircle];
+
+    "About to EnterPlanMode?" -> "Already brainstormed?";
+    "Already brainstormed?" -> "Invoke brainstorming skill" [label="no"];
+    "Already brainstormed?" -> "Might any skill apply?" [label="yes"];
+    "Invoke brainstorming skill" -> "Might any skill apply?";
+
+    "User message received" -> "Might any skill apply?";
+    "Might any skill apply?" -> "Invoke Skill tool" [label="yes, even 1%"];
+    "Might any skill apply?" -> "Respond (including clarifications)" [label="definitely not"];
+    "Invoke Skill tool" -> "Announce: 'Using [skill] to [purpose]'";
+    "Announce: 'Using [skill] to [purpose]'" -> "Has checklist?";
+    "Has checklist?" -> "Create TodoWrite todo per item" [label="yes"];
+    "Has checklist?" -> "Follow skill exactly" [label="no"];
+    "Create TodoWrite todo per item" -> "Follow skill exactly";
+}
+```
+
+## Red Flags
+
+These thoughts mean STOP—you're rationalizing:
+
+| Thought | Reality |
+|---------|---------|
+| "This is just a simple question" | Questions are tasks. Check for skills. |
+| "I need more context first" | Skill check comes BEFORE clarifying questions. |
+| "Let me explore the codebase first" | Skills tell you HOW to explore. Check first. |
+| "I can check git/files quickly" | Files lack conversation context. Check for skills. |
+| "Let me gather information first" | Skills tell you HOW to gather information. |
+| "This doesn't need a formal skill" | If a skill exists, use it. |
+| "I remember this skill" | Skills evolve. Read current version. |
+| "This doesn't count as a task" | Action = task. Check for skills. |
+| "The skill is overkill" | Simple things become complex. Use it. |
+| "I'll just do this one thing first" | Check BEFORE doing anything. |
+| "This feels productive" | Undisciplined action wastes time. Skills prevent this. |
+| "I know what that means" | Knowing the concept ≠ using the skill. Invoke it. |
+
+## Skill Priority
+
+When multiple skills could apply, use this order:
+
+1. **Process skills first** (brainstorming, debugging) - these determine HOW to approach the task
+2. **Implementation skills second** (frontend-design, mcp-builder) - these guide execution
+
+"Let's build X" → brainstorming first, then implementation skills.
+"Fix this bug" → debugging first, then domain-specific skills.
+
+## Skill Types
+
+**Rigid** (TDD, debugging): Follow exactly. Don't adapt away discipline.
+
+**Flexible** (patterns): Adapt principles to context.
+
+The skill itself tells you which.
+
+## User Instructions
+
+Instructions say WHAT, not HOW. "Add X" or "Fix Y" doesn't mean skip workflows.
+
+exec
+/bin/bash -lc "sed -n '1,220p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/9d07fd08/skills/verification-before-completion/SKILL.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+---
+name: verification-before-completion
+description: Use when about to claim work is complete, fixed, or passing, before committing or creating PRs - requires running verification commands and confirming output before making any success claims; evidence before assertions always
+---
+
+# Verification Before Completion
+
+## Overview
+
+Claiming work is complete without verification is dishonesty, not efficiency.
+
+**Core principle:** Evidence before claims, always.
+
+**Violating the letter of this rule is violating the spirit of this rule.**
+
+## The Iron Law
+
+```
+NO COMPLETION CLAIMS WITHOUT FRESH VERIFICATION EVIDENCE
+```
+
+If you haven't run the verification command in this message, you cannot claim it passes.
+
+## The Gate Function
+
+```
+BEFORE claiming any status or expressing satisfaction:
+
+1. IDENTIFY: What command proves this claim?
+2. RUN: Execute the FULL command (fresh, complete)
+3. READ: Full output, check exit code, count failures
+4. VERIFY: Does output confirm the claim?
+   - If NO: State actual status with evidence
+   - If YES: State claim WITH evidence
+5. ONLY THEN: Make the claim
+
+Skip any step = lying, not verifying
+```
+
+## Common Failures
+
+| Claim | Requires | Not Sufficient |
+|-------|----------|----------------|
+| Tests pass | Test command output: 0 failures | Previous run, "should pass" |
+| Linter clean | Linter output: 0 errors | Partial check, extrapolation |
+| Build succeeds | Build command: exit 0 | Linter passing, logs look good |
+| Bug fixed | Test original symptom: passes | Code changed, assumed fixed |
+| Regression test works | Red-green cycle verified | Test passes once |
+| Agent completed | VCS diff shows changes | Agent reports "success" |
+| Requirements met | Line-by-line checklist | Tests passing |
+
+## Red Flags - STOP
+
+- Using "should", "probably", "seems to"
+- Expressing satisfaction before verification ("Great!", "Perfect!", "Done!", etc.)
+- About to commit/push/PR without verification
+- Trusting agent success reports
+- Relying on partial verification
+- Thinking "just this once"
+- Tired and wanting work over
+- **ANY wording implying success without having run verification**
+
+## Rationalization Prevention
+
+| Excuse | Reality |
+|--------|---------|
+| "Should work now" | RUN the verification |
+| "I'm confident" | Confidence ≠ evidence |
+| "Just this once" | No exceptions |
+| "Linter passed" | Linter ≠ compiler |
+| "Agent said success" | Verify independently |
+| "I'm tired" | Exhaustion ≠ excuse |
+| "Partial check is enough" | Partial proves nothing |
+| "Different words so rule doesn't apply" | Spirit over letter |
+
+## Key Patterns
+
+**Tests:**
+```
+✅ [Run test command] [See: 34/34 pass] "All tests pass"
+❌ "Should pass now" / "Looks correct"
+```
+
+**Regression tests (TDD Red-Green):**
+```
+✅ Write → Run (pass) → Revert fix → Run (MUST FAIL) → Restore → Run (pass)
+❌ "I've written a regression test" (without red-green verification)
+```
+
+**Build:**
+```
+✅ [Run build] [See: exit 0] "Build passes"
+❌ "Linter passed" (linter doesn't check compilation)
+```
+
+**Requirements:**
+```
+✅ Re-read plan → Create checklist → Verify each → Report gaps or completion
+❌ "Tests pass, phase complete"
+```
+
+**Agent delegation:**
+```
+✅ Agent reports success → Check VCS diff → Verify changes → Report actual state
+❌ Trust agent report
+```
+
+## Why This Matters
+
+From 24 failure memories:
+- your human partner said "I don't believe you" - trust broken
+- Undefined functions shipped - would crash
+- Missing requirements shipped - incomplete features
+- Time wasted on false completion → redirect → rework
+- Violates: "Honesty is a core value. If you lie, you'll be replaced."
+
+## When To Apply
+
+**ALWAYS before:**
+- ANY variation of success/completion claims
+- ANY expression of satisfaction
+- ANY positive statement about work state
+- Committing, PR creation, task completion
+- Moving to next task
+- Delegating to agents
+
+**Rule applies to:**
+- Exact phrases
+- Paraphrases and synonyms
+- Implications of success
+- ANY communication suggesting completion/correctness
+
+## The Bottom Line
+
+**No shortcuts for verification.**
+
+Run the command. Read the output. THEN claim the result.
+
+This is non-negotiable.
+
+exec
+/bin/bash -lc "sed -n '1,240p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/9d07fd08/skills/receiving-code-review/SKILL.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+---
+name: receiving-code-review
+description: Use when receiving code review feedback, before implementing suggestions, especially if feedback seems unclear or technically questionable - requires technical rigor and verification, not performative agreement or blind implementation
+---
+
+# Code Review Reception
+
+## Overview
+
+Code review requires technical evaluation, not emotional performance.
+
+**Core principle:** Verify before implementing. Ask before assuming. Technical correctness over social comfort.
+
+## The Response Pattern
+
+```
+WHEN receiving code review feedback:
+
+1. READ: Complete feedback without reacting
+2. UNDERSTAND: Restate requirement in own words (or ask)
+3. VERIFY: Check against codebase reality
+4. EVALUATE: Technically sound for THIS codebase?
+5. RESPOND: Technical acknowledgment or reasoned pushback
+6. IMPLEMENT: One item at a time, test each
+```
+
+## Forbidden Responses
+
+**NEVER:**
+- "You're absolutely right!" (explicit AGENTS.md violation)
+- "Great point!" / "Excellent feedback!" (performative)
+- "Let me implement that now" (before verification)
+
+**INSTEAD:**
+- Restate the technical requirement
+- Ask clarifying questions
+- Push back with technical reasoning if wrong
+- Just start working (actions > words)
+
+## Handling Unclear Feedback
+
+```
+IF any item is unclear:
+  STOP - do not implement anything yet
+  ASK for clarification on unclear items
+
+WHY: Items may be related. Partial understanding = wrong implementation.
+```
+
+**Example:**
+```
+your human partner: "Fix 1-6"
+You understand 1,2,3,6. Unclear on 4,5.
+
+❌ WRONG: Implement 1,2,3,6 now, ask about 4,5 later
+✅ RIGHT: "I understand items 1,2,3,6. Need clarification on 4 and 5 before proceeding."
+```
+
+## Source-Specific Handling
+
+### From your human partner
+- **Trusted** - implement after understanding
+- **Still ask** if scope unclear
+- **No performative agreement**
+- **Skip to action** or technical acknowledgment
+
+### From External Reviewers
+```
+BEFORE implementing:
+  1. Check: Technically correct for THIS codebase?
+  2. Check: Breaks existing functionality?
+  3. Check: Reason for current implementation?
+  4. Check: Works on all platforms/versions?
+  5. Check: Does reviewer understand full context?
+
+IF suggestion seems wrong:
+  Push back with technical reasoning
+
+IF can't easily verify:
+  Say so: "I can't verify this without [X]. Should I [investigate/ask/proceed]?"
+
+IF conflicts with your human partner's prior decisions:
+  Stop and discuss with your human partner first
+```
+
+**your human partner's rule:** "External feedback - be skeptical, but check carefully"
+
+## YAGNI Check for "Professional" Features
+
+```
+IF reviewer suggests "implementing properly":
+  grep codebase for actual usage
+
+  IF unused: "This endpoint isn't called. Remove it (YAGNI)?"
+  IF used: Then implement properly
+```
+
+**your human partner's rule:** "You and reviewer both report to me. If we don't need this feature, don't add it."
+
+## Implementation Order
+
+```
+FOR multi-item feedback:
+  1. Clarify anything unclear FIRST
+  2. Then implement in this order:
+     - Blocking issues (breaks, security)
+     - Simple fixes (typos, imports)
+     - Complex fixes (refactoring, logic)
+  3. Test each fix individually
+  4. Verify no regressions
+```
+
+## When To Push Back
+
+Push back when:
+- Suggestion breaks existing functionality
+- Reviewer lacks full context
+- Violates YAGNI (unused feature)
+- Technically incorrect for this stack
+- Legacy/compatibility reasons exist
+- Conflicts with your human partner's architectural decisions
+
+**How to push back:**
+- Use technical reasoning, not defensiveness
+- Ask specific questions
+- Reference working tests/code
+- Involve your human partner if architectural
+
+**Signal if uncomfortable pushing back out loud:** "Strange things are afoot at the Circle K"
+
+## Acknowledging Correct Feedback
+
+When feedback IS correct:
+```
+✅ "Fixed. [Brief description of what changed]"
+✅ "Good catch - [specific issue]. Fixed in [location]."
+✅ [Just fix it and show in the code]
+
+❌ "You're absolutely right!"
+❌ "Great point!"
+❌ "Thanks for catching that!"
+❌ "Thanks for [anything]"
+❌ ANY gratitude expression
+```
+
+**Why no thanks:** Actions speak. Just fix it. The code itself shows you heard the feedback.
+
+**If you catch yourself about to write "Thanks":** DELETE IT. State the fix instead.
+
+## Gracefully Correcting Your Pushback
+
+If you pushed back and were wrong:
+```
+✅ "You were right - I checked [X] and it does [Y]. Implementing now."
+✅ "Verified this and you're correct. My initial understanding was wrong because [reason]. Fixing."
+
+❌ Long apology
+❌ Defending why you pushed back
+❌ Over-explaining
+```
+
+State the correction factually and move on.
+
+## Common Mistakes
+
+| Mistake | Fix |
+|---------|-----|
+| Performative agreement | State requirement or just act |
+| Blind implementation | Verify against codebase first |
+| Batch without testing | One at a time, test each |
+| Assuming reviewer is right | Check if breaks things |
+| Avoiding pushback | Technical correctness > comfort |
+| Partial implementation | Clarify all items first |
+| Can't verify, proceed anyway | State limitation, ask for direction |
+
+## Real Examples
+
+**Performative Agreement (Bad):**
+```
+Reviewer: "Remove legacy code"
+❌ "You're absolutely right! Let me remove that..."
+```
+
+**Technical Verification (Good):**
+```
+Reviewer: "Remove legacy code"
+✅ "Checking... build target is 10.15+, this API needs 13+. Need legacy for backward compat. Current impl has wrong bundle ID - fix it or drop pre-13 support?"
+```
+
+**YAGNI (Good):**
+```
+Reviewer: "Implement proper metrics tracking with database, date filters, CSV export"
+✅ "Grepped codebase - nothing calls this endpoint. Remove it (YAGNI)? Or is there usage I'm missing?"
+```
+
+**Unclear Item (Good):**
+```
+your human partner: "Fix items 1-6"
+You understand 1,2,3,6. Unclear on 4,5.
+✅ "Understand 1,2,3,6. Need clarification on 4 and 5 before implementing."
+```
+
+## GitHub Thread Replies
+
+When replying to inline review comments on GitHub, reply in the comment thread (`gh api repos/{owner}/{repo}/pulls/{pr}/comments/{id}/replies`), not as a top-level PR comment.
+
+## The Bottom Line
+
+**External feedback = suggestions to evaluate, not orders to follow.**
+
+Verify. Question. Then implement.
+
+No performative agreement. Technical rigor always.
+
+exec
+/bin/bash -lc "sed -n '1,240p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/9d07fd08/skills/test-driven-development/SKILL.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+---
+name: test-driven-development
+description: Use when implementing any feature or bugfix, before writing implementation code
+---
+
+# Test-Driven Development (TDD)
+
+## Overview
+
+Write the test first. Watch it fail. Write minimal code to pass.
+
+**Core principle:** If you didn't watch the test fail, you don't know if it tests the right thing.
+
+**Violating the letter of the rules is violating the spirit of the rules.**
+
+## When to Use
+
+**Always:**
+- New features
+- Bug fixes
+- Refactoring
+- Behavior changes
+
+**Exceptions (ask your human partner):**
+- Throwaway prototypes
+- Generated code
+- Configuration files
+
+Thinking "skip TDD just this once"? Stop. That's rationalization.
+
+## The Iron Law
+
+```
+NO PRODUCTION CODE WITHOUT A FAILING TEST FIRST
+```
+
+Write code before the test? Delete it. Start over.
+
+**No exceptions:**
+- Don't keep it as "reference"
+- Don't "adapt" it while writing tests
+- Don't look at it
+- Delete means delete
+
+Implement fresh from tests. Period.
+
+## Red-Green-Refactor
+
+```dot
+digraph tdd_cycle {
+    rankdir=LR;
+    red [label="RED\nWrite failing test", shape=box, style=filled, fillcolor="#ffcccc"];
+    verify_red [label="Verify fails\ncorrectly", shape=diamond];
+    green [label="GREEN\nMinimal code", shape=box, style=filled, fillcolor="#ccffcc"];
+    verify_green [label="Verify passes\nAll green", shape=diamond];
+    refactor [label="REFACTOR\nClean up", shape=box, style=filled, fillcolor="#ccccff"];
+    next [label="Next", shape=ellipse];
+
+    red -> verify_red;
+    verify_red -> green [label="yes"];
+    verify_red -> red [label="wrong\nfailure"];
+    green -> verify_green;
+    verify_green -> refactor [label="yes"];
+    verify_green -> green [label="no"];
+    refactor -> verify_green [label="stay\ngreen"];
+    verify_green -> next;
+    next -> red;
+}
+```
+
+### RED - Write Failing Test
+
+Write one minimal test showing what should happen.
+
+<Good>
+```typescript
+test('retries failed operations 3 times', async () => {
+  let attempts = 0;
+  const operation = () => {
+    attempts++;
+    if (attempts < 3) throw new Error('fail');
+    return 'success';
+  };
+
+  const result = await retryOperation(operation);
+
+  expect(result).toBe('success');
+  expect(attempts).toBe(3);
+});
+```
+Clear name, tests real behavior, one thing
+</Good>
+
+<Bad>
+```typescript
+test('retry works', async () => {
+  const mock = jest.fn()
+    .mockRejectedValueOnce(new Error())
+    .mockRejectedValueOnce(new Error())
+    .mockResolvedValueOnce('success');
+  await retryOperation(mock);
+  expect(mock).toHaveBeenCalledTimes(3);
+});
+```
+Vague name, tests mock not code
+</Bad>
+
+**Requirements:**
+- One behavior
+- Clear name
+- Real code (no mocks unless unavoidable)
+
+### Verify RED - Watch It Fail
+
+**MANDATORY. Never skip.**
+
+```bash
+npm test path/to/test.test.ts
+```
+
+Confirm:
+- Test fails (not errors)
+- Failure message is expected
+- Fails because feature missing (not typos)
+
+**Test passes?** You're testing existing behavior. Fix test.
+
+**Test errors?** Fix error, re-run until it fails correctly.
+
+### GREEN - Minimal Code
+
+Write simplest code to pass the test.
+
+<Good>
+```typescript
+async function retryOperation<T>(fn: () => Promise<T>): Promise<T> {
+  for (let i = 0; i < 3; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      if (i === 2) throw e;
+    }
+  }
+  throw new Error('unreachable');
+}
+```
+Just enough to pass
+</Good>
+
+<Bad>
+```typescript
+async function retryOperation<T>(
+  fn: () => Promise<T>,
+  options?: {
+    maxRetries?: number;
+    backoff?: 'linear' | 'exponential';
+    onRetry?: (attempt: number) => void;
+  }
+): Promise<T> {
+  // YAGNI
+}
+```
+Over-engineered
+</Bad>
+
+Don't add features, refactor other code, or "improve" beyond the test.
+
+### Verify GREEN - Watch It Pass
+
+**MANDATORY.**
+
+```bash
+npm test path/to/test.test.ts
+```
+
+Confirm:
+- Test passes
+- Other tests still pass
+- Output pristine (no errors, warnings)
+
+**Test fails?** Fix code, not test.
+
+**Other tests fail?** Fix now.
+
+### REFACTOR - Clean Up
+
+After green only:
+- Remove duplication
+- Improve names
+- Extract helpers
+
+Keep tests green. Don't add behavior.
+
+### Repeat
+
+Next failing test for next feature.
+
+## Good Tests
+
+| Quality | Good | Bad |
+|---------|------|-----|
+| **Minimal** | One thing. "and" in name? Split it. | `test('validates email and domain and whitespace')` |
+| **Clear** | Name describes behavior | `test('test1')` |
+| **Shows intent** | Demonstrates desired API | Obscures what code should do |
+
+## Why Order Matters
+
+**"I'll write tests after to verify it works"**
+
+Tests written after code pass immediately. Passing immediately proves nothing:
+- Might test wrong thing
+- Might test implementation, not behavior
+- Might miss edge cases you forgot
+- You never saw it catch the bug
+
+Test-first forces you to see the test fail, proving it actually tests something.
+
+**"I already manually tested all the edge cases"**
+
+Manual testing is ad-hoc. You think you tested everything but:
+- No record of what you tested
+- Can't re-run when code changes
+- Easy to forget cases under pressure
+- "It worked when I tried it" ≠ comprehensive
+
+Automated tests are systematic. They run the same way every time.
+
+**"Deleting X hours of work is wasteful"**
+
+Sunk cost fallacy. The time is already gone. Your choice now:
+- Delete and rewrite with TDD (X more hours, high confidence)
+- Keep it and add tests after (30 min, low confidence, likely bugs)
+
+The "waste" is keeping code you can't trust. Working code without real tests is technical debt.
+
+**"TDD is dogmatic, being pragmatic means adapting"**
+
+TDD IS pragmatic:
+- Finds bugs before commit (faster than debugging after)
+- Prevents regressions (tests catch breaks immediately)
+
+codex
+The requested changes are clear and the whitelist is narrow. I’m checking the exact contract text and the existing file-head comments now so the patch is a targeted replacement, not a broad rewrite.
+  → Inspect whitelisted files at HEAD
+  • Patch CONTRACT.md stale C.2-8 prose
+  • Replace/add canonical JSDoc headers
+  • Run editor-shell test, lint, typecheck
+  • Report diff stat and verification results
+exec
+/bin/bash -lc 'git status --short' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+ M packages/editor-shell/CONTRACT.md
+ M packages/editor-shell/src/index.ts
+?? apps/site/src/__tests__/e2e/c2-8-drag-modules-mount.spec.ts
+?? docs/audits/codex-runs/2026-05-06-C.2-8-execute.txt
+?? docs/audits/codex-runs/2026-05-06-housekeeping-pr-reviewer-55.txt
+?? docs/audits/screenshots/wave-5-c2-8-drag-modules-mount.png
+?? docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md
+?? packages/editor-shell/src/__tests__/drag-drop/drag-ghost.test.tsx
+?? packages/editor-shell/src/__tests__/drag-drop/drop-pulse.test.tsx
+?? packages/editor-shell/src/__tests__/drag-drop/esc-cancel.test.tsx
+?? packages/editor-shell/src/__tests__/drag-drop/layout-reducer.test.ts
+?? packages/editor-shell/src/drag-drop/drag-ghost.ts
+?? packages/editor-shell/src/drag-drop/drop-pulse.ts
+?? packages/editor-shell/src/drag-drop/esc-cancel.ts
+?? packages/editor-shell/src/drag-drop/layout-reducer.ts
+
+exec
+/bin/bash -lc "nl -ba packages/editor-shell/CONTRACT.md | sed -n '150,285p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+   150	
+   151	1. Stage 1: first ResizeObserver event establishes the initial rowSpan.
+   152	2. Stage 2: later font, image, and code-fence height changes inside one rAF
+   153	   window coalesce into a single render commit.
+   154	3. Stage 3: subsequent ResizeObserver events update only when the integer
+   155	   rowSpan delta is at least 1; delta 0 is ignored as pixel noise.
+   156	
+   157	Forward-pointers:
+   158	
+   159	- ADR-0016 D3 owns the auto-rowSpan hook spec and ResizeObserver constraints.
+   160	- ADR-0016 D11 owns the Tiptap inside / grid outside layering.
+   161	- ADR-0016 D12 owns the layout reducer schema and conflict arbitration; code
+   162	  implementation is deferred to C.2-8.
+   163	- ADR-0016 section 502 row 4 of 4 names this CONTRACT.md as the editor-shell
+   164	  sister-doc sync site.
+   165	
+   166	Cross-package consumer note: `BlockGridPosition` from `@skb/block-foundation`
+   167	(W5-1 invariant authority; Pre-A2 ADR-0016 D2 lock + C.2-2 type
+   168	materialisation) is the type contract editor-shell reads from Tiptap NodeView
+   169	attrs. Per ADR-0016 D11 those attrs are passive data; active mutation flows
+   170	through the future W5-2 reducer.
+   171	
+   172	Q2 v1.1 absorbtion downstream-must-reference lock: editor-shell grid container
+   173	reads NodeView attrs assuming explicit `col` / `colSpan` / `rowSpan` per
+   174	Wave 5 plan v1.1 row C.2-3.5 hard-throw flip end-state (mdx-bridge defensive
+   175	defaults removed); `_gridAttrsExplicit` marker (C.2-1 to C.2-3 transitional)
+   176	SHALL NOT be referenced from editor-shell source. The ADR-0016 D2 defaults
+   177	(`col=1`, `colSpan=12`, `rowSpan=1`) MAY be honored at editor-shell as
+   178	React-side defensive-rendering defaults, an orthogonal concern from mdx-bridge
+   179	defensive defaults with the same numeric values but a distinct enforcement
+   180	layer.
+   181	
+   182	### Drag/Drop layer (C.2-5 + C.2-8)
+   183	
+   184	C.2-5 and C.2-8 add the editor-side drag/drop UX primitives under
+   185	`packages/editor-shell/src/drag-drop/`:
+   186	
+   187	- `edge-rects.ts` exports `EDGE_W`, `GAP`, `EdgeRect`, `BlockLayout`, and
+   188	  `computeEdgeRects(blocks)`. It pre-computes the 4 half-in / half-out edge
+   189	  rectangles per snapshot block per ADR-0017 D2 and D5 option 1.
+   190	- `tiebreak.ts` exports `EdgeMatch`, `DragVelocity`, `tiebreak(matches,
+   191	  velocity)`, and `findMatches(cursorX, cursorY, edgeRects, blockRects)`.
+   192	  It implements ADR-0017 D3's signed-distance formula, primary
+   193	  `Math.abs(distance)` ordering, velocity-direction tiebreak at
+   194	  epsilon 0.5px/frame, spatial fallback, and `blockId.localeCompare` stable
+   195	  terminator.
+   196	- `outline-overlay.tsx` exports `OutlineOverlay` and `OutlineOverlayProps`.
+   197	  It implements the C.2-5 subset of ADR-0017 D4 scheme A: static base plus
+   198	  one active dashed accent for the affected edge. The `host` and
+   199	  `shifted-block` outline classes remain later integration scope.
+   200	- `drop-pulse.ts` exports `DropPulse`, `DropPulseProps`, and
+   201	  `dropPulseClassName`. It implements ADR-0017 D11: a 720ms success halo
+   202	  using `box-shadow: 0 0 0 4px var(--accent-success, oklch(70% 0.12 145 / 0.5))`.
+   203	  Consumers mount it only for `drag-end-success`; cancel, mode-none, and
+   204	  outside-grid drops do not trigger the pulse. The fallback is the ADR-0018
+   205	  Stage C.3 bridge until `--accent-success` lands in design tokens.
+   206	- `drag-ghost.ts` exports `DragGhost`, `DragGhostProps`, and
+   207	  `GhostKind = 'canvas' | 'runnable' | 'image' | 'markdown'`. It implements
+   208	  ADR-0017 D10 with `position: fixed`, cursor `translate(...)`, a
+   209	  `-1.5deg` baseline rotation, velocity-driven `+/-5deg` rotation at
+   210	  5px/frame, and the public `.ghost-canvas` / `.ghost-runnable` /
+   211	  `.ghost-image` / `.ghost-markdown` class roster. The glyph is plain text
+   212	  `◇`; SVG or icon-font styling is Stage C.3 scope.
+   213	- `esc-cancel.ts` exports `useEscCancel` and `EscCancelOptions`. It implements
+   214	  ADR-0017 D8 + Q8: the hook owns the global `keydown` subscription, calls
+   215	  `preventDefault()` and `stopPropagation()` only when `dragActive === true`,
+   216	  dispatches `drag-end-cancel` through the consumer callback, lets native Esc
+   217	  behavior pass through when inactive, and restores the drag-start focus target
+   218	  on drag-end.
+   219	- `layout-reducer.ts` exports `layoutReducer`, `LayoutAction`, `LayoutState`,
+   220	  and `GridSnapshot`. It implements ADR-0017 D12 plus ADR-0016 D12/Q12:
+   221	  `drag-start` saves S0 without changing epoch, `drag-over` is reference-equal
+   222	  no-op preview, `drag-end-success` commits S1 with `epoch + 1`, and
+   223	  `drag-end-cancel` / `drag-end-mode-none` roll back to S0 without changing
+   224	  epoch. `responsiveTransition: 'in-progress'` rejects `drag-start` inside
+   225	  the pure reducer.
+   226	
+   227	Drag/drop edge-width is coupled to grid `--gap` via `EDGE_W = 2 * GAP`.
+   228	`EDGE_W = 28` and `GAP = 14` ensure the 14px gap between adjacent blocks is
+   229	fully covered by both neighbours' edge rects, eliminating the dead zone where
+   230	a cursor in the gap would miss every edge. Cross-package consumer parity:
+   231	`apps/site/src/styles/grid.css` owns `.skb-grid { --gap: 14px }` from C.2-3;
+   232	that value MUST stay byte-equal to the `GAP = 14` export from
+   233	`edge-rects.ts`. Drift is an algorithm replication failure mode, not a visual
+   234	token preference.
+   235	
+   236	The drag/drop layer consumes the W5-1 `BlockGridPosition` shape authority from
+   237	`@skb/block-foundation` conceptually: block bounding boxes are derived from
+   238	grid `{ col, row?, colSpan, rowSpan }` dimensions per ADR-0016 D11's Tiptap
+   239	inside / grid outside layering. The modules do not mutate NodeView attrs; they
+   240	emit geometric data and visual feedback for later C.2-8 reducer wiring.
+   241	
+   242	Wave 5 plan v1.1 row C.2-3.5 is the active downstream constraint: drag/drop
+   243	modules MUST NOT reference `_gridAttrsExplicit`, the mdx-bridge transitional
+   244	marker removed at the hard-throw flip end-state (`b019a31`). ADR-0016 D2
+   245	numeric defaults may still be used as React-side defensive rendering defaults
+   246	at a future `BlockLayout` input boundary; that is orthogonal to mdx-bridge
+   247	hard-throw enforcement.
+   248	
+   249	`layoutReducer` + `layoutEpoch` shipped at C.2-8 per Wave 5 plan v1.3 row
+   250	C.2-8. C.2-4 establishes the W5-2 invariant prose, thin grid container, and
+   251	auto-row-span hook; C.2-8 realizes the ADR-0017 D8/D10/D11/D12 public surfaces
+   252	and the ADR-0016 D12 single-user, single-session mutation pipeline.
+   253	
+   254	### Resize layer (C.2-6)
+   255	
+   256	C.2-6 adds the editor-side resize visual primitives under
+   257	`packages/editor-shell/src/resize/`:
+   258	
+   259	- `col-ruler.tsx` exports `ColRuler` and `ColRulerProps`. It renders the
+   260	  active column snap stops during resize and returns `null` when
+   261	  `totalCols === 1` per ADR-0017 D9's mobile 1-col view-only branch.
+   262	- `size-tooltip.tsx` exports `SizeTooltip`, `SizeTooltipProps`, and
+   263	  `colSpanToFraction(colSpan, totalCols)`. It renders the fixed cursor tooltip
+   264	  at `cursorX + 12` / `cursorY - 8` and uses ADR-0017 D9's canonical fraction
+   265	  tokens such as `1/2`, `2/3`, and `full`.
+   266	
+   267	`ColRuler` consumes snap sets produced by `effectiveColSnaps(viewportCols)` from
+   268	`@skb/block-foundation` (ADR-0016 D6 Q4 authority). That helper is intentionally
+   269	not re-exported from the editor-shell barrel; consumers import it from
+   270	`@skb/block-foundation` directly while importing `ColRuler`, `SizeTooltip`, and
+   271	`colSpanToFraction` from editor-shell.
+   272	
+   273	The stop highlight literal `oklch(58% 0.16 35 / 0.4)` remains in the C.2-6
+   274	source per ADR-0017 D9, with migration to design tokens deferred to ADR-0018
+   275	and Stage C.3. Resize-handle DOM emission, pointer event wiring, snap commit,
+   276	and the `.skb-grid--mobile` state machine remain deferred to C.2-8/C.2-9 per
+   277	Wave 5 plan v1.1.
+   278	
+   279	Cross-package consumer parity: the `gap` default in `ColRuler` comes from
+   280	`@skb/block-foundation` `DEFAULT_GRID_GEOMETRY.gap` and MUST stay byte-equal to
+   281	`apps/site/src/styles/grid.css` `.skb-grid { --gap: 14px }` plus
+   282	`@skb/editor-shell` `drag-drop/edge-rects.ts` `GAP = 14`. Drift here is an
+   283	algorithmic-constant replication failure, not a visual-token preference.
+   284	
+   285	Wave 5 plan v1.1 row C.2-3.5 remains the active downstream constraint for the
+
+exec
+/bin/bash -lc "sed -n '1,80p' packages/editor-shell/src/drag-drop/drop-pulse.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+import { Fragment, createElement } from 'react';
+import type { CSSProperties, ReactElement } from 'react';
+
+/**
+ * ADR-0017 D11 drop-success pulse.
+ *
+ * Consumers mount this component only for drag-end-success. Drag cancel,
+ * mode-none, and dropping outside the grid do not trigger the pulse. The
+ * `--accent-success` token is consumed now with the ADR-0018 Stage C.3 bridge
+ * fallback until the design-token definition lands.
+ */
+export interface DropPulseProps {
+  className?: string;
+  onAnimationEnd?: () => void;
+}
+
+export const dropPulseClassName = 'skb-drop-pulse';
+
+const DROP_PULSE_SHADOW =
+  '0 0 0 4px var(--accent-success, oklch(70% 0.12 145 / 0.5))';
+
+const DROP_PULSE_ANIMATION = 'skb-drop-pulse-fadeout 720ms ease-out forwards';
+
+const DROP_PULSE_KEYFRAMES = `
+@keyframes skb-drop-pulse-fadeout {
+  from {
+    box-shadow: ${DROP_PULSE_SHADOW};
+    opacity: 1;
+  }
+  to {
+    box-shadow: 0 0 0 4px transparent;
+    opacity: 0;
+  }
+}`;
+
+const dropPulseStyle: CSSProperties = {
+  position: 'absolute',
+  inset: 0,
+  pointerEvents: 'none',
+  boxShadow: DROP_PULSE_SHADOW,
+  animation: DROP_PULSE_ANIMATION,
+};
+
+function pulseClassName(className: string | undefined): string {
+  return className ? `${dropPulseClassName} ${className}` : dropPulseClassName;
+}
+
+export function DropPulse(props: DropPulseProps): ReactElement {
+  const { className, onAnimationEnd } = props;
+
+  return createElement(
+    Fragment,
+    null,
+    createElement('style', { 'data-skb-drop-pulse-keyframes': '' }, DROP_PULSE_KEYFRAMES),
+    createElement('div', {
+      className: pulseClassName(className),
+      onAnimationEnd,
+      style: dropPulseStyle,
+    }),
+  );
+}
+
+exec
+/bin/bash -lc "sed -n '1,80p' packages/editor-shell/src/drag-drop/drag-ghost.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+import { createElement } from 'react';
+import type { CSSProperties, ReactElement } from 'react';
+
+/**
+ * ADR-0017 D10 cursor-following drag ghost.
+ *
+ * The four `ghost-*` class names are the stable public styling surface for
+ * Stage C.3 visual identity. The glyph is a plain text fallback for now; SVG
+ * or icon-font treatment is intentionally deferred.
+ */
+export type GhostKind = 'canvas' | 'runnable' | 'image' | 'markdown';
+
+export interface DragGhostVelocity {
+  dx: number;
+  dy: number;
+}
+
+export interface DragGhostProps {
+  cursorX: number;
+  cursorY: number;
+  kind: GhostKind;
+  mode: 'create' | 'move';
+  velocity?: DragGhostVelocity;
+  className?: string;
+}
+
+const GHOST_CLASS_BY_KIND: Readonly<Record<GhostKind, string>> = {
+  canvas: 'ghost-canvas',
+  runnable: 'ghost-runnable',
+  image: 'ghost-image',
+  markdown: 'ghost-markdown',
+};
+
+const GHOST_LABEL_BY_KIND: Readonly<Record<GhostKind, string>> = {
+  canvas: 'Canvas',
+  runnable: 'Runnable',
+  image: 'Image',
+  markdown: 'Markdown',
+};
+
+const VELOCITY_THRESHOLD_PX_PER_FRAME = 5;
+const BASELINE_ROTATION_DEG = -1.5;
+const ACTIVE_ROTATION_DEG = 5;
+
+function rotationDeg(velocity: DragGhostVelocity | undefined): number {
+  if (!velocity) return BASELINE_ROTATION_DEG;
+
+  const magnitude = Math.hypot(velocity.dx, velocity.dy);
+  if (magnitude < VELOCITY_THRESHOLD_PX_PER_FRAME || velocity.dx === 0) {
+    return BASELINE_ROTATION_DEG;
+  }
+
+  return velocity.dx > 0 ? ACTIVE_ROTATION_DEG : -ACTIVE_ROTATION_DEG;
+}
+
+function ghostClassName(kind: GhostKind, className: string | undefined): string {
+  const baseClassName = `drag-ghost ${GHOST_CLASS_BY_KIND[kind]}`;
+  return className ? `${baseClassName} ${className}` : baseClassName;
+}
+
+function ghostLabel(kind: GhostKind, mode: DragGhostProps['mode']): string {
+  const prefix = mode === 'create' ? '+ ' : '⤴ ';
+  return `${prefix}◇ ${GHOST_LABEL_BY_KIND[kind]}`;
+}
+
+function ghostStyle(
+  cursorX: number,
+  cursorY: number,
+  velocity: DragGhostVelocity | undefined,
+): CSSProperties {
+  return {
+    position: 'fixed',
+    left: 0,
+    top: 0,
+    transform: `translate(${cursorX}px, ${cursorY}px) rotate(${rotationDeg(velocity)}deg)`,
+    pointerEvents: 'none',
+  };
+}
+
+export function DragGhost(props: DragGhostProps): ReactElement {
+
+exec
+/bin/bash -lc "sed -n '1,80p' packages/editor-shell/src/drag-drop/esc-cancel.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+import { useEffect, useRef } from 'react';
+
+export interface DragEndCancelAction {
+  type: 'drag-end-cancel';
+}
+
+export type EscCancelDispatch = (action: DragEndCancelAction) => void;
+
+export interface EscCancelOptions {
+  dragActive: boolean;
+  onCancel: () => void;
+  restoreFocusEl?: HTMLElement | null;
+}
+
+type EscCancelInput = EscCancelDispatch | EscCancelOptions;
+
+function activeElement(): HTMLElement | null {
+  return document.activeElement instanceof HTMLElement ? document.activeElement : null;
+}
+
+function resolveDragActive(input: EscCancelInput, dragActive: boolean | undefined): boolean {
+  return typeof input === 'function' ? dragActive === true : input.dragActive;
+}
+
+function resolveRestoreFocusEl(
+  input: EscCancelInput,
+  restoreFocusEl: HTMLElement | null | undefined,
+): HTMLElement | null | undefined {
+  return typeof input === 'function' ? restoreFocusEl : input.restoreFocusEl;
+}
+
+function resolveCancel(input: EscCancelInput): () => void {
+  return typeof input === 'function'
+    ? () => input({ type: 'drag-end-cancel' })
+    : input.onCancel;
+}
+
+export function useEscCancel(
+  dispatch: EscCancelDispatch,
+  dragActive: boolean,
+  restoreFocusEl?: HTMLElement | null,
+): void;
+export function useEscCancel(options: EscCancelOptions): void;
+export function useEscCancel(
+  input: EscCancelInput,
+  dragActiveArg?: boolean,
+  restoreFocusElArg?: HTMLElement | null,
+): void {
+  const dragActive = resolveDragActive(input, dragActiveArg);
+  const explicitRestoreFocusEl = resolveRestoreFocusEl(input, restoreFocusElArg);
+  const cancelRef = useRef<() => void>(() => undefined);
+  const focusAtDragStartRef = useRef<HTMLElement | null>(null);
+  const wasDragActiveRef = useRef(false);
+
+  cancelRef.current = resolveCancel(input);
+
+  useEffect(() => {
+    if (dragActive && !wasDragActiveRef.current) {
+      focusAtDragStartRef.current = explicitRestoreFocusEl ?? activeElement();
+    }
+
+    if (!dragActive && wasDragActiveRef.current) {
+      const focusTarget = explicitRestoreFocusEl ?? focusAtDragStartRef.current;
+      focusTarget?.focus();
+      focusAtDragStartRef.current = null;
+    }
+
+    wasDragActiveRef.current = dragActive;
+  }, [dragActive, explicitRestoreFocusEl]);
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent): void {
+      if (event.key !== 'Escape') return;
+      if (!dragActive) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      cancelRef.current();
+    }
+
+
+exec
+/bin/bash -lc "sed -n '1,100p' packages/editor-shell/src/drag-drop/layout-reducer.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+import type { BlockGridPosition } from '@skb/block-foundation';
+
+/**
+ * ADR-0017 D12 + ADR-0016 D12 layoutEpoch reducer authority.
+ *
+ * Epoch changes only on drag-end-success. Preview drag-over state stays in
+ * the overlay layer, cancel and mode-none roll back to S0, and responsive
+ * transition rejects drag-start without reducer-side mutation.
+ */
+export interface GridSnapshot {
+  readonly blocks: readonly BlockGridPosition[];
+}
+
+export interface LayoutState {
+  readonly epoch: number;
+  readonly snapshot: GridSnapshot | null;
+  readonly baseline: GridSnapshot;
+  readonly responsiveTransition?: 'idle' | 'in-progress';
+}
+
+export type LayoutAction =
+  | { type: 'drag-start'; sourceBlockId: string }
+  | { type: 'drag-over' }
+  | { type: 'drag-end-success'; mutation: GridSnapshot }
+  | { type: 'drag-end-cancel' }
+  | { type: 'drag-end-mode-none' };
+
+function rollbackToSnapshot(state: LayoutState): LayoutState {
+  return {
+    ...state,
+    baseline: state.snapshot ?? state.baseline,
+    snapshot: null,
+  };
+}
+
+export function layoutReducer(state: LayoutState, action: LayoutAction): LayoutState {
+  switch (action.type) {
+    case 'drag-start':
+      if (state.responsiveTransition === 'in-progress') return state;
+
+      return {
+        ...state,
+        snapshot: state.baseline,
+      };
+    case 'drag-over':
+      return state;
+    case 'drag-end-success':
+      return {
+        ...state,
+        epoch: state.epoch + 1,
+        baseline: action.mutation,
+        snapshot: null,
+      };
+    case 'drag-end-cancel':
+      return rollbackToSnapshot(state);
+    case 'drag-end-mode-none':
+      return rollbackToSnapshot(state);
+    default: {
+      const _exhaustive: never = action;
+      return _exhaustive;
+    }
+  }
+}
+
+exec
+/bin/bash -lc "sed -n '80,160p' packages/editor-shell/src/drag-drop/esc-cancel.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+
+    window.addEventListener('keydown', onKeyDown);
+
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [dragActive]);
+}
+
+codex
+The current tree already has unrelated modified/untracked files, including `src/index.ts` and tests/docs outside this whitelist. I’m leaving those untouched and patching only the contract plus the four drag-drop modules.
+  ✓ Inspect whitelisted files at HEAD
+  → Patch CONTRACT.md stale C.2-8 prose
+  • Replace/add canonical JSDoc headers
+  • Run editor-shell test, lint, typecheck
+  • Report diff stat and verification results
+apply patch
+patch: completed
+/home/weiyi/selfKnowledgeBaseWeb/packages/editor-shell/CONTRACT.md
+/home/weiyi/selfKnowledgeBaseWeb/packages/editor-shell/src/drag-drop/drag-ghost.ts
+/home/weiyi/selfKnowledgeBaseWeb/packages/editor-shell/src/drag-drop/drop-pulse.ts
+/home/weiyi/selfKnowledgeBaseWeb/packages/editor-shell/src/drag-drop/esc-cancel.ts
+/home/weiyi/selfKnowledgeBaseWeb/packages/editor-shell/src/drag-drop/layout-reducer.ts
+diff --git a/packages/editor-shell/CONTRACT.md b/packages/editor-shell/CONTRACT.md
+index 37dd279f8a0f39d65459f725a0b8aa629fba881c..db77ea3ddc03e0c518a9a9abb2df498a920af2ff
+--- a/packages/editor-shell/CONTRACT.md
++++ b/packages/editor-shell/CONTRACT.md
+@@ -159,7 +159,8 @@
+ - ADR-0016 D3 owns the auto-rowSpan hook spec and ResizeObserver constraints.
+ - ADR-0016 D11 owns the Tiptap inside / grid outside layering.
+ - ADR-0016 D12 owns the layout reducer schema and conflict arbitration; code
+-  implementation is deferred to C.2-8.
++  implementation shipped at C.2-8 in `src/drag-drop/layout-reducer.ts` (epoch += 1
++  only on drag-end-success; cancel + mode-none rollback to S0 snapshot).
+ - ADR-0016 section 502 row 4 of 4 names this CONTRACT.md as the editor-shell
+   sister-doc sync site.
+ 
+@@ -237,7 +238,8 @@
+ `@skb/block-foundation` conceptually: block bounding boxes are derived from
+ grid `{ col, row?, colSpan, rowSpan }` dimensions per ADR-0016 D11's Tiptap
+ inside / grid outside layering. The modules do not mutate NodeView attrs; they
+-emit geometric data and visual feedback for later C.2-8 reducer wiring.
++emit geometric data and visual feedback for the layoutReducer (shipped at C.2-8)
++which arbitrates drag-end-success vs drag-end-cancel mutations.
+ 
+ Wave 5 plan v1.1 row C.2-3.5 is the active downstream constraint: drag/drop
+ modules MUST NOT reference `_gridAttrsExplicit`, the mdx-bridge transitional
+@@ -272,9 +274,11 @@
+ 
+ The stop highlight literal `oklch(58% 0.16 35 / 0.4)` remains in the C.2-6
+ source per ADR-0017 D9, with migration to design tokens deferred to ADR-0018
+-and Stage C.3. Resize-handle DOM emission, pointer event wiring, snap commit,
+-and the `.skb-grid--mobile` state machine remain deferred to C.2-8/C.2-9 per
+-Wave 5 plan v1.1.
++and Stage C.3. Resize-handle DOM emission, pointer event wiring, and snap commit
++remain deferred to C.2-9/C.2-10 (full integration); the `.skb-grid--mobile`
++state machine remains in C.2-9 scope per Wave 5 plan v1.3. C.2-8 shipped the
++layoutReducer + drag-ghost + drop-pulse + useEscCancel modules consumed by
++future C.2-9/C.2-10 wiring.
+ 
+ Cross-package consumer parity: the `gap` default in `ColRuler` comes from
+ `@skb/block-foundation` `DEFAULT_GRID_GEOMETRY.gap` and MUST stay byte-equal to
+diff --git a/packages/editor-shell/src/drag-drop/drag-ghost.ts b/packages/editor-shell/src/drag-drop/drag-ghost.ts
+index d7cb14f1bda64ede2cf085427cd22f6ee91efc5d..f67f1dac8e8109588a996b9e8d18471297d37c2a
+--- a/packages/editor-shell/src/drag-drop/drag-ghost.ts
++++ b/packages/editor-shell/src/drag-drop/drag-ghost.ts
+@@ -1,13 +1,15 @@
+-import { createElement } from 'react';
+-import type { CSSProperties, ReactElement } from 'react';
+-
+ /**
+- * ADR-0017 D10 cursor-following drag ghost.
++ * @skb/editor-shell drag-ghost — cursor-tracking drag preview with per-kind coloring.
+  *
+- * The four `ghost-*` class names are the stable public styling surface for
+- * Stage C.3 visual identity. The glyph is a plain text fallback for now; SVG
+- * or icon-font treatment is intentionally deferred.
++ * Per ADR-0017 D10:
++ *  - position: fixed; transform: translate(x, y) rotate(angle)
++ *  - Per-kind className: .ghost-canvas / .ghost-runnable / .ghost-image / .ghost-markdown
++ *  - Cursor velocity ≥ 5px/frame → angle ±5° (sign matches velocity direction)
++ *  - Velocity < 5 → -1.5° baseline (load-bearing constant; ADR-0017 D10 line 333+)
++ *  - Glyph: plain text `◇` (Stage C.3 may upgrade to SVG/icon-font)
+  */
++import { createElement } from 'react';
++import type { CSSProperties, ReactElement } from 'react';
+ export type GhostKind = 'canvas' | 'runnable' | 'image' | 'markdown';
+ 
+ export interface DragGhostVelocity {
+diff --git a/packages/editor-shell/src/drag-drop/drop-pulse.ts b/packages/editor-shell/src/drag-drop/drop-pulse.ts
+index 6b4194e7431016784560a12215545b605f661a6f..c980c0c5012461efbdc7e71799cb1c9f18d3ef8c
+--- a/packages/editor-shell/src/drag-drop/drop-pulse.ts
++++ b/packages/editor-shell/src/drag-drop/drop-pulse.ts
+@@ -1,14 +1,16 @@
+-import { Fragment, createElement } from 'react';
+-import type { CSSProperties, ReactElement } from 'react';
+-
+ /**
+- * ADR-0017 D11 drop-success pulse.
++ * @skb/editor-shell drop-pulse — 720ms green halo on drag-end-success.
+  *
+- * Consumers mount this component only for drag-end-success. Drag cancel,
+- * mode-none, and dropping outside the grid do not trigger the pulse. The
+- * `--accent-success` token is consumed now with the ADR-0018 Stage C.3 bridge
+- * fallback until the design-token definition lands.
++ * Per ADR-0017 D11: drop-pulse fires ONLY on drag-end-success; cancel +
++ * mode-none + grid-外松手 do NOT trigger pulse (D11 explicit non-trigger).
++ *
++ * Visual contract:
++ *  - Duration: 720ms (load-bearing constant; ADR-0017 D11 line 342+)
++ *  - Box-shadow: `0 0 0 4px var(--accent-success, oklch(70% 0.12 145 / 0.5))` → fade-out
++ *  - Token source: ADR-0018 `--accent-success` (Stage C.3-1 forward-pointer); fallback hex bridges Wave 5 v0.5 → C.3 token landing.
+  */
++import { Fragment, createElement } from 'react';
++import type { CSSProperties, ReactElement } from 'react';
+ export interface DropPulseProps {
+   className?: string;
+   onAnimationEnd?: () => void;
+diff --git a/packages/editor-shell/src/drag-drop/esc-cancel.ts b/packages/editor-shell/src/drag-drop/esc-cancel.ts
+index 91e27469f4d2454d7d9a4dc99a525e14c3c53473..02630d850b89668f673aeb2cbb65d1ef9214eeb2
+--- a/packages/editor-shell/src/drag-drop/esc-cancel.ts
++++ b/packages/editor-shell/src/drag-drop/esc-cancel.ts
+@@ -1,3 +1,13 @@
++/**
++ * @skb/editor-shell useEscCancel — global Esc keydown subscription with drag-active priority.
++ *
++ * Per ADR-0017 D8 + Q8 absorbtion priority:
++ *  - dragActive === true: preventDefault + stopPropagation + dispatch drag-end-cancel; native Esc behavior suppressed (textarea blur / Tiptap deselect blocked during drag)
++ *  - dragActive === false: NO-OP (native Esc passthrough to Tiptap keymap / browser ESC)
++ *  - drag-end (cancel OR success): restore prior focus snapshot taken at drag-start
++ *
++ * Hook owns the subscription (per ADR-0017 D8 line 296: editor-shell 全局 keydown listener with key === 'Escape').
++ */
+ import { useEffect, useRef } from 'react';
+ 
+ export interface DragEndCancelAction {
+diff --git a/packages/editor-shell/src/drag-drop/layout-reducer.ts b/packages/editor-shell/src/drag-drop/layout-reducer.ts
+index 0832f9b195ccbc6c7622c7266ddcce1b9a753ade..112835053b8f3373672c53fefac83d5d47d5294b
+--- a/packages/editor-shell/src/drag-drop/layout-reducer.ts
++++ b/packages/editor-shell/src/drag-drop/layout-reducer.ts
+@@ -1,12 +1,16 @@
+-import type { BlockGridPosition } from '@skb/block-foundation';
+-
+ /**
+- * ADR-0017 D12 + ADR-0016 D12 layoutEpoch reducer authority.
++ * @skb/editor-shell layoutReducer — single-source mutation reducer for grid layout actions.
++ *
++ * Per ADR-0017 D12 + ADR-0016 D12 Q12 absorbtion table (load-bearing epoch rules):
++ *  - drag-start: epoch unchanged; save S0 snapshot
++ *  - drag-over: epoch unchanged; preview not committed
++ *  - drag-end-success: epoch += 1 (one-shot N → N+1); new S1 baseline
++ *  - drag-end-cancel: epoch unchanged; rollback to S0
++ *  - drag-end-mode-none: epoch unchanged; rollback to S0 (degenerate cancel)
+  *
+- * Epoch changes only on drag-end-success. Preview drag-over state stays in
+- * the overlay layer, cancel and mode-none roll back to S0, and responsive
+- * transition rejects drag-start without reducer-side mutation.
++ * Conflict arbitration: drag (user-initiated) > auto-measure (markdown rowSpan='auto'); responsive transition rejects drag (per ADR-0016 D5 + D12). Single-user single-session assumption (CRDT/OT Phase 2+).
+  */
++import type { BlockGridPosition } from '@skb/block-foundation';
+ export interface GridSnapshot {
+   readonly blocks: readonly BlockGridPosition[];
+ }
+
+diff --git a/packages/editor-shell/CONTRACT.md b/packages/editor-shell/CONTRACT.md
+index 37dd279f8a0f39d65459f725a0b8aa629fba881c..db77ea3ddc03e0c518a9a9abb2df498a920af2ff
+--- a/packages/editor-shell/CONTRACT.md
++++ b/packages/editor-shell/CONTRACT.md
+@@ -159,7 +159,8 @@
+ - ADR-0016 D3 owns the auto-rowSpan hook spec and ResizeObserver constraints.
+ - ADR-0016 D11 owns the Tiptap inside / grid outside layering.
+ - ADR-0016 D12 owns the layout reducer schema and conflict arbitration; code
+-  implementation is deferred to C.2-8.
++  implementation shipped at C.2-8 in `src/drag-drop/layout-reducer.ts` (epoch += 1
++  only on drag-end-success; cancel + mode-none rollback to S0 snapshot).
+ - ADR-0016 section 502 row 4 of 4 names this CONTRACT.md as the editor-shell
+   sister-doc sync site.
+ 
+@@ -237,7 +238,8 @@
+ `@skb/block-foundation` conceptually: block bounding boxes are derived from
+ grid `{ col, row?, colSpan, rowSpan }` dimensions per ADR-0016 D11's Tiptap
+ inside / grid outside layering. The modules do not mutate NodeView attrs; they
+-emit geometric data and visual feedback for later C.2-8 reducer wiring.
++emit geometric data and visual feedback for the layoutReducer (shipped at C.2-8)
++which arbitrates drag-end-success vs drag-end-cancel mutations.
+ 
+ Wave 5 plan v1.1 row C.2-3.5 is the active downstream constraint: drag/drop
+ modules MUST NOT reference `_gridAttrsExplicit`, the mdx-bridge transitional
+@@ -272,9 +274,11 @@
+ 
+ The stop highlight literal `oklch(58% 0.16 35 / 0.4)` remains in the C.2-6
+ source per ADR-0017 D9, with migration to design tokens deferred to ADR-0018
+-and Stage C.3. Resize-handle DOM emission, pointer event wiring, snap commit,
+-and the `.skb-grid--mobile` state machine remain deferred to C.2-8/C.2-9 per
+-Wave 5 plan v1.1.
++and Stage C.3. Resize-handle DOM emission, pointer event wiring, and snap commit
++remain deferred to C.2-9/C.2-10 (full integration); the `.skb-grid--mobile`
++state machine remains in C.2-9 scope per Wave 5 plan v1.3. C.2-8 shipped the
++layoutReducer + drag-ghost + drop-pulse + useEscCancel modules consumed by
++future C.2-9/C.2-10 wiring.
+ 
+ Cross-package consumer parity: the `gap` default in `ColRuler` comes from
+ `@skb/block-foundation` `DEFAULT_GRID_GEOMETRY.gap` and MUST stay byte-equal to
+diff --git a/packages/editor-shell/src/drag-drop/drag-ghost.ts b/packages/editor-shell/src/drag-drop/drag-ghost.ts
+index d7cb14f1bda64ede2cf085427cd22f6ee91efc5d..f67f1dac8e8109588a996b9e8d18471297d37c2a
+--- a/packages/editor-shell/src/drag-drop/drag-ghost.ts
++++ b/packages/editor-shell/src/drag-drop/drag-ghost.ts
+@@ -1,13 +1,15 @@
+-import { createElement } from 'react';
+-import type { CSSProperties, ReactElement } from 'react';
+-
+ /**
+- * ADR-0017 D10 cursor-following drag ghost.
++ * @skb/editor-shell drag-ghost — cursor-tracking drag preview with per-kind coloring.
+  *
+- * The four `ghost-*` class names are the stable public styling surface for
+- * Stage C.3 visual identity. The glyph is a plain text fallback for now; SVG
+- * or icon-font treatment is intentionally deferred.
++ * Per ADR-0017 D10:
++ *  - position: fixed; transform: translate(x, y) rotate(angle)
++ *  - Per-kind className: .ghost-canvas / .ghost-runnable / .ghost-image / .ghost-markdown
++ *  - Cursor velocity ≥ 5px/frame → angle ±5° (sign matches velocity direction)
++ *  - Velocity < 5 → -1.5° baseline (load-bearing constant; ADR-0017 D10 line 333+)
++ *  - Glyph: plain text `◇` (Stage C.3 may upgrade to SVG/icon-font)
+  */
++import { createElement } from 'react';
++import type { CSSProperties, ReactElement } from 'react';
+ export type GhostKind = 'canvas' | 'runnable' | 'image' | 'markdown';
+ 
+ export interface DragGhostVelocity {
+diff --git a/packages/editor-shell/src/drag-drop/drop-pulse.ts b/packages/editor-shell/src/drag-drop/drop-pulse.ts
+index 6b4194e7431016784560a12215545b605f661a6f..c980c0c5012461efbdc7e71799cb1c9f18d3ef8c
+--- a/packages/editor-shell/src/drag-drop/drop-pulse.ts
++++ b/packages/editor-shell/src/drag-drop/drop-pulse.ts
+@@ -1,14 +1,16 @@
+-import { Fragment, createElement } from 'react';
+-import type { CSSProperties, ReactElement } from 'react';
+-
+ /**
+- * ADR-0017 D11 drop-success pulse.
++ * @skb/editor-shell drop-pulse — 720ms green halo on drag-end-success.
+  *
+- * Consumers mount this component only for drag-end-success. Drag cancel,
+- * mode-none, and dropping outside the grid do not trigger the pulse. The
+- * `--accent-success` token is consumed now with the ADR-0018 Stage C.3 bridge
+- * fallback until the design-token definition lands.
++ * Per ADR-0017 D11: drop-pulse fires ONLY on drag-end-success; cancel +
++ * mode-none + grid-外松手 do NOT trigger pulse (D11 explicit non-trigger).
++ *
++ * Visual contract:
++ *  - Duration: 720ms (load-bearing constant; ADR-0017 D11 line 342+)
++ *  - Box-shadow: `0 0 0 4px var(--accent-success, oklch(70% 0.12 145 / 0.5))` → fade-out
++ *  - Token source: ADR-0018 `--accent-success` (Stage C.3-1 forward-pointer); fallback hex bridges Wave 5 v0.5 → C.3 token landing.
+  */
++import { Fragment, createElement } from 'react';
++import type { CSSProperties, ReactElement } from 'react';
+ export interface DropPulseProps {
+   className?: string;
+   onAnimationEnd?: () => void;
+diff --git a/packages/editor-shell/src/drag-drop/esc-cancel.ts b/packages/editor-shell/src/drag-drop/esc-cancel.ts
+index 91e27469f4d2454d7d9a4dc99a525e14c3c53473..02630d850b89668f673aeb2cbb65d1ef9214eeb2
+--- a/packages/editor-shell/src/drag-drop/esc-cancel.ts
++++ b/packages/editor-shell/src/drag-drop/esc-cancel.ts
+@@ -1,3 +1,13 @@
++/**
++ * @skb/editor-shell useEscCancel — global Esc keydown subscription with drag-active priority.
++ *
++ * Per ADR-0017 D8 + Q8 absorbtion priority:
++ *  - dragActive === true: preventDefault + stopPropagation + dispatch drag-end-cancel; native Esc behavior suppressed (textarea blur / Tiptap deselect blocked during drag)
++ *  - dragActive === false: NO-OP (native Esc passthrough to Tiptap keymap / browser ESC)
++ *  - drag-end (cancel OR success): restore prior focus snapshot taken at drag-start
++ *
++ * Hook owns the subscription (per ADR-0017 D8 line 296: editor-shell 全局 keydown listener with key === 'Escape').
++ */
+ import { useEffect, useRef } from 'react';
+ 
+ export interface DragEndCancelAction {
+diff --git a/packages/editor-shell/src/drag-drop/layout-reducer.ts b/packages/editor-shell/src/drag-drop/layout-reducer.ts
+index 0832f9b195ccbc6c7622c7266ddcce1b9a753ade..112835053b8f3373672c53fefac83d5d47d5294b
+--- a/packages/editor-shell/src/drag-drop/layout-reducer.ts
++++ b/packages/editor-shell/src/drag-drop/layout-reducer.ts
+@@ -1,12 +1,16 @@
+-import type { BlockGridPosition } from '@skb/block-foundation';
+-
+ /**
+- * ADR-0017 D12 + ADR-0016 D12 layoutEpoch reducer authority.
++ * @skb/editor-shell layoutReducer — single-source mutation reducer for grid layout actions.
++ *
++ * Per ADR-0017 D12 + ADR-0016 D12 Q12 absorbtion table (load-bearing epoch rules):
++ *  - drag-start: epoch unchanged; save S0 snapshot
++ *  - drag-over: epoch unchanged; preview not committed
++ *  - drag-end-success: epoch += 1 (one-shot N → N+1); new S1 baseline
++ *  - drag-end-cancel: epoch unchanged; rollback to S0
++ *  - drag-end-mode-none: epoch unchanged; rollback to S0 (degenerate cancel)
+  *
+- * Epoch changes only on drag-end-success. Preview drag-over state stays in
+- * the overlay layer, cancel and mode-none roll back to S0, and responsive
+- * transition rejects drag-start without reducer-side mutation.
++ * Conflict arbitration: drag (user-initiated) > auto-measure (markdown rowSpan='auto'); responsive transition rejects drag (per ADR-0016 D5 + D12). Single-user single-session assumption (CRDT/OT Phase 2+).
+  */
++import type { BlockGridPosition } from '@skb/block-foundation';
+ export interface GridSnapshot {
+   readonly blocks: readonly BlockGridPosition[];
+ }
+
+codex
+The contract prose and file-head comments are patched. I’m reading the touched sections once more before running verification, mainly to catch accidental scope or wording drift.
+  ✓ Inspect whitelisted files at HEAD
+  ✓ Patch CONTRACT.md stale C.2-8 prose
+  → Replace/add canonical JSDoc headers
+  • Run editor-shell test, lint, typecheck
+  • Report diff stat and verification results
+diff --git a/packages/editor-shell/CONTRACT.md b/packages/editor-shell/CONTRACT.md
+index 37dd279f8a0f39d65459f725a0b8aa629fba881c..db77ea3ddc03e0c518a9a9abb2df498a920af2ff
+--- a/packages/editor-shell/CONTRACT.md
++++ b/packages/editor-shell/CONTRACT.md
+@@ -159,7 +159,8 @@
+ - ADR-0016 D3 owns the auto-rowSpan hook spec and ResizeObserver constraints.
+ - ADR-0016 D11 owns the Tiptap inside / grid outside layering.
+ - ADR-0016 D12 owns the layout reducer schema and conflict arbitration; code
+-  implementation is deferred to C.2-8.
++  implementation shipped at C.2-8 in `src/drag-drop/layout-reducer.ts` (epoch += 1
++  only on drag-end-success; cancel + mode-none rollback to S0 snapshot).
+ - ADR-0016 section 502 row 4 of 4 names this CONTRACT.md as the editor-shell
+   sister-doc sync site.
+ 
+@@ -237,7 +238,8 @@
+ `@skb/block-foundation` conceptually: block bounding boxes are derived from
+ grid `{ col, row?, colSpan, rowSpan }` dimensions per ADR-0016 D11's Tiptap
+ inside / grid outside layering. The modules do not mutate NodeView attrs; they
+-emit geometric data and visual feedback for later C.2-8 reducer wiring.
++emit geometric data and visual feedback for the layoutReducer (shipped at C.2-8)
++which arbitrates drag-end-success vs drag-end-cancel mutations.
+ 
+ Wave 5 plan v1.1 row C.2-3.5 is the active downstream constraint: drag/drop
+ modules MUST NOT reference `_gridAttrsExplicit`, the mdx-bridge transitional
+@@ -272,9 +274,11 @@
+ 
+ The stop highlight literal `oklch(58% 0.16 35 / 0.4)` remains in the C.2-6
+ source per ADR-0017 D9, with migration to design tokens deferred to ADR-0018
+-and Stage C.3. Resize-handle DOM emission, pointer event wiring, snap commit,
+-and the `.skb-grid--mobile` state machine remain deferred to C.2-8/C.2-9 per
+-Wave 5 plan v1.1.
++and Stage C.3. Resize-handle DOM emission, pointer event wiring, and snap commit
++remain deferred to C.2-9/C.2-10 (full integration); the `.skb-grid--mobile`
++state machine remains in C.2-9 scope per Wave 5 plan v1.3. C.2-8 shipped the
++layoutReducer + drag-ghost + drop-pulse + useEscCancel modules consumed by
++future C.2-9/C.2-10 wiring.
+ 
+ Cross-package consumer parity: the `gap` default in `ColRuler` comes from
+ `@skb/block-foundation` `DEFAULT_GRID_GEOMETRY.gap` and MUST stay byte-equal to
+diff --git a/packages/editor-shell/src/drag-drop/drag-ghost.ts b/packages/editor-shell/src/drag-drop/drag-ghost.ts
+index d7cb14f1bda64ede2cf085427cd22f6ee91efc5d..f67f1dac8e8109588a996b9e8d18471297d37c2a
+--- a/packages/editor-shell/src/drag-drop/drag-ghost.ts
++++ b/packages/editor-shell/src/drag-drop/drag-ghost.ts
+@@ -1,13 +1,15 @@
+-import { createElement } from 'react';
+-import type { CSSProperties, ReactElement } from 'react';
+-
+ /**
+- * ADR-0017 D10 cursor-following drag ghost.
++ * @skb/editor-shell drag-ghost — cursor-tracking drag preview with per-kind coloring.
+  *
+- * The four `ghost-*` class names are the stable public styling surface for
+- * Stage C.3 visual identity. The glyph is a plain text fallback for now; SVG
+- * or icon-font treatment is intentionally deferred.
++ * Per ADR-0017 D10:
++ *  - position: fixed; transform: translate(x, y) rotate(angle)
++ *  - Per-kind className: .ghost-canvas / .ghost-runnable / .ghost-image / .ghost-markdown
++ *  - Cursor velocity ≥ 5px/frame → angle ±5° (sign matches velocity direction)
++ *  - Velocity < 5 → -1.5° baseline (load-bearing constant; ADR-0017 D10 line 333+)
++ *  - Glyph: plain text `◇` (Stage C.3 may upgrade to SVG/icon-font)
+  */
++import { createElement } from 'react';
++import type { CSSProperties, ReactElement } from 'react';
+ export type GhostKind = 'canvas' | 'runnable' | 'image' | 'markdown';
+ 
+ export interface DragGhostVelocity {
+diff --git a/packages/editor-shell/src/drag-drop/drop-pulse.ts b/packages/editor-shell/src/drag-drop/drop-pulse.ts
+index 6b4194e7431016784560a12215545b605f661a6f..c980c0c5012461efbdc7e71799cb1c9f18d3ef8c
+--- a/packages/editor-shell/src/drag-drop/drop-pulse.ts
++++ b/packages/editor-shell/src/drag-drop/drop-pulse.ts
+@@ -1,14 +1,16 @@
+-import { Fragment, createElement } from 'react';
+-import type { CSSProperties, ReactElement } from 'react';
+-
+ /**
+- * ADR-0017 D11 drop-success pulse.
++ * @skb/editor-shell drop-pulse — 720ms green halo on drag-end-success.
+  *
+- * Consumers mount this component only for drag-end-success. Drag cancel,
+- * mode-none, and dropping outside the grid do not trigger the pulse. The
+- * `--accent-success` token is consumed now with the ADR-0018 Stage C.3 bridge
+- * fallback until the design-token definition lands.
++ * Per ADR-0017 D11: drop-pulse fires ONLY on drag-end-success; cancel +
++ * mode-none + grid-外松手 do NOT trigger pulse (D11 explicit non-trigger).
++ *
++ * Visual contract:
++ *  - Duration: 720ms (load-bearing constant; ADR-0017 D11 line 342+)
++ *  - Box-shadow: `0 0 0 4px var(--accent-success, oklch(70% 0.12 145 / 0.5))` → fade-out
++ *  - Token source: ADR-0018 `--accent-success` (Stage C.3-1 forward-pointer); fallback hex bridges Wave 5 v0.5 → C.3 token landing.
+  */
++import { Fragment, createElement } from 'react';
++import type { CSSProperties, ReactElement } from 'react';
+ export interface DropPulseProps {
+   className?: string;
+   onAnimationEnd?: () => void;
+diff --git a/packages/editor-shell/src/drag-drop/esc-cancel.ts b/packages/editor-shell/src/drag-drop/esc-cancel.ts
+index 91e27469f4d2454d7d9a4dc99a525e14c3c53473..02630d850b89668f673aeb2cbb65d1ef9214eeb2
+--- a/packages/editor-shell/src/drag-drop/esc-cancel.ts
++++ b/packages/editor-shell/src/drag-drop/esc-cancel.ts
+@@ -1,3 +1,13 @@
++/**
++ * @skb/editor-shell useEscCancel — global Esc keydown subscription with drag-active priority.
++ *
++ * Per ADR-0017 D8 + Q8 absorbtion priority:
++ *  - dragActive === true: preventDefault + stopPropagation + dispatch drag-end-cancel; native Esc behavior suppressed (textarea blur / Tiptap deselect blocked during drag)
++ *  - dragActive === false: NO-OP (native Esc passthrough to Tiptap keymap / browser ESC)
++ *  - drag-end (cancel OR success): restore prior focus snapshot taken at drag-start
++ *
++ * Hook owns the subscription (per ADR-0017 D8 line 296: editor-shell 全局 keydown listener with key === 'Escape').
++ */
+ import { useEffect, useRef } from 'react';
+ 
+ export interface DragEndCancelAction {
+diff --git a/packages/editor-shell/src/drag-drop/layout-reducer.ts b/packages/editor-shell/src/drag-drop/layout-reducer.ts
+index 0832f9b195ccbc6c7622c7266ddcce1b9a753ade..112835053b8f3373672c53fefac83d5d47d5294b
+--- a/packages/editor-shell/src/drag-drop/layout-reducer.ts
++++ b/packages/editor-shell/src/drag-drop/layout-reducer.ts
+@@ -1,12 +1,16 @@
+-import type { BlockGridPosition } from '@skb/block-foundation';
+-
+ /**
+- * ADR-0017 D12 + ADR-0016 D12 layoutEpoch reducer authority.
++ * @skb/editor-shell layoutReducer — single-source mutation reducer for grid layout actions.
++ *
++ * Per ADR-0017 D12 + ADR-0016 D12 Q12 absorbtion table (load-bearing epoch rules):
++ *  - drag-start: epoch unchanged; save S0 snapshot
++ *  - drag-over: epoch unchanged; preview not committed
++ *  - drag-end-success: epoch += 1 (one-shot N → N+1); new S1 baseline
++ *  - drag-end-cancel: epoch unchanged; rollback to S0
++ *  - drag-end-mode-none: epoch unchanged; rollback to S0 (degenerate cancel)
+  *
+- * Epoch changes only on drag-end-success. Preview drag-over state stays in
+- * the overlay layer, cancel and mode-none roll back to S0, and responsive
+- * transition rejects drag-start without reducer-side mutation.
++ * Conflict arbitration: drag (user-initiated) > auto-measure (markdown rowSpan='auto'); responsive transition rejects drag (per ADR-0016 D5 + D12). Single-user single-session assumption (CRDT/OT Phase 2+).
+  */
++import type { BlockGridPosition } from '@skb/block-foundation';
+ export interface GridSnapshot {
+   readonly blocks: readonly BlockGridPosition[];
+ }
+
+exec
+/bin/bash -lc "nl -ba packages/editor-shell/CONTRACT.md | sed -n '157,279p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+   157	Forward-pointers:
+   158	
+   159	- ADR-0016 D3 owns the auto-rowSpan hook spec and ResizeObserver constraints.
+   160	- ADR-0016 D11 owns the Tiptap inside / grid outside layering.
+   161	- ADR-0016 D12 owns the layout reducer schema and conflict arbitration; code
+   162	  implementation shipped at C.2-8 in `src/drag-drop/layout-reducer.ts` (epoch += 1
+   163	  only on drag-end-success; cancel + mode-none rollback to S0 snapshot).
+   164	- ADR-0016 section 502 row 4 of 4 names this CONTRACT.md as the editor-shell
+   165	  sister-doc sync site.
+   166	
+   167	Cross-package consumer note: `BlockGridPosition` from `@skb/block-foundation`
+   168	(W5-1 invariant authority; Pre-A2 ADR-0016 D2 lock + C.2-2 type
+   169	materialisation) is the type contract editor-shell reads from Tiptap NodeView
+   170	attrs. Per ADR-0016 D11 those attrs are passive data; active mutation flows
+   171	through the future W5-2 reducer.
+   172	
+   173	Q2 v1.1 absorbtion downstream-must-reference lock: editor-shell grid container
+   174	reads NodeView attrs assuming explicit `col` / `colSpan` / `rowSpan` per
+   175	Wave 5 plan v1.1 row C.2-3.5 hard-throw flip end-state (mdx-bridge defensive
+   176	defaults removed); `_gridAttrsExplicit` marker (C.2-1 to C.2-3 transitional)
+   177	SHALL NOT be referenced from editor-shell source. The ADR-0016 D2 defaults
+   178	(`col=1`, `colSpan=12`, `rowSpan=1`) MAY be honored at editor-shell as
+   179	React-side defensive-rendering defaults, an orthogonal concern from mdx-bridge
+   180	defensive defaults with the same numeric values but a distinct enforcement
+   181	layer.
+   182	
+   183	### Drag/Drop layer (C.2-5 + C.2-8)
+   184	
+   185	C.2-5 and C.2-8 add the editor-side drag/drop UX primitives under
+   186	`packages/editor-shell/src/drag-drop/`:
+   187	
+   188	- `edge-rects.ts` exports `EDGE_W`, `GAP`, `EdgeRect`, `BlockLayout`, and
+   189	  `computeEdgeRects(blocks)`. It pre-computes the 4 half-in / half-out edge
+   190	  rectangles per snapshot block per ADR-0017 D2 and D5 option 1.
+   191	- `tiebreak.ts` exports `EdgeMatch`, `DragVelocity`, `tiebreak(matches,
+   192	  velocity)`, and `findMatches(cursorX, cursorY, edgeRects, blockRects)`.
+   193	  It implements ADR-0017 D3's signed-distance formula, primary
+   194	  `Math.abs(distance)` ordering, velocity-direction tiebreak at
+   195	  epsilon 0.5px/frame, spatial fallback, and `blockId.localeCompare` stable
+   196	  terminator.
+   197	- `outline-overlay.tsx` exports `OutlineOverlay` and `OutlineOverlayProps`.
+   198	  It implements the C.2-5 subset of ADR-0017 D4 scheme A: static base plus
+   199	  one active dashed accent for the affected edge. The `host` and
+   200	  `shifted-block` outline classes remain later integration scope.
+   201	- `drop-pulse.ts` exports `DropPulse`, `DropPulseProps`, and
+   202	  `dropPulseClassName`. It implements ADR-0017 D11: a 720ms success halo
+   203	  using `box-shadow: 0 0 0 4px var(--accent-success, oklch(70% 0.12 145 / 0.5))`.
+   204	  Consumers mount it only for `drag-end-success`; cancel, mode-none, and
+   205	  outside-grid drops do not trigger the pulse. The fallback is the ADR-0018
+   206	  Stage C.3 bridge until `--accent-success` lands in design tokens.
+   207	- `drag-ghost.ts` exports `DragGhost`, `DragGhostProps`, and
+   208	  `GhostKind = 'canvas' | 'runnable' | 'image' | 'markdown'`. It implements
+   209	  ADR-0017 D10 with `position: fixed`, cursor `translate(...)`, a
+   210	  `-1.5deg` baseline rotation, velocity-driven `+/-5deg` rotation at
+   211	  5px/frame, and the public `.ghost-canvas` / `.ghost-runnable` /
+   212	  `.ghost-image` / `.ghost-markdown` class roster. The glyph is plain text
+   213	  `◇`; SVG or icon-font styling is Stage C.3 scope.
+   214	- `esc-cancel.ts` exports `useEscCancel` and `EscCancelOptions`. It implements
+   215	  ADR-0017 D8 + Q8: the hook owns the global `keydown` subscription, calls
+   216	  `preventDefault()` and `stopPropagation()` only when `dragActive === true`,
+   217	  dispatches `drag-end-cancel` through the consumer callback, lets native Esc
+   218	  behavior pass through when inactive, and restores the drag-start focus target
+   219	  on drag-end.
+   220	- `layout-reducer.ts` exports `layoutReducer`, `LayoutAction`, `LayoutState`,
+   221	  and `GridSnapshot`. It implements ADR-0017 D12 plus ADR-0016 D12/Q12:
+   222	  `drag-start` saves S0 without changing epoch, `drag-over` is reference-equal
+   223	  no-op preview, `drag-end-success` commits S1 with `epoch + 1`, and
+   224	  `drag-end-cancel` / `drag-end-mode-none` roll back to S0 without changing
+   225	  epoch. `responsiveTransition: 'in-progress'` rejects `drag-start` inside
+   226	  the pure reducer.
+   227	
+   228	Drag/drop edge-width is coupled to grid `--gap` via `EDGE_W = 2 * GAP`.
+   229	`EDGE_W = 28` and `GAP = 14` ensure the 14px gap between adjacent blocks is
+   230	fully covered by both neighbours' edge rects, eliminating the dead zone where
+   231	a cursor in the gap would miss every edge. Cross-package consumer parity:
+   232	`apps/site/src/styles/grid.css` owns `.skb-grid { --gap: 14px }` from C.2-3;
+   233	that value MUST stay byte-equal to the `GAP = 14` export from
+   234	`edge-rects.ts`. Drift is an algorithm replication failure mode, not a visual
+   235	token preference.
+   236	
+   237	The drag/drop layer consumes the W5-1 `BlockGridPosition` shape authority from
+   238	`@skb/block-foundation` conceptually: block bounding boxes are derived from
+   239	grid `{ col, row?, colSpan, rowSpan }` dimensions per ADR-0016 D11's Tiptap
+   240	inside / grid outside layering. The modules do not mutate NodeView attrs; they
+   241	emit geometric data and visual feedback for the layoutReducer (shipped at C.2-8)
+   242	which arbitrates drag-end-success vs drag-end-cancel mutations.
+   243	
+   244	Wave 5 plan v1.1 row C.2-3.5 is the active downstream constraint: drag/drop
+   245	modules MUST NOT reference `_gridAttrsExplicit`, the mdx-bridge transitional
+   246	marker removed at the hard-throw flip end-state (`b019a31`). ADR-0016 D2
+   247	numeric defaults may still be used as React-side defensive rendering defaults
+   248	at a future `BlockLayout` input boundary; that is orthogonal to mdx-bridge
+   249	hard-throw enforcement.
+   250	
+   251	`layoutReducer` + `layoutEpoch` shipped at C.2-8 per Wave 5 plan v1.3 row
+   252	C.2-8. C.2-4 establishes the W5-2 invariant prose, thin grid container, and
+   253	auto-row-span hook; C.2-8 realizes the ADR-0017 D8/D10/D11/D12 public surfaces
+   254	and the ADR-0016 D12 single-user, single-session mutation pipeline.
+   255	
+   256	### Resize layer (C.2-6)
+   257	
+   258	C.2-6 adds the editor-side resize visual primitives under
+   259	`packages/editor-shell/src/resize/`:
+   260	
+   261	- `col-ruler.tsx` exports `ColRuler` and `ColRulerProps`. It renders the
+   262	  active column snap stops during resize and returns `null` when
+   263	  `totalCols === 1` per ADR-0017 D9's mobile 1-col view-only branch.
+   264	- `size-tooltip.tsx` exports `SizeTooltip`, `SizeTooltipProps`, and
+   265	  `colSpanToFraction(colSpan, totalCols)`. It renders the fixed cursor tooltip
+   266	  at `cursorX + 12` / `cursorY - 8` and uses ADR-0017 D9's canonical fraction
+   267	  tokens such as `1/2`, `2/3`, and `full`.
+   268	
+   269	`ColRuler` consumes snap sets produced by `effectiveColSnaps(viewportCols)` from
+   270	`@skb/block-foundation` (ADR-0016 D6 Q4 authority). That helper is intentionally
+   271	not re-exported from the editor-shell barrel; consumers import it from
+   272	`@skb/block-foundation` directly while importing `ColRuler`, `SizeTooltip`, and
+   273	`colSpanToFraction` from editor-shell.
+   274	
+   275	The stop highlight literal `oklch(58% 0.16 35 / 0.4)` remains in the C.2-6
+   276	source per ADR-0017 D9, with migration to design tokens deferred to ADR-0018
+   277	and Stage C.3. Resize-handle DOM emission, pointer event wiring, and snap commit
+   278	remain deferred to C.2-9/C.2-10 (full integration); the `.skb-grid--mobile`
+   279	state machine remains in C.2-9 scope per Wave 5 plan v1.3. C.2-8 shipped the
+
+exec
+/bin/bash -lc "sed -n '1,35p' packages/editor-shell/src/drag-drop/drop-pulse.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+/**
+ * @skb/editor-shell drop-pulse — 720ms green halo on drag-end-success.
+ *
+ * Per ADR-0017 D11: drop-pulse fires ONLY on drag-end-success; cancel +
+ * mode-none + grid-外松手 do NOT trigger pulse (D11 explicit non-trigger).
+ *
+ * Visual contract:
+ *  - Duration: 720ms (load-bearing constant; ADR-0017 D11 line 342+)
+ *  - Box-shadow: `0 0 0 4px var(--accent-success, oklch(70% 0.12 145 / 0.5))` → fade-out
+ *  - Token source: ADR-0018 `--accent-success` (Stage C.3-1 forward-pointer); fallback hex bridges Wave 5 v0.5 → C.3 token landing.
+ */
+import { Fragment, createElement } from 'react';
+import type { CSSProperties, ReactElement } from 'react';
+export interface DropPulseProps {
+  className?: string;
+  onAnimationEnd?: () => void;
+}
+
+export const dropPulseClassName = 'skb-drop-pulse';
+
+const DROP_PULSE_SHADOW =
+  '0 0 0 4px var(--accent-success, oklch(70% 0.12 145 / 0.5))';
+
+const DROP_PULSE_ANIMATION = 'skb-drop-pulse-fadeout 720ms ease-out forwards';
+
+const DROP_PULSE_KEYFRAMES = `
+@keyframes skb-drop-pulse-fadeout {
+  from {
+    box-shadow: ${DROP_PULSE_SHADOW};
+    opacity: 1;
+  }
+  to {
+    box-shadow: 0 0 0 4px transparent;
+    opacity: 0;
+  }
+
+exec
+/bin/bash -lc "sed -n '1,35p' packages/editor-shell/src/drag-drop/drag-ghost.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+/**
+ * @skb/editor-shell drag-ghost — cursor-tracking drag preview with per-kind coloring.
+ *
+ * Per ADR-0017 D10:
+ *  - position: fixed; transform: translate(x, y) rotate(angle)
+ *  - Per-kind className: .ghost-canvas / .ghost-runnable / .ghost-image / .ghost-markdown
+ *  - Cursor velocity ≥ 5px/frame → angle ±5° (sign matches velocity direction)
+ *  - Velocity < 5 → -1.5° baseline (load-bearing constant; ADR-0017 D10 line 333+)
+ *  - Glyph: plain text `◇` (Stage C.3 may upgrade to SVG/icon-font)
+ */
+import { createElement } from 'react';
+import type { CSSProperties, ReactElement } from 'react';
+export type GhostKind = 'canvas' | 'runnable' | 'image' | 'markdown';
+
+export interface DragGhostVelocity {
+  dx: number;
+  dy: number;
+}
+
+export interface DragGhostProps {
+  cursorX: number;
+  cursorY: number;
+  kind: GhostKind;
+  mode: 'create' | 'move';
+  velocity?: DragGhostVelocity;
+  className?: string;
+}
+
+const GHOST_CLASS_BY_KIND: Readonly<Record<GhostKind, string>> = {
+  canvas: 'ghost-canvas',
+  runnable: 'ghost-runnable',
+  image: 'ghost-image',
+  markdown: 'ghost-markdown',
+};
+
+
+exec
+/bin/bash -lc "sed -n '1,35p' packages/editor-shell/src/drag-drop/esc-cancel.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+/**
+ * @skb/editor-shell useEscCancel — global Esc keydown subscription with drag-active priority.
+ *
+ * Per ADR-0017 D8 + Q8 absorbtion priority:
+ *  - dragActive === true: preventDefault + stopPropagation + dispatch drag-end-cancel; native Esc behavior suppressed (textarea blur / Tiptap deselect blocked during drag)
+ *  - dragActive === false: NO-OP (native Esc passthrough to Tiptap keymap / browser ESC)
+ *  - drag-end (cancel OR success): restore prior focus snapshot taken at drag-start
+ *
+ * Hook owns the subscription (per ADR-0017 D8 line 296: editor-shell 全局 keydown listener with key === 'Escape').
+ */
+import { useEffect, useRef } from 'react';
+
+export interface DragEndCancelAction {
+  type: 'drag-end-cancel';
+}
+
+export type EscCancelDispatch = (action: DragEndCancelAction) => void;
+
+export interface EscCancelOptions {
+  dragActive: boolean;
+  onCancel: () => void;
+  restoreFocusEl?: HTMLElement | null;
+}

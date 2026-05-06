@@ -1,0 +1,2000 @@
+Reading prompt from stdin...
+OpenAI Codex v0.125.0 (research preview)
+--------
+workdir: /home/weiyi/selfKnowledgeBaseWeb
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: danger-full-access
+reasoning effort: xhigh
+reasoning summaries: none
+session id: 019dfdd2-902a-7971-8c38-903243a1af0e
+--------
+user
+You are the D1 stage-2 EXECUTOR for Wave 5 C.2-8 — drop-pulse 720ms + drag-ghost + 全局 Esc cancel + layoutEpoch reducer.
+
+# Step 1 (mandatory) — Read the locked PR.md
+
+Read `/home/weiyi/selfKnowledgeBaseWeb/docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md` (locked at PLAN stage 1 by pr-writer; ~1428 lines). Sections to attend to:
+
+- `## files` — 12-file whitelist
+- `## test_cases` — 19 vitest cases + 1 Playwright spec design
+- `## acceptance` — 15+ AC commands
+- `## ambiguity flagged` — 5 ambiguities, all RESOLVED in-line by pr-writer (no orchestrator action needed). Read these to align implementation:
+  1. `responsiveTransition` lives on LayoutState (pure-reducer purity)
+  2. DragGhost glyph uses plain text fallback (`◇`); SVG/icon-font Stage C.3 scope
+  3. `useEscCancel` owns subscription (matches D8 line 296)
+  4. Playwright spec target: `/notes/sample-blocks/edit` (deterministic; uses C.4-prelude existing fixture)
+  5. Single post-Esc screenshot (subsumes pre-Esc validation)
+- `## D2 trigger judgment` — Row 1 (CONTRACT.md) + Row 5 (cross-package boundary) fires; PRE-COMMIT CLAUDE REVIEW MANDATORY at stage 4 (orchestrator-self runs after you finish)
+
+# Whitelist (12 files; codex-touchable subset = files 1-11; PR.md self-listed at file 12 stays orchestrator-coord)
+
+1. `packages/editor-shell/src/drag-drop/drop-pulse.ts` (NEW; ~80 LOC; per ADR-0017 D11)
+2. `packages/editor-shell/src/drag-drop/drag-ghost.ts` (NEW; ~120 LOC; per ADR-0017 D10)
+3. `packages/editor-shell/src/drag-drop/esc-cancel.ts` (NEW; ~80 LOC; per ADR-0017 D8 + Q8)
+4. `packages/editor-shell/src/drag-drop/layout-reducer.ts` (NEW; ~120 LOC; per ADR-0017 D12 + ADR-0016 D12)
+5. `packages/editor-shell/src/__tests__/drag-drop/drop-pulse.test.tsx` (NEW; ~70 LOC; 4 cases)
+6. `packages/editor-shell/src/__tests__/drag-drop/drag-ghost.test.tsx` (NEW; ~80 LOC; 5 cases)
+7. `packages/editor-shell/src/__tests__/drag-drop/esc-cancel.test.tsx` (NEW; ~70 LOC; 4 cases)
+8. `packages/editor-shell/src/__tests__/drag-drop/layout-reducer.test.ts` (NEW; ~90 LOC; 6 cases)
+9. `packages/editor-shell/src/index.ts` (MODIFIED; ~10 LOC delta; barrel re-exports for 4 new surfaces)
+10. `packages/editor-shell/CONTRACT.md` (MODIFIED; ~25-35 LOC delta; sister-doc-sync per ADR-0016 §502 row 4; append to existing `packages/editor-shell/src/drag-drop/` subsection at line 185+)
+11. `apps/site/src/__tests__/e2e/c2-8-drag-modules-mount.spec.ts` (NEW; ~60 LOC; minimal Playwright smoke)
+
+# Step 2 — TDD-front: write vitest test files FIRST
+
+Per `## test_cases` Suite 1-4 specifications. Write all 4 test files BEFORE any source impl. Cases must FAIL initially (modules don't exist). Use vitest + @testing-library/react + happy-dom (existing editor-shell test convention).
+
+# Step 3 — Write source modules (4 files)
+
+Per ADR specifications:
+
+3a. **`drop-pulse.ts`** (D11): Export `DropPulse` React component (or pure helper module returning className + style) that renders 720ms `box-shadow: 0 0 0 4px var(--accent-success, oklch(70% 0.12 145 / 0.5))` halo animation that fades out. Token consumption: `var(--accent-success, oklch(70% 0.12 145 / 0.5))` — fallback hex bridges Stage C.3 `--accent-success` token landing per ADR-0018. **Critical**: Drop-pulse fires ONLY on drag-end-success; cancel + mode-none + grid-外松手 do NOT trigger pulse (D11 explicit non-trigger).
+
+3b. **`drag-ghost.ts`** (D10): Export `DragGhost` component with `position: fixed`, `transform: translate(${x}px, ${y}px) rotate(${angle}deg)`. Per-kind className: `.ghost-canvas` / `.ghost-runnable` / `.ghost-image` / `.ghost-markdown`. Cursor velocity ≥ 5px/frame → angle ±5° (sign matches velocity direction); velocity < 5 → angle = -1.5deg baseline. Glyph: plain text `◇` per pr-writer ambiguity #2 resolution (SVG/icon-font deferred to C.3).
+
+3c. **`esc-cancel.ts`** (D8): Export `useEscCancel(dispatch, dragActive)` hook. Subscribes window keydown for `key === 'Escape'`. When `dragActive === true`: `event.preventDefault()` + `event.stopPropagation()` + `dispatch({ type: 'drag-end-cancel' })`. When `dragActive === false`: no-op (let native Esc behavior pass through to Tiptap/textarea/etc.). Restore prior focus on drag-end (use `document.activeElement` snapshot at drag-start). Hook owns subscription per pr-writer ambiguity #3 resolution.
+
+3d. **`layout-reducer.ts`** (D12 + ADR-0016 D12 Q12): Export `layoutReducer(state, action)` + types `LayoutAction` (`'drag-start'` / `'drag-over'` / `'drag-end-success'` / `'drag-end-cancel'` / `'drag-end-mode-none'`). Epoch rules byte-equal to ADR-0017 D12 Q12 absorbtion table:
+
+| action | epoch | snapshot saved | rollback target |
+|---|---|---|---|
+| drag-start | unchanged | save S0 | (cancel target) |
+| drag-over | unchanged | (S0 base; preview not committed) | (still S0) |
+| drag-end-success | += 1 (one-shot) | new S1 baseline | (S1) |
+| drag-end-cancel | unchanged | (S0 base) | rollback to S0 |
+| drag-end-mode-none | unchanged | (S0 base) | rollback to S0 |
+
+`responsiveTransition` field on LayoutState (per pr-writer ambiguity #1) — if true at drag-start, reject drag (no state change; pure-reducer purity).
+
+**Critical**: NO mutation outside the reducer; single-user single-session. State is plain JS object (not Immer / Redux Toolkit).
+
+# Step 4 — Run vitest
+
+```bash
+pnpm --filter @skb/editor-shell test
+```
+
+All v1.5+ NEW cases (19+ for new suites) MUST PASS. Existing tests MUST still PASS (backward compat).
+
+# Step 5 — Modify barrel `packages/editor-shell/src/index.ts`
+
+Add re-exports for 4 new module surfaces. Type re-exports use `export type`. Maintain alphabetical or grouping convention seen in existing barrel.
+
+# Step 6 — Modify `packages/editor-shell/CONTRACT.md`
+
+Sister-doc-sync per ADR-0016 §502 row 4. Locate `packages/editor-shell/src/drag-drop/` subsection at line 185+. Append 4 module entries:
+- DropPulse + dropPulseClassName: per ADR-0017 D11 + ADR-0018 `--accent-success` token-driven; halo box-shadow 720ms; cancel does NOT trigger
+- DragGhost + per-kind className: per ADR-0017 D10; position fixed + transform; velocity-driven rotation; glyph plain text `◇` (Stage C.3 may upgrade to SVG)
+- useEscCancel + drag-active priority: per ADR-0017 D8 + Q8; preventDefault only when dragActive=true; native Esc passthrough else; prior-focus restoration on drag-end
+- layoutReducer + LayoutAction + LayoutState: per ADR-0017 D12 + ADR-0016 D12 Q12; epoch += 1 only on drag-end-success; responsive transition rejects drag
+
+Cross-reference ADR-0017 D8/D10/D11/D12 + ADR-0016 D12 + ADR-0018 `--accent-success` token forward-pointer (Stage C.3-1 PR delivers).
+
+Keep CONTRACT.md under 500 LOC hard fail (currently 360; add ~25-35 → ~395).
+
+# Step 7 — Write Playwright spec `apps/site/src/__tests__/e2e/c2-8-drag-modules-mount.spec.ts`
+
+Per pr-writer ambiguity #4 + #5 resolutions. Target: `/notes/sample-blocks/edit`. Single test:
+
+- Navigate to `/notes/sample-blocks/edit`
+- Wait for editor scaffold to mount (locator for `.editor-shell` or `[data-skb-editor]` or canonical mount marker; check existing EditorShellMount.tsx for what attribute is emitted)
+- Press Escape (drag-active === false; no drag in progress)
+- Assert page does NOT crash + Tiptap remains responsive (e.g., focus/blur events still fire on prose blocks)
+- Take screenshot to `docs/audits/screenshots/wave-5-c2-8-drag-modules-mount.png`
+
+Spec template ~60 LOC. **DO NOT include `test.skip(WSL2 ...)` block** — WSL2 chromium deps are installed (memory `feedback_wsl2_chromium_launch.md` SUPERSEDED 2026-05-06 per PR #79). Spec runs natively on WSL2.
+
+# Step 8 — Run lint + typecheck + test + build
+
+```bash
+pnpm --filter @skb/editor-shell lint
+pnpm --filter @skb/editor-shell typecheck
+pnpm --filter @skb/editor-shell test
+pnpm --filter @skb/editor-shell build
+pnpm --filter @skb/site typecheck
+```
+
+All clean.
+
+# Step 9 — Run Playwright spec locally (orchestrator self-serves Playwright)
+
+```bash
+cd apps/site && pnpm exec playwright test src/__tests__/e2e/c2-8-drag-modules-mount.spec.ts
+```
+
+Expected: 1 passed (per WSL2 deps installed; ~15-20s runtime). Screenshot generated at `docs/audits/screenshots/wave-5-c2-8-drag-modules-mount.png` ≥ 5KB.
+
+# Step 10 — Final summary
+
+Report:
+1. 11 files modified/created (paths + LOC counts)
+2. vitest result: PASS count for `@skb/editor-shell` package
+3. lint + typecheck + build clean status
+4. apps/site typecheck downstream check status
+5. Playwright local result (PASS expected)
+6. Screenshot existence + size
+7. Any AC orchestrator must verify at stage 4
+8. Any issue requiring orchestrator follow-up
+
+You do NOT call other codex tools. You do NOT git mutate. If you find PR.md error → SendMessage orchestrator (or include in summary), do NOT silently fix.
+
+exec
+/bin/bash -lc "sed -n '1,220p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/9d07fd08/skills/using-superpowers/SKILL.md && sed -n '1,220p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/9d07fd08/skills/brainstorming/SKILL.md && sed -n '1,240p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/9d07fd08/skills/test-driven-development/SKILL.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+---
+name: using-superpowers
+description: Use when starting any conversation - establishes how to find and use skills, requiring Skill tool invocation before ANY response including clarifying questions
+---
+
+<SUBAGENT-STOP>
+If you were dispatched as a subagent to execute a specific task, skip this skill.
+</SUBAGENT-STOP>
+
+<EXTREMELY-IMPORTANT>
+If you think there is even a 1% chance a skill might apply to what you are doing, you ABSOLUTELY MUST invoke the skill.
+
+IF A SKILL APPLIES TO YOUR TASK, YOU DO NOT HAVE A CHOICE. YOU MUST USE IT.
+
+This is not negotiable. This is not optional. You cannot rationalize your way out of this.
+</EXTREMELY-IMPORTANT>
+
+## Instruction Priority
+
+Superpowers skills override default system prompt behavior, but **user instructions always take precedence**:
+
+1. **User's explicit instructions** (AGENTS.md, GEMINI.md, direct requests) — highest priority
+2. **Superpowers skills** — override default system behavior where they conflict
+3. **Default system prompt** — lowest priority
+
+If AGENTS.md or GEMINI.md says "don't use TDD" and a skill says "always use TDD," follow the user's instructions. The user is in control.
+
+## How to Access Skills
+
+**In Codex:** Use the `Skill` tool. When you invoke a skill, its content is loaded and presented to you—follow it directly. Never use the Read tool on skill files.
+
+**In Copilot CLI:** Use the `skill` tool. Skills are auto-discovered from installed plugins. The `skill` tool works the same as Codex's `Skill` tool.
+
+**In Gemini CLI:** Skills activate via the `activate_skill` tool. Gemini loads skill metadata at session start and activates the full content on demand.
+
+**In other environments:** Check your platform's documentation for how skills are loaded.
+
+## Platform Adaptation
+
+Skills may mention tool names that vary by runtime. Other platforms: see `references/copilot-tools.md` (Copilot CLI), `references/codex-tools.md` (Codex) for tool equivalents. Gemini CLI users get the tool mapping loaded automatically via GEMINI.md.
+
+# Using Skills
+
+## The Rule
+
+**Invoke relevant or requested skills BEFORE any response or action.** Even a 1% chance a skill might apply means that you should invoke the skill to check. If an invoked skill turns out to be wrong for the situation, you don't need to use it.
+
+```dot
+digraph skill_flow {
+    "User message received" [shape=doublecircle];
+    "About to EnterPlanMode?" [shape=doublecircle];
+    "Already brainstormed?" [shape=diamond];
+    "Invoke brainstorming skill" [shape=box];
+    "Might any skill apply?" [shape=diamond];
+    "Invoke Skill tool" [shape=box];
+    "Announce: 'Using [skill] to [purpose]'" [shape=box];
+    "Has checklist?" [shape=diamond];
+    "Create TodoWrite todo per item" [shape=box];
+    "Follow skill exactly" [shape=box];
+    "Respond (including clarifications)" [shape=doublecircle];
+
+    "About to EnterPlanMode?" -> "Already brainstormed?";
+    "Already brainstormed?" -> "Invoke brainstorming skill" [label="no"];
+    "Already brainstormed?" -> "Might any skill apply?" [label="yes"];
+    "Invoke brainstorming skill" -> "Might any skill apply?";
+
+    "User message received" -> "Might any skill apply?";
+    "Might any skill apply?" -> "Invoke Skill tool" [label="yes, even 1%"];
+    "Might any skill apply?" -> "Respond (including clarifications)" [label="definitely not"];
+    "Invoke Skill tool" -> "Announce: 'Using [skill] to [purpose]'";
+    "Announce: 'Using [skill] to [purpose]'" -> "Has checklist?";
+    "Has checklist?" -> "Create TodoWrite todo per item" [label="yes"];
+    "Has checklist?" -> "Follow skill exactly" [label="no"];
+    "Create TodoWrite todo per item" -> "Follow skill exactly";
+}
+```
+
+## Red Flags
+
+These thoughts mean STOP—you're rationalizing:
+
+| Thought | Reality |
+|---------|---------|
+| "This is just a simple question" | Questions are tasks. Check for skills. |
+| "I need more context first" | Skill check comes BEFORE clarifying questions. |
+| "Let me explore the codebase first" | Skills tell you HOW to explore. Check first. |
+| "I can check git/files quickly" | Files lack conversation context. Check for skills. |
+| "Let me gather information first" | Skills tell you HOW to gather information. |
+| "This doesn't need a formal skill" | If a skill exists, use it. |
+| "I remember this skill" | Skills evolve. Read current version. |
+| "This doesn't count as a task" | Action = task. Check for skills. |
+| "The skill is overkill" | Simple things become complex. Use it. |
+| "I'll just do this one thing first" | Check BEFORE doing anything. |
+| "This feels productive" | Undisciplined action wastes time. Skills prevent this. |
+| "I know what that means" | Knowing the concept ≠ using the skill. Invoke it. |
+
+## Skill Priority
+
+When multiple skills could apply, use this order:
+
+1. **Process skills first** (brainstorming, debugging) - these determine HOW to approach the task
+2. **Implementation skills second** (frontend-design, mcp-builder) - these guide execution
+
+"Let's build X" → brainstorming first, then implementation skills.
+"Fix this bug" → debugging first, then domain-specific skills.
+
+## Skill Types
+
+**Rigid** (TDD, debugging): Follow exactly. Don't adapt away discipline.
+
+**Flexible** (patterns): Adapt principles to context.
+
+The skill itself tells you which.
+
+## User Instructions
+
+Instructions say WHAT, not HOW. "Add X" or "Fix Y" doesn't mean skip workflows.
+---
+name: brainstorming
+description: "You MUST use this before any creative work - creating features, building components, adding functionality, or modifying behavior. Explores user intent, requirements and design before implementation."
+---
+
+# Brainstorming Ideas Into Designs
+
+Help turn ideas into fully formed designs and specs through natural collaborative dialogue.
+
+Start by understanding the current project context, then ask questions one at a time to refine the idea. Once you understand what you're building, present the design and get user approval.
+
+<HARD-GATE>
+Do NOT invoke any implementation skill, write any code, scaffold any project, or take any implementation action until you have presented a design and the user has approved it. This applies to EVERY project regardless of perceived simplicity.
+</HARD-GATE>
+
+## Anti-Pattern: "This Is Too Simple To Need A Design"
+
+Every project goes through this process. A todo list, a single-function utility, a config change — all of them. "Simple" projects are where unexamined assumptions cause the most wasted work. The design can be short (a few sentences for truly simple projects), but you MUST present it and get approval.
+
+## Checklist
+
+You MUST create a task for each of these items and complete them in order:
+
+1. **Explore project context** — check files, docs, recent commits
+2. **Offer visual companion** (if topic will involve visual questions) — this is its own message, not combined with a clarifying question. See the Visual Companion section below.
+3. **Ask clarifying questions** — one at a time, understand purpose/constraints/success criteria
+4. **Propose 2-3 approaches** — with trade-offs and your recommendation
+5. **Present design** — in sections scaled to their complexity, get user approval after each section
+6. **Write design doc** — save to `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md` and commit
+7. **Spec self-review** — quick inline check for placeholders, contradictions, ambiguity, scope (see below)
+8. **User reviews written spec** — ask user to review the spec file before proceeding
+9. **Transition to implementation** — invoke writing-plans skill to create implementation plan
+
+## Process Flow
+
+```dot
+digraph brainstorming {
+    "Explore project context" [shape=box];
+    "Visual questions ahead?" [shape=diamond];
+    "Offer Visual Companion\n(own message, no other content)" [shape=box];
+    "Ask clarifying questions" [shape=box];
+    "Propose 2-3 approaches" [shape=box];
+    "Present design sections" [shape=box];
+    "User approves design?" [shape=diamond];
+    "Write design doc" [shape=box];
+    "Spec self-review\n(fix inline)" [shape=box];
+    "User reviews spec?" [shape=diamond];
+    "Invoke writing-plans skill" [shape=doublecircle];
+
+    "Explore project context" -> "Visual questions ahead?";
+    "Visual questions ahead?" -> "Offer Visual Companion\n(own message, no other content)" [label="yes"];
+    "Visual questions ahead?" -> "Ask clarifying questions" [label="no"];
+    "Offer Visual Companion\n(own message, no other content)" -> "Ask clarifying questions";
+    "Ask clarifying questions" -> "Propose 2-3 approaches";
+    "Propose 2-3 approaches" -> "Present design sections";
+    "Present design sections" -> "User approves design?";
+    "User approves design?" -> "Present design sections" [label="no, revise"];
+    "User approves design?" -> "Write design doc" [label="yes"];
+    "Write design doc" -> "Spec self-review\n(fix inline)";
+    "Spec self-review\n(fix inline)" -> "User reviews spec?";
+    "User reviews spec?" -> "Write design doc" [label="changes requested"];
+    "User reviews spec?" -> "Invoke writing-plans skill" [label="approved"];
+}
+```
+
+**The terminal state is invoking writing-plans.** Do NOT invoke frontend-design, mcp-builder, or any other implementation skill. The ONLY skill you invoke after brainstorming is writing-plans.
+
+## The Process
+
+**Understanding the idea:**
+
+- Check out the current project state first (files, docs, recent commits)
+- Before asking detailed questions, assess scope: if the request describes multiple independent subsystems (e.g., "build a platform with chat, file storage, billing, and analytics"), flag this immediately. Don't spend questions refining details of a project that needs to be decomposed first.
+- If the project is too large for a single spec, help the user decompose into sub-projects: what are the independent pieces, how do they relate, what order should they be built? Then brainstorm the first sub-project through the normal design flow. Each sub-project gets its own spec → plan → implementation cycle.
+- For appropriately-scoped projects, ask questions one at a time to refine the idea
+- Prefer multiple choice questions when possible, but open-ended is fine too
+- Only one question per message - if a topic needs more exploration, break it into multiple questions
+- Focus on understanding: purpose, constraints, success criteria
+
+**Exploring approaches:**
+
+- Propose 2-3 different approaches with trade-offs
+- Present options conversationally with your recommendation and reasoning
+- Lead with your recommended option and explain why
+
+**Presenting the design:**
+
+- Once you believe you understand what you're building, present the design
+- Scale each section to its complexity: a few sentences if straightforward, up to 200-300 words if nuanced
+- Ask after each section whether it looks right so far
+- Cover: architecture, components, data flow, error handling, testing
+- Be ready to go back and clarify if something doesn't make sense
+
+**Design for isolation and clarity:**
+
+- Break the system into smaller units that each have one clear purpose, communicate through well-defined interfaces, and can be understood and tested independently
+- For each unit, you should be able to answer: what does it do, how do you use it, and what does it depend on?
+- Can someone understand what a unit does without reading its internals? Can you change the internals without breaking consumers? If not, the boundaries need work.
+- Smaller, well-bounded units are also easier for you to work with - you reason better about code you can hold in context at once, and your edits are more reliable when files are focused. When a file grows large, that's often a signal that it's doing too much.
+
+**Working in existing codebases:**
+
+- Explore the current structure before proposing changes. Follow existing patterns.
+- Where existing code has problems that affect the work (e.g., a file that's grown too large, unclear boundaries, tangled responsibilities), include targeted improvements as part of the design - the way a good developer improves code they're working in.
+- Don't propose unrelated refactoring. Stay focused on what serves the current goal.
+
+## After the Design
+
+**Documentation:**
+
+- Write the validated design (spec) to `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md`
+  - (User preferences for spec location override this default)
+- Use elements-of-style:writing-clearly-and-concisely skill if available
+- Commit the design document to git
+
+**Spec Self-Review:**
+After writing the spec document, look at it with fresh eyes:
+
+1. **Placeholder scan:** Any "TBD", "TODO", incomplete sections, or vague requirements? Fix them.
+2. **Internal consistency:** Do any sections contradict each other? Does the architecture match the feature descriptions?
+3. **Scope check:** Is this focused enough for a single implementation plan, or does it need decomposition?
+4. **Ambiguity check:** Could any requirement be interpreted two different ways? If so, pick one and make it explicit.
+
+Fix any issues inline. No need to re-review — just fix and move on.
+
+**User Review Gate:**
+After the spec review loop passes, ask the user to review the written spec before proceeding:
+
+> "Spec written and committed to `<path>`. Please review it and let me know if you want to make any changes before we start writing out the implementation plan."
+
+Wait for the user's response. If they request changes, make them and re-run the spec review loop. Only proceed once the user approves.
+
+**Implementation:**
+
+- Invoke the writing-plans skill to create a detailed implementation plan
+- Do NOT invoke any other skill. writing-plans is the next step.
+
+## Key Principles
+
+- **One question at a time** - Don't overwhelm with multiple questions
+- **Multiple choice preferred** - Easier to answer than open-ended when possible
+- **YAGNI ruthlessly** - Remove unnecessary features from all designs
+- **Explore alternatives** - Always propose 2-3 approaches before settling
+- **Incremental validation** - Present design, get approval before moving on
+- **Be flexible** - Go back and clarify when something doesn't make sense
+
+## Visual Companion
+
+A browser-based companion for showing mockups, diagrams, and visual options during brainstorming. Available as a tool — not a mode. Accepting the companion means it's available for questions that benefit from visual treatment; it does NOT mean every question goes through the browser.
+
+**Offering the companion:** When you anticipate that upcoming questions will involve visual content (mockups, layouts, diagrams), offer it once for consent:
+> "Some of what we're working on might be easier to explain if I can show it to you in a web browser. I can put together mockups, diagrams, comparisons, and other visuals as we go. This feature is still new and can be token-intensive. Want to try it? (Requires opening a local URL)"
+
+**This offer MUST be its own message.** Do not combine it with clarifying questions, context summaries, or any other content. The message should contain ONLY the offer above and nothing else. Wait for the user's response before continuing. If they decline, proceed with text-only brainstorming.
+
+**Per-question decision:** Even after the user accepts, decide FOR EACH QUESTION whether to use the browser or the terminal. The test: **would the user understand this better by seeing it than reading it?**
+
+- **Use the browser** for content that IS visual — mockups, wireframes, layout comparisons, architecture diagrams, side-by-side visual designs
+- **Use the terminal** for content that is text — requirements questions, conceptual choices, tradeoff lists, A/B/C/D text options, scope decisions
+
+A question about a UI topic is not automatically a visual question. "What does personality mean in this context?" is a conceptual question — use the terminal. "Which wizard layout works better?" is a visual question — use the browser.
+
+If they agree to the companion, read the detailed guide before proceeding:
+`skills/brainstorming/visual-companion.md`
+---
+name: test-driven-development
+description: Use when implementing any feature or bugfix, before writing implementation code
+---
+
+# Test-Driven Development (TDD)
+
+## Overview
+
+Write the test first. Watch it fail. Write minimal code to pass.
+
+**Core principle:** If you didn't watch the test fail, you don't know if it tests the right thing.
+
+**Violating the letter of the rules is violating the spirit of the rules.**
+
+## When to Use
+
+**Always:**
+- New features
+- Bug fixes
+- Refactoring
+- Behavior changes
+
+**Exceptions (ask your human partner):**
+- Throwaway prototypes
+- Generated code
+- Configuration files
+
+Thinking "skip TDD just this once"? Stop. That's rationalization.
+
+## The Iron Law
+
+```
+NO PRODUCTION CODE WITHOUT A FAILING TEST FIRST
+```
+
+Write code before the test? Delete it. Start over.
+
+**No exceptions:**
+- Don't keep it as "reference"
+- Don't "adapt" it while writing tests
+- Don't look at it
+- Delete means delete
+
+Implement fresh from tests. Period.
+
+## Red-Green-Refactor
+
+```dot
+digraph tdd_cycle {
+    rankdir=LR;
+    red [label="RED\nWrite failing test", shape=box, style=filled, fillcolor="#ffcccc"];
+    verify_red [label="Verify fails\ncorrectly", shape=diamond];
+    green [label="GREEN\nMinimal code", shape=box, style=filled, fillcolor="#ccffcc"];
+    verify_green [label="Verify passes\nAll green", shape=diamond];
+    refactor [label="REFACTOR\nClean up", shape=box, style=filled, fillcolor="#ccccff"];
+    next [label="Next", shape=ellipse];
+
+    red -> verify_red;
+    verify_red -> green [label="yes"];
+    verify_red -> red [label="wrong\nfailure"];
+    green -> verify_green;
+    verify_green -> refactor [label="yes"];
+    verify_green -> green [label="no"];
+    refactor -> verify_green [label="stay\ngreen"];
+    verify_green -> next;
+    next -> red;
+}
+```
+
+### RED - Write Failing Test
+
+Write one minimal test showing what should happen.
+
+<Good>
+```typescript
+test('retries failed operations 3 times', async () => {
+  let attempts = 0;
+  const operation = () => {
+    attempts++;
+    if (attempts < 3) throw new Error('fail');
+    return 'success';
+  };
+
+  const result = await retryOperation(operation);
+
+  expect(result).toBe('success');
+  expect(attempts).toBe(3);
+});
+```
+Clear name, tests real behavior, one thing
+</Good>
+
+<Bad>
+```typescript
+test('retry works', async () => {
+  const mock = jest.fn()
+    .mockRejectedValueOnce(new Error())
+    .mockRejectedValueOnce(new Error())
+    .mockResolvedValueOnce('success');
+  await retryOperation(mock);
+  expect(mock).toHaveBeenCalledTimes(3);
+});
+```
+Vague name, tests mock not code
+</Bad>
+
+**Requirements:**
+- One behavior
+- Clear name
+- Real code (no mocks unless unavoidable)
+
+### Verify RED - Watch It Fail
+
+**MANDATORY. Never skip.**
+
+```bash
+npm test path/to/test.test.ts
+```
+
+Confirm:
+- Test fails (not errors)
+- Failure message is expected
+- Fails because feature missing (not typos)
+
+**Test passes?** You're testing existing behavior. Fix test.
+
+**Test errors?** Fix error, re-run until it fails correctly.
+
+### GREEN - Minimal Code
+
+Write simplest code to pass the test.
+
+<Good>
+```typescript
+async function retryOperation<T>(fn: () => Promise<T>): Promise<T> {
+  for (let i = 0; i < 3; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      if (i === 2) throw e;
+    }
+  }
+  throw new Error('unreachable');
+}
+```
+Just enough to pass
+</Good>
+
+<Bad>
+```typescript
+async function retryOperation<T>(
+  fn: () => Promise<T>,
+  options?: {
+    maxRetries?: number;
+    backoff?: 'linear' | 'exponential';
+    onRetry?: (attempt: number) => void;
+  }
+): Promise<T> {
+  // YAGNI
+}
+```
+Over-engineered
+</Bad>
+
+Don't add features, refactor other code, or "improve" beyond the test.
+
+### Verify GREEN - Watch It Pass
+
+**MANDATORY.**
+
+```bash
+npm test path/to/test.test.ts
+```
+
+Confirm:
+- Test passes
+- Other tests still pass
+- Output pristine (no errors, warnings)
+
+**Test fails?** Fix code, not test.
+
+**Other tests fail?** Fix now.
+
+### REFACTOR - Clean Up
+
+After green only:
+- Remove duplication
+- Improve names
+- Extract helpers
+
+Keep tests green. Don't add behavior.
+
+### Repeat
+
+Next failing test for next feature.
+
+## Good Tests
+
+| Quality | Good | Bad |
+|---------|------|-----|
+| **Minimal** | One thing. "and" in name? Split it. | `test('validates email and domain and whitespace')` |
+| **Clear** | Name describes behavior | `test('test1')` |
+| **Shows intent** | Demonstrates desired API | Obscures what code should do |
+
+## Why Order Matters
+
+**"I'll write tests after to verify it works"**
+
+Tests written after code pass immediately. Passing immediately proves nothing:
+- Might test wrong thing
+- Might test implementation, not behavior
+- Might miss edge cases you forgot
+- You never saw it catch the bug
+
+Test-first forces you to see the test fail, proving it actually tests something.
+
+**"I already manually tested all the edge cases"**
+
+Manual testing is ad-hoc. You think you tested everything but:
+- No record of what you tested
+- Can't re-run when code changes
+- Easy to forget cases under pressure
+- "It worked when I tried it" ≠ comprehensive
+
+Automated tests are systematic. They run the same way every time.
+
+**"Deleting X hours of work is wasteful"**
+
+Sunk cost fallacy. The time is already gone. Your choice now:
+- Delete and rewrite with TDD (X more hours, high confidence)
+- Keep it and add tests after (30 min, low confidence, likely bugs)
+
+The "waste" is keeping code you can't trust. Working code without real tests is technical debt.
+
+**"TDD is dogmatic, being pragmatic means adapting"**
+
+TDD IS pragmatic:
+- Finds bugs before commit (faster than debugging after)
+- Prevents regressions (tests catch breaks immediately)
+
+codex
+Using `using-superpowers`, `brainstorming`, `test-driven-development`, and `executing-plans` for this executor pass. The locked PR is the already-approved design, so I’m treating that as the brainstorming approval gate and moving into test-first execution exactly against the plan.
+exec
+/bin/bash -lc "sed -n '1,260p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/9d07fd08/skills/executing-plans/SKILL.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+---
+name: executing-plans
+description: Use when you have a written implementation plan to execute in a separate session with review checkpoints
+---
+
+# Executing Plans
+
+## Overview
+
+Load plan, review critically, execute all tasks, report when complete.
+
+**Announce at start:** "I'm using the executing-plans skill to implement this plan."
+
+**Note:** Tell your human partner that Superpowers works much better with access to subagents. The quality of its work will be significantly higher if run on a platform with subagent support such as Codex. If subagents are available, use superpowers:subagent-driven-development instead of this skill.
+
+## The Process
+
+### Step 1: Load and Review Plan
+1. Read plan file
+2. Review critically - identify any questions or concerns about the plan
+3. If concerns: Raise them with your human partner before starting
+4. If no concerns: Create TodoWrite and proceed
+
+### Step 2: Execute Tasks
+
+For each task:
+1. Mark as in_progress
+2. Follow each step exactly (plan has bite-sized steps)
+3. Run verifications as specified
+4. Mark as completed
+
+### Step 3: Complete Development
+
+After all tasks complete and verified:
+- Announce: "I'm using the finishing-a-development-branch skill to complete this work."
+- **REQUIRED SUB-SKILL:** Use superpowers:finishing-a-development-branch
+- Follow that skill to verify tests, present options, execute choice
+
+## When to Stop and Ask for Help
+
+**STOP executing immediately when:**
+- Hit a blocker (missing dependency, test fails, instruction unclear)
+- Plan has critical gaps preventing starting
+- You don't understand an instruction
+- Verification fails repeatedly
+
+**Ask for clarification rather than guessing.**
+
+## When to Revisit Earlier Steps
+
+**Return to Review (Step 1) when:**
+- Partner updates the plan based on your feedback
+- Fundamental approach needs rethinking
+
+**Don't force through blockers** - stop and ask.
+
+## Remember
+- Review plan critically first
+- Follow plan steps exactly
+- Don't skip verifications
+- Reference skills when plan says to
+- Stop when blocked, don't guess
+- Never start implementation on main/master branch without explicit user consent
+
+## Integration
+
+**Required workflow skills:**
+- **superpowers:using-git-worktrees** - REQUIRED: Set up isolated workspace before starting
+- **superpowers:writing-plans** - Creates the plan this skill executes
+- **superpowers:finishing-a-development-branch** - Complete development after all tasks
+
+codex
+I’m loading the locked plan now and checking it before touching tests. I’ll keep the implementation inside the 11 codex-touchable files and avoid git mutation.
+exec
+/bin/bash -lc 'wc -l docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+1428 docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md
+
+exec
+/bin/bash -lc "sed -n '1,260p' docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+# C.2-8 — drop-pulse 720ms + drag-ghost + 全局 Esc cancel + layoutEpoch reducer
+
+> **Wave 5 Stage C.2 9th implementation PR** of the locked 13-PR sequence
+> (C.2-1 → C.2-12; per Wave 5 plan v1.3 row C.2-8 line 689). Lands the
+> **4 NEW editor-shell drag-drop modules** that complete ADR-0017 D8
+> (全局 Esc cancel) + D10 (drag-ghost cursor 跟随 + per-kind 着色) + D11
+> (drop-pulse 720ms token-driven `--accent-success`) + D12 (layoutEpoch
+> single-source mutation per Q12 absorbtion table). C.2-1 through C.2-7
+> all merged on main; C.2-5 (drag/drop UX 3 modules — `edge-rects.ts`,
+> `tiebreak.ts`, `outline-overlay.tsx`; squash `2df71b6`) + C.2-6 (resize
+> UX 2 modules — `col-ruler.tsx`, `size-tooltip.tsx`; squash `2fb7900`)
+> shipped the lower-half drag-drop primitives. C.2-7 (squash `dd860b9`)
+> shipped ADR-0014 v0.5 amendment + the FIRST UI-touch PR through the
+> ADR-0011 D9 + ADR-0006 9th-item Product Experience Quality Gate end
+> to end. C.2-8 wires the **upper half of ADR-0017 D-list** — the
+> visual reflection layer (drag-ghost + drop-pulse) + the global
+> keyboard cancel handler + the canonical `layoutReducer` /
+> `layoutEpoch` mutation pipeline — completing the editor-shell
+> drag-drop public surface that downstream C.2-10 Playwright drag
+> scenarios + future C.4 editor-scaffold integration consume.
+>
+> **PRE-COMMIT CLAUDE REVIEW (D1 stage 4) FIRES** per `## D2 trigger
+> judgment` (Row 1 — `packages/editor-shell/CONTRACT.md` sister-doc-sync
+> per ADR-0016 §502 row 4 + Row 5 — cross-package boundary contract
+> change since the editor-shell barrel now exports 4 NEW module
+> surfaces consumed by future C.2-10 Playwright drag scenarios + future
+> apps/site editor scaffold integration; same escalation pattern as the
+> Pre-A3 ADR-0017 Q13 absorbtion + Pre-A2 ADR-0016 Q12 absorbtion
+> "Stage C.2 D2 row 1 escalation note" prediction).
+>
+> **First UI-touch PR landed after WSL2 chromium deps install** (memory
+> `feedback_wsl2_chromium_launch.md` SUPERSEDED 2026-05-06 per active.md
+> standards-landing follow-up #7); orchestrator self-serves Playwright
+> on this PR + every future UI-touch PR. New Playwright specs do NOT
+> include the `test.skip(WSL2 ...)` block (PR #79 housekeeping stripped
+> the skip from C.2-7 spec; new specs follow the no-skip pattern).
+
+## title
+
+Land the 4 NEW editor-shell drag-drop modules under
+`packages/editor-shell/src/drag-drop/` — `drop-pulse.ts` (per ADR-0017
+D11; 720ms `box-shadow` halo animation consuming the
+`var(--accent-success, oklch(70% 0.12 145 / 0.5))` token with hex
+fallback per ADR-0018), `drag-ghost.ts` (per ADR-0017 D10;
+`position: fixed` + `transform: translate + rotate(-1.5deg)` baseline
++ per-kind `.ghost-canvas` / `.ghost-runnable` / `.ghost-image` /
+`.ghost-markdown` className + cursor-velocity-driven ±5° rotation
+feedback at velocity ≥ 5px/frame), `esc-cancel.ts` (per ADR-0017 D8 +
+Q8 absorbtion priority table; global keydown subscriber that calls
+`preventDefault()` + `stopPropagation()` ONLY when `dragActive === true`
+and dispatches a `drag-cancel` source layoutAction; restores prior
+focus on drag-end; native Esc passthrough when no drag is active),
+and `layout-reducer.ts` (per ADR-0017 D12 + ADR-0016 D12; the single
+authoritative `layoutReducer(state, action)` pipeline implementing
+the Q12 absorbtion epoch table — drag-start / drag-over: epoch
+unchanged + S0 saved; drag-end-success: `epoch += 1` one-shot + new
+S1 baseline; drag-end-cancel + drag-end-mode-none: epoch unchanged +
+rollback to S0). Wire all 4 surfaces through the editor-shell barrel
+`packages/editor-shell/src/index.ts`. Sync the sister-doc
+`packages/editor-shell/CONTRACT.md` `### Drag/Drop layer` subsection
+(line 182+ from C.2-5 squash `2df71b6`) with module-by-module Public
+Surface description + ADR-0017 D8 / D10 / D11 / D12 + ADR-0016 D12
+cross-references. Land canonical Playwright spec at
+`apps/site/src/__tests__/e2e/c2-8-drag-modules-mount.spec.ts`
+covering "editor scaffold mounts at /notes/sample-blocks/edit after
+drag-modules added; Esc with no drag-active does NOT crash editor +
+does not break Tiptap selection (D8 native pass-through priority)"
+per ADR-0011 D9 Product Experience Quality Gate + the canonical
+orchestrator-authored `e2e_smoke` block in this PR.md (this row was
+NOT in the v1.3 retrofit catalog because that catalog only annotated
+C.2-7 + 5 C.3 + 5 C.4 rows; per ADR-0011 D9.2 the orchestrator
+authors the `e2e_smoke` block fresh for newly-detected ui_touch PRs
+outside the catalog).
+
+Specifically:
+
+1. **NEW `packages/editor-shell/src/drag-drop/drop-pulse.ts`** (~80 LOC).
+   Exports `dropPulseClassName: string` + `DropPulse` React component
+   (function-component returning a div overlay positioned over
+   the dropped block via `position: absolute` + `inset: 0`). The
+   720ms halo animation is emitted via inline style
+   `box-shadow: 0 0 0 4px var(--accent-success, oklch(70% 0.12 145 / 0.5))`
+   + a paired CSS keyframe `@keyframes skb-drop-pulse-fadeout {
+   from { box-shadow: 0 0 0 4px ...; opacity: 1 } to { box-shadow:
+   0 0 0 4px transparent; opacity: 0 } }` with `animation:
+   skb-drop-pulse-fadeout 720ms ease-out forwards`. Component prop
+   `onAnimationEnd?: () => void` for consumer hooks (parent unmount
+   the overlay after the animation ends; the component does NOT
+   self-unmount). File-head JSDoc cites ADR-0017 D11 verbatim duration
+   `720ms` + ADR-0018 `--accent-success` token authority + the
+   D11 explicit non-trigger rule (drop-pulse NOT fired on drag-cancel
+   per D11 trailing prose line 351 + per Q11 absorbtion). The fallback
+   hex `oklch(70% 0.12 145 / 0.5)` is the Stage C.3 bridge value cited
+   in the file-head JSDoc with a forward-pointer to the
+   `--accent-success` token landing PR (Stage C.3-1 candidate).
+
+2. **NEW `packages/editor-shell/src/drag-drop/drag-ghost.ts`**
+   (~120 LOC). Exports `DragGhost` React component + `DragGhostProps`
+   interface + `GhostKind = 'canvas' | 'runnable' | 'image' | 'markdown'`
+   union (per ADR-0017 D10 four-kind classification, NOT BlockKind
+   per memory `feedback_pr_reviewer_authority_at_head` — the ghost-
+   coloring channel is a UX classification by gridKind label per
+   Q10 absorbtion, NOT a forced BlockUIDefinition path). Component
+   props: `cursorX: number`, `cursorY: number`, `kind: GhostKind`,
+   `mode: 'create' | 'move'` (palette-drag-out emits `'create'` glyph
+   `+ ◇`; existing-block-drag emits `'move'` glyph `⤴ ◇` per D10
+   prose), `velocity?: { dx: number; dy: number }` (per ADR-0017 D10
+   trailing prose: `velocity ≥ 5px/frame` triggers `±5°` rotation
+   feedback; magnitude computed as `Math.hypot(dx, dy)`). Render
+   path: `<div class="drag-ghost ghost-{kind}" style={{ position:
+   'fixed', left: `${cursorX}px`, top: `${cursorY}px`, transform:
+   `translate(0, 0) rotate(${baseRotationDeg}deg)`, pointerEvents:
+   'none' }}>{label}</div>`. The base rotation is `-1.5deg` (static
+   baseline per D10); when `Math.hypot(velocity?.dx ?? 0, velocity?.dy ??
+   0) >= 5`, rotation = `Math.sign(velocity.dx) * 5` (positive dx →
+   `+5deg`; negative → `-5deg`; zero or no velocity → `-1.5deg`
+   baseline). The 4 kind classNames `.ghost-canvas` / `.ghost-runnable`
+   / `.ghost-image` / `.ghost-markdown` are the Public Surface
+   contract (CSS rules for these classes are NOT shipped in this PR;
+   they land in Stage C.3 visual identity per ADR-0018 token map; the
+   classNames are stable now so consumers don't churn). File-head
+   JSDoc cites ADR-0017 D10 verbatim baseline rotation `-1.5deg` +
+   velocity threshold `5px/frame` + per-kind className roster + ADR-0017
+   Q10 absorbtion (gridKind label authority, NOT BlockUIDefinition
+   path).
+
+3. **NEW `packages/editor-shell/src/drag-drop/esc-cancel.ts`**
+   (~80 LOC). Exports `useEscCancel` React hook + `EscCancelOptions`
+   interface. Hook signature: `useEscCancel(options: { dragActive:
+   boolean; onCancel: () => void; restoreFocusEl?: HTMLElement | null }):
+   void`. Implementation: subscribes to `window.addEventListener('keydown',
+   handler)` on mount; cleans up on unmount. Inside the handler, if
+   `event.key !== 'Escape'` return early (let everything else
+   passthrough). If `dragActive === false`, return early too (Esc
+   walks native passthrough per ADR-0017 D8 priority 3 line 304:
+   textarea blur / Tiptap deselect / etc.). If `dragActive === true`,
+   the handler calls `event.preventDefault()` + `event.stopPropagation()`
+   first (per D8 priority 1 line 302 — Esc must NOT trigger textarea
+   blur / Tiptap selection-clear / native browser ESC behavior during
+   drag), then invokes `options.onCancel()` (the consumer wires this
+   to `dispatch({ type: 'drag-end-cancel' })` against the
+   `layoutReducer`). The hook also exposes `restoreFocusEl` semantics:
+   when `dragActive` flips from `true` to `false` (Esc cancel OR
+   normal drag-end), the hook calls `restoreFocusEl?.focus()`
+   matching D8 priority 2 line 303 (restore focus on drag-end; if
+   the drag-start active element was a textarea/Tiptap surface, the
+   consumer captures it as `restoreFocusEl` and the hook re-focuses
+   on drag-end). The hook does NOT own snapshot S0 / rollback / epoch
+   logic — those live in `layout-reducer.ts`; the hook is a pure
+   keyboard listener + focus-restore helper that delegates state
+   mutation to the reducer via the `onCancel` callback. File-head
+   JSDoc cites ADR-0017 D8 verbatim 3-priority table + Q8 absorbtion
+   trailing prose line 298+ (Esc focus textarea conflict priority).
+
+4. **NEW `packages/editor-shell/src/drag-drop/layout-reducer.ts`**
+   (~120 LOC). Exports `layoutReducer(state, action): LayoutState` +
+   `LayoutState` interface + `LayoutAction` discriminated union. The
+   `LayoutState` shape: `{ epoch: number; snapshot: GridSnapshot |
+   null; baseline: GridSnapshot }` where `GridSnapshot = { blocks:
+   readonly BlockGridPosition[] }` (consumes `BlockGridPosition` from
+   `@skb/block-foundation` per ADR-0016 D2 + the W5-2 invariant prose
+   from `packages/editor-shell/CONTRACT.md` C.2-4 squash). The
+   `LayoutAction` discriminated union (5 variants per ADR-0017 D12
+   Q12 absorbtion table line 359-365):
+
+   - `{ type: 'drag-start'; sourceBlockId: string }` → save
+     `snapshot: state.baseline` (S0 captured as the lifted-state
+     reference); epoch unchanged
+   - `{ type: 'drag-over' }` → no-op state change (preview lives in
+     overlay layer per ADR-0017 D4; reducer not consulted); returns
+     `state` reference-equal (allows React `useReducer` to skip
+     re-render)
+   - `{ type: 'drag-end-success'; mutation: GridSnapshot }` → `epoch:
+     state.epoch + 1`; `baseline: action.mutation` (new S1 committed);
+     `snapshot: null` (clear S0 since success path commits)
+   - `{ type: 'drag-end-cancel' }` → epoch unchanged; `baseline:
+     state.snapshot ?? state.baseline` (rollback to S0 if it exists,
+     else baseline unchanged); `snapshot: null`
+   - `{ type: 'drag-end-mode-none' }` → SAME behavior as
+     `drag-end-cancel` (per D12 table line 365: "degenerate cancel");
+     deliberately a separate variant for telemetry + future
+     differentiation, but the reducer body returns the same state
+     transformation
+
+   The reducer body is a `switch (action.type)` over the 5 variants
+   with an exhaustiveness check `const _exhaustive: never = action;`
+   in the default branch (TypeScript enforces all 5 are handled).
+   Single-user single-session assumption per ADR-0016 D12 line 434
+   ("Wave 5 假设 single-user single-session") — the reducer is NOT a
+   distributed CRDT/OT; epoch is a monotonic counter, not a vector
+   clock. Conflict arbitration cited at file-head JSDoc per ADR-0016
+   D12 conflict table (drag wins over auto-measure; responsive wins
+   over auto-measure; mdx-load wins as initial; undo-redo same-source
+   epoch wins). Responsive transition + drag conflict explicit: the
+   reducer accepts `drag-start` only when `state.responsiveTransition
+   !== 'in-progress'` (state field added if needed; for v0.5 a runtime
+   guard via `if (state.responsiveTransition === 'in-progress')
+   return state;` early-return suffices); rejected drags are silent
+   no-op at this stage per ADR-0016 D5 转场态 FSM. File-head JSDoc
+   cites ADR-0017 D12 verbatim Q12 absorbtion table + ADR-0016 D12
+   layoutEpoch authority + the single-user single-session assumption.
+
+5. **MODIFIED `packages/editor-shell/src/index.ts`** (barrel re-exports;
+   ~10 LOC delta on top of current 22 LOC; final ~32 LOC, well under
+   the 500 LOC hard fail and the 300 LOC ESLint warn). Add 4 new
+   re-export blocks immediately after the existing C.2-5 drag-drop
+   block (line 14-19) and C.2-6 resize block (line 20-22):
+
+   - `export { DropPulse, dropPulseClassName } from './drag-drop/drop-pulse';`
+   - `export { DragGhost } from './drag-drop/drag-ghost';`
+   - `export type { DragGhostProps, GhostKind } from './drag-drop/drag-ghost';`
+   - `export { useEscCancel } from './drag-drop/esc-cancel';`
+   - `export type { EscCancelOptions } from './drag-drop/esc-cancel';`
+   - `export { layoutReducer } from './drag-drop/layout-reducer';`
+   - `export type { LayoutState, LayoutAction, GridSnapshot } from './drag-drop/layout-reducer';`
+
+   Existing 11 export lines from C.2-1 through C.2-6 era are preserved
+   verbatim (no regression on `EDGE_W` / `GAP` / `computeEdgeRects` /
+   `tiebreak` / `findMatches` / `OutlineOverlay` / `ColRuler` /
+   `SizeTooltip` / `colSpanToFraction` + the prior EditorShell /
+   GridContainer / proseExtensions / save-adapter / saveLoad /
+   registerBlocks / registerKernels / useAutoRowSpan surfaces; AC#9
+   guards). Mechanical guard via grep for the 4 new module names in
+   the barrel (AC#10).
+
+6. **NEW vitest test files (4 files; total ~280 LOC)**:
+
+   - `packages/editor-shell/src/__tests__/drag-drop/drop-pulse.test.tsx`
+     (~70 LOC; 4 cases per `## test_cases` Suite 1)
+   - `packages/editor-shell/src/__tests__/drag-drop/drag-ghost.test.tsx`
+     (~80 LOC; 5 cases per Suite 2)
+   - `packages/editor-shell/src/__tests__/drag-drop/esc-cancel.test.tsx`
+     (~70 LOC; 4 cases per Suite 3)
+   - `packages/editor-shell/src/__tests__/drag-drop/layout-reducer.test.ts`
+     (~90 LOC; 6 cases per Suite 4)
+
+   The `__tests__/drag-drop/` directory was created at C.2-5 squash
+   `2df71b6` (alongside the 3 source modules); C.2-8 adds 4 sibling
+   test files. Existing edge-rects + tiebreak + outline-overlay tests
+   are NOT modified.
+
+7. **MODIFIED `packages/editor-shell/CONTRACT.md`** (~25-35 LOC delta
+   on top of current 360 LOC; final ~385-395 LOC). Surgical extension
+   of the `### Drag/Drop layer` subsection (line 182+ from C.2-5
+   squash `2df71b6`). Two parts:
+
+   - **Header rename** from `### Drag/Drop layer (C.2-5)` to
+     `### Drag/Drop layer (C.2-5 + C.2-8)` to reflect the multi-PR
+     contributor pattern; mirrors the existing `### Resize layer
+     (C.2-6)` style and forward-compatible with later C.2-10/C.2-11
+     Playwright additions.
+   - **NEW C.2-8 module roster**: 4 module bullets appended after the
+     existing C.2-5 3-module block (line 187-200). Each bullet
+     describes Public Surface signature in prose form (parameters +
+     return type) + cross-references the ADR-0017 D-item authority +
+     forwards to the consumer wiring expected at C.2-10 / C.4. Verbatim
+     bullet shapes per Public Surface contract:
+
+     - `drop-pulse.ts` exports `DropPulse` and `dropPulseClassName`.
+       It implements the C.2-8 subset of ADR-0017 D11: 720ms halo
+
+exec
+/bin/bash -lc 'rg -n "''^## |''^### |''^#### |ambiguity flagged|D2 trigger judgment|test_cases|acceptance|files" docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+38:## title
+226:6. **NEW vitest test files (4 files; total ~280 LOC)**:
+229:     (~70 LOC; 4 cases per `## test_cases` Suite 1)
+239:   test files. Existing edge-rects + tiebreak + outline-overlay tests
+371:files** + **1 NEW Playwright smoke spec** + **MODIFIED barrel** +
+383:## files
+429:| Vitest test files (4 NEW) | 4 × `__tests__/drag-drop/*.test.{ts,tsx}` | ~280 |
+443:## test_cases
+447:4 vitest test files first (red), then the 4 source modules (green),
+455:### Suite 1: `packages/editor-shell/src/__tests__/drag-drop/drop-pulse.test.tsx` (4 cases; ~70 LOC)
+494:### Suite 2: `packages/editor-shell/src/__tests__/drag-drop/drag-ghost.test.tsx` (5 cases; ~80 LOC)
+536:### Suite 3: `packages/editor-shell/src/__tests__/drag-drop/esc-cancel.test.tsx` (4 cases; ~70 LOC)
+570:### Suite 4: `packages/editor-shell/src/__tests__/drag-drop/layout-reducer.test.ts` (6 cases; ~90 LOC)
+622:### Suite 5: `apps/site/src/__tests__/e2e/c2-8-drag-modules-mount.spec.ts` (1 Playwright case; ~60 LOC)
+646:## contracts_affected
+678:- 8 `@skb/block-*` CONTRACT.md files — **NOT** modified.
+702:## adr_touched
+749:## acceptance
+751:15 verifiable acceptance criteria. Each is a single shell command
+755:### AC#1 — 4 NEW source modules exist at the canonical paths
+768:### AC#2 — barrel re-exports include the 4 new module surfaces
+782:### AC#3 — vitest 19 NEW cases PASS + existing editor-shell suites unchanged
+791:through C.2-6 vitest count. Mechanical guard for the 4 new test files:
+800:Expected: `4`. Verifies all 4 NEW test files exist.
+802:### AC#4 — `layoutReducer` epoch rules byte-equal to ADR-0017 D12 Q12 absorbtion table
+820:### AC#5 — `drop-pulse.ts` consumes `var(--accent-success, ...)` token with hex fallback
+833:### AC#6 — `drag-ghost.ts` per-kind className matches the 4 ADR-0017 D10 kinds
+847:### AC#7 — `esc-cancel.ts` calls preventDefault + stopPropagation only when `dragActive === true`
+861:### AC#8 — `CONTRACT.md` sister-doc-sync subsection updated with 4 new module entries + ADR-0017 D8/D10/D11/D12 cross-references
+877:### AC#9 — `pnpm exec tsx scripts/check-ui-touch.ts --files` (file list args) returns `ui_touch: true`
+880:pnpm exec tsx scripts/check-ui-touch.ts --files \
+893:### AC#10 — `index.ts` preserves existing 11 exports (no regression)
+910:### AC#11 — Playwright spec exists at canonical path + has the canonical test name
+923:### AC#12 — `pnpm check` clean (lint + typecheck + test + build + size)
+948:### AC#13 — Playwright spec PASSES locally on WSL2 (orchestrator self-serves post deps install)
+964:### AC#14 — screenshot archive at canonical path ≥ 5 KB
+978:### AC#15 — `scripts/check-e2e-coverage.ts` resolves the canonical e2e_smoke flow
+994:## verification required
+1003:script with explicit `--files` list (REVIEW-stage runnable per
+1012:## ui_touch
+1019:--files <list>` (AC#9) AGREES with this catalog annotation. C.2-8
+1029:## e2e_smoke
+1045:## Plan-challenger absorbtion
+1125:## ambiguity flagged
+1147:## R14 self-check
+1157:| 2 | Whitelist files match plan row whitelist | ✅ | Plan v1.3 row C.2-8 whitelist: `packages/editor-shell/src/drag-drop/{drop-pulse,drag-ghost,esc-cancel,layout-reducer}.ts` (NEW) + tests; PR.md whitelist files 1-4 + 5-8 byte-equal match |
+1161:| 6 | TDD-front discipline | ✅ | `## test_cases` Suite 1-4 enumerate 19 vitest cases authored RED before source; AC#3 mechanical guard verifies test files exist; codex executor follows red-green sequence per ADR-0011 D1 stage 2 |
+1162:| 7 | D2 trigger judgment locked at PLAN | ✅ | Row 1 (CONTRACT.md) + Row 5 (cross-package boundary surface addition) FIRES; Row 4 (NEW ADR) DOES NOT fire; PRE-COMMIT CLAUDE REVIEW (D1 stage 4) MANDATORY per Row 1 |
+1176:- **AC#14 (no implementation-string leak in non-PR.md files) NOT
+1184:## D2 trigger judgment
+1226:## Risk register
+1238:## Out of scope
+1286:## execution plan
+1299:1. **TDD-red phase**: write 4 vitest test files at the canonical
+1300:   `__tests__/drag-drop/` paths with all 19 cases per `## test_cases`
+1321:   build + size). `pnpm exec tsx scripts/check-ui-touch.ts --files
+1327:   ADR-0006 reviewer surface) is a PR.md `## files` whitelist
+1335:REVIEW (D1 stage 4) MANDATORY per `## D2 trigger judgment` Row 1 +
+1339:## Codex commit (D1 stage 5) staging
+1404:- 14 files staged (12 PR.md whitelist + 1 screenshot + 1 audit log)
+1416:## Related
+
+exec
+/bin/bash -lc "sed -n '260,520p' docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+       It implements the C.2-8 subset of ADR-0017 D11: 720ms halo
+       `box-shadow` animation consuming the `var(--accent-success,
+       oklch(70% 0.12 145 / 0.5))` token with a Stage C.3 forward-
+       pointer to the `--accent-success` design-tokens landing per
+       ADR-0018. The component does NOT self-unmount; consumers wire
+       `onAnimationEnd` to remove the overlay.
+     - `drag-ghost.ts` exports `DragGhost`, `DragGhostProps`, and the
+       `GhostKind = 'canvas' | 'runnable' | 'image' | 'markdown'`
+       union. It implements ADR-0017 D10: `position: fixed` plus
+       `transform: translate(...) rotate(-1.5deg)` baseline plus
+       per-kind className. Cursor velocity threshold `5px/frame` per
+       D10 trailing prose triggers `±5deg` rotation feedback; the 4
+       kind classNames are the Public Surface contract that Stage C.3
+       visual identity CSS will style.
+     - `esc-cancel.ts` exports `useEscCancel` and `EscCancelOptions`.
+       It implements ADR-0017 D8 plus Q8 absorbtion priority table.
+       The hook subscribes to global `keydown` + invokes the consumer
+       `onCancel` callback only when `dragActive === true`, calling
+       `preventDefault` and `stopPropagation` before the callback to
+       suppress native Esc passthrough during drag. When `dragActive`
+       is false the hook is a no-op so native Esc behavior runs
+       (textarea blur / Tiptap deselect / etc.). The hook also
+       restores prior focus on drag-end via the optional
+       `restoreFocusEl` parameter.
+     - `layout-reducer.ts` exports `layoutReducer`, `LayoutState`,
+       `LayoutAction`, and `GridSnapshot`. It implements ADR-0017 D12
+       plus ADR-0016 D12: 5-variant discriminated-union action
+       (`drag-start`, `drag-over`, `drag-end-success`,
+       `drag-end-cancel`, `drag-end-mode-none`) with the Q12
+       absorbtion epoch table — drag-start saves the S0 snapshot
+       without changing epoch; drag-over is a no-op pass-through;
+       drag-end-success bumps epoch by 1 and commits the S1 baseline;
+       drag-end-cancel and drag-end-mode-none restore the S0 snapshot
+       without changing epoch. Single-user single-session assumption
+       per ADR-0016 D12.
+
+   - **Trailing cross-reference paragraph extension** (after line 224
+     "layoutReducer + layoutEpoch implementation remains deferred to
+     C.2-8 per Wave 5 plan v1.1 row C.2-8") — flip from "deferred to
+     C.2-8" to "shipped at C.2-8 per Wave 5 plan v1.3 row C.2-8 line
+     689" + add ADR-0017 D8 / D10 / D11 / D12 + ADR-0016 D12 Q12
+     absorbtion table forward-pointer.
+
+   ADR-0016 §502 row 4 sister-doc-sync requirement (editor-shell
+   CONTRACT.md sync per W5-2 invariant) operationally satisfied for
+   the 4 NEW module surfaces (same-PR-with-implementation site).
+
+8. **NEW `apps/site/src/__tests__/e2e/c2-8-drag-modules-mount.spec.ts`**
+   (~60 LOC). Playwright spec covering the canonical e2e_smoke flow
+   per the orchestrator-authored `## e2e_smoke` block below. Spec body:
+
+   - `test.describe('drag modules mount + Esc native passthrough', ...)`
+   - **NO** `test.skip(WSL2 ...)` block — orchestrator self-serves
+     Playwright on WSL2 post deps install (memory
+     `feedback_wsl2_chromium_launch.md` SUPERSEDED 2026-05-06; PR #79
+     housekeeping stripped the skip from C.2-7 spec at squash
+     `b2fdd8f`); new specs from C.2-8 onwards follow the no-skip
+     pattern.
+   - `test('drag modules mount + Esc native passthrough', async ({ page }) => { ... })`
+     Body:
+     1. `await page.goto('/notes/sample-blocks/edit')` (rest-route from
+        C.4-prelude squash `4f49be0`; uses the
+        `apps/site/src/pages/notes/[...slug]/edit.astro` mount).
+     2. Wait for the editor mount root selector (specific selector
+        chosen at exec time; first candidate
+        `[data-editor-shell-root]`; fallback `.editor-shell` based on
+        the EditorShellMount client-island shipped at C.4-prelude;
+        codex executor verifies via `getByTestId` or `locator(...)`
+        + `.toBeVisible()` with a 5s timeout).
+     3. Assert the page does NOT contain a console error mentioning
+        any of the new module names (`drop-pulse` / `drag-ghost` /
+        `esc-cancel` / `layout-reducer`) — this guards against import-
+        time bugs in the barrel that would surface as `Uncaught
+        TypeError` during module loading; capture via
+        `page.on('pageerror', ...)` collector + assertion.
+     4. Press `Escape` once with no drag in progress: `await
+        page.keyboard.press('Escape')`. The page MUST NOT crash; the
+        editor MUST remain mounted (re-assert the mount-root selector
+        is still visible). This validates the D8 priority 3 native
+        passthrough — Esc with no drag-active is a no-op for the
+        reducer + does not break Tiptap selection.
+     5. Take screenshot to
+        `docs/audits/screenshots/wave-5-c2-8-drag-modules-mount.png`
+        per ADR-0011 D9.5 archive flow + the canonical
+        `screenshot_archive` field. File MUST be ≥ 5 KB at ACCEPT
+        (placeholder guard per `scripts/check-screenshot-archive.ts`).
+
+   Spec is keyed on the canonical `test(...)` description string
+   `"drag modules mount + Esc native passthrough"` (matches the
+   `playwright_spec` field's `:"…"` suffix in the `## e2e_smoke`
+   block below) so `scripts/check-e2e-coverage.ts` resolves it.
+
+9. **PR.md self-listed** per ADR-0006 D8 strict-whitelist.
+
+The 8 `@skb/block-*` packages are NOT touched. `@skb/mdx-bridge` is
+NOT touched. `@skb/heavy-block-boundary` is NOT touched (C.2-7 squash
+`dd860b9` already shipped the v0.5 amendment + gridContext path).
+`@skb/design-tokens` is NOT touched (the `--accent-success` token
+landing is Stage C.3 scope per ADR-0018; v0.5 fallback hex is the
+intentional bridge in this PR). `@skb/block-foundation` is NOT
+modified at the source level (the layout-reducer.ts module imports
+`BlockGridPosition` type from the existing C.2-2 squash surface; no
+upstream change). `apps/site/src/components/EditorShellMount.tsx` is
+NOT modified — the new modules exist + are barrel-exported but are
+NOT wired into the editor-scaffold UI in this PR (full integration
+happens at C.2-10 Playwright drag scenarios + future C.4-2 / C.4-3
+mount enhancement). The Playwright spec only asserts mount-without-
+crash + Esc native-passthrough — NOT actual drag behavior.
+
+LOCKED implementation path: **4 NEW source modules** (drop-pulse +
+drag-ghost + esc-cancel + layout-reducer) + **4 NEW vitest test
+files** + **1 NEW Playwright smoke spec** + **MODIFIED barrel** +
+**MODIFIED CONTRACT.md sister-doc-sync**. Path "wire the modules into
+EditorShellMount.tsx + ship full drag scenarios in this PR" is
+**EXPLICITLY FORBIDDEN** (reason in Risk register row 1; LOC budget
+would balloon ≥ 800 LOC + cross-package consumer-side churn into
+apps/site; full drag integration is C.2-10 scope per Wave 5 plan v1.3
+row C.2-10 line 691). Path "ship the `--accent-success` token in
+design-tokens here" is **EXPLICITLY FORBIDDEN** per Out of scope row 2
++ ADR-0018 D-list reservation for Stage C.3-1 token landing.
+
+PR.md self-listed per ADR-0006 D8 strict-whitelist.
+
+## files
+
+**Touchable whitelist: 12 entries** (codex-executor confines edits
+strictly to these — per ADR-0006 D8 explicit-file-list discipline +
+memory `feedback_git_operator_explicit_stage`). Stage-5 commit may
+add audit logs (codex R1+ rounds + reviewer R1+ rounds) for a
+~14-16-entry total — see `## Codex commit (D1 stage 5) staging`
+block. NO change to the 8 `@skb/block-*` packages. NO change to
+`@skb/mdx-bridge` / `@skb/heavy-block-boundary` / `@skb/design-tokens`
+/ `@skb/block-foundation`. NO change to
+`apps/site/src/{islands,components,pages}/`.
+
+1. `packages/editor-shell/src/drag-drop/drop-pulse.ts` (NEW; ~80 LOC;
+   per ADR-0017 D11 720ms halo + `--accent-success` token consumption)
+2. `packages/editor-shell/src/drag-drop/drag-ghost.ts` (NEW; ~120 LOC;
+   per ADR-0017 D10 `position: fixed` + per-kind className + velocity-
+   driven rotation)
+3. `packages/editor-shell/src/drag-drop/esc-cancel.ts` (NEW; ~80 LOC;
+   per ADR-0017 D8 + Q8 absorbtion 3-priority table)
+4. `packages/editor-shell/src/drag-drop/layout-reducer.ts` (NEW;
+   ~120 LOC; per ADR-0017 D12 + ADR-0016 D12 Q12 absorbtion epoch table)
+5. `packages/editor-shell/src/__tests__/drag-drop/drop-pulse.test.tsx`
+   (NEW; ~70 LOC; 4 vitest cases per Suite 1)
+6. `packages/editor-shell/src/__tests__/drag-drop/drag-ghost.test.tsx`
+   (NEW; ~80 LOC; 5 vitest cases per Suite 2)
+7. `packages/editor-shell/src/__tests__/drag-drop/esc-cancel.test.tsx`
+   (NEW; ~70 LOC; 4 vitest cases per Suite 3)
+8. `packages/editor-shell/src/__tests__/drag-drop/layout-reducer.test.ts`
+   (NEW; ~90 LOC; 6 vitest cases per Suite 4)
+9. `packages/editor-shell/src/index.ts` (MODIFIED; ~10 LOC delta;
+   barrel re-exports for the 4 new module surfaces)
+10. `packages/editor-shell/CONTRACT.md` (MODIFIED; ~25-35 LOC delta;
+    sister-doc-sync per ADR-0016 §502 row 4; extends `### Drag/Drop
+    layer` subsection from C.2-5 era to cover the C.2-8 4-module
+    addition)
+11. `apps/site/src/__tests__/e2e/c2-8-drag-modules-mount.spec.ts`
+    (NEW; ~60 LOC; canonical Playwright smoke per orchestrator-authored
+    `## e2e_smoke` block)
+12. `docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md`
+    (this PR.md self)
+
+**LOC budget**:
+
+| Category | Files | LOC |
+|---|---|---|
+| Source modules (4 NEW) | drop-pulse + drag-ghost + esc-cancel + layout-reducer | ~400 |
+| Vitest test files (4 NEW) | 4 × `__tests__/drag-drop/*.test.{ts,tsx}` | ~280 |
+| Playwright smoke (1 NEW) | c2-8-drag-modules-mount.spec.ts | ~60 |
+| Barrel re-exports | `index.ts` delta | ~10 |
+| CONTRACT.md sister-doc-sync | `CONTRACT.md` delta | ~25-35 |
+| PR.md self | this file | ~700-900 |
+| **Total committed** | | **~1475-1685** |
+
+Each NEW source file stays under 200 LOC target (drop-pulse ~80;
+drag-ghost ~120; esc-cancel ~80; layout-reducer ~120) and well under
+the 500 LOC hard fail + 300 LOC ESLint warn. Final
+`packages/editor-shell/src/index.ts` ~32 LOC; `CONTRACT.md` ~390 LOC
+(under 500 LOC hard fail; the 300 LOC ESLint warn does not apply to
+markdown contract docs but the value is informational).
+
+## test_cases
+
+TDD-front authoritative list per ADR-0011 D1 stage 2 + memory
+`feedback_codex_spark_lint_gap` — codex-generic-executor lands all
+4 vitest test files first (red), then the 4 source modules (green),
+then the Playwright spec (separate runner; not part of red-green TDD
+because Playwright targets the assembled apps/site mount, not the
+unit-tested modules). Verification:
+`pnpm --filter @skb/editor-shell test` (vitest) +
+`pnpm --filter @skb/site test:visual` (or equivalent Playwright
+runner; orchestrator self-serves on WSL2 post deps install).
+
+### Suite 1: `packages/editor-shell/src/__tests__/drag-drop/drop-pulse.test.tsx` (4 cases; ~70 LOC)
+
+1. **TC1.1 — `DropPulse` component renders with `box-shadow` halo
+   inline style**. Input: `render(<DropPulse onAnimationEnd={() => {}} />)`.
+   Expected: rendered DOM root element has computed style
+   `box-shadow` matching pattern `/0 0 0 4px /` (4px offset; the
+   color portion is the CSS variable + fallback, asserted separately
+   in TC1.3); `position` is `absolute`; `inset` is `0`. Location:
+   `drop-pulse.test.tsx > rendering > halo box-shadow style`.
+
+2. **TC1.2 — animation duration is `720ms` per ADR-0017 D11**. Input:
+   inspect the source file `drop-pulse.ts` content via Node `fs.readFileSync`
+   (vitest-friendly path) OR inline-style assertion against the
+   rendered component's `animation` property. Expected: `animation`
+   inline-style or computed-style contains `720ms` (verbatim from
+   D11 line 345). Location:
+   `drop-pulse.test.tsx > timing > 720ms duration`.
+
+3. **TC1.3 — `--accent-success` token consumed with hex fallback per
+   ADR-0018**. Input: `render(<DropPulse />)`; inspect the inline-style
+   `box-shadow` string. Expected: substring matches
+   `/var\(--accent-success,\s*oklch\(70% 0\.12 145 \/ 0\.5\)\)/`
+   verbatim — the CSS variable + the fallback hex `oklch(70% 0.12
+   145 / 0.5)` per ADR-0017 D11 line 345 + ADR-0018 v0.5 fallback
+   bridge. Location: `drop-pulse.test.tsx > token > accent-success
+   var with fallback`.
+
+4. **TC1.4 — drag-cancel does NOT trigger pulse (D11 explicit non-
+   trigger)**. Input: a small consumer harness that conditionally
+   renders `<DropPulse />` only when `phase === 'drag-end-success'`
+   (passing `phase = 'drag-end-cancel'` results in `null` render).
+   Expected: when `phase === 'drag-end-cancel'`, the `<DropPulse />`
+   element is NOT in the rendered DOM (consumer-side enforcement
+   per D11 line 351 explicit non-trigger rule). The component itself
+   renders unconditionally when mounted; this test asserts the
+   consumer-pattern guard is part of the component's documented
+   contract via JSDoc + `## ui_touch` Public Surface bullet. Location:
+   `drop-pulse.test.tsx > non-trigger > cancel-path no pulse`.
+
+### Suite 2: `packages/editor-shell/src/__tests__/drag-drop/drag-ghost.test.tsx` (5 cases; ~80 LOC)
+
+1. **TC2.1 — `DragGhost` element renders with `position: fixed` +
+   `transform` baseline**. Input: `render(<DragGhost cursorX={100}
+   cursorY={200} kind="canvas" mode="move" />)`. Expected: rendered
+   element has computed style `position: fixed`; `transform` contains
+   `translate` and `rotate(-1.5deg)` (baseline per D10 line 336);
+   `pointer-events: none`. Location:
+   `drag-ghost.test.tsx > render > fixed + baseline transform`.
+
+2. **TC2.2 — per-kind className per 4 kinds**. Input: 4 separate
+   renders with `kind: 'canvas' | 'runnable' | 'image' | 'markdown'`.
+   Expected: each rendered DOM root has the corresponding
+   `.ghost-canvas` / `.ghost-runnable` / `.ghost-image` / `.ghost-markdown`
+   className (D10 line 337 verbatim). Location:
+   `drag-ghost.test.tsx > kinds > 4-kind className roster`.
+
+3. **TC2.3 — velocity ≥ 5px/frame triggers ±5° rotation**. Input:
+   `render(<DragGhost cursorX={100} cursorY={200} kind="canvas"
+   mode="move" velocity={{ dx: 8, dy: 0 }} />)` (magnitude 8 ≥ 5
+   threshold). Expected: rendered `transform` contains `rotate(5deg)`
+   (positive dx → +5; per D10 line 340). Negative-dx counterpart:
+   `velocity={{ dx: -8, dy: 0 }}` → `rotate(-5deg)`. Two assertions
+   in the same case. Location:
+   `drag-ghost.test.tsx > velocity > 5 threshold rotation feedback`.
+
+4. **TC2.4 — velocity = 0 OR no velocity prop → baseline -1.5deg**.
+
+exec
+/bin/bash -lc "sed -n '520,760p' docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+4. **TC2.4 — velocity = 0 OR no velocity prop → baseline -1.5deg**.
+   Input 1: `render(<DragGhost ... velocity={{ dx: 0, dy: 0 }} />)`;
+   Input 2: `render(<DragGhost ... />)` (no velocity prop). Expected:
+   both render with `transform` containing `rotate(-1.5deg)` (per
+   D10 line 340 explicit "velocity = 0 时 ghost 角度 = -1.5deg"
+   baseline). Location:
+   `drag-ghost.test.tsx > velocity > zero baseline`.
+
+5. **TC2.5 — ghost destroyed on unmount**. Input: render the
+   component, then unmount via React Testing Library `cleanup()` or
+   the test renderer's unmount handle. Expected: post-unmount, the
+   `.drag-ghost` element is no longer in `document.body` (ghost
+   destroyed on drag-end per D10 line 340 trailing prose; the consumer
+   wires unmount on drag-end). Location:
+   `drag-ghost.test.tsx > lifecycle > unmount destroys ghost`.
+
+### Suite 3: `packages/editor-shell/src/__tests__/drag-drop/esc-cancel.test.tsx` (4 cases; ~70 LOC)
+
+1. **TC3.1 — Esc with `dragActive=true` calls preventDefault +
+   stopPropagation + invokes onCancel**. Input: render a test harness
+   component using the hook with `dragActive: true` + a spy
+   `onCancel`. Dispatch a `KeyboardEvent('keydown', { key: 'Escape',
+   bubbles: true, cancelable: true })` from `window`. Expected:
+   `event.defaultPrevented === true` (preventDefault was called per
+   D8 priority 1 line 302); the spy `onCancel` was invoked exactly
+   once. Location:
+   `esc-cancel.test.tsx > active > dispatches drag-cancel`.
+
+2. **TC3.2 — Esc with `dragActive=false` is a no-op (native
+   passthrough per D8 priority 3 line 304)**. Input: render the same
+   harness with `dragActive: false`. Dispatch the Esc keydown event.
+   Expected: `event.defaultPrevented === false` (NO preventDefault);
+   the spy `onCancel` was NOT invoked. Location:
+   `esc-cancel.test.tsx > inactive > native passthrough`.
+
+3. **TC3.3 — prior focus restored on drag-end**. Input: render the
+   harness with `dragActive: true` + a `restoreFocusEl` reference
+   pointing to a textarea that was previously focused. Re-render
+   with `dragActive: false` (simulating drag-end transition). Expected:
+   `document.activeElement === restoreFocusEl` (per D8 priority 2
+   line 303 — restore focus on drag-end). Location:
+   `esc-cancel.test.tsx > focus > restore on drag-end`.
+
+4. **TC3.4 — keys other than Esc are passthrough regardless of
+   dragActive**. Input: render the harness with `dragActive: true`.
+   Dispatch a `KeyboardEvent('keydown', { key: 'Enter' })`. Expected:
+   `event.defaultPrevented === false`; the spy `onCancel` was NOT
+   invoked. Location:
+   `esc-cancel.test.tsx > non-Esc > passthrough`.
+
+### Suite 4: `packages/editor-shell/src/__tests__/drag-drop/layout-reducer.test.ts` (6 cases; ~90 LOC)
+
+1. **TC4.1 — drag-start: epoch unchanged + S0 saved**. Input: initial
+   state `{ epoch: 5, snapshot: null, baseline: snapshotA }`; action
+   `{ type: 'drag-start', sourceBlockId: 'b1' }`. Expected: result
+   state `{ epoch: 5, snapshot: snapshotA, baseline: snapshotA }`
+   (epoch unchanged per Q12 absorbtion line 361; S0 saved as
+   `snapshot: state.baseline`). Location:
+   `layout-reducer.test.ts > drag-start > epoch unchanged + S0 saved`.
+
+2. **TC4.2 — drag-over: epoch unchanged + state reference-equal**.
+   Input: state `{ epoch: 5, snapshot: snapshotA, baseline: snapshotA }`;
+   action `{ type: 'drag-over' }`. Expected: result IS the same
+   state reference (`Object.is(result, state) === true`); epoch
+   still 5 per Q12 absorbtion line 362 ("preview not committed").
+   Location:
+   `layout-reducer.test.ts > drag-over > epoch unchanged + reference-equal`.
+
+3. **TC4.3 — drag-end-success: epoch += 1 + new S1 baseline**. Input:
+   state `{ epoch: 5, snapshot: snapshotA, baseline: snapshotA }`;
+   action `{ type: 'drag-end-success', mutation: snapshotB }`.
+   Expected: result `{ epoch: 6, snapshot: null, baseline: snapshotB }`
+   (epoch + 1 one-shot per Q12 absorbtion line 363; new S1 = action.
+   mutation; S0 cleared). Location:
+   `layout-reducer.test.ts > drag-end-success > epoch +1 + S1 baseline`.
+
+4. **TC4.4 — drag-end-cancel: epoch unchanged + rollback to S0**.
+   Input: state `{ epoch: 5, snapshot: snapshotA, baseline: snapshotA }`;
+   action `{ type: 'drag-end-cancel' }`. Expected: result `{ epoch:
+   5, snapshot: null, baseline: snapshotA }` (epoch unchanged per Q12
+   absorbtion line 364; rollback to S0; S0 cleared on consumption).
+   Location:
+   `layout-reducer.test.ts > drag-end-cancel > epoch unchanged + rollback`.
+
+5. **TC4.5 — drag-end-mode-none: same behavior as drag-end-cancel**.
+   Input: state `{ epoch: 5, snapshot: snapshotA, baseline: snapshotA }`;
+   action `{ type: 'drag-end-mode-none' }`. Expected: result `{ epoch:
+   5, snapshot: null, baseline: snapshotA }` (per Q12 absorbtion line
+   365 "degenerate cancel"; same state transformation as TC4.4).
+   Location: `layout-reducer.test.ts > drag-end-mode-none > same as
+   cancel`.
+
+6. **TC4.6 — responsive transition + drag conflict (drag rejected
+   per ADR-0016 D5/D12)**. Input: state with `responsiveTransition:
+   'in-progress'` + `{ epoch: 5, snapshot: null, baseline: snapshotA }`;
+   action `{ type: 'drag-start', sourceBlockId: 'b1' }`. Expected:
+   result IS the same state reference (`Object.is(result, state) ===
+   true`); the drag-start is silently rejected per ADR-0016 D5 转场态
+   FSM + D12 conflict arbitration ("responsive transition 期间 drag
+   拒绝"). Location:
+   `layout-reducer.test.ts > conflict > responsive rejects drag`.
+
+### Suite 5: `apps/site/src/__tests__/e2e/c2-8-drag-modules-mount.spec.ts` (1 Playwright case; ~60 LOC)
+
+1. **TC5.1 — `"drag modules mount + Esc native passthrough"`**.
+   Input: navigate `/notes/sample-blocks/edit`; wait for editor mount
+   root; press `Escape` once with no drag active. Expected:
+   - editor mount root is visible (editor scaffold did NOT crash on
+     the new module loads via the barrel re-exports);
+   - no `pageerror` event mentioning any of the new module names
+     (`drop-pulse` / `drag-ghost` / `esc-cancel` / `layout-reducer`)
+     — guards against import-time bugs;
+   - pressing Esc with no drag active does NOT crash the page +
+     does NOT remove the editor mount root (D8 priority 3 native
+     passthrough);
+   - screenshot saved to
+     `docs/audits/screenshots/wave-5-c2-8-drag-modules-mount.png`
+     (≥ 5 KB at ACCEPT per `scripts/check-screenshot-archive.ts`).
+   Location:
+   `c2-8-drag-modules-mount.spec.ts > "drag modules mount + Esc native passthrough"`.
+
+**Suite total: 19 vitest (4 + 5 + 4 + 6) + 1 Playwright = 20 test
+cases**. All MUST PASS at AC#9 (`pnpm --filter @skb/editor-shell test`
+exit 0) + AC#13 (Playwright spec PASS locally on WSL2 post deps
+install + on CI Linux non-WSL).
+
+## contracts_affected
+
+- `packages/editor-shell/CONTRACT.md` — **MODIFIED**. The existing
+  `### Drag/Drop layer (C.2-5)` subsection (line 182+ from C.2-5
+  squash `2df71b6`) is renamed to `### Drag/Drop layer (C.2-5 +
+  C.2-8)` and extended with 4 new Public Surface bullets (drop-pulse,
+  drag-ghost, esc-cancel, layout-reducer). The trailing "deferred to
+  C.2-8" cross-reference paragraph (line 224+) is flipped to "shipped
+  at C.2-8 per Wave 5 plan v1.3 row C.2-8 line 689" + adds ADR-0017
+  D8 / D10 / D11 / D12 + ADR-0016 D12 Q12 absorbtion table forward-
+  pointers. D2 row 1 hit. Per ADR-0016 §502 row 4 sister-doc-sync —
+  same-PR-with-implementation site for the C.2-8 4-module Public
+  Surface contract.
+
+- `packages/block-foundation/CONTRACT.md` — **NOT** modified. The
+  `BlockGridPosition` shape authority (W5-1) was already authored at
+  C.2-2 squash `b15ba24`; C.2-8 is a consumer-side type import (the
+  layout-reducer `GridSnapshot` shape contains `readonly
+  BlockGridPosition[]`), not an upstream change. The W5-1 invariant +
+  ADR-0014 v0.5 cross-reference are unchanged.
+
+- `packages/heavy-block-boundary/CONTRACT.md` — **NOT** modified
+  (C.2-7 squash `dd860b9` is the latest; v0.5 amendment + gridContext
+  path unchanged).
+
+- `apps/site/CONTRACT.md` — **NOT** modified. The `## Grid layout
+  (Wave 5)` section + `/notes/[...slug]/edit` rest-route + EditorShellMount
+  client-island (C.4-prelude squash `4f49be0`) are pre-existing
+  surfaces; the new Playwright spec consumes the existing route
+  + mount root selector but does NOT modify apps/site source or
+  contract.
+
+- 8 `@skb/block-*` CONTRACT.md files — **NOT** modified.
+  `@skb/mdx-bridge` / `@skb/design-tokens` CONTRACT.md — **NOT**
+  modified.
+
+D2 row 5 (boundary contract change since editor-shell now exports 4
+NEW module surfaces consumed across package boundary by future
+C.2-10 Playwright drag scenarios + future apps/site editor scaffold
+integration) hit. Same escalation pattern as the Pre-A3 ADR-0017
+Q13 absorbtion + Pre-A2 ADR-0016 Q12 absorbtion "Stage C.2 D2 row 1
++ row 5 escalation note" prediction — the prediction line line 450
+of ADR-0017 + the Q13 absorbtion verdict explicitly predicted Stage
+C.2 implementation PRs hitting row 1 + row 5; this PR is a row 1
+hit (CONTRACT sync) plus a row 5 hit (cross-package boundary surface
+addition).
+
+D2 row 4 NOT hit — no NEW ADR amendment is required. ADR-0017
+D8/D10/D11/D12 + ADR-0016 D12 are already at lock since Pre-A2 + Pre-A3
++ Pre-A4 (PR squashes `6e2c1d9` + `157a4f7` + `7e487ec` per active.md
+Wave 5 PR roster). ADR-0018 `--accent-success` token D-list entry
+is already at lock since Pre-A4; the C.2-8 source consumes the
+fallback hex bridge + cites the Stage C.3-1 forward-pointer.
+
+PRE-COMMIT CLAUDE REVIEW (D1 stage 4) FIRES per Row 1 + Row 5.
+
+## adr_touched
+
+- **ADR-0017 drag-drop UX**: D8 (全局 Esc cancel + Q8 absorbtion
+  priority table line 298+), D10 (drag-ghost cursor 跟随 + per-kind
+  着色 line 333+), D11 (drop-pulse 720ms token-driven `--accent-
+  success` line 342+), D12 (layoutEpoch single-source mutation +
+  Q12 absorbtion epoch table line 353+) — **CONSUMED, NOT AMENDED**.
+  C.2-8 implements these D-items at their already-locked specifications;
+  no ADR delta in this PR.
+
+- **ADR-0016 grid 数据模型**: D12 (Layout mutation 单一源
+  `layoutEpoch` reducer line 401+) + 权威矩阵 + 冲突仲裁规则 (line
+  436+) + §502 sister-doc-sync row 4 (editor-shell CONTRACT.md sync
+  requirement) — **CONSUMED, NOT AMENDED**. The `layoutReducer` /
+  `layoutEpoch` / `LayoutAction` / `GridSnapshot` Public Surface in
+  this PR is the canonical realization of ADR-0016 D12 + ADR-0017 D12.
+  ADR-0016 §502 row 4 operationally satisfied (CONTRACT.md
+  same-PR-with-implementation sync site).
+
+- **ADR-0018 v2 visual migration**: `--accent-success` token D-list
+  entry (Stage C.3-1 forward-pointer) — **CONSUMED via fallback hex
+  bridge**. The `var(--accent-success, oklch(70% 0.12 145 / 0.5))`
+  pattern in `drop-pulse.ts` is the ADR-0018-locked bridge: token
+  consumption now + design-tokens definition deferred to Stage C.3-1
+  per ADR-0018 D-list reservation.
+
+- **ADR-0011** D1 (linear pipeline) + D2 (trigger schema) + D9
+  (Product Experience Quality Gate) + D9.1 (path patterns) + D9.2
+  (orchestrator-authored e2e_smoke for non-catalog ui_touch PRs) +
+  D9.5 (screenshot archive flow) + D10 (anti-prompt-patching) —
+  **operational enforcement, NOT amended**.
+
+- **ADR-0006** D8 (explicit-file-list staging) + 8-point checklist +
+  9th item (UI-touch + E2E spec) — **operational enforcement, NOT
+  amended**.
+
+- **Wave 5 plan v1.3 row C.2-8** (line 689 verbatim) — referenced as
+  the canonical scope source per ADR-0011 D10 anti-prompt-patching
+  (catalog wins over inline paraphrase). PR #75 squash `5bd5112`
+  (Wave 5 plan v1.3 amendment) cited as the upstream enabling work;
+  the v1.3 retrofit catalog (line 547+) annotated `ui_touch +
+  e2e_smoke` only on C.2-7 + 5 C.3 + 5 C.4 PRs (NOT C.2-8) — per
+  ADR-0011 D9.2 the orchestrator authors a fresh `e2e_smoke` block
+  for the C.2-8 catalog gap (see briefing + `## e2e_smoke` block).
+
+D2 row 4 NOT triggered — no NEW ADR amendment.
+
+## acceptance
+
+15 verifiable acceptance criteria. Each is a single shell command
+producing an objectively checkable result. ACCEPT-stage pr-writer
+(D1 stage 6) re-runs all 15 against the post-commit working tree.
+
+### AC#1 — 4 NEW source modules exist at the canonical paths
+
+```bash
+ls packages/editor-shell/src/drag-drop/drop-pulse.ts \
+   packages/editor-shell/src/drag-drop/drag-ghost.ts \
+   packages/editor-shell/src/drag-drop/esc-cancel.ts \
+
+exec
+/bin/bash -lc "sed -n '760,1040p' docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+   packages/editor-shell/src/drag-drop/esc-cancel.ts \
+   packages/editor-shell/src/drag-drop/layout-reducer.ts | wc -l
+```
+
+Expected: `4`. Verifies all 4 source modules exist on disk at the
+canonical paths declared in the Wave 5 plan v1.3 row C.2-8 whitelist
+(line 689 verbatim).
+
+### AC#2 — barrel re-exports include the 4 new module surfaces
+
+```bash
+grep -nE "from ['\"]\\./drag-drop/drop-pulse" packages/editor-shell/src/index.ts | wc -l
+grep -nE "from ['\"]\\./drag-drop/drag-ghost" packages/editor-shell/src/index.ts | wc -l
+grep -nE "from ['\"]\\./drag-drop/esc-cancel" packages/editor-shell/src/index.ts | wc -l
+grep -nE "from ['\"]\\./drag-drop/layout-reducer" packages/editor-shell/src/index.ts | wc -l
+```
+
+Expected: each `≥ 1`. Verifies the 4 module-level re-export
+statements were added to the barrel. The grep on the relative path
+form (`'./drag-drop/'` plus the module name) is robust to whether the executor
+chose `export { ... } from '...'` or `export * from '...'` shape.
+
+### AC#3 — vitest 19 NEW cases PASS + existing editor-shell suites unchanged
+
+```bash
+pnpm --filter @skb/editor-shell test
+```
+
+Expected: exit 0; the post-run summary reports `Tests <N> passed
+(<N>)` where N includes the 19 NEW cases (4 drop-pulse + 5 drag-ghost
++ 4 esc-cancel + 6 layout-reducer) on top of the existing C.2-1
+through C.2-6 vitest count. Mechanical guard for the 4 new test files:
+
+```bash
+ls packages/editor-shell/src/__tests__/drag-drop/drop-pulse.test.tsx \
+   packages/editor-shell/src/__tests__/drag-drop/drag-ghost.test.tsx \
+   packages/editor-shell/src/__tests__/drag-drop/esc-cancel.test.tsx \
+   packages/editor-shell/src/__tests__/drag-drop/layout-reducer.test.ts | wc -l
+```
+
+Expected: `4`. Verifies all 4 NEW test files exist.
+
+### AC#4 — `layoutReducer` epoch rules byte-equal to ADR-0017 D12 Q12 absorbtion table
+
+```bash
+grep -nE "case 'drag-start':" packages/editor-shell/src/drag-drop/layout-reducer.ts | wc -l
+grep -nE "case 'drag-over':" packages/editor-shell/src/drag-drop/layout-reducer.ts | wc -l
+grep -nE "case 'drag-end-success':" packages/editor-shell/src/drag-drop/layout-reducer.ts | wc -l
+grep -nE "case 'drag-end-cancel':" packages/editor-shell/src/drag-drop/layout-reducer.ts | wc -l
+grep -nE "case 'drag-end-mode-none':" packages/editor-shell/src/drag-drop/layout-reducer.ts | wc -l
+grep -nF "epoch + 1" packages/editor-shell/src/drag-drop/layout-reducer.ts | wc -l
+```
+
+Expected: each of the 5 case keywords `≥ 1`; the `epoch + 1`
+expression `≥ 1` (one-shot increment on drag-end-success per Q12
+absorbtion table line 363). Five-variant exhaustive switch + the
+single +1 mutation site lock the reducer to the ADR-0017 D12 spec.
+Vitest TC4.1-4.6 carry the runtime semantic guarantee; the AC
+provides a structural guard.
+
+### AC#5 — `drop-pulse.ts` consumes `var(--accent-success, ...)` token with hex fallback
+
+```bash
+grep -nE 'var\(--accent-success,\s*oklch\(70% 0\.12 145 / 0\.5\)\)' \
+  packages/editor-shell/src/drag-drop/drop-pulse.ts | wc -l
+```
+
+Expected: `≥ 1`. Verifies the verbatim token consumption pattern
+from ADR-0017 D11 line 345 + the ADR-0018 v0.5 fallback hex bridge.
+The pattern is byte-equal to the ADR prose to prevent drift; the
+Stage C.3-1 token landing PR will remove the fallback once
+design-tokens is shipped.
+
+### AC#6 — `drag-ghost.ts` per-kind className matches the 4 ADR-0017 D10 kinds
+
+```bash
+grep -nF 'ghost-canvas' packages/editor-shell/src/drag-drop/drag-ghost.ts | wc -l
+grep -nF 'ghost-runnable' packages/editor-shell/src/drag-drop/drag-ghost.ts | wc -l
+grep -nF 'ghost-image' packages/editor-shell/src/drag-drop/drag-ghost.ts | wc -l
+grep -nF 'ghost-markdown' packages/editor-shell/src/drag-drop/drag-ghost.ts | wc -l
+```
+
+Expected: each `≥ 1`. Verifies the 4-kind className contract
+declared at ADR-0017 D10 line 337 verbatim. CSS rules for these
+classNames land in Stage C.3 visual identity; the classNames are
+the stable Public Surface.
+
+### AC#7 — `esc-cancel.ts` calls preventDefault + stopPropagation only when `dragActive === true`
+
+```bash
+grep -nF 'preventDefault' packages/editor-shell/src/drag-drop/esc-cancel.ts | wc -l
+grep -nF 'stopPropagation' packages/editor-shell/src/drag-drop/esc-cancel.ts | wc -l
+grep -nE 'dragActive' packages/editor-shell/src/drag-drop/esc-cancel.ts | wc -l
+```
+
+Expected: each `≥ 1`. Verifies the 3 keyword tokens required by
+ADR-0017 D8 priority 1 (Esc with `dragActive === true` calls
+`preventDefault` + `stopPropagation`). Vitest TC3.1 + TC3.2 carry
+the runtime semantic guarantee (preventDefault is suppressed when
+`dragActive === false`).
+
+### AC#8 — `CONTRACT.md` sister-doc-sync subsection updated with 4 new module entries + ADR-0017 D8/D10/D11/D12 cross-references
+
+```bash
+grep -nE '^### Drag/Drop layer \(C\.2-5 \+ C\.2-8\)' packages/editor-shell/CONTRACT.md | wc -l
+grep -nF 'drop-pulse.ts' packages/editor-shell/CONTRACT.md | wc -l
+grep -nF 'drag-ghost.ts' packages/editor-shell/CONTRACT.md | wc -l
+grep -nF 'esc-cancel.ts' packages/editor-shell/CONTRACT.md | wc -l
+grep -nF 'layout-reducer.ts' packages/editor-shell/CONTRACT.md | wc -l
+grep -nE 'ADR-0017 D8|ADR-0017 D10|ADR-0017 D11|ADR-0017 D12' packages/editor-shell/CONTRACT.md | wc -l
+```
+
+Expected: header `≥ 1`; each module name `≥ 1`; ADR-0017 D-cite count
+`≥ 4` (one per D-item). Verifies the sister-doc-sync subsection
+covers all 4 new modules + cross-references the 4 D-items + the
+header was renamed to reflect multi-PR contributor pattern.
+
+### AC#9 — `pnpm exec tsx scripts/check-ui-touch.ts --files` (file list args) returns `ui_touch: true`
+
+```bash
+pnpm exec tsx scripts/check-ui-touch.ts --files \
+  packages/editor-shell/src/drag-drop/drop-pulse.ts \
+  packages/editor-shell/src/drag-drop/drag-ghost.ts \
+  packages/editor-shell/src/drag-drop/esc-cancel.ts \
+  packages/editor-shell/src/drag-drop/layout-reducer.ts \
+  apps/site/src/__tests__/e2e/c2-8-drag-modules-mount.spec.ts
+```
+
+Expected: stdout contains `ui_touch: true` (path matches the D9.1
+pattern `packages/editor-shell/src/**`); exit 0. Verifies the
+mechanical detection AGREES with the orchestrator-authored
+`## ui_touch` block declaration.
+
+### AC#10 — `index.ts` preserves existing 11 exports (no regression)
+
+```bash
+grep -nE "export \{ EditorShell \} from './EditorShell'" packages/editor-shell/src/index.ts | wc -l
+grep -nE "export \{ EDGE_W, GAP, computeEdgeRects \} from './drag-drop/edge-rects'" packages/editor-shell/src/index.ts | wc -l
+grep -nE "export \{ tiebreak, findMatches \} from './drag-drop/tiebreak'" packages/editor-shell/src/index.ts | wc -l
+grep -nE "export \{ OutlineOverlay \} from './drag-drop/outline-overlay'" packages/editor-shell/src/index.ts | wc -l
+grep -nE "export \{ ColRuler \} from './resize/col-ruler'" packages/editor-shell/src/index.ts | wc -l
+grep -nE "export \{ SizeTooltip, colSpanToFraction \} from './resize/size-tooltip'" packages/editor-shell/src/index.ts | wc -l
+grep -nE "export \{ GridContainer \} from './grid-container'" packages/editor-shell/src/index.ts | wc -l
+grep -nE "export \{ useAutoRowSpan \} from './use-auto-row-span'" packages/editor-shell/src/index.ts | wc -l
+```
+
+Expected: each `≥ 1`. Verifies no existing barrel export was
+accidentally removed during the C.2-8 module additions. Mirrors
+C.2-5 AC#8 + C.2-6 AC#10 regression-guard pattern.
+
+### AC#11 — Playwright spec exists at canonical path + has the canonical test name
+
+```bash
+ls apps/site/src/__tests__/e2e/c2-8-drag-modules-mount.spec.ts | wc -l
+grep -nF '"drag modules mount + Esc native passthrough"' \
+  apps/site/src/__tests__/e2e/c2-8-drag-modules-mount.spec.ts | wc -l
+```
+
+Expected: each `≥ 1`. Verifies the spec file exists + the canonical
+test description string (matches the `playwright_spec` field's
+`:"…"` suffix in the `## e2e_smoke` block) for
+`scripts/check-e2e-coverage.ts` resolution.
+
+### AC#12 — `pnpm check` clean (lint + typecheck + test + build + size)
+
+```bash
+pnpm check
+```
+
+Expected: exit 0. The full repo-wide gate: ESLint clean (no
+`max-lines` warn at 300+ on any new source file; per memory
+`feedback_codex_spark_lint_gap` orchestrator runs lint independently
+even though codex spark may report PASS without lint), `tsc
+--noEmit` clean across all packages + apps/site, vitest 100% PASS,
+`astro build` clean, `pnpm size-check` clean (no source file > 500
+LOC). Mechanical guard for the source size limit:
+
+```bash
+wc -l packages/editor-shell/src/drag-drop/drop-pulse.ts \
+      packages/editor-shell/src/drag-drop/drag-ghost.ts \
+      packages/editor-shell/src/drag-drop/esc-cancel.ts \
+      packages/editor-shell/src/drag-drop/layout-reducer.ts
+```
+
+Expected: each value `< 300` (under the ESLint `max-lines` warn
+threshold); `< 500` (under `pnpm size-check` hard fail). Target
+~80 / ~120 / ~80 / ~120 LOC per the Specifically section roster.
+
+### AC#13 — Playwright spec PASSES locally on WSL2 (orchestrator self-serves post deps install)
+
+```bash
+pnpm --filter @skb/site test:visual --grep 'drag modules mount'
+```
+
+Expected: exit 0. The spec runs end-to-end against an Astro dev
+server (or built preview) on the orchestrator workstation — WSL2
+chromium deps installed 2026-05-06 (memory
+`feedback_wsl2_chromium_launch.md` SUPERSEDED per active.md
+standards-landing follow-up #7); orchestrator self-serves Playwright
+on every UI-touch PR from C.2-8 onwards (PR #79 housekeeping squash
+`b2fdd8f` stripped the WSL2 skip block from C.2-7 spec; new specs
+follow no-skip pattern). The spec also runs on CI (Linux non-WSL)
+via the existing `visual-smoke` job in `.github/workflows/ci.yml`.
+
+### AC#14 — screenshot archive at canonical path ≥ 5 KB
+
+```bash
+test -f docs/audits/screenshots/wave-5-c2-8-drag-modules-mount.png && \
+  test "$(stat -c %s docs/audits/screenshots/wave-5-c2-8-drag-modules-mount.png)" -ge 5120
+```
+
+Expected: exit 0. Verifies the Playwright spec emitted a real
+screenshot to the canonical archive path + the file is ≥ 5 KB
+(placeholder guard per `scripts/check-screenshot-archive.ts` —
+catches `Buffer.from('')` smoke-fail or 1×1 pixel PNG bypass
+attempts). The `5120` byte threshold is the canonical 5 KB minimum
+codified at PR #74 squash `2f67ef0` (standards landing).
+
+### AC#15 — `scripts/check-e2e-coverage.ts` resolves the canonical e2e_smoke flow
+
+```bash
+pnpm exec tsx scripts/check-e2e-coverage.ts \
+  docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md
+```
+
+Expected: exit 0; stdout reports the `## e2e_smoke` block parsed
+successfully + the `playwright_spec` field's
+`apps/site/src/__tests__/e2e/c2-8-drag-modules-mount.spec.ts` path
+exists on disk + the spec contains the canonical `test(...)`
+description string `"drag modules mount + Esc native passthrough"`.
+Verifies the orchestrator-authored `## e2e_smoke` block satisfies
+the CI `e2e-coverage-check` job per ADR-0011 D9 + PR #76 squash
+`ad42f71` symmetric-skip fix.
+
+## verification required
+
+ACCEPT-stage pr-writer (D1 stage 6) re-runs all 15 ACs against the
+post-commit working tree. The 6 mechanical greps (AC#1, #2, #4-7,
+#10) + 1 file-existence check (AC#11 ls part) are 1-line bash; the
+2 pnpm-driven gates (AC#3 + AC#12) run the full vitest + lint +
+typecheck + build + size pipeline; AC#13 is the Playwright run on
+WSL2; AC#14 + AC#15 are the screenshot archive + e2e-coverage
+gate verification. AC#9 invokes the dedicated `check-ui-touch.ts`
+script with explicit `--files` list (REVIEW-stage runnable per
+PR #74 squash `2f67ef0` standards landing).
+
+The Codex commit (D1 stage 5) staging block at the tail of this
+PR.md provides the explicit-file-list staging command per ADR-0006
+D8 + memory `feedback_git_operator_explicit_stage` 4-step protocol
+(`git reset HEAD` then `git add` with the explicit file list then `git diff --cached --stat`
+verify count + scope → `git commit`).
+
+## ui_touch
+
+`true` (touches `packages/editor-shell/src/**` per ADR-0011 D9.1
+path pattern + `apps/site/src/__tests__/e2e/**` per the spec
+addition).
+
+Mechanical detection via `pnpm exec tsx scripts/check-ui-touch.ts
+--files <list>` (AC#9) AGREES with this catalog annotation. C.2-8
+was NOT in the v1.3 retrofit catalog (which annotated only C.2-7 +
+5 C.3 + 5 C.4 rows per Wave 5 plan v1.3 line 547+ retrofit catalog
+header); per ADR-0011 D9.2, the orchestrator authors a fresh
+`e2e_smoke` block for newly-detected ui_touch PRs outside the
+catalog. The block below is the orchestrator-authored canonical
+shape (single-bullet-with-indented-continuation form per PR #78
+reformat lesson + bare paths without surrounding backticks per
+`scripts/check-screenshot-archive.ts` parser shape).
+
+## e2e_smoke
+
+Orchestrator-authored canonical e2e_smoke entry per ADR-0011 D9.2
+catalog-gap procedure (single-bullet-with-indented-keys to satisfy
+`scripts/check-e2e-coverage.ts` parser; the script splits on
+`^\s*-\s+(?=key:)` so `target_url`/`playwright_spec`/
+`screenshot_archive` are continuation lines, not separate bullets;
+values shipped without surrounding backticks so
+`scripts/check-screenshot-archive.ts` regex `\S+` captures the bare
+path):
+
+- flow: editor scaffold mounts at /notes/sample-blocks/edit after drag-modules added; Esc with no drag-active does NOT crash editor + does not break Tiptap selection (D8 native pass-through priority)
+
+exec
+/bin/bash -lc "sed -n '1040,1280p' docs/plans/wave-5-main/C.2-8-drop-pulse-drag-ghost-esc-layoutEpoch.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+- flow: editor scaffold mounts at /notes/sample-blocks/edit after drag-modules added; Esc with no drag-active does NOT crash editor + does not break Tiptap selection (D8 native pass-through priority)
+  target_url: /notes/sample-blocks/edit
+  playwright_spec: apps/site/src/__tests__/e2e/c2-8-drag-modules-mount.spec.ts:"drag modules mount + Esc native passthrough"
+  screenshot_archive: docs/audits/screenshots/wave-5-c2-8-drag-modules-mount.png
+
+## Plan-challenger absorbtion
+
+NOT APPLICABLE for an implementation PR per ADR-0011 D7. The Wave 5
+plan v1.3 row C.2-8 (line 689) + ADR-0017 D8 + D10 + D11 + D12 (with
+Q8 + Q11 + Q12 absorbtion verdicts at lock-time) + ADR-0016 D12
+(with Q1 + Q9 absorbtion verdicts) + ADR-0018 `--accent-success`
+token D-list entry (Pre-A4 lock) + ADR-0006 8-class audit checklist
++ 9th item are the authoritative inputs. No plan-challenger dispatch
+occurred at PLAN stage; the Wave 5 plan was already plan-challenger-
+vetted at v1.3 amendment (4-row absorbtion per PR #75 squash
+`5bd5112`); ADR-0017 was already plan-challenger-vetted at Pre-A3
+(13-row absorbtion per PR #52 squash `157a4f7`); ADR-0016 was
+already plan-challenger-vetted at Pre-A2 (12-row absorbtion per PR
+#51 squash `6e2c1d9`).
+
+**Open questions surfaced during PLAN draft** (none blocking lock;
+documented for orchestrator):
+
+1. **Should the layout-reducer `responsiveTransition` field live on
+   `LayoutState` directly, or as a separate React context that the
+   reducer reads from at action time?** **Resolved**: as a field on
+   `LayoutState` (declared optional `responsiveTransition?:
+   'idle' | 'in-progress'` with default `'idle'`). The reducer is
+   pure (state + action → state); reading external context inside
+   the reducer body breaks purity + complicates testing. The
+   responsive transition source (matchMedia subscription per
+   ADR-0016 D5 转场态 FSM) is owned by the consumer hook (future
+   `useResponsiveCols` in C.2-9 scope) which dispatches a separate
+   `responsive-transition-start` / `responsive-transition-end`
+   action — but those actions are NOT in the C.2-8 surface (they
+   land at C.2-9). For C.2-8, the reducer pre-declares the field
+   shape + the early-return guard (TC4.6 verifies the rejection
+   path); the consumer wiring is forward-compatible. **NOT BLOCKING**
+   — orchestrator may prefer the context-read shape if the
+   ADR-0016 D5 implementation lands at C.2-9 with that pattern.
+
+2. **Should the `DragGhost` glyph + label rendering (D10 line 338
+   `+ ◇ Canvas` / `⤴ ◇ Canvas`) be in scope for C.2-8 or deferred to
+   Stage C.3 visual identity?** **Resolved**: the prop shape (`mode:
+   'create' | 'move'`) is in scope — the component reads `mode` and
+   renders a textual placeholder label (e.g., `+ Canvas` /
+   `⤴ Canvas`) to match the D10 contract. The glyph CSS styling
+   (icon font / SVG for `◇`) is Stage C.3 scope per ADR-0018; the
+   C.2-8 component uses a plain text fallback (`'+ '` / `'⤴ '`
+   prefix + the kind name). Vitest TC2.2 covers the className per
+   kind; the glyph rendering is asserted as text content (NOT visual
+   appearance) per D10 line 338 prose. **NOT BLOCKING**.
+
+3. **Should the `useEscCancel` hook own the `keydown` listener
+   subscription, OR should it be a stateless function the consumer
+   wires manually via `useEffect`?** **Resolved**: hook owns the
+   subscription (the `use` prefix is the React contract for hooks
+   that subscribe to global resources; consumer simply calls
+   `useEscCancel({ ... })` once and the hook handles mount/unmount).
+   This matches D8 line 296 ("editor-shell 全局 keydown listener"
+   verbatim — the listener IS owned at editor-shell level). **NOT
+   BLOCKING**.
+
+4. **Should the Playwright spec target `/notes/sample-blocks/edit`
+   specifically, or pick any sample slug at runtime?** **Resolved**:
+   target the specific `sample-blocks` slug (existing fixture from
+   C.4-prelude PR #72 squash `4f49be0`); this matches the editor-
+   scaffold mount path that is known to work post-C.4-prelude. The
+   `/notes/[...slug]/edit` rest-route resolves any slug, but
+   asserting against a specific known-good slug is more deterministic
+   for the smoke-test scope ("editor scaffold mounts without crash"
+   does not need cross-slug parametrization). **NOT BLOCKING**.
+
+5. **Should the Playwright spec include a screenshot AT mount-time
+   only, OR also one AFTER pressing Esc to validate state preservation?**
+   **Resolved**: ONE screenshot taken AFTER pressing Esc — captures
+   the steady-state UI post-Esc, validating the editor scaffold did
+   NOT crash + the mount remained stable. A pre-Esc screenshot would
+   require a 2nd archive path (` wave-5-c2-8-drag-modules-mount-pre.png`)
+   + 2nd file-size guard, doubling the AC#14 surface for marginal
+   coverage gain. The post-Esc screenshot subsumes the pre-Esc state
+   (if pre-Esc had crashed, post-Esc would be missing the mount root
+   selector and the spec would fail at step 4 before reaching the
+   screenshot). **NOT BLOCKING**.
+
+## ambiguity flagged
+
+None blocking lock. The 5 open questions in `## Plan-challenger
+absorbtion` above are all resolved in-line; orchestrator may
+override Q1 (responsiveTransition shape) if Stage C.2-9 implementation
+prefers the context-read pattern, but the C.2-8 reducer field
+declaration is forward-compatible either way.
+
+**One forward-pointer flagged for orchestrator awareness**:
+
+- **`--accent-success` design-tokens definition lands at Stage
+  C.3-1 per ADR-0018**. The C.2-8 `drop-pulse.ts` consumes the
+  token via the v0.5 fallback hex bridge (`var(--accent-success,
+  oklch(70% 0.12 145 / 0.5))`) — this is the intentional bridge
+  shape per ADR-0017 D11 line 346 ("fallback `oklch(70% 0.12 145 /
+  0.5)` 仅 token 未加时兼容"). When the C.3-1 token landing PR
+  ships, the fallback may be removed at that PR's discretion (ADR-0017
+  D11 line 349 "Stage C.3 实施 OKLCH 切完全 token化后 fallback 可
+  移除"). C.2-8 source does NOT need to change at that future PR —
+  the `var(...)` consumption remains valid; only the fallback hex
+  is optionally pruned. No action required at C.2-8 ACCEPT.
+
+## R14 self-check
+
+Standard 14-point pre-flight per Wave 5 plan v1.3 §232 D12 (R14
+discipline 阈值: PR 总量变化 >15% / 新增高风险模块 ≥1 / 跨-package
+边界 / 改成功标准 = `reframe`; 任务顺序 / 命名 / 测试补充 = `scope
+refinement`).
+
+| # | Check | Status | Evidence |
+|---|---|---|---|
+| 1 | PR scope ≤ Wave 5 plan v1.3 row C.2-8 LOC budget (~400 LOC source) | ✅ | Specifically section roster: ~80 + ~120 + ~80 + ~120 = ~400 source LOC; tests + barrel + CONTRACT delta + Playwright + PR.md = ~1075-1285 additional |
+| 2 | Whitelist files match plan row whitelist | ✅ | Plan v1.3 row C.2-8 whitelist: `packages/editor-shell/src/drag-drop/{drop-pulse,drag-ghost,esc-cancel,layout-reducer}.ts` (NEW) + tests; PR.md whitelist files 1-4 + 5-8 byte-equal match |
+| 3 | No NEW high-risk module ≥ 1 outside locked plan | ✅ | All 4 new modules are inside `@skb/editor-shell` (locked Wave 5 package); no new package added |
+| 4 | No cross-package boundary creation outside locked plan | ✅ | editor-shell internal extension; consumer-side (apps/site / future C.4-2 mount) NOT touched in this PR |
+| 5 | No success criteria modification | ✅ | ACs 1-15 mechanical greps + pnpm check + Playwright run; no AC change to upstream ADRs (ADR-0017 + ADR-0016 + ADR-0018 D-items consumed at lock state) |
+| 6 | TDD-front discipline | ✅ | `## test_cases` Suite 1-4 enumerate 19 vitest cases authored RED before source; AC#3 mechanical guard verifies test files exist; codex executor follows red-green sequence per ADR-0011 D1 stage 2 |
+| 7 | D2 trigger judgment locked at PLAN | ✅ | Row 1 (CONTRACT.md) + Row 5 (cross-package boundary surface addition) FIRES; Row 4 (NEW ADR) DOES NOT fire; PRE-COMMIT CLAUDE REVIEW (D1 stage 4) MANDATORY per Row 1 |

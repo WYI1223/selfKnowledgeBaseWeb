@@ -159,7 +159,8 @@ Forward-pointers:
 - ADR-0016 D3 owns the auto-rowSpan hook spec and ResizeObserver constraints.
 - ADR-0016 D11 owns the Tiptap inside / grid outside layering.
 - ADR-0016 D12 owns the layout reducer schema and conflict arbitration; code
-  implementation is deferred to C.2-8.
+  implementation shipped at C.2-8 in `src/drag-drop/layout-reducer.ts` (epoch += 1
+  only on drag-end-success; cancel + mode-none rollback to S0 snapshot).
 - ADR-0016 section 502 row 4 of 4 names this CONTRACT.md as the editor-shell
   sister-doc sync site.
 
@@ -179,9 +180,9 @@ React-side defensive-rendering defaults, an orthogonal concern from mdx-bridge
 defensive defaults with the same numeric values but a distinct enforcement
 layer.
 
-### Drag/Drop layer (C.2-5)
+### Drag/Drop layer (C.2-5 + C.2-8)
 
-C.2-5 adds the editor-side drag/drop UX primitives under
+C.2-5 and C.2-8 add the editor-side drag/drop UX primitives under
 `packages/editor-shell/src/drag-drop/`:
 
 - `edge-rects.ts` exports `EDGE_W`, `GAP`, `EdgeRect`, `BlockLayout`, and
@@ -196,8 +197,33 @@ C.2-5 adds the editor-side drag/drop UX primitives under
 - `outline-overlay.tsx` exports `OutlineOverlay` and `OutlineOverlayProps`.
   It implements the C.2-5 subset of ADR-0017 D4 scheme A: static base plus
   one active dashed accent for the affected edge. The `host` and
-  `shifted-block` outline classes, drag-ghost, drop-pulse, Esc cancel, and
-  `layoutEpoch` reducer wiring remain C.2-8 scope.
+  `shifted-block` outline classes remain later integration scope.
+- `drop-pulse.ts` exports `DropPulse`, `DropPulseProps`, and
+  `dropPulseClassName`. It implements ADR-0017 D11: a 720ms success halo
+  using `box-shadow: 0 0 0 4px var(--accent-success, oklch(70% 0.12 145 / 0.5))`.
+  Consumers mount it only for `drag-end-success`; cancel, mode-none, and
+  outside-grid drops do not trigger the pulse. The fallback is the ADR-0018
+  Stage C.3 bridge until `--accent-success` lands in design tokens.
+- `drag-ghost.ts` exports `DragGhost`, `DragGhostProps`, and
+  `GhostKind = 'canvas' | 'runnable' | 'image' | 'markdown'`. It implements
+  ADR-0017 D10 with `position: fixed`, cursor `translate(...)`, a
+  `-1.5deg` baseline rotation, velocity-driven `+/-5deg` rotation at
+  5px/frame, and the public `.ghost-canvas` / `.ghost-runnable` /
+  `.ghost-image` / `.ghost-markdown` class roster. The glyph is plain text
+  `◇`; SVG or icon-font styling is Stage C.3 scope.
+- `esc-cancel.ts` exports `useEscCancel` and `EscCancelOptions`. It implements
+  ADR-0017 D8 + Q8: the hook owns the global `keydown` subscription, calls
+  `preventDefault()` and `stopPropagation()` only when `dragActive === true`,
+  dispatches `drag-end-cancel` through the consumer callback, lets native Esc
+  behavior pass through when inactive, and restores the drag-start focus target
+  on drag-end.
+- `layout-reducer.ts` exports `layoutReducer`, `LayoutAction`, `LayoutState`,
+  and `GridSnapshot`. It implements ADR-0017 D12 plus ADR-0016 D12/Q12:
+  `drag-start` saves S0 without changing epoch, `drag-over` is reference-equal
+  no-op preview, `drag-end-success` commits S1 with `epoch + 1`, and
+  `drag-end-cancel` / `drag-end-mode-none` roll back to S0 without changing
+  epoch. `responsiveTransition: 'in-progress'` rejects `drag-start` inside
+  the pure reducer.
 
 Drag/drop edge-width is coupled to grid `--gap` via `EDGE_W = 2 * GAP`.
 `EDGE_W = 28` and `GAP = 14` ensure the 14px gap between adjacent blocks is
@@ -212,7 +238,8 @@ The drag/drop layer consumes the W5-1 `BlockGridPosition` shape authority from
 `@skb/block-foundation` conceptually: block bounding boxes are derived from
 grid `{ col, row?, colSpan, rowSpan }` dimensions per ADR-0016 D11's Tiptap
 inside / grid outside layering. The modules do not mutate NodeView attrs; they
-emit geometric data and visual feedback for later C.2-8 reducer wiring.
+emit geometric data and visual feedback for the layoutReducer (shipped at C.2-8)
+which arbitrates drag-end-success vs drag-end-cancel mutations.
 
 Wave 5 plan v1.1 row C.2-3.5 is the active downstream constraint: drag/drop
 modules MUST NOT reference `_gridAttrsExplicit`, the mdx-bridge transitional
@@ -221,9 +248,10 @@ numeric defaults may still be used as React-side defensive rendering defaults
 at a future `BlockLayout` input boundary; that is orthogonal to mdx-bridge
 hard-throw enforcement.
 
-`layoutReducer` + `layoutEpoch` implementation remains deferred to C.2-8 per
-Wave 5 plan v1.1 row C.2-8; C.2-4 establishes the W5-2 invariant prose, thin
-grid container, and auto-row-span hook only.
+`layoutReducer` + `layoutEpoch` shipped at C.2-8 per Wave 5 plan v1.3 row
+C.2-8. C.2-4 establishes the W5-2 invariant prose, thin grid container, and
+auto-row-span hook; C.2-8 realizes the ADR-0017 D8/D10/D11/D12 public surfaces
+and the ADR-0016 D12 single-user, single-session mutation pipeline.
 
 ### Resize layer (C.2-6)
 
@@ -246,9 +274,11 @@ not re-exported from the editor-shell barrel; consumers import it from
 
 The stop highlight literal `oklch(58% 0.16 35 / 0.4)` remains in the C.2-6
 source per ADR-0017 D9, with migration to design tokens deferred to ADR-0018
-and Stage C.3. Resize-handle DOM emission, pointer event wiring, snap commit,
-and the `.skb-grid--mobile` state machine remain deferred to C.2-8/C.2-9 per
-Wave 5 plan v1.1.
+and Stage C.3. Resize-handle DOM emission, pointer event wiring, and snap commit
+remain deferred to C.2-9/C.2-10 (full integration); the `.skb-grid--mobile`
+state machine remains in C.2-9 scope per Wave 5 plan v1.3. C.2-8 shipped the
+layoutReducer + drag-ghost + drop-pulse + useEscCancel modules consumed by
+future C.2-9/C.2-10 wiring.
 
 Cross-package consumer parity: the `gap` default in `ColRuler` comes from
 `@skb/block-foundation` `DEFAULT_GRID_GEOMETRY.gap` and MUST stay byte-equal to
