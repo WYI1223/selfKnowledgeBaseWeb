@@ -70,4 +70,32 @@ describe('layoutReducer', () => {
 
     expect(result).toBe(initial);
   });
+
+  it('responsive-transition-start flips to in-progress with epoch unchanged', () => {
+    const initial = state();
+
+    const result = layoutReducer(initial, { type: 'responsive-transition-start' });
+    const secondResult = layoutReducer(result, { type: 'responsive-transition-start' });
+
+    expect(result).toEqual({
+      epoch: 5,
+      snapshot: null,
+      baseline: snapshotA,
+      responsiveTransition: 'in-progress',
+    });
+    expect(secondResult).toEqual(result);
+  });
+
+  it('responsive-transition-end flips back to idle with epoch unchanged', () => {
+    const initial = state({ responsiveTransition: 'in-progress' });
+
+    const result = layoutReducer(initial, { type: 'responsive-transition-end' });
+
+    expect(result).toEqual({
+      epoch: 5,
+      snapshot: null,
+      baseline: snapshotA,
+      responsiveTransition: 'idle',
+    });
+  });
 });

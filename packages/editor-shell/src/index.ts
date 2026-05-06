@@ -10,6 +10,8 @@ export { proseExtensions } from '@skb/block-foundation';
 export { GridContainer } from './grid-container';
 export type { GridContainerProps } from './grid-container';
 export { useAutoRowSpan } from './use-auto-row-span';
+export { useResponsiveCols, RESPONSIVE_BREAKPOINTS } from './responsive-cols';
+export type { UseResponsiveColsOptions, ViewportCols } from './responsive-cols';
 export { EDGE_W, GAP, computeEdgeRects } from './drag-drop/edge-rects';
 export type { EdgeRect, BlockLayout } from './drag-drop/edge-rects';
 export { tiebreak, findMatches } from './drag-drop/tiebreak';

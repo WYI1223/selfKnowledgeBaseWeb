@@ -106,3 +106,41 @@ describe('GridContainer composes with Tiptap', () => {
     unmount();
   });
 });
+
+describe('GridContainer viewportCols prop', () => {
+  it('emits data-skb-viewport-cols="12" without mobile className', () => {
+    const { container } = render(<GridContainer viewportCols={12}>content</GridContainer>);
+
+    const root = getGridRoot(container);
+    expect(root.getAttribute('data-skb-viewport-cols')).toBe('12');
+    expect(root.className).toBe('skb-grid');
+  });
+
+  it('emits data-skb-viewport-cols="6" without mobile className', () => {
+    const { container } = render(<GridContainer viewportCols={6}>content</GridContainer>);
+
+    const root = getGridRoot(container);
+    expect(root.getAttribute('data-skb-viewport-cols')).toBe('6');
+    expect(root.className).toBe('skb-grid');
+  });
+
+  it('emits mobile className for viewportCols={1}', () => {
+    const { container } = render(
+      <GridContainer className="custom-x" viewportCols={1}>
+        content
+      </GridContainer>,
+    );
+
+    const root = getGridRoot(container);
+    expect(root.getAttribute('data-skb-viewport-cols')).toBe('1');
+    expect(root.className).toBe('skb-grid custom-x skb-grid--mobile');
+  });
+
+  it('omitted viewportCols preserves backward-compatible class and attrs', () => {
+    const { container } = render(<GridContainer>content</GridContainer>);
+
+    const root = getGridRoot(container);
+    expect(root.getAttribute('data-skb-viewport-cols')).toBeNull();
+    expect(root.className).toBe('skb-grid');
+  });
+});
