@@ -65,7 +65,7 @@ to ADR-0018 amendment PR.
 
 - flow: edit → 800ms-debounced save to LocalStorage → reload preserves content + version (layoutEpoch sync deferred to ADR-0018 amendment per line 464 接口冻结)
   target_url: /notes/<slug>/edit
-  playwright_spec: apps/site/src/**tests**/e2e/c4-4-save-roundtrip.spec.ts:"edit → 800ms debounce save to LocalStorage → reload preserves content + version"
+  playwright_spec: `apps/site/src/__tests__/e2e/c4-4-save-roundtrip.spec.ts:"edit → 800ms debounce save to LocalStorage → reload preserves content + version"`
   screenshot_archive: docs/audits/screenshots/wave-5-c4-4-save-roundtrip.png
 
 ## decision-log
