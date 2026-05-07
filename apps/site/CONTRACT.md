@@ -147,7 +147,7 @@
 
 ## Invariants
 
-- **Static build only** (spec §1.8 constraint #3): the project must not introduce SSR; `astro build` outputs prerendered HTML.
+- **Static-first build with carved-out server endpoints** (spec §1.8 constraint #3, amended by ADR-0018 v0.6 D11+D12 for Wave 6 Stage B): every note + index route is prerendered to static HTML at `astro build`. Server-side handling is restricted to the `apps/site/src/pages/api/notes/[...slug].ts` persistence endpoint codified under `## Runtime persistence`, which sets `export const prerender = false` so only that route runs server-side at runtime. The Node standalone adapter exists to host that one endpoint; introducing additional non-prerendered routes requires a CONTRACT.md amendment + ADR-0018 amendment.
 - **Default zero JavaScript** (Astro islands): only components annotated with `client:*` hydrate. Wave 1 shipped `ThemeToggle (client:load)`; Wave 4 B7 adds the 3 heavy block islands below.
 - **No hand-rolled visual values** (ADR-0003 / spec §2.6 invariant #5): `tailwind.config.ts` MUST consume `@skb/design-tokens/tailwind-preset` via `presets: [...]`. Hard-coded `#hex`, `rgb(...)`, or pixel literals in any source file under `src/` are rejected by `pr-gate`.
 - **FOUC inline script ↔ design-tokens `STORAGE_KEY` literal sync**: the inline `<script is:inline>` in `BaseLayout.astro` reads `localStorage.getItem('skb-theme')` literally. The design-tokens package owns the canonical `STORAGE_KEY = 'skb-theme'` constant; renaming it requires updating BOTH packages in the same PR. The inline script cannot import the constant — it must run before any module loads to prevent FOUC.
@@ -219,6 +219,50 @@
   match the resolved dep version). No CSP is configured at apps/site
   today; if a CSP is added later, `cdn.jsdelivr.net` must be allowlisted
   under `script-src` / `connect-src` (deferred to a CSP-introduction PR).
+
+## Runtime persistence
+
+### Server endpoints (Wave 6 Stage B path-(b))
+
+- `/api/notes/[...slug]` is the apps/site-origin persistence endpoint selected
+  by ADR-0018 v0.6 D11+D12. It is an Astro API route with
+  `export const prerender = false`, so it stays server-only while existing note
+  pages remain prerendered.
+- The endpoint persists `NoteState` across two files in
+  `content/notes/<slug>/`:
+  - `index.mdx` — the canonical content file owned by `@skb/content-types`.
+    The MDX body is replaced with `NoteState.mdxSource` on each save; existing
+    YAML frontmatter is preserved verbatim (no fields added or modified).
+  - `state.json` — a sibling sidecar carrying only persistence metadata
+    `{ "lastModified": number, "version": number }`. Wave 6 Stage B holds the
+    `@skb/content-types` frontmatter authority invariant by keeping these
+    fields out of the MDX frontmatter; extending the frontmatter schema to
+    cover `lastModified` / `version` would require a coordinated
+    `@skb/content-types` amendment + ADR-0018 follow-up.
+- `GET /api/notes/<slug>` reads `index.mdx`, splits frontmatter from body, and
+  reads the sibling `state.json` sidecar if present. It returns JSON
+  `{ mdxSource, lastModified, version }`. When the sidecar is absent (notes
+  that have never been saved through the endpoint), `lastModified` falls back
+  to the MDX file `mtimeMs` and `version` falls back to `1`. Missing
+  `index.mdx` returns `{ ok: false, error }` with HTTP 404.
+- `POST /api/notes/<slug>` accepts `NoteState` JSON with string `mdxSource`,
+  numeric `lastModified`, and numeric `version`. The endpoint reads the
+  existing `index.mdx`, preserves its frontmatter verbatim, replaces the body
+  with `state.mdxSource`, and writes the supplied `lastModified` + `version`
+  to the sibling `state.json` sidecar. It returns `{ ok: true }` on success.
+  Invalid request bodies return HTTP 400. POST against a missing `index.mdx`
+  returns HTTP 404 — the endpoint refuses to create new notes, because a
+  body-only POST cannot supply the `title` / `date` / `tags` / `draft`
+  frontmatter required by the `@skb/content-types` schema; new-note creation
+  is out of Wave 6 Stage B scope. Filesystem failures return HTTP 500. All
+  error responses use `{ ok: false, error: string }`.
+- `astro.config.mjs` must keep the Node standalone adapter configured for local
+  preview/runtime endpoint execution. Astro 5.18 removed the old
+  `output: "hybrid"` literal; the supported `output: "static"` default now
+  provides mixed prerendered pages plus non-prerendered server endpoints.
+- The separate `apps/api` server path remains the Phase 3+ path-(a) alternative
+  for multi-user collaboration, auth boundaries, or separate deployment
+  topology. Wave 6 Stage B path-(b) does not add that server.
 
 ## Modifying this file
 

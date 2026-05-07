@@ -342,7 +342,7 @@ tool_patterns:
       - high_risk_d2_row_4_adr_required
       - high_risk_d2_row_8_ci_or_deploy_or_auth_or_security_touch
     output_handling: |
-      orchestrator 读 stdout 解析 PASS/FAIL + 问题清单 + 8th-class hunt 结果；
+      orchestrator 读 stdout 解析 PASS/FAIL + 问题清单 + 9th-class hunt 结果；
       原始 stdout 落盘到 /tmp/codex-runs/<date>-<task>-pr-reviewer-55.txt（off-workspace per R7）；
       完成后 head -2000 截断到 docs/audits/codex-runs/<date>-<task>-pr-reviewer-55.txt 归档。
     description: |
@@ -378,7 +378,7 @@ tool_patterns:
 
       verdict 结构应包含
       `asymmetry-audit applied: items {1..9} verdicts: ...` 与（如适用）
-      `8th-class hunt: <findings>` 与（v0.2; UI-touch PR）`9th-item e2e: PASS|FAIL with playwright run log`。
+      `9th-class hunt: <findings>` 与（v0.2; UI-touch PR）`9th-item e2e: PASS|FAIL with playwright run log`。
 
       **D1 stage 5 commit 兼任**：PASS verdict 后由本 profile 在同一 invocation 内
       执行 commit + push（per ADR-0006 D8 explicit-file-list staging：`git reset HEAD`

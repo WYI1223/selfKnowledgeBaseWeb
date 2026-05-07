@@ -139,7 +139,7 @@ const FOOTER = `## Related
 
 - [\`agent-contract.md\`](../../agent-contract.md) — \`tool_patterns:\` source of truth
 - [ADR-0007](../decisions/ADR-0007-job-function-codex-heavy-execution.md) — D5 demotion rationale
-- [ADR-0006](../decisions/ADR-0006-asymmetry-audit-checklist.md) — 8-point asymmetry audit (mandatory for code-reviewer + pr-gate profiles)
+- [ADR-0006](../decisions/ADR-0006-asymmetry-audit-checklist.md) — 9-point asymmetry audit (mandatory for codex-pr-reviewer-55 profile)
 - [ADR-0001](../decisions/ADR-0001-stack-selection.md) §3.1 / §3.2 — review chain baseline
 - [\`docs/runbooks/team-operations.md\`](team-operations.md) — broader team protocol context
 
