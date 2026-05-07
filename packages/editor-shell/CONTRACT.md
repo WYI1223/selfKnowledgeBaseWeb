@@ -424,6 +424,45 @@ cast-free behavior is verified at every `pnpm typecheck` run +
 `pnpm lint` run on `registerBlocks.ts`; any drift will surface
 immediately.
 
+## C.4-3 user-affordance public surface
+
+C.4-3 adds the editor-facing affordance layer that `apps/site`
+mounts around the Tiptap instance. The barrel exports these React
+components and types:
+
+- `Palette` / `PaletteProps`: opens on Ctrl/Cmd+K, lists the eight
+  Wave 2 block kinds, and calls `insertBlockKind(editor, kind)` when
+  a kind is selected.
+- `SlashMenu` / `SlashMenuProps`: listens on the editor DOM for `/`
+  at line start, supports arrow-key navigation, and inserts the
+  selected block on Enter or click.
+- `DragHandle` / `DragHandleProps`: emits a draggable per-block handle
+  (`data-skb-drag-handle`) and shows the C.2-8 `DropPulse` preview
+  after drag completion.
+- `Toolbar` / `ToolbarProps`: renders Bold / Italic controls while a
+  non-empty Tiptap text selection exists, and delegates to
+  `editor.chain().focus().toggleBold()/toggleItalic().run()`.
+- `EditModeBanner` / `EditModeBannerProps`: renders the top edit-mode
+  banner only when `editMode` is true.
+- `SaveIndicator` / `SaveIndicatorProps` / `SaveIndicatorStatus`:
+  renders the bottom-corner `Unsaved changes` / `Saving...` /
+  `Saved at HH:MM` state owned by the consumer's save debounce.
+
+`registry-wire.tsx` exports `BLOCK_KIND_OPTIONS`, `insertBlockKind`,
+and `wireRegistry(options)`. `wireRegistry` returns the canonical
+eight `blockKinds`, minimal Tiptap node extensions for those kinds,
+and the insertion helper. It also idempotently registers mdx-bridge
+JSX dispatch entries for the eight block packages so editor-built
+component nodes can serialize through `saveToMdx(editor, { blockRegistry })`.
+
+`EditorShellProps.extensions` is now the sanctioned composition hook
+for consumer-owned Tiptap extensions layered after StarterKit. C.4-3
+uses it only for the block insertion node specs produced by
+`wireRegistry`; block package implementations remain untouched.
+StarterKit's inline `code` mark is disabled in this composition so the
+component-block `code` node can own the `code` schema name. The
+StarterKit `codeBlock` node remains available for Markdown fences.
+
 ## Modifying this file
 
 Each A2-A5 PR Modifies this file to extend "Public surface" as exports land.
