@@ -1,5 +1,28 @@
 export { EditorShell } from './EditorShell';
 export type { EditorShellProps } from './EditorShell';
+export { Palette } from './palette';
+export type { PaletteProps } from './palette';
+export { SlashMenu } from './slash-menu';
+export type { SlashMenuProps } from './slash-menu';
+export { DragHandle } from './drag-handle';
+export type { DragHandleProps } from './drag-handle';
+export { Toolbar } from './toolbar';
+export type { ToolbarProps } from './toolbar';
+export { EditModeBanner } from './edit-mode-banner';
+export type { EditModeBannerProps } from './edit-mode-banner';
+export { SaveIndicator } from './save-indicator';
+export type { SaveIndicatorProps, SaveIndicatorStatus } from './save-indicator';
+export {
+  BLOCK_KIND_OPTIONS,
+  insertBlockKind,
+  wireRegistry,
+} from './registry-wire';
+export type {
+  BlockAffordanceKind,
+  BlockKindOption,
+  RegistryWire,
+  RegistryWireOptions,
+} from './registry-wire';
 export { registerBlocks } from './registerBlocks';
 export { registerKernels } from './registerKernels';
 export { saveToMdx, loadFromMdx } from './saveLoad';

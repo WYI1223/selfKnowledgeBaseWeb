@@ -1,6 +1,6 @@
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
-import type { Editor } from '@tiptap/core';
+import type { Editor, Extensions } from '@tiptap/core';
 
 export interface EditorShellProps {
   /** Optional initial editor content (Tiptap doc JSON or HTML string).
@@ -15,12 +15,14 @@ export interface EditorShellProps {
    *  instance after mount. Used by tests + future A3 wrappers needing
    *  imperative editor access. */
   onCreate?: (editor: Editor) => void;
+  /** Optional consumer extensions layered after StarterKit. */
+  extensions?: Extensions;
 }
 
 export function EditorShell(props: EditorShellProps) {
-  const { initialContent, onChange, className, onCreate } = props;
+  const { initialContent, onChange, className, onCreate, extensions = [] } = props;
   const editor = useEditor({
-    extensions: [StarterKit],
+    extensions: [StarterKit.configure({ code: false }), ...extensions],
     ...(initialContent !== undefined && { content: initialContent }),
     ...(onChange && { onUpdate: ({ editor }) => onChange(editor) }),
     ...(onCreate && { onCreate: ({ editor }) => onCreate(editor) }),
