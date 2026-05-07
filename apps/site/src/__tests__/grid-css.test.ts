@@ -25,15 +25,18 @@ const notesRoute = readOptionalSource('../pages/notes/[...slug].astro');
 const siteContract = readOptionalSource('../../CONTRACT.md');
 
 describe('grid.css contract', () => {
-  it('declares the desktop grid container with scoped variables', () => {
+  it('declares the desktop grid container with design-tokens-sourced row/gap + scoped --total-cols', () => {
     const gridStart = gridCss.indexOf('.skb-grid {');
     expect(gridCss).toContain('.skb-grid {');
     expect(gridCss).toContain('display: grid');
     expect(gridCss).toContain('grid-template-columns: repeat(12, minmax(0, 1fr))');
     expect(gridCss).toContain('grid-auto-rows: minmax(var(--row-h), auto)');
     expect(gridCss).toContain('gap: var(--gap)');
-    expect(gridCss.indexOf('--row-h: 48px')).toBeGreaterThan(gridStart);
-    expect(gridCss.indexOf('--gap: 14px')).toBeGreaterThan(gridStart);
+    // Stage C.3-1 token unification: --row-h / --gap are now sourced from
+    // @skb/design-tokens :root cascade; grid.css MUST NOT redefine them locally.
+    expect(gridCss).not.toMatch(/--row-h:\s*48px/);
+    expect(gridCss).not.toMatch(/--gap:\s*14px/);
+    // --total-cols is grid.css-local (different per breakpoint); MUST stay scoped.
     expect(gridCss.indexOf('--total-cols: 12')).toBeGreaterThan(gridStart);
   });
 
