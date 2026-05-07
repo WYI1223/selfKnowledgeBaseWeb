@@ -878,7 +878,8 @@ git diff --name-only main..HEAD | sort
 
 ```bash
 # AC-14: anti-leak — implementation strings only inside PR.md (no e2e_smoke / playwright_spec / screenshot_archive field-name leak in non-PR.md files)
-git diff main..HEAD -- ':!docs/plans/wave-5-main/C.3-1-design-tokens-oklch-fonts.md' | grep -cE '^\+.*(playwright_spec:|screenshot_archive:|e2e_smoke:)' || true
+# Note: char-class [:] used to avoid the script check-screenshot-archive.ts greedy-grep matching this AC's regex literal as a path declaration.
+git diff main..HEAD -- ':!docs/plans/wave-5-main/C.3-1-design-tokens-oklch-fonts.md' | grep -cE '^\+.*(playwright_spec[:]|screenshot_archive[:]|e2e_smoke[:])' || true
 # Expected: 0 (no leak; either grep matches none → exit 1 with `|| true` → captured count of 0)
 ```
 
