@@ -123,7 +123,7 @@
   localStorage key prefix is `skb-note:{slug}`, distinct from the
   design-tokens `skb-theme` key.
 - See sister-doc:
-  [packages/editor-shell/CONTRACT.md § NoteSaveAdapter (Wave 5; MVP shipped at C.4-prelude)](../../packages/editor-shell/CONTRACT.md).
+  [packages/editor-shell/CONTRACT.md § NoteSaveAdapter (Wave 5; contract hardened at C.4-1)](../../packages/editor-shell/CONTRACT.md).
 - Block registry: `registerBlocks` from `@skb/editor-shell` registers all 8
   Wave 2 block definitions. The 3 heavy blocks render the ADR-0014 v0.4
   plugin-placeholder tier, so the C.4-prelude mount may register them without
