@@ -90,20 +90,37 @@ Row 1 (CONTRACT.md change in @skb/editor-shell) + Row 5 (cross-package: editor-s
 
 ## e2e_smoke
 
-Per v1.3 retrofit catalog § C.4-3 (lines 626-635 verbatim) — 6 entries:
+Per v1.3 retrofit catalog § C.4-3 (lines 626-635 verbatim) — 6 entries (each as separate bullet block per check-e2e-coverage.ts parser shape):
 
-1. flow: palette opens via shortcut + lists block kinds;
-  playwright_spec: `apps/site/src/__tests__/e2e/c4-3-palette.spec.ts:"palette opens via shortcut + lists block kinds"`; screenshot_archive: `docs/audits/screenshots/wave-5-c4-3-palette.png`
-2. flow: slash menu (`/`) opens + selecting kind inserts new block;
-  playwright_spec: `apps/site/src/__tests__/e2e/c4-3-slash-menu.spec.ts:"slash menu (/) opens + insert block on kind select"`; screenshot_archive: `docs/audits/screenshots/wave-5-c4-3-slash-menu.png`
-3. flow: drag-handle visible per block + drag triggers grid drop preview;
-  playwright_spec: `apps/site/src/__tests__/e2e/c4-3-drag-handle.spec.ts:"drag-handle visible per block + drag triggers grid drop preview"`; screenshot_archive: `docs/audits/screenshots/wave-5-c4-3-drag-handle.png`
-4. flow: toolbar bold/italic buttons toggle Tiptap marks;
-  playwright_spec: `apps/site/src/__tests__/e2e/c4-3-toolbar.spec.ts:"toolbar bold/italic toggles Tiptap marks"`; screenshot_archive: `docs/audits/screenshots/wave-5-c4-3-toolbar.png`
-5. flow: Edit Mode banner visible distinguishing `/notes/<slug>/edit` from `/notes/<slug>`;
-  playwright_spec: `apps/site/src/__tests__/e2e/c4-3-banner.spec.ts:"Edit Mode banner visible on /notes/<slug>/edit not on /notes/<slug>"`; screenshot_archive: `docs/audits/screenshots/wave-5-c4-3-banner.png`
-6. flow: save state indicator shows saving → saved transitions on edit;
-  playwright_spec: `apps/site/src/__tests__/e2e/c4-3-save-indicator.spec.ts:"save state indicator transitions saving → saved on edit"`; screenshot_archive: `docs/audits/screenshots/wave-5-c4-3-save-indicator.png`
+- flow: palette opens via shortcut + lists block kinds
+  target_url: /notes/<slug>/edit
+  playwright_spec: apps/site/src/__tests__/e2e/c4-3-palette.spec.ts:"palette opens via shortcut + lists block kinds"
+  screenshot_archive: docs/audits/screenshots/wave-5-c4-3-palette.png
+
+- flow: slash menu (/) opens + selecting kind inserts new block
+  target_url: /notes/<slug>/edit
+  playwright_spec: apps/site/src/__tests__/e2e/c4-3-slash-menu.spec.ts:"slash menu (/) opens + insert block on kind select"
+  screenshot_archive: docs/audits/screenshots/wave-5-c4-3-slash-menu.png
+
+- flow: drag-handle visible per block + drag triggers grid drop preview
+  target_url: /notes/<slug>/edit
+  playwright_spec: apps/site/src/__tests__/e2e/c4-3-drag-handle.spec.ts:"drag-handle visible per block + drag triggers grid drop preview"
+  screenshot_archive: docs/audits/screenshots/wave-5-c4-3-drag-handle.png
+
+- flow: toolbar bold/italic buttons toggle Tiptap marks
+  target_url: /notes/<slug>/edit
+  playwright_spec: apps/site/src/__tests__/e2e/c4-3-toolbar.spec.ts:"toolbar bold/italic toggles Tiptap marks"
+  screenshot_archive: docs/audits/screenshots/wave-5-c4-3-toolbar.png
+
+- flow: Edit Mode banner visible distinguishing /notes/<slug>/edit from /notes/<slug>
+  target_url: /notes/<slug>/edit
+  playwright_spec: apps/site/src/__tests__/e2e/c4-3-banner.spec.ts:"Edit Mode banner visible on /notes/<slug>/edit not on /notes/<slug>"
+  screenshot_archive: docs/audits/screenshots/wave-5-c4-3-banner.png
+
+- flow: save state indicator shows saving → saved transitions on edit
+  target_url: /notes/<slug>/edit
+  playwright_spec: apps/site/src/__tests__/e2e/c4-3-save-indicator.spec.ts:"save state indicator transitions saving → saved on edit"
+  screenshot_archive: docs/audits/screenshots/wave-5-c4-3-save-indicator.png
 
 ## decision-log
 
