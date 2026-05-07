@@ -66,10 +66,22 @@ export const fontVarsV2 = {
   mono: 'var(--mono)',
 } as const;
 
+export const accentKindVarsV2 = {
+  accentCanvas: 'var(--accent-canvas)',
+  accentRunnable: 'var(--accent-runnable)',
+  accentImage: 'var(--accent-image)',
+  accentMath: 'var(--accent-math)',
+  accentPdf: 'var(--accent-pdf)',
+  accentJupyter: 'var(--accent-jupyter)',
+  accentNnViz: 'var(--accent-nn-viz)',
+  accentAgentFlow: 'var(--accent-agent-flow)',
+} as const;
+
 export const tokensV2 = {
   color: colorVarsV2,
   layout: layoutVarsV2,
   font: fontVarsV2,
+  accentKind: accentKindVarsV2,
 } as const;
 
 export type ColorTokenName = keyof typeof colorVars;
@@ -77,3 +89,4 @@ export type SpaceTokenName = keyof typeof spaceVars;
 export type ColorTokenNameV2 = keyof typeof colorVarsV2;
 export type LayoutTokenNameV2 = keyof typeof layoutVarsV2;
 export type FontTokenNameV2 = keyof typeof fontVarsV2;
+export type AccentKindTokenNameV2 = keyof typeof accentKindVarsV2;

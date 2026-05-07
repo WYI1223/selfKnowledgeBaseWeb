@@ -14,6 +14,7 @@ export {
   colorVarsV2,
   layoutVarsV2,
   fontVarsV2,
+  accentKindVarsV2,
   tokensV2,
 } from './tokens';
 export type {
@@ -22,4 +23,5 @@ export type {
   ColorTokenNameV2,
   LayoutTokenNameV2,
   FontTokenNameV2,
+  AccentKindTokenNameV2,
 } from './tokens';
