@@ -138,6 +138,14 @@ carve-out: `tokens-dark.css` MUST NOT add silent dark overrides for them during
 Wave 5. Consumers must use these CSS variables rather than hardcoded prose
 typography values.
 
+### Shadow tokens warm-tone refresh (ADR-0018 D6)
+
+C.3-4 refreshes the existing light-theme `--shadow-sm`, `--shadow-md`, and
+`--shadow-lg` values from neutral black to warm-tone `rgba(20, 15, 10, ...)`
+layers. This is an in-place value change only: no new shadow token names are
+introduced, consumers keep referencing the same keys, and `tokens-dark.css`
+keeps its existing darker neutral shadow values.
+
 ### Light + dark key-set invariant — Wave 5 light-only carve-out
 
 The v2 OKLCH, layout, and font key set is Wave 5 light-only per ADR-0018 D1
