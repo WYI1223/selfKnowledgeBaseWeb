@@ -229,7 +229,7 @@ codex exec --yolo --profile codex-pr-reviewer-55 < /dev/null
 
 **Output handling**:
 
-orchestrator 读 stdout 解析 PASS/FAIL + 问题清单 + 8th-class hunt 结果；
+orchestrator 读 stdout 解析 PASS/FAIL + 问题清单 + 9th-class hunt 结果；
 原始 stdout 落盘到 /tmp/codex-runs/<date>-<task>-pr-reviewer-55.txt（off-workspace per R7）；
 完成后 head -2000 截断到 docs/audits/codex-runs/<date>-<task>-pr-reviewer-55.txt 归档。
 
@@ -267,7 +267,7 @@ code-reviewer（5.3-spark）双层链路。gpt-5.5（贵但严谨）。**绝不�
 
 verdict 结构应包含
 `asymmetry-audit applied: items {1..9} verdicts: ...` 与（如适用）
-`8th-class hunt: <findings>` 与（v0.2; UI-touch PR）`9th-item e2e: PASS|FAIL with playwright run log`。
+`9th-class hunt: <findings>` 与（v0.2; UI-touch PR）`9th-item e2e: PASS|FAIL with playwright run log`。
 
 **D1 stage 5 commit 兼任**：PASS verdict 后由本 profile 在同一 invocation 内
 执行 commit + push（per ADR-0006 D8 explicit-file-list staging：`git reset HEAD`
@@ -484,7 +484,7 @@ orchestrator 读 stdout 拿创建文件清单；
 
 - [`agent-contract.md`](../../agent-contract.md) — `tool_patterns:` source of truth
 - [ADR-0007](../decisions/ADR-0007-job-function-codex-heavy-execution.md) — D5 demotion rationale
-- [ADR-0006](../decisions/ADR-0006-asymmetry-audit-checklist.md) — 8-point asymmetry audit (mandatory for code-reviewer + pr-gate profiles)
+- [ADR-0006](../decisions/ADR-0006-asymmetry-audit-checklist.md) — 9-point asymmetry audit (mandatory for codex-pr-reviewer-55 profile)
 - [ADR-0001](../decisions/ADR-0001-stack-selection.md) §3.1 / §3.2 — review chain baseline
 - [`docs/runbooks/team-operations.md`](team-operations.md) — broader team protocol context
 

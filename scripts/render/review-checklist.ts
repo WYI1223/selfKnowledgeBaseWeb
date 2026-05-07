@@ -30,7 +30,7 @@ Spec: §3.1 + §3.2 + §3.6 + §3.5. ADR-0011 D1+D2.
 
 ## ADR-0006 asymmetry-audit checklist (mandatory for codex-pr-reviewer-55)
 
-Apply each item that is in scope for the PR; explicitly skip items that are not (e.g. item #2 "status code" doesn't apply to TS-only packages). Reviewer verdict structure MUST include \`asymmetry-audit applied: items {1..8} verdicts: ...\`. See [ADR-0006](decisions/ADR-0006-asymmetry-audit-checklist.md) for empirical evidence + full rationale per item.
+Apply each item that is in scope for the PR; explicitly skip items that are not (e.g. item #2 "status code" doesn't apply to TS-only packages). Reviewer verdict structure MUST include \`asymmetry-audit applied: items {1..9} verdicts: ...\`. See [ADR-0006](decisions/ADR-0006-asymmetry-audit-checklist.md) for empirical evidence + full rationale per item.
 
 - [ ] **#1 Field/attribute audit**: After adding a field to a data shape, audit every comparator/equality/serialization function for that field.
 - [ ] **#2 Status code audit**: After adding a status code to one handler, audit every other handler emitting the same code; RFC-mandated headers (RFC 7235 \`WWW-Authenticate\`, RFC 7231 \`Allow\`) attach to the status code itself.
@@ -40,8 +40,9 @@ Apply each item that is in scope for the PR; explicitly skip items that are not 
 - [ ] **#6 Sister-file documentation audit**: After updating one CONTRACT.md (or analogous document), audit ALL related CONTRACT.md files for sister-file drift; shared identifiers must use identical terminology across both halves of the contract.
 - [ ] **#7 Exception-scope equivalence audit**: When replicating an algorithm + its exception handling, audit BOTH happy-path semantics AND \`try/catch\` scope between authority and replica; narrow vs wide try/catch can produce divergent fall-through behavior.
 - [ ] **#8 Authority-document → generated/consumed surface audit**: When updating an authority document (ADR, spec, \`agent-contract.md\`, runbook, CONVENTIONS) that mandates downstream behavior, audit every consumer-side replica/generated artifact in the same commit; regenerate codegen outputs (\`pnpm generate:configs\`); cross-link runbooks; embed in subagent prompts.
+- [ ] **#9 UI-touch + E2E spec audit (v0.2 amendment, ADR-0011 D9)**: When PR diff touches user-facing UI surfaces per [ADR-0011 D9.1](decisions/ADR-0011-linear-pipeline-execution-model.md) path patterns (with the v0.2.1 \`apps/site/src/pages/api/**\` server-only exclusion), reviewer MUST verify (a) PR.md \`ui_touch: true\` + non-empty \`e2e_smoke\`, (b) every \`e2e_smoke\` entry's \`playwright_spec\` file exists with resolvable test name, (c) \`pnpm --filter @skb/site test:visual\` PASSES, (d) every \`screenshot_archive\` exists with file size ≥ 5KB. CI gate \`scripts/check-e2e-coverage.ts\` + \`scripts/check-screenshot-archive.ts\` enforces (a)+(b)+(d) mechanically; reviewer manual verifies (c).
 
-\`codex-pr-reviewer-55\` MUST additionally hunt for an 8th-class instance beyond the cited fix (Wave 1+2 evidence: 5.5-deep review caught one extra asymmetry per round on every high-risk PR).
+\`codex-pr-reviewer-55\` MUST additionally hunt for an 9th-class instance beyond the cited fix (Wave 1+2 evidence: 5.5-deep review caught one extra asymmetry per round on every high-risk PR).
 
 ## For \`codex-pr-reviewer-55\` (Codex 5.5, D1 stage 3 default reviewer)
 

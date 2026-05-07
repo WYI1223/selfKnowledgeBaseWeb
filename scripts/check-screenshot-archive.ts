@@ -52,6 +52,12 @@ const UI_TOUCH_PATTERNS: ReadonlyArray<RegExp> = [
   /^packages\/design-tokens\//,
 ];
 
+// Server-only API routes (prerender=false JSON endpoints) are NOT UI-touch
+// per ADR-0011 D9.1 exclusion (Wave 6 Stage B.2 amendment 2026-05-07).
+// Mirrors scripts/check-ui-touch.ts + scripts/check-e2e-coverage.ts
+// (ADR-0006 #5 algorithm replication invariant).
+const UI_TOUCH_EXCLUDE_PATTERNS: ReadonlyArray<RegExp> = [/^apps\/site\/src\/pages\/api\//];
+
 interface CliArgs {
   base: string;
   prMd: string | null;
@@ -87,7 +93,10 @@ function changedFiles(base: string): ReadonlyArray<string> {
 }
 
 function isUiTouch(files: ReadonlyArray<string>): boolean {
-  return files.some((file) => UI_TOUCH_PATTERNS.some((p) => p.test(file)));
+  return files.some((file) => {
+    if (UI_TOUCH_EXCLUDE_PATTERNS.some((p) => p.test(file))) return false;
+    return UI_TOUCH_PATTERNS.some((p) => p.test(file));
+  });
 }
 
 function findPrMd(files: ReadonlyArray<string>): string | null {

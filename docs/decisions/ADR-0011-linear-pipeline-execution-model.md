@@ -227,7 +227,25 @@ packages/editor-shell/src/**     # editor 主壳（任何文件改动；含逻�
 packages/design-tokens/**        # design tokens（影响所有 UI consumer）
 ```
 
-由 `scripts/check-ui-touch.ts` 自动检测 PR diff 文件路径，set `ui_touch: true|false` 进 PR.md 元数据。pr-writer subagent 在 PLAN stage 据此决定 e2e_smoke 字段是否必填。
+**Exclusion** (Wave 6 Stage B.2 amendment 2026-05-07): server-only API
+routes under `apps/site/src/pages/api/**` are explicitly **NOT** UI-touch.
+These files declare `export const prerender = false` and serve JSON
+responses — no rendered HTML, no visual surface, no Playwright-meaningful
+flow to screenshot. D9 is a **product experience** quality gate; routing
+server-endpoint correctness through it would force PRs that legitimately
+have nothing to screenshot to either fabricate a placeholder spec or
+block on the gate. Server endpoint contract correctness belongs in
+vitest unit suites. Cross-route end-to-end flows that bridge edit ↔ read
+pages still fire D9 normally because such PRs also modify
+`pages/notes/**`, `components/**`, or other rendered surfaces in the
+same diff.
+
+由 `scripts/check-ui-touch.ts` 自动检测 PR diff 文件路径，set
+`ui_touch: true|false` 进 PR.md 元数据 — applies the exclusion above.
+pr-writer subagent 在 PLAN stage 据此决定 e2e_smoke 字段是否必填。
+`scripts/check-e2e-coverage.ts` + `scripts/check-screenshot-archive.ts`
+mirror the same pattern set + exclusion to keep CI gate authority and
+ADR prose in lock-step (per ADR-0006 #5 algorithm-replication invariant).
 
 #### D9.2 — UI-touch PR 强制 E2E Playwright spec
 
@@ -326,7 +344,7 @@ prompt-patching is forbidden as primary remediation —— prompt 是 session-sc
 
 ### Risks (mitigated)
 
-- **Risk**：codex executor 写出违反领域 contract 的代码（e.g., 误用 KernelAdapter）。**Mitigation**：PR.md 必填 `contracts_affected` + `adr_touched` 字段 + reviewer codex 注入 ADR-0006 8-point checklist。
+- **Risk**：codex executor 写出违反领域 contract 的代码（e.g., 误用 KernelAdapter）。**Mitigation**：PR.md 必填 `contracts_affected` + `adr_touched` 字段 + reviewer codex 注入 ADR-0006 9-point checklist。
 - **Risk**：pr-writer Claude subagent 单模型可能写出 ambiguous PR.md。**Mitigation**：orchestrator 与 pr-writer 协商时可迭代 0-2 轮（同 plan-challenger 模式）。锁定后才进 stage 2。
 - **Risk**：高风险 PR 的 D2 触发判定漏网（pr-writer 未声明 `adr_touched` 或 `contracts_affected`）。**Mitigation**：orchestrator 在 PLAN stage 锁定时审核此声明决定 D2 触发；codex-structure-auditor 每 PR 跑也会捕获 contract drift。
 - **Risk**："PR 串行"带来 Wave 3 实施时间过长。**Mitigation**：Wave 3 plan-draft 时按 stage 分组（5 stage × ~5 PR/stage），每 stage 内串行但 stage 之间可独立评估；user 可在 stage 边界决定是否调整剩余 plan。
@@ -402,7 +420,7 @@ v0.2 amendment merge 之后开 PR；v0.2 之前 merged PR 不追溯。
 - [ADR-0001](ADR-0001-stack-selection.md) — 技术栈基础
 - [ADR-0002](ADR-0002-wave-1-close.md) — Wave 1 close（template for ceremony ADR）
 - [ADR-0004](ADR-0004-agent-team-dispatch-model.md) — Agent team 模式（部分 supersede：长期 teammate 收敛到 1）
-- [ADR-0006](ADR-0006-asymmetry-audit-checklist.md) — 8-point checklist（注入 reviewer codex profile）+ D8 staging（注入 reviewer codex commit phase）
+- [ADR-0006](ADR-0006-asymmetry-audit-checklist.md) — 9-point checklist (v0.2 amendment + v0.2.1 cross-ref-only)（注入 reviewer codex profile）+ D8 staging（注入 reviewer codex commit phase）
 - [ADR-0007](ADR-0007-job-function-codex-heavy-execution.md) — codex-heavy 执行（**深化为 Wave 3+ 默认**：codex executor 取代 Tier 1 worker，subagent 形态收敛 ux-ui-lead，新增 4 个 profile）
 - [ADR-0008](ADR-0008-wave-2-entry-policies.md) — Wave 2 entry policies (dead-dep)
 - [ADR-0009](ADR-0009-block-kind-union-expansion.md) — BlockKind union expansion

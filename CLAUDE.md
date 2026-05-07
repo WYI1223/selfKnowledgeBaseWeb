@@ -56,7 +56,7 @@ Per PR (PRs run strictly serial; the next PR's PLAN waits for the previous PR's 
        │
        ▼
 3. REVIEW            codex `codex-pr-reviewer-55` (5.5) — line-level + spec-match.
-                     ADR-0006 8-point checklist mandatory. PASS → next stage.
+                     ADR-0006 9-point checklist mandatory. PASS → next stage.
        │
        ├── (D2 row 1+4 hit) → 4. PRE-COMMIT CLAUDE REVIEW   orchestrator self.
        │                          Mitigates same-model echo chamber.
@@ -76,7 +76,7 @@ D2 trigger judgment (ADR-0007 D2 rows; locked by orchestrator at PLAN):
   ADR required). Other rows skip this stage but still go through codex review.
 - **High-risk classes** (rows 2 package add/remove, row 8 CI/deploy/auth/security) also
   receive heightened reviewer scrutiny within stage 3 — ADR-0006 D8 staging discipline +
-  ADR-0006 8-point checklist 8th-class hunt.
+  ADR-0006 9-point checklist 9th-class hunt.
 
 See [ADR-0011](docs/decisions/ADR-0011-linear-pipeline-execution-model.md) D1-D8 +
 [ADR-0007 D2](docs/decisions/ADR-0007-job-function-codex-heavy-execution.md).

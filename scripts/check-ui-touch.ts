@@ -14,6 +14,10 @@
  *   - packages/editor-shell/src/**
  *   - packages/design-tokens/**
  *
+ * Exclusions (ADR-0011 D9.1, Wave 6 Stage B.2 amendment 2026-05-07):
+ *   - apps/site/src/pages/api/** — server-only API routes (prerender=false)
+ *     return JSON with no rendered HTML; product-experience gate does not apply.
+ *
  * Usage:
  *   tsx scripts/check-ui-touch.ts                     # diff vs origin/main
  *   tsx scripts/check-ui-touch.ts --base <ref>        # diff vs <ref>
@@ -35,6 +39,10 @@ const UI_TOUCH_PATTERNS: ReadonlyArray<RegExp> = [
   /^packages\/editor-shell\/src\//,
   /^packages\/design-tokens\//,
 ];
+
+// Server-only API routes (prerender=false JSON endpoints) are NOT UI-touch
+// per ADR-0011 D9.1 exclusion (Wave 6 Stage B.2 amendment 2026-05-07).
+const UI_TOUCH_EXCLUDE_PATTERNS: ReadonlyArray<RegExp> = [/^apps\/site\/src\/pages\/api\//];
 
 interface CliArgs {
   base: string;
@@ -76,6 +84,7 @@ function getChangedFiles(base: string): ReadonlyArray<string> {
 }
 
 function classifyFile(file: string): RegExp | null {
+  if (UI_TOUCH_EXCLUDE_PATTERNS.some((p) => p.test(file))) return null;
   for (const pattern of UI_TOUCH_PATTERNS) {
     if (pattern.test(file)) return pattern;
   }

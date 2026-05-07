@@ -1,13 +1,19 @@
 import { defineConfig } from 'astro/config';
 import mdx from '@astrojs/mdx';
+import node from '@astrojs/node';
 import react from '@astrojs/react';
 import tailwind from '@astrojs/tailwind';
 import pagefind from 'astro-pagefind';
 
 export default defineConfig({
   site: 'https://selfknowledgebaseweb.example.com',
+  // Astro 5.18 removed the old hybrid value; static now supports mixed
+  // prerendered pages plus non-prerendered server endpoints.
+  output: 'static',
+  adapter: node({ mode: 'standalone' }),
   integrations: [mdx(), react(), tailwind({ applyBaseStyles: false }), pagefind()],
   build: {
+    client: './',
     format: 'directory',
   },
   vite: {

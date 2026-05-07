@@ -514,12 +514,15 @@ export class LocalStorageAdapter implements NoteSaveAdapter {
 > to `/notes/<slug>` 静态 read route — 用户烟测发现两页不同步（"现在
 > 这连雏形都没有 用户都用不了"）。Stage A 客户端 hydration bridge 因
 > Astro `client:only="react"` hydration timing flake 放弃；直接进入
-> Stage B 服务端写回方案（ADR-0018 D8 **path-(b) Astro hybrid endpoint**
-> 正式实施 — Wave 5 era D8 因 "Astro static build 不兼容" 拒绝
-> path-(b) 是基于 Astro 4.x 静态-only 假设；Astro 5.x `output:'hybrid'`
-> 原生支持 mixed static + server endpoints，path-(b) 拒绝理由 v0.6
-> retract）。**path-(a) 单独 apps/api package** 保留为 Phase 3+
-> multi-user collab / separate auth boundary 升级路径，NOT v0.6 选项。
+> Stage B 服务端写回方案（ADR-0018 D8 **path-(b) Astro mixed-mode
+> endpoint** 正式实施 — Wave 5 era D8 因 "Astro static build 不兼容"
+> 拒绝 path-(b) 是基于 Astro 4.x 静态-only 假设；Astro 5.x 原生支持
+> mixed prerendered + server endpoints (under 5.18 这通过
+> `output: 'static'` + per-route `export const prerender = false` 实现；
+> 5.x 早期短暂存在的 `output: 'hybrid'` literal 在 5.18 已移除，详见
+> D10)，path-(b) 拒绝理由 v0.6 retract）。**path-(a) 单独 apps/api
+> package** 保留为 Phase 3+ multi-user collab / separate auth boundary
+> 升级路径，NOT v0.6 选项。
 >
 > **Pre-v0.6 prose supersede notice**: ADR-0018 Pre-A4 (v0.1.1) 原文
 > 多处 reference "Phase 2+ apps/api endpoint upgrade path" / "separate
@@ -527,8 +530,10 @@ export class LocalStorageAdapter implements NoteSaveAdapter {
 > consume" (lines 9 / 16 / 30 / 357 / 361 / 390 / 492-493 / 500 / 781
 > 等) — 这些 reference 的 "apps/api endpoint" 指 path-(a)
 > separate-server architecture，留 Phase 3+。**v0.6 Wave 6 Stage B
-> selects path-(b)** (Astro `output:'hybrid'` endpoint at
-> `apps/site/src/pages/api/notes/[...slug].ts`); ApiAdapter consumes
+> selects path-(b)** (Astro mixed-mode server endpoint at
+> `apps/site/src/pages/api/notes/[...slug].ts` with `export const
+> prerender = false`; under Astro 5.18 the supported config is
+> `output: 'static'` + Node adapter — see D10); ApiAdapter consumes
 > `/api/notes/<slug>` URL relative to apps/site origin (NOT
 > `/v1/notes/<slug>` apps/api absolute). Pre-v0.6 prose preserved
 > as historical record but **load-bearing implementation reference =
@@ -547,10 +552,11 @@ D8 原文锁定 Wave 5 MVP = path-(c) localStorage prototype；path-(a)
 
 **D8 path-(b) 拒绝理由 retract**: Wave 5 era D8 表 line 358 标记
 path-(b) "❌ NOT 选; 与 Astro static incompat"。这条理由基于 Astro
-4.x 静态-only 假设。Astro 5.x `output:'hybrid'` 原生支持 mixed
-static prerender + on-demand server endpoints，path-(b) 兼容性
-问题已不存在；v0.6 amendment retract path-(b) 拒绝理由 + promote
-为 Wave 6 Stage B 正解。
+4.x 静态-only 假设。Astro 5.x 原生支持 mixed static prerender +
+on-demand server endpoints (under 5.18: `output: 'static'` +
+per-route `export const prerender = false` + Node adapter；
+详见 D10)，path-(b) 兼容性问题已不存在；v0.6 amendment retract
+path-(b) 拒绝理由 + promote 为 Wave 6 Stage B 正解。
 
 **path-(a) (separate apps/api package) 保持 Phase 3+ 升级路径**:
 适用于 multi-user collab / separate auth boundary / horizontal scale
@@ -560,9 +566,26 @@ package。
 ### v0.6 D10 — Astro hybrid output 架构调整
 
 Wave 5 era apps/site = Astro `output: 'static'` (默认；纯静态 build)。
-Wave 6 Stage B 要求 `output: 'hybrid'` (per Astro 5.x 命名；mixed
-static + server endpoints) — 大部分页面保持 static prerender，
-`/api/notes/[...slug]` server endpoint 接受 GET (load) + POST (save)。
+Wave 6 Stage B 需要 mixed prerendered + server-only routes — 大部分
+页面保持 static prerender，`/api/notes/[...slug]` server endpoint 接受
+GET (load) + POST (save)。
+
+**Astro 5.18 reality (post-amendment correction 2026-05-07)**: Astro 5.x
+**移除了 `output: 'hybrid'` literal**；mixed static + server endpoints
+现在通过 `output: 'static'` (默认) **加** per-route
+`export const prerender = false` 实现。原 v0.6 amendment 的 "要求
+`output: 'hybrid'`" 措辞 reflects pre-Astro 5.18 命名；本 D10 prose 已
+按 Astro 5.18 实际 API 修订。Architectural intent unchanged (mixed
+prerendered + server endpoints；`@astrojs/node` adapter required to host
+the server-only route)；仅 `astro.config.mjs` 写法 differs:
+
+```js
+// Astro 5.18 supported pattern (Wave 6 Stage B):
+output: 'static',                       // default; supports mixed mode
+adapter: node({ mode: 'standalone' }),  // hosts non-prerendered routes
+// per-route opt-out lives in apps/site/src/pages/api/notes/[...slug].ts:
+//   export const prerender = false;
+```
 
 **Deployment adapter scope**:
 
@@ -620,16 +643,41 @@ needed per ADR-0019 D3 deferred item #1).
 
 ### v0.6 D12 — Server endpoint contract
 
-`apps/site/src/pages/api/notes/[...slug].ts` (Astro file-based API):
+`apps/site/src/pages/api/notes/[...slug].ts` (Astro file-based API).
+**Two-file persistence model** (sidecar pattern; B.2 R2 amendment
+2026-05-07): each note slug maps to two sibling files in
+`content/notes/<slug>/`:
+
+- `index.mdx` — canonical content owned by `@skb/content-types`;
+  YAML frontmatter (`title` / `date` / `tags` / `draft`) preserved
+  verbatim; body replaced with `state.mdxSource` on save.
+- `state.json` — sidecar JSON `{ lastModified: number, version: number }`
+  carrying persistence metadata that does NOT belong in the
+  frontmatter schema. Keeping these fields out of `index.mdx`
+  preserves the `@skb/content-types` single-authority invariant
+  (no schema drift; zero consumer-side updates).
+
+Endpoint contract:
 
 - **GET** `/api/notes/<slug>`:
-  - dev: 读 `content/notes/<slug>/index.mdx` + 解析 frontmatter +
-    return `NoteState` JSON
-  - 404 if file 不存在
+  - 读 `content/notes/<slug>/index.mdx` + 解析 frontmatter
+  - 读 sibling `content/notes/<slug>/state.json` if present
+  - return `NoteState` JSON (`mdxSource` 来自 MDX body；
+    `lastModified` 来自 sidecar 否则 `mtimeMs` fallback；`version`
+    来自 sidecar 否则 `1` fallback)
+  - 404 if `index.mdx` 不存在 (sidecar 单独缺失 NOT 404 — fallback)
 - **POST** `/api/notes/<slug>` body: `NoteState` JSON
-  - dev: 写回 `content/notes/<slug>/index.mdx` (preserve frontmatter;
+  - **edit-only**: 必 existing `index.mdx`；missing 文件 return
+    **404** (refuses orphan-creation; body-only POST 不能 supply
+    frontmatter; new-note creation 留 Wave 6 Stage B scope 之外)
+  - 写回 `index.mdx` (preserve frontmatter verbatim;
     overwrite body with `state.mdxSource`)
-  - return `{ ok: true }` on success；500 on file IO error
+  - 写 sibling `state.json` `{ lastModified, version }`
+  - return `{ ok: true }` on success；
+    **400** on invalid JSON / missing fields；
+    **404** on missing `index.mdx`；
+    **500** on file IO error；
+    all errors `{ ok: false, error: string }`
 
 **No auth at Wave 6 Stage B**；single-user dev/preview only。Phase 3+
 auth boundary (per ADR-0018 line 462 multi-user collaborative path).
@@ -652,7 +700,7 @@ fallback**:
 | PR            | Subject                                                                            | Scope                                                                                                                                              |
 | ------------- | ---------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
 | B.1 (this PR) | ADR-0018 v0.6 amendment                                                            | This document; ADR amendment only; lock architecture before implementation                                                                         |
-| B.2           | apps/site Astro hybrid + server endpoint + filesystem write-back                   | `astro.config.mjs` `output: 'hybrid'` + `@astrojs/node` dev dep + `apps/site/src/pages/api/notes/[...slug].ts` NEW + filesystem read/write helpers |
+| B.2           | apps/site Node adapter + per-route `prerender=false` server endpoint + filesystem write-back (sidecar) | `astro.config.mjs` keeps `output: 'static'` (Astro 5.18 reality; see D10) + adds `@astrojs/node` dep + `adapter: node({ mode: 'standalone' })` + `apps/site/src/pages/api/notes/[...slug].ts` NEW (`export const prerender = false`) + sidecar `state.json` for `{lastModified, version}` to keep `@skb/content-types` frontmatter authority intact |
 | B.3           | ApiAdapter implementation in @skb/editor-shell                                     | `save-adapter.ts` replace COMMENT-only stub with executable class per D11 contract; vitest contract tests; export from `index.ts`                  |
 | B.4           | EditorShellMount.tsx wire to ApiAdapter (primary) + LocalStorageAdapter (fallback) | Per D13; preserve C.4-prelude/C.4-1/C.4-3 affordances unchanged                                                                                    |
 | B.5           | Stage B close + e2e spec verifying full cross-route sync + handoff pack            | Playwright spec: edit → server save → reload `/notes/<slug>` → content reflects edit; Stage B handoff pack; Wave 6 milestone progress              |
@@ -723,7 +771,7 @@ Stage C.3 + Stage C.4 实施 PR 必逐条 cross-reference AC#1-#12 验证 (per A
 - Dark mode 推 Phase 2+ (per Q3 plan-challenger candidate; AC#10): cream/橙红主色在 dark 下需要重新设计 NOT simple invert; granularity v0.3.4 Open Q2 已 acknowledged
 - `--row-h: 48px` + `--gap: 14px` 在 design-tokens 而 NOT editor-shell internal = design-tokens 是 single-source per ADR-0003 D6 + ADR-0016 W5-1 + ADR-0017 EDGE_W=2\*GAP 数学对应 全 derive 的 root authority
 - localStorage `skb-note:<slug>` key 与 `skb-theme` 不冲突 (前缀显式); design-tokens `STORAGE_KEY = 'skb-theme'` 不动
-- ~~Astro endpoint (路径 b) 不选 = 与 Astro static build 不兼容; Wave 5 + Phase 2+ 都 不 启用 server-mode (per ADR-0001 stack selection Astro static 决策); Phase 2+ apps/api endpoint 走 separate server (not Astro endpoint)~~ — **SUPERSEDED by v0.6 amendment** (Wave 6 Stage B selects path-(b) Astro hybrid; Astro 5.x `output:'hybrid'` 原生 mixed static + server endpoints work; ADR-0001 amendment to follow if needed). path-(a) separate apps/api stays Phase 3+ for multi-user collab.
+- ~~Astro endpoint (路径 b) 不选 = 与 Astro static build 不兼容; Wave 5 + Phase 2+ 都 不 启用 server-mode (per ADR-0001 stack selection Astro static 决策); Phase 2+ apps/api endpoint 走 separate server (not Astro endpoint)~~ — **SUPERSEDED by v0.6 amendment** (Wave 6 Stage B selects path-(b) Astro mixed-mode endpoint; Astro 5.18 supports mixed prerendered + server endpoints via `output: 'static'` + per-route `export const prerender = false` + Node adapter — see D10; ADR-0001 amendment to follow if needed). path-(a) separate apps/api stays Phase 3+ for multi-user collab.
 
 ## Plan-challenger codex absorbtion (locked at lock-time)
 
@@ -790,10 +838,10 @@ dispatch: `codex exec --yolo --profile plan-challenger ...` (Pre-A4 ADR-0018 des
 - [ADR-0014 HeavyBlockBoundary](ADR-0014-heavy-block-boundary.md) — heavy block plugin placeholder 消费 design-tokens 顶 2px 横条 (D3); v0.4 + v0.5 amendments 留 Stage C.1 / Stage C.2
 - [ADR-0011 D1 linear pipeline](ADR-0011-linear-pipeline-execution-model.md) — KEPT for Wave 5; D2 row 4 fires stage 4 here
 - [ADR-0009 BlockKind 4-way union](ADR-0009-block-kind-union-expansion.md) — BlockKind 不动; D3 横条 hue 与 BlockKind 平行 (gridKind 同 ADR-0016 D10 平行)
-- [ADR-0006 8-point asymmetry audit](ADR-0006-asymmetry-audit-checklist.md) — items #5 (algorithm + runtime constants 复刻; 14 OKLCH + 1 hex + 3 layout + 8 kind hue + 3 shadow + 2 font 必 single-source design-tokens) + #6 (sister CONTRACT.md sync; design-tokens CONTRACT.md Stage C.3 PR 同步; editor-shell CONTRACT.md 既存 Wave 3 Stage A; Stage C.4 PR 同步/扩展 + W5-2 invariant) + #8 (authority: ADR-0018 NEW; README ADR roster sync)
+- [ADR-0006 9-point asymmetry audit (v0.2)](ADR-0006-asymmetry-audit-checklist.md) — items #5 (algorithm + runtime constants 复刻; 14 OKLCH + 1 hex + 3 layout + 8 kind hue + 3 shadow + 2 font 必 single-source design-tokens) + #6 (sister CONTRACT.md sync; design-tokens CONTRACT.md Stage C.3 PR 同步; editor-shell CONTRACT.md 既存 Wave 3 Stage A; Stage C.4 PR 同步/扩展 + W5-2 invariant) + #8 (authority: ADR-0018 NEW; README ADR roster sync) + **#9 (UI-touch + E2E spec audit, v0.2 amendment)** — Stage C.4 实施 PR + Wave 6 Stage B 实施 PR (ui_touch=true paths) 必含非空 `e2e_smoke` field + Playwright spec 文件存在 + `pnpm --filter @skb/site test:visual` PASS (Wave 6 Stage B.2 carve-out: vitest 单测 sidecar roundtrip 替代 Playwright per Decision 5; full e2e 留 B.5)
 - [ADR-0005 API conventions](ADR-0005-api-conventions.md) — Phase 2+ ApiAdapter 升级路径 consume (REST `/v1/notes/<slug>` per camelCase + RFC 7807)
 - [ADR-0003 Headless / Presentational](ADR-0003-headless-presentational-split.md) — D6 design-tokens authority + tokens-dark.css forward-compat
-- [ADR-0001 Stack selection](ADR-0001-stack-selection.md) — Astro static build 决策; Astro endpoint (D8 路径 b) 不选 cross-reference
+- [ADR-0001 Stack selection](ADR-0001-stack-selection.md) — historical Astro static-build authority; **superseded for Wave 6 Stage B by the v0.6 amendment above** (D9-D14): Astro 5.18 supports mixed prerendered + server-only routes via `output: 'static'` + per-route `prerender = false` + Node adapter, so path-(b) endpoint at `apps/site/src/pages/api/notes/[...slug].ts` is now ratified. ADR-0001 amendment to follow if/when needed.
 - [Wave 5 Pre-A3 PR.md](../plans/wave-5-main/Pre-A3-adr-0017-drag-drop-ux.md) — most recent ADR design-lock precedent (13/13 plan-challenger absorbed; 4 R-rounds — internal-consistency drift lesson)
 - [design-tokens CONTRACT.md](../../packages/design-tokens/CONTRACT.md) — existing public surface; Stage C.3 实施 PR 同步 OKLCH switchover + 8 kind hue + `--accent-success` 新增
 - granularity doc v0.3.4 (`/mnt/d/download/web/v2-design-granularity.md`) — gatekeeper-side scratch; § "v2 视觉契约要素 (认证源 = v2-styles.css)" + § "v2 编辑器 UX 要素" body 是此 ADR D1-D7 source intent (per Wave 5 plan v0.2 D5 ADR 编号映射表 NEW reframe v2 forward; granularity 原 Phase 2+ L1 visual scope)
