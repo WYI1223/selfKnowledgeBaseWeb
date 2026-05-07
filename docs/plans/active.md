@@ -17,7 +17,7 @@
 **Wave 5 → Wave 6/Phase 2+ deferred items** (per ADR-0019 D3):
 
 1. **layoutEpoch sync to NoteState**: ADR-0018 line 464 接口冻结 amendment required (C.4-4 R1 surfaced; reverted out of C.4-4 scope)
-2. **ApiAdapter implementation**: full impl requires `apps/api` server runtime (Phase 2+)
+2. **ApiAdapter implementation**: ✅ promoted to Wave 6 Stage B default per ADR-0018 v0.6 amendment 2026-05-07 (path-(b) Astro hybrid endpoint at `apps/site/src/pages/api/notes/[...slug].ts`); separate `apps/api` package path-(a) stays Phase 3+ for multi-user collab
 3. **Mobile/responsive editor polish** (Phase 2+)
 4. **a11y / keyboard navigation full audit** (Phase 2+)
 5. **Animation tuning / 60fps perf** (Phase 2+)

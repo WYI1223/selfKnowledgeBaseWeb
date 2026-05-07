@@ -1,11 +1,11 @@
 # ADR-0018: v2 视觉 migration — design-tokens OKLCH + Inter/JetBrains Mono + 顶 2px 横条 + prose customization + save-path 接口冻结
 
-| 字段 | 值 |
-| ---- | --- |
-| 状态 | proposed (v0.1.1 post 14-Q plan-challenger absorbtion 2026-05-04: 9 ABSORBED + 5 PARTIALLY ABSORBED) |
-| 日期 | 2026-05-04 |
-| 作者 | orchestrator (Claude Opus 4.7 1M ctx) |
-| 触发 | [Wave 5 plan v0.2 D1+D5+D10](../superpowers/plans/2026-05-04-phase-1-wave-5-integration.md) (Pre-A4 ADR-0018 v2 视觉 migration design lock + save-path 接口冻结 per Q4+Q8 absorbtion) + reframe v2 memory `project_wave4_reframe_v2.md` + granularity doc v0.3.4 § "v2 视觉契约要素 (认证源 = v2-styles.css, 所有 token 不变)" + § "v2 编辑器 UX 要素 (视觉细节)" body (NEW reframe v2 forward; granularity 原 Phase 2+ L1 visual scope) |
+| 字段 | 值                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 状态 | accepted (v0.6 Wave 6 Stage B amendment 2026-05-07; v0.1.1 → v0.6 promotes ApiAdapter from forward-stub to first-class Wave 6 default + Astro hybrid output adjustment + 5-PR sequence locked)                                                                                                                                                                                                                                                              |
+| 日期 | 2026-05-04                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| 作者 | orchestrator (Claude Opus 4.7 1M ctx)                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| 触发 | [Wave 5 plan v0.2 D1+D5+D10](../superpowers/plans/2026-05-04-phase-1-wave-5-integration.md) (Pre-A4 ADR-0018 v2 视觉 migration design lock + save-path 接口冻结 per Q4+Q8 absorbtion) + reframe v2 memory `project_wave4_reframe_v2.md` + granularity doc v0.3.4 § "v2 视觉契约要素 (认证源 = v2-styles.css, 所有 token 不变)" + § "v2 编辑器 UX 要素 (视觉细节)" body (NEW reframe v2 forward; granularity 原 Phase 2+ L1 visual scope)                    |
 | 关系 | 不替代任何 ADR; 扩展 [ADR-0003](ADR-0003-headless-presentational-split.md) D6 (design-tokens authority + OKLCH switchover) + 扩展 [ADR-0017 D11](ADR-0017-drag-drop-ux.md) (drop-pulse 消费 `--accent-success` token); 扩展 [ADR-0014](ADR-0014-heavy-block-boundary.md) (heavy block plugin placeholder 消费 design-tokens 视觉 + 顶 2px 横条 from D3); save-path 接口冻结 = NEW Phase 1 持久化决策 (Stage C.4 实施 + Phase 2+ apps/api endpoint 升级路径) |
 
 ## Context
@@ -16,6 +16,7 @@ Wave 5 reframe v2 (2026-05-04 gatekeeper directive; absorbed via Wave 5 plan v0.
 2. **Save-path 接口冻结 (Stage C.4 实施)**: 提前 (per Q8 absorbtion) 在此 ADR 锁定 NoteSaveAdapter interface + 3 候选实施路径 + Wave 5 MVP 选 localStorage prototype + Phase 2+ apps/api endpoint upgrade path; Pre-A5 仅做确认与验收 不动接口
 
 设计源:
+
 - **视觉**: granularity v0.3.4 § "v2 视觉契约要素 (认证源 = v2-styles.css)" + v2-styles.css 全文 (25 KB; 完整 token set + prose customization + block-kind 顶 横条 + typography + shadow)
 - **Save-path**: Wave 5 plan v0.2 D10 (修订 per Q8 absorbtion); Phase 1 MVP 持久化决策 (granularity v0.3.4 NOT 直接讨论 save-path; this ADR 是 NEW)
 
@@ -45,26 +46,26 @@ ADR-0011 D1 KEPT 不变. Pre-A4 plan-challenger codex 4-round per ADR-0007 D5 + 
 
 `@skb/design-tokens/src/tokens.css` `:root` 加 (or 替换 既有 token):
 
-| token | OKLCH | 用途 |
-|---|---|---|
-| `--bg` | `oklch(99% 0.005 80)` | 页面底色 (暖白 cream) |
-| `--panel` | `oklch(98% 0.004 80)` | 侧 rail / topbar / panel 底 |
-| `--surface` | `#ffffff` (唯一非 OKLCH; 块内容白底; 高对比保留) | block 内容白底 |
-| `--border` | `oklch(92% 0.005 80)` | 默认边 |
-| `--border-strong` | `oklch(86% 0.006 80)` | hover / 强调边 |
-| `--text` | `oklch(22% 0.01 80)` | 主文本 (近黑暖调) |
-| `--text-2` | `oklch(45% 0.01 80)` | 次要文本 |
-| `--text-3` | `oklch(62% 0.01 80)` | 辅助文本 / metadata |
-| `--accent` | `oklch(58% 0.16 35)` | 选中 / drag / focus / 警示 (橙红 hue 35°) |
-| `--accent-soft` | `oklch(96% 0.04 35)` | accent 浅底 (drop preview / hover) |
-| `--accent-success` | `oklch(70% 0.12 145)` | **NEW per ADR-0017 D11 forward-pointer**: drop-pulse / save-success / commit-pulse general (绿 hue 145°) |
-| `--canvas` | `oklch(60% 0.13 215)` | canvas block 类色 (蓝 hue 215°) |
-| `--canvas-soft` | `oklch(97% 0.025 215)` | canvas 浅底 |
-| `--grid-line` | `oklch(90% 0.005 80)` | drag overlay 网格线 |
-| `--grid-line-strong` | `oklch(82% 0.005 80)` | snap 高亮线 |
-| `--row-h` | `48px` (per ADR-0016 D4 height 公式 base) | grid base row |
-| `--gap` | `14px` (per ADR-0016 W5-1 + ADR-0017 EDGE_W=2*GAP 数学对应) | grid gap |
-| `--radius` | `6px` | block / button radius |
+| token                | OKLCH                                                        | 用途                                                                                                     |
+| -------------------- | ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------- |
+| `--bg`               | `oklch(99% 0.005 80)`                                        | 页面底色 (暖白 cream)                                                                                    |
+| `--panel`            | `oklch(98% 0.004 80)`                                        | 侧 rail / topbar / panel 底                                                                              |
+| `--surface`          | `#ffffff` (唯一非 OKLCH; 块内容白底; 高对比保留)             | block 内容白底                                                                                           |
+| `--border`           | `oklch(92% 0.005 80)`                                        | 默认边                                                                                                   |
+| `--border-strong`    | `oklch(86% 0.006 80)`                                        | hover / 强调边                                                                                           |
+| `--text`             | `oklch(22% 0.01 80)`                                         | 主文本 (近黑暖调)                                                                                        |
+| `--text-2`           | `oklch(45% 0.01 80)`                                         | 次要文本                                                                                                 |
+| `--text-3`           | `oklch(62% 0.01 80)`                                         | 辅助文本 / metadata                                                                                      |
+| `--accent`           | `oklch(58% 0.16 35)`                                         | 选中 / drag / focus / 警示 (橙红 hue 35°)                                                                |
+| `--accent-soft`      | `oklch(96% 0.04 35)`                                         | accent 浅底 (drop preview / hover)                                                                       |
+| `--accent-success`   | `oklch(70% 0.12 145)`                                        | **NEW per ADR-0017 D11 forward-pointer**: drop-pulse / save-success / commit-pulse general (绿 hue 145°) |
+| `--canvas`           | `oklch(60% 0.13 215)`                                        | canvas block 类色 (蓝 hue 215°)                                                                          |
+| `--canvas-soft`      | `oklch(97% 0.025 215)`                                       | canvas 浅底                                                                                              |
+| `--grid-line`        | `oklch(90% 0.005 80)`                                        | drag overlay 网格线                                                                                      |
+| `--grid-line-strong` | `oklch(82% 0.005 80)`                                        | snap 高亮线                                                                                              |
+| `--row-h`            | `48px` (per ADR-0016 D4 height 公式 base)                    | grid base row                                                                                            |
+| `--gap`              | `14px` (per ADR-0016 W5-1 + ADR-0017 EDGE_W=2\*GAP 数学对应) | grid gap                                                                                                 |
+| `--radius`           | `6px`                                                        | block / button radius                                                                                    |
 
 **OKLCH browser fallback (per Q2 absorbtion — 锁 hex 转换公式 + 生成规则, Stage C.3 仅实现不再解释)**:
 
@@ -87,7 +88,10 @@ Chrome 111+ / Safari 15.4+ / Firefox 113+ 原生支持 OKLCH. 老 Safari < 15.4 
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <!-- Font CSS -->
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;650;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link
+  href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;650;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
+  rel="stylesheet"
+/>
 ```
 
 `@skb/design-tokens/src/tokens.css`:
@@ -112,17 +116,17 @@ Chrome 111+ / Safari 15.4+ / Firefox 113+ 原生支持 OKLCH. 老 Safari < 15.4 
 
 每种 component block (kind ∈ {component, render, viz} per ADR-0009) 顶部 `border-top: 2px solid var(--accent-${kindHue})`:
 
-| kind | hue | OKLCH (full) | OKLCH (soft for kind-soft bg) | v2 demo 出现 |
-|---|---|---|---|---|
-| canvas | 215° | `--canvas` (full) | `--canvas-soft` | ✅ |
-| runnable | 145° | `oklch(50% 0.12 145)` | `oklch(95% 0.04 145)` | ✅ |
-| image | 60° | `oklch(60% 0.10 60)` | `oklch(95% 0.025 60)` | ✅ |
-| markdown (kind='prose') | — | 默认无横条 (white surface 直接显示) | — | ✅ |
-| math | 280° | `oklch(50% 0.16 280)` | `oklch(95% 0.04 280)` | ❌ Wave 5 lock |
-| pdf | 0° | `oklch(55% 0.16 0)` | `oklch(95% 0.04 0)` | ❌ Wave 5 lock |
-| jupyter | 90° | `oklch(65% 0.14 90)` | `oklch(95% 0.04 90)` | ❌ Wave 5 lock |
-| nn-viz | 325° | `oklch(50% 0.18 325)` | `oklch(95% 0.05 325)` | ❌ Wave 5 lock |
-| agent-flow | 180° | `oklch(55% 0.13 180)` | `oklch(95% 0.04 180)` | ❌ Wave 5 lock |
+| kind                    | hue  | OKLCH (full)                        | OKLCH (soft for kind-soft bg) | v2 demo 出现   |
+| ----------------------- | ---- | ----------------------------------- | ----------------------------- | -------------- |
+| canvas                  | 215° | `--canvas` (full)                   | `--canvas-soft`               | ✅             |
+| runnable                | 145° | `oklch(50% 0.12 145)`               | `oklch(95% 0.04 145)`         | ✅             |
+| image                   | 60°  | `oklch(60% 0.10 60)`                | `oklch(95% 0.025 60)`         | ✅             |
+| markdown (kind='prose') | —    | 默认无横条 (white surface 直接显示) | —                             | ✅             |
+| math                    | 280° | `oklch(50% 0.16 280)`               | `oklch(95% 0.04 280)`         | ❌ Wave 5 lock |
+| pdf                     | 0°   | `oklch(55% 0.16 0)`                 | `oklch(95% 0.04 0)`           | ❌ Wave 5 lock |
+| jupyter                 | 90°  | `oklch(65% 0.14 90)`                | `oklch(95% 0.04 90)`          | ❌ Wave 5 lock |
+| nn-viz                  | 325° | `oklch(50% 0.18 325)`               | `oklch(95% 0.05 325)`         | ❌ Wave 5 lock |
+| agent-flow              | 180° | `oklch(55% 0.13 180)`               | `oklch(95% 0.04 180)`         | ❌ Wave 5 lock |
 
 **5 missing kind hue lock (per Pre-A4 plan-challenger Q3 absorbtion)**: math / pdf / jupyter / nn-viz / agent-flow 5 个 block kind 在 Wave 4 ADR-0014 已 ratified, 但顶 2px 横条 hue 未在视觉契约定义. ADR-0018 D3 在 Pre-A4 plan-challenger round 锁定 + 修订:
 
@@ -135,15 +139,16 @@ Chrome 111+ / Safari 15.4+ / Firefox 113+ 原生支持 OKLCH. 老 Safari < 15.4 
 
 **5 missing kind hue 锁定值** (post Q3 validation):
 
-| kind | hue (°) | lightness | chroma | OKLCH | rationale |
-|---|---|---|---|---|---|
-| math | 280 | 50% | 0.16 | `oklch(50% 0.16 280)` | 紫; 与 215° canvas 角距 65°; 与 35° accent 角距 105° (mod 360); 数学符号联想 |
-| pdf | 0 | 55% | 0.16 | `oklch(55% 0.16 0)` | 纯红; 与 35° accent 角距 35° (relax 30°+ OK); lightness 55% 与 accent 58% 差 → 视觉区分 |
-| jupyter | 90 | 65% | 0.14 | `oklch(65% 0.14 90)` | 黄; 与 60° image 角距 30° + chroma 0.14 (vs image 0.10) 区分; 与 145° runnable 角距 55° |
-| nn-viz | 325 | 50% | 0.18 | `oklch(50% 0.18 325)` | 品红; 与 280° math 角距 45°; 与 35° accent 角距 70° (mod 360); 神经网络可视化联想 |
-| agent-flow | 180 | 55% | 0.13 | `oklch(55% 0.13 180)` | 青绿; 与 145° runnable 角距 35°; 与 215° canvas 角距 35°; lightness/chroma 区分 |
+| kind       | hue (°) | lightness | chroma | OKLCH                 | rationale                                                                               |
+| ---------- | ------- | --------- | ------ | --------------------- | --------------------------------------------------------------------------------------- |
+| math       | 280     | 50%       | 0.16   | `oklch(50% 0.16 280)` | 紫; 与 215° canvas 角距 65°; 与 35° accent 角距 105° (mod 360); 数学符号联想            |
+| pdf        | 0       | 55%       | 0.16   | `oklch(55% 0.16 0)`   | 纯红; 与 35° accent 角距 35° (relax 30°+ OK); lightness 55% 与 accent 58% 差 → 视觉区分 |
+| jupyter    | 90      | 65%       | 0.14   | `oklch(65% 0.14 90)`  | 黄; 与 60° image 角距 30° + chroma 0.14 (vs image 0.10) 区分; 与 145° runnable 角距 55° |
+| nn-viz     | 325     | 50%       | 0.18   | `oklch(50% 0.18 325)` | 品红; 与 280° math 角距 45°; 与 35° accent 角距 70° (mod 360); 神经网络可视化联想       |
+| agent-flow | 180     | 55%       | 0.13   | `oklch(55% 0.13 180)` | 青绿; 与 145° runnable 角距 35°; 与 215° canvas 角距 35°; lightness/chroma 区分         |
 
 **Markdown kind 'no border-top' 决策对识别度影响**: markdown blocks (kind='prose') 默认无横条; 视觉识别 通过其他 cue:
+
 - prose 内容直接显示 (不需 visual signature)
 - gutter `⋮⋮ + ×` 在 hover 时显示 (block-level 控制 一致)
 - 选中 ring (accent border + 2px accent-soft outer ring per granularity v0.3.4 § "Block 容器状态") = active markdown block 视觉指示
@@ -160,7 +165,7 @@ ADR-0014 v0.5 amendment (Stage C.2 实施 PR scope): HeavyBlockBoundary plugin p
 ```css
 .b-quote {
   border-left: 3px solid var(--accent);
-  background: oklch(98% 0.012 35 / 0.6);  /* accent-soft alpha */
+  background: oklch(98% 0.012 35 / 0.6); /* accent-soft alpha */
   font-style: italic;
   color: var(--text-2);
   padding: 8px 12px;
@@ -168,7 +173,7 @@ ADR-0014 v0.5 amendment (Stage C.2 实施 PR scope): HeavyBlockBoundary plugin p
 }
 
 .b-callout {
-  background: oklch(97% 0.018 90);   /* warm yellow soft */
+  background: oklch(97% 0.018 90); /* warm yellow soft */
   border: 1px solid oklch(88% 0.05 90);
   color: oklch(35% 0.06 90);
   padding: 10px 12px;
@@ -184,9 +189,16 @@ ADR-0014 v0.5 amendment (Stage C.2 实施 PR scope): HeavyBlockBoundary plugin p
   font-size: 12.5px;
   border-radius: var(--radius);
 }
-.b-code .kw { color: oklch(45% 0.18 280); }   /* keyword 紫 280° */
-.b-code .fn { color: oklch(45% 0.13 215); }   /* function 蓝 215° */
-.b-code .cm { color: oklch(45% 0.10 145); font-style: italic; }   /* comment 绿 145° */
+.b-code .kw {
+  color: oklch(45% 0.18 280);
+} /* keyword 紫 280° */
+.b-code .fn {
+  color: oklch(45% 0.13 215);
+} /* function 蓝 215° */
+.b-code .cm {
+  color: oklch(45% 0.1 145);
+  font-style: italic;
+} /* comment 绿 145° */
 
 .aref {
   display: inline-flex;
@@ -201,10 +213,17 @@ ADR-0014 v0.5 amendment (Stage C.2 实施 PR scope): HeavyBlockBoundary plugin p
   text-decoration: none;
   /* per ADR-0014 v0.4 amendment scope: anchor click → jumpToAnchor + flash 1700ms; impl in apps/site */
 }
-.aref::before { content: '↗'; margin-right: 2px; }
+.aref::before {
+  content: '↗';
+  margin-right: 2px;
+}
 
-mark { background: oklch(94% 0.08 90); color: inherit; }   /* inline mark 黄底高亮 */
-code:not(pre code) {  /* inline code; per Tailwind preset prose */
+mark {
+  background: oklch(94% 0.08 90);
+  color: inherit;
+} /* inline mark 黄底高亮 */
+code:not(pre code) {
+  /* inline code; per Tailwind preset prose */
   background: oklch(95% 0.005 80);
   font-family: var(--mono);
   font-size: 0.9em;
@@ -231,6 +250,7 @@ code:not(pre code) {  /* inline code; per Tailwind preset prose */
 ```
 
 **`aref` selector specificity** (per Q5 absorbtion — 通用 `<a>` 语义不污染):
+
 - `.skb-prose .aref` 仅适用于 markdown prose 内的 anchor reference; 不影响 editor UI links (`.skb-toolbar a`, `.skb-palette a` 等)
 - `.aref` class 必显式添加 (NOT 自动加到 `<a>` element); 避免误触
 
@@ -238,16 +258,16 @@ code:not(pre code) {  /* inline code; per Tailwind preset prose */
 
 ### D5 — Typography 升级
 
-| element | size / line-height / weight / tracking |
-|---|---|
-| body | 15px / 1.55 / 400 / 0 |
-| H1 | 28px / 1.15 / 700 / -0.018em |
-| H2 | 20px / 1.25 / 650 / -0.01em |
-| H3 | 16px / 1.3 / 600 / 0 |
-| b-p (body 段落) | 14.5px / 1.62 / 400 / 0 |
-| b-quote | 14.5px / 1.62 / 400 italic / 0 |
-| b-code | 12.5px / 1.5 / 400 / 0 (mono) |
-| inline code | 0.9em (relative; mono) |
+| element         | size / line-height / weight / tracking |
+| --------------- | -------------------------------------- |
+| body            | 15px / 1.55 / 400 / 0                  |
+| H1              | 28px / 1.15 / 700 / -0.018em           |
+| H2              | 20px / 1.25 / 650 / -0.01em            |
+| H3              | 16px / 1.3 / 600 / 0                   |
+| b-p (body 段落) | 14.5px / 1.62 / 400 / 0                |
+| b-quote         | 14.5px / 1.62 / 400 italic / 0         |
+| b-code          | 12.5px / 1.5 / 400 / 0 (mono)          |
+| inline code     | 0.9em (relative; mono)                 |
 
 实施: design-tokens `tokens.css` `body { font-size: 15px; line-height: 1.55; font-family: var(--sans); }`; prose customization (D4) 与 typography (D5) 二者协同.
 
@@ -280,8 +300,16 @@ code:not(pre code) {  /* inline code; per Tailwind preset prose */
   --letter-spacing-h2: -0.01em;
 }
 
-body { font-size: var(--font-size-body); line-height: var(--line-height-body); }
-h1 { font-size: var(--font-size-h1); line-height: var(--line-height-h1); font-weight: var(--font-weight-h1); letter-spacing: var(--letter-spacing-h1); }
+body {
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
+}
+h1 {
+  font-size: var(--font-size-h1);
+  line-height: var(--line-height-h1);
+  font-weight: var(--font-weight-h1);
+  letter-spacing: var(--letter-spacing-h1);
+}
 /* ... similarly for h2, h3, b-p, b-code */
 ```
 
@@ -293,20 +321,22 @@ ADR-0003 D6 single-source 精神兑现.
 
 ```css
 :root {
-  --shadow-sm: 0 1px 2px rgba(20,15,10, 0.05), 0 1px 1px rgba(20,15,10, 0.04);
-  --shadow-md: 0 4px 12px rgba(20,15,10, 0.08), 0 2px 4px rgba(20,15,10, 0.05);
-  --shadow-lg: 0 12px 32px rgba(20,15,10, 0.16), 0 6px 12px rgba(20,15,10, 0.10);
+  --shadow-sm: 0 1px 2px rgba(20, 15, 10, 0.05), 0 1px 1px rgba(20, 15, 10, 0.04);
+  --shadow-md: 0 4px 12px rgba(20, 15, 10, 0.08), 0 2px 4px rgba(20, 15, 10, 0.05);
+  --shadow-lg: 0 12px 32px rgba(20, 15, 10, 0.16), 0 6px 12px rgba(20, 15, 10, 0.1);
 }
 ```
 
-理由 (per granularity v0.3.4 v2 视觉契约要素 § Spacing/radius/shadow): 暖色调 `rgba(20,15,10, ...)` 与 cream `oklch(99% 0.005 80)` + 橙红 accent + Inter 字体调和; 中性 `rgba(0,0,0)` shadow 视觉冷; 与 v2 整体调子不符. 单一 token 切到暖色调 = 全 apps/site + block-* shadow 自动跟.
+理由 (per granularity v0.3.4 v2 视觉契约要素 § Spacing/radius/shadow): 暖色调 `rgba(20,15,10, ...)` 与 cream `oklch(99% 0.005 80)` + 橙红 accent + Inter 字体调和; 中性 `rgba(0,0,0)` shadow 视觉冷; 与 v2 整体调子不符. 单一 token 切到暖色调 = 全 apps/site + block-\* shadow 自动跟.
 
 ### D7 — 8 light block CSS calibration (OKLCH switchover collateral)
 
 5 light blocks (kind ∈ {component, render}): callout / code / image / math / pdf
-+ 3 markdown 派生 prose elements (kind='prose'; granularity v0.3.4 § "v2 编辑器 UX 要素"): headings (H1-H3) / lists / inline elements (em / strong / link / mark / code).
+
+- 3 markdown 派生 prose elements (kind='prose'; granularity v0.3.4 § "v2 编辑器 UX 要素"): headings (H1-H3) / lists / inline elements (em / strong / link / mark / code).
 
 `packages/block-{callout,code,image,math,pdf}/src/ui-default/` CSS 校准:
+
 - 替换 hex / RGB / HSL color values → OKLCH (consume design-tokens authority per D1)
 - 替换 black/gray shadow → `var(--shadow-sm)` / `var(--shadow-md)` 暖色调 (D6)
 - 替换 sans-serif default → `var(--sans)` Inter (D2)
@@ -322,11 +352,11 @@ ADR-0003 D6 single-source 精神兑现.
 
 3 候选路径 trade-off:
 
-| 路径 | 复杂度 | 跨设备同步 | Wave 5 适用 | Phase 2+ 适用 |
-|---|---|---|---|---|
-| (a) `apps/api` REST endpoint (POST `/v1/notes/<slug>`) | 高 (server runtime + auth + DB) | ✅ | ❌ (复杂度过高) | ✅ (升级路径) |
-| (b) Astro endpoint (server-side; Astro v4 `endpoint` feature) | 中 (server-mode 配置 + Astro 与 static build 不兼容) | 部分 (需要 server runtime) | ❌ (NOT 选; 与 Astro static incompat) | 不选 |
-| (c) localStorage prototype (browser localStorage; per `feedback_lychee_user_local_paths` 风格 single-device persist) | 低 (client-side 简单 K-V) | ❌ | ✅ **Wave 5 MVP 选** | ❌ (Phase 2+ apps/api 替换) |
+| 路径                                                                                                                 | 复杂度                                               | 跨设备同步                 | Wave 5 适用                           | Phase 2+ 适用               |
+| -------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- | -------------------------- | ------------------------------------- | --------------------------- |
+| (a) `apps/api` REST endpoint (POST `/v1/notes/<slug>`)                                                               | 高 (server runtime + auth + DB)                      | ✅                         | ❌ (复杂度过高)                       | ✅ (升级路径)               |
+| (b) Astro endpoint (server-side; Astro v4 `endpoint` feature)                                                        | 中 (server-mode 配置 + Astro 与 static build 不兼容) | 部分 (需要 server runtime) | ❌ (NOT 选; 与 Astro static incompat) | 不选                        |
+| (c) localStorage prototype (browser localStorage; per `feedback_lychee_user_local_paths` 风格 single-device persist) | 低 (client-side 简单 K-V)                            | ❌                         | ✅ **Wave 5 MVP 选**                  | ❌ (Phase 2+ apps/api 替换) |
 
 **Wave 5 MVP 锁**: localStorage prototype (路径 c). 单设备 + 简单 + Phase 1 完成路径; 跨设备同步 + collaborative editing 留 Phase 2+ apps/api endpoint 升级.
 
@@ -341,7 +371,10 @@ ADR-0003 D6 single-source 精神兑现.
 
 /** Read-only JSON-serializable value (recursive). 用于 tiptapState 缓存仅; NOT 持久化 schema. */
 export type ReadonlyJSONValue =
-  | string | number | boolean | null
+  | string
+  | number
+  | boolean
+  | null
   | readonly ReadonlyJSONValue[]
   | { readonly [key: string]: ReadonlyJSONValue };
 
@@ -407,7 +440,7 @@ export class LocalStorageAdapter implements NoteSaveAdapter {
       // SecurityError (e.g., localStorage disabled in private mode / iframe sandbox)
       if (e instanceof DOMException && e.name === 'SecurityError') {
         console.warn(`[NoteSaveAdapter] localStorage SecurityError; load disabled`);
-        return null;  // user 看到 empty editor; explicit "save disabled" UI 由 editor-shell 控制
+        return null; // user 看到 empty editor; explicit "save disabled" UI 由 editor-shell 控制
       }
       throw e;
     }
@@ -416,26 +449,37 @@ export class LocalStorageAdapter implements NoteSaveAdapter {
   async save(state: NoteState): Promise<{ ok: boolean; error?: string }> {
     const serialized = JSON.stringify(state);
     if (serialized.length > LocalStorageAdapter.PER_NOTE_MAX_BYTES) {
-      return { ok: false, error: `note exceeds 2MB limit (${serialized.length} bytes); split into smaller notes` };
+      return {
+        ok: false,
+        error: `note exceeds 2MB limit (${serialized.length} bytes); split into smaller notes`,
+      };
     }
     try {
       localStorage.setItem(`skb-note:${this.slug}`, serialized);
       // Aggregate size warning (best-effort; iterate localStorage keys)
       const aggregateBytes = Object.keys(localStorage)
-        .filter(k => k.startsWith('skb-note:'))
+        .filter((k) => k.startsWith('skb-note:'))
         .reduce((sum, k) => sum + (localStorage.getItem(k)?.length ?? 0), 0);
       if (aggregateBytes > LocalStorageAdapter.AGGREGATE_WARN_BYTES) {
-        console.warn(`[NoteSaveAdapter] aggregate notes ${aggregateBytes} bytes > 5MB; consider Phase 2+ apps/api`);
+        console.warn(
+          `[NoteSaveAdapter] aggregate notes ${aggregateBytes} bytes > 5MB; consider Phase 2+ apps/api`,
+        );
       }
       return { ok: true };
     } catch (e) {
       // QuotaExceededError (localStorage 满)
       if (e instanceof DOMException && (e.name === 'QuotaExceededError' || e.code === 22)) {
-        return { ok: false, error: 'localStorage quota exceeded; delete old notes or upgrade to apps/api' };
+        return {
+          ok: false,
+          error: 'localStorage quota exceeded; delete old notes or upgrade to apps/api',
+        };
       }
       // SecurityError
       if (e instanceof DOMException && e.name === 'SecurityError') {
-        return { ok: false, error: 'localStorage disabled (private mode / sandbox); save disabled' };
+        return {
+          ok: false,
+          error: 'localStorage disabled (private mode / sandbox); save disabled',
+        };
       }
       return { ok: false, error: e instanceof Error ? e.message : 'unknown' };
     }
@@ -462,6 +506,182 @@ export class LocalStorageAdapter implements NoteSaveAdapter {
 - **Stage C.4 实施**: editor-shell 创建 `NoteSaveAdapter` 实现; apps/site `/notes/[slug]/edit` route 消费; layoutReducer + mdx-bridge 集成 + save trigger 策略 (debounce / explicit / auto-save).
 
 接口冻结约束: Wave 5 任何 PR 改动 NoteSaveAdapter / NoteState shape **必走 ADR-0018 Amendment** (D2 row 4 fires); Stage C.4 实施 不允许 silent 接口扩展.
+
+## v0.6 Amendment (Wave 6 Stage B — ApiAdapter promoted to default; path-(b) Astro hybrid lock)
+
+> **Status**: amended 2026-05-07 post Wave 5 close (ADR-0019). Wave 6
+> Stage B trigger: `/notes/<slug>/edit` localStorage save 不会 propagate
+> to `/notes/<slug>` 静态 read route — 用户烟测发现两页不同步（"现在
+> 这连雏形都没有 用户都用不了"）。Stage A 客户端 hydration bridge 因
+> Astro `client:only="react"` hydration timing flake 放弃；直接进入
+> Stage B 服务端写回方案（ADR-0018 D8 **path-(b) Astro hybrid endpoint**
+> 正式实施 — Wave 5 era D8 因 "Astro static build 不兼容" 拒绝
+> path-(b) 是基于 Astro 4.x 静态-only 假设；Astro 5.x `output:'hybrid'`
+> 原生支持 mixed static + server endpoints，path-(b) 拒绝理由 v0.6
+> retract）。**path-(a) 单独 apps/api package** 保留为 Phase 3+
+> multi-user collab / separate auth boundary 升级路径，NOT v0.6 选项。
+>
+> **Pre-v0.6 prose supersede notice**: ADR-0018 Pre-A4 (v0.1.1) 原文
+> 多处 reference "Phase 2+ apps/api endpoint upgrade path" / "separate
+> server" / "REST `/v1/notes/<slug>`" / "ADR-0005 API conventions
+> consume" (lines 9 / 16 / 30 / 357 / 361 / 390 / 492-493 / 500 / 781
+> 等) — 这些 reference 的 "apps/api endpoint" 指 path-(a)
+> separate-server architecture，留 Phase 3+。**v0.6 Wave 6 Stage B
+> selects path-(b)** (Astro `output:'hybrid'` endpoint at
+> `apps/site/src/pages/api/notes/[...slug].ts`); ApiAdapter consumes
+> `/api/notes/<slug>` URL relative to apps/site origin (NOT
+> `/v1/notes/<slug>` apps/api absolute). Pre-v0.6 prose preserved
+> as historical record but **load-bearing implementation reference =
+> v0.6 D9-D16 below**.
+
+### v0.6 D9 — ApiAdapter promoted from Phase 2+ forward-stub to Wave 6 first-class default (path-(b) Astro hybrid)
+
+D8 原文锁定 Wave 5 MVP = path-(c) localStorage prototype；path-(a)
+
+- path-(b) 留 Phase 2+。**v0.6 amendment**：path-(b) Astro hybrid
+  endpoint at `apps/site/src/pages/api/notes/[...slug].ts` promoted to
+  **Wave 6 Stage B default**；Stage B 实施期间两个 adapter 共存
+  （LocalStorageAdapter retained as offline fallback；ApiAdapter as
+  primary network-online path consuming the path-(b) endpoint）；
+  Wave 6 Stage B close 后 path-(c) 降级为 fallback-only.
+
+**D8 path-(b) 拒绝理由 retract**: Wave 5 era D8 表 line 358 标记
+path-(b) "❌ NOT 选; 与 Astro static incompat"。这条理由基于 Astro
+4.x 静态-only 假设。Astro 5.x `output:'hybrid'` 原生支持 mixed
+static prerender + on-demand server endpoints，path-(b) 兼容性
+问题已不存在；v0.6 amendment retract path-(b) 拒绝理由 + promote
+为 Wave 6 Stage B 正解。
+
+**path-(a) (separate apps/api package) 保持 Phase 3+ 升级路径**:
+适用于 multi-user collab / separate auth boundary / horizontal scale
+等更高复杂度场景；v0.6 NOT 选；Wave 6 Stage B 不需要 separate apps/api
+package。
+
+### v0.6 D10 — Astro hybrid output 架构调整
+
+Wave 5 era apps/site = Astro `output: 'static'` (默认；纯静态 build)。
+Wave 6 Stage B 要求 `output: 'hybrid'` (per Astro 5.x 命名；mixed
+static + server endpoints) — 大部分页面保持 static prerender，
+`/api/notes/[...slug]` server endpoint 接受 GET (load) + POST (save)。
+
+**Deployment adapter scope**:
+
+- **Dev mode** (`astro dev`): server endpoints 直接 work；filesystem
+  write-back 到 `content/notes/<slug>/index.mdx` 文件；hot-reload
+  picks up changes → static read route 自动同步
+- **Preview mode** (`astro preview` post `astro build`): 需要 Node.js
+  adapter (`@astrojs/node`) standalone 模式；Wave 6 Stage B 加 dev
+  dep + 配置；本地 `pnpm preview` work
+- **Prod deployment** (Cloudflare / Vercel / Netlify / etc.): 需要
+  对应 deployment adapter；**Wave 6 Stage B NOT scope**；Phase 3+
+  user 决定具体 deployment target 后再加 adapter；prod 部署期间
+  fallback to LocalStorageAdapter (offline-only 同设备同步)
+
+### v0.6 D11 — ApiAdapter implementation contract
+
+`packages/editor-shell/src/save-adapter.ts` ApiAdapter 替换 C.4-1
+COMMENT-only forward-stub 为 executable class:
+
+```typescript
+export class ApiAdapter implements NoteSaveAdapter {
+  constructor(
+    public readonly slug: string,
+    public readonly apiBase: string = '/api/notes',
+  ) {}
+
+  async load(): Promise<NoteState | null> {
+    const res = await fetch(`${this.apiBase}/${this.slug}`, { method: 'GET' });
+    if (res.status === 404) return null;
+    if (!res.ok) throw new Error(`load failed: ${res.status}`);
+    return (await res.json()) as NoteState;
+  }
+
+  async save(state: NoteState): Promise<{ ok: boolean; error?: string }> {
+    try {
+      const res = await fetch(`${this.apiBase}/${this.slug}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(state),
+      });
+      if (!res.ok) {
+        return { ok: false, error: `save failed: ${res.status}` };
+      }
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : 'network error' };
+    }
+  }
+}
+```
+
+NoteState shape **unchanged** (mdxSource + tiptapState? + lastModified +
+version)；layoutEpoch field add 仍然 deferred (separate amendment if
+needed per ADR-0019 D3 deferred item #1).
+
+### v0.6 D12 — Server endpoint contract
+
+`apps/site/src/pages/api/notes/[...slug].ts` (Astro file-based API):
+
+- **GET** `/api/notes/<slug>`:
+  - dev: 读 `content/notes/<slug>/index.mdx` + 解析 frontmatter +
+    return `NoteState` JSON
+  - 404 if file 不存在
+- **POST** `/api/notes/<slug>` body: `NoteState` JSON
+  - dev: 写回 `content/notes/<slug>/index.mdx` (preserve frontmatter;
+    overwrite body with `state.mdxSource`)
+  - return `{ ok: true }` on success；500 on file IO error
+
+**No auth at Wave 6 Stage B**；single-user dev/preview only。Phase 3+
+auth boundary (per ADR-0018 line 462 multi-user collaborative path).
+
+### v0.6 D13 — EditorShellMount adapter selection
+
+`apps/site/src/components/EditorShellMount.tsx` switches from
+`LocalStorageAdapter`-only to **ApiAdapter primary + LocalStorageAdapter
+fallback**:
+
+- Try ApiAdapter.load() first
+- On network error / 5xx: fall back to LocalStorageAdapter.load()
+- Save: dual-write (ApiAdapter primary; LocalStorageAdapter as cache)
+  OR ApiAdapter only (simpler; LocalStorage stays as backup snapshot)
+- Wave 6 Stage B 选 ApiAdapter only-write + LocalStorage backup-on-error
+  (simpler reasoning + fallback path defined)
+
+### v0.6 D14 — Wave 6 Stage B PR sequence (5 PRs)
+
+| PR            | Subject                                                                            | Scope                                                                                                                                              |
+| ------------- | ---------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| B.1 (this PR) | ADR-0018 v0.6 amendment                                                            | This document; ADR amendment only; lock architecture before implementation                                                                         |
+| B.2           | apps/site Astro hybrid + server endpoint + filesystem write-back                   | `astro.config.mjs` `output: 'hybrid'` + `@astrojs/node` dev dep + `apps/site/src/pages/api/notes/[...slug].ts` NEW + filesystem read/write helpers |
+| B.3           | ApiAdapter implementation in @skb/editor-shell                                     | `save-adapter.ts` replace COMMENT-only stub with executable class per D11 contract; vitest contract tests; export from `index.ts`                  |
+| B.4           | EditorShellMount.tsx wire to ApiAdapter (primary) + LocalStorageAdapter (fallback) | Per D13; preserve C.4-prelude/C.4-1/C.4-3 affordances unchanged                                                                                    |
+| B.5           | Stage B close + e2e spec verifying full cross-route sync + handoff pack            | Playwright spec: edit → server save → reload `/notes/<slug>` → content reflects edit; Stage B handoff pack; Wave 6 milestone progress              |
+
+### v0.6 D15 — NoteState shape change deferral continued
+
+`layoutEpoch?: number` field add (surfaced at C.4-4 R1; reverted to keep
+ADR-0018 D8 接口冻结) **stays deferred**；NOT folded into v0.6 Stage B
+amendment scope to keep B.1 minimal (ADR amendment + B.2-B.5 implementation
+focus). Future amendment v0.7+ can add field if needed; tracked as
+ADR-0019 D3 deferred item #1.
+
+### v0.6 D16 — Stage B retroactive supersedes Stage A localStorage hydration bridge
+
+Wave 6 Stage A (client-side React island reading localStorage on /notes/<slug>
+read route) was attempted post Wave 5 close 2026-05-07 but ABANDONED
+due to Astro `client:only="react"` hydration timing flake (reviewer
+3/5 stress test fail; hydration data attribute race against Playwright
+assertions). v0.6 Stage B obviates Stage A entirely:
+
+- ApiAdapter writes to MDX file → Astro dev hot-reload picks up → static
+  read route renders updated content ON NEXT NAVIGATION
+- No client-side hydration race (deterministic by construction)
+- Cross-device sync (server is source of truth)
+
+Stage A is recorded as Wave 6 R32 retrospective candidate ("client:only
+React island hydration is non-deterministic for read-route DOM mutation;
+prefer server-side state propagation OR `<script is:inline>` synchronous
+script when client-side bridge truly needed").
 
 ## Acceptance criteria (AC list)
 
@@ -501,9 +721,9 @@ Stage C.3 + Stage C.4 实施 PR 必逐条 cross-reference AC#1-#12 验证 (per A
 ### Neutral / explicit acknowledgements
 
 - Dark mode 推 Phase 2+ (per Q3 plan-challenger candidate; AC#10): cream/橙红主色在 dark 下需要重新设计 NOT simple invert; granularity v0.3.4 Open Q2 已 acknowledged
-- `--row-h: 48px` + `--gap: 14px` 在 design-tokens 而 NOT editor-shell internal = design-tokens 是 single-source per ADR-0003 D6 + ADR-0016 W5-1 + ADR-0017 EDGE_W=2*GAP 数学对应 全 derive 的 root authority
+- `--row-h: 48px` + `--gap: 14px` 在 design-tokens 而 NOT editor-shell internal = design-tokens 是 single-source per ADR-0003 D6 + ADR-0016 W5-1 + ADR-0017 EDGE_W=2\*GAP 数学对应 全 derive 的 root authority
 - localStorage `skb-note:<slug>` key 与 `skb-theme` 不冲突 (前缀显式); design-tokens `STORAGE_KEY = 'skb-theme'` 不动
-- Astro endpoint (路径 b) 不选 = 与 Astro static build 不兼容; Wave 5 + Phase 2+ 都 不 启用 server-mode (per ADR-0001 stack selection Astro static 决策); Phase 2+ apps/api endpoint 走 separate server (not Astro endpoint)
+- ~~Astro endpoint (路径 b) 不选 = 与 Astro static build 不兼容; Wave 5 + Phase 2+ 都 不 启用 server-mode (per ADR-0001 stack selection Astro static 决策); Phase 2+ apps/api endpoint 走 separate server (not Astro endpoint)~~ — **SUPERSEDED by v0.6 amendment** (Wave 6 Stage B selects path-(b) Astro hybrid; Astro 5.x `output:'hybrid'` 原生 mixed static + server endpoints work; ADR-0001 amendment to follow if needed). path-(a) separate apps/api stays Phase 3+ for multi-user collab.
 
 ## Plan-challenger codex absorbtion (locked at lock-time)
 
@@ -511,22 +731,22 @@ per [ADR-0007 D5](ADR-0007-job-function-codex-heavy-execution.md) + [ADR-0011 D2
 
 dispatch: `codex exec --yolo --profile plan-challenger ...` (Pre-A4 ADR-0018 design-lock 4-round style); audit log path: `/tmp/codex-runs/2026-05-04-Pre-A4-plan-challenge.txt` raw + `docs/audits/codex-runs/2026-05-04-Pre-A4-plan-challenge.txt` curated archive.
 
-| # | Challenge | Severity | Verdict | Reason / Locked at |
-|---|---|---|---|---|
-| Q1 | D-list 拆分 D1+D2+D6 是否合并 visual-tokens 单 D-section + D8 与 D1-D7 在同 ADR 是否合理 | medium | **PARTIALLY ABSORBED** | D1-D8 保持独立 (各自可追踪可 ratify); D8 自然形成 "Persist Contract" 独立子段 (`#### Save-path 决策` + `#### NoteSaveAdapter TypeScript interface` + `#### Storage key + version field semantics` + `#### Pre-A4 vs Stage C.4 boundary`) — 视觉与持久化在 D2 审核时分离. Locked at D8 子段结构. |
-| Q2 | OKLCH fallback hex 值 ADR 锁 vs Stage C.3 锁 | high | **ABSORBED** | D1 末尾加 "OKLCH browser fallback" 段; 锁 转换公式 (Culori library `oklchToHex(L,C,H)`) + 生成规则 (build script `pnpm generate:tokens-fallback` 自动 derive `tokens-fallback.css`) + 可执行快照 (snapshot test); Stage C.3 仅按规则 derive 不再解释. Locked at D1 OKLCH browser fallback paragraph. |
-| Q3 | 5 missing kind hue 候选不满足 60° 角距 + a11y 对比度 | high | **ABSORBED** | D3 加 "Hue 选择原则" + relax 60° → 30° + lightness/chroma supplement + WCAG 3:1 contrast + Validation 算法; 5 kind hue 重新 lock: math 280° / pdf 0° / jupyter 90° / nn-viz 325° / agent-flow 180° (lightness/chroma 各异). markdown 默认无横条 + 'Phase 2+ alternate 标识' note. Locked at D3 Hue 选择原则段 + 5 kind 表格. |
-| Q4 | Google Fonts CDN 隐私/CSP/self-host fallback + 字体加载失败 | medium | **ABSORBED** | D2 末尾加 "Privacy / self-host fallback" 段; Google Fonts privacy disclosure + self-host fallback path (apps/site `public/fonts/` woff2 + CSP `font-src` + 5s timeout fall back to system fonts); useAutoRowSpan timeout 强制重测 path. Locked at D2 Privacy 段. |
-| Q5 | b-* selector 命名冲突 (callout vs b-callout) + aref 通用 `<a>` 污染 | medium | **ABSORBED** | D4 末尾加 "`.skb-prose` namespace 隔离" 段; `b-*` 仅 `.skb-prose` 内; `.aref` 限定 prose namespace + 显式 class (NOT 自动); ESLint rule `no-bare-aref-class` 防误用. Locked at D4 namespace 段. |
-| Q6 | Typography 硬编码 vs CSS variables (single-source 违背) | medium | **ABSORBED** | D5 末尾加 "Typography 转 CSS variables" 段; design-tokens 暴露 `--font-size-*` / `--font-weight-*` / `--line-height-*` / `--letter-spacing-*` token + Tailwind preset theme.fontSize 同步. Locked at D5 CSS variables 段. |
-| Q7 | shadow rgba(20,15,10) vs oklch+alpha 决策解释 | low | **PARTIALLY ABSORBED** | D6 决策保留 (rgba 暖色调与 cream 调和); 不补 oklch+alpha 备选注释 (可在 Stage C.3 实施 PR 加注释; ADR 不必). Locked at D6 trailing prose (rationale 已 implicit). |
-| Q8 | 8 light block CSS calibration scope (5+3 vs 5 only) | low | **PARTIALLY ABSORBED** | D7 已明确 5 light + 3 markdown 派生 prose; D7 与 D4 协同 (D7 视觉 CSS + D4 prose customization). 不必修改; reviewer 通过 cross-reference 理解. Locked at D7 prose. |
-| Q9 | NoteSaveAdapter 落点 editor-shell vs mdx-bridge | medium | **ABSORBED** | D8 NoteSaveAdapter 段 锁 `@skb/editor-shell/src/save-adapter.ts` 唯一落点; mdx-bridge 仅做序列化映射 (per ADR-0016 D7); Stage C.4 实施 PR 不允许双签名. Locked at D8 NoteSaveAdapter Adapter 落点 段. |
-| Q10 | tiptapState unknown vs 明确 schema + version readonly 约束 | medium | **ABSORBED** | D8 NoteState 改 `tiptapState?: ReadonlyJSONValue` (cache-only 注释); `version` readonly + 注释 consumer 必 increment before each save() call (Wave 5 MVP consumer-driven; LocalStorageAdapter NOT auto-increment; Phase 2+ ApiAdapter server-validate). Phase 2+ apps/api 乐观锁 conflict detect 路径预留. Locked at D8 NoteState shape. |
-| Q11 | localStorage 5MB cap + Quota/SecurityError silent data-loss | high | **ABSORBED** | D8 LocalStorageAdapter 加 PER_NOTE_MAX_BYTES (2MB) + AGGREGATE_WARN_BYTES (5MB) + load/save Quota/SecurityError 处理 + console.warn + save-disabled UI fallback (editor-shell 控制). Locked at D8 LocalStorageAdapter impl. |
-| Q12 | NoteSaveAdapter Phase 2+ 扩展 (AbortSignal/timeout/progress) 未预留 | medium | **ABSORBED** | D8 NoteSaveAdapter interface 注释 加 Phase 2+ 扩展位 (AbortSignal/timeout/onProgress + subscribe callback for collaborative); v1 接口冻结不动; v2 接口 ADR-0019+ amendment 引入. Locked at D8 interface Phase 2+ 扩展 段. |
-| Q13 | D2 trigger 门槛表 reduce 复核歧义 | low | **PARTIALLY ABSORBED** | Compliance 末尾加 "Pre-A4 D2 trigger 门槛表" — `NoteSaveAdapter 接口落文件 → 直接 row1` + "design-tokens token additions → row1 + row5" 等显式. 不必修改 D2 trigger judgment section 本身. Locked at Compliance trailing 门槛表 note. |
-| Q14 | Modal canvas (Phase 2+ ADR-0019+) token 继承 explicit | low | **PARTIALLY ABSORBED** | Out-of-scope section 末尾加 modal canvas constraint: "Phase 2+ ADR-0019+ modal canvas 必继承 design-tokens (background/shadow/font); 不重复定义新 visual constants". Locked at Out-of-scope trailing note. |
+| #   | Challenge                                                                                | Severity | Verdict                | Reason / Locked at                                                                                                                                                                                                                                                                                                                       |
+| --- | ---------------------------------------------------------------------------------------- | -------- | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Q1  | D-list 拆分 D1+D2+D6 是否合并 visual-tokens 单 D-section + D8 与 D1-D7 在同 ADR 是否合理 | medium   | **PARTIALLY ABSORBED** | D1-D8 保持独立 (各自可追踪可 ratify); D8 自然形成 "Persist Contract" 独立子段 (`#### Save-path 决策` + `#### NoteSaveAdapter TypeScript interface` + `#### Storage key + version field semantics` + `#### Pre-A4 vs Stage C.4 boundary`) — 视觉与持久化在 D2 审核时分离. Locked at D8 子段结构.                                          |
+| Q2  | OKLCH fallback hex 值 ADR 锁 vs Stage C.3 锁                                             | high     | **ABSORBED**           | D1 末尾加 "OKLCH browser fallback" 段; 锁 转换公式 (Culori library `oklchToHex(L,C,H)`) + 生成规则 (build script `pnpm generate:tokens-fallback` 自动 derive `tokens-fallback.css`) + 可执行快照 (snapshot test); Stage C.3 仅按规则 derive 不再解释. Locked at D1 OKLCH browser fallback paragraph.                                     |
+| Q3  | 5 missing kind hue 候选不满足 60° 角距 + a11y 对比度                                     | high     | **ABSORBED**           | D3 加 "Hue 选择原则" + relax 60° → 30° + lightness/chroma supplement + WCAG 3:1 contrast + Validation 算法; 5 kind hue 重新 lock: math 280° / pdf 0° / jupyter 90° / nn-viz 325° / agent-flow 180° (lightness/chroma 各异). markdown 默认无横条 + 'Phase 2+ alternate 标识' note. Locked at D3 Hue 选择原则段 + 5 kind 表格.             |
+| Q4  | Google Fonts CDN 隐私/CSP/self-host fallback + 字体加载失败                              | medium   | **ABSORBED**           | D2 末尾加 "Privacy / self-host fallback" 段; Google Fonts privacy disclosure + self-host fallback path (apps/site `public/fonts/` woff2 + CSP `font-src` + 5s timeout fall back to system fonts); useAutoRowSpan timeout 强制重测 path. Locked at D2 Privacy 段.                                                                         |
+| Q5  | b-\* selector 命名冲突 (callout vs b-callout) + aref 通用 `<a>` 污染                     | medium   | **ABSORBED**           | D4 末尾加 "`.skb-prose` namespace 隔离" 段; `b-*` 仅 `.skb-prose` 内; `.aref` 限定 prose namespace + 显式 class (NOT 自动); ESLint rule `no-bare-aref-class` 防误用. Locked at D4 namespace 段.                                                                                                                                          |
+| Q6  | Typography 硬编码 vs CSS variables (single-source 违背)                                  | medium   | **ABSORBED**           | D5 末尾加 "Typography 转 CSS variables" 段; design-tokens 暴露 `--font-size-*` / `--font-weight-*` / `--line-height-*` / `--letter-spacing-*` token + Tailwind preset theme.fontSize 同步. Locked at D5 CSS variables 段.                                                                                                                |
+| Q7  | shadow rgba(20,15,10) vs oklch+alpha 决策解释                                            | low      | **PARTIALLY ABSORBED** | D6 决策保留 (rgba 暖色调与 cream 调和); 不补 oklch+alpha 备选注释 (可在 Stage C.3 实施 PR 加注释; ADR 不必). Locked at D6 trailing prose (rationale 已 implicit).                                                                                                                                                                        |
+| Q8  | 8 light block CSS calibration scope (5+3 vs 5 only)                                      | low      | **PARTIALLY ABSORBED** | D7 已明确 5 light + 3 markdown 派生 prose; D7 与 D4 协同 (D7 视觉 CSS + D4 prose customization). 不必修改; reviewer 通过 cross-reference 理解. Locked at D7 prose.                                                                                                                                                                       |
+| Q9  | NoteSaveAdapter 落点 editor-shell vs mdx-bridge                                          | medium   | **ABSORBED**           | D8 NoteSaveAdapter 段 锁 `@skb/editor-shell/src/save-adapter.ts` 唯一落点; mdx-bridge 仅做序列化映射 (per ADR-0016 D7); Stage C.4 实施 PR 不允许双签名. Locked at D8 NoteSaveAdapter Adapter 落点 段.                                                                                                                                    |
+| Q10 | tiptapState unknown vs 明确 schema + version readonly 约束                               | medium   | **ABSORBED**           | D8 NoteState 改 `tiptapState?: ReadonlyJSONValue` (cache-only 注释); `version` readonly + 注释 consumer 必 increment before each save() call (Wave 5 MVP consumer-driven; LocalStorageAdapter NOT auto-increment; Phase 2+ ApiAdapter server-validate). Phase 2+ apps/api 乐观锁 conflict detect 路径预留. Locked at D8 NoteState shape. |
+| Q11 | localStorage 5MB cap + Quota/SecurityError silent data-loss                              | high     | **ABSORBED**           | D8 LocalStorageAdapter 加 PER_NOTE_MAX_BYTES (2MB) + AGGREGATE_WARN_BYTES (5MB) + load/save Quota/SecurityError 处理 + console.warn + save-disabled UI fallback (editor-shell 控制). Locked at D8 LocalStorageAdapter impl.                                                                                                              |
+| Q12 | NoteSaveAdapter Phase 2+ 扩展 (AbortSignal/timeout/progress) 未预留                      | medium   | **ABSORBED**           | D8 NoteSaveAdapter interface 注释 加 Phase 2+ 扩展位 (AbortSignal/timeout/onProgress + subscribe callback for collaborative); v1 接口冻结不动; v2 接口 ADR-0019+ amendment 引入. Locked at D8 interface Phase 2+ 扩展 段.                                                                                                                |
+| Q13 | D2 trigger 门槛表 reduce 复核歧义                                                        | low      | **PARTIALLY ABSORBED** | Compliance 末尾加 "Pre-A4 D2 trigger 门槛表" — `NoteSaveAdapter 接口落文件 → 直接 row1` + "design-tokens token additions → row1 + row5" 等显式. 不必修改 D2 trigger judgment section 本身. Locked at Compliance trailing 门槛表 note.                                                                                                    |
+| Q14 | Modal canvas (Phase 2+ ADR-0019+) token 继承 explicit                                    | low      | **PARTIALLY ABSORBED** | Out-of-scope section 末尾加 modal canvas constraint: "Phase 2+ ADR-0019+ modal canvas 必继承 design-tokens (background/shadow/font); 不重复定义新 visual constants". Locked at Out-of-scope trailing note.                                                                                                                               |
 
 **Result**: 14/14 challenges absorbed (3 high + 7 medium + 4 low; codex verdict 3 high + 7 medium + 4 low advisory). 9 ABSORBED + 5 PARTIALLY ABSORBED (Q1/Q7/Q8/Q13/Q14 — Q1 medium PARTIAL D-list 不重组 visual + persist 自然分离 OK; Q7 low rgba 决策保留不补 oklch+alpha 备选; Q8 low D7+D4 协同已明确; Q13 + Q14 low advisory note). Plan v0.1 (initial draft) → **v0.1.1 (post-absorbtion lock; status proposed)**. No challenge rejected.
 
@@ -548,16 +768,16 @@ dispatch: `codex exec --yolo --profile plan-challenger ...` (Pre-A4 ADR-0018 des
 
 - **Pre-A4 D2 trigger 门槛表 (per Q13 absorbtion — 减少 reviewer 复核歧义)**:
 
-| 改动类型 | D2 row 触发 | Stage |
-|---|---|---|
-| ADR-0018 NEW (this PR) | row 4 only | Pre-A4 |
-| ADR-0018 Amendment (v0.X.X) | row 4 only | (任何 Wave 5+ amendment PR) |
-| design-tokens `tokens.css` token additions (14 OKLCH + 1 hex --surface + 3 layout + 3 shadow + 2 font + 8 kind hue + `--accent-success`) | row 1 (design-tokens/CONTRACT.md sync) + row 5 (≥3 packages affected) | Stage C.3 |
-| `tokens-fallback.css` build script + snapshot test | row 1 (design-tokens/CONTRACT.md `## Public surface` adds tokens-fallback.css) | Stage C.3 |
-| Inter + JetBrains Mono Google Fonts preconnect + self-host fallback | row 1 (apps/site/CONTRACT.md sync if added) + row 8 (CSP 改; security touch) | Stage C.3 |
-| 5 light block CSS calibration | row 1 (各 block-*/CONTRACT.md sync if needed) + row 5 (cross 5 block packages) | Stage C.3 (ux-ui-lead subagent) |
-| `@skb/editor-shell/src/save-adapter.ts` (NEW NoteSaveAdapter interface 落文件) | row 1 (editor-shell/CONTRACT.md 同步/扩展 + W5-2 invariant 加 + NoteSaveAdapter public surface section) + row 5 (cross editor-shell + apps/site + mdx-bridge) | Stage C.4 |
-| LocalStorageAdapter impl + apps/site `/notes/[slug]/edit` route | row 1 (editor-shell/CONTRACT.md 同步) + row 5 (cross-package) | Stage C.4 |
+| 改动类型                                                                                                                                 | D2 row 触发                                                                                                                                                   | Stage                           |
+| ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- |
+| ADR-0018 NEW (this PR)                                                                                                                   | row 4 only                                                                                                                                                    | Pre-A4                          |
+| ADR-0018 Amendment (v0.X.X)                                                                                                              | row 4 only                                                                                                                                                    | (任何 Wave 5+ amendment PR)     |
+| design-tokens `tokens.css` token additions (14 OKLCH + 1 hex --surface + 3 layout + 3 shadow + 2 font + 8 kind hue + `--accent-success`) | row 1 (design-tokens/CONTRACT.md sync) + row 5 (≥3 packages affected)                                                                                         | Stage C.3                       |
+| `tokens-fallback.css` build script + snapshot test                                                                                       | row 1 (design-tokens/CONTRACT.md `## Public surface` adds tokens-fallback.css)                                                                                | Stage C.3                       |
+| Inter + JetBrains Mono Google Fonts preconnect + self-host fallback                                                                      | row 1 (apps/site/CONTRACT.md sync if added) + row 8 (CSP 改; security touch)                                                                                  | Stage C.3                       |
+| 5 light block CSS calibration                                                                                                            | row 1 (各 block-\*/CONTRACT.md sync if needed) + row 5 (cross 5 block packages)                                                                               | Stage C.3 (ux-ui-lead subagent) |
+| `@skb/editor-shell/src/save-adapter.ts` (NEW NoteSaveAdapter interface 落文件)                                                           | row 1 (editor-shell/CONTRACT.md 同步/扩展 + W5-2 invariant 加 + NoteSaveAdapter public surface section) + row 5 (cross editor-shell + apps/site + mdx-bridge) | Stage C.4                       |
+| LocalStorageAdapter impl + apps/site `/notes/[slug]/edit` route                                                                          | row 1 (editor-shell/CONTRACT.md 同步) + row 5 (cross-package)                                                                                                 | Stage C.4                       |
 
 - **Modal canvas (Phase 2+ ADR-0019+) token 继承约束 (per Q14 absorbtion)**: ADR-0018 不覆盖 modal canvas drag/drop UX (per ADR-0017 D6 lift 模式 在 inline grid; modal 内独立 surface). 但 modal 视觉必继承 `@skb/design-tokens` 既有 token (background `--bg` cream / shadow rgba(20,15,10) 暖色调 / font `--sans` Inter / radius / row-h / gap / accent / canvas / mark / `--accent-success`); Phase 2+ ADR-0019+ modal canvas ADR 不允许重复定义 visual constants. Modal 内部 UX (e.g., toolbar / inspector) 视觉 token 全 inherit; 仅 layout / interaction logic 在 Phase 2+ ADR scope.
 
