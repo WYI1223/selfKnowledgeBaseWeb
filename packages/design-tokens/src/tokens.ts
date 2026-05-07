@@ -37,5 +37,43 @@ export const tokens = {
   space: spaceVars,
 } as const;
 
+export const colorVarsV2 = {
+  bg: 'var(--bg)',
+  panel: 'var(--panel)',
+  surface: 'var(--surface)',
+  border: 'var(--border)',
+  borderStrong: 'var(--border-strong)',
+  text: 'var(--text)',
+  text2: 'var(--text-2)',
+  text3: 'var(--text-3)',
+  accent: 'var(--accent)',
+  accentSoft: 'var(--accent-soft)',
+  accentSuccess: 'var(--accent-success)',
+  canvas: 'var(--canvas)',
+  canvasSoft: 'var(--canvas-soft)',
+  gridLine: 'var(--grid-line)',
+  gridLineStrong: 'var(--grid-line-strong)',
+} as const;
+
+export const layoutVarsV2 = {
+  rowH: 'var(--row-h)',
+  gap: 'var(--gap)',
+  radius: 'var(--radius)',
+} as const;
+
+export const fontVarsV2 = {
+  sans: 'var(--sans)',
+  mono: 'var(--mono)',
+} as const;
+
+export const tokensV2 = {
+  color: colorVarsV2,
+  layout: layoutVarsV2,
+  font: fontVarsV2,
+} as const;
+
 export type ColorTokenName = keyof typeof colorVars;
 export type SpaceTokenName = keyof typeof spaceVars;
+export type ColorTokenNameV2 = keyof typeof colorVarsV2;
+export type LayoutTokenNameV2 = keyof typeof layoutVarsV2;
+export type FontTokenNameV2 = keyof typeof fontVarsV2;

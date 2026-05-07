@@ -99,6 +99,43 @@ codex-block-generator clones must preserve them.
 - Adding a new theme beyond light/dark (e.g. sepia, high-contrast): requires an ADR; `STORAGE_KEY` value type expands; downstream FOUC scripts must handle the new value.
 - Renaming or removing any exported function/component: contract break — requires an ADR. (Pre-Wave-1 the only such rename was `applyTheme` → `applyThemeDOM` to enforce the persistence-coupled-to-manual-action invariant; package had no external consumers.)
 
+## v2 visual tokens (ADR-0018 D1+D2)
+
+The v2 surface adds 14 OKLCH color tokens: `--bg`, `--panel`, `--border`,
+`--border-strong`, `--text`, `--text-2`, `--text-3`, `--accent`,
+`--accent-soft`, `--accent-success`, `--canvas`, `--canvas-soft`,
+`--grid-line`, and `--grid-line-strong`.
+
+It also adds one hex surface token (`--surface`), three layout tokens
+(`--row-h`, `--gap`, `--radius`), and two font tokens (`--sans`, `--mono`).
+The OKLCH fallback authority is Culori `formatHex(parse(oklchValue))`, pinned
+to `culori@4.0.1` for C.3-1 Option alpha offline derivation.
+
+### Light + dark key-set invariant — Wave 5 light-only carve-out
+
+The v2 OKLCH, layout, and font key set is Wave 5 light-only per ADR-0018 D1
+and AC#10. `tokens-dark.css` must not add silent v2 dark values during Wave 5;
+Phase 2+ dark OKLCH variants require a separate ADR amendment. This carve-out
+does not relax the pre-v2 `--color-*` invariant, which continues to require
+matching light and dark key sets.
+
+### Modifying-this-file rule exception (time-bound, Wave 5 only)
+
+For the v2 OKLCH, font, and layout keys added by C.3-1, the usual "adding a
+new var" sub-rules requiring `tokens-dark.css` value additions and
+`tailwind-preset.cjs` updates are overridden by the Wave 5 light-only
+carve-out. `tokens.css` and `tokens.ts` updates remain mandatory. This
+exception is revoked at Phase 2+ through a separate ADR amendment and is not
+silently extensible to future token additions.
+
+## Inter + JetBrains Mono Google Fonts (ADR-0018 D2)
+
+`apps/site/src/layouts/BaseLayout.astro` owns the Google Fonts resource hints:
+preconnects for `https://fonts.googleapis.com` and `https://fonts.gstatic.com`,
+plus the stylesheet URL for Inter weights 400, 500, 600, 650, 700 and
+JetBrains Mono weights 400, 500, 600. Self-hosted files under
+`apps/site/public/fonts/` are out of scope for C.3-1 and require a separate PR.
+
 ## Related
 
 - [ADR-0003 headless / presentational split](../../docs/decisions/ADR-0003-headless-presentational-split.md) — D6 (manual-only persistence)
