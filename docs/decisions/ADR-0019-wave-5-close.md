@@ -100,7 +100,7 @@ Amendments (cross-cutting):
 Per Stage C.3 + Stage C.4 handoff packs, the following are explicitly deferred:
 
 1. **layoutEpoch sync to NoteState**: ADR-0018 line 464 接口冻结 amendment required. C.4-4 R1 surfaced; reverted out of C.4-4 scope. Tracked as separate ADR-0018 amendment PR.
-2. **ApiAdapter implementation**: C.4-1 shipped COMMENT-only forward-stub; full impl requires `apps/api` server + auth + DB per ADR-0018 D8 path-(a). Phase 2+.
+2. **ApiAdapter implementation**: ✅ promoted to Wave 6 Stage B default per ADR-0018 v0.6 amendment 2026-05-07 (path-(b) Astro hybrid endpoint at `apps/site/src/pages/api/notes/[...slug].ts`; B.1 amendment + B.2 hybrid wire + B.3 ApiAdapter impl + B.4 mount wire + B.5 close). C.4-1 shipped COMMENT-only forward-stub which v0.6 D11 replaces with executable class. Separate `apps/api` package path-(a) stays Phase 3+ for multi-user collab / separate auth boundary.
 3. **Mobile/responsive editor polish**: editor affordances ship desktop-first per C.4-3 minimal-but-functional. Phase 2+.
 4. **a11y / keyboard navigation full audit**: editor shipped minimum a11y. Phase 2+.
 5. **Animation tuning / 60fps perf**: drop-pulse 720ms + drag-ghost shipped at C.2-8; full perf audit Phase 2+ per ADR-0017 D11+.
