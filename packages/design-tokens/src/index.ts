@@ -15,6 +15,7 @@ export {
   layoutVarsV2,
   fontVarsV2,
   accentKindVarsV2,
+  typographyVarsV2,
   tokensV2,
 } from './tokens';
 export type {
@@ -24,4 +25,5 @@ export type {
   LayoutTokenNameV2,
   FontTokenNameV2,
   AccentKindTokenNameV2,
+  TypographyTokenNameV2,
 } from './tokens';

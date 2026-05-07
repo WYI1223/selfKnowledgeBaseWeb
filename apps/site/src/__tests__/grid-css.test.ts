@@ -81,9 +81,11 @@ describe('Astro grid integration', () => {
 
   it('wraps MDX content while keeping the title outside the grid', () => {
     const wrapperIndex = notesRoute.indexOf('<div class="skb-grid">');
+    const proseIndex = notesRoute.indexOf('<div class="skb-prose">');
     const contentIndex = notesRoute.indexOf('<Content components={componentsMap} />');
     expect(wrapperIndex).toBeGreaterThanOrEqual(0);
-    expect(contentIndex).toBeGreaterThan(wrapperIndex);
+    expect(proseIndex).toBeGreaterThan(wrapperIndex);
+    expect(contentIndex).toBeGreaterThan(proseIndex);
     expect(notesRoute.indexOf('{note.data.title}')).toBeLessThan(wrapperIndex);
   });
 });

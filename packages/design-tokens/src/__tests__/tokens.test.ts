@@ -11,6 +11,7 @@ type TokensV2Shape = {
   layout: Record<string, string>;
   font: Record<string, string>;
   accentKind?: Record<string, string>;
+  typography?: Record<string, string>;
 };
 
 const expectedAccentKindVarsV2 = {
@@ -22,6 +23,27 @@ const expectedAccentKindVarsV2 = {
   accentJupyter: 'var(--accent-jupyter)',
   accentNnViz: 'var(--accent-nn-viz)',
   accentAgentFlow: 'var(--accent-agent-flow)',
+} as const;
+
+const expectedTypographyVarsV2 = {
+  fontSizeBody: 'var(--font-size-body)',
+  fontSizeH1: 'var(--font-size-h1)',
+  fontSizeH2: 'var(--font-size-h2)',
+  fontSizeH3: 'var(--font-size-h3)',
+  fontSizeBP: 'var(--font-size-b-p)',
+  fontSizeBCode: 'var(--font-size-b-code)',
+  fontWeightBody: 'var(--font-weight-body)',
+  fontWeightH1: 'var(--font-weight-h1)',
+  fontWeightH2: 'var(--font-weight-h2)',
+  fontWeightH3: 'var(--font-weight-h3)',
+  lineHeightBody: 'var(--line-height-body)',
+  lineHeightH1: 'var(--line-height-h1)',
+  lineHeightH2: 'var(--line-height-h2)',
+  lineHeightH3: 'var(--line-height-h3)',
+  lineHeightBP: 'var(--line-height-b-p)',
+  lineHeightBCode: 'var(--line-height-b-code)',
+  letterSpacingH1: 'var(--letter-spacing-h1)',
+  letterSpacingH2: 'var(--letter-spacing-h2)',
 } as const;
 
 const expectedBaseFallbacks: Record<string, string> = {
@@ -128,6 +150,11 @@ describe('design-tokens public API', () => {
   it('exposes 8 v2 block-kind hue tokens', () => {
     expect(getTokensV2().accentKind).toEqual(expectedAccentKindVarsV2);
     expect(Object.keys(getTokensV2().accentKind ?? {})).toHaveLength(8);
+  });
+
+  it('exposes 18 v2 typography tokens', () => {
+    expect(getTokensV2().typography).toEqual(expectedTypographyVarsV2);
+    expect(Object.keys(getTokensV2().typography ?? {})).toHaveLength(18);
   });
 
   it('OKLCH→hex fallback covers all 8 v2 block-kind hues', () => {
