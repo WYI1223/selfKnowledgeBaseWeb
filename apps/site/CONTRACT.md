@@ -124,16 +124,26 @@
   design-tokens `skb-theme` key.
 - See sister-doc:
   [packages/editor-shell/CONTRACT.md § NoteSaveAdapter (Wave 5; contract hardened at C.4-1)](../../packages/editor-shell/CONTRACT.md).
-- Block registry: `registerBlocks` from `@skb/editor-shell` registers all 8
-  Wave 2 block definitions. The 3 heavy blocks render the ADR-0014 v0.4
-  plugin-placeholder tier, so the C.4-prelude mount may register them without
-  loading real heavy runtimes.
+- Block registry: C.4-2 verified that `EditorShellMount.tsx` constructs a
+  route-local `BlockRegistry` and calls `registerBlocks` from
+  `@skb/editor-shell`, whose helper registers all 8 Wave 2 block definitions
+  (5 light blocks plus the 3 heavy plugin-placeholder blocks). The 3 heavy
+  blocks render the ADR-0014 v0.4 plugin-placeholder tier, so the MVP edit
+  mount may register them without loading real heavy runtimes.
+- Kernel registry boundary: C.4-2 verifies the route consumes the
+  `@skb/editor-shell` MVP registry surface after C.4-prelude. The upstream
+  `registerKernels` helper remains the `KernelRegistry` wire point; the edit
+  route does not eagerly start a kernel or add a route-local execution surface
+  until a user insertion/execution affordance exists.
 - Save trigger: the island uses an 800ms `setTimeout` debounce around
-  `saveToMdx` and `LocalStorageAdapter.save()`. `layoutEpoch` synchronization
+  `saveToMdx` and `LocalStorageAdapter.save()`, and increments the persisted
+  note version per ADR-0018 D8 before each save. `layoutEpoch` synchronization
   is deferred to C.4-4 per Wave 5 plan v1.2.
-- Forward pointer: full UI assembly and e2e coverage land across C.4-1 through
-  C.4-5; v2 visual identity lands at Stage C.3. ADR-0018 D8 remains the
-  save-path interface freeze for this route.
+- Forward pointer: C.4-3 owns palette / slash / drag-handle / toolbar assembly
+  and the explicit drag interaction verification for the ADR-0017 drag UX
+  modules. Full UI assembly and e2e coverage land across C.4-1 through C.4-5;
+  v2 visual identity lands at Stage C.3. ADR-0018 D8 remains the save-path
+  interface freeze for this route.
 
 ## Invariants
 
