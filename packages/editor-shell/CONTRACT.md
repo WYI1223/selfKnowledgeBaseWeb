@@ -65,20 +65,24 @@ editor surface. Closes the "editor-shell composition" deferral from
 - `ViewportCols` and `UseResponsiveColsOptions` — public types for the
   responsive viewport hook and `GridContainerProps.viewportCols` handoff.
 
-### NoteSaveAdapter (Wave 5; MVP shipped at C.4-prelude)
+### NoteSaveAdapter (Wave 5; contract hardened at C.4-1)
 
 ADR-0018 D8 lines 339-451 are the canonical interface authority for the
-C.4-prelude save-path public surface:
+C.4 save-path public surface:
 [ADR-0018 D8](../../docs/decisions/ADR-0018-v2-visual-migration.md).
 
-Public exports added by the MVP scaffold:
+Public exports:
 
-- `NoteSaveAdapter` — interface exposing `slug`, `load()`, and `save(state)`.
+- `NoteSaveAdapter` — stable interface exposing `slug`, `load()`, and
+  `save(state)`. Implementations selected by consumers MUST resolve
+  `load()` to a `NoteState` or `null`, and MUST return
+  `{ ok: false, error }` for expected save failures instead of throwing.
 - `NoteState` — interface carrying `mdxSource`, optional `tiptapState`,
   `lastModified`, and consumer-incremented `version`.
 - `ReadonlyJSONValue` — recursive read-only JSON value type for optional
   same-session Tiptap cache data.
-- `LocalStorageAdapter` — Wave 5 MVP implementation of `NoteSaveAdapter`.
+- `LocalStorageAdapter` — Wave 5 MVP implementation of `NoteSaveAdapter`
+  preserved from C.4-prelude.
 
 Storage semantics:
 
@@ -93,9 +97,14 @@ Storage semantics:
   with a warning. `QuotaExceededError` and `SecurityError` during save return
   `{ ok: false, error }`.
 
-**C.4-1 hardens this contract** (W5-2 invariant promotion + adapter contract
-test suite per Wave 5 plan v1.2 Q3 ownership boundary). C.4-prelude only ships
-MVP impl + this minimal doc forward-pointer.
+Phase 2+ API persistence is intentionally comment-only at C.4-1:
+`save-adapter.ts` contains a TODO forward pointer for an `ApiAdapter`
+implementing `NoteSaveAdapter` for `/api/notes`, but MUST NOT export or define
+an executable `ApiAdapter` class, interface, function, const, or import.
+
+**C.4-1 hardens this contract** with adapter contract tests and the
+comment-only ApiAdapter forward stub. It does not change the
+`LocalStorageAdapter` implementation.
 
 The component does NOT include a `'use client'` pragma — consumers (Stage C
 apps/site) decide the client/server boundary at integration time.
@@ -108,9 +117,10 @@ from grid container / resize from handle / `useAutoRowSpan` auto-measure /
 responsive transition / undo-redo / mdx-load) 必经过此 reducer; 冲突仲裁规则 per
 ADR-0016 D12 + 权威矩阵 section. CRDT/OT 协同编辑 OUT OF SCOPE (Phase 2+);
 editor-shell `layoutEpoch` 是 single-source ordering, NOT 分布式 vector clock.
-**C.2-4 forward-pointer only**: `layoutReducer` + `layoutEpoch` impl 落地 C.2-8
-(per Wave 5 plan v1.1 row C.2-8); 此 PR 仅 lock invariant prose +
-`GridContainer` thin wrapper + `useAutoRowSpan` hook public surface.
+`layoutReducer` + `layoutEpoch` implementation shipped at C.2-8. C.4-1 keeps
+the note-save adapter public surface aligned with this single-source mutation
+model: persistence adapters save/load note state at the route boundary, while
+grid block position mutation remains owned by the reducer.
 
 `GridContainer` public surface:
 

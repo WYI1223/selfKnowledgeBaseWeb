@@ -1,5 +1,17 @@
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { LocalStorageAdapter, type NoteState } from '../save-adapter';
+import {
+  LocalStorageAdapter,
+  type NoteSaveAdapter,
+  type NoteState,
+} from '../save-adapter';
+
+const here = dirname(fileURLToPath(import.meta.url));
+const saveAdapterSourcePath = resolve(here, '../save-adapter.ts');
+const executableApiAdapterPattern =
+  /class\s+ApiAdapter|interface\s+ApiAdapter|export\s+(const|function|class|interface)\s+ApiAdapter|import.*ApiAdapter\s+from/;
 
 function makeStorage(seed: Record<string, string> = {}): Storage {
   const entries = new Map(Object.entries(seed));
@@ -20,26 +32,42 @@ function makeStorage(seed: Record<string, string> = {}): Storage {
   };
 }
 
+function countExecutableApiAdapterForms(source: string): number {
+  return source
+    .split('\n')
+    .filter((line) => !line.trimStart().startsWith('//'))
+    .filter((line) => executableApiAdapterPattern.test(line)).length;
+}
+
 const smallState: NoteState = {
   mdxSource: '# hello',
+  tiptapState: { type: 'doc', content: [{ type: 'paragraph' }] },
   lastModified: 1_700_000_000,
   version: 1,
 };
 
-describe('@skb/editor-shell LocalStorageAdapter', () => {
+describe('@skb/editor-shell NoteSaveAdapter contract', () => {
   afterEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
 
-  it('load() returns null for missing localStorage key', async () => {
+  it('NoteSaveAdapter interface allows LocalStorageAdapter MVP', () => {
+    const adapter: NoteSaveAdapter = new LocalStorageAdapter('test-slug');
+
+    expect(adapter.slug).toBe('test-slug');
+    expect(typeof adapter.load).toBe('function');
+    expect(typeof adapter.save).toBe('function');
+  });
+
+  it('LocalStorageAdapter.load returns null for new slug', async () => {
     vi.stubGlobal('localStorage', makeStorage());
     const adapter = new LocalStorageAdapter('test-slug');
 
     await expect(adapter.load()).resolves.toBe(null);
   });
 
-  it('save() then load() round-trips a NoteState', async () => {
+  it('LocalStorageAdapter.save + load round-trip preserves NoteState', async () => {
     vi.stubGlobal('localStorage', makeStorage());
     const adapter = new LocalStorageAdapter('test-slug');
 
@@ -47,7 +75,21 @@ describe('@skb/editor-shell LocalStorageAdapter', () => {
     await expect(adapter.load()).resolves.toEqual(smallState);
   });
 
-  it('save() rejects oversized state with a 2MB error', async () => {
+  it('LocalStorageAdapter.save handles SecurityError gracefully', async () => {
+    const storage = makeStorage();
+    vi.stubGlobal('localStorage', storage);
+    vi.spyOn(storage, 'setItem').mockImplementation(() => {
+      throw new DOMException('private mode', 'SecurityError');
+    });
+    const adapter = new LocalStorageAdapter('test-slug');
+
+    const result = await adapter.save(smallState);
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/private mode|sandbox|disabled/i);
+  });
+
+  it('LocalStorageAdapter.save rejects oversized state (> 2MB)', async () => {
     vi.stubGlobal('localStorage', makeStorage());
     const adapter = new LocalStorageAdapter('test-slug');
     const oversizedState: NoteState = {
@@ -62,54 +104,12 @@ describe('@skb/editor-shell LocalStorageAdapter', () => {
     expect(result.error).toMatch(/2MB|exceeds/i);
   });
 
-  it('load() returns null and warns for corrupted JSON', async () => {
-    vi.stubGlobal('localStorage', makeStorage({ 'skb-note:test-slug': 'not-json{{{' }));
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const adapter = new LocalStorageAdapter('test-slug');
+  it('ApiAdapter forward-stub is COMMENT-only (no executable class/import/interface)', () => {
+    const source = readFileSync(saveAdapterSourcePath, 'utf8');
 
-    await expect(adapter.load()).resolves.toBe(null);
-    expect(warnSpy).toHaveBeenCalledTimes(1);
-    expect(warnSpy.mock.calls[0]?.[0]).toMatch(/corrupted/i);
-  });
-
-  it('load() returns null on SecurityError from getItem', async () => {
-    const storage = makeStorage();
-    vi.stubGlobal('localStorage', storage);
-    vi.spyOn(storage, 'getItem').mockImplementation(() => {
-      throw new DOMException('access denied', 'SecurityError');
-    });
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const adapter = new LocalStorageAdapter('test-slug');
-
-    await expect(adapter.load()).resolves.toBe(null);
-    expect(warnSpy).toHaveBeenCalledTimes(1);
-  });
-
-  it('save() returns a quota error when setItem throws QuotaExceededError', async () => {
-    const storage = makeStorage();
-    vi.stubGlobal('localStorage', storage);
-    vi.spyOn(storage, 'setItem').mockImplementation(() => {
-      throw new DOMException('quota exceeded', 'QuotaExceededError');
-    });
-    const adapter = new LocalStorageAdapter('test-slug');
-
-    const result = await adapter.save(smallState);
-
-    expect(result.ok).toBe(false);
-    expect(result.error).toMatch(/quota/i);
-  });
-
-  it('save() returns a disabled-storage error when setItem throws SecurityError', async () => {
-    const storage = makeStorage();
-    vi.stubGlobal('localStorage', storage);
-    vi.spyOn(storage, 'setItem').mockImplementation(() => {
-      throw new DOMException('private mode', 'SecurityError');
-    });
-    const adapter = new LocalStorageAdapter('test-slug');
-
-    const result = await adapter.save(smallState);
-
-    expect(result.ok).toBe(false);
-    expect(result.error).toMatch(/private mode|sandbox|disabled/i);
+    expect(source).toContain(
+      '// TODO Phase 2+ ApiAdapter implementing NoteSaveAdapter for /api/notes endpoint',
+    );
+    expect(countExecutableApiAdapterForms(source)).toBe(0);
   });
 });

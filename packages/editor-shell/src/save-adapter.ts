@@ -2,7 +2,8 @@
  * Note persistence adapter for the Wave 5 editor scaffold.
  *
  * ADR-0018 D8 lines 339-451 are the canonical interface authority.
- * C.4-prelude ships the MVP LocalStorageAdapter only.
+ * C.4-1 hardens the public contract while preserving the C.4-prelude
+ * LocalStorageAdapter implementation.
  */
 
 /** Read-only JSON-serializable value for optional same-session Tiptap cache data. */
@@ -15,24 +16,32 @@ export type ReadonlyJSONValue =
   | { readonly [key: string]: ReadonlyJSONValue };
 
 export interface NoteState {
-  /** Raw MDX source persisted for mdx-bridge round trips. */
+  /** Canonical MDX source persisted for mdx-bridge round trips. */
   readonly mdxSource: string;
-  /** Optional Tiptap state cache. Not a stable cross-client schema. */
+  /** Optional same-session Tiptap JSON cache. Not a stable cross-client schema. */
   readonly tiptapState?: ReadonlyJSONValue;
-  /** Last-modified timestamp in milliseconds. */
+  /** Consumer-supplied last-modified Unix timestamp in milliseconds. */
   readonly lastModified: number;
-  /** Consumer-incremented monotonic version. LocalStorageAdapter does not increment. */
+  /** Consumer-incremented monotonic version; adapters persist but do not increment. */
   readonly version: number;
 }
 
+/**
+ * Stable save/load boundary for note edit routes.
+ *
+ * Implementations are selected by consumers. `load()` resolves to the latest
+ * persisted NoteState or null when no state is present. `save()` never throws
+ * for expected storage failures; it resolves `{ ok: false, error }` with an
+ * operator-readable error instead.
+ */
 export interface NoteSaveAdapter {
-  /** Note slug for /notes/<slug>. */
+  /** Route slug for /notes/<slug> used as the persistence key suffix. */
   readonly slug: string;
 
-  /** Load NoteState from persistence; null means no saved state. */
+  /** Load persisted NoteState; null means the slug has no saved state. */
   load(): Promise<NoteState | null>;
 
-  /** Save NoteState to persistence; returns ok false with a displayable error on failure. */
+  /** Persist NoteState; expected storage failures return ok false plus error. */
   save(state: NoteState): Promise<{ ok: boolean; error?: string }>;
 
   // Phase 2+ extensions (per Q12 absorbtion — Phase 2+ 兼容位预留):
@@ -117,9 +126,16 @@ export class LocalStorageAdapter implements NoteSaveAdapter {
   }
 }
 
-// Phase 2+ impl (NOT Wave 5 scope; placeholder forward-pointer)
-// export class ApiAdapter implements NoteSaveAdapter {
-//   constructor(public readonly slug: string, public readonly apiBase: string, public readonly authToken: string) {}
-//   async load() { return await fetch(`${apiBase}/v1/notes/${slug}`, ...) ... }
-//   async save(state, options?: { signal?, timeout?, onProgress? }) { POST /v1/notes/${slug} with retry }
+// TODO Phase 2+ ApiAdapter implementing NoteSaveAdapter for /api/notes endpoint
+// Phase 2+ import scaffold (commented; no runtime import):
+// import { ApiAdapter } /* from './api-adapter' */;
+// Phase 2+ class scaffold (commented; no executable class/interface):
+// export class /* ApiAdapter */ implements NoteSaveAdapter {
+//   constructor(
+//     public readonly slug: string,
+//     public readonly apiBase: string,
+//     public readonly authToken: string,
+//   ) {}
+//   async load() { /* fetch /api/notes/{slug}; return NoteState | null */ }
+//   async save(state) { /* POST /api/notes/{slug}; return { ok, error? } */ }
 // }
