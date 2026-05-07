@@ -77,11 +77,33 @@ export const accentKindVarsV2 = {
   accentAgentFlow: 'var(--accent-agent-flow)',
 } as const;
 
+export const typographyVarsV2 = {
+  fontSizeBody: 'var(--font-size-body)',
+  fontSizeH1: 'var(--font-size-h1)',
+  fontSizeH2: 'var(--font-size-h2)',
+  fontSizeH3: 'var(--font-size-h3)',
+  fontSizeBP: 'var(--font-size-b-p)',
+  fontSizeBCode: 'var(--font-size-b-code)',
+  fontWeightBody: 'var(--font-weight-body)',
+  fontWeightH1: 'var(--font-weight-h1)',
+  fontWeightH2: 'var(--font-weight-h2)',
+  fontWeightH3: 'var(--font-weight-h3)',
+  lineHeightBody: 'var(--line-height-body)',
+  lineHeightH1: 'var(--line-height-h1)',
+  lineHeightH2: 'var(--line-height-h2)',
+  lineHeightH3: 'var(--line-height-h3)',
+  lineHeightBP: 'var(--line-height-b-p)',
+  lineHeightBCode: 'var(--line-height-b-code)',
+  letterSpacingH1: 'var(--letter-spacing-h1)',
+  letterSpacingH2: 'var(--letter-spacing-h2)',
+} as const;
+
 export const tokensV2 = {
   color: colorVarsV2,
   layout: layoutVarsV2,
   font: fontVarsV2,
   accentKind: accentKindVarsV2,
+  typography: typographyVarsV2,
 } as const;
 
 export type ColorTokenName = keyof typeof colorVars;
@@ -90,3 +112,4 @@ export type ColorTokenNameV2 = keyof typeof colorVarsV2;
 export type LayoutTokenNameV2 = keyof typeof layoutVarsV2;
 export type FontTokenNameV2 = keyof typeof fontVarsV2;
 export type AccentKindTokenNameV2 = keyof typeof accentKindVarsV2;
+export type TypographyTokenNameV2 = keyof typeof typographyVarsV2;

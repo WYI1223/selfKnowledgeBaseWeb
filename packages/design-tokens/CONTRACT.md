@@ -123,6 +123,21 @@ These tokens follow the Wave 5 light-only carve-out: `tokens-dark.css` MUST NOT
 add dark overrides for `--accent-<kind>` during Wave 5. Phase 2+ dark OKLCH
 variants require a separate ADR amendment.
 
+### Typography tokens (ADR-0018 D5)
+
+C.3-3 adds eighteen light-theme typography tokens: `--font-size-body`,
+`--font-size-h1`, `--font-size-h2`, `--font-size-h3`, `--font-size-b-p`,
+`--font-size-b-code`, `--font-weight-body`, `--font-weight-h1`,
+`--font-weight-h2`, `--font-weight-h3`, `--line-height-body`,
+`--line-height-h1`, `--line-height-h2`, `--line-height-h3`,
+`--line-height-b-p`, `--line-height-b-code`, `--letter-spacing-h1`, and
+`--letter-spacing-h2`.
+
+These tokens are additive v2 visual tokens and follow the Wave 5 light-only
+carve-out: `tokens-dark.css` MUST NOT add silent dark overrides for them during
+Wave 5. Consumers must use these CSS variables rather than hardcoded prose
+typography values.
+
 ### Light + dark key-set invariant — Wave 5 light-only carve-out
 
 The v2 OKLCH, layout, and font key set is Wave 5 light-only per ADR-0018 D1
