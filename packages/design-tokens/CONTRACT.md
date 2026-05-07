@@ -111,6 +111,18 @@ It also adds one hex surface token (`--surface`), three layout tokens
 The OKLCH fallback authority is Culori `formatHex(parse(oklchValue))`, pinned
 to `culori@4.0.1` for C.3-1 Option alpha offline derivation.
 
+### Block kind hue tokens (ADR-0018 D3)
+
+C.3-2 adds eight light-theme kind hue tokens for top-stripe visual
+identification: `--accent-canvas`, `--accent-runnable`, `--accent-image`,
+`--accent-math`, `--accent-pdf`, `--accent-jupyter`, `--accent-nn-viz`, and
+`--accent-agent-flow`. `--accent-canvas` is value-equivalent to `--canvas` but
+keeps the kind-hue token family consistently namespaced.
+
+These tokens follow the Wave 5 light-only carve-out: `tokens-dark.css` MUST NOT
+add dark overrides for `--accent-<kind>` during Wave 5. Phase 2+ dark OKLCH
+variants require a separate ADR amendment.
+
 ### Light + dark key-set invariant — Wave 5 light-only carve-out
 
 The v2 OKLCH, layout, and font key set is Wave 5 light-only per ADR-0018 D1
