@@ -5,12 +5,19 @@
 > `100f1dc`; B.3 ApiAdapter at `6e88cb4`; this is B.4. Switches the
 > `/notes/<slug>/edit` mount from LocalStorageAdapter-only to
 > **ApiAdapter primary + LocalStorageAdapter fallback** per
-> ADR-0018 v0.6 D13. After this PR the user-reported "/notes/<slug>
-> and /notes/<slug>/edit don't sync" gap is functionally closed:
-> saves write to `content/notes/<slug>/index.mdx` + sibling
-> `state.json` via the path-(b) endpoint; the read route picks up
-> the updated MDX body on next visit. B.5 closes Stage B with the
-> full edit→save→reload-read-route Playwright spec + handoff pack.
+> ADR-0018 v0.6 D13. After this PR the editor half of the
+> user-reported "/notes/<slug> and /notes/<slug>/edit don't sync"
+> gap is closed: saves write to `content/notes/<slug>/index.mdx`
+> together with the sibling `state.json` via the path-(b) endpoint,
+> and reloading the edit route loads the persisted state via
+> ApiAdapter GET. **The read route `/notes/<slug>` does NOT
+> auto-rebuild after a save in `astro build && preview` mode**
+> (static-build caveat surfaced at B.5 R5; the user's original
+> report was against `astro dev` HMR which closes the gap;
+> production read-route freshness is a Phase 3+ path-(a) `apps/api`
+> SSR concern). B.5 closes Stage B with the edit-route
+> persistence-cycle Playwright spec and a handoff pack documenting
+> the static-build caveat.
 
 ## title
 
@@ -115,19 +122,19 @@ the ADR-0011 D9.1 path pattern `apps/site/src/components/**`.
 ## e2e_smoke
 
 - flow: `/notes/<slug>/edit` mount loads via ApiAdapter GET
-    primary; user edit triggers 800ms debounce that POSTs the
-    NoteState body to the path-(b) endpoint
+  primary; user edit triggers 800ms debounce that POSTs the
+  NoteState body to the path-(b) endpoint
   target_url: /notes/sample-mdx-note/edit
   playwright_spec: apps/site/playwright/edit-mount-api-wire.spec.ts:"EditorShellMount issues GET + POST against /api/notes/<slug> via ApiAdapter primary"
   screenshot_archive: docs/audits/screenshots/wave-6-stage-b-4-edit-mount-wire.png
   assertions:
-    - .ProseMirror editor is visible within 10s of page load
-    - GET /api/notes/sample-mdx-note is observed by route interceptor before editor visible
-    - typing in the editor triggers a POST /api/notes/sample-mdx-note within 5s (covers the 800ms debounce + headroom)
-    - POST body has typeof mdxSource === 'string'
-    - POST body has typeof lastModified === 'number'
-    - POST body has typeof version === 'number'
-    - screenshot saved to docs/audits/screenshots/wave-6-stage-b-4-edit-mount-wire.png with size ≥ 5KB
+  - .ProseMirror editor is visible within 10s of page load
+  - GET /api/notes/sample-mdx-note is observed by route interceptor before editor visible
+  - typing in the editor triggers a POST /api/notes/sample-mdx-note within 5s (covers the 800ms debounce + headroom)
+  - POST body has typeof mdxSource === 'string'
+  - POST body has typeof lastModified === 'number'
+  - POST body has typeof version === 'number'
+  - screenshot saved to docs/audits/screenshots/wave-6-stage-b-4-edit-mount-wire.png with size ≥ 5KB
 
 ## decision-log
 
@@ -171,9 +178,15 @@ The B.3 spec carved out POST coverage to vitest because POSTing to
 `sample-mdx-note` would mutate the fixture. B.4 is at the mount
 level so route interception is natural: stub the POST with
 `{ ok: true }` to verify the wire issues a POST without persisting
-it. The full edit→save→reload-read-route flow (which DOES need a
-real filesystem write to verify the read route reflects the save)
-lands at B.5 against a dedicated test fixture.
+it. The B.5 close-ceremony spec performs the real filesystem write
+against a dedicated `__test_smoke__/b5-roundtrip` fixture to prove
+the edit-route persistence cycle (edit → ApiAdapter POST →
+filesystem write → edit-route reload via ApiAdapter GET).
+**Read-route freshness against API saves is a static-build caveat
+deferred to Phase 3+ path-(a) per the Stage B handoff pack — the
+B.5 spec does NOT assert /notes/<slug> reflects the save on next
+visit because `astro build && preview` does not auto-rebuild
+prerendered pages.**
 
 ### Decision 5 — Editor-shell CONTRACT.md unchanged
 
@@ -254,7 +267,7 @@ pnpm --filter @skb/site test:visual 2>&1 | tail -3
 
 ## Out-of-scope
 
-- **B.5**: Stage B close + edit→save→reload-read-route flow against
+- **B.5**: Stage B close + edit-route persistence-cycle (edit → POST → filesystem → reload edit route via ApiAdapter GET) against
   a dedicated test fixture + handoff pack.
 - **Multi-user auth boundary** (Phase 3+ path-(a) `apps/api`).
 - **AbortSignal / timeout / progress** save options: Phase 2+ ADR

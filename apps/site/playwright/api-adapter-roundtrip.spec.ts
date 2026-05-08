@@ -30,7 +30,12 @@ const SCREENSHOT_PATH = resolve(
  * lives in:
  *   - packages/editor-shell/src/__tests__/api-adapter.test.ts (mocked fetch)
  *   - apps/site/src/pages/api/notes/__tests__/notes-endpoint.test.ts (mocked fs)
- * Full edit→save→reload-read-route Playwright coverage lands at B.5 close.
+ * The B.5 close-ceremony Playwright spec covers the edit-route
+ * persistence cycle (edit → ApiAdapter POST → filesystem write →
+ * edit-route reload via ApiAdapter GET). Read-route freshness against
+ * API saves is a static-build caveat deferred to Phase 3+ path-(a)
+ * per the Stage B handoff pack — the user-reported gap closes in
+ * `astro dev` (HMR) which was the workflow that motivated the report.
  */
 
 test('ApiAdapter GET against /api/notes/sample-mdx-note returns NoteState shape', async ({
@@ -63,9 +68,7 @@ test('ApiAdapter GET against missing slug returns 404 with JSON error envelope',
   expect(typeof body.error).toBe('string');
 });
 
-test('read-route /notes/sample-mdx-note still renders the persisted MDX body', async ({
-  page,
-}) => {
+test('read-route /notes/sample-mdx-note still renders the persisted MDX body', async ({ page }) => {
   const response = await page.goto('/notes/sample-mdx-note');
   expect(response?.status()).toBe(200);
 

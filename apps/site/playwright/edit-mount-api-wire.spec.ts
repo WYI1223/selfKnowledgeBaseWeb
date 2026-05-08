@@ -17,9 +17,12 @@ import { expect, test } from '@playwright/test';
  *   - assert a POST is dispatched after the 800ms debounce when the user
  *     edits, with a NoteState body matching the freeze in ADR-0018 D8
  *
- * Full edit→save→reload-read-route Playwright flow lands at B.5 (Stage B
- * close) — that one needs to commit the actual save against a dedicated
- * test fixture so we can verify the read route reflects it.
+ * The B.5 close-ceremony Playwright spec performs a real filesystem
+ * write against a dedicated `__test_smoke__/b5-roundtrip` fixture to
+ * verify the edit-route persistence cycle (edit → ApiAdapter POST →
+ * filesystem write → edit-route reload via ApiAdapter GET). Read-route
+ * freshness against API saves is a static-build caveat deferred to
+ * Phase 3+ path-(a) per the Stage B handoff pack.
  */
 
 const SCREENSHOT_PATH = resolve(
@@ -66,9 +69,7 @@ test('EditorShellMount issues GET + POST against /api/notes/<slug> via ApiAdapte
   // Wait for the GET load to complete — the ready/load chain in
   // EditorShellMount.tsx fires on mount before the editor becomes
   // visible, so by this point the GET has already been observed.
-  await expect
-    .poll(() => apiCalls.some((c) => c.method === 'GET'), { timeout: 10_000 })
-    .toBe(true);
+  await expect.poll(() => apiCalls.some((c) => c.method === 'GET'), { timeout: 10_000 }).toBe(true);
   const getCall = apiCalls.find((c) => c.method === 'GET');
   expect(getCall?.url).toContain('/api/notes/sample-mdx-note');
 
