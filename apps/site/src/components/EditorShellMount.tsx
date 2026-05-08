@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { BlockRegistry } from '@skb/block-foundation';
 import {
+  ApiAdapter,
   DragHandle,
   EditModeBanner,
   EditorShell,
   GridContainer,
   LocalStorageAdapter,
+  type NoteState,
   Palette,
   SaveIndicator,
   SlashMenu,
@@ -26,12 +28,56 @@ export interface EditorShellMountProps {
 
 type EditorInstance = Parameters<NonNullable<EditorShellProps['onCreate']>>[0];
 
+/**
+ * Wave 6 Stage B.4 adapter selection per ADR-0018 v0.6 D13:
+ *   load: ApiAdapter primary; on throw OR null result → LocalStorageAdapter fallback
+ *   save: ApiAdapter primary; on { ok: false } → LocalStorageAdapter backup write
+ *
+ * The primary path makes the server file at content/notes/<slug>/index.mdx
+ * the source of truth (closes the user-reported "/notes/<slug> and
+ * /notes/<slug>/edit don't sync" gap). LocalStorageAdapter is retained for
+ * offline degraded-mode editing — load() returns null when the API is
+ * unreachable; save() falls through to localStorage so unsaved edits are not
+ * lost across a network blip.
+ */
+async function loadWithFallback(
+  primary: ApiAdapter,
+  fallback: LocalStorageAdapter,
+): Promise<NoteState | null> {
+  try {
+    const apiState = await primary.load();
+    if (apiState !== null) return apiState;
+  } catch {
+    // network / 5xx — fall through to LocalStorageAdapter
+  }
+  try {
+    return await fallback.load();
+  } catch {
+    return null;
+  }
+}
+
+async function saveWithBackup(
+  primary: ApiAdapter,
+  fallback: LocalStorageAdapter,
+  state: NoteState,
+): Promise<{ ok: boolean; error?: string }> {
+  const apiResult = await primary.save(state);
+  if (apiResult.ok) return apiResult;
+  // ApiAdapter failed → write to LocalStorageAdapter as backup so the
+  // user's edit survives the next page load even when the server path is
+  // degraded. The user-visible verdict still reflects the API failure.
+  void fallback.save(state).catch(() => undefined);
+  return apiResult;
+}
+
 export function EditorShellMount({
   slug,
   initialMdx = '',
   editMode = false,
 }: EditorShellMountProps) {
-  const adapterRef = useRef<LocalStorageAdapter | null>(null);
+  const apiAdapterRef = useRef<ApiAdapter | null>(null);
+  const localAdapterRef = useRef<LocalStorageAdapter | null>(null);
   const registryRef = useRef<BlockRegistry | null>(null);
   const wireRef = useRef<ReturnType<typeof wireRegistry> | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -42,8 +88,11 @@ export function EditorShellMount({
   const [saveStatus, setSaveStatus] = useState<SaveIndicatorStatus>('idle');
   const [savedAt, setSavedAt] = useState<Date | null>(null);
 
-  if (adapterRef.current === null || adapterRef.current.slug !== slug) {
-    adapterRef.current = new LocalStorageAdapter(slug);
+  if (apiAdapterRef.current === null || apiAdapterRef.current.slug !== slug) {
+    apiAdapterRef.current = new ApiAdapter(slug);
+  }
+  if (localAdapterRef.current === null || localAdapterRef.current.slug !== slug) {
+    localAdapterRef.current = new LocalStorageAdapter(slug);
   }
 
   if (registryRef.current === null) {
@@ -53,24 +102,23 @@ export function EditorShellMount({
     wireRef.current = wireRegistry({ blockRegistry: registry });
   }
 
-  const adapter = adapterRef.current;
+  const apiAdapter = apiAdapterRef.current;
+  const localAdapter = localAdapterRef.current;
   const wire = wireRef.current ?? wireRegistry({});
 
   useEffect(() => {
     let cancelled = false;
 
-    void adapter.load()
-      .catch(() => null)
-      .then(() => {
-        if (!cancelled) setReady(true);
-      });
+    void loadWithFallback(apiAdapter, localAdapter).then(() => {
+      if (!cancelled) setReady(true);
+    });
 
     return () => {
       cancelled = true;
       if (saveTimerRef.current !== null) clearTimeout(saveTimerRef.current);
       if (saveSettleTimerRef.current !== null) clearTimeout(saveSettleTimerRef.current);
     };
-  }, [adapter]);
+  }, [apiAdapter, localAdapter]);
 
   if (!ready) {
     return (
@@ -83,24 +131,21 @@ export function EditorShellMount({
 
   const handleCreate = (editor: EditorInstance) => {
     setEditor(editor);
-    void adapter
-      .load()
-      .then((state) => {
-        const mdxSource = state?.mdxSource ?? initialMdx;
-        if (mdxSource) {
-          try {
-            loadFromMdx(editor, mdxSource, { blockRegistry: registryRef.current ?? undefined });
-          } catch {
-            return;
-          }
+    void loadWithFallback(apiAdapter, localAdapter).then((state) => {
+      const mdxSource = state?.mdxSource ?? initialMdx;
+      if (mdxSource) {
+        try {
+          loadFromMdx(editor, mdxSource, { blockRegistry: registryRef.current ?? undefined });
+        } catch {
+          return;
         }
-        versionRef.current = state?.version ?? 1;
-        if (state?.lastModified) {
-          setSavedAt(new Date(state.lastModified));
-          setSaveStatus('saved');
-        }
-      })
-      .catch(() => undefined);
+      }
+      versionRef.current = state?.version ?? 1;
+      if (state?.lastModified) {
+        setSavedAt(new Date(state.lastModified));
+        setSaveStatus('saved');
+      }
+    });
   };
 
   const handleChange = (editor: EditorInstance) => {
@@ -113,18 +158,20 @@ export function EditorShellMount({
         const mdxSource = saveToMdx(editor, { blockRegistry: registryRef.current ?? undefined });
         versionRef.current += 1;
         const lastModified = Date.now();
-        void adapter
-          .save({ mdxSource, version: versionRef.current, lastModified })
-          .then((result) => {
-            saveSettleTimerRef.current = setTimeout(() => {
-              if (result.ok) {
-                setSavedAt(new Date(lastModified));
-                setSaveStatus('saved');
-              } else {
-                setSaveStatus('error');
-              }
-            }, 250);
-          });
+        void saveWithBackup(apiAdapter, localAdapter, {
+          lastModified,
+          mdxSource,
+          version: versionRef.current,
+        }).then((result) => {
+          saveSettleTimerRef.current = setTimeout(() => {
+            if (result.ok) {
+              setSavedAt(new Date(lastModified));
+              setSaveStatus('saved');
+            } else {
+              setSaveStatus('error');
+            }
+          }, 250);
+        });
       } catch {
         setSaveStatus('error');
         return;

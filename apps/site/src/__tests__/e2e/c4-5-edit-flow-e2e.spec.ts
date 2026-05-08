@@ -3,19 +3,24 @@ import { existsSync, mkdirSync, statSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { attachApiStub } from './api-stub';
+
 const here = dirname(fileURLToPath(import.meta.url));
 const workspaceRoot = resolve(here, '../../../../..');
 const noteKey = 'skb-note:sample-mdx-note';
+const slug = 'sample-mdx-note';
 
 interface SerializedNoteState {
   mdxSource?: unknown;
   version?: unknown;
 }
 
-test.describe('C.4-5 Stage C.4 close ceremony', () => {
+test.describe('C.4-5 Stage C.4 close ceremony (Wave 6 B.4 update — API primary)', () => {
   test('Stage C.4 close — load → edit → save → reload sequence + 10-item MVP coverage manifest', async ({
     page,
   }) => {
+    const apiStub = await attachApiStub(page);
+
     await page.addInitScript((storageKey) => {
       document.documentElement?.removeAttribute('data-theme');
       try {
@@ -57,12 +62,13 @@ test.describe('C.4-5 Stage C.4 close ceremony', () => {
     const indicator = page.locator('[data-skb-save-indicator]').first();
     await expect(indicator).toContainText(/Saved/, { timeout: 5_000 });
 
-    // Verify localStorage persistence (mvp-7)
-    const rawState = await page.evaluate(() => localStorage.getItem('skb-note:sample-mdx-note'));
-    expect(rawState).not.toBeNull();
-    const savedState = JSON.parse(rawState ?? '{}') as SerializedNoteState;
-    expect(savedState.version as number).toBeGreaterThanOrEqual(2);
-    expect(savedState.mdxSource).toEqual(expect.stringContaining('Stage C.4 close'));
+    // Wave 6 B.4: assert API persistence (mvp-7) via the stub's in-memory
+    // store. localStorage is reserved as a fallback ONLY on API failure.
+    expect(apiStub.hasObservedPost()).toBe(true);
+    const savedState = apiStub.read(slug) as SerializedNoteState | null;
+    expect(savedState).not.toBeNull();
+    expect(savedState?.version as number).toBeGreaterThanOrEqual(2);
+    expect(savedState?.mdxSource).toEqual(expect.stringContaining('Stage C.4 close'));
 
     // Reload preserves content
     await page.reload();
