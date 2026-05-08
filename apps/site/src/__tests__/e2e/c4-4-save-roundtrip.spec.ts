@@ -3,9 +3,12 @@ import { existsSync, mkdirSync, statSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { attachApiStub } from './api-stub';
+
 const here = dirname(fileURLToPath(import.meta.url));
 const workspaceRoot = resolve(here, '../../../../..');
 const noteKey = 'skb-note:sample-mdx-note';
+const slug = 'sample-mdx-note';
 
 interface SerializedNoteState {
   mdxSource?: unknown;
@@ -13,10 +16,16 @@ interface SerializedNoteState {
   version?: unknown;
 }
 
-test.describe('C.4-4 save/load roundtrip', () => {
-  test('edit → 800ms debounce save to LocalStorage → reload preserves content + version', async ({
+test.describe('C.4-4 save/load roundtrip (Wave 6 B.4 update — API primary)', () => {
+  test('edit → 800ms debounce save → ApiAdapter POST observed → reload preserves content + version', async ({
     page,
   }) => {
+    // Wave 6 B.4 wires the mount to ApiAdapter primary. Stub the API
+    // with an in-memory store so this spec asserts against the same
+    // bytes the real endpoint would persist, without mutating the
+    // real fixture under content/notes/<slug>/.
+    const apiStub = await attachApiStub(page);
+
     await page.addInitScript((storageKey) => {
       document.documentElement?.removeAttribute('data-theme');
       try {
@@ -45,13 +54,15 @@ test.describe('C.4-4 save/load roundtrip', () => {
     const indicator = page.locator('[data-skb-save-indicator]').first();
     await expect(indicator).toContainText(/Saved/, { timeout: 5_000 });
 
-    const rawState = await page.evaluate(() => localStorage.getItem('skb-note:sample-mdx-note'));
-    expect(rawState).not.toBeNull();
-
-    const savedState = JSON.parse(rawState ?? '{}') as SerializedNoteState;
-    expect(savedState.version).toEqual(expect.any(Number));
-    expect(savedState.version as number).toBeGreaterThanOrEqual(2);
-    expect(savedState.mdxSource).toEqual(expect.stringContaining('Hello world'));
+    // Wave 6 B.4: assertion now reads the stub's in-memory store
+    // (which the ApiAdapter POST writes to) rather than localStorage.
+    // localStorage is reserved as a fallback ONLY on API failure.
+    expect(apiStub.hasObservedPost()).toBe(true);
+    const savedState = apiStub.read(slug) as SerializedNoteState | null;
+    expect(savedState).not.toBeNull();
+    expect(savedState?.version).toEqual(expect.any(Number));
+    expect(savedState?.version as number).toBeGreaterThanOrEqual(2);
+    expect(savedState?.mdxSource).toEqual(expect.stringContaining('Hello world'));
 
     // C.4-4 scope: NoteState shape change (layoutEpoch field add) is
     // explicitly out-of-scope per ADR-0018 line 464 接口冻结 (any NoteState
@@ -64,12 +75,12 @@ test.describe('C.4-4 save/load roundtrip', () => {
     await expect(editor).toBeVisible({ timeout: 10_000 });
     await expect(editor).toContainText('Hello world', { timeout: 10_000 });
 
-    const reloadedRawState = await page.evaluate(() =>
-      localStorage.getItem('skb-note:sample-mdx-note'),
-    );
-    const reloadedState = JSON.parse(reloadedRawState ?? '{}') as SerializedNoteState;
-    expect(reloadedState.version).toBe(savedState.version);
-    expect(reloadedState.mdxSource).toBe(savedState.mdxSource);
+    // After reload the stub's in-memory store survives (Page-scoped
+    // route handler stays attached across reloads); ApiAdapter GET
+    // returns the same NoteState the first session POSTed.
+    const reloadedState = apiStub.read(slug) as SerializedNoteState | null;
+    expect(reloadedState?.version).toBe(savedState?.version);
+    expect(reloadedState?.mdxSource).toBe(savedState?.mdxSource);
 
     const archivePath = resolve(
       workspaceRoot,

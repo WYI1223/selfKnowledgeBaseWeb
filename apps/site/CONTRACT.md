@@ -117,11 +117,27 @@
   `EditorShellMount.tsx` as a React island with `client:only="react"`. This
   avoids SSR for the Tiptap-dependent editor surface and passes the note body as
   `initialMdx` for first-visit edits before localStorage has a saved state.
-- Persistence: the island uses `LocalStorageAdapter` from the
-  `@skb/editor-shell` save-adapter public surface per
-  [ADR-0018 D8](../../docs/decisions/ADR-0018-v2-visual-migration.md). The
-  localStorage key prefix is `skb-note:{slug}`, distinct from the
-  design-tokens `skb-theme` key.
+- Persistence (Wave 6 Stage B.4 update per ADR-0018 v0.6 D13): the island
+  uses **`ApiAdapter` primary + `LocalStorageAdapter` fallback** from the
+  `@skb/editor-shell` save-adapter public surface.
+  - **load**: `ApiAdapter.load()` issued first against
+    `/api/notes/{slug}`. On `null` (HTTP 404 — no saved state) OR a thrown
+    non-2xx, the mount falls through to `LocalStorageAdapter.load()`. If
+    both return `null` the editor seeds from `initialMdx`.
+  - **save**: `ApiAdapter.save()` POSTs the `NoteState` to
+    `/api/notes/{slug}` after the 800ms debounce. On
+    `{ ok: false, error }` the mount additionally writes to
+    `LocalStorageAdapter` as a backup so the user's edit survives a
+    network blip — the user-visible save indicator still reflects the
+    primary failure (`status: 'error'`). On `{ ok: true }` only the
+    server file is written.
+  - The localStorage key prefix is `skb-note:{slug}`, distinct from the
+    design-tokens `skb-theme` key.
+  - Closing the user-reported "/notes/<slug> and /notes/<slug>/edit don't
+    sync" gap: with the server file as primary source of truth, a save
+    via the edit route writes back to `content/notes/<slug>/index.mdx`
+    + sibling `state.json`, and the next visit to the read route renders
+    the persisted MDX body.
 - See sister-doc:
   [packages/editor-shell/CONTRACT.md § NoteSaveAdapter (Wave 5; contract hardened at C.4-1)](../../packages/editor-shell/CONTRACT.md).
 - Block registry: C.4-2 verified that `EditorShellMount.tsx` constructs a
@@ -136,9 +152,11 @@
   route does not eagerly start a kernel or add a route-local execution surface
   until a user insertion/execution affordance exists.
 - Save trigger: the island uses an 800ms `setTimeout` debounce around
-  `saveToMdx` and `LocalStorageAdapter.save()`, and increments the persisted
-  note version per ADR-0018 D8 before each save. `layoutEpoch` synchronization
-  is deferred to C.4-4 per Wave 5 plan v1.2.
+  `saveToMdx` and the primary/fallback save chain
+  (`ApiAdapter.save()` then optional `LocalStorageAdapter.save()` backup
+  on primary failure), and increments the persisted note version per
+  ADR-0018 D8 before each save. `layoutEpoch` synchronization is deferred
+  to a future Phase 2+ amendment per ADR-0019 D3 deferred item #1.
 - Forward pointer: C.4-3 owns palette / slash / drag-handle / toolbar assembly
   and the explicit drag interaction verification for the ADR-0017 drag UX
   modules. Full UI assembly and e2e coverage land across C.4-1 through C.4-5;
