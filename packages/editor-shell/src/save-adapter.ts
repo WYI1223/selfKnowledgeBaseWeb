@@ -126,16 +126,50 @@ export class LocalStorageAdapter implements NoteSaveAdapter {
   }
 }
 
-// TODO Phase 2+ ApiAdapter implementing NoteSaveAdapter for /api/notes endpoint
-// Phase 2+ import scaffold (commented; no runtime import):
-// import { ApiAdapter } /* from './api-adapter' */;
-// Phase 2+ class scaffold (commented; no executable class/interface):
-// export class /* ApiAdapter */ implements NoteSaveAdapter {
-//   constructor(
-//     public readonly slug: string,
-//     public readonly apiBase: string,
-//     public readonly authToken: string,
-//   ) {}
-//   async load() { /* fetch /api/notes/{slug}; return NoteState | null */ }
-//   async save(state) { /* POST /api/notes/{slug}; return { ok, error? } */ }
-// }
+/**
+ * Network-backed adapter consuming the Wave 6 Stage B path-(b) endpoint
+ * shipped in PR #99 at `apps/site/src/pages/api/notes/[...slug].ts`.
+ *
+ * Contract authority: ADR-0018 v0.6 D11 (load returns NoteState | null;
+ * save returns { ok, error? }; no auth at Wave 6 Stage B). The endpoint
+ * persists `{lastModified, version}` to a sibling `state.json` sidecar
+ * so the `@skb/content-types` frontmatter authority is preserved.
+ *
+ * Single-user dev/preview only at Wave 6 Stage B. Phase 3+ multi-user
+ * collab path-(a) (separate `apps/api` server) lives outside this class.
+ */
+export class ApiAdapter implements NoteSaveAdapter {
+  constructor(
+    public readonly slug: string,
+    public readonly apiBase: string = '/api/notes',
+  ) {}
+
+  private endpointUrl(): string {
+    return `${this.apiBase}/${this.slug}`;
+  }
+
+  async load(): Promise<NoteState | null> {
+    const res = await fetch(this.endpointUrl(), { method: 'GET' });
+    if (res.status === 404) return null;
+    if (!res.ok) {
+      throw new Error(`load failed: ${res.status}`);
+    }
+    return (await res.json()) as NoteState;
+  }
+
+  async save(state: NoteState): Promise<{ ok: boolean; error?: string }> {
+    try {
+      const res = await fetch(this.endpointUrl(), {
+        body: JSON.stringify(state),
+        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+      });
+      if (!res.ok) {
+        return { error: `save failed: ${res.status}`, ok: false };
+      }
+      return { ok: true };
+    } catch (e) {
+      return { error: e instanceof Error ? e.message : 'network error', ok: false };
+    }
+  }
+}
