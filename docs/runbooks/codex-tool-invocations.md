@@ -264,6 +264,17 @@ code-reviewer（5.3-spark）双层链路。gpt-5.5（贵但严谨）。**绝不�
    文件存在 + 必跑 `pnpm --filter @skb/site test:visual` PASS。
    "vitest unit PASS" 不等于 "production user-visible PASS"。
    详见 ADR-0011 D9.7 (Wave 5 C.4-prelude 失职 evidence)。
+   **Stage close-ceremony 加强 (v0.2.2 amendment, ADR-0011 D9.8)**：
+   一个 stage 的 close-ceremony PR (handoff pack 收尾的最后一 PR) 的
+   Playwright spec 必 exercise 真实 production 语料 (e.g.
+   `content/notes/sample-blocks` 包含全部 8 component-block + author
+   comments + inline backticks + markdown links) OR 一个 enumerates
+   同等 MDX feature surface 的 dedicated `__test_smoke__` fixture。
+   Synthetic prose-only fixtures NOT acceptable for stage close.
+   Mid-stage PR 不受此条约束 (minimal targeted fixtures 仍 OK)。
+   详见 ADR-0011 D9.8 (Wave 6 Stage B.5 close-ceremony fixture miss
+   evidence — synthetic `__test_smoke__/b5-roundtrip` 漏测真实 corpus
+   触发 PR #103 + #104 hotfix chain).
 
 verdict 结构应包含
 `asymmetry-audit applied: items {1..9} verdicts: ...` 与（如适用）

@@ -311,6 +311,19 @@ Wave 5 v1.2 R14 SECOND amendment 引入 row C.4-prelude（minimal editor scaffol
 
 D9 v0.2 amendment 通过 schema 强制 + CI gate enforce + 责任分工 explicit 防止此类 agent-claim-PASS-but-user-FAIL 复发。Wave 5 后续所有 UI-touch PR 适用。
 
+#### D9.8 — Stage close-ceremony fixture representativeness (v0.2.2 amendment 2026-05-08)
+
+**实证 (Wave 6 Stage B post-close 失职案例)**: Wave 6 Stage B.5 close-ceremony Playwright spec at `apps/site/playwright/stage-b-close-roundtrip.spec.ts` PASS-ed against a synthetic prose-only fixture `content/notes/__test_smoke__/b5-roundtrip/index.mdx` (created specifically for the spec; only frontmatter + a paragraph of test-instructions prose). PR #102 merged with all gates green. User then reported `/notes/sample-blocks/edit` was still visibly empty post-merge — three layered bugs (mdx-bridge `mdxFlowExpression` throw + per-block parse-failure blast radius + Tiptap mark schema collisions) that the synthetic fixture did NOT exercise. Hotfix at PR #103 (squash `6eaf676`) closed all three. Root cause of the close-ceremony miss: **fixture not representative of the production corpus**.
+
+**Rule**: Stage close-ceremony Playwright specs MUST exercise either:
+
+1. The actual production fixtures the user will encounter (e.g., `content/notes/sample-blocks` for editor-route specs, which contains all 8 component-block tags + author comments + inline backticks + markdown links — the union of real-world MDX features), OR
+2. A NEW dedicated `__test_smoke__` fixture that **enumerates the same MDX feature surface** as the production corpus by construction (component blocks, MDX expressions, all inline mark types, etc.). Synthetic prose-only fixtures are explicitly insufficient for stage close.
+
+**Enforcement**: stage close-ceremony PR.md `e2e_smoke[].playwright_spec` reviewer audit — the close-ceremony reviewer (Claude orchestrator at stage 4 OR codex `codex-pr-reviewer-55` at stage 3) MUST verify the fixture covers the feature surface listed in the relevant CONTRACT.md / ADR. For Wave 6 Stage B, the editor surface = the 8 BlockKind union from `@skb/editor-shell` + the prose mark set documented in `@skb/editor-shell/CONTRACT.md` § Public surface. Reviewer FAIL verdict if fixture is synthetic-minimal AND the close-ceremony scope is the entire stage.
+
+**Mid-stage carve-out**: individual mid-stage PRs can use minimal fixtures targeted to their specific surface (e.g., a single-prose Playwright spec for a prose-only refactor). The representativeness rule fires ONLY at stage close-ceremony — the last PR in a stage's PR sequence that the handoff pack ratifies as "Stage X closed".
+
 ### D10 — 防 prompt-patching anti-pattern
 
 gatekeeper 历史教训（Wave 5 实证）：发现新流程问题时**不得仅在 prompt / memory entry 修补**。所有结构性 process 调整必走以下渠道之一：
@@ -414,6 +427,44 @@ v0.2 amendment merge 之后开 PR；v0.2 之前 merged PR 不追溯。
 受益面：Wave 5 v1.3 起所有 UI-touch PR + Wave 6+ 全部 UI-touch PR。Wave 5
 非 UI-touch PR（如 ADR amendment doc / scripts pure-logic / etc.）不适用
 （CI gate 自动 skip via ui_touch=false）。
+
+### v0.2.1 (2026-05-07; Wave 6 Stage B.2 cross-ref-only fold-in)
+
+ADR-0006 item #9 inline path-list deferred to ADR-0011 D9.1 as the
+single authority surface (avoids the same R5-style reviewer-interpretation
+drift that motivated D9.1 to gain its own API-route exclusion). No D9
+section semantics changed; this was a sister-doc-sync pointer move.
+
+### v0.2.2 (2026-05-08; Wave 6 Stage B close-ceremony fixture miss)
+
+新增 D9.8 (stage close-ceremony fixture representativeness) sub-section
+between D9.7 and D10.
+
+触发：Wave 6 Stage B.5 (PR #102 squash `941c273`) close-ceremony
+Playwright spec at `apps/site/playwright/stage-b-close-roundtrip.spec.ts`
+PASS-ed against a synthetic prose-only fixture
+`content/notes/__test_smoke__/b5-roundtrip/index.mdx`. Production
+corpus exercise was missed; user reported `/notes/sample-blocks/edit`
+was visibly empty post-merge (3 layered bugs the synthetic fixture
+did not exercise: mdx-bridge `mdxFlowExpression` throw + per-block
+parse-failure blast radius + Tiptap mark schema collisions). Wave 6
+hotfix at PR #103 squash `6eaf676` closed the bugs; cf-15a at PR #104
+squash `dbf48e1` closed the link-mark schema collision; this v0.2.2
+amendment closes the process gap that allowed the synthetic-fixture
+close-ceremony to slip through.
+
+强制起点：本 amend PR 合 main 起，所有后续 stage close-ceremony PR 适用
+D9.8 fixture-representativeness audit at the close-ceremony PR
+reviewer (orchestrator stage 4 OR codex `codex-pr-reviewer-55` stage 3).
+Mid-stage PR carve-out preserved (D9.8 fires only at stage close —
+the last PR of a stage's sequence that the handoff pack ratifies).
+
+非破坏性 / 向后兼容：D1-D9.7 + D10 段语义不变；D9.8 是 D9 family 的扩展
+sub-section，consumer prompt surfaces (agent-contract.md reviewer item #9
++ docs/review-checklist.md regenerated) updated in the same PR per
+ADR-0006 item #8 authority-document propagation invariant. Stage close-
+ceremony PRs already merged before this amendment do not require
+retrospective fixture-representativeness audit.
 
 ## Related
 

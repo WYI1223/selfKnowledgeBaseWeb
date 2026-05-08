@@ -139,6 +139,35 @@ post-Wave-6 phases per ADR-0019 D3:
   D11 Q12 absorbed Phase 2+ extension positions in the
   `NoteSaveAdapter` interface comment block; v1 interface frozen.
 
+## Post-close carry-forwards (Wave 6 follow-up PRs)
+
+- ✅ **Stage B post-close hotfix** (PR #103, squash `6eaf676`) —
+  `mdxFlowExpression` softParse + per-block fault tolerance +
+  Tiptap-mark sanitizer + visible load-error banner. Required after
+  the user reported `/notes/sample-blocks/edit` was still empty
+  post-Stage-B-close (root cause: 3 layered bugs the close-ceremony
+  spec did not exercise).
+- ✅ **Carry-forward #15a** (PR #104, squash `dbf48e1`) —
+  `@tiptap/extension-link` registration with `title` attr override;
+  removes `'link'` from the `EDITOR_UNSUPPORTED_MARKS` strip set.
+  Markdown links now render as real anchor elements in the edit
+  surface and round-trip with title attribute preserved.
+- ✅ **Carry-forward #17** (this PR) — ADR-0011 v0.2.2 amendment
+  adding D9.8 stage close-ceremony fixture-representativeness rule.
+  Codifies the failure mode that surfaced this hotfix chain (B.5
+  shipped with a synthetic prose-only fixture; production corpus
+  exercise was missed). Future stage close-ceremony specs MUST
+  exercise either real production fixtures OR a feature-equivalent
+  test fixture.
+- ⏳ **Carry-forward #15b** — block-Code Tiptap node rename out of
+  the `code` namespace so StarterKit's inline `code` mark can be
+  re-enabled (currently stripped at the editor boundary).
+  Cross-package refactor (~15 files); pending.
+- ⏳ **Carry-forward #16** — per-block-attr coercion fixes for
+  Jupyter / Pdf / NnViz / AgentFlow JSX-attr → schema validation
+  failures the hotfix's per-block fault tolerance currently swallows.
+  4 sub-PRs (one per block-package); pending.
+
 ## Related
 
 - [ADR-0018 v0.6 amendment](../../decisions/ADR-0018-v2-visual-migration.md) D9-D16 — Stage B authority
