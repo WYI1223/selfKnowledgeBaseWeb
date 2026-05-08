@@ -8,8 +8,24 @@ editor surface. Closes the "editor-shell composition" deferral from
 ## Public surface
 
 - `EditorShell` — functional React component. Mounts a Tiptap editor via
-  `@tiptap/react`'s `useEditor` with `[StarterKit]` prose extensions only.
-  No block-* extensions yet (A3 adds the registry boot).
+  `@tiptap/react`'s `useEditor` with the following extension stack
+  (Wave 6 carry-forward #15a 2026-05-08):
+  - `StarterKit.configure({ code: false })` — prose nodes + marks. The
+    inline `code` mark stays disabled because the block-Code package
+    registers a Tiptap NODE named `code` and ProseMirror forbids the
+    same name on both a node and a mark; the `loadFromMdx`
+    `EDITOR_UNSUPPORTED_MARKS` strip handles MDX-emitted `code` marks
+    until the rename in carry-forward #15b lands.
+  - `Link.extend({ addAttributes: { title } }).configure({ openOnClick: false })`
+    — markdown links survive into the editor as real anchors. The
+    `Link.extend` override adds a `title` attribute so
+    `[text](url "title")` round-trips without losing the title (default
+    `@tiptap/extension-link` schema does not include `title`);
+    `openOnClick: false` keeps anchor clicks from navigating away from
+    the edit surface.
+  - Consumer extensions appended via `EditorShellProps.extensions`
+    (block-kind extensions from `wireRegistry` are passed through
+    here per Wave 5 C.4).
 - `EditorShellProps` — public props type:
   ```ts
   export interface EditorShellProps {
@@ -25,6 +41,11 @@ editor surface. Closes the "editor-shell composition" deferral from
      *  instance after mount. Used by tests + future A3 wrappers needing
      *  imperative editor access. */
     onCreate?: (editor: Editor) => void;
+    /** Optional consumer extensions appended after the built-in
+     *  StarterKit + Link stack (carry-forward #15a 2026-05-08).
+     *  Wave 5 C.4 wires the 8 block-kind extensions from `wireRegistry`
+     *  through this prop. */
+    extensions?: Extensions;
   }
   ```
   `Editor` type re-exported transitively from `@tiptap/core` via
@@ -38,8 +59,10 @@ editor surface. Closes the "editor-shell composition" deferral from
   agent-flow (viz). Per ADR-0009 D1: 3 component + 2 render + 3 viz = 8.
 - `proseExtensions` — Tiptap Extension array re-exported from
   `@skb/block-foundation`. Consumers wire into `useEditor({ extensions: [...] })`
-  alongside `StarterKit` for prose-block-aware editing. A2's `EditorShell`
-  does NOT consume this yet (StarterKit-only); A3+ wrappers may.
+  alongside `StarterKit` for prose-block-aware editing. The
+  `EditorShell` component does not consume this barrel; its own
+  built-in stack (StarterKit + Link per § Public surface above) is
+  layered with consumer-supplied extensions via `EditorShellProps.extensions`.
 - `registerKernels(registry: KernelRegistry, adapter?: KernelAdapter): void`
   — wires `PyodideAdapter` (default) into the supplied `KernelRegistry`
   instance. `adapter` parameter lets consumers override with a custom
@@ -358,9 +381,14 @@ integer. The EditorShellMount wire-up for that per-block branch lands in C.4-2.
 A2-A5 each Modify this CONTRACT.md as new exports land:
 
 - **A2** — `EditorShell` React component delivered in this PR (Tiptap
-  `useEditor` + StarterKit prose extensions only; 4-prop API surface above).
-  Adds `@tiptap/{core,react,starter-kit}`, `react`, `react-dom` peer/runtime
-  deps + happy-dom + @testing-library/react devDeps.
+  `useEditor` mounting a 4-prop API surface; the original A2 build
+  shipped with `[StarterKit]` only as the built-in extension list).
+  Adds `@tiptap/{core,react,starter-kit}`, `react`, `react-dom`
+  peer/runtime deps + happy-dom + @testing-library/react devDeps.
+  *(Historical: Wave 6 carry-forward #15a 2026-05-08 added the
+  extended `Link` extension to the built-in stack and a 5th prop
+  `extensions?: Extensions`; see § Public surface above for the
+  current shape.)*
 - **A3** — `registerBlocks(registry)` helper delivered in this PR. Wires the
   8 block-* core + ui-default definitions into a `BlockRegistry` instance.
   Added 8 `@skb/block-*` + `@skb/block-foundation` workspace deps + 9
@@ -385,7 +413,7 @@ A2-A5 each Modify this CONTRACT.md as new exports land:
 
 All 5 Stage A PRs are now delivered. Consumers can:
 
-1. Mount `EditorShell` (Tiptap useEditor + StarterKit; A2)
+1. Mount `EditorShell` (Tiptap useEditor with the built-in StarterKit + Link stack per § Public surface; A2 originally shipped with just StarterKit, and carry-forward #15a 2026-05-08 layered Link in)
 2. Call `registerBlocks(registry)` to wire 8 block-* into a BlockRegistry (A3)
 3. Call `registerKernels(registry, adapter?)` to wire PyodideAdapter into a KernelRegistry (A4)
 4. Call `saveToMdx(editor, options?)` + `loadFromMdx(editor, source, options?)`
@@ -469,9 +497,11 @@ JSX dispatch entries for the eight block packages so editor-built
 component nodes can serialize through `saveToMdx(editor, { blockRegistry })`.
 
 `EditorShellProps.extensions` is now the sanctioned composition hook
-for consumer-owned Tiptap extensions layered after StarterKit. C.4-3
-uses it only for the block insertion node specs produced by
-`wireRegistry`; block package implementations remain untouched.
+for consumer-owned Tiptap extensions layered after the built-in
+`StarterKit.configure({ code: false })` + `Link.extend({ addAttributes: { title } }).configure({ openOnClick: false })`
+stack (carry-forward #15a). C.4-3 uses it only for the block insertion
+node specs produced by `wireRegistry`; block package implementations
+remain untouched.
 StarterKit's inline `code` mark is disabled in this composition so the
 component-block `code` node can own the `code` schema name. The
 StarterKit `codeBlock` node remains available for Markdown fences.

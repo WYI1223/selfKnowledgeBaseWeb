@@ -46,6 +46,13 @@ test('sample-blocks edit route loads non-empty content (mdxFlowExpression no lon
   // round-tripped through mdxToTiptap.
   await expect(editor).toContainText('Wave 2 close acceptance criterion', { timeout: 10_000 });
 
+  // Wave 6 carry-forward #15a — `@tiptap/extension-link` is now
+  // registered, so markdown links (e.g. the `[@skb/heavy-block-boundary](...)`
+  // reference inside the sample-blocks intro) survive into the editor
+  // as actual `<a>` anchor elements rather than getting stripped by
+  // the `EDITOR_UNSUPPORTED_MARKS` sanitizer.
+  await expect(editor.locator('a').first()).toBeVisible({ timeout: 5_000 });
+
   // The legacy load-error banner must NOT be present.
   await expect(page.locator('[data-skb-load-error]')).toHaveCount(0);
 
