@@ -25,17 +25,21 @@ export interface SaveLoadOptions {
  *
  *   - `code`: collides with the block-Code Tiptap NODE named `code`
  *     (ProseMirror forbids same name on both a node and a mark —
- *     "RangeError: code can not be both a node and a mark").
- *   - `link`: editor does not register `@tiptap/extension-link`.
+ *     "RangeError: code can not be both a node and a mark"). Pending
+ *     the block-Code node-name rename (Stage B carry-forward #15b),
+ *     the inline-code mark stays stripped at this boundary.
  *
- * Without stripping, `editor.commands.setContent(doc)` rejects the
- * whole document and the editor surface stays visibly empty (the
- * /notes/sample-blocks/edit reproduction). The proper fix renames the
- * Code-block node out of the `code` namespace and registers Link;
- * both are tracked as Wave 6 Stage B carry-forward items in the
- * handoff pack.
+ * `link` was previously in this set; carry-forward #15a registered
+ * `@tiptap/extension-link` (Wave 6 hotfix follow-up 2026-05-08), so
+ * link marks now survive into the editor's schema and are NOT
+ * stripped. mdx-bridge round-trip fidelity for links is preserved.
+ *
+ * Without stripping the remaining `code` mark,
+ * `editor.commands.setContent(doc)` rejects the whole document and
+ * the editor surface stays visibly empty (the
+ * /notes/sample-blocks/edit reproduction).
  */
-const EDITOR_UNSUPPORTED_MARKS: ReadonlySet<string> = new Set(['code', 'link']);
+const EDITOR_UNSUPPORTED_MARKS: ReadonlySet<string> = new Set(['code']);
 
 function stripUnsupportedMarks(doc: TiptapDoc): TiptapDoc {
   const filterNode = (node: TiptapNode): TiptapNode => {
@@ -67,9 +71,11 @@ export function saveToMdx(editor: Editor, options?: SaveLoadOptions): string {
  *  opts into mdx-bridge's `softParse` so a single malformed block
  *  (unsupported tag, JSX-attr coercion failure, hand-authored
  *  `{/* comment *\/}` author note) becomes a placeholder paragraph
- *  rather than throwing the entire load. Tiptap-schema-unsupported
- *  marks (`code`, `link` — see `EDITOR_UNSUPPORTED_MARKS` above) are
- *  also stripped before `setContent` so the editor accepts the doc. */
+ *  rather than throwing the entire load. The remaining
+ *  schema-unsupported mark (`code`; see `EDITOR_UNSUPPORTED_MARKS`
+ *  above) is stripped before `setContent` so the editor accepts the
+ *  doc. (`link` was previously stripped here; carry-forward #15a
+ *  registered `@tiptap/extension-link` and removed it from the set.) */
 export function loadFromMdx(editor: Editor, source: string, options?: SaveLoadOptions): void {
   const doc = mdxToTiptap(source, { ...options, softParse: true });
   editor.commands.setContent(stripUnsupportedMarks(doc));
