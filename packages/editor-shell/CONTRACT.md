@@ -83,6 +83,19 @@ Public exports:
   same-session Tiptap cache data.
 - `LocalStorageAdapter` — Wave 5 MVP implementation of `NoteSaveAdapter`
   preserved from C.4-prelude.
+- `ApiAdapter` — Wave 6 Stage B.3 network-backed implementation of
+  `NoteSaveAdapter` consuming the path-(b) endpoint shipped at
+  [`apps/site/src/pages/api/notes/[...slug].ts`](../../apps/site/src/pages/api/notes/%5B...slug%5D.ts).
+  Constructor `(slug: string, apiBase = '/api/notes')`. `load()` issues
+  `GET ${apiBase}/${slug}` and returns the parsed `NoteState`, or `null`
+  on HTTP 404 (no saved state); throws on any other non-2xx status so
+  consumers can fall back to LocalStorageAdapter when the network path
+  is unavailable. `save()` issues `POST ${apiBase}/${slug}` with a JSON
+  body matching `NoteState`; non-2xx responses resolve to
+  `{ ok: false, error: 'save failed: <status>' }` and `fetch` rejections
+  resolve to `{ ok: false, error }` (never throws). No auth at Wave 6
+  Stage B; multi-user/auth boundary lives in the Phase 3+ path-(a)
+  separate `apps/api` server.
 
 Storage semantics:
 
@@ -97,14 +110,14 @@ Storage semantics:
   with a warning. `QuotaExceededError` and `SecurityError` during save return
   `{ ok: false, error }`.
 
-Phase 2+ API persistence is intentionally comment-only at C.4-1:
-`save-adapter.ts` contains a TODO forward pointer for an `ApiAdapter`
-implementing `NoteSaveAdapter` for `/api/notes`, but MUST NOT export or define
-an executable `ApiAdapter` class, interface, function, const, or import.
-
-**C.4-1 hardens this contract** with adapter contract tests and the
-comment-only ApiAdapter forward stub. It does not change the
-`LocalStorageAdapter` implementation.
+**Wave 6 Stage B.3 promotes ApiAdapter from forward-stub to first-class
+public surface** per ADR-0018 v0.6 D11. `save-adapter.ts` defines the
+executable class; `index.ts` exports it alongside `LocalStorageAdapter`.
+`src/__tests__/api-adapter.test.ts` is the contract test (mocked fetch)
+covering load 200/404/non-2xx, save 200/non-2xx/network-rejection, and a
+roundtrip through an in-memory storage fake. Adapter selection at the
+edit-route mount lands at Wave 6 B.4 (ApiAdapter primary +
+LocalStorageAdapter fallback per ADR-0018 v0.6 D13).
 
 The component does NOT include a `'use client'` pragma — consumers (Stage C
 apps/site) decide the client/server boundary at integration time.

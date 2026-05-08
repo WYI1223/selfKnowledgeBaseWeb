@@ -9,18 +9,9 @@ const saveAdapterSource = readFileSync(
   resolve(workspaceRoot, 'packages/editor-shell/src/save-adapter.ts'),
   'utf8',
 );
-const executableApiAdapterPattern =
-  /class\s+ApiAdapter|interface\s+ApiAdapter|export\s+(const|function|class|interface)\s+ApiAdapter|import.*ApiAdapter\s+from/;
 
-function countExecutableApiAdapterForms(source: string): number {
-  return source
-    .split('\n')
-    .filter((line) => !line.trimStart().startsWith('//'))
-    .filter((line) => executableApiAdapterPattern.test(line)).length;
-}
-
-test.describe('C.4-1 NoteSaveAdapter contract', () => {
-  test('/notes/[slug]/edit mounts; ApiAdapter forward-stub COMMENT-only enforcement', async ({
+test.describe('C.4-1 NoteSaveAdapter contract (Wave 6 B.3 update)', () => {
+  test('/notes/[slug]/edit mounts; save-adapter exposes both LocalStorageAdapter and ApiAdapter', async ({
     page,
   }) => {
     const consoleErrors: string[] = [];
@@ -57,10 +48,15 @@ test.describe('C.4-1 NoteSaveAdapter contract', () => {
     await expect(editor).toHaveAttribute('contenteditable', 'true');
     expect(consoleErrors).toEqual([]);
 
-    expect(saveAdapterSource).toContain(
+    // Wave 6 B.3 promotes ApiAdapter from forward-stub to first-class
+    // public surface per ADR-0018 v0.6 D11. Both adapters must be
+    // executable; the C.4-1 era "comment-only" assertion is intentionally
+    // inverted here.
+    expect(saveAdapterSource).toMatch(/export class LocalStorageAdapter/);
+    expect(saveAdapterSource).toMatch(/export class ApiAdapter/);
+    expect(saveAdapterSource).not.toContain(
       '// TODO Phase 2+ ApiAdapter implementing NoteSaveAdapter for /api/notes endpoint',
     );
-    expect(countExecutableApiAdapterForms(saveAdapterSource)).toBe(0);
 
     const archivePath = resolve(
       workspaceRoot,
