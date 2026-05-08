@@ -13,7 +13,7 @@ const LANGUAGES = ['typescript', 'python', 'bash'] as const;
 
 describe('codeUiDefault registration', () => {
   it('exposes the BlockUIDefinition shape with coreName + uiId="default"', () => {
-    expect(codeUiDefault.coreName).toBe('code');
+    expect(codeUiDefault.coreName).toBe('componentCode');
     expect(codeUiDefault.uiId).toBe('default');
     expect(codeUiDefault.EditorView).toBeDefined();
     expect(codeUiDefault.RenderView).toBeDefined();
@@ -23,8 +23,8 @@ describe('codeUiDefault registration', () => {
     const reg = new BlockRegistry();
     reg.registerCore(codeCore);
     reg.registerUI(codeUiDefault as unknown as BlockUIDefinition);
-    expect(reg.getUI('code')).toBe(codeUiDefault);
-    expect(reg.getUI('code', 'default')).toBe(codeUiDefault);
+    expect(reg.getUI('componentCode')).toBe(codeUiDefault);
+    expect(reg.getUI('componentCode', 'default')).toBe(codeUiDefault);
   });
 });
 

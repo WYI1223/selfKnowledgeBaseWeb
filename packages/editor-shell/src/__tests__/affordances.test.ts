@@ -56,7 +56,7 @@ describe('C.4-3 user affordances', () => {
     }
 
     fireEvent.click(screen.getByRole('button', { name: 'Code' }));
-    expect(onInsert).toHaveBeenCalledWith('code');
+    expect(onInsert).toHaveBeenCalledWith('componentCode');
   });
 
   it('slash menu opens from a line-start slash and inserts the selected kind', () => {
@@ -73,7 +73,7 @@ describe('C.4-3 user affordances', () => {
 
     fireEvent.keyDown(dom, { key: 'ArrowDown' });
     fireEvent.keyDown(dom, { key: 'Enter' });
-    expect(onInsert).toHaveBeenCalledWith('code');
+    expect(onInsert).toHaveBeenCalledWith('componentCode');
   });
 
   it('drag handle exposes a per-block handle and drop preview pulse', () => {

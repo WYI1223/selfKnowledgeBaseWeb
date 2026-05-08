@@ -44,7 +44,7 @@ function ensureCodeDispatch(): void {
   if (getJsxDispatch('Code') === undefined) {
     registerJsxDispatch({
       mdxComponent: 'Code',
-      blockType: 'code',
+      blockType: 'componentCode',
       parse: parseCode as unknown as JsxDispatchEntry['parse'],
       serialize: serializeCode as unknown as JsxDispatchEntry['serialize'],
     });

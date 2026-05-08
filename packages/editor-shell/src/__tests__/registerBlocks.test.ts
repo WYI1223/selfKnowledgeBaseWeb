@@ -4,7 +4,10 @@ import { registerBlocks } from '../registerBlocks';
 
 const EXPECTED_NAMES = [
   'callout',
-  'code',
+  // Wave 6 carry-forward #15b 2026-05-08 — block-Code core renamed
+  // from 'code' to 'componentCode' (ProseMirror node/mark namespace
+  // collision with StarterKit's inline `code` mark).
+  'componentCode',
   'image',
   'math',
   'pdf',
@@ -41,7 +44,7 @@ describe('@skb/editor-shell registerBlocks', () => {
       byKind[core.kind] = byKind[core.kind] ?? [];
       byKind[core.kind]!.push(core.name);
     }
-    expect(byKind.component?.slice().sort()).toEqual(['callout', 'code', 'image']);
+    expect(byKind.component?.slice().sort()).toEqual(['callout', 'componentCode', 'image']);
     expect(byKind.render?.slice().sort()).toEqual(['math', 'pdf']);
     expect(byKind.viz?.slice().sort()).toEqual(['agent-flow', 'jupyter', 'nn-viz']);
   });

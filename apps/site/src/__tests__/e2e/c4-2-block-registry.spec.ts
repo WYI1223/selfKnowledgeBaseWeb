@@ -16,7 +16,7 @@ const registerBlocksSource = readFileSync(
 
 const registeredBlocks = [
   ['callout', 'calloutCore', 'calloutUiDefault'],
-  ['code', 'codeCore', 'codeUiDefault'],
+  ['componentCode', 'codeCore', 'codeUiDefault'],
   ['image', 'imageCore', 'imageUiDefault'],
   ['math', 'mathCore', 'mathUiDefault'],
   ['pdf', 'pdfCore', 'pdfUiDefault'],

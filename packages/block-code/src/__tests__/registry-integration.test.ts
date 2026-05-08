@@ -6,7 +6,7 @@ describe('block-code registry integration', () => {
   it('registerCore + getCore round-trip preserves identity', () => {
     const reg = new BlockRegistry();
     reg.registerCore(codeCore);
-    expect(reg.getCore('code')).toBe(codeCore);
+    expect(reg.getCore('componentCode')).toBe(codeCore);
   });
 
   it('getCore returns undefined for unknown name', () => {

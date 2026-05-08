@@ -21,7 +21,7 @@ describe('codeCore.propsSchema', () => {
   });
 
   it('exports correct shape (BlockCoreDefinition contract)', () => {
-    expect(codeCore.name).toBe('code');
+    expect(codeCore.name).toBe('componentCode');
     expect(codeCore.kind).toBe('component');
     expect(codeCore.mdxComponent).toBe('Code');
   });

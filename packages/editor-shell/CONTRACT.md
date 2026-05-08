@@ -10,12 +10,14 @@ editor surface. Closes the "editor-shell composition" deferral from
 - `EditorShell` — functional React component. Mounts a Tiptap editor via
   `@tiptap/react`'s `useEditor` with the following extension stack
   (Wave 6 carry-forward #15a 2026-05-08):
-  - `StarterKit.configure({ code: false })` — prose nodes + marks. The
-    inline `code` mark stays disabled because the block-Code package
-    registers a Tiptap NODE named `code` and ProseMirror forbids the
-    same name on both a node and a mark; the `loadFromMdx`
-    `EDITOR_UNSUPPORTED_MARKS` strip handles MDX-emitted `code` marks
-    until the rename in carry-forward #15b lands.
+  - `StarterKit` — prose nodes + marks (Wave 6 carry-forward #15b
+    2026-05-08 re-enabled the inline `code` mark; pre-#15b it was
+    disabled via `code: false` because the block-Code Tiptap node
+    was named `code` and ProseMirror forbids the same name on both
+    a node and a mark; the block-Code core was renamed to
+    `componentCode` so the collision is gone). `EDITOR_UNSUPPORTED_MARKS`
+    in `saveLoad.ts` is correspondingly empty — no marks are
+    stripped at load time.
   - `Link.extend({ addAttributes: { title } }).configure({ openOnClick: false })`
     — markdown links survive into the editor as real anchors. The
     `Link.extend` override adds a `title` attribute so
@@ -55,8 +57,11 @@ editor surface. Closes the "editor-shell composition" deferral from
   instance. Idempotent at consumer scope (each registerBlocks call expects a
   fresh registry; calling twice on the same registry throws "Duplicate core
   name" per BlockRegistry contract). Insertion order = locked-plan order:
-  callout, code, image (component), math, pdf (render), jupyter, nn-viz,
-  agent-flow (viz). Per ADR-0009 D1: 3 component + 2 render + 3 viz = 8.
+  callout, componentCode, image (component), math, pdf (render), jupyter,
+  nn-viz, agent-flow (viz). Per ADR-0009 D1: 3 component + 2 render + 3
+  viz = 8. (Wave 6 carry-forward #15b 2026-05-08 renamed the `code` core
+  to `componentCode` to escape the ProseMirror node/mark namespace
+  collision with StarterKit's inline `code` mark.)
 - `proseExtensions` — Tiptap Extension array re-exported from
   `@skb/block-foundation`. Consumers wire into `useEditor({ extensions: [...] })`
   alongside `StarterKit` for prose-block-aware editing. The
@@ -498,13 +503,15 @@ component nodes can serialize through `saveToMdx(editor, { blockRegistry })`.
 
 `EditorShellProps.extensions` is now the sanctioned composition hook
 for consumer-owned Tiptap extensions layered after the built-in
-`StarterKit.configure({ code: false })` + `Link.extend({ addAttributes: { title } }).configure({ openOnClick: false })`
-stack (carry-forward #15a). C.4-3 uses it only for the block insertion
+`StarterKit` (no `code: false` configuration post-#15b — the
+block-Code Tiptap node was renamed from `code` to `componentCode`
+so StarterKit's inline `code` mark is enabled) + `Link.extend({ addAttributes: { title } }).configure({ openOnClick: false })`
+stack (carry-forwards #15a + #15b). C.4-3 uses it only for the block insertion
 node specs produced by `wireRegistry`; block package implementations
-remain untouched.
-StarterKit's inline `code` mark is disabled in this composition so the
-component-block `code` node can own the `code` schema name. The
-StarterKit `codeBlock` node remains available for Markdown fences.
+remain untouched. StarterKit's inline `code` mark is enabled post-#15b
+(the component-block formerly named `code` was renamed to
+`componentCode`, so the ProseMirror namespace collision is gone).
+StarterKit's `codeBlock` node remains available for Markdown fences.
 
 ## Modifying this file
 

@@ -35,7 +35,7 @@ export function parseCode(node: CodeMdastJsxElement): CodeTiptapNode {
     showLineNumbers: validated.showLineNumbers,
   };
   return {
-    type: 'code',
+    type: 'componentCode',
     attrs,
     content: node.children,
   };

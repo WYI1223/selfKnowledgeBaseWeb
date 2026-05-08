@@ -12,9 +12,15 @@ import { parseAgentFlow, serializeAgentFlow } from '@skb/block-agent-flow/core';
 
 type JsxDispatchEntry = Parameters<typeof registerJsxDispatch>[0];
 
+// Wave 6 carry-forward #15b 2026-05-08 — 'code' renamed to
+// 'componentCode' so the Tiptap node name no longer collides with
+// StarterKit's inline `code` MARK (ProseMirror forbids same name on
+// both a node and a mark). User-facing slash-menu label stays
+// 'Code'; MDX tag stays `<Code>`; only the internal kind identifier
+// changed. See packages/block-code/src/core/core-definition.ts.
 export type BlockAffordanceKind =
   | 'callout'
-  | 'code'
+  | 'componentCode'
   | 'image'
   | 'math'
   | 'pdf'
@@ -30,7 +36,7 @@ export interface BlockKindOption {
 
 export const BLOCK_KIND_OPTIONS: readonly BlockKindOption[] = [
   { kind: 'callout', label: 'Callout', mdxComponent: 'Callout' },
-  { kind: 'code', label: 'Code', mdxComponent: 'Code' },
+  { kind: 'componentCode', label: 'Code', mdxComponent: 'Code' },
   { kind: 'image', label: 'Image', mdxComponent: 'Image' },
   { kind: 'math', label: 'Math', mdxComponent: 'Math' },
   { kind: 'pdf', label: 'Pdf', mdxComponent: 'Pdf' },
@@ -41,7 +47,7 @@ export const BLOCK_KIND_OPTIONS: readonly BlockKindOption[] = [
 
 const jsxDispatches = [
   ['Callout', 'callout', parseCallout, serializeCallout],
-  ['Code', 'code', parseCode, serializeCode],
+  ['Code', 'componentCode', parseCode, serializeCode],
   ['Image', 'image', parseImage, serializeImage],
   ['Math', 'math', parseMath, serializeMath],
   ['Pdf', 'pdf', parsePdf, serializePdf],
@@ -54,7 +60,7 @@ const gridAttrs = { col: 1, colSpan: 12, rowSpan: 1 };
 
 const defaultBlockAttrs: Record<BlockAffordanceKind, Record<string, unknown>> = {
   callout: { ...gridAttrs, variant: 'note', title: 'New callout' },
-  code: { ...gridAttrs, language: 'ts', code: '// New code block', showLineNumbers: true },
+  componentCode: { ...gridAttrs, language: 'ts', code: '// New code block', showLineNumbers: true },
   image: { ...gridAttrs, src: '/sample-assets/diagram-small.png', alt: 'Inserted image' },
   math: { ...gridAttrs, expression: 'x^2', display: true },
   pdf: { ...gridAttrs, src: '/sample-assets/whitepaper.pdf', page: 1, searchable: false },

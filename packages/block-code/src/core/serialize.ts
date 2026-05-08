@@ -1,13 +1,15 @@
 import { codeCore } from './core-definition';
 
 /**
- * MDX 序列化 stub。完整实现等 Wave 3 mdx-bridge routing table 落地（RFC §5）：
- * mdx-bridge 拿到 TiptapNode{type:'code'} 时按 mdxComponent 字符串路由到本函数。
+ * MDX 序列化。Wave 3 mdx-bridge routing table 把 TiptapNode 按
+ * `node.type === codeCore.name` 路由到本函数（per `BlockCoreDefinition.name`).
  *
- * Wave 2 阶段仅暴露稳定签名；mdx-bridge 还未引用此 export，所以 stub 抛错足够。
+ * Wave 6 carry-forward #15b 2026-05-08 — `codeCore.name` renamed
+ * `'code'` → `'componentCode'` to escape the StarterKit inline-code
+ * MARK collision; `CodeTiptapNode.type` literal mirrors that change.
  */
 export interface CodeTiptapNode {
-  readonly type: 'code';
+  readonly type: 'componentCode';
   readonly attrs: {
     readonly language: string;
     readonly code: string;
