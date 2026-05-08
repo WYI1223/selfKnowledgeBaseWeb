@@ -8,8 +8,11 @@
 > `apps/site/src/pages/api/notes/[...slug].ts`. Wires nothing to
 > the editor mount yet — that lands at B.4. Adapter selection +
 > primary/fallback strategy is owned by ADR-0018 v0.6 D13 and
-> exercised at B.4. Stage B close + full edit↔read end-to-end
-> Playwright lands at B.5.
+> exercised at B.4. Stage B close + the edit-route persistence-cycle
+> Playwright spec (edit → ApiAdapter POST → filesystem write →
+> edit-route reload via ApiAdapter GET) lands at B.5; read-route
+> freshness against API saves is a static-build caveat deferred
+> to Phase 3+ path-(a) per the Stage B handoff pack.
 
 ## title
 
@@ -52,7 +55,7 @@ that previously enforced the now-superseded comment-only contract):
 
 3. `packages/editor-shell/src/__tests__/save-adapter.test.ts` —
    **MODIFY** (~-30 LOC). Remove the `ApiAdapter forward-stub is
-   COMMENT-only` regression test + the `executableApiAdapterPattern`
+COMMENT-only` regression test + the `executableApiAdapterPattern`
    regex + `countExecutableApiAdapterForms` helper now that ApiAdapter
    is intentionally executable. LocalStorageAdapter assertions
    unchanged.
@@ -88,7 +91,7 @@ that previously enforced the now-superseded comment-only contract):
    **MODIFY** (~10 LOC; R1 fold-in). The C.4-1 visual-smoke spec
    previously enforced the now-superseded comment-only ApiAdapter
    contract via `expect(saveAdapterSource).toContain('// TODO Phase
-   2+ ApiAdapter…')` + `countExecutableApiAdapterForms === 0`. With
+2+ ApiAdapter…')` + `countExecutableApiAdapterForms === 0`. With
    B.3 making `ApiAdapter` intentionally executable per ADR-0018
    v0.6 D11, the assertion is inverted to require BOTH
    `LocalStorageAdapter` and `ApiAdapter` as `export class …` AND
@@ -116,23 +119,23 @@ real preview server.
 ## e2e_smoke
 
 - flow: ApiAdapter contract round-trip against the real Astro
-    preview server — GET an existing note returns NoteState shape;
-    GET a missing note returns the 404 JSON envelope; read-route
-    `/notes/<slug>` still renders persisted MDX body
+  preview server — GET an existing note returns NoteState shape;
+  GET a missing note returns the 404 JSON envelope; read-route
+  `/notes/<slug>` still renders persisted MDX body
   target_url: /api/notes/sample-mdx-note + /notes/sample-mdx-note
   playwright_spec: apps/site/playwright/api-adapter-roundtrip.spec.ts:"ApiAdapter GET against /api/notes/sample-mdx-note returns NoteState shape" + ":\"ApiAdapter GET against missing slug returns 404 with JSON error envelope\"" + ":\"read-route /notes/sample-mdx-note still renders the persisted MDX body\""
   screenshot_archive: docs/audits/screenshots/wave-6-stage-b-3-read-route.png
   assertions:
-    - GET /api/notes/sample-mdx-note response.status === 200
-    - response JSON has typeof mdxSource === 'string' && mdxSource.length > 0
-    - response JSON has typeof lastModified === 'number' && Number.isFinite()
-    - response JSON has typeof version === 'number' && version >= 1
-    - GET /api/notes/__definitely_missing_slug__ response.status === 404
-    - 404 response JSON has ok === false && typeof error === 'string'
-    - GET /notes/sample-mdx-note response.status === 200
-    - page H1 'Sample MDX Note' is visible (from frontmatter title)
-    - page body text 'Track A 烟测页面' is visible (note-specific MDX body content; rules out 404 page)
-    - screenshot saved to docs/audits/screenshots/wave-6-stage-b-3-read-route.png with size ≥ 5KB
+  - GET /api/notes/sample-mdx-note response.status === 200
+  - response JSON has typeof mdxSource === 'string' && mdxSource.length > 0
+  - response JSON has typeof lastModified === 'number' && Number.isFinite()
+  - response JSON has typeof version === 'number' && version >= 1
+  - GET `/api/notes/__definitely_missing_slug__` response.status === 404
+  - 404 response JSON has ok === false && typeof error === 'string'
+  - GET /notes/sample-mdx-note response.status === 200
+  - page H1 'Sample MDX Note' is visible (from frontmatter title)
+  - page body text 'Track A 烟测页面' is visible (note-specific MDX body content; rules out 404 page)
+  - screenshot saved to docs/audits/screenshots/wave-6-stage-b-3-read-route.png with size ≥ 5KB
 
 ## decision-log
 
@@ -163,9 +166,15 @@ test (mocked fetch; 10 cases) and (b) the apps/site
 `notes-endpoint.test.ts` (mocked fs; 7 cases) shipped at PR #99.
 Adding a POST roundtrip at B.3 Playwright would mutate
 `content/notes/sample-mdx-note/index.mdx` (the only existing
-non-test fixture). The full edit→save→reload-read-route flow is
-B.5 scope; B.3's Playwright spec covers the GET path + read-route
+non-test fixture). The full edit-route persistence cycle (edit →
+ApiAdapter POST → filesystem write → edit-route reload via
+ApiAdapter GET) lands at B.5 against a dedicated `__test_smoke__`
+fixture; B.3's Playwright spec covers the GET path + read-route
 render to satisfy D9.5 with concrete user-visible evidence.
+**Read-route freshness against API saves is a static-build
+limitation deferred to Phase 3+ path-(a) `apps/api` SSR per the
+Stage B handoff pack — `astro dev` HMR closes the gap for the
+dev workflow which is what the user originally reported.**
 
 ### Decision 4 — Wire-up deferred to B.4
 
@@ -253,7 +262,7 @@ pnpm --filter @skb/site test:visual 2>&1 | tail -5
 
 - **B.4**: `EditorShellMount.tsx` wire to ApiAdapter primary +
   LocalStorageAdapter fallback per ADR-0018 v0.6 D13.
-- **B.5**: Stage B close + full edit→save→reload-read-route
+- **B.5**: Stage B close + edit-route persistence-cycle (edit → POST → filesystem → reload edit route via ApiAdapter GET); read-route freshness deferred per static-build caveat
   Playwright spec + handoff pack.
 - **Multi-user auth boundary**: Phase 3+ path-(a) `apps/api`.
 - **AbortSignal / timeout / onProgress** save options: ADR-0018
