@@ -87,6 +87,7 @@ export function EditorShellMount({
   const [ready, setReady] = useState(false);
   const [saveStatus, setSaveStatus] = useState<SaveIndicatorStatus>('idle');
   const [savedAt, setSavedAt] = useState<Date | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   if (apiAdapterRef.current === null || apiAdapterRef.current.slug !== slug) {
     apiAdapterRef.current = new ApiAdapter(slug);
@@ -136,7 +137,17 @@ export function EditorShellMount({
       if (mdxSource) {
         try {
           loadFromMdx(editor, mdxSource, { blockRegistry: registryRef.current ?? undefined });
-        } catch {
+        } catch (error) {
+          // Wave 6 hotfix — pre-hotfix this catch silently returned, leaving
+          // the editor empty + the indicator stuck at "saved" (the user
+          // could not tell that loadFromMdx had thrown). Surface the
+          // failure to both the console (operator) and the indicator/UI
+          // (user), per ADR-0011 D9.7. The editor itself stays mounted so
+          // the user can retry by reloading the route.
+          const message = error instanceof Error ? error.message : 'unknown';
+          console.error('[EditorShellMount] loadFromMdx failed for', slug, error);
+          setLoadError(message);
+          setSaveStatus('error');
           return;
         }
       }
@@ -182,6 +193,30 @@ export function EditorShellMount({
   return (
     <>
       <EditModeBanner editMode={editMode} />
+      {loadError !== null && (
+        <div
+          data-skb-load-error
+          role="alert"
+          style={{
+            background: 'var(--surface, #fff5f5)',
+            border: '1px solid var(--accent-danger, #c53030)',
+            borderRadius: 'var(--radius, 8px)',
+            color: 'var(--accent-danger, #c53030)',
+            fontSize: '14px',
+            margin: '12px 0',
+            padding: '12px 16px',
+          }}
+        >
+          <strong>Failed to load this note: </strong>
+          {loadError}
+          <br />
+          <span style={{ color: 'inherit', fontSize: '12px', opacity: 0.8 }}>
+            Reload the page to retry, or check the source file at
+            <code> content/notes/{slug}/index.mdx </code>
+            for an unsupported MDX construct.
+          </span>
+        </div>
+      )}
       <GridContainer>
         <DragHandle />
         <Toolbar editor={editor} />
