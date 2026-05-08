@@ -15,12 +15,15 @@ function makeEditor(content?: object | string): Editor {
 /**
  * Mirrors the EditorShell.tsx extension list for the live edit
  * surface so round-trip tests against `loadFromMdx` exercise the
- * same Link configuration users see (carry-forward #15a).
+ * same Link configuration users see (carry-forward #15a). After
+ * carry-forward #15b 2026-05-08 StarterKit's inline `code` mark is
+ * enabled (the block-Code Tiptap node was renamed to escape the
+ * ProseMirror namespace collision).
  */
 function makeEditorWithLink(content?: object | string): Editor {
   return new Editor({
     extensions: [
-      StarterKit.configure({ code: false }),
+      StarterKit,
       Link.extend({
         addAttributes() {
           const parentAttrs = (this.parent?.() ?? {}) as Record<string, unknown>;
@@ -114,6 +117,25 @@ describe('@skb/editor-shell saveLoad — Link extension round-trip (carry-forwar
     expect(out).toContain('docs');
     expect(out).toContain('https://example.com');
     expect(out).toContain('Read the docs');
+    editor.destroy();
+  });
+
+  it('round-trips inline backticks (carry-forward #15b unlocked StarterKit code mark)', () => {
+    // Pre-#15b, the block-Code Tiptap node was named `code` and
+    // collided with StarterKit's inline `code` MARK in the
+    // ProseMirror schema. The editor disabled the mark
+    // (`StarterKit.configure({ code: false })`) and `loadFromMdx`
+    // stripped any `code`-marked text via the
+    // `EDITOR_UNSUPPORTED_MARKS` set. Backticks therefore unwrapped
+    // to plain text on edit-route load. After the rename to
+    // `componentCode` the inline mark works end-to-end: load
+    // preserves the mark on the text run, save emits the backticks
+    // verbatim.
+    const editor = makeEditorWithLink();
+    const fixture = '---\nt: x\n---\n\nuse `pnpm --filter @skb/site test` here.\n';
+    loadFromMdx(editor, fixture);
+    const out = saveToMdx(editor);
+    expect(out).toContain('`pnpm --filter @skb/site test`');
     editor.destroy();
   });
 });

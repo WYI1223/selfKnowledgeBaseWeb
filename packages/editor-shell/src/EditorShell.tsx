@@ -26,26 +26,23 @@ export interface EditorShellProps {
 export function EditorShell(props: EditorShellProps) {
   const { initialContent, onChange, className, onCreate, extensions = [] } = props;
   const editor = useEditor({
-    // StarterKit inline `code` mark stays disabled here: the block-Code
-    // package registers a Tiptap NODE named `code`, and ProseMirror
-    // forbids the same name on both a node and a mark. The Wave 6
-    // hotfix sanitizer in `saveLoad.ts:loadFromMdx` strips `code` marks
-    // from mdx-bridge output before `setContent` so the editor accepts
-    // the doc; backtick formatting therefore appears as plain text in
-    // the edit surface. The proper fix renames the block-Code node out
-    // of the collision (Stage B carry-forward #15b).
+    // Wave 6 carry-forward #15b 2026-05-08 — StarterKit's inline
+    // `code` mark is now enabled. The block-Code Tiptap node was
+    // renamed from `code` to `componentCode` so the ProseMirror
+    // schema collision ("RangeError: code can not be both a node and
+    // a mark") is gone. `EDITOR_UNSUPPORTED_MARKS` in `saveLoad.ts`
+    // is correspondingly empty — no marks are stripped at load time.
     //
-    // `@tiptap/extension-link` IS registered (Wave 6 carry-forward
-    // #15a 2026-05-08): markdown links survive into the editor as
-    // anchors. The Link instance below extends the default schema
-    // with a `title` attribute so titled markdown links
-    // `[text](url "title")` round-trip without losing the title
-    // (mdx-bridge emits `title` at parse and consumes it at
-    // serialize); the openOnClick=false setting keeps anchor clicks
-    // from navigating away from the edit surface (users can still
-    // ctrl-click to open externally).
+    // `@tiptap/extension-link` is registered (carry-forward #15a):
+    // markdown links survive into the editor as anchors. The Link
+    // instance below extends the default schema with a `title`
+    // attribute so titled markdown links `[text](url "title")`
+    // round-trip without losing the title (mdx-bridge emits `title`
+    // at parse and consumes it at serialize); the openOnClick=false
+    // setting keeps anchor clicks from navigating away from the
+    // edit surface (users can still ctrl-click to open externally).
     extensions: [
-      StarterKit.configure({ code: false }),
+      StarterKit,
       Link.extend({
         addAttributes() {
           const parentAttrs = (this.parent?.() ?? {}) as Record<string, unknown>;

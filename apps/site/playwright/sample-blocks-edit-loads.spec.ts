@@ -49,9 +49,18 @@ test('sample-blocks edit route loads non-empty content (mdxFlowExpression no lon
   // Wave 6 carry-forward #15a — `@tiptap/extension-link` is now
   // registered, so markdown links (e.g. the `[@skb/heavy-block-boundary](...)`
   // reference inside the sample-blocks intro) survive into the editor
-  // as actual `<a>` anchor elements rather than getting stripped by
+  // as actual anchor elements rather than getting stripped by
   // the `EDITOR_UNSUPPORTED_MARKS` sanitizer.
   await expect(editor.locator('a').first()).toBeVisible({ timeout: 5_000 });
+
+  // Wave 6 carry-forward #15b — block-Code Tiptap node was renamed
+  // from `code` to `componentCode`, freeing StarterKit's inline `code`
+  // mark from the ProseMirror namespace collision. The sample-blocks
+  // intro paragraph contains backticked terms like `mdx-bridge` and
+  // `apps/site` that should now render as inline `<code>` elements
+  // (Tiptap renders the `code` mark as a `<code>` element by default).
+  // Pre-#15b they appeared as plain text.
+  await expect(editor.locator('code').first()).toBeVisible({ timeout: 5_000 });
 
   // The legacy load-error banner must NOT be present.
   await expect(page.locator('[data-skb-load-error]')).toHaveCount(0);

@@ -8,12 +8,12 @@ C5a scope：`packages/block-code/ui-default`（Wave 2 Track C5a）基于 `packag
 
 - `.`（root barrel） — re-export `./core` + `./ui-default`
 - `./core` — headless 层
-  - `codeCore: BlockCoreDefinition<typeof propsSchema>` — name=`'code'` / kind=`'component'` / mdxComponent=`'Code'`
+  - `codeCore: BlockCoreDefinition<typeof propsSchema>` — name=`'componentCode'` / kind=`'component'` / mdxComponent=`'Code'` (Wave 6 carry-forward #15b 2026-05-08 — was `'code'`; renamed to escape ProseMirror node/mark namespace collision with StarterKit's inline `code` mark; user-facing slash-menu label and MDX tag unchanged)
   - `serializeCode(node) → mdxJsxFlowElement` — Tiptap → mdast（Wave 3 mdx-bridge routing 时启用）
   - `parseCode(mdast) → TiptapNode` — mdast → Tiptap（同上）
   - 类型: `CodeTiptapNode` / `CodeMdastJsxElement`
 - `./ui-default` — presentational 层（Wave C5a）
-  - `codeUiDefault: BlockUIDefinition<typeof codeCore.propsSchema>` — coreName=`'code'` / uiId=`'default'`
+  - `codeUiDefault: BlockUIDefinition<typeof codeCore.propsSchema>` — coreName=`'componentCode'` / uiId=`'default'` (matches `codeCore.name` post-#15b rename)
   - `CodeEditorView` / `CodeRenderView` — `ComponentType<BlockViewProps<typeof codeCore.propsSchema>>`，DOM 形状字节级一致（共享 `CodeBody` 原语）
   - `CodeBody` — 视觉单一权威 primitive，editor + render 双视图都嵌入
   - `CODE_THEME_TOKENS` — `Readonly<Record<string, ColorTokenName>>` 设计令牌消费清单（typed import from `@skb/design-tokens`，see Wave 3 PR #2 + ADR-0010 D3 #7a F3 闭环）
@@ -36,12 +36,12 @@ z.object({
 
 block-code 通用不变量：
 
-- **`coreName='code'` (kebab-case)**: `codeCore.name` 字面值固定，与 `BlockRegistry.registerCore` 注册键一致；后续 `block-image` 采用 `coreName` kebab-case 约定。
+- **`coreName='componentCode'` (camelCase post-#15b; kebab-case for siblings)**: `codeCore.name` 字面值固定，与 `BlockRegistry.registerCore` 注册键一致。Wave 6 carry-forward #15b 2026-05-08 renamed from kebab-case `'code'` to camelCase `'componentCode'` to escape the ProseMirror node/mark namespace collision with StarterKit's inline `code` MARK; sibling block kinds (`callout`, `image`, `math`, `pdf`, `jupyter`, `nn-viz`, `agent-flow`) retain kebab-case naming. The `BlockKind` union literal in `@skb/editor-shell/src/registry-wire.tsx` reflects this asymmetry.
 - **`mdxComponent='Code'` (PascalCase)**: 与 `<Code ...>` JSX 标签一致；mdx-bridge 通过 `mdxJsxFlowElement.name` 字符串路由。
 - **Serialize / parse hook 命名**: `serializeCode` / `parseCode`，verb-as-prefix 约定。
 - **`propsSchema single authority`**: 仅在 `src/core/core-definition.ts` 定义，`serializeCode` / `parseCode` / 测试 import `codeCore.propsSchema`。
 - **Self-validating serialize/parse**: `serializeCode` 调 `codeCore.propsSchema.parse(node.attrs)`；`parseCode` 调 `codeCore.propsSchema.parse(rawProps)`；若不满足约束必须 fail。
-- **Registry integration**: `registerCore(codeCore)` + `getCore('code')` round-trip。
+- **Registry integration**: `registerCore(codeCore)` + `getCore('componentCode')` round-trip (post-#15b rename).
 
 block-code ui-default 特定不变量：
 
@@ -56,7 +56,7 @@ block-code ui-default 特定不变量：
 ## Wave 3 mdx-bridge 路由集成（pending）
 
 1. `mdx-bridge/parse.ts` 拦截 `mdxJsxFlowElement{name:'Code'}` → `parseCode(node)`。
-2. `mdx-bridge/serialize.ts` 拦截 `type='code'` → `serializeCode(node)`。
+2. `mdx-bridge/serialize.ts` 拦截 `type='componentCode'` → `serializeCode(node)` (Wave 6 carry-forward #15b 2026-05-08 — was `type='code'` pre-rename).
 3. children 递归走既有 mdx-bridge 流程。
 
 ## Forward-compat
