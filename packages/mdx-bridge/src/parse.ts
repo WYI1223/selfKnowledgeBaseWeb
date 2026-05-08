@@ -9,6 +9,18 @@ import { getJsxDispatch, type MdastJsxElement } from './dispatch-table';
 
 export interface MdxBridgeOptions {
   blockRegistry?: BlockRegistry;
+  /**
+   * Wave 6 hotfix — when `true`, `mdxToTiptap` per-block exceptions
+   * (unsupported tag, JSX-attr coercion failure, etc.) are caught and
+   * replaced with a placeholder paragraph that carries the failure
+   * reason in the `__skb_parse_error` attr. Block-level
+   * `mdxFlowExpression` author comments are also dropped at the input
+   * gate. Default `false` preserves the historical fail-loud behavior
+   * that round-trip + grid-defensive tests rely on; `loadFromMdx`
+   * (`@skb/editor-shell`) sets `true` so the live editor surface
+   * stays usable when a single block has a malformed attr.
+   */
+  softParse?: boolean;
 }
 
 export interface TiptapDoc {
@@ -77,15 +89,56 @@ export function mdxToTiptap(source: string, options?: MdxBridgeOptions): TiptapD
 
   let frontmatter: string | undefined;
   const blocks: RootContent[] = [];
+  const softParse = options?.softParse === true;
+
   for (const node of tree.children) {
     if (node.type === 'yaml') {
       frontmatter = node.value;
+    } else if (softParse && node.type === 'mdxFlowExpression') {
+      // Block-level MDX `{...}` expression (canonical form
+      // `{/* ... */}` author comment). Pre-Wave-6-hotfix this hit
+      // `unsupportedBlock` and took the doc down. Under softParse we
+      // drop it at the input gate so the editor surface stays usable.
+      // Lossy round-trip — hand-authored block-level expressions are
+      // not re-emitted on save (documented in the Stage B handoff
+      // pack §"What is NOT closed").
+      continue;
     } else {
       blocks.push(node);
     }
   }
 
-  const content = blocks.map((node) => mdastBlockToTiptap(node, options));
+  const content = softParse
+    ? blocks.flatMap((node) => {
+        try {
+          return [mdastBlockToTiptap(node, options)];
+        } catch (error) {
+          // Wave 6 hotfix per-block fault tolerance — replace a failing
+          // block with a placeholder paragraph carrying the reason text.
+          // The editor stays mounted; the operator sees the throw via
+          // the surrounding loadFromMdx consumer's diagnostics
+          // (apps/site EditorShellMount logs via the top-level error
+          // boundary). Direct console output is intentionally NOT used
+          // here — the grid-defensive contract test in
+          // __tests__/grid-defensive.test.ts pins this source file
+          // free of transitional warning calls.
+          const reason = error instanceof Error ? error.message : 'unknown';
+          const componentLabel = (node as { name?: string }).name ?? node.type;
+          return [
+            {
+              type: 'paragraph',
+              attrs: { __skb_parse_error: `<${componentLabel}> failed to parse: ${reason}` },
+              content: [
+                {
+                  type: 'text',
+                  text: `[unsupported block <${componentLabel}>: ${reason.slice(0, 120)}]`,
+                },
+              ],
+            } satisfies TiptapNode,
+          ];
+        }
+      })
+    : blocks.map((node) => mdastBlockToTiptap(node, options));
   const doc: TiptapDoc = { type: 'doc', content };
   if (frontmatter !== undefined) doc.frontmatter = frontmatter;
   return doc;
