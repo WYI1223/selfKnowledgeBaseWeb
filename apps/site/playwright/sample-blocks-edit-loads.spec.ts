@@ -128,72 +128,104 @@ test('sample-blocks edit route loads non-empty content (mdxFlowExpression no lon
   // still see `pageerror` if the React error-boundary surfaced it).
   expect(consoleErrors.filter((m) => /loadFromMdx|mdx-bridge/.test(m))).toEqual([]);
 
-  // Wave 6 carry-forward #19 — visual identity regression lock per
-  // ADR-0018 D3 + cf-19 plan. Two assertions:
+  // Wave 6 carry-forward #19 v0.2 — v2 `.gblock` card chrome regression
+  // lock per /mnt/d/download/web/v2-styles.css:154-249 reference design.
+  // Three assertion families:
   //
-  //  (a) Each component-block kind has a non-zero per-kind visual
-  //      signature on the editor surface. Light blocks + heavy blocks
-  //      satisfy this via 2px top stripe; inline math (data-display='false')
-  //      satisfies it via the canvas-soft tint background.
+  //  (a) Per-kind 2px top stripe lives on the .skb-block-nodeview
+  //      wrapper (cf-19 v0.2 D2 — moved from inner component CSS so
+  //      the stripe sits flush with the card top edge).
   //
-  //  (b) The .skb-block-nodeview wrapper has non-zero margin-block so
-  //      4 sequential same-kind blocks read as 4 distinct units, plus
-  //      the wrapper's outline rule is reachable (proves the
-  //      @skb/editor-shell/BlockNodeView.css import in apps/site
-  //      global.css is wired through the bundler).
+  //  (b) Wrapper carries the v2 .gblock card chrome — border, radius,
+  //      surface bg, margin-block, transition. Hover/selected toggles
+  //      stay testable via static computed-style probes.
+  //
+  //  (c) Per-block .skb-block-nodeview__gutter shell exists with kind
+  //      chip whose text matches the kind (collapsing the cf-15b internal
+  //      `componentCode` rename back to user-facing `code`). 4 sequential
+  //      same-kind blocks each get their own chip → visually distinct.
   const visualProbe = await page.evaluate(() => {
     const pm = document.querySelector('.ProseMirror');
     if (!pm) return { error: 'no ProseMirror' };
-    const sel = (q: string) => pm.querySelector(q);
     const px = (v: string) => parseFloat(v) || 0;
-    const stripe = (kind: string, innerSelector: string) => {
-      const host = sel(`[data-skb-block-host="${kind}"]`);
-      if (!host) return { kind, error: 'no host' };
-      const inner = host.querySelector(innerSelector);
-      if (!inner) return { kind, error: `no inner ${innerSelector}` };
-      const cs = window.getComputedStyle(inner);
+
+    const wrappers = Array.from(pm.querySelectorAll('.skb-block-nodeview'));
+    const stripeByKind = (kind: string) => {
+      const wrap = pm.querySelector(`.skb-block-nodeview[data-skb-block-kind="${kind}"]`);
+      if (!wrap) return { kind, error: 'no wrapper' };
+      const cs = window.getComputedStyle(wrap);
+      const gutter = wrap.querySelector('.skb-block-nodeview__gutter');
+      const chip = wrap.querySelector('.skb-block-nodeview__kind-chip');
       return {
         kind,
         borderTopWidth: px(cs.borderTopWidth),
-        bg: cs.backgroundColor,
+        borderTopStyle: cs.borderTopStyle,
+        borderTopColor: cs.borderTopColor,
+        gutterPresent: gutter !== null,
+        chipText: chip?.textContent?.trim() ?? null,
       };
     };
-    const wrap = sel('.skb-block-nodeview');
-    const wrapCs = wrap ? window.getComputedStyle(wrap) : null;
+
+    const firstWrap = wrappers[0] ?? null;
+    const firstCs = firstWrap ? window.getComputedStyle(firstWrap) : null;
     return {
-      perKind: [
-        stripe('callout', '[data-callout-variant]'),
-        stripe('componentCode', '[data-code-language]'),
-        stripe('image', '[data-image-loading]'),
-        stripe('math', "[data-block='math']"),
-        stripe('pdf', "[data-block='pdf']"),
-        stripe('jupyter', "[data-block='jupyter']"),
-        stripe('nn-viz', "[data-block='nn-viz']"),
-        stripe('agent-flow', "[data-block='agent-flow']"),
+      kinds: [
+        stripeByKind('callout'),
+        stripeByKind('componentCode'),
+        stripeByKind('image'),
+        stripeByKind('math'),
+        stripeByKind('pdf'),
+        stripeByKind('jupyter'),
+        stripeByKind('nn-viz'),
+        stripeByKind('agent-flow'),
       ],
-      wrapperMarginTop: wrapCs ? px(wrapCs.marginTop) : 0,
-      wrapperMarginBottom: wrapCs ? px(wrapCs.marginBottom) : 0,
-      wrapperOutlineStyle: wrapCs?.outlineStyle ?? 'none',
+      wrapperCount: wrappers.length,
+      // .gblock card chrome on first wrapper (any wrapper would do; all
+      // share the base card rules)
+      cardChrome: firstCs
+        ? {
+            borderLeftWidth: px(firstCs.borderLeftWidth),
+            borderLeftStyle: firstCs.borderLeftStyle,
+            borderRadius: firstCs.borderTopLeftRadius,
+            backgroundColor: firstCs.backgroundColor,
+            marginTop: px(firstCs.marginTop),
+            marginBottom: px(firstCs.marginBottom),
+          }
+        : null,
     };
   });
-  // (a) Per-kind signature: stripe OR tint.
-  for (const entry of visualProbe.perKind ?? []) {
+
+  // (a) Per-kind 2px wrapper stripe present on all 8 kinds.
+  for (const entry of visualProbe.kinds ?? []) {
     if ('error' in entry) throw new Error(`visual probe ${entry.kind}: ${entry.error}`);
-    const hasStripe = entry.borderTopWidth >= 2;
-    const hasTint = entry.bg !== 'rgba(0, 0, 0, 0)' && entry.bg !== 'transparent';
     expect(
-      hasStripe || hasTint,
-      `kind ${entry.kind} must have a 2px+ top stripe OR a non-transparent background tint (got border-top=${entry.borderTopWidth}px, bg=${entry.bg})`,
-    ).toBe(true);
+      entry.borderTopWidth,
+      `kind ${entry.kind} wrapper must carry a 2px+ top stripe (got ${entry.borderTopWidth}px)`,
+    ).toBeGreaterThanOrEqual(2);
+    expect(entry.borderTopStyle).toBe('solid');
+    // Color must not be transparent (means the per-kind rule resolved
+    // a real --accent-X token, not the wrapper's default black border).
+    expect(entry.borderTopColor).not.toBe('rgba(0, 0, 0, 0)');
   }
-  // (b) Wrapper margin: non-zero on both sides so adjacent blocks breathe.
-  expect(visualProbe.wrapperMarginTop ?? 0).toBeGreaterThanOrEqual(8);
-  expect(visualProbe.wrapperMarginBottom ?? 0).toBeGreaterThanOrEqual(8);
-  // (b cont.) Outline style is 'solid' (the transparent baseline); the color
-  // toggles between transparent and accent on selected/focus, but the style
-  // staying 'solid' proves the .skb-block-nodeview rule is reachable via
-  // the @skb/editor-shell/BlockNodeView.css import in apps/site global.css.
-  expect(visualProbe.wrapperOutlineStyle).toBe('solid');
+
+  // (b) v2 .gblock card chrome on wrapper.
+  expect(visualProbe.cardChrome?.borderLeftWidth ?? 0).toBeGreaterThanOrEqual(1);
+  expect(visualProbe.cardChrome?.borderLeftStyle).toBe('solid');
+  expect(parseFloat(visualProbe.cardChrome?.borderRadius ?? '0')).toBeGreaterThanOrEqual(6);
+  // Background must be non-transparent (the v2 surface white).
+  expect(visualProbe.cardChrome?.backgroundColor).not.toBe('rgba(0, 0, 0, 0)');
+  // Margin-block: at least 8px on each side so adjacent cards breathe.
+  expect(visualProbe.cardChrome?.marginTop ?? 0).toBeGreaterThanOrEqual(8);
+  expect(visualProbe.cardChrome?.marginBottom ?? 0).toBeGreaterThanOrEqual(8);
+
+  // (c) Gutter shell + kind chip per kind. Chip text equals the kind
+  // name except `componentCode` collapses to `code`.
+  for (const entry of visualProbe.kinds ?? []) {
+    if ('error' in entry) continue;
+    expect(entry.gutterPresent, `kind ${entry.kind} missing gutter shell`).toBe(true);
+    const expectedChip = entry.kind === 'componentCode' ? 'code' : entry.kind;
+    expect(entry.chipText).toBe(expectedChip);
+  }
 
   await page.screenshot({ fullPage: true, path: SCREENSHOT_PATH });
 });

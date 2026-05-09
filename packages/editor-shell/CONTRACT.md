@@ -522,35 +522,74 @@ unregistered NodeView fallback wrapper additionally carries the
 `makeBlockNodeView` factory is exported from the package barrel for
 downstream NodeView smoke tests.
 
-### BlockNodeView wrapper styles (Wave 6 cf-19; 2026-05-09)
+### BlockNodeView wrapper styles (Wave 6 cf-19 v0.2; 2026-05-09)
 
 `@skb/editor-shell/BlockNodeView.css` is a side-effect stylesheet that
-gives the otherwise-invisible `<NodeViewWrapper class="skb-block-nodeview">`
-a per-instance visual identity. Consumers (apps/site `global.css` is the
-canonical example) MUST import it once at app boot:
+brings the v2 `.gblock` card chrome onto the editor surface (per the
+v2 reference design at /mnt/d/download/web/v2-styles.css:154-249, plus
+the v2-design-granularity "Block 容器（.gblock）状态" table). Consumers
+(apps/site `global.css` is the canonical example) MUST import it once
+at app boot:
 
 ```css
 @import '@skb/editor-shell/BlockNodeView.css';
 ```
 
-Public selectors:
-- `.skb-block-nodeview` — base wrapper. Applies `margin-block: 8px` and
-  a transparent 2px outline so geometry stays stable while the state
-  toggles. Inner block component keeps full authority over background,
-  padding, border-radius, and the per-kind 2px top stripe (ADR-0018 D3).
-- `.skb-block-nodeview.ProseMirror-selectednode` — outline switches to
-  `var(--accent)` (ADR-0018 D1 selection authority). ProseMirror sets
-  this class on `NodeSelection`.
-- `.skb-block-nodeview:focus-within:not(.ProseMirror-selectednode)` —
-  outline at 40% accent alpha so keyboard focus into block-internal
-  controls (jupyter Run, nn-viz range) reads as block-active.
-- `.skb-block-nodeview--unregistered` + `.skb-block-nodeview__fallback`
-  — soft outline + monospaced placeholder body for the unregistered
-  fallback path (no registry threaded into `wireRegistry`).
+DOM contract emitted by `BlockNodeView.tsx` (cf-19 v0.2):
 
-The inner stylesheet authority remains each block package's
-`ui-default/<kind>.css`; this file only contributes the cross-cutting
-NodeView wrapper layer.
+```
+.skb-block-nodeview                    ← v2 .gblock card (carries data-skb-block-kind)
+  .skb-block-nodeview__gutter          ← v2 .gblock-gutter shell (cf-20 button drop-in)
+    .skb-block-nodeview__kind-chip     ← visible kind label (mono uppercase)
+  .skb-block-nodeview__body            ← v2 .gblock-body padding shell (carries data-skb-block-host)
+    <inner block component />          ← CalloutBody / CodeBody / etc.
+```
+
+Public selectors:
+
+- `.skb-block-nodeview` — v2 `.gblock` card. `background: var(--surface)`
+  + `border: 1px solid var(--border)` + `border-radius: 7px` +
+  `margin-block: 8px`. Geometry is stable across hover/selected/focus
+  state toggles (transparent baseline shadow that lights up on hover;
+  border-color toggles within the existing 1px width).
+- `.skb-block-nodeview:hover` — `border-color: var(--border-strong)` +
+  `box-shadow: var(--shadow-sm)` (v2-styles.css:171).
+- `.skb-block-nodeview.ProseMirror-selectednode` —
+  `border-color: var(--accent)` + `box-shadow: 0 0 0 2px var(--accent-soft)`
+  (v2-styles.css:172). ProseMirror sets this class on `NodeSelection`.
+- `.skb-block-nodeview:focus-within:not(.ProseMirror-selectednode)` —
+  softer accent border bridge so jupyter Run / nn-viz range focus reads
+  as block-active without flashing the full selected ring.
+- `.skb-block-nodeview[data-skb-block-kind="<kind>"]` — per-kind 2px
+  top stripe (ADR-0018 D3 hue tokens). Hue map: callout/componentCode
+  → runnable 145°; image → 60°; math → 280°; pdf → 0°; jupyter → 90°;
+  nn-viz → 325°; agent-flow → 180°. Hue lives on the wrapper instead
+  of the inner component CSS so the stripe sits flush with the card
+  top edge per v2 `.gblock.k-canvas { border-top: ... }` model.
+- `.skb-block-nodeview__gutter` — v2 `.gblock-gutter` shell. Absolutely
+  positioned top-left, `opacity: 0.45` baseline, `1` on hover/focus/
+  selected. Empty placeholder for cf-20 drag-handle + kebab buttons.
+- `.skb-block-nodeview__kind-chip` — mono uppercase kind label, 10px,
+  per-kind tinted background matching the top stripe hue (canvas-soft /
+  runnable-soft / image-soft analog per v2 palette glyph treatment).
+  The chip label collapses `componentCode` → `code` (the cf-15b internal
+  rename was for ProseMirror namespace isolation; the user-facing name
+  stays "code").
+- `.skb-block-nodeview__body` — v2 `.gblock-body` padding shell.
+  `padding: 28px 12px 8px` reserves room for the absolutely-positioned
+  gutter chip. Canvas/image/runnable-family kinds (image/pdf/math/
+  jupyter/nn-viz/agent-flow) drop side+bottom padding to `4px` per v2
+  `.gblock-body.fit` analog.
+- `.skb-block-nodeview--unregistered` + `.skb-block-nodeview__fallback`
+  — dashed border-strong outline + monospaced placeholder body for the
+  unregistered fallback path (no registry threaded into `wireRegistry`).
+
+Per-block stripe coexistence: each block package's
+`ui-default/<kind>.css` keeps its own `border-top` rule so the static
+read-route (`/notes/<slug>` Astro page) renders the stripe directly on
+the inner component when the NodeView wrapper is absent. The wrapper-
+level rule wins specificity-wise on the editor-mount path and gives
+the stripe its flush card-top placement.
 
 `EditorShellProps.extensions` is now the sanctioned composition hook
 for consumer-owned Tiptap extensions layered after the built-in

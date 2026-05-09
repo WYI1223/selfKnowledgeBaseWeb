@@ -1,75 +1,215 @@
 /*
- * @skb/editor-shell — BlockNodeView wrapper styles.
+ * @skb/editor-shell — BlockNodeView wrapper styles (v2 `.gblock` card chrome).
  *
- * Wave 6 cf-19 (2026-05-09) — gives the otherwise-invisible
- * `<NodeViewWrapper class="skb-block-nodeview">` (BlockNodeView.tsx)
- * a per-instance visual identity so 4 sequential same-kind blocks
- * read as 4 distinct units rather than one super-block.
+ * Wave 6 cf-19 v0.2 (2026-05-09) — restructured from v0.1 minimal
+ * outline-only to the full v2 `.gblock` card treatment per
+ * /mnt/d/download/web/v2-styles.css:154-176 and the v2-design-granularity
+ * "Block 容器（.gblock）状态" table. The wrapper is now the canonical
+ * editor-surface block boundary; per-kind 2px top stripe lives here on
+ * the wrapper (flush with the card top edge) instead of inside each
+ * inner block component CSS.
  *
- * The inner block component (CalloutBody / CodeBody / Image figure /
- * Math span / Pdf iframe / Jupyter / NnViz / AgentFlow div) keeps full
- * authority over background, padding, border-radius, and the per-kind
- * 2px top stripe (ADR-0018 D3). This wrapper only contributes:
+ * DOM contract (BlockNodeView.tsx):
+ *   .skb-block-nodeview                    ← v2 .gblock card
+ *     .skb-block-nodeview__gutter          ← v2 .gblock-gutter shell (cf-20 button drop-in)
+ *       .skb-block-nodeview__kind-chip     ← visible kind label
+ *     .skb-block-nodeview__body            ← v2 .gblock-body padding shell
+ *       <inner block component />          ← CalloutBody / CodeBody / etc.
  *
- *   1. `margin-block` — visible breathing room between adjacent NodeViews
- *      so 4 sequential callouts in the sample-blocks fixture clearly
- *      separate. Tiptap's EditorContent does not collapse this margin
- *      because it lives on the NodeView wrapper, not on a prose element.
- *   2. transparent 2px outline by default; on `.ProseMirror-selectednode`
- *      the outline becomes `var(--accent)` (orange-red, ADR-0018 D1
- *      selection authority). Provides the "this is the active block"
- *      affordance which previously did not exist for heavy blocks (no
- *      :focus-visible ring of their own).
- *   3. `:focus-within` mirrors the selected ring at 50% strength so
- *      keyboard focus into block-internal controls (Run button on
- *      jupyter, ranges on nn-viz) reads as block-active too.
+ * Why both wrapper-level and inner-component-level stripes coexist:
+ *   - The static read-route (apps/site /notes/<slug>) renders inner
+ *     block components without this NodeView wrapper, so each block
+ *     CSS keeps its own `border-top: 2px solid var(--accent-X)` for
+ *     standalone use.
+ *   - The editor-mount route mounts the wrapper around the inner
+ *     component. The wrapper's per-kind stripe wins specificity-wise
+ *     (descendant attribute selector vs root attribute selector) and
+ *     sits flush at the card top edge, which is the v2 visual.
  *
- * Imported as side-effect from BlockNodeView.tsx so any consumer of
- * @skb/editor-shell that mounts a registry-backed NodeView gets the
- * styles automatically. Consumers without bundler CSS support will
- * see the wrapper as a plain transparent div (zero-padding, zero-margin
- * default) — the inner component still renders its own visual identity.
+ * All color/border/radius/shadow values come from @skb/design-tokens
+ * (ADR-0018 D1+D3); zero hardcoded OKLCH literals.
  */
 
 .skb-block-nodeview {
-  /* Per-instance breathing room — 8px above + below = clear "individual
-   * block" perception when 4 blocks of the same kind sequence (sample-
-   * blocks fixture stress case). Inner component's own margin is
-   * additive so display-math / jupyter etc. still get their existing
-   * `margin: var(--space-4) 0` on top of this. */
+  position: relative;
+  background: var(--surface, #ffffff);
+  border: 1px solid var(--border, oklch(92% 0.005 80));
+  border-radius: 7px;
   margin-block: 8px;
 
-  /* Transparent baseline outline. Switches color on selected/focus-within
-   * states below — keeps geometry stable so toggling the state does not
-   * shift block height. The 2px outline-offset matches the inner
-   * component's 2px top stripe so the focus ring sits flush around it. */
-  outline: 2px solid transparent;
-  outline-offset: 2px;
-  border-radius: var(--radius, 6px);
-
-  transition: outline-color var(--duration-fast, 150ms) var(--ease-base, ease);
+  /* Stable geometry across hover/selected/focus state toggles: shadow
+   * starts at 0 (transparent) so the box doesn't jump when shadow
+   * lights up. Border color toggles within the existing 1px width. */
+  box-shadow: 0 0 0 0 transparent;
+  transition:
+    box-shadow var(--duration-fast, 120ms) var(--ease-base, ease),
+    border-color var(--duration-fast, 120ms) var(--ease-base, ease);
 }
 
-/* ProseMirror sets `.ProseMirror-selectednode` on the NodeView host when
- * the block is selected (NodeSelection). That class lands on the outer
- * NodeViewWrapper element. */
+.skb-block-nodeview:hover {
+  border-color: var(--border-strong, oklch(86% 0.006 80));
+  box-shadow: var(
+    --shadow-sm,
+    0 1px 2px rgba(20, 15, 10, 0.05),
+    0 1px 1px rgba(20, 15, 10, 0.04)
+  );
+}
+
+/* ProseMirror sets `.ProseMirror-selectednode` on the wrapper when
+ * the block is the active NodeSelection. */
 .skb-block-nodeview.ProseMirror-selectednode {
-  outline-color: var(--accent, oklch(58% 0.16 35));
+  border-color: var(--accent, oklch(58% 0.16 35));
+  box-shadow: 0 0 0 2px var(--accent-soft, oklch(96% 0.04 35));
 }
 
 /* Soft state for keyboard focus into block-internal controls (e.g.
- * jupyter Run button, nn-viz range slider). 50% alpha bridge keeps
- * the visual softer than a full selection ring so we don't flash
- * a strong accent every time focus moves through the block. */
+ * jupyter Run button, nn-viz range slider). Lives below selectednode
+ * specificity-wise so explicit selection always wins. */
 .skb-block-nodeview:focus-within:not(.ProseMirror-selectednode) {
-  outline-color: oklch(58% 0.16 35 / 0.4);
+  border-color: var(--accent, oklch(58% 0.16 35));
 }
 
-/* Unregistered fallback — keep the outline visible at low alpha so
- * the placeholder "Unregistered block <kind>" message reads as a
- * developer affordance rather than visual noise. */
+/* === Per-kind 2px top stripe ====================================== */
+/* Authority: ADR-0018 D3 hue table. Each kind maps to a hue group
+ * (canvas / runnable / image) per granularity v0.3.4 § "Block kind
+ * 编码（视觉识别）". 5 lock-extended kinds (math/pdf/jupyter/nn-viz/
+ * agent-flow) consume the per-kind tokens locked at Pre-A4. */
+.skb-block-nodeview[data-skb-block-kind='callout'] {
+  border-top: 2px solid var(--accent-runnable, oklch(50% 0.12 145));
+}
+.skb-block-nodeview[data-skb-block-kind='componentCode'] {
+  border-top: 2px solid var(--accent-runnable, oklch(50% 0.12 145));
+}
+.skb-block-nodeview[data-skb-block-kind='image'] {
+  border-top: 2px solid var(--accent-image, oklch(60% 0.10 60));
+}
+.skb-block-nodeview[data-skb-block-kind='math'] {
+  border-top: 2px solid var(--accent-math, oklch(50% 0.16 280));
+}
+.skb-block-nodeview[data-skb-block-kind='pdf'] {
+  border-top: 2px solid var(--accent-pdf, oklch(55% 0.16 0));
+}
+.skb-block-nodeview[data-skb-block-kind='jupyter'] {
+  border-top: 2px solid var(--accent-jupyter, oklch(65% 0.14 90));
+}
+.skb-block-nodeview[data-skb-block-kind='nn-viz'] {
+  border-top: 2px solid var(--accent-nn-viz, oklch(50% 0.18 325));
+}
+.skb-block-nodeview[data-skb-block-kind='agent-flow'] {
+  border-top: 2px solid var(--accent-agent-flow, oklch(55% 0.13 180));
+}
+
+/* === Gutter shell ================================================== */
+/* v2-styles.css:230-249 `.gblock-gutter`. Empty placeholder that cf-20
+ * will populate with drag-handle + kebab buttons; cf-19 ships only the
+ * shell + a kind chip so 4 sequential same-kind blocks remain visually
+ * distinct (the original "看起来还是一个块" complaint). */
+.skb-block-nodeview__gutter {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  z-index: 4;
+  display: flex;
+  gap: 2px;
+  align-items: center;
+  opacity: 0.45;
+  transition: opacity 100ms;
+  pointer-events: none;
+}
+.skb-block-nodeview:hover .skb-block-nodeview__gutter,
+.skb-block-nodeview:focus-within .skb-block-nodeview__gutter,
+.skb-block-nodeview.ProseMirror-selectednode .skb-block-nodeview__gutter {
+  opacity: 1;
+}
+
+/* Kind chip — small uppercase mono badge. Adopts v2 palette glyph
+ * treatment (v2-styles.css:71-78) scaled into the gutter. The chip
+ * background tints to the kind's hue group so the chip itself reads
+ * as a kind indicator independent of the 2px top stripe. */
+.skb-block-nodeview__kind-chip {
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-2, oklch(45% 0.01 80));
+  background: var(--panel, oklch(98% 0.004 80));
+  border: 1px solid var(--border, oklch(92% 0.005 80));
+  border-radius: 4px;
+  padding: 1px 6px;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+/* Per-kind chip tint — same hue as the top stripe to reinforce the
+ * kind identity (canvas-soft / runnable-soft / image-soft analog). */
+.skb-block-nodeview__kind-chip[data-skb-block-kind='callout'],
+.skb-block-nodeview__kind-chip[data-skb-block-kind='componentCode'] {
+  color: oklch(40% 0.13 145);
+  background: oklch(95% 0.04 145);
+  border-color: oklch(85% 0.05 145);
+}
+.skb-block-nodeview__kind-chip[data-skb-block-kind='image'] {
+  color: oklch(40% 0.10 60);
+  background: oklch(95% 0.025 60);
+  border-color: oklch(85% 0.04 60);
+}
+.skb-block-nodeview__kind-chip[data-skb-block-kind='math'] {
+  color: oklch(40% 0.16 280);
+  background: oklch(95% 0.04 280);
+  border-color: oklch(85% 0.05 280);
+}
+.skb-block-nodeview__kind-chip[data-skb-block-kind='pdf'] {
+  color: oklch(45% 0.16 0);
+  background: oklch(95% 0.04 0);
+  border-color: oklch(85% 0.05 0);
+}
+.skb-block-nodeview__kind-chip[data-skb-block-kind='jupyter'] {
+  color: oklch(45% 0.14 90);
+  background: oklch(95% 0.04 90);
+  border-color: oklch(85% 0.05 90);
+}
+.skb-block-nodeview__kind-chip[data-skb-block-kind='nn-viz'] {
+  color: oklch(40% 0.18 325);
+  background: oklch(95% 0.05 325);
+  border-color: oklch(85% 0.06 325);
+}
+.skb-block-nodeview__kind-chip[data-skb-block-kind='agent-flow'] {
+  color: oklch(40% 0.13 180);
+  background: oklch(95% 0.04 180);
+  border-color: oklch(85% 0.05 180);
+}
+
+/* === Body shell ==================================================== */
+/* v2-styles.css:197-204 `.gblock-body`. The default `padding: 4px 10px`
+ * applies to all kinds; canvas/image/runnable family blocks manage
+ * their own internal padding so we drop padding to 0 via the data-
+ * attribute selector to mirror v2's `.gblock-body.fit` rule. */
+.skb-block-nodeview__body {
+  padding: 8px 12px;
+  /* Reserve top room for the absolutely-positioned gutter chip
+   * (top: 4px + chip ~16px tall = ~22px clearance). */
+  padding-top: 28px;
+}
+
+/* fit-body kinds (analog to v2 `.gblock-body.fit`): the inner block
+ * component owns its own padding/canvas; the wrapper body just provides
+ * the gutter clearance. */
+.skb-block-nodeview[data-skb-block-kind='image'] .skb-block-nodeview__body,
+.skb-block-nodeview[data-skb-block-kind='pdf'] .skb-block-nodeview__body,
+.skb-block-nodeview[data-skb-block-kind='math'] .skb-block-nodeview__body,
+.skb-block-nodeview[data-skb-block-kind='jupyter'] .skb-block-nodeview__body,
+.skb-block-nodeview[data-skb-block-kind='nn-viz'] .skb-block-nodeview__body,
+.skb-block-nodeview[data-skb-block-kind='agent-flow'] .skb-block-nodeview__body {
+  padding: 28px 4px 4px;
+}
+
+/* === Unregistered fallback ========================================= */
+/* Soft outline + monospaced body so the developer-visible "Unregistered
+ * block <kind>" placeholder reads as a debug affordance, not noise. */
 .skb-block-nodeview--unregistered {
-  outline-color: oklch(86% 0.006 80);
+  border-color: var(--border-strong, oklch(86% 0.006 80));
+  border-style: dashed;
 }
 
 .skb-block-nodeview__fallback {
