@@ -14,6 +14,7 @@ export { SaveIndicator } from './save-indicator';
 export type { SaveIndicatorProps, SaveIndicatorStatus } from './save-indicator';
 export {
   BLOCK_KIND_OPTIONS,
+  defaultBlockAttrsFor,
   insertBlockKind,
   wireRegistry,
 } from './registry-wire';
@@ -107,3 +108,13 @@ export type {
   UseResizePipelineOptions,
   UseResizePipelineReturn,
 } from './resize/use-resize-pipeline';
+export { KebabButton } from './kebab/kebab-button';
+export type { KebabButtonProps } from './kebab/kebab-button';
+export { KebabMenu } from './kebab/kebab-menu';
+export type { KebabMenuProps } from './kebab/kebab-menu';
+export { KebabContext, KebabProvider } from './kebab/kebab-context';
+export type {
+  KebabContextValue,
+  KebabProviderProps,
+} from './kebab/kebab-context';
+export { buildChangeKindAttrs } from './kebab/change-kind-attrs';

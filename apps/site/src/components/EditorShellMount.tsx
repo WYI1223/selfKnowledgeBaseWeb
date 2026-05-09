@@ -6,11 +6,13 @@ import {
 } from '@skb/block-foundation';
 import {
   ApiAdapter,
+  BLOCK_KIND_OPTIONS,
   DragDropProvider,
   DragGhost,
   EditModeBanner,
   EditorShell,
   GridContainer,
+  KebabProvider,
   LocalStorageAdapter,
   type NoteState,
   OutlineOverlay,
@@ -31,6 +33,11 @@ import {
   wireRegistry,
 } from '@skb/editor-shell';
 import { DropPulseAtRect, ResizeOverlays } from './EditorShellOverlays';
+import {
+  makeKebabChangeKind,
+  makeKebabDelete,
+  makeKebabDuplicate,
+} from './EditorShellKebabActions';
 
 export interface EditorShellMountProps {
   slug: string;
@@ -193,6 +200,34 @@ export function EditorShellMount({
     },
   });
 
+  // Wave 6 cf-20e (2026-05-09) — kebab menu callbacks. The 3
+  // imperative one-shot factories (delete / duplicate / change-kind)
+  // are extracted to ./EditorShellKebabActions.ts to keep the mount
+  // file under the 500-line size-check hard limit. Per cf-20e D5,
+  // the consumer (this mount) is the single owner of editor
+  // mutations across all 3 contexts (drag, resize, kebab). Per cf-20e
+  // D6, duplicate fires the success-pulse via cf-20c-2 R3 dropEpoch
+  // reuse (the same `setLastDroppedFromExternal` that drag-commit
+  // and resize-commit use).
+  const onKebabDelete = useMemo(() => makeKebabDelete(editor), [editor]);
+  const onKebabDuplicate = useMemo(
+    () => makeKebabDuplicate(editor, pipeline.setLastDroppedFromExternal),
+    [editor, pipeline.setLastDroppedFromExternal],
+  );
+  const onKebabChangeKind = useMemo(
+    () => makeKebabChangeKind(editor),
+    [editor],
+  );
+  const kebabContextValue = useMemo(
+    () => ({
+      onDelete: onKebabDelete,
+      onDuplicate: onKebabDuplicate,
+      onChangeKind: onKebabChangeKind,
+      kinds: BLOCK_KIND_OPTIONS,
+    }),
+    [onKebabDelete, onKebabDuplicate, onKebabChangeKind],
+  );
+
   if (apiAdapterRef.current === null || apiAdapterRef.current.slug !== slug) {
     apiAdapterRef.current = new ApiAdapter(slug);
   }
@@ -323,16 +358,18 @@ export function EditorShellMount({
       )}
       <DragDropProvider value={dragContextValue}>
         <ResizeProvider value={resizeContextValue}>
-          <GridContainer viewportCols={viewportCols}>
-            <Toolbar editor={editor} />
-            <EditorShell
-              extensions={wire.extensions}
-              onCreate={handleCreate}
-              onChange={handleChange}
-            />
-            <Palette editor={editor} kinds={wire.blockKinds} />
-            <SlashMenu editor={editor} kinds={wire.blockKinds} />
-          </GridContainer>
+          <KebabProvider value={kebabContextValue}>
+            <GridContainer viewportCols={viewportCols}>
+              <Toolbar editor={editor} />
+              <EditorShell
+                extensions={wire.extensions}
+                onCreate={handleCreate}
+                onChange={handleChange}
+              />
+              <Palette editor={editor} kinds={wire.blockKinds} />
+              <SlashMenu editor={editor} kinds={wire.blockKinds} />
+            </GridContainer>
+          </KebabProvider>
         </ResizeProvider>
       </DragDropProvider>
       <SaveIndicator savedAt={savedAt} status={saveStatus} />

@@ -7,6 +7,7 @@ import { DragHandleButton } from './drag-drop/drag-handle-button';
 import { DragDropContext } from './drag-drop/drag-context';
 import { ResizeHandles } from './resize/resize-handles';
 import { ResizeContext } from './resize/resize-context';
+import { KebabButton } from './kebab/kebab-button';
 
 /**
  * Wave 6 carry-forward #18 (2026-05-08) — bridge from a Tiptap NodeView to
@@ -165,6 +166,7 @@ export function makeBlockNodeView({
         >
           <div className="skb-block-nodeview__gutter" contentEditable={false}>
             {blockId && <DragHandleButton blockId={blockId} />}
+            {blockId && <KebabButton blockId={blockId} />}
             <span className="skb-block-nodeview__kind-chip" data-skb-block-kind={nodeName}>
               {chipLabel(nodeName)}
             </span>
@@ -185,6 +187,7 @@ export function makeBlockNodeView({
       >
         <div className="skb-block-nodeview__gutter" contentEditable={false}>
           {blockId && <DragHandleButton blockId={blockId} />}
+          {blockId && <KebabButton blockId={blockId} />}
           <span className="skb-block-nodeview__kind-chip" data-skb-block-kind={nodeName}>
             {chipLabel(nodeName)}
           </span>

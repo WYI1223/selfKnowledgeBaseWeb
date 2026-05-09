@@ -353,6 +353,40 @@
   (`dispatchResizeGesture` + rAF barriers) so each test is focused on
   assertions, not the pointerdown→rAF→pointermove→rAF→pointerup→2-rAF
   sequence boilerplate.
+- **Kebab menu wire (Wave 6 cf-20e 2026-05-09)**: `EditorShellMount.tsx`
+  additionally mounts `<KebabProvider value={{onDelete, onDuplicate,
+  onChangeKind, kinds: BLOCK_KIND_OPTIONS}}>` nested inside the existing
+  `<DragDropProvider>` + `<ResizeProvider>` so per-block components read all
+  3 contexts independently. Each `.skb-block-nodeview` emits 1 kebab button
+  (`<KebabButton blockId={...}>` rendered inside the cf-19 gutter shell next
+  to the cf-20c-2 drag handle); clicking opens a floating `<KebabMenu>` with
+  3 items: Delete (silent; Tiptap history Cmd+Z to undo per cf-20e D4) /
+  Duplicate / Change kind… (sub-menu with 8 BlockKindOption labels). The 3
+  imperative one-shot factories (`makeKebabDelete` / `makeKebabDuplicate` /
+  `makeKebabChangeKind`) live in `apps/site/src/components/EditorShellKebabActions.ts`
+  (extraction motivated by the cf-20e size-check landing the mount file at
+  540 LOC); they closure over the live Tiptap editor + dispatch the
+  appropriate ProseMirror transaction. Per cf-20e D6 + cf-20c-2 R3 dropEpoch
+  reuse, Duplicate fires the success-pulse via the SAME
+  `setLastDroppedFromExternal` infrastructure that drag-commit + resize-
+  commit use — Duplicate is the third action that exercises this generic
+  "rapid-action animation isolation" field. Per cf-20e D7, Duplicate uses
+  `tr.insert(insertPos, node.copy())` directly (NOT Tiptap's high-level
+  `insertContentAt(pos, node.toJSON())` which silently no-ops on schema-
+  mismatch — empirically observed at cf-20e R0). Per cf-20e D3 drop-and-
+  default, Change-kind preserves grid attrs (col/row/colSpan/rowSpan) from
+  source + supplies all kind-specific fields from target defaults via
+  `buildChangeKindAttrs`. Esc key closes the menu (cf-20e D8). Click-outside
+  the kebab wrapper closes the menu. Mobile (≤768px) hides kebab + menu via
+  `display: none` per ADR-0017 D9 view-only contract.
+  Regression-lock spec:
+  `apps/site/playwright/sample-blocks-kebab-menu.spec.ts` covers button
+  visibility (14 kebabs per sample-blocks fixture) + open/close lifecycle
+  (Esc + outside-click) + Delete (block count -1) + Duplicate (block count
+  +1; new block matches source kind; dropEpoch pulse anchor mounts) +
+  Change-kind (data-skb-block-kind mutates from `callout` to
+  `componentCode` + grid attrs preserved at `1 / span 12`) + mobile-hidden
+  lock at 375×812. Uses byte-snapshot fixture isolation per cf-20c-2 R3 F1.
 - Block registry: C.4-2 verified that `EditorShellMount.tsx` constructs a
   route-local `BlockRegistry` and calls `registerBlocks` from
   `@skb/editor-shell`, whose helper registers all 8 Wave 2 block definitions
