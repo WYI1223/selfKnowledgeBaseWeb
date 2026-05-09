@@ -1,3 +1,5 @@
+import { existsSync, unlinkSync, writeFileSync } from 'node:fs';
+
 import type { Page, Locator } from '@playwright/test';
 
 /**
@@ -152,4 +154,66 @@ export async function dispatchResizeGesture(
   await windowPointerUp(page, targetX, targetY);
   await doubleRafBarrier(page);
   await page.waitForTimeout(300);
+}
+
+/**
+ * Wave 6 cf-20d R2/R3 — fixture installers for persisted-overflow
+ * regression tests. Mutate the sample-blocks MDX file IN-PLACE
+ * (caller is responsible for restoring via byte-snapshot per
+ * cf-20c-2 R3 F1).
+ *
+ * R2 F2 case: `col=4 colSpan=6` overflows colSpan-only at tablet
+ * (col valid, span-end exceeds totalCols).
+ * R3 F1 case: `col=7 colSpan=6` overflows col-only at tablet
+ * (col itself exceeds totalCols).
+ */
+function replaceFirstCalloutGridAttrs(
+  originalMdxBytes: string,
+  newAttrs: { col: number; colSpan: number },
+  mdxPath: string,
+  statePath: string,
+  installerName: string,
+): void {
+  const overflowMdx = originalMdxBytes.replace(
+    /<Callout col=\{1\} colSpan=\{12\} rowSpan=\{1\} variant="note" title="Sampler scope">/,
+    `<Callout col={${newAttrs.col}} colSpan={${newAttrs.colSpan}} rowSpan={1} variant="note" title="Sampler scope">`,
+  );
+  if (overflowMdx === originalMdxBytes) {
+    throw new Error(`${installerName}: replacement pattern not found in fixture`);
+  }
+  writeFileSync(mdxPath, overflowMdx, 'utf8');
+  // Clear sidecar so ApiAdapter loads from MDX (not stale state.json).
+  if (existsSync(statePath)) {
+    unlinkSync(statePath);
+  }
+}
+
+/** R2 F2: install fixture with col=4, colSpan=6 (colSpan-only overflow at tablet). */
+export function installPersistedOverflowFixture(
+  originalMdxBytes: string,
+  mdxPath: string,
+  statePath: string,
+): void {
+  replaceFirstCalloutGridAttrs(
+    originalMdxBytes,
+    { col: 4, colSpan: 6 },
+    mdxPath,
+    statePath,
+    'installPersistedOverflowFixture',
+  );
+}
+
+/** R3 F1: install fixture with col=7, colSpan=6 (col-only overflow at tablet). */
+export function installColOverflowFixture(
+  originalMdxBytes: string,
+  mdxPath: string,
+  statePath: string,
+): void {
+  replaceFirstCalloutGridAttrs(
+    originalMdxBytes,
+    { col: 7, colSpan: 6 },
+    mdxPath,
+    statePath,
+    'installColOverflowFixture',
+  );
 }

@@ -415,3 +415,4 @@ describe('buildResizeNextAttrs — R1 F3 axis-aware attr diff', () => {
     expect(merged.colSpan).toBe(6); // updated
   });
 });
+

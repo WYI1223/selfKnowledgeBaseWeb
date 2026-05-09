@@ -97,6 +97,7 @@ export { RowLadder } from './resize/row-ladder';
 export type { RowLadderProps } from './resize/row-ladder';
 export {
   buildResizeNextAttrs,
+  normalizeOverflowPosition,
   snapToColSpan,
   snapToRowSpan,
 } from './resize/resize-snap';

@@ -737,6 +737,80 @@ external mutation, schema migration). The defense scope is "is
 the state valid BEFORE we write?" — never just "does my action
 make it invalid?".
 
+**R3 F1 amendment lock (2026-05-09)** — codex-pr-reviewer-55 R3 F1
+caught that the R2 F2 fix only normalized `colSpan` (assumed `col`
+itself was always valid). The persisted-overflow class also
+includes `col > totalCols`. Reviewer's deeper case:
+
+- User saves block at desktop with `col=7, colSpan=6` (valid in
+  12-col: `7 + 6 - 1 = 12 ≤ 12`).
+- User reloads at tablet (totalCols=6): `col=7 > totalCols=6`
+  invalid by ADR-0016 D2 / `validateGridPosition` at
+  `grid-math.ts:111`.
+- Pre-R3 R2 fix: `normalizedColSpan = max(1, 6 - 7 + 1) = max(1, 0)
+  = 1`; injects `colSpan=1` but leaves `col=7` untouched.
+- Result: `{col=7, colSpan=1}` — STILL invalid (col=7 > 6) AND
+  `colSpan=1` violates `COL_SNAPS = [2,3,4,6,8,12]`. R2 made the
+  state worse: still overflows AND introduces a non-snap colSpan.
+
+**R3 fix**: extract `normalizeOverflowPosition(startCol,
+startColSpan, totalCols, activeColSnaps)` pure helper that
+normalizes the `{col, colSpan}` PAIR atomically:
+1. Detect overflow: `col > totalCols` OR `col + colSpan - 1 > totalCols`.
+2. **Left-clamp col**: `clampedCol = min(max(1, startCol), totalCols)`.
+   Per cf-20d D10 R3 amendment decision: **left-clamp (NOT
+   right-clamp)** preserves the largest fitting colSpan on the new
+   viewport — the user explicitly placed the block somewhere;
+   clamping AT the right edge would push it off-screen at narrower
+   viewports.
+3. **Compute maxFit**: `totalCols - clampedCol + 1`.
+4. **Pick colSpan**: largest `activeColSnaps` member ≤ `maxFit`;
+   fall back to 1 if no snap fits (mobile `[1]` covers this).
+5. Return `{col, colSpan}` if normalization happened, else null
+   (caller skips overflow-recovery branch).
+
+The pipeline now writes BOTH `col` AND `colSpan` from the helper's
+return value into the same `setNodeMarkup` transaction (single
+atomic write, recovers col-overflow + colSpan-overflow + both
+combined). The helper's return type carries the structural
+guarantee that BOTH fields are produced together — caller can't
+accidentally write only one.
+
+**Implementation cost (R3)**: ~50 LOC — new pure helper in
+`resize-snap.ts` (~50 LOC including JSDoc) + barrel export +
+pipeline rewire (R3's call replaces R2's inline 2-line
+computation). Test coverage:
+- 11 new vitest cases under `describe('normalizeOverflowPosition —
+  R3 F1 atomic {col, colSpan} normalization')` extracted to NEW
+  `__tests__/resize/normalize-overflow-position.test.ts` (size-
+  check forced split; original test file at 559 LOC). Cases
+  cover ALL combinations per F1 dispatch operational rule "test
+  fixtures must include cases where each field independently
+  triggers the violation": colSpan-only overflow (R2's case) /
+  col-only overflow (R3's NEW case) / both-fields overflow /
+  mobile (totalCols=1) / exact-edge non-overflow (returns null) /
+  clearly-valid non-overflow / col below 1 (defensive clamp UP) /
+  empty activeColSnaps fallback.
+- 1 new Playwright test
+  `cf-20d R3 F1 — bottom-only resize on col-overflow block
+  normalizes BOTH col AND colSpan atomically` — installs MDX
+  fixture with `col=7, colSpan=6` (valid at desktop, col-overflow
+  at tablet 6-col), performs bottom-only resize, asserts
+  post-commit `gridColumn === '6 / span 1'` (col left-clamped 7→6,
+  colSpan fallback to 1) NOT `7 / span 1` (R2's broken-recovery
+  output).
+
+**Operational rule landed (cf-20d R3 reflection)**: for
+normalize-recovery defenses on multi-field invariants, enumerate
+ALL fields whose persisted state can become invalid; test fixtures
+must include cases where each field independently triggers the
+violation. R2 F2 only enumerated `colSpan` overflow (the case
+manifest with `col=4, colSpan=6`); R3 F1 surfaces the `col` overflow
+case. Adding to my defense-design checklist: for any persisted
+invariant `f(a, b, ...) <= K`, write fixtures where each input
+INDEPENDENTLY exceeds K (a alone, b alone, both, none) — not just
+"some combination exceeds K".
+
 ### D11 — rowSpan='auto' preservation on right-only resize (R1 F3 fix; axis-aware attr write)
 
 **R1 F3 fix lock (2026-05-09)** — codex-pr-reviewer-55 R1 F3 caught

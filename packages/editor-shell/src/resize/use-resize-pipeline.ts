@@ -31,6 +31,7 @@ import type { Editor } from '@tiptap/core';
 import { liveBlockPositions, snapshotBlocks } from '../drag-drop/pipeline-snapshot';
 import {
   buildResizeNextAttrs,
+  normalizeOverflowPosition,
   snapToColSpan,
   snapToRowSpan,
 } from './resize-snap';
@@ -339,28 +340,20 @@ export function useResizePipeline(
         rowChanged &&
         (snapshot.axis === 'bottom' || snapshot.axis === 'corner');
 
-      // R2 F2 fix (2026-05-09) — UNCONDITIONAL persisted-overflow
-      // defense. Pre-R2 the overflow check ran ONLY when colChanged
-      // was true (col-mutating axes). Race scenario the reviewer
-      // identified: user saved a block at desktop with `col=7,
-      // colSpan=8` (valid in 12-col); reloads at tablet (6-col) →
-      // `7 + 8 - 1 = 14 > 6` (invalid). User does bottom-only
-      // resize (axis='bottom', colChanged=false). Pre-R2 the
-      // setNodeMarkup call wrote the new rowSpan AND preserved the
-      // INVALID col/colSpan attrs via the spread. R2 fix:
-      // unconditionally re-check the persisted position; if invalid,
-      // normalize colSpan to `max(1, totalCols - startCol + 1)` and
-      // include the normalized colSpan in THIS commit's
-      // setNodeMarkup transaction (single atomic write — recovery,
-      // not corruption).
-      //
-      // Per cf-20d D10 R2 amendment: normalize (recoverable) over
-      // cancel (drops the user's intended row resize).
-      const persistedOverflow =
-        snapshot.startCol + snapshot.startColSpan - 1 > totalCols;
-      const normalizedColSpan = persistedOverflow
-        ? Math.max(1, totalCols - snapshot.startCol + 1)
-        : null;
+      // R2 F2 + R3 F1: UNCONDITIONAL persisted-overflow defense.
+      // R3 F1 amendment normalizes the {col, colSpan} PAIR atomically
+      // (R2 only handled colSpan; missed col>totalCols case). Pure
+      // helper returns null when persisted state is valid; otherwise
+      // returns the normalized pair (left-clamp col + largest fitting
+      // activeColSnap). See `normalizeOverflowPosition` JSDoc + cf-20d
+      // D10 R3 amendment.
+      const normalizedPosition = normalizeOverflowPosition(
+        snapshot.startCol,
+        snapshot.startColSpan,
+        totalCols,
+        activeColSnaps,
+      );
+      const persistedOverflow = normalizedPosition !== null;
 
       if (!colChanged && !writeRowSpan && !persistedOverflow) {
         // No-op commit (cursor returned to start position OR
@@ -404,20 +397,28 @@ export function useResizePipeline(
         colChanged,
         rowChanged,
       );
-      // R2 F2 fix: when persistedOverflow detected AND the axis-
-      // aware diff didn't already include colSpan (e.g. bottom-only
-      // axis), force the normalized colSpan into the diff so the
+      // R2 F2 + R3 F1 fix: when persistedOverflow detected, force
+      // the normalized {col, colSpan} pair into the diff so the
       // single setNodeMarkup transaction recovers the invalid grid
-      // position atomically with the user's intended row mutation.
+      // position atomically with the user's intended axis mutation.
+      // R3 F1 amendment: write BOTH col AND colSpan (NOT just
+      // colSpan) — pre-R3 the col-overflow case left col=startCol
+      // unchanged producing a still-invalid result. The axis-aware
+      // diff for col-axes (right + corner) already includes a
+      // user-intended colSpan; the normalized override unconditionally
+      // wins on overflow because the user's snap was computed from
+      // the OVERFLOWING startColSpan and would itself overflow.
       // Console-warn so operators see the recovery in dev tools.
-      if (normalizedColSpan !== null && !('colSpan' in nextAttrDiff)) {
+      if (normalizedPosition !== null) {
         // eslint-disable-next-line no-console
         console.warn(
-          `[useResizePipeline R2 F2] persisted grid overflow detected at block ${snapshot.blockId} ` +
+          `[useResizePipeline R3 F1] persisted grid overflow detected at block ${snapshot.blockId} ` +
             `(col=${snapshot.startCol}, colSpan=${snapshot.startColSpan}, totalCols=${totalCols}); ` +
-            `normalizing colSpan to ${normalizedColSpan} as part of ${snapshot.axis}-axis commit.`,
+            `normalizing to {col=${normalizedPosition.col}, colSpan=${normalizedPosition.colSpan}} ` +
+            `as part of ${snapshot.axis}-axis commit.`,
         );
-        nextAttrDiff['colSpan'] = normalizedColSpan;
+        nextAttrDiff['col'] = normalizedPosition.col;
+        nextAttrDiff['colSpan'] = normalizedPosition.colSpan;
       }
       editor
         .chain()

@@ -231,3 +231,75 @@ export function buildResizeNextAttrs(
   }
   return attrs;
 }
+
+/**
+ * Wave 6 cf-20d R3 F1 fix (2026-05-09) — pure helper that normalizes
+ * the `{col, colSpan}` PAIR atomically when persisted state violates
+ * ADR-0016 D2 grid-position invariants for the current viewport.
+ *
+ * Pre-R3 the pipeline's R2 F2 fix only normalized colSpan (assuming
+ * `col` itself was always valid). Reviewer R3 F1 caught that the
+ * persisted-overflow class also includes `col > totalCols`:
+ *
+ * Example: block saved at desktop with `col=7, colSpan=6` (valid in
+ * 12-col: 7+6-1=12). Reload at tablet (totalCols=6):
+ *   - `col=7 > totalCols=6` (col itself overflows)
+ *   - R2 fix: normalizedColSpan = max(1, 6 - 7 + 1) = max(1, 0) = 1
+ *   - Result: `{col=7, colSpan=1}` — STILL invalid (col=7 > 6) AND
+ *     colSpan=1 violates COL_SNAPS=[2,3,4,6,8,12].
+ *
+ * R3 fix:
+ *   1. Detect overflow: `col > totalCols` OR `col + colSpan - 1 > totalCols`.
+ *   2. Left-clamp col: `clampedCol = min(max(1, startCol), totalCols)`.
+ *      Per cf-20d D10 R3 amendment decision: left-clamp (NOT right-
+ *      clamp) preserves the largest possible colSpan on the new
+ *      viewport — more recoverable visually. The user explicitly
+ *      placed the block somewhere; clamping to the column AT the
+ *      right edge would push it off-screen at narrower viewports.
+ *   3. Compute maxFit at clamped col: `totalCols - clampedCol + 1`.
+ *   4. Pick colSpan: largest `activeColSnaps` member ≤ maxFit; if
+ *      no snap fits (e.g. mobile where activeColSnaps=[1] and
+ *      maxFit=1), fall back to `min(maxFit, 1)` = 1.
+ *
+ * @param startCol         Persisted col (1-based; potentially overflowing).
+ * @param startColSpan     Persisted colSpan (potentially overflowing).
+ * @param totalCols        Current viewport's totalCols (12 / 6 / 1).
+ * @param activeColSnaps   `effectiveColSnaps(viewportCols)` snap set.
+ * @returns                `{col, colSpan}` if persisted state was
+ *                         invalid (caller must inject BOTH attrs into
+ *                         setNodeMarkup); `null` if persisted state is
+ *                         valid (no recovery needed).
+ */
+export function normalizeOverflowPosition(
+  startCol: number,
+  startColSpan: number,
+  totalCols: number,
+  activeColSnaps: readonly number[],
+): { readonly col: number; readonly colSpan: number } | null {
+  const colOverflows = startCol > totalCols;
+  const spanOverflows = startCol + startColSpan - 1 > totalCols;
+  if (!colOverflows && !spanOverflows) return null;
+
+  // Left-clamp col into [1, totalCols] (per F1 dispatch decision —
+  // preserves the largest fitting colSpan on the new viewport).
+  const clampedCol = Math.min(Math.max(1, startCol), totalCols);
+  const maxFit = totalCols - clampedCol + 1; // ≥ 1 because clampedCol ≤ totalCols
+
+  // Pick the LARGEST activeColSnap ≤ maxFit — preserves the widest
+  // valid placement after recovery. If none fits (e.g. activeSnaps
+  // has only values > maxFit which shouldn't happen for the standard
+  // 12/6/1 buckets but defensive), fall back to 1.
+  let normalizedColSpan = 1;
+  for (const snap of activeColSnaps) {
+    if (snap <= maxFit && snap > normalizedColSpan) {
+      normalizedColSpan = snap;
+    }
+  }
+  // Final clamp: never exceed maxFit (defense-in-depth if activeSnaps
+  // somehow returned a value > maxFit despite the loop guard).
+  normalizedColSpan = Math.min(normalizedColSpan, maxFit);
+  // Floor at 1 (paranoia: maxFit ≥ 1 by construction above).
+  normalizedColSpan = Math.max(1, normalizedColSpan);
+
+  return { col: clampedCol, colSpan: normalizedColSpan };
+}

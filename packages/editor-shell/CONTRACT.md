@@ -592,17 +592,24 @@ the actual interactive resize wire. Public surface added under
   768<width<=1024→6, width>1024→12. Pre-R2 the hook used min-width
   which gave off-by-one at exact 1024/768 boundaries. Boundary widths
   MUST appear in the unit-test matrix.
-  R2 F2 fix (2026-05-09): pipeline detects
-  `startCol + startColSpan - 1 > totalCols` UNCONDITIONALLY before
-  setNodeMarkup (regardless of axis). On detection, normalizes
-  `colSpan = max(1, totalCols - startCol + 1)` and includes it in the
-  same setNodeMarkup transaction as the user's intended axis mutation.
-  Recovery (single atomic write), NOT corruption — fixes the race
-  scenario where a block saved at desktop with valid attrs becomes
-  invalid at tablet/mobile viewport and a bottom-only resize at the
-  smaller viewport pre-R2 would have preserved the invalid attrs
-  through the spread merge. console.warn emitted so operators see the
-  recovery in dev tools.
+  R2 F2 + R3 F1 fix (2026-05-09): pipeline detects persisted overflow
+  UNCONDITIONALLY before setNodeMarkup (regardless of axis). R3 F1
+  amendment normalizes the `{col, colSpan}` PAIR atomically via the new
+  pure helper `normalizeOverflowPosition(startCol, startColSpan,
+  totalCols, activeColSnaps)` (R2 only normalized colSpan; missed
+  `col > totalCols` case where R2's `max(1, totalCols-startCol+1)` left
+  `col` untouched AND produced `colSpan=1` which violates `COL_SNAPS`).
+  R3 left-clamps `col` to `[1, totalCols]` (preserves the largest
+  fitting colSpan on the new viewport — better than right-clamp), then
+  picks the largest `activeColSnaps` member ≤ `(totalCols - clampedCol
+  + 1)` with fallback to 1 (mobile `[1]` covers this naturally). The
+  pipeline writes BOTH `col` AND `colSpan` from the helper's return
+  value into the same setNodeMarkup transaction (single atomic write —
+  recovery, not corruption — fixes the race scenario where a block
+  saved at desktop with valid attrs becomes invalid at tablet/mobile
+  viewport and a bottom-only resize at the smaller viewport pre-R3
+  would have written invalid recovery state). console.warn emitted so
+  operators see the recovery in dev tools.
 
 `ResizeHandles` is mounted inside `BlockNodeView` so each Tiptap NodeView
 emits the 3 handles. `<ResizeProvider value={...}>` MUST wrap the editor
@@ -634,10 +641,17 @@ cf-20c-2 drag-handle-button.css mobile pattern.
 
 C.2-9 adds `responsive-cols.ts` as the editor-shell owner for ADR-0016 D5's
 desktop/tablet/mobile viewport FSM. `useResponsiveCols(options?)` subscribes to
-two `matchMedia` queries, `(min-width: 1024px)` and `(min-width: 768px)`, and
-maps them to `ViewportCols = 12 | 6 | 1`. `RESPONSIVE_BREAKPOINTS` is the
-hardcoded bridge `{ tablet: 768, desktop: 1024 }` until Stage C.3-1 lands
-`--bp-tablet` and `--bp-desktop` in design tokens.
+two `matchMedia` queries, `(max-width: 768px)` and `(max-width: 1024px)`
+(byte-equivalent to `apps/site/src/styles/grid.css:97,105` per Wave 6 cf-20d
+R2 F1 boundary alignment fix; pre-R2 the hook used min-width which had off-
+by-one at the EXACT 1024 / 768 boundaries), and maps them to
+`ViewportCols = 12 | 6 | 1` per the bucket truth table:
+- `width <= 768`        → 1   (matches `(max-width: 768px)`)
+- `768 < width <= 1024` → 6   (matches `(max-width: 1024px)` but NOT `(max-width: 768px)`)
+- `width > 1024`        → 12  (no max-width @media matches)
+
+`RESPONSIVE_BREAKPOINTS` is the hardcoded bridge `{ tablet: 768, desktop: 1024 }`
+until Stage C.3-1 lands `--bp-tablet` and `--bp-desktop` in design tokens.
 
 Consumers that participate in the W5-2 single-source mutation pipeline pass
 `onTransitionStart` and `onTransitionEnd` callbacks which dispatch

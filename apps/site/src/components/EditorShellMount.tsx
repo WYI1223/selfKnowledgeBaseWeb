@@ -145,8 +145,11 @@ export function EditorShellMount({
   // contract. Pre-R1 these were hardcoded `12` / `effectiveColSnaps(12)`
   // which gave tablet users (≤1024px viewport, 6-col grid) the
   // wrong snap stops `[2, 3, 4, 6, 8, 12]` instead of `[2, 3, 6]`.
-  // The `useResponsiveCols` hook subscribes to `(min-width: 1024px)`
-  // + `(min-width: 768px)` matchMedia and emits 12/6/1; we feed
+  // The `useResponsiveCols` hook subscribes to `(max-width: 768px)`
+  // + `(max-width: 1024px)` matchMedia (byte-equivalent to the
+  // grid.css @media rules per Wave 6 cf-20d R2 F1 boundary
+  // alignment fix; pre-R2 the hook used min-width which had off-by-
+  // one at exact 1024 / 768 boundaries) and emits 12/6/1; we feed
   // both the GridContainer (so the `.skb-grid--mobile` class fires
   // correctly per ADR-0017 D9) AND the resize pipeline.
   const viewportCols = useResponsiveCols();

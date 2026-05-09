@@ -3,7 +3,11 @@ import { resolve } from 'node:path';
 
 import { expect, test } from '@playwright/test';
 
-import { dispatchResizeGesture } from './helpers/resize-pointer-events';
+import {
+  dispatchResizeGesture,
+  installColOverflowFixture as installColOverflowFixtureHelper,
+  installPersistedOverflowFixture as installPersistedOverflowFixtureHelper,
+} from './helpers/resize-pointer-events';
 
 /**
  * Wave 6 cf-20d (2026-05-09) — resize-handles UI + commit wire integration spec.
@@ -310,42 +314,16 @@ test('cf-20d R1 F1 — tablet (≤1024px, 6-col) right-edge resize uses [2, 3, 6
   restoreSampleBlocksFixture();
 });
 
-/**
- * R2 F2 fix lock (2026-05-09) — UNCONDITIONAL persisted-overflow
- * defense. Pre-R2 the overflow check ran ONLY when colChanged was
- * true (col-mutating axes), so a bottom-only resize on a block with
- * already-invalid persisted col/colSpan (e.g. saved at desktop with
- * col=4 colSpan=6 then reloaded at tablet 6-col) preserved the
- * invalid attrs through the spread merge. R2 fix: pipeline detects
- * `startCol + startColSpan - 1 > totalCols` UNCONDITIONALLY before
- * setNodeMarkup; if true, normalizes colSpan to `max(1, totalCols -
- * startCol + 1)` and includes it in THIS commit's transaction
- * (single atomic write — recovery, not corruption).
- *
- * Test mechanics: install a fixture MDX whose first Callout has
- * persisted-overflow grid attrs (col=4 colSpan=6 → at tablet
- * viewport=900 → 4+6-1=9 > 6 INVALID). Load at tablet, perform a
- * BOTTOM-only resize (NOT a col-mutating axis), observe BOTH the
- * intended rowSpan AND the normalized colSpan land in the
- * gridColumn inline style.
- */
+// R2 F2 fix lock — UNCONDITIONAL persisted-overflow defense (col=4
+// colSpan=6 at tablet 6-col). See cf-20d D10 R2 amendment + helper
+// `installPersistedOverflowFixtureHelper` for the full rationale.
 function installPersistedOverflowFixture(): void {
   if (originalMdxBytes === null) throw new Error('originalMdxBytes not snapshotted');
-  // Replace the FIRST Callout's grid attrs with persisted-overflow
-  // (col=4, colSpan=6). At tablet viewport (totalCols=6) this is
-  // invalid: 4 + 6 - 1 = 9 > 6.
-  const overflowMdx = originalMdxBytes.replace(
-    /<Callout col=\{1\} colSpan=\{12\} rowSpan=\{1\} variant="note" title="Sampler scope">/,
-    '<Callout col={4} colSpan={6} rowSpan={1} variant="note" title="Sampler scope">',
+  installPersistedOverflowFixtureHelper(
+    originalMdxBytes,
+    SAMPLE_BLOCKS_MDX,
+    SAMPLE_BLOCKS_STATE,
   );
-  if (overflowMdx === originalMdxBytes) {
-    throw new Error('installPersistedOverflowFixture: replacement pattern not found in fixture');
-  }
-  writeFileSync(SAMPLE_BLOCKS_MDX, overflowMdx, 'utf8');
-  // Clear sidecar so ApiAdapter loads from MDX (not stale state.json).
-  if (existsSync(SAMPLE_BLOCKS_STATE)) {
-    unlinkSync(SAMPLE_BLOCKS_STATE);
-  }
 }
 
 test('cf-20d R2 F2 — bottom-only resize on persisted-overflow block normalizes colSpan in same setNodeMarkup transaction', async ({
@@ -421,6 +399,91 @@ test('cf-20d R2 F2 — bottom-only resize on persisted-overflow block normalizes
     colAfterNormalized,
     'cf-20d R2 F2: bottom-only resize on persisted-overflow block MUST normalize colSpan to (totalCols - col + 1) = (6 - 4 + 1) = 3 in the SAME setNodeMarkup transaction. Pre-R2 the bottom-only axis preserved the invalid colSpan=6 through the spread merge.',
   ).toBe('4 / span 3');
+
+  restoreSampleBlocksFixture();
+});
+
+// R3 F1 fix lock — atomic {col, colSpan} normalization (col=7
+// colSpan=6: valid at desktop, col-overflow at tablet 6-col). See
+// cf-20d D10 R3 amendment + helper `installColOverflowFixtureHelper`
+// for the full rationale.
+function installColOverflowFixture(): void {
+  if (originalMdxBytes === null) throw new Error('originalMdxBytes not snapshotted');
+  installColOverflowFixtureHelper(
+    originalMdxBytes,
+    SAMPLE_BLOCKS_MDX,
+    SAMPLE_BLOCKS_STATE,
+  );
+}
+
+test('cf-20d R3 F1 — bottom-only resize on col-overflow block normalizes BOTH col AND colSpan atomically (NOT just colSpan)', async ({
+  page,
+}) => {
+  // R3 F1 lock: this test is the regression for the reviewer's
+  // identified col-overflow case. R2 only normalized colSpan; with
+  // col=7 at totalCols=6, R2's max(1, 6-7+1)=1 produced
+  // {col=7, colSpan=1} — STILL invalid (col=7 > 6). R3 normalizes
+  // BOTH: left-clamp col=6, then pick largest activeColSnap ≤
+  // (6-6+1)=1 (none fits in [2,3,6] → fallback colSpan=1).
+  installColOverflowFixture();
+
+  await page.setViewportSize({ width: 900, height: 1024 });
+  await page.goto('/notes/sample-blocks/edit');
+  const editor = page.locator('.ProseMirror').first();
+  await expect(editor).toBeVisible({ timeout: 15_000 });
+  await expect(editor.locator('.skb-block-nodeview').first()).toBeVisible({
+    timeout: 10_000,
+  });
+  await page.waitForTimeout(500);
+
+  // Verify 6-col tablet grid (R2 F1 lock).
+  const gridTotalCols = await page
+    .locator('.skb-grid')
+    .first()
+    .evaluate((el) =>
+      getComputedStyle(el).getPropertyValue('--total-cols').trim(),
+    );
+  expect(gridTotalCols).toBe('6');
+
+  // Pre-resize: the inline gridColumn reflects col=7 (overflowing)
+  // — `7 / span 6` even though that's outside the grid.
+  const firstWrapper = page.locator('.skb-block-nodeview').first();
+  const colBefore = await firstWrapper.evaluate(
+    (el) => (el as HTMLElement).style.gridColumn,
+  );
+  expect(colBefore.replace(/\s+/g, ' ').trim()).toBe('7 / span 6');
+
+  // Find the BOTTOM handle on the first wrapper.
+  const bottomHandle = firstWrapper.locator('.gblock-handle.bottom').first();
+  const handleBox = await bottomHandle.boundingBox();
+  if (!handleBox) throw new Error('bottom handle has no bounding box');
+
+  const downX = handleBox.x + handleBox.width / 2;
+  const downY = handleBox.y + handleBox.height / 2;
+  const targetX = downX;
+  const targetY = downY + 80; // ~1 row growth
+
+  await dispatchResizeGesture(
+    page,
+    bottomHandle,
+    downX,
+    downY,
+    targetX,
+    targetY,
+  );
+
+  // Post-resize assertion: BOTH col AND colSpan must be normalized.
+  // R3 normalize: clampedCol = min(7, 6) = 6; maxFit = 6-6+1 = 1;
+  // largest snap in [2,3,6] ≤ 1 = none → fallback colSpan=1.
+  // Result: gridColumn = '6 / span 1'.
+  const colAfter = await firstWrapper.evaluate(
+    (el) => (el as HTMLElement).style.gridColumn,
+  );
+  const colAfterNormalized = colAfter.replace(/\s+/g, ' ').trim();
+  expect(
+    colAfterNormalized,
+    'cf-20d R3 F1: bottom-only resize on col-overflow block MUST normalize BOTH col (left-clamp 7→6) AND colSpan (no fitting snap → 1) in the SAME setNodeMarkup transaction. Pre-R3 R2 only normalized colSpan, leaving col=7 untouched (still invalid).',
+  ).toBe('6 / span 1');
 
   restoreSampleBlocksFixture();
 });
