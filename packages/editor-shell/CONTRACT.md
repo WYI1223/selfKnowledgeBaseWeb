@@ -385,6 +385,33 @@ C.2-5 and C.2-8 add the editor-side drag/drop UX primitives under
   `BlockGridPosition` with stable `id` from ProseMirror node IDs at the
   consumer layer; `BlockGridPosition` itself is unchanged in
   `@skb/block-foundation`).
+- `DragHandleButton` / `DragHandleButtonProps` / `DRAG_HANDLE_MIME` (Wave 6
+  cf-20c-2, 2026-05-09) — per-block drag-handle button rendered inside
+  `.skb-block-nodeview__gutter` (cf-19 shell). Uses HTML5 native DnD per
+  Q7 spike result (verified pre-implementation: native DnD survives
+  ProseMirror inside `contenteditable=false` gutter without needing
+  pointer-events fallback). Dispatches drag-start / drag-end via
+  `DragDropContext`; `DRAG_HANDLE_MIME = 'application/x-skb-block-id'`
+  is the private dataTransfer MIME type so other DnD handlers don't
+  pick up our payload. The button emits `data-skb-drag-handle="<blockId>"`
+  (replaces the cf-19 standalone floating `<DragHandle />` which is
+  removed from `EditorShellMount.tsx`).
+- `DragDropContext` / `DragDropProvider` / `DragDropContextValue`
+  (Wave 6 cf-20c-2) — React context bridging the per-block presentational
+  drag-handle button to the lifecycle owner (`useDragDropPipeline()` mounted
+  at `EditorShellMount.tsx`). Provider value: `{ onDragStart(blockId, origin),
+  onDragEnd(origin) }`. Default null = degraded mode (button renders, drag
+  callbacks no-op).
+- `useDragDropPipeline({editor, gridSelector?})` (Wave 6 cf-20c-2) — drag/drop
+  lifecycle owner hook. Composes the existing primitives (snapshot,
+  edge-rects, tiebreak, `applyDropMode`, layoutReducer, OutlineOverlay,
+  DragGhost, DropPulse, useEscCancel) into the actual interactive drag.
+  Returns `{state, layoutState, onDragStart, onDragEnd}`. The `state.active`
+  / `state.activeMatch` / `state.cursor` / `state.lastDroppedBlockId`
+  fields drive `<OutlineOverlay>` + `<DragGhost>` + `<DropPulse>` mounts
+  at the consumer layer. Block ID source per cf-20c-2 D2: ProseMirror
+  node `pos` as string (Path A; UUID-based stable IDs deferred to a
+  future schema-mod PR per cf-20c-2 D2 rationale).
 
 Drag/drop edge-width is coupled to grid `--gap` via `EDGE_W = 2 * GAP`.
 `EDGE_W = 28` and `GAP = 14` ensure the 14px gap between adjacent blocks is
@@ -579,9 +606,16 @@ components and types:
 - `SlashMenu` / `SlashMenuProps`: listens on the editor DOM for `/`
   at line start, supports arrow-key navigation, and inserts the
   selected block on Enter or click.
-- `DragHandle` / `DragHandleProps`: emits a draggable per-block handle
-  (`data-skb-drag-handle`) and shows the C.2-8 `DropPulse` preview
-  after drag completion.
+- `DragHandle` / `DragHandleProps`: **DEPRECATED at Wave 6 cf-20c-2
+  (2026-05-09)** — was the C.4-3 standalone floating drag-handle stub
+  used pre-cf-20c-2 (single button rendered outside any block; clicking
+  it flipped a synthetic `[data-skb-drop-preview]` flag). cf-20c-2
+  replaced it with PER-BLOCK drag handles (`DragHandleButton`) inside
+  each `.skb-block-nodeview__gutter` shell, wired to
+  `useDragDropPipeline()` for real HTML5 native DnD lifecycle. The
+  `DragHandle` export remains in the barrel for backward-compat
+  consumers (none in-tree post cf-20c-2; `EditorShellMount.tsx` no
+  longer renders it). Removal scheduled for a future cleanup PR.
 - `Toolbar` / `ToolbarProps`: renders Bold / Italic controls while a
   non-empty Tiptap text selection exists, and delegates to
   `editor.chain().focus().toggleBold()/toggleItalic().run()`.

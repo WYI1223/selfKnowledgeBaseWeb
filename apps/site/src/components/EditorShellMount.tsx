@@ -1,13 +1,15 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { BlockRegistry } from '@skb/block-foundation';
 import {
   ApiAdapter,
-  DragHandle,
+  DragDropProvider,
+  DragGhost,
   EditModeBanner,
   EditorShell,
   GridContainer,
   LocalStorageAdapter,
   type NoteState,
+  OutlineOverlay,
   Palette,
   SaveIndicator,
   SlashMenu,
@@ -17,6 +19,8 @@ import {
   saveToMdx,
   type EditorShellProps,
   type SaveIndicatorStatus,
+  useDragDropPipeline,
+  useEscCancel,
   wireRegistry,
 } from '@skb/editor-shell';
 
@@ -88,6 +92,29 @@ export function EditorShellMount({
   const [saveStatus, setSaveStatus] = useState<SaveIndicatorStatus>('idle');
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+
+  // Wave 6 cf-20c-2 (2026-05-09) — drag/drop pipeline lifecycle owner.
+  // Snapshots blocks at drag-start, computes edge-rects + tiebreak on
+  // drag-over, applies applyDropMode + dispatches Tiptap setNodeMarkup
+  // on drop. The pipeline state drives <OutlineOverlay> + <DragGhost>
+  // mounts below; the per-block <DragHandleButton> inside each
+  // BlockNodeView gutter calls into the pipeline via DragDropProvider.
+  const pipeline = useDragDropPipeline({ editor });
+  const dragContextValue = useMemo(
+    () => ({ onDragStart: pipeline.onDragStart, onDragEnd: pipeline.onDragEnd }),
+    [pipeline.onDragStart, pipeline.onDragEnd],
+  );
+  // Esc cancel during active drag (per ADR-0017 D8).
+  useEscCancel({
+    dragActive: pipeline.state.active,
+    onCancel: () => {
+      // The pipeline already dispatches drag-end-cancel through its
+      // own dragend handler when the user releases over chrome; the
+      // Esc cancel path is purely keyboard. Trigger a fake dragend so
+      // the pipeline cleans up its own state.
+      pipeline.onDragEnd({ x: 0, y: 0 });
+    },
+  });
 
   if (apiAdapterRef.current === null || apiAdapterRef.current.slug !== slug) {
     apiAdapterRef.current = new ApiAdapter(slug);
@@ -217,18 +244,43 @@ export function EditorShellMount({
           </span>
         </div>
       )}
-      <GridContainer>
-        <DragHandle />
-        <Toolbar editor={editor} />
-        <EditorShell
-          extensions={wire.extensions}
-          onCreate={handleCreate}
-          onChange={handleChange}
-        />
-        <Palette editor={editor} kinds={wire.blockKinds} />
-        <SlashMenu editor={editor} kinds={wire.blockKinds} />
-      </GridContainer>
+      <DragDropProvider value={dragContextValue}>
+        <GridContainer>
+          <Toolbar editor={editor} />
+          <EditorShell
+            extensions={wire.extensions}
+            onCreate={handleCreate}
+            onChange={handleChange}
+          />
+          <Palette editor={editor} kinds={wire.blockKinds} />
+          <SlashMenu editor={editor} kinds={wire.blockKinds} />
+        </GridContainer>
+      </DragDropProvider>
       <SaveIndicator savedAt={savedAt} status={saveStatus} />
+
+      {/*
+        Wave 6 cf-20c-2 — drag overlay surface.
+        OutlineOverlay renders the active-edge dashed accent during drag.
+        DragGhost follows the cursor with per-kind coloring.
+        Both are pointer-events: none so they never intercept the
+        underlying drop event.
+      */}
+      {pipeline.state.active && (
+        <>
+          <OutlineOverlay
+            activeMatch={pipeline.state.activeMatch}
+            blockRects={pipeline.state.blockRects}
+          />
+          {pipeline.state.cursor && (
+            <DragGhost
+              cursorX={pipeline.state.cursor.x}
+              cursorY={pipeline.state.cursor.y}
+              kind="markdown"
+              mode="move"
+            />
+          )}
+        </>
+      )}
     </>
   );
 }

@@ -229,6 +229,28 @@
     the persisted MDX body.
 - See sister-doc:
   [packages/editor-shell/CONTRACT.md § NoteSaveAdapter (Wave 5; contract hardened at C.4-1)](../../packages/editor-shell/CONTRACT.md).
+- **Drag/drop wire (Wave 6 cf-20c-2 2026-05-09)**: `EditorShellMount.tsx`
+  mounts `useDragDropPipeline({editor})` as the lifecycle owner of
+  per-block drag operations. The hook returns `{state, layoutState,
+  onDragStart, onDragEnd}`; the mount wraps `<GridContainer>` in
+  `<DragDropProvider value={{onDragStart, onDragEnd}}>` so the per-block
+  `<DragHandleButton>` rendered inside each `.skb-block-nodeview__gutter`
+  (cf-19 shell, cf-20c-2 button drop-in via `BlockNodeView.tsx`) can
+  dispatch up to the pipeline via React context. When `state.active`
+  is true the mount renders `<OutlineOverlay>` (active-edge dashed
+  accent) AND `<DragGhost kind="markdown" mode="move">` (cursor
+  follower) as siblings of the editor surface. `useEscCancel` is
+  wired with `dragActive: state.active` so the global Escape key
+  rolls the drag back to the S0 snapshot per ADR-0017 D8. The
+  cf-19 standalone floating `<DragHandle />` is removed — per-block
+  handles are the sole drag affordance post cf-20c-2. Mobile (≤768px)
+  hides drag handles via `display: none` per ADR-0017 D9 mobile
+  view-only path; the hook's `state.active` stays false on mobile
+  because no dragstart can fire from a hidden button.
+  Regression-lock spec:
+  `apps/site/playwright/sample-blocks-drag-handle.spec.ts` covers
+  desktop drag lifecycle (handles present + dragstart mounts overlay
+  + ghost; Esc cancel unmounts both) AND mobile-hidden assertion.
 - Block registry: C.4-2 verified that `EditorShellMount.tsx` constructs a
   route-local `BlockRegistry` and calls `registerBlocks` from
   `@skb/editor-shell`, whose helper registers all 8 Wave 2 block definitions
