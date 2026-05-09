@@ -372,6 +372,19 @@ C.2-5 and C.2-8 add the editor-side drag/drop UX primitives under
   the pure reducer. C.2-9 adds `responsive-transition-start` and
   `responsive-transition-end` action variants; both leave `epoch` unchanged and
   only flip `responsiveTransition` between `'in-progress'` and `'idle'`.
+- `applyDropMode(input)` (Wave 6 cf-20c-1, 2026-05-09) — pure mutation algebra
+  for ADR-0017 D1 drop modes. Computes the post-drop block positions for
+  `split-left` / `split-right` / `split-top` / `split-bottom` / `empty` /
+  `none`. Throws on invalid input (split with non-halvable colSpan; empty
+  without target; palette insertion without newBlock; split-* without
+  hostBlockId). Consumer (cf-20c-2 drag-handle UI wire) computes the input
+  from pointer events + edge-rects + tiebreak, calls this function, and
+  dispatches `drag-end-success` to layoutReducer with the result as the
+  `mutation: GridSnapshot` parameter. Co-exported types: `ApplyDropModeInput`,
+  `DropMode`, `GridSnapshotIdentified`, `IdentifiedBlock` (extends
+  `BlockGridPosition` with stable `id` from ProseMirror node IDs at the
+  consumer layer; `BlockGridPosition` itself is unchanged in
+  `@skb/block-foundation`).
 
 Drag/drop edge-width is coupled to grid `--gap` via `EDGE_W = 2 * GAP`.
 `EDGE_W = 28` and `GAP = 14` ensure the 14px gap between adjacent blocks is
