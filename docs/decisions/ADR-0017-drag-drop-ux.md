@@ -368,6 +368,46 @@ drag/drop 所有 mutations 都经过 `@skb/editor-shell` `layoutReducer` with `l
 
 **冲突仲裁** (per ADR-0016 D12): drag (user-initiated) 优先于 auto-measure (markdown rowSpan='auto'); responsive transition (per ADR-0016 D5 转场态 FSM) 期间 drag 拒绝 (UI grayed cursor). 单用户单 session 假设 explicit (CRDT/OT Phase 2+).
 
+### D13 — Keyboard a11y parity (Wave 6 cf-22 amendment 2026-05-09)
+
+cf-22 adds keyboard-mode parity for all 3 cf-20 per-block affordances (drag / resize / kebab) per WCAG 2.1.1 (Keyboard, Level A) + 2.4.3 (Focus Order, Level A) + 2.4.7 (Focus Visible, Level AA) + 4.1.3 (Status Messages, Level AA). Keyboard mode is documented EXPLICITLY as **parity** (NOT a degraded subset) — orchestrator decision Q2 from cf-20c-1 scoping.
+
+**v2-design-granularity intent vs cf-22 amendment**: v2 §"心智模型" describes pointer-only interactions ("拖拽抽屉 + 边框拖拽吸附宽度"). cf-22 D13 EXTENDS this without contradicting — keyboard mode produces the same final mutations (setNodeMarkup with the same attrs) as pointer mode; the user-visible v2 state machine is unchanged.
+
+**Keyboard contract per affordance**:
+
+| Affordance | Tab | Enter/Space | Arrow keys | Enter (active) | Esc |
+|---|---|---|---|---|---|
+| **Drag handle** | focus | start keyboard-drag mode | move source ±1 grid cell (synthesize cursor; tiebreak picks active edge) | commit drop via `commitDropAtMatch` (same path as pointer drop) | cancel + restore focus |
+| **Resize handle (right)** | focus | start keyboard-resize mode | ←/→: snap-step colSpan via `keyboardSnapStep` (per cf-22 D2) | commit via `tr.setNodeMarkup` (same path as pointerup) | cancel + restore focus |
+| **Resize handle (bottom)** | focus | start keyboard-resize mode | ↑/↓: ±1 rowSpan via `keyboardRowStep` | commit | cancel |
+| **Resize handle (corner)** | focus | start keyboard-resize mode | ←/→ adjusts colSpan; ↑/↓ adjusts rowSpan | commit | cancel |
+| **Kebab button** | focus | open menu | (default browser button activation) | (default click → toggle) | (no action when closed) |
+| **Kebab menu (open)** | (focus auto-trapped) | activate focused item | ↓/↑: cycle item focus; → on "Change kind…": expand sub-menu + focus first sub-item; ← from sub-item: collapse + restore focus | activate item | close + restore focus to kebab button |
+
+**cf-22 D-decisions (full rationale in PR.md `wave-6-cf-22-keyboard-a11y.md`)**:
+
+- **D1**: ADR-0017 amendment with NEW D13 (this section), NOT a separate ADR. Keyboard mode is intrinsic to the drag/resize UX.
+- **D2**: Resize Arrow ±1 = snap-step (next valid `effectiveColSnaps` member). Drag Arrow ±1 = next grid cell. RowSpan Arrow ±1 = integer ±1 (no snap set; ADR-0016 D6 only constrains colSpan).
+- **D3**: Mouse + keyboard modes are SEPARATE. Each pipeline has `state.active` (pointer) AND `state.keyboardActive` (keyboard) — at most ONE is true at a time. No mid-drag mode bridge.
+- **D4**: `<button>` elements for ALL handles (NOT `role="application"` on .ProseMirror). Resize handles converted from `<div>` (cf-20d) to `<button>` (cf-22). Wrapper `aria-hidden` removed.
+- **D5**: Esc cancel + focus return to originating handle via new `useFocusReturn` hook (generalizes the `useEscCancel` focus-snap-and-restore pattern).
+- **D6**: Single shared `<LiveAnnouncer/>` mounted ONCE at editor mount level. 100ms throttle on `aria-live` updates so rapid arrow-key spam doesn't flood AT.
+- **D7**: Keyboard-commit reuses cf-20c-2 R3 dropEpoch infrastructure (canonical "rapid-action animation isolation" pattern). 4th action joining drag-pointer + resize-pointer + kebab-duplicate.
+- **D8**: Kebab menu auto-focuses first item on open per WCAG 2.4.3 + canonical menu pattern.
+
+**Implementation surface (cf-22 source files)**:
+
+- `packages/editor-shell/src/a11y/live-announcer.tsx` — shared `<LiveAnnouncer/>` + `useAnnounce()` hook (D6).
+- `packages/editor-shell/src/a11y/use-focus-return.ts` — focus snap-and-restore hook (D5; WCAG 2.4.3).
+- `packages/editor-shell/src/a11y/keyboard-step.ts` — pure `keyboardSnapStep` / `keyboardGridStep` / `keyboardRowStep` (D2).
+- `packages/editor-shell/src/a11y/announce-format.ts` — pure WCAG 4.1.3 message formatters.
+- `packages/editor-shell/src/drag-drop/keyboard-drag-mode.ts` — extracted keyboard-drag useEffect (Arrow + Enter; reuses `commitDropAtMatch`).
+- `packages/editor-shell/src/drag-drop/commit-drop.ts` — extracted commit logic (shared by pointer + keyboard paths).
+- `packages/editor-shell/src/resize/keyboard-resize-mode.ts` — extracted keyboard-resize useEffect + `startKeyboardResize` snapshot helper.
+
+**Mobile path inheritance**: cf-22 keyboard handles are the SAME DOM elements as pointer handles (just gain new event listeners); the mobile `@media (max-width: 768px) { display: none }` rules from cf-20c-2 / cf-20d / cf-20e CSS apply equally. No new mobile-specific rules added.
+
 ## Acceptance criteria (AC list)
 
 `@skb/editor-shell` 包 + `apps/site` Astro renderer (drag-handle source) + visual smoke playwright 必满足:

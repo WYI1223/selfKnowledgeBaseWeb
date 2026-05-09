@@ -387,6 +387,31 @@
   Change-kind (data-skb-block-kind mutates from `callout` to
   `componentCode` + grid attrs preserved at `1 / span 12`) + mobile-hidden
   lock at 375×812. Uses byte-snapshot fixture isolation per cf-20c-2 R3 F1.
+- **Keyboard a11y wire (Wave 6 cf-22 2026-05-09; ADR-0017 D13 amendment)**:
+  `EditorShellMount.tsx` mounts `<LiveAnnouncer/>` ONCE inside the
+  provider stack so all 3 contexts (drag, resize, kebab) push aria-live
+  status messages into a single shared region per WCAG 4.1.3. The mount
+  also wires `onDragStartKeyboard` (drag pipeline) +
+  `onResizeStartKeyboard` (resize pipeline) into the existing context
+  values so the per-block handles can enter keyboard mode via
+  Enter/Space. `useEscCancel` `dragActive` arg now reads
+  `pipeline.state.active || pipeline.state.keyboardActive` (and same for
+  resize) so Esc cancels EITHER mode + restores focus per WCAG 2.4.3.
+  OutlineOverlay + DragGhost + ResizeOverlays render guards extended to
+  the OR predicate. Per cf-22 D7, keyboard-commit reuses cf-20c-2 R3
+  dropEpoch via `setLastDroppedFromExternal` (4th action joining drag-
+  pointer + resize-pointer + kebab-duplicate). Mobile (≤768px) keyboard
+  handles inherit the existing `display: none` rules from cf-20c-2 +
+  cf-20d + cf-20e CSS — no new mobile rules added.
+  Regression-lock spec:
+  `apps/site/playwright/sample-blocks-keyboard-a11y.spec.ts` covers
+  LiveAnnouncer mount + WCAG 4.1.3 attributes; resize handles converted
+  to <button> + AT-reachable + correct aria-labels + wrapper aria-hidden
+  removed; drag-handle Enter starts keyboard-mode + OutlineOverlay/Ghost
+  mount; resize-handle Enter starts keyboard-mode + ColRuler mount;
+  kebab menu auto-focus first item + ArrowDown/Up cycle + Esc closes +
+  focus return to button (WCAG 2.4.3); kebab Change-kind sub-menu
+  ArrowRight/Left navigation; mobile-hidden lock at 375×812 viewport.
 - Block registry: C.4-2 verified that `EditorShellMount.tsx` constructs a
   route-local `BlockRegistry` and calls `registerBlocks` from
   `@skb/editor-shell`, whose helper registers all 8 Wave 2 block definitions

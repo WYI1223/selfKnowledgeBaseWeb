@@ -13,6 +13,7 @@ import {
   EditorShell,
   GridContainer,
   KebabProvider,
+  LiveAnnouncer,
   LocalStorageAdapter,
   type NoteState,
   OutlineOverlay,
@@ -118,22 +119,27 @@ export function EditorShellMount({
   // per-block BlockNodeView can apply the .skb-block-nodeview--dragging-self
   // CSS modifier (ADR-0017 D6 source-lift visual).
   const pipeline = useDragDropPipeline({ editor });
+  // Wave 6 cf-22 — wire keyboard-mode drag entry into the context.
   const dragContextValue = useMemo(
     () => ({
       onDragStart: pipeline.onDragStart,
       onDragEnd: pipeline.onDragEnd,
+      onDragStartKeyboard: pipeline.onDragStartKeyboard,
       sourceBlockId: pipeline.state.sourceBlockId,
     }),
-    [pipeline.onDragStart, pipeline.onDragEnd, pipeline.state.sourceBlockId],
+    [
+      pipeline.onDragStart,
+      pipeline.onDragEnd,
+      pipeline.onDragStartKeyboard,
+      pipeline.state.sourceBlockId,
+    ],
   );
-  // Esc cancel during active drag (per ADR-0017 D8).
+  // Esc cancel during active drag (per ADR-0017 D8). cf-22: also
+  // covers keyboard-active mode; useEscCancel reads the OR of
+  // pointer-active + keyboardActive via the dragActive arg.
   useEscCancel({
-    dragActive: pipeline.state.active,
+    dragActive: pipeline.state.active || pipeline.state.keyboardActive,
     onCancel: () => {
-      // The pipeline already dispatches drag-end-cancel through its
-      // own dragend handler when the user releases over chrome; the
-      // Esc cancel path is purely keyboard. Trigger a fake dragend so
-      // the pipeline cleans up its own state.
       pipeline.onDragEnd({ x: 0, y: 0 });
     },
   });
@@ -180,21 +186,22 @@ export function EditorShellMount({
     () => ({
       onResizeStart: resize.onResizeStart,
       onResizeEnd: resize.onResizeEnd,
+      onResizeStartKeyboard: resize.onResizeStartKeyboard,
       resizingBlockId: resize.state.sourceBlockId,
       resizingAxis: resize.state.axis,
     }),
     [
       resize.onResizeStart,
       resize.onResizeEnd,
+      resize.onResizeStartKeyboard,
       resize.state.sourceBlockId,
       resize.state.axis,
     ],
   );
-  // Esc cancel during active resize (per ADR-0017 D8). The resize
-  // pipeline's onResizeEnd is the cancel-equivalent (no mutation
-  // when active=true on cleanup path).
+  // Esc cancel during active resize (per ADR-0017 D8 + cf-22 D13).
+  // Covers both pointer + keyboard active modes.
   useEscCancel({
-    dragActive: resize.state.active,
+    dragActive: resize.state.active || resize.state.keyboardActive,
     onCancel: () => {
       resize.onResizeEnd({ x: 0, y: 0 });
     },
@@ -356,6 +363,7 @@ export function EditorShellMount({
           </span>
         </div>
       )}
+      <LiveAnnouncer>
       <DragDropProvider value={dragContextValue}>
         <ResizeProvider value={resizeContextValue}>
           <KebabProvider value={kebabContextValue}>
@@ -372,6 +380,7 @@ export function EditorShellMount({
           </KebabProvider>
         </ResizeProvider>
       </DragDropProvider>
+      </LiveAnnouncer>
       <SaveIndicator savedAt={savedAt} status={saveStatus} />
 
       {/*
@@ -381,7 +390,7 @@ export function EditorShellMount({
         Both are pointer-events: none so they never intercept the
         underlying drop event.
       */}
-      {pipeline.state.active && (
+      {(pipeline.state.active || pipeline.state.keyboardActive) && (
         <>
           <OutlineOverlay
             activeMatch={pipeline.state.activeMatch}
@@ -415,7 +424,7 @@ export function EditorShellMount({
         so they never intercept the underlying pointermove events the
         pipeline depends on.
       */}
-      {resize.state.active && (
+      {(resize.state.active || resize.state.keyboardActive) && (
         <ResizeOverlays
           axis={resize.state.axis}
           cursor={resize.state.cursor}

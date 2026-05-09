@@ -1,30 +1,15 @@
 /**
  * @skb/editor-shell useResizePipeline — resize lifecycle owner.
  *
- * Wave 6 cf-20d (2026-05-09; R1+R2 fixes 2026-05-09) — composes the
- * existing resize visual primitives (<ColRuler>, <SizeTooltip>,
- * <RowLadder>) + the pure `resize-snap.ts` math + Tiptap
- * `setNodeMarkup` into the interactive resize wire. Mirrors the
- * cf-20c-2 `useDragDropPipeline` shape (snapshot at start, mutate at
- * commit, NEVER mid-pointermove per the cf-20c-2 R1 reflection rule).
- *
- * Lifecycle: pointerdown (snapshot startCol + startColSpan +
- * startRowSpanAttr|Int + cursor origin + sourceRect + containerWidth)
- * → window pointermove (snap math drives reactive overlay state;
- * never mutates Tiptap) → window pointerup (commit-on-release;
- * setNodeMarkup with axis-aware attr diff via buildResizeNextAttrs;
- * 2-rAF re-measure; onCommitSuccess callback for dropEpoch reuse) /
- * esc-cancel / pointercancel (rollback without mutation per
- * ADR-0017 D8).
- *
- * Decisions in CONTRACT.md (Resize wire section): D1 commit-on-
- * release; D2 gridKind===prose skips bottom+corner; D3 dropEpoch
- * reuse via onCommitSuccess → setLastDroppedFromExternal; D6 round-
- * to-nearest snap; D9 viewportCols-derived totalCols+activeColSnaps
- * (R1 F1); D10 startCol overflow-filter (R1 F2) + UNCONDITIONAL
- * persisted-overflow normalize (R2 F2); D11 rowSpan='auto'
- * preservation via buildResizeNextAttrs axis-aware attr write
- * (R1 F3).
+ * cf-20d + R1/R2 fixes + cf-22 keyboard mode. Composes resize visual
+ * primitives (<ColRuler>, <SizeTooltip>, <RowLadder>) + resize-snap
+ * math + Tiptap setNodeMarkup. Lifecycle: pointerdown (snapshot) →
+ * pointermove (snap state, no mutation) → pointerup (commit-on-
+ * release + 2-rAF re-measure + dropEpoch pulse). cf-22: parallel
+ * keyboard-mode entry (Enter/Space on resize handle) → window Arrow
+ * keys via useKeyboardResizeMode hook → Enter commits via SAME
+ * setNodeMarkup path. esc-cancel + pointercancel rollback without
+ * mutation per ADR-0017 D8 + D13. Decisions in CONTRACT.md.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Editor } from '@tiptap/core';
@@ -36,10 +21,25 @@ import {
   snapToRowSpan,
 } from './resize-snap';
 import type { ResizeAxis } from './resize-context';
+// Wave 6 cf-22 — keyboard-mode lifecycle extracted to its own hook
+// to keep this file under the 500-LOC size-check limit. The keyboard
+// mode is logically separate from pointer mode per cf-22 D3.
+import {
+  startKeyboardResize,
+  useKeyboardResizeMode,
+  type KeyboardResizeSnapshot,
+} from './keyboard-resize-mode';
 
 export interface PipelineResizeState {
   /** True from pointerdown until commit/cancel/pointercancel. */
   readonly active: boolean;
+  /**
+   * Wave 6 cf-22 — true while a KEYBOARD-mode resize is active.
+   * Per cf-22 D3, separate from `active` (pointer-mode); at most
+   * ONE is true at a time. ColRuler/SizeTooltip/RowLadder mounts
+   * should treat `active || keyboardActive` as the active predicate.
+   */
+  readonly keyboardActive: boolean;
   /** Source block being resized (set on pointerdown). */
   readonly sourceBlockId: string | null;
   /** Active resize axis (null when no resize is active). */
@@ -78,10 +78,9 @@ export interface UseResizePipelineOptions {
   /** Grid gap in CSS pixels. Defaults to 14. */
   readonly gap?: number;
   /**
-   * Invoked on a successful commit (after Tiptap mutation + 2-rAF
-   * re-measure). Consumer wires this to the cf-20c-2 drag pipeline's
-   * `setLastDroppedFromExternal(blockId, rect)` so the success-pulse
-   * fires at the landed size. cf-20c-2 R3 dropEpoch reuse pattern.
+   * Success-commit callback fired post-2-rAF re-measure. Consumer
+   * wires to cf-20c-2 `setLastDroppedFromExternal(blockId, rect)`
+   * for dropEpoch reuse pattern (cf-20c-2 R3 + cf-20d D3).
    */
   readonly onCommitSuccess?: (
     blockId: string,
@@ -99,36 +98,31 @@ export interface UseResizePipelineReturn {
   ) => void;
   /** Cleanup fallback (pointercancel route). */
   readonly onResizeEnd: (origin: { x: number; y: number }) => void;
+  /**
+   * Wave 6 cf-22 — keyboard-mode resize entry. Called from
+   * resize-handle's onKeyDown (Enter/Space). Snapshots block + sets
+   * snap state to current col/row + flips `keyboardActive = true`.
+   * Per cf-22 D3.
+   */
+  readonly onResizeStartKeyboard: (
+    blockId: string,
+    axis: ResizeAxis,
+  ) => void;
 }
 
 interface ResizeSnapshot {
   readonly blockId: string;
   readonly axis: ResizeAxis;
-  /**
-   * Block's `col` (1-based) at pointerdown. R1 F2 fix (2026-05-09):
-   * snapped at start so the snap function can filter candidates to
-   * the non-overflowing subset (`snap <= totalCols - col + 1` per
-   * ADR-0016 D2 invariant).
-   */
+  /** Pre-snap col (R1 F2 — for snapToColSpan overflow-filter). */
   readonly startCol: number;
   readonly startColSpan: number;
   /**
-   * Block's rowSpan attr at pointerdown — preserved as `number |
-   * 'auto'`. R1 F3 fix (2026-05-09): pre-R1 the snapshot coerced
-   * non-numeric rowSpan to `1`, then the right-only commit wrote
-   * `rowSpan: 1` and DESTROYED the `'auto'` attribute (prose blocks
-   * stuck at 1 row). R1 fix: preserve the original; right-only
-   * commit omits rowSpan from setNodeMarkup; bottom + corner
-   * commits write the snapped integer.
+   * Original rowSpan attr (number | 'auto'). R1 F3: preserved so
+   * right-only commit omits rowSpan from setNodeMarkup (prose
+   * 'auto' preservation). bottom/corner commits write the integer.
    */
   readonly startRowSpanAttr: number | 'auto';
-  /**
-   * Resolved integer rowSpan at pointerdown — the value used by the
-   * snap math + as the baseline for the bottom/corner commit. For
-   * `startRowSpanAttr === 'auto'` we derive an integer hint from the
-   * source NodeView's measured height (so the snap math sees a
-   * realistic starting value).
-   */
+  /** Integer rowSpan for snap math (for 'auto', derived from rendered height). */
   readonly startRowSpanInt: number;
   readonly origin: { readonly x: number; readonly y: number };
   readonly containerWidth: number;
@@ -152,6 +146,7 @@ export function useResizePipeline(
   } = options;
 
   const [active, setActive] = useState(false);
+  const [keyboardActive, setKeyboardActive] = useState(false); // cf-22 D3
   const [sourceBlockId, setSourceBlockId] = useState<string | null>(null);
   const [axis, setAxis] = useState<ResizeAxis | null>(null);
   const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
@@ -165,6 +160,7 @@ export function useResizePipeline(
 
   const resetState = useCallback(() => {
     setActive(false);
+    setKeyboardActive(false);
     setSourceBlockId(null);
     setAxis(null);
     setCursor(null);
@@ -202,26 +198,19 @@ export function useResizePipeline(
           ? grid.getBoundingClientRect().width
           : startRect.width;
 
-      // R1 F3 fix: preserve the original rowSpan attr (could be
-      // 'auto') for the commit-path axis-aware decision below. The
-      // snap math operates on an integer; for 'auto' we derive a
-      // hint from the measured DOM height (effectiveCellHeight
-      // inverse: rowSpan ≈ (height + gap) / (rowH + gap)).
+      // R1 F3: preserve original rowSpan attr (number | 'auto'); for
+      // 'auto' derive integer hint from rendered height.
       const startRowSpanAttr: number | 'auto' = target.rowSpan;
       let startRowSpanInt: number;
       if (typeof startRowSpanAttr === 'number' && startRowSpanAttr >= 1) {
         startRowSpanInt = startRowSpanAttr;
+      } else if (rowH > 0 && startRect.height > 0) {
+        startRowSpanInt = Math.max(
+          1,
+          Math.round((startRect.height + gap) / (rowH + gap)),
+        );
       } else {
-        // 'auto' (or invalid): derive integer hint from rendered height.
-        const measuredHeight = startRect.height;
-        if (rowH > 0 && measuredHeight > 0) {
-          startRowSpanInt = Math.max(
-            1,
-            Math.round((measuredHeight + gap) / (rowH + gap)),
-          );
-        } else {
-          startRowSpanInt = 1;
-        }
+        startRowSpanInt = 1;
       }
 
       const snapshot: ResizeSnapshot = {
@@ -249,13 +238,13 @@ export function useResizePipeline(
   );
 
   const onResizeEnd = useCallback(() => {
-    // Cleanup-only fallback for pointercancel (rare browser-emitted
-    // event). The window-level pointerup handler below is the primary
-    // commit path. If active=true here, treat as cancel (no mutation).
-    if (active) {
+    // Pointercancel (rare browser-emitted) + keyboard-mode Esc cancel
+    // via useEscCancel both route here. Pointer pointerup + keyboard
+    // Enter are handled by their own listeners (commit path).
+    if (active || keyboardActive) {
       resetState();
     }
-  }, [active, resetState]);
+  }, [active, keyboardActive, resetState]);
 
   // Window-level pointermove / pointerup / pointercancel listeners.
   // Attached when active=true.
@@ -306,9 +295,9 @@ export function useResizePipeline(
       const dx = event.clientX - snapshot.origin.x;
       const dy = event.clientY - snapshot.origin.y;
 
-      // Resolve the final snap targets for this commit.
-      // R1 F2 fix: pass startCol to snapToColSpan so the snap-set
-      // filter rejects overflowing snaps before committing.
+      // R1 F2: pass startCol so snapToColSpan filters overflowing
+      // snaps. R1 F3: bottom-only commit MUST NOT touch rowSpan
+      // (preserve 'auto' on prose). Full rationale in CONTRACT.md.
       let nextColSpan = snapshot.startColSpan;
       let nextRowSpan = snapshot.startRowSpanInt;
       if (snapshot.axis === 'right' || snapshot.axis === 'corner') {
@@ -323,30 +312,17 @@ export function useResizePipeline(
         ).colSpan;
       }
       if (snapshot.axis === 'bottom' || snapshot.axis === 'corner') {
-        nextRowSpan = snapToRowSpan(
-          dy,
-          snapshot.startRowSpanInt,
-          rowH,
-          gap,
-        );
+        nextRowSpan = snapToRowSpan(dy, snapshot.startRowSpanInt, rowH, gap);
       }
 
       const colChanged = nextColSpan !== snapshot.startColSpan;
       const rowChanged = nextRowSpan !== snapshot.startRowSpanInt;
-      // R1 F3 fix: only the bottom + corner axes can change rowSpan;
-      // a right-only resize must NEVER write rowSpan (would destroy
-      // 'auto' on prose blocks).
       const writeRowSpan =
-        rowChanged &&
-        (snapshot.axis === 'bottom' || snapshot.axis === 'corner');
+        rowChanged && (snapshot.axis === 'bottom' || snapshot.axis === 'corner');
 
-      // R2 F2 + R3 F1: UNCONDITIONAL persisted-overflow defense.
-      // R3 F1 amendment normalizes the {col, colSpan} PAIR atomically
-      // (R2 only handled colSpan; missed col>totalCols case). Pure
-      // helper returns null when persisted state is valid; otherwise
-      // returns the normalized pair (left-clamp col + largest fitting
-      // activeColSnap). See `normalizeOverflowPosition` JSDoc + cf-20d
-      // D10 R3 amendment.
+      // R2 F2 + R3 F1: UNCONDITIONAL persisted-overflow defense
+      // normalizes {col, colSpan} pair atomically. See
+      // normalizeOverflowPosition JSDoc + CONTRACT.md.
       const normalizedPosition = normalizeOverflowPosition(
         snapshot.startCol,
         snapshot.startColSpan,
@@ -356,27 +332,16 @@ export function useResizePipeline(
       const persistedOverflow = normalizedPosition !== null;
 
       if (!colChanged && !writeRowSpan && !persistedOverflow) {
-        // No-op commit (cursor returned to start position OR
-        // right-only axis with rowSpan unchanged because we won't
-        // write it anyway), AND the persisted state isn't broken.
-        // Reset without mutation; no success-pulse.
         resetState();
         return;
       }
 
-      // R1 F2 defense-in-depth: re-validate the POST-snap position
-      // against the grid invariant before dispatching mutation.
-      // Should never fire (snapToColSpan already filtered), but if
-      // it does, treat as cancel.
-      if (
-        colChanged &&
-        snapshot.startCol + nextColSpan - 1 > totalCols
-      ) {
+      // R1 F2 defense-in-depth: re-validate post-snap position.
+      if (colChanged && snapshot.startCol + nextColSpan - 1 > totalCols) {
         resetState();
         return;
       }
 
-      // Resolve live PM position (snapshot.blockId === pos string).
       const blocks = snapshotBlocks(editor);
       const livePositions = liveBlockPositions(editor, blocks);
       const live = livePositions.get(snapshot.blockId);
@@ -385,11 +350,6 @@ export function useResizePipeline(
         return;
       }
 
-      // R1 F3 fix: axis-aware attr write delegated to the pure
-      // `buildResizeNextAttrs` helper. Right-only axis omits rowSpan
-      // entirely (preserves 'auto' on prose); bottom-only omits
-      // colSpan; corner writes both (only reached for non-prose per
-      // ADR-0017 D9).
       const nextAttrDiff: Record<string, number> = buildResizeNextAttrs(
         snapshot.axis,
         nextColSpan,
@@ -397,18 +357,10 @@ export function useResizePipeline(
         colChanged,
         rowChanged,
       );
-      // R2 F2 + R3 F1 fix: when persistedOverflow detected, force
-      // the normalized {col, colSpan} pair into the diff so the
-      // single setNodeMarkup transaction recovers the invalid grid
-      // position atomically with the user's intended axis mutation.
-      // R3 F1 amendment: write BOTH col AND colSpan (NOT just
-      // colSpan) — pre-R3 the col-overflow case left col=startCol
-      // unchanged producing a still-invalid result. The axis-aware
-      // diff for col-axes (right + corner) already includes a
-      // user-intended colSpan; the normalized override unconditionally
-      // wins on overflow because the user's snap was computed from
-      // the OVERFLOWING startColSpan and would itself overflow.
-      // Console-warn so operators see the recovery in dev tools.
+      // R2 F2 + R3 F1: persistedOverflow forces normalized {col,
+      // colSpan} pair into the diff (single atomic recovery commit).
+      // console.warn for operator visibility. Full rationale in
+      // CONTRACT.md.
       if (normalizedPosition !== null) {
         // eslint-disable-next-line no-console
         console.warn(
@@ -434,23 +386,18 @@ export function useResizePipeline(
         })
         .run();
 
-      // Re-measure source NodeView at landed position post-mutation
-      // (mirrors cf-20c-2 R2 F2 + R3 F2 sequence). 2 rAFs to allow
-      // React commit + browser layout pass before the
-      // getBoundingClientRect() returns the new size.
+      // 2-rAF re-measure for landed-position pulse anchor (mirrors
+      // cf-20c-2 R2 F2 + R3 F2). cf-20d D3 dropEpoch reuse via
+      // onCommitSuccess callback.
       const blockId = snapshot.blockId;
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           const newBlocks = snapshotBlocks(editor);
-          const newLivePositions = liveBlockPositions(editor, newBlocks);
-          const newLive = newLivePositions.get(blockId);
+          const newLive = liveBlockPositions(editor, newBlocks).get(blockId);
           if (!newLive) return;
           const newDom = editor.view.nodeDOM(newLive.pos);
           if (newDom instanceof HTMLElement) {
-            const newRect = newDom.getBoundingClientRect();
-            // Reuse cf-20c-2 dropEpoch infrastructure via the
-            // consumer-supplied callback (D3 decision).
-            onCommitSuccess?.(blockId, newRect);
+            onCommitSuccess?.(blockId, newDom.getBoundingClientRect());
           }
         });
       });
@@ -481,9 +428,62 @@ export function useResizePipeline(
     resetState,
   ]);
 
+  // Wave 6 cf-22 — keyboard-mode entry. Delegates to the helper in
+  // keyboard-resize-mode.ts which builds the snapshot + flips state.
+  const onResizeStartKeyboard = useCallback(
+    (blockId: string, nextAxis: ResizeAxis) => {
+      const startResult = startKeyboardResize({
+        editor,
+        blockId,
+        axis: nextAxis,
+        gridSelector,
+        rowH,
+        gap,
+        active,
+        keyboardActive,
+      });
+      if (!startResult) return;
+      snapshotRef.current = startResult.snapshot;
+      setKeyboardActive(true);
+      setSourceBlockId(blockId);
+      setAxis(nextAxis);
+      setCursor(null);
+      setSnapColSpan(startResult.snapshot.startColSpan);
+      setSnapRowSpan(startResult.snapshot.startRowSpanInt);
+      setSourceRect(startResult.snapshot.sourceRect);
+    },
+    [editor, active, keyboardActive, gridSelector, gap, rowH],
+  );
+
+  // cf-22 keyboard-mode lifecycle (Arrow + Enter); shares commit path.
+  const keyboardSnapshot: KeyboardResizeSnapshot | null = snapshotRef.current
+    ? {
+        blockId: snapshotRef.current.blockId,
+        axis: snapshotRef.current.axis,
+        startCol: snapshotRef.current.startCol,
+        startColSpan: snapshotRef.current.startColSpan,
+        startRowSpanInt: snapshotRef.current.startRowSpanInt,
+      }
+    : null;
+  useKeyboardResizeMode({
+    keyboardActive,
+    editor,
+    snapshot: keyboardSnapshot,
+    snapColSpan,
+    snapRowSpan,
+    totalCols,
+    activeColSnaps,
+    setSnapColSpan,
+    setSnapRowSpan,
+    resetState,
+    onCommitSuccess,
+    snapshotRef,
+  });
+
   return {
     state: {
       active,
+      keyboardActive,
       sourceBlockId,
       axis,
       cursor,
@@ -493,5 +493,6 @@ export function useResizePipeline(
     },
     onResizeStart,
     onResizeEnd,
+    onResizeStartKeyboard,
   };
 }
