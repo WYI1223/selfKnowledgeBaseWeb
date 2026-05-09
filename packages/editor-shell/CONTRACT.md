@@ -496,10 +496,31 @@ components and types:
 
 `registry-wire.tsx` exports `BLOCK_KIND_OPTIONS`, `insertBlockKind`,
 and `wireRegistry(options)`. `wireRegistry` returns the canonical
-eight `blockKinds`, minimal Tiptap node extensions for those kinds,
-and the insertion helper. It also idempotently registers mdx-bridge
-JSX dispatch entries for the eight block packages so editor-built
+eight `blockKinds`, Tiptap node extensions for those kinds, and the
+insertion helper. It also idempotently registers mdx-bridge JSX
+dispatch entries for the eight block packages so editor-built
 component nodes can serialize through `saveToMdx(editor, { blockRegistry })`.
+
+When `wireRegistry({ blockRegistry })` receives a registry (Wave 6
+carry-forward #18, 2026-05-08), each generated extension also installs
+`addNodeView: () => ReactNodeViewRenderer(makeBlockNodeView({registry}))`,
+which mounts the block's registered `EditorView` React component
+inside a two-layer DOM:
+- the outer `NodeViewWrapper` carries `data-skb-block-kind="<kind>"`
+  (this attribute survives even on the unregistered fallback wrapper
+  for downstream Tiptap inspectors / future drag-handle wiring),
+- the inner non-editable host div carries `data-skb-block-host="<kind>"`
+  (only present when the registry resolved a UI; absent on fallbacks).
+
+Real PDF iframes, KaTeX, React Flow graphs, syntax-highlighted code
+bodies, images, callout containers, NN-Viz SVG topology, and Jupyter
+containers all materialize on the edit surface. Without a registry
+the extension falls back to the legacy `renderHTML` placeholder
+("`<Label> block`" — preserved for no-registry test mounts; the
+unregistered NodeView fallback wrapper additionally carries the
+`skb-block-nodeview--unregistered` modifier class). The
+`makeBlockNodeView` factory is exported from the package barrel for
+downstream NodeView smoke tests.
 
 `EditorShellProps.extensions` is now the sanctioned composition hook
 for consumer-owned Tiptap extensions layered after the built-in

@@ -27,6 +27,8 @@ export { registerBlocks } from './registerBlocks';
 export { registerKernels } from './registerKernels';
 export { saveToMdx, loadFromMdx } from './saveLoad';
 export type { SaveLoadOptions } from './saveLoad';
+export { makeBlockNodeView } from './BlockNodeView';
+export type { BlockNodeViewFactoryProps } from './BlockNodeView';
 export type { NoteSaveAdapter, NoteState, ReadonlyJSONValue } from './save-adapter';
 export { ApiAdapter, LocalStorageAdapter } from './save-adapter';
 export { proseExtensions } from '@skb/block-foundation';
