@@ -128,5 +128,144 @@ test('sample-blocks edit route loads non-empty content (mdxFlowExpression no lon
   // still see `pageerror` if the React error-boundary surfaced it).
   expect(consoleErrors.filter((m) => /loadFromMdx|mdx-bridge/.test(m))).toEqual([]);
 
+  // Wave 6 carry-forward #19 v0.2 + R2 — v2 `.gblock` card chrome
+  // regression lock per /mnt/d/download/web/v2-styles.css:154-249
+  // reference design. R2 P4 fix: stripe color distinctness assertion
+  // catches "all kinds share fallback color" / "wrong kind→hue mapping"
+  // regressions.
+  //
+  // Four assertion families:
+  //
+  //  (a) Per-kind 2px top stripe lives on the .skb-block-nodeview
+  //      wrapper (cf-19 v0.2 D2 — moved from inner component CSS so
+  //      the stripe sits flush with the card top edge). Width≥2 +
+  //      style solid + color non-transparent FOR ALL 8 KINDS.
+  //
+  //  (b) (R2 P4) stripe colors are distinct across kinds: 7 unique
+  //      computed colors (callout + componentCode intentionally share
+  //      the runnable hue; the other 6 are unique per ADR-0018 D3).
+  //      Distinctness is sufficient to detect "all kinds resolved to
+  //      the same fallback" / "wrong kind→hue mapping" without doing
+  //      OKLCH→rgb token math in the test.
+  //
+  //  (c) Wrapper carries the v2 .gblock card chrome — border, radius,
+  //      surface bg, margin-block. Hover/selected toggles stay
+  //      testable via static computed-style probes.
+  //
+  //  (d) Per-block .skb-block-nodeview__gutter shell exists with kind
+  //      chip whose text matches the kind (collapsing the cf-15b
+  //      internal `componentCode` rename back to user-facing `code`).
+  //      4 sequential same-kind blocks each get their own chip →
+  //      visually distinct.
+  const visualProbe = await page.evaluate(() => {
+    const pm = document.querySelector('.ProseMirror');
+    if (!pm) return { error: 'no ProseMirror' };
+    const px = (v: string) => parseFloat(v) || 0;
+
+    const wrappers = Array.from(pm.querySelectorAll('.skb-block-nodeview'));
+    const stripeByKind = (kind: string) => {
+      const wrap = pm.querySelector(`.skb-block-nodeview[data-skb-block-kind="${kind}"]`);
+      if (!wrap) return { kind, error: 'no wrapper' };
+      const cs = window.getComputedStyle(wrap);
+      const gutter = wrap.querySelector('.skb-block-nodeview__gutter');
+      const chip = wrap.querySelector('.skb-block-nodeview__kind-chip');
+      return {
+        kind,
+        borderTopWidth: px(cs.borderTopWidth),
+        borderTopStyle: cs.borderTopStyle,
+        borderTopColor: cs.borderTopColor,
+        gutterPresent: gutter !== null,
+        chipText: chip?.textContent?.trim() ?? null,
+      };
+    };
+
+    const firstWrap = wrappers[0] ?? null;
+    const firstCs = firstWrap ? window.getComputedStyle(firstWrap) : null;
+    return {
+      kinds: [
+        stripeByKind('callout'),
+        stripeByKind('componentCode'),
+        stripeByKind('image'),
+        stripeByKind('math'),
+        stripeByKind('pdf'),
+        stripeByKind('jupyter'),
+        stripeByKind('nn-viz'),
+        stripeByKind('agent-flow'),
+      ],
+      wrapperCount: wrappers.length,
+      // .gblock card chrome on first wrapper (any wrapper would do; all
+      // share the base card rules)
+      cardChrome: firstCs
+        ? {
+            borderLeftWidth: px(firstCs.borderLeftWidth),
+            borderLeftStyle: firstCs.borderLeftStyle,
+            borderRadius: firstCs.borderTopLeftRadius,
+            backgroundColor: firstCs.backgroundColor,
+            marginTop: px(firstCs.marginTop),
+            marginBottom: px(firstCs.marginBottom),
+          }
+        : null,
+    };
+  });
+
+  // (a) Per-kind 2px wrapper stripe present on all 8 kinds.
+  for (const entry of visualProbe.kinds ?? []) {
+    if ('error' in entry) throw new Error(`visual probe ${entry.kind}: ${entry.error}`);
+    expect(
+      entry.borderTopWidth,
+      `kind ${entry.kind} wrapper must carry a 2px+ top stripe (got ${entry.borderTopWidth}px)`,
+    ).toBeGreaterThanOrEqual(2);
+    expect(entry.borderTopStyle).toBe('solid');
+    // Color must not be transparent (means the per-kind rule resolved
+    // a real --accent-X token, not the wrapper's default black border).
+    expect(entry.borderTopColor).not.toBe('rgba(0, 0, 0, 0)');
+  }
+
+  // (b) (R2 P4) stripe colors are distinct across kinds. 7 unique
+  // computed colors expected (callout & componentCode share the
+  // runnable hue per ADR-0018 D3 + cf-19 D2 table); the 6 single-hue
+  // kinds (image / math / pdf / jupyter / nn-viz / agent-flow) plus
+  // the shared runnable hue = 7 unique colors. This catches "all
+  // kinds resolved to the same fallback" / "wrong kind→hue mapping"
+  // without browser-specific OKLCH→rgb math.
+  const stripeColors = (visualProbe.kinds ?? [])
+    .map((e) => ('error' in e ? null : e.borderTopColor))
+    .filter((c): c is string => c !== null);
+  const uniqueColors = new Set(stripeColors);
+  expect(
+    uniqueColors.size,
+    `stripe colors are distinct across kinds: expected 7 unique computed colors (callout & componentCode share runnable hue), got ${uniqueColors.size} from [${stripeColors.join(', ')}]`,
+  ).toBe(7);
+  // Sanity: callout and componentCode (the hue-sharing pair) MUST
+  // resolve to the same color.
+  const calloutColor = visualProbe.kinds?.find(
+    (e) => !('error' in e) && e.kind === 'callout',
+  );
+  const codeColor = visualProbe.kinds?.find(
+    (e) => !('error' in e) && e.kind === 'componentCode',
+  );
+  expect(
+    calloutColor && !('error' in calloutColor) ? calloutColor.borderTopColor : null,
+  ).toBe(codeColor && !('error' in codeColor) ? codeColor.borderTopColor : 'unreachable');
+
+  // (c) v2 .gblock card chrome on wrapper.
+  expect(visualProbe.cardChrome?.borderLeftWidth ?? 0).toBeGreaterThanOrEqual(1);
+  expect(visualProbe.cardChrome?.borderLeftStyle).toBe('solid');
+  expect(parseFloat(visualProbe.cardChrome?.borderRadius ?? '0')).toBeGreaterThanOrEqual(6);
+  // Background must be non-transparent (the v2 surface white).
+  expect(visualProbe.cardChrome?.backgroundColor).not.toBe('rgba(0, 0, 0, 0)');
+  // Margin-block: at least 8px on each side so adjacent cards breathe.
+  expect(visualProbe.cardChrome?.marginTop ?? 0).toBeGreaterThanOrEqual(8);
+  expect(visualProbe.cardChrome?.marginBottom ?? 0).toBeGreaterThanOrEqual(8);
+
+  // (d) Gutter shell + kind chip per kind. Chip text equals the kind
+  // name except `componentCode` collapses to `code`.
+  for (const entry of visualProbe.kinds ?? []) {
+    if ('error' in entry) continue;
+    expect(entry.gutterPresent, `kind ${entry.kind} missing gutter shell`).toBe(true);
+    const expectedChip = entry.kind === 'componentCode' ? 'code' : entry.kind;
+    expect(entry.chipText).toBe(expectedChip);
+  }
+
   await page.screenshot({ fullPage: true, path: SCREENSHOT_PATH });
 });
