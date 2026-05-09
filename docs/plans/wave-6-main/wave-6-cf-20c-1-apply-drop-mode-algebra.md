@@ -116,7 +116,39 @@ Per ADR-0017 D1 line 53 (`'none'` mode = no mutation; cancel-on-release). Caller
 
 ## ui_touch
 
-`false` — pure algebra + vitest only. No CSS, no DOM, no Astro, no React. The cf-20c-2 PR (next in sequence) will be `ui_touch=true` because it wires this function to the drag-handle button + ProseMirror commands.
+`true` — `packages/editor-shell/src/**` matches ADR-0011 D9.1 path pattern,
+even though cf-20c-1 contributes pure algebra (no CSS / DOM / Astro / React /
+Playwright surface). The path-pattern check at `scripts/check-ui-touch.ts:33`
+fires regardless of the per-file content (correct conservative default — catches
+"hidden UI ripples" across the editor-shell package). This PR therefore
+declares `ui_touch=true` and pairs it with the existing
+`apps/site/playwright/grid-drag-drop.spec.ts` regression-lock as a
+forward-stage e2e_smoke entry (the spec exercises the drag-drop primitives
+that cf-20c-1's `applyDropMode` will compose with at cf-20c-2). Real new
+e2e coverage for `applyDropMode` lands in cf-20c-2 alongside the UI wire.
+
+## e2e_smoke
+
+- flow: cf-20c-1 ships pure algebra exported from `@skb/editor-shell`
+    (the `applyDropMode` function for ADR-0017 D1 drop modes). The
+    function has no UI surface yet — cf-20c-2 wires it to the drag-handle
+    button + ProseMirror commands. cf-20c-1's existing-spec lock asserts
+    that the editor-shell `drag-drop/` package's downstream Playwright
+    consumers (synthetic drag-drop hit-test corpus per ADR-0017 D1+D6+D11)
+    continue to PASS after the new export lands. The 27 NEW vitest cases
+    in `apply-drop-mode.test.ts` are the primary algebra coverage; the
+    Playwright spec referenced here is the regression lock against
+    breaking the existing primitives via barrel-export drift.
+  target_url: /sample-blocks-astro
+  playwright_spec: apps/site/playwright/grid-drag-drop.spec.ts:"AC#1 — 4 mode classification at edge positions"
+  screenshot_archive: docs/audits/screenshots/wave-6-cf-20b-sample-blocks-grid-layout.png
+  assertions:
+    - 4-mode classification (split-left/right/top/bottom) at synthetic
+      edge positions returns the expected EdgeMode (existing AC#1 lock)
+    - hit-test geometry primitives still produce the same EdgeRect shape
+      (existing AC#2 lock)
+    - tiebreak resolver still returns deterministic single-match for
+      overlap regions (existing AC#3 lock)
 
 ## Acceptance
 
