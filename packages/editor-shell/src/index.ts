@@ -57,6 +57,13 @@ export { useEscCancel } from './drag-drop/esc-cancel';
 export type { EscCancelOptions } from './drag-drop/esc-cancel';
 export { layoutReducer } from './drag-drop/layout-reducer';
 export type { GridSnapshot, LayoutAction, LayoutState } from './drag-drop/layout-reducer';
+export { applyDropMode } from './drag-drop/apply-drop-mode';
+export type {
+  ApplyDropModeInput,
+  DropMode,
+  GridSnapshotIdentified,
+  IdentifiedBlock,
+} from './drag-drop/apply-drop-mode';
 export { ColRuler } from './resize/col-ruler';
 export type { ColRulerProps } from './resize/col-ruler';
 export { SizeTooltip, colSpanToFraction } from './resize/size-tooltip';

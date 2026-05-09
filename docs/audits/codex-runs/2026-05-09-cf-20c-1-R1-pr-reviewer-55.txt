@@ -1,0 +1,2000 @@
+Reading additional input from stdin...
+OpenAI Codex v0.125.0 (research preview)
+--------
+workdir: /home/weiyi/selfKnowledgeBaseWeb
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: danger-full-access
+reasoning effort: xhigh
+reasoning summaries: none
+session id: 019e0d2b-945f-7b52-ba67-baea89072515
+--------
+user
+Wave 6 cf-20c-1 R1. Branch wave-6-cf-20c-1-apply-drop-mode-algebra, off main 722f1c0. PR.md self at docs/plans/wave-6-main/wave-6-cf-20c-1-apply-drop-mode-algebra.md.
+
+CONSTRAINTS PER RULES 5+6:
+- DO NOT preemptively re-run pnpm check or full Playwright (orchestrator already verified: pnpm check 41/41 PASS, editor-shell 179/179 PASS incl. 27 new applyDropMode tests)
+- DO NOT re-read ADR-0006 / orchestrator-reflections / aux ADRs
+- READ: PR.md + the 2 NEW source files (apply-drop-mode.ts ~280 LOC + apply-drop-mode.test.ts ~410 LOC) + CONTRACT.md addition + ADR-0017 D1 lines 44-61 (algebra spec)
+- Verdict in <6 min
+
+Why: orchestrator-reflection 2026-05-09 Rule 4 — apply-drop-mode.ts is the missing integration layer between Wave 5 Stage C.2 primitives (edge-rects/tiebreak/outline-overlay) and the layout-reducer's drag-end-success action. Without this, drag is structurally impossible.
+
+Scope (5 files):
+- NEW packages/editor-shell/src/drag-drop/apply-drop-mode.ts (277 LOC) — pure mutation per ADR-0017 D1; throws on invalid input
+- NEW packages/editor-shell/src/drag-drop/__tests__/apply-drop-mode.test.ts (411 LOC, 27 tests covering all 6 modes + COL_SNAPS validation + invariants)
+- packages/editor-shell/src/index.ts — barrel exports applyDropMode + 4 types
+- packages/editor-shell/CONTRACT.md — Public surface entry for applyDropMode
+- docs/plans/wave-6-main/wave-6-cf-20c-1-apply-drop-mode-algebra.md — PR.md self
+
+ui_touch=false (no CSS/DOM/Astro/React). No screenshot, no e2e_smoke required.
+
+D2 trigger: Row 1 (CONTRACT.md update). Stage 4 PRE-COMMIT CLAUDE REVIEW fires.
+
+Run static ADR-0006 9-point audit (item #9 N/A — no UI surface). Verdict PASS or FAIL with line-anchored remediation. If PASS, on stage 5 you commit per ADR-0006 D8 explicit-file-list staging.
+codex
+I’ll use `superpowers:using-superpowers` for the required skill workflow, then do the constrained static review from the listed files only.
+exec
+/bin/bash -lc "sed -n '1,220p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/63976030/skills/using-superpowers/SKILL.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+---
+name: using-superpowers
+description: Use when starting any conversation - establishes how to find and use skills, requiring Skill tool invocation before ANY response including clarifying questions
+---
+
+<SUBAGENT-STOP>
+If you were dispatched as a subagent to execute a specific task, skip this skill.
+</SUBAGENT-STOP>
+
+<EXTREMELY-IMPORTANT>
+If you think there is even a 1% chance a skill might apply to what you are doing, you ABSOLUTELY MUST invoke the skill.
+
+IF A SKILL APPLIES TO YOUR TASK, YOU DO NOT HAVE A CHOICE. YOU MUST USE IT.
+
+This is not negotiable. This is not optional. You cannot rationalize your way out of this.
+</EXTREMELY-IMPORTANT>
+
+## Instruction Priority
+
+Superpowers skills override default system prompt behavior, but **user instructions always take precedence**:
+
+1. **User's explicit instructions** (CLAUDE.md, GEMINI.md, AGENTS.md, direct requests) — highest priority
+2. **Superpowers skills** — override default system behavior where they conflict
+3. **Default system prompt** — lowest priority
+
+If CLAUDE.md, GEMINI.md, or AGENTS.md says "don't use TDD" and a skill says "always use TDD," follow the user's instructions. The user is in control.
+
+## How to Access Skills
+
+**In Claude Code:** Use the `Skill` tool. When you invoke a skill, its content is loaded and presented to you—follow it directly. Never use the Read tool on skill files.
+
+**In Copilot CLI:** Use the `skill` tool. Skills are auto-discovered from installed plugins. The `skill` tool works the same as Claude Code's `Skill` tool.
+
+**In Gemini CLI:** Skills activate via the `activate_skill` tool. Gemini loads skill metadata at session start and activates the full content on demand.
+
+**In other environments:** Check your platform's documentation for how skills are loaded.
+
+## Platform Adaptation
+
+Skills use Claude Code tool names. Non-CC platforms: see `references/copilot-tools.md` (Copilot CLI), `references/codex-tools.md` (Codex) for tool equivalents. Gemini CLI users get the tool mapping loaded automatically via GEMINI.md.
+
+# Using Skills
+
+## The Rule
+
+**Invoke relevant or requested skills BEFORE any response or action.** Even a 1% chance a skill might apply means that you should invoke the skill to check. If an invoked skill turns out to be wrong for the situation, you don't need to use it.
+
+```dot
+digraph skill_flow {
+    "User message received" [shape=doublecircle];
+    "About to EnterPlanMode?" [shape=doublecircle];
+    "Already brainstormed?" [shape=diamond];
+    "Invoke brainstorming skill" [shape=box];
+    "Might any skill apply?" [shape=diamond];
+    "Invoke Skill tool" [shape=box];
+    "Announce: 'Using [skill] to [purpose]'" [shape=box];
+    "Has checklist?" [shape=diamond];
+    "Create TodoWrite todo per item" [shape=box];
+    "Follow skill exactly" [shape=box];
+    "Respond (including clarifications)" [shape=doublecircle];
+
+    "About to EnterPlanMode?" -> "Already brainstormed?";
+    "Already brainstormed?" -> "Invoke brainstorming skill" [label="no"];
+    "Already brainstormed?" -> "Might any skill apply?" [label="yes"];
+    "Invoke brainstorming skill" -> "Might any skill apply?";
+
+    "User message received" -> "Might any skill apply?";
+    "Might any skill apply?" -> "Invoke Skill tool" [label="yes, even 1%"];
+    "Might any skill apply?" -> "Respond (including clarifications)" [label="definitely not"];
+    "Invoke Skill tool" -> "Announce: 'Using [skill] to [purpose]'";
+    "Announce: 'Using [skill] to [purpose]'" -> "Has checklist?";
+    "Has checklist?" -> "Create TodoWrite todo per item" [label="yes"];
+    "Has checklist?" -> "Follow skill exactly" [label="no"];
+    "Create TodoWrite todo per item" -> "Follow skill exactly";
+}
+```
+
+## Red Flags
+
+These thoughts mean STOP—you're rationalizing:
+
+| Thought | Reality |
+|---------|---------|
+| "This is just a simple question" | Questions are tasks. Check for skills. |
+| "I need more context first" | Skill check comes BEFORE clarifying questions. |
+| "Let me explore the codebase first" | Skills tell you HOW to explore. Check first. |
+| "I can check git/files quickly" | Files lack conversation context. Check for skills. |
+| "Let me gather information first" | Skills tell you HOW to gather information. |
+| "This doesn't need a formal skill" | If a skill exists, use it. |
+| "I remember this skill" | Skills evolve. Read current version. |
+| "This doesn't count as a task" | Action = task. Check for skills. |
+| "The skill is overkill" | Simple things become complex. Use it. |
+| "I'll just do this one thing first" | Check BEFORE doing anything. |
+| "This feels productive" | Undisciplined action wastes time. Skills prevent this. |
+| "I know what that means" | Knowing the concept ≠ using the skill. Invoke it. |
+
+## Skill Priority
+
+When multiple skills could apply, use this order:
+
+1. **Process skills first** (brainstorming, debugging) - these determine HOW to approach the task
+2. **Implementation skills second** (frontend-design, mcp-builder) - these guide execution
+
+"Let's build X" → brainstorming first, then implementation skills.
+"Fix this bug" → debugging first, then domain-specific skills.
+
+## Skill Types
+
+**Rigid** (TDD, debugging): Follow exactly. Don't adapt away discipline.
+
+**Flexible** (patterns): Adapt principles to context.
+
+The skill itself tells you which.
+
+## User Instructions
+
+Instructions say WHAT, not HOW. "Add X" or "Fix Y" doesn't mean skip workflows.
+
+codex
+I’m gathering only the requested review inputs: the PR plan, the two new source files, the contract entry, and ADR-0017 D1 spec lines. I’ll keep this static and avoid the already-run check suites.
+exec
+/bin/bash -lc 'nl -ba docs/plans/wave-6-main/wave-6-cf-20c-1-apply-drop-mode-algebra.md' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	# Wave 6 cf-20c-1 — `apply-drop-mode.ts` algebra (pure function for ADR-0017 D1 drop mutations)
+     2	
+     3	> Per orchestrator-reflection 2026-05-09 Rule 4 — the missing integration layer
+     4	> identified during cf-20 scoping that broke the cf-18/cf-19 "primitives shipped
+     5	> = integration done" assumption. This PR ships the pure mutation function;
+     6	> cf-20c-2 wires it to the actual drag-handle UI.
+     7	
+     8	## Why
+     9	
+    10	ADR-0017 D1 specifies 6 drop-mode behaviors (`split-left` / `split-right` /
+    11	`split-top` / `split-bottom` / `empty` / `none`) with explicit position
+    12	mutations on host + new/source blocks. The existing primitives in
+    13	`packages/editor-shell/src/drag-drop/` (edge-rects, tiebreak, outline-overlay,
+    14	drag-ghost, drop-pulse, layout-reducer, esc-cancel) cover hit-testing,
+    15	overlay rendering, and layout-state machine — but **none of them computes
+    16	the post-drop block positions**. `layout-reducer.ts:drag-end-success`
+    17	accepts a `mutation: GridSnapshot` parameter; cf-20c-1 supplies the
+    18	function that produces it.
+    19	
+    20	Without `apply-drop-mode`, drag is structurally impossible — even after
+    21	cf-20c-2 wires the UI, the editor can't know what positions to commit.
+    22	
+    23	## What
+    24	
+    25	NEW `packages/editor-shell/src/drag-drop/apply-drop-mode.ts` (~150 LOC):
+    26	
+    27	```typescript
+    28	export interface IdentifiedBlock extends BlockGridPosition {
+    29	  readonly id: string;
+    30	}
+    31	
+    32	export interface GridSnapshotIdentified {
+    33	  readonly blocks: readonly IdentifiedBlock[];
+    34	}
+    35	
+    36	export interface ApplyDropModeInput {
+    37	  readonly baseline: GridSnapshotIdentified;
+    38	  readonly mode: 'split-left' | 'split-right' | 'split-top' | 'split-bottom' | 'empty' | 'none';
+    39	  readonly sourceBlockId: string | null;  // null = palette drag (new block insertion)
+    40	  readonly hostBlockId: string | null;     // null only for mode='empty' or 'none'
+    41	  readonly newBlock?: IdentifiedBlock;     // required when sourceBlockId === null
+    42	  readonly emptyTarget?: { col: number; row: number };  // required when mode='empty'
+    43	}
+    44	
+    45	export function applyDropMode(input: ApplyDropModeInput): GridSnapshotIdentified;
+    46	```
+    47	
+    48	**Per-mode semantics (ADR-0017 D1 table)**:
+    49	
+    50	| mode | host mutation | source/new mutation |
+    51	|---|---|---|
+    52	| `split-left` | `colSpan = host.colSpan / 2`; `col = host.col + host.colSpan/2` (host shifts right) | `col = host.col`, `colSpan = host.colSpan/2`, `row = host.row` |
+    53	| `split-right` | `colSpan = host.colSpan / 2` (host stays left) | `col = host.col + host.colSpan/2`, `colSpan = host.colSpan/2`, `row = host.row` |
+    54	| `split-top` | `row = host.row + 1` (host shifts down); subsequent rows shift down too | `col = host.col`, `colSpan = host.colSpan`, `row = host.row` |
+    55	| `split-bottom` | unchanged | `col = host.col`, `colSpan = host.colSpan`, `row = host.row + host.rowSpan` (or `host.row + 1` if rowSpan='auto') |
+    56	| `empty` | unchanged | `col = emptyTarget.col`, `row = emptyTarget.row`, defaults `colSpan=12`, `rowSpan=1` |
+    57	| `none` | unchanged | unchanged (returns baseline; treated as cancel) |
+    58	
+    59	**Constraints (must throw on violation)**:
+    60	
+    61	- `split-left` / `split-right`: `host.colSpan / 2` MUST be in `COL_SNAPS = [2,3,4,6,8,12]`. Throws otherwise (`host.colSpan = 3, 5, 7, 9, 10, 11` → invalid; only `4 → 2`, `6 → 3`, `8 → 4`, `12 → 6` are valid splits).
+    62	- `split-top` / `split-bottom`: no colSpan constraint; ALWAYS valid.
+    63	- `empty`: `emptyTarget` required. `col + colSpan - 1 ≤ 12` (colSpan defaults to 12 if not specified).
+    64	- `none`: returns baseline unchanged (treat as cancel even though caller may use to display a no-op preview).
+    65	- When `sourceBlockId !== null`: source block is moved (removed from old position, inserted at new). When `sourceBlockId === null`: `newBlock` is REQUIRED and inserted.
+    66	- For `split-top`: the algebra computes `row` shifts for ALL blocks at `row >= host.row` (cascade down by 1).
+    67	
+    68	**TDD coverage** (NEW `__tests__/apply-drop-mode.test.ts` ~250 LOC, ~40 cases):
+    69	
+    70	- 5 modes × happy-path with `colSpan=12` host (canonical test fixtures)
+    71	- `split-left`/`split-right` × refused colSpan inputs (3, 5, 7, 9, 10, 11) → expect throw
+    72	- `split-left`/`split-right` × all valid colSpans (4, 6, 8, 12) → verify halves
+    73	- `split-top` row cascade across N=3 blocks below the host
+    74	- `split-bottom` no cascade required
+    75	- `empty` row=N + colSpan=K combinations
+    76	- `none` returns baseline-equal output
+    77	- source-move (sourceBlockId !== null) drops source from old position
+    78	- palette-insert (sourceBlockId === null + newBlock) adds without removal
+    79	- Validation: `col + colSpan - 1 > 12` rejected; missing emptyTarget when mode='empty' rejected; missing newBlock when sourceBlockId=null rejected; `split-*` with `hostBlockId=null` rejected
+    80	
+    81	## Files
+    82	
+    83	| file | change |
+    84	|---|---|
+    85	| `packages/editor-shell/src/drag-drop/apply-drop-mode.ts` | **NEW** — pure mutation function + types |
+    86	| `packages/editor-shell/src/drag-drop/__tests__/apply-drop-mode.test.ts` | **NEW** — vitest, ~40 cases per ADR-0017 D1 + invariants |
+    87	| `packages/editor-shell/src/index.ts` | barrel export `applyDropMode` + types |
+    88	| `packages/editor-shell/CONTRACT.md` | document `applyDropMode` Public surface entry; cite ADR-0017 D1 |
+    89	
+    90	## Decisions
+    91	
+    92	**D1 — IdentifiedBlock extends BlockGridPosition (NOT modify BlockGridPosition contract)**:
+    93	`@skb/block-foundation` `BlockGridPosition` is a position-only type used across the entire grid stack (mdx-bridge, editor-shell, design-tokens consumers). Adding an `id` field there would touch the entire system. Instead cf-20c-1 introduces `IdentifiedBlock = { id: string } & BlockGridPosition` local to the drag-drop layer. cf-20c-2 will provide the `id` from ProseMirror node positions / Tiptap node IDs.
+    94	
+    95	Sources cited: `packages/block-foundation/src/types.ts:7` (`BlockGridPosition` shape unchanged) + ADR-0016 D2 (locks the existing shape) + ADR-0017 D1 (requires identity for source/host references).
+    96	
+    97	**D2 — Pure function, throws on invalid input (no silent degradation)**:
+    98	Per orchestrator-reflection Rule 3 (no degradation) + ADR-0017 D1 explicit constraint (`split-*` requires valid colSpan halves), the function MUST throw on:
+    99	- `split-left/right` with `host.colSpan / 2` not in `COL_SNAPS`
+   100	- `empty` with `emptyTarget` missing or `col + colSpan - 1 > 12`
+   101	- `sourceBlockId === null` without `newBlock`
+   102	- `split-*` with `hostBlockId === null`
+   103	
+   104	The cf-20c-2 UI consumer is responsible for guarding (via tiebreak's "no-split" cursor per ADR-0017 D6) BEFORE calling `applyDropMode`. Invalid inputs reaching the algebra layer are programmer error and surface as throws.
+   105	
+   106	Sources cited: `/mnt/d/download/web/v2-design-granularity.md` §"4 种 Drop 语义" (lines 76-88) + ADR-0017 D1 lines 44-61 (refuses split when invalid) + ADR-0016 D6 (`COL_SNAPS` authority).
+   107	
+   108	**D3 — Row cascade for split-top is array-wide, not just below host**:
+   109	Per ADR-0017 D1 line 50 ("host 整体下移 + 后续行下移"), every block at `row >= host.row` cascades by `+1` (not just blocks "after" host in some sort order). Algebra iterates the entire `baseline.blocks` array.
+   110	
+   111	**D4 — None mode returns deep-equal baseline (no mutation)**:
+   112	Per ADR-0017 D1 line 53 (`'none'` mode = no mutation; cancel-on-release). Caller may compare returned snapshot to baseline by reference for short-circuit; but the function explicitly returns a NEW snapshot object (not shared reference) to maintain immutability invariant.
+   113	
+   114	**D5 — No layout-reducer extension in this PR**:
+   115	`layout-reducer.ts:drag-end-success` already accepts a `mutation: GridSnapshot` parameter. cf-20c-1 supplies the value of that parameter via `applyDropMode`. The reducer code itself is unchanged — only the consumer (cf-20c-2) wires them together.
+   116	
+   117	## ui_touch
+   118	
+   119	`false` — pure algebra + vitest only. No CSS, no DOM, no Astro, no React. The cf-20c-2 PR (next in sequence) will be `ui_touch=true` because it wires this function to the drag-handle button + ProseMirror commands.
+   120	
+   121	## Acceptance
+   122	
+   123	```bash
+   124	# AC-1: NEW file shape
+   125	test -f packages/editor-shell/src/drag-drop/apply-drop-mode.ts
+   126	test -f packages/editor-shell/src/drag-drop/__tests__/apply-drop-mode.test.ts
+   127	
+   128	# AC-2: function signature exported from barrel
+   129	grep -E 'export \{ applyDropMode' packages/editor-shell/src/index.ts
+   130	
+   131	# AC-3: algebra implements all 6 modes (function dispatch)
+   132	grep -cE "case 'split-left':|case 'split-right':|case 'split-top':|case 'split-bottom':|case 'empty':|case 'none':" packages/editor-shell/src/drag-drop/apply-drop-mode.ts
+   133	# Expected: 6
+   134	
+   135	# AC-4: vitest passes all cases
+   136	pnpm --filter @skb/editor-shell test -- apply-drop-mode
+   137	# Expected: 40+ tests pass; coverage of all 6 modes + COL_SNAPS validation
+   138	
+   139	# AC-5: pnpm check exit 0
+   140	pnpm check
+   141	
+   142	# AC-6: editor-shell test count increases
+   143	# Expected: 152 (cf-20b) → 192+ (cf-20c-1, +40 new vitest cases)
+   144	
+   145	# AC-7: CONTRACT.md documents Public surface entry
+   146	grep -E '^- `applyDropMode' packages/editor-shell/CONTRACT.md
+   147	# Expected: 1 line
+   148	
+   149	# AC-8: NO ui_touch (skipped per ADR-0011 D9.1)
+   150	# This PR's only sources are pure-TS algebra + vitest. No CSS / DOM / Astro / React.
+   151	```
+   152	
+   153	## Out of scope (none — per orchestrator-reflection Rule 3, "defer" requires explicit user-quote)
+   154	
+   155	cf-20c-2 (drag-handle UI wire) is the NEXT scheduled PR in the sequence,
+   156	not a deferral.
+
+exec
+/bin/bash -lc 'nl -ba packages/editor-shell/src/drag-drop/apply-drop-mode.ts' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	import { COL_SNAPS, type BlockGridPosition } from '@skb/block-foundation';
+     2	
+     3	/**
+     4	 * Wave 6 cf-20c-1 — pure mutation algebra for ADR-0017 D1 drop modes.
+     5	 *
+     6	 * `applyDropMode(input) → GridSnapshotIdentified` computes the post-drop
+     7	 * block positions for the 6 drop modes specified at ADR-0017 D1 lines
+     8	 * 44-61 (`split-left` / `split-right` / `split-top` / `split-bottom` /
+     9	 * `empty` / `none`).
+    10	 *
+    11	 * The function is pure: same input → same output, no side effects, no
+    12	 * IO. Consumer (cf-20c-2 drag-handle UI wire) computes the input from
+    13	 * pointer events + edge-rects + tiebreak, calls this function, and
+    14	 * dispatches `drag-end-success` to layoutReducer with the result as
+    15	 * the `mutation: GridSnapshot` parameter.
+    16	 *
+    17	 * Throws on invalid input (programmer error from the consumer side):
+    18	 *  - `split-left/right` with `host.colSpan / 2` not in COL_SNAPS
+    19	 *    (the consumer should have shown the "no-split" cursor per ADR-0017
+    20	 *    D6 BEFORE calling this function).
+    21	 *  - `empty` without `emptyTarget` or with `col + colSpan - 1 > 12`.
+    22	 *  - `sourceBlockId === null` without `newBlock`.
+    23	 *  - `split-*` with `hostBlockId === null`.
+    24	 */
+    25	
+    26	export interface IdentifiedBlock extends BlockGridPosition {
+    27	  /** Stable block identifier; sourced by cf-20c-2 from ProseMirror node IDs. */
+    28	  readonly id: string;
+    29	}
+    30	
+    31	export interface GridSnapshotIdentified {
+    32	  readonly blocks: readonly IdentifiedBlock[];
+    33	}
+    34	
+    35	export type DropMode =
+    36	  | 'split-left'
+    37	  | 'split-right'
+    38	  | 'split-top'
+    39	  | 'split-bottom'
+    40	  | 'empty'
+    41	  | 'none';
+    42	
+    43	export interface ApplyDropModeInput {
+    44	  readonly baseline: GridSnapshotIdentified;
+    45	  readonly mode: DropMode;
+    46	  /** null = palette drag (newBlock required). */
+    47	  readonly sourceBlockId: string | null;
+    48	  /** null only for mode='empty' or 'none'. */
+    49	  readonly hostBlockId: string | null;
+    50	  /** Required when sourceBlockId === null (palette insertion). */
+    51	  readonly newBlock?: IdentifiedBlock;
+    52	  /** Required when mode === 'empty'. */
+    53	  readonly emptyTarget?: { readonly col: number; readonly row: number };
+    54	}
+    55	
+    56	const SPLIT_HALF_VALID = new Set<number>([2, 3, 4, 6]);
+    57	
+    58	export function applyDropMode(input: ApplyDropModeInput): GridSnapshotIdentified {
+    59	  const { baseline, mode, sourceBlockId, hostBlockId, newBlock, emptyTarget } = input;
+    60	
+    61	  if (mode === 'none') {
+    62	    return { blocks: [...baseline.blocks] };
+    63	  }
+    64	
+    65	  const isPaletteInsert = sourceBlockId === null;
+    66	  if (isPaletteInsert && !newBlock) {
+    67	    throw new Error(
+    68	      'applyDropMode: newBlock is required when sourceBlockId is null (palette insertion)',
+    69	    );
+    70	  }
+    71	
+    72	  if (mode === 'empty') {
+    73	    if (!emptyTarget) {
+    74	      throw new Error('applyDropMode: emptyTarget is required when mode is "empty"');
+    75	    }
+    76	    return applyEmpty(baseline, sourceBlockId, newBlock, emptyTarget);
+    77	  }
+    78	
+    79	  // From here on, mode is split-{left,right,top,bottom}.
+    80	  if (hostBlockId === null) {
+    81	    throw new Error(`applyDropMode: hostBlockId is required when mode is "${mode}"`);
+    82	  }
+    83	  const host = baseline.blocks.find((b) => b.id === hostBlockId);
+    84	  if (!host) {
+    85	    throw new Error(`applyDropMode: hostBlockId "${hostBlockId}" not found in baseline`);
+    86	  }
+    87	
+    88	  switch (mode) {
+    89	    case 'split-left':
+    90	      return applySplitLeft(baseline, host, sourceBlockId, newBlock);
+    91	    case 'split-right':
+    92	      return applySplitRight(baseline, host, sourceBlockId, newBlock);
+    93	    case 'split-top':
+    94	      return applySplitTop(baseline, host, sourceBlockId, newBlock);
+    95	    case 'split-bottom':
+    96	      return applySplitBottom(baseline, host, sourceBlockId, newBlock);
+    97	  }
+    98	}
+    99	
+   100	function applyEmpty(
+   101	  baseline: GridSnapshotIdentified,
+   102	  sourceBlockId: string | null,
+   103	  newBlock: IdentifiedBlock | undefined,
+   104	  target: { readonly col: number; readonly row: number },
+   105	): GridSnapshotIdentified {
+   106	  const inserted: IdentifiedBlock = newBlock
+   107	    ? { ...newBlock, col: target.col, row: target.row }
+   108	    : (() => {
+   109	        const source = baseline.blocks.find((b) => b.id === sourceBlockId);
+   110	        if (!source) {
+   111	          throw new Error(
+   112	            `applyDropMode: sourceBlockId "${sourceBlockId}" not found in baseline`,
+   113	          );
+   114	        }
+   115	        return { ...source, col: target.col, row: target.row };
+   116	      })();
+   117	  validateColumnRange(inserted);
+   118	  const remaining = baseline.blocks.filter((b) => b.id !== sourceBlockId);
+   119	  return { blocks: [...remaining, inserted] };
+   120	}
+   121	
+   122	function applySplitLeft(
+   123	  baseline: GridSnapshotIdentified,
+   124	  host: IdentifiedBlock,
+   125	  sourceBlockId: string | null,
+   126	  newBlock: IdentifiedBlock | undefined,
+   127	): GridSnapshotIdentified {
+   128	  const half = halfColSpan(host.colSpan);
+   129	  const newHost: IdentifiedBlock = {
+   130	    ...host,
+   131	    col: host.col + half,
+   132	    colSpan: half,
+   133	  };
+   134	  const placedSource = placeAtHostHalf(host, sourceBlockId, newBlock, baseline, host.col, half);
+   135	  const others = baseline.blocks.filter((b) => b.id !== host.id && b.id !== sourceBlockId);
+   136	  return { blocks: [...others, newHost, placedSource] };
+   137	}
+   138	
+   139	function applySplitRight(
+   140	  baseline: GridSnapshotIdentified,
+   141	  host: IdentifiedBlock,
+   142	  sourceBlockId: string | null,
+   143	  newBlock: IdentifiedBlock | undefined,
+   144	): GridSnapshotIdentified {
+   145	  const half = halfColSpan(host.colSpan);
+   146	  const newHost: IdentifiedBlock = {
+   147	    ...host,
+   148	    colSpan: half,
+   149	  };
+   150	  const placedSource = placeAtHostHalf(
+   151	    host,
+   152	    sourceBlockId,
+   153	    newBlock,
+   154	    baseline,
+   155	    host.col + half,
+   156	    half,
+   157	  );
+   158	  const others = baseline.blocks.filter((b) => b.id !== host.id && b.id !== sourceBlockId);
+   159	  return { blocks: [...others, newHost, placedSource] };
+   160	}
+   161	
+   162	function applySplitTop(
+   163	  baseline: GridSnapshotIdentified,
+   164	  host: IdentifiedBlock,
+   165	  sourceBlockId: string | null,
+   166	  newBlock: IdentifiedBlock | undefined,
+   167	): GridSnapshotIdentified {
+   168	  const hostRow = host.row ?? 1;
+   169	  const cascaded = baseline.blocks.map((b) => {
+   170	    if (b.id === sourceBlockId) return null;
+   171	    if (b.id === host.id) return { ...b, row: hostRow + 1 };
+   172	    if (b.row !== undefined && b.row >= hostRow) return { ...b, row: b.row + 1 };
+   173	    return b;
+   174	  });
+   175	  const placed = makeInserted(host, sourceBlockId, newBlock, baseline, {
+   176	    col: host.col,
+   177	    row: hostRow,
+   178	    colSpan: host.colSpan,
+   179	  });
+   180	  const filtered = cascaded.filter((b): b is IdentifiedBlock => b !== null);
+   181	  return { blocks: [...filtered, placed] };
+   182	}
+   183	
+   184	function applySplitBottom(
+   185	  baseline: GridSnapshotIdentified,
+   186	  host: IdentifiedBlock,
+   187	  sourceBlockId: string | null,
+   188	  newBlock: IdentifiedBlock | undefined,
+   189	): GridSnapshotIdentified {
+   190	  const hostRow = host.row ?? 1;
+   191	  const hostRowSpan = typeof host.rowSpan === 'number' ? host.rowSpan : 1;
+   192	  const insertRow = hostRow + hostRowSpan;
+   193	  const cascaded = baseline.blocks.map((b) => {
+   194	    if (b.id === sourceBlockId) return null;
+   195	    if (b.row !== undefined && b.row >= insertRow) return { ...b, row: b.row + 1 };
+   196	    return b;
+   197	  });
+   198	  const placed = makeInserted(host, sourceBlockId, newBlock, baseline, {
+   199	    col: host.col,
+   200	    row: insertRow,
+   201	    colSpan: host.colSpan,
+   202	  });
+   203	  const filtered = cascaded.filter((b): b is IdentifiedBlock => b !== null);
+   204	  return { blocks: [...filtered, placed] };
+   205	}
+   206	
+   207	function halfColSpan(colSpan: number): number {
+   208	  if (colSpan % 2 !== 0) {
+   209	    throw new Error(
+   210	      `applyDropMode: split-left/right requires host.colSpan to be evenly halvable into COL_SNAPS; got colSpan=${colSpan}`,
+   211	    );
+   212	  }
+   213	  const half = colSpan / 2;
+   214	  if (!SPLIT_HALF_VALID.has(half) && !COL_SNAPS.includes(half as (typeof COL_SNAPS)[number])) {
+   215	    throw new Error(
+   216	      `applyDropMode: split-left/right host.colSpan=${colSpan} half=${half} not in COL_SNAPS=[2,3,4,6,8,12]`,
+   217	    );
+   218	  }
+   219	  return half;
+   220	}
+   221	
+   222	function placeAtHostHalf(
+   223	  host: IdentifiedBlock,
+   224	  sourceBlockId: string | null,
+   225	  newBlock: IdentifiedBlock | undefined,
+   226	  baseline: GridSnapshotIdentified,
+   227	  col: number,
+   228	  colSpan: number,
+   229	): IdentifiedBlock {
+   230	  return makeInserted(host, sourceBlockId, newBlock, baseline, {
+   231	    col,
+   232	    row: host.row,
+   233	    colSpan,
+   234	  });
+   235	}
+   236	
+   237	interface PlacementOverride {
+   238	  col: number;
+   239	  row?: number | undefined;
+   240	  colSpan: number;
+   241	}
+   242	
+   243	function makeInserted(
+   244	  host: IdentifiedBlock,
+   245	  sourceBlockId: string | null,
+   246	  newBlock: IdentifiedBlock | undefined,
+   247	  baseline: GridSnapshotIdentified,
+   248	  placement: PlacementOverride,
+   249	): IdentifiedBlock {
+   250	  const base: IdentifiedBlock = newBlock ?? findSourceOrThrow(baseline, sourceBlockId);
+   251	  // Only include row in the override if it's a defined integer; otherwise
+   252	  // leave the inherited row from `base` (or absence) intact.
+   253	  if (placement.row === undefined) {
+   254	    return { ...base, col: placement.col, colSpan: placement.colSpan };
+   255	  }
+   256	  return { ...base, col: placement.col, colSpan: placement.colSpan, row: placement.row };
+   257	}
+   258	
+   259	function findSourceOrThrow(
+   260	  baseline: GridSnapshotIdentified,
+   261	  sourceBlockId: string | null,
+   262	): IdentifiedBlock {
+   263	  const source = baseline.blocks.find((b) => b.id === sourceBlockId);
+   264	  if (!source) {
+   265	    throw new Error(`applyDropMode: sourceBlockId "${sourceBlockId}" not found in baseline`);
+   266	  }
+   267	  return source;
+   268	}
+   269	
+   270	function validateColumnRange(block: IdentifiedBlock): void {
+   271	  const end = block.col + block.colSpan - 1;
+   272	  if (block.col < 1 || end > 12) {
+   273	    throw new Error(
+   274	      `applyDropMode: block "${block.id}" col=${block.col}+colSpan=${block.colSpan}-1=${end} out of [1,12] range`,
+   275	    );
+   276	  }
+   277	}
+
+exec
+/bin/bash -lc 'nl -ba packages/editor-shell/src/drag-drop/__tests__/apply-drop-mode.test.ts' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	import { describe, expect, it } from 'vitest';
+     2	import {
+     3	  applyDropMode,
+     4	  type GridSnapshotIdentified,
+     5	  type IdentifiedBlock,
+     6	} from '../apply-drop-mode';
+     7	
+     8	function block(
+     9	  id: string,
+    10	  col: number,
+    11	  row: number,
+    12	  colSpan: number,
+    13	  rowSpan: number | 'auto' = 1,
+    14	): IdentifiedBlock {
+    15	  return { id, col, row, colSpan, rowSpan };
+    16	}
+    17	
+    18	function snapshot(...blocks: IdentifiedBlock[]): GridSnapshotIdentified {
+    19	  return { blocks };
+    20	}
+    21	
+    22	describe('applyDropMode — none', () => {
+    23	  it('returns baseline-equivalent snapshot (no mutation)', () => {
+    24	    const baseline = snapshot(block('a', 1, 1, 12));
+    25	    const result = applyDropMode({
+    26	      baseline,
+    27	      mode: 'none',
+    28	      sourceBlockId: 'src',
+    29	      hostBlockId: 'a',
+    30	    });
+    31	    expect(result.blocks).toEqual(baseline.blocks);
+    32	  });
+    33	});
+    34	
+    35	describe('applyDropMode — empty', () => {
+    36	  it('inserts new block from palette at target', () => {
+    37	    const baseline = snapshot(block('a', 1, 1, 12));
+    38	    const newBlk = block('new1', 0, 0, 12);
+    39	    const result = applyDropMode({
+    40	      baseline,
+    41	      mode: 'empty',
+    42	      sourceBlockId: null,
+    43	      hostBlockId: null,
+    44	      newBlock: newBlk,
+    45	      emptyTarget: { col: 1, row: 2 },
+    46	    });
+    47	    expect(result.blocks).toHaveLength(2);
+    48	    const inserted = result.blocks.find((b) => b.id === 'new1');
+    49	    expect(inserted).toMatchObject({ id: 'new1', col: 1, row: 2, colSpan: 12 });
+    50	  });
+    51	
+    52	  it('moves source block to empty target (preserves colSpan)', () => {
+    53	    const baseline = snapshot(block('a', 1, 1, 12), block('b', 1, 2, 6));
+    54	    const result = applyDropMode({
+    55	      baseline,
+    56	      mode: 'empty',
+    57	      sourceBlockId: 'b',
+    58	      hostBlockId: null,
+    59	      emptyTarget: { col: 7, row: 3 },
+    60	    });
+    61	    expect(result.blocks).toHaveLength(2);
+    62	    const moved = result.blocks.find((b) => b.id === 'b');
+    63	    expect(moved).toMatchObject({ id: 'b', col: 7, row: 3, colSpan: 6 });
+    64	  });
+    65	
+    66	  it('throws when emptyTarget missing', () => {
+    67	    expect(() =>
+    68	      applyDropMode({
+    69	        baseline: snapshot(block('a', 1, 1, 12)),
+    70	        mode: 'empty',
+    71	        sourceBlockId: null,
+    72	        hostBlockId: null,
+    73	        newBlock: block('new1', 0, 0, 12),
+    74	      }),
+    75	    ).toThrow(/emptyTarget/);
+    76	  });
+    77	
+    78	  it('throws when col + colSpan - 1 > 12', () => {
+    79	    expect(() =>
+    80	      applyDropMode({
+    81	        baseline: snapshot(),
+    82	        mode: 'empty',
+    83	        sourceBlockId: null,
+    84	        hostBlockId: null,
+    85	        newBlock: block('x', 0, 0, 8),
+    86	        emptyTarget: { col: 7, row: 1 },
+    87	      }),
+    88	    ).toThrow(/out of \[1,12\] range/);
+    89	  });
+    90	});
+    91	
+    92	describe('applyDropMode — split-left', () => {
+    93	  it('halves colSpan=12 host into two colSpan=6 blocks (host shifts right)', () => {
+    94	    const baseline = snapshot(block('host', 1, 1, 12));
+    95	    const newBlk = block('new', 0, 0, 0);
+    96	    const result = applyDropMode({
+    97	      baseline,
+    98	      mode: 'split-left',
+    99	      sourceBlockId: null,
+   100	      hostBlockId: 'host',
+   101	      newBlock: newBlk,
+   102	    });
+   103	    expect(result.blocks).toHaveLength(2);
+   104	    const host = result.blocks.find((b) => b.id === 'host');
+   105	    const inserted = result.blocks.find((b) => b.id === 'new');
+   106	    expect(host).toMatchObject({ col: 7, colSpan: 6, row: 1 });
+   107	    expect(inserted).toMatchObject({ col: 1, colSpan: 6, row: 1 });
+   108	  });
+   109	
+   110	  it('halves colSpan=8 → 4', () => {
+   111	    const baseline = snapshot(block('host', 1, 1, 8));
+   112	    const result = applyDropMode({
+   113	      baseline,
+   114	      mode: 'split-left',
+   115	      sourceBlockId: null,
+   116	      hostBlockId: 'host',
+   117	      newBlock: block('new', 0, 0, 0),
+   118	    });
+   119	    const host = result.blocks.find((b) => b.id === 'host');
+   120	    expect(host).toMatchObject({ col: 5, colSpan: 4 });
+   121	  });
+   122	
+   123	  it('halves colSpan=6 → 3', () => {
+   124	    const baseline = snapshot(block('host', 1, 1, 6));
+   125	    const result = applyDropMode({
+   126	      baseline,
+   127	      mode: 'split-left',
+   128	      sourceBlockId: null,
+   129	      hostBlockId: 'host',
+   130	      newBlock: block('new', 0, 0, 0),
+   131	    });
+   132	    const host = result.blocks.find((b) => b.id === 'host');
+   133	    expect(host).toMatchObject({ col: 4, colSpan: 3 });
+   134	  });
+   135	
+   136	  it('halves colSpan=4 → 2', () => {
+   137	    const baseline = snapshot(block('host', 1, 1, 4));
+   138	    const result = applyDropMode({
+   139	      baseline,
+   140	      mode: 'split-left',
+   141	      sourceBlockId: null,
+   142	      hostBlockId: 'host',
+   143	      newBlock: block('new', 0, 0, 0),
+   144	    });
+   145	    const host = result.blocks.find((b) => b.id === 'host');
+   146	    expect(host).toMatchObject({ col: 3, colSpan: 2 });
+   147	  });
+   148	
+   149	  it('rejects odd host.colSpan (3, 5, 7, 9, 11)', () => {
+   150	    for (const odd of [3, 5, 7, 9, 11]) {
+   151	      expect(() =>
+   152	        applyDropMode({
+   153	          baseline: snapshot(block('host', 1, 1, odd)),
+   154	          mode: 'split-left',
+   155	          sourceBlockId: null,
+   156	          hostBlockId: 'host',
+   157	          newBlock: block('new', 0, 0, 0),
+   158	        }),
+   159	      ).toThrow(/evenly halvable/);
+   160	    }
+   161	  });
+   162	
+   163	  it('rejects host.colSpan=2 (half=1 not in COL_SNAPS)', () => {
+   164	    expect(() =>
+   165	      applyDropMode({
+   166	        baseline: snapshot(block('host', 1, 1, 2)),
+   167	        mode: 'split-left',
+   168	        sourceBlockId: null,
+   169	        hostBlockId: 'host',
+   170	        newBlock: block('new', 0, 0, 0),
+   171	      }),
+   172	    ).toThrow(/COL_SNAPS/);
+   173	  });
+   174	
+   175	  it('rejects host.colSpan=10 (half=5 not in COL_SNAPS)', () => {
+   176	    expect(() =>
+   177	      applyDropMode({
+   178	        baseline: snapshot(block('host', 1, 1, 10)),
+   179	        mode: 'split-left',
+   180	        sourceBlockId: null,
+   181	        hostBlockId: 'host',
+   182	        newBlock: block('new', 0, 0, 0),
+   183	      }),
+   184	    ).toThrow(/COL_SNAPS/);
+   185	  });
+   186	
+   187	  it('moves source block from old position', () => {
+   188	    const baseline = snapshot(block('host', 1, 1, 12), block('source', 1, 5, 12));
+   189	    const result = applyDropMode({
+   190	      baseline,
+   191	      mode: 'split-left',
+   192	      sourceBlockId: 'source',
+   193	      hostBlockId: 'host',
+   194	    });
+   195	    expect(result.blocks).toHaveLength(2);
+   196	    const moved = result.blocks.find((b) => b.id === 'source');
+   197	    expect(moved).toMatchObject({ col: 1, colSpan: 6, row: 1 });
+   198	  });
+   199	});
+   200	
+   201	describe('applyDropMode — split-right', () => {
+   202	  it('halves colSpan=12 host into two colSpan=6 blocks (host stays left)', () => {
+   203	    const baseline = snapshot(block('host', 1, 1, 12));
+   204	    const result = applyDropMode({
+   205	      baseline,
+   206	      mode: 'split-right',
+   207	      sourceBlockId: null,
+   208	      hostBlockId: 'host',
+   209	      newBlock: block('new', 0, 0, 0),
+   210	    });
+   211	    const host = result.blocks.find((b) => b.id === 'host');
+   212	    const inserted = result.blocks.find((b) => b.id === 'new');
+   213	    expect(host).toMatchObject({ col: 1, colSpan: 6, row: 1 });
+   214	    expect(inserted).toMatchObject({ col: 7, colSpan: 6, row: 1 });
+   215	  });
+   216	
+   217	  it('rejects same odd colSpans as split-left', () => {
+   218	    for (const odd of [3, 5, 7]) {
+   219	      expect(() =>
+   220	        applyDropMode({
+   221	          baseline: snapshot(block('host', 1, 1, odd)),
+   222	          mode: 'split-right',
+   223	          sourceBlockId: null,
+   224	          hostBlockId: 'host',
+   225	          newBlock: block('new', 0, 0, 0),
+   226	        }),
+   227	      ).toThrow();
+   228	    }
+   229	  });
+   230	});
+   231	
+   232	describe('applyDropMode — split-top', () => {
+   233	  it('cascades all blocks at row >= host.row down by 1', () => {
+   234	    const baseline = snapshot(
+   235	      block('a', 1, 1, 12),
+   236	      block('host', 1, 2, 12),
+   237	      block('b', 1, 3, 12),
+   238	      block('c', 1, 4, 12),
+   239	    );
+   240	    const result = applyDropMode({
+   241	      baseline,
+   242	      mode: 'split-top',
+   243	      sourceBlockId: null,
+   244	      hostBlockId: 'host',
+   245	      newBlock: block('new', 0, 0, 0),
+   246	    });
+   247	    expect(result.blocks).toHaveLength(5);
+   248	    expect(result.blocks.find((b) => b.id === 'a')?.row).toBe(1); // unchanged
+   249	    expect(result.blocks.find((b) => b.id === 'host')?.row).toBe(3); // shifted
+   250	    expect(result.blocks.find((b) => b.id === 'b')?.row).toBe(4); // cascaded
+   251	    expect(result.blocks.find((b) => b.id === 'c')?.row).toBe(5); // cascaded
+   252	    expect(result.blocks.find((b) => b.id === 'new')).toMatchObject({
+   253	      col: 1,
+   254	      row: 2,
+   255	      colSpan: 12,
+   256	    });
+   257	  });
+   258	
+   259	  it('inserts at row 1 with no cascade when host is the first row', () => {
+   260	    const baseline = snapshot(block('host', 1, 1, 12));
+   261	    const result = applyDropMode({
+   262	      baseline,
+   263	      mode: 'split-top',
+   264	      sourceBlockId: null,
+   265	      hostBlockId: 'host',
+   266	      newBlock: block('new', 0, 0, 0),
+   267	    });
+   268	    const host = result.blocks.find((b) => b.id === 'host');
+   269	    const inserted = result.blocks.find((b) => b.id === 'new');
+   270	    expect(host?.row).toBe(2);
+   271	    expect(inserted).toMatchObject({ col: 1, row: 1, colSpan: 12 });
+   272	  });
+   273	
+   274	  it('does not require split-* colSpan validation (any colSpan host accepted)', () => {
+   275	    for (const cs of [3, 5, 7, 11]) {
+   276	      const baseline = snapshot(block('host', 1, 1, cs));
+   277	      expect(() =>
+   278	        applyDropMode({
+   279	          baseline,
+   280	          mode: 'split-top',
+   281	          sourceBlockId: null,
+   282	          hostBlockId: 'host',
+   283	          newBlock: block('new', 0, 0, 0),
+   284	        }),
+   285	      ).not.toThrow();
+   286	    }
+   287	  });
+   288	});
+   289	
+   290	describe('applyDropMode — split-bottom', () => {
+   291	  it('places new block immediately below host, cascades subsequent rows', () => {
+   292	    const baseline = snapshot(
+   293	      block('host', 1, 1, 12, 1),
+   294	      block('b', 1, 2, 12),
+   295	      block('c', 1, 3, 12),
+   296	    );
+   297	    const result = applyDropMode({
+   298	      baseline,
+   299	      mode: 'split-bottom',
+   300	      sourceBlockId: null,
+   301	      hostBlockId: 'host',
+   302	      newBlock: block('new', 0, 0, 0),
+   303	    });
+   304	    expect(result.blocks.find((b) => b.id === 'host')?.row).toBe(1); // unchanged
+   305	    expect(result.blocks.find((b) => b.id === 'new')).toMatchObject({
+   306	      col: 1,
+   307	      row: 2,
+   308	      colSpan: 12,
+   309	    });
+   310	    expect(result.blocks.find((b) => b.id === 'b')?.row).toBe(3);
+   311	    expect(result.blocks.find((b) => b.id === 'c')?.row).toBe(4);
+   312	  });
+   313	
+   314	  it('respects host rowSpan when placing new block', () => {
+   315	    const baseline = snapshot(block('host', 1, 1, 12, 3));
+   316	    const result = applyDropMode({
+   317	      baseline,
+   318	      mode: 'split-bottom',
+   319	      sourceBlockId: null,
+   320	      hostBlockId: 'host',
+   321	      newBlock: block('new', 0, 0, 0),
+   322	    });
+   323	    const inserted = result.blocks.find((b) => b.id === 'new');
+   324	    expect(inserted?.row).toBe(4); // host.row=1 + host.rowSpan=3
+   325	  });
+   326	
+   327	  it('treats rowSpan=auto as 1 for placement', () => {
+   328	    const baseline = snapshot(block('host', 1, 1, 12, 'auto'));
+   329	    const result = applyDropMode({
+   330	      baseline,
+   331	      mode: 'split-bottom',
+   332	      sourceBlockId: null,
+   333	      hostBlockId: 'host',
+   334	      newBlock: block('new', 0, 0, 0),
+   335	    });
+   336	    expect(result.blocks.find((b) => b.id === 'new')?.row).toBe(2);
+   337	  });
+   338	
+   339	  it('does not require split-* colSpan validation', () => {
+   340	    for (const cs of [3, 5, 7, 11]) {
+   341	      expect(() =>
+   342	        applyDropMode({
+   343	          baseline: snapshot(block('host', 1, 1, cs)),
+   344	          mode: 'split-bottom',
+   345	          sourceBlockId: null,
+   346	          hostBlockId: 'host',
+   347	          newBlock: block('new', 0, 0, 0),
+   348	        }),
+   349	      ).not.toThrow();
+   350	    }
+   351	  });
+   352	});
+   353	
+   354	describe('applyDropMode — invariants & validation', () => {
+   355	  it('throws when sourceBlockId is null AND newBlock is missing', () => {
+   356	    expect(() =>
+   357	      applyDropMode({
+   358	        baseline: snapshot(block('a', 1, 1, 12)),
+   359	        mode: 'split-left',
+   360	        sourceBlockId: null,
+   361	        hostBlockId: 'a',
+   362	      }),
+   363	    ).toThrow(/newBlock is required/);
+   364	  });
+   365	
+   366	  it('throws when split-* with hostBlockId null', () => {
+   367	    expect(() =>
+   368	      applyDropMode({
+   369	        baseline: snapshot(),
+   370	        mode: 'split-right',
+   371	        sourceBlockId: 'src',
+   372	        hostBlockId: null,
+   373	      }),
+   374	    ).toThrow(/hostBlockId is required/);
+   375	  });
+   376	
+   377	  it('throws when hostBlockId not in baseline', () => {
+   378	    expect(() =>
+   379	      applyDropMode({
+   380	        baseline: snapshot(block('a', 1, 1, 12)),
+   381	        mode: 'split-left',
+   382	        sourceBlockId: null,
+   383	        hostBlockId: 'nonexistent',
+   384	        newBlock: block('new', 0, 0, 0),
+   385	      }),
+   386	    ).toThrow(/not found in baseline/);
+   387	  });
+   388	
+   389	  it('throws when sourceBlockId not in baseline (move case)', () => {
+   390	    expect(() =>
+   391	      applyDropMode({
+   392	        baseline: snapshot(block('host', 1, 1, 12)),
+   393	        mode: 'split-left',
+   394	        sourceBlockId: 'missing',
+   395	        hostBlockId: 'host',
+   396	      }),
+   397	    ).toThrow(/sourceBlockId .* not found/);
+   398	  });
+   399	
+   400	  it('returns a NEW snapshot object (not shared reference)', () => {
+   401	    const baseline = snapshot(block('a', 1, 1, 12));
+   402	    const result = applyDropMode({
+   403	      baseline,
+   404	      mode: 'none',
+   405	      sourceBlockId: null,
+   406	      hostBlockId: null,
+   407	    });
+   408	    expect(result).not.toBe(baseline);
+   409	    expect(result.blocks).not.toBe(baseline.blocks);
+   410	  });
+   411	});
+
+exec
+/bin/bash -lc 'nl -ba packages/editor-shell/CONTRACT.md' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	# `@skb/editor-shell` — Contract
+     2	
+     3	Wave 3 Stage A composition layer. Composes the 8 block-* packages, 3 editor
+     4	sub-modules, kernel-registry adapters, and mdx-bridge into a usable Tiptap
+     5	editor surface. Closes the "editor-shell composition" deferral from
+     6	[ADR-0010 D7 #3](../../docs/decisions/ADR-0010-wave-2-close.md).
+     7	
+     8	## Public surface
+     9	
+    10	- `EditorShell` — functional React component. Mounts a Tiptap editor via
+    11	  `@tiptap/react`'s `useEditor` with the following extension stack
+    12	  (Wave 6 carry-forward #15a 2026-05-08):
+    13	  - `StarterKit` — prose nodes + marks (Wave 6 carry-forward #15b
+    14	    2026-05-08 re-enabled the inline `code` mark; pre-#15b it was
+    15	    disabled via `code: false` because the block-Code Tiptap node
+    16	    was named `code` and ProseMirror forbids the same name on both
+    17	    a node and a mark; the block-Code core was renamed to
+    18	    `componentCode` so the collision is gone). `EDITOR_UNSUPPORTED_MARKS`
+    19	    in `saveLoad.ts` is correspondingly empty — no marks are
+    20	    stripped at load time.
+    21	  - `Link.extend({ addAttributes: { title } }).configure({ openOnClick: false })`
+    22	    — markdown links survive into the editor as real anchors. The
+    23	    `Link.extend` override adds a `title` attribute so
+    24	    `[text](url "title")` round-trips without losing the title (default
+    25	    `@tiptap/extension-link` schema does not include `title`);
+    26	    `openOnClick: false` keeps anchor clicks from navigating away from
+    27	    the edit surface.
+    28	  - Consumer extensions appended via `EditorShellProps.extensions`
+    29	    (block-kind extensions from `wireRegistry` are passed through
+    30	    here per Wave 5 C.4).
+    31	- `EditorShellProps` — public props type:
+    32	  ```ts
+    33	  export interface EditorShellProps {
+    34	    /** Optional initial editor content (Tiptap doc JSON or HTML string).
+    35	     *  Defaults to an empty paragraph. */
+    36	    initialContent?: object | string;
+    37	    /** Optional change callback fired on each Tiptap update event. */
+    38	    onChange?: (editor: Editor) => void;
+    39	    /** Optional className applied to the EditorContent root for
+    40	     *  consumer-controlled styling. */
+    41	    className?: string;
+    42	    /** Optional creation hook: invoked once with the constructed editor
+    43	     *  instance after mount. Used by tests + future A3 wrappers needing
+    44	     *  imperative editor access. */
+    45	    onCreate?: (editor: Editor) => void;
+    46	    /** Optional consumer extensions appended after the built-in
+    47	     *  StarterKit + Link stack (carry-forward #15a 2026-05-08).
+    48	     *  Wave 5 C.4 wires the 8 block-kind extensions from `wireRegistry`
+    49	     *  through this prop. */
+    50	    extensions?: Extensions;
+    51	  }
+    52	  ```
+    53	  `Editor` type re-exported transitively from `@tiptap/core` via
+    54	  `@tiptap/react`.
+    55	- `registerBlocks(registry: BlockRegistry): void` — wires the 8 Wave 2
+    56	  block-* core + ui-default definitions into the supplied `BlockRegistry`
+    57	  instance. Idempotent at consumer scope (each registerBlocks call expects a
+    58	  fresh registry; calling twice on the same registry throws "Duplicate core
+    59	  name" per BlockRegistry contract). Insertion order = locked-plan order:
+    60	  callout, componentCode, image (component), math, pdf (render), jupyter,
+    61	  nn-viz, agent-flow (viz). Per ADR-0009 D1: 3 component + 2 render + 3
+    62	  viz = 8. (Wave 6 carry-forward #15b 2026-05-08 renamed the `code` core
+    63	  to `componentCode` to escape the ProseMirror node/mark namespace
+    64	  collision with StarterKit's inline `code` mark.)
+    65	- `proseExtensions` — Tiptap Extension array re-exported from
+    66	  `@skb/block-foundation`. Consumers wire into `useEditor({ extensions: [...] })`
+    67	  alongside `StarterKit` for prose-block-aware editing. The
+    68	  `EditorShell` component does not consume this barrel; its own
+    69	  built-in stack (StarterKit + Link per § Public surface above) is
+    70	  layered with consumer-supplied extensions via `EditorShellProps.extensions`.
+    71	- `registerKernels(registry: KernelRegistry, adapter?: KernelAdapter): void`
+    72	  — wires `PyodideAdapter` (default) into the supplied `KernelRegistry`
+    73	  instance. `adapter` parameter lets consumers override with a custom
+    74	  `KernelAdapter` implementation. PyodideAdapter constructor is cheap
+    75	  (no Pyodide boot until `startSession()`). `KernelAdapter` type imported
+    76	  from `@skb/kernel-adapter` (3rd workspace dep added at A4).
+    77	- `saveToMdx(editor: Editor, options?: SaveLoadOptions): string` — serialize
+    78	  the editor's current document to MDX source. Prose-only at A5 (Stage A);
+    79	  component blocks throw via mdx-bridge's existing fail-loud rule until B1
+    80	  extends the walker. `options.blockRegistry` is forward-compat (accepted
+    81	  but unused at A5; B1 threads through to mdx-bridge per-call injection).
+    82	- `loadFromMdx(editor: Editor, source: string, options?: SaveLoadOptions): void`
+    83	  — replace the editor's document by parsing MDX source. Same prose-only
+    84	  semantics as `saveToMdx`; component-block JSX throws until B1.
+    85	- `SaveLoadOptions { blockRegistry?: BlockRegistry }` — public options type
+    86	  for the per-call BlockRegistry injection pattern. Threading lands in B1.
+    87	- `useResponsiveCols(options?)` — Wave 5 C.2-9 responsive viewport hook.
+    88	  Returns `ViewportCols` (`12 | 6 | 1`) and accepts optional
+    89	  `onTransitionStart` / `onTransitionEnd` callbacks for consumers that dispatch
+    90	  layout-reducer responsive transition actions.
+    91	- `RESPONSIVE_BREAKPOINTS` — readonly `{ tablet: 768, desktop: 1024 }` numeric
+    92	  bridge for ADR-0016 D5 until Stage C.3-1 lands design-token breakpoint vars.
+    93	- `ViewportCols` and `UseResponsiveColsOptions` — public types for the
+    94	  responsive viewport hook and `GridContainerProps.viewportCols` handoff.
+    95	
+    96	### NoteSaveAdapter (Wave 5; contract hardened at C.4-1)
+    97	
+    98	ADR-0018 D8 lines 339-451 are the canonical interface authority for the
+    99	C.4 save-path public surface:
+   100	[ADR-0018 D8](../../docs/decisions/ADR-0018-v2-visual-migration.md).
+   101	
+   102	Public exports:
+   103	
+   104	- `NoteSaveAdapter` — stable interface exposing `slug`, `load()`, and
+   105	  `save(state)`. Implementations selected by consumers MUST resolve
+   106	  `load()` to a `NoteState` or `null`, and MUST return
+   107	  `{ ok: false, error }` for expected save failures instead of throwing.
+   108	- `NoteState` — interface carrying `mdxSource`, optional `tiptapState`,
+   109	  `lastModified`, and consumer-incremented `version`.
+   110	- `ReadonlyJSONValue` — recursive read-only JSON value type for optional
+   111	  same-session Tiptap cache data.
+   112	- `LocalStorageAdapter` — Wave 5 MVP implementation of `NoteSaveAdapter`
+   113	  preserved from C.4-prelude.
+   114	- `ApiAdapter` — Wave 6 Stage B.3 network-backed implementation of
+   115	  `NoteSaveAdapter` consuming the path-(b) endpoint shipped at
+   116	  [`apps/site/src/pages/api/notes/[...slug].ts`](../../apps/site/src/pages/api/notes/%5B...slug%5D.ts).
+   117	  Constructor `(slug: string, apiBase = '/api/notes')`. `load()` issues
+   118	  `GET ${apiBase}/${slug}` and returns the parsed `NoteState`, or `null`
+   119	  on HTTP 404 (no saved state); throws on any other non-2xx status so
+   120	  consumers can fall back to LocalStorageAdapter when the network path
+   121	  is unavailable. `save()` issues `POST ${apiBase}/${slug}` with a JSON
+   122	  body matching `NoteState`; non-2xx responses resolve to
+   123	  `{ ok: false, error: 'save failed: <status>' }` and `fetch` rejections
+   124	  resolve to `{ ok: false, error }` (never throws). No auth at Wave 6
+   125	  Stage B; multi-user/auth boundary lives in the Phase 3+ path-(a)
+   126	  separate `apps/api` server.
+   127	
+   128	Storage semantics:
+   129	
+   130	- See sister-doc:
+   131	  [apps/site/CONTRACT.md § Edit route (Wave 5)](../../apps/site/CONTRACT.md).
+   132	- localStorage key prefix: `skb-note:{slug}` per ADR-0018 D8 lines 454-455.
+   133	- `PER_NOTE_MAX_BYTES = 2 MB`; oversized serialized states return
+   134	  `{ ok: false, error }` instead of writing.
+   135	- `AGGREGATE_WARN_BYTES = 5 MB`; aggregate `skb-note:*` storage above this
+   136	  threshold emits a `console.warn` but does not block the save.
+   137	- Corrupted JSON and localStorage `SecurityError` during load return `null`
+   138	  with a warning. `QuotaExceededError` and `SecurityError` during save return
+   139	  `{ ok: false, error }`.
+   140	
+   141	**Wave 6 Stage B.3 promotes ApiAdapter from forward-stub to first-class
+   142	public surface** per ADR-0018 v0.6 D11. `save-adapter.ts` defines the
+   143	executable class; `index.ts` exports it alongside `LocalStorageAdapter`.
+   144	`src/__tests__/api-adapter.test.ts` is the contract test (mocked fetch)
+   145	covering load 200/404/non-2xx, save 200/non-2xx/network-rejection, and a
+   146	roundtrip through an in-memory storage fake. Adapter selection at the
+   147	edit-route mount lands at Wave 6 B.4 (ApiAdapter primary +
+   148	LocalStorageAdapter fallback per ADR-0018 v0.6 D13).
+   149	
+   150	The component does NOT include a `'use client'` pragma — consumers (Stage C
+   151	apps/site) decide the client/server boundary at integration time.
+   152	
+   153	## Grid layout (Wave 5)
+   154	
+   155	**W5-2: editor-shell `layoutReducer` + `layoutEpoch` single-source mutation 是
+   156	grid block position 的唯一权威 mutation site.** 所有 block grid mutations (drag
+   157	from grid container / resize from handle / `useAutoRowSpan` auto-measure /
+   158	responsive transition / undo-redo / mdx-load) 必经过此 reducer; 冲突仲裁规则 per
+   159	ADR-0016 D12 + 权威矩阵 section. CRDT/OT 协同编辑 OUT OF SCOPE (Phase 2+);
+   160	editor-shell `layoutEpoch` 是 single-source ordering, NOT 分布式 vector clock.
+   161	`layoutReducer` + `layoutEpoch` implementation shipped at C.2-8. C.4-1 keeps
+   162	the note-save adapter public surface aligned with this single-source mutation
+   163	model: persistence adapters save/load note state at the route boundary, while
+   164	grid block position mutation remains owned by the reducer.
+   165	
+   166	`GridContainer` public surface:
+   167	
+   168	```ts
+   169	export interface GridContainerProps {
+   170	  children?: React.ReactNode;
+   171	  className?: string;
+   172	  style?: React.CSSProperties;
+   173	  viewportCols?: ViewportCols;
+   174	}
+   175	
+   176	export function GridContainer(props: GridContainerProps): JSX.Element;
+   177	```
+   178	
+   179	`GridContainer` emits a passive `div` with the required `skb-grid` class and
+   180	forwards arbitrary React children. It does not walk the Tiptap document, mutate
+   181	NodeView attrs (cf-20b reads attrs at render time but does NOT write back; per
+   182	ADR-0016 D11 grid attrs are passive data on NodeView wrappers). When
+   183	`viewportCols` is supplied, it emits `data-skb-viewport-cols` and adds
+   184	`.skb-grid--mobile` for `viewportCols === 1` per ADR-0016 D5 and ADR-0017 D9.
+   185	Minimal usage:
+   186	
+   187	```tsx
+   188	<GridContainer>
+   189	  <EditorContent editor={editor} />
+   190	</GridContainer>
+   191	```
+   192	
+   193	The `.skb-grid` selector authority is `apps/site/src/styles/grid.css` (C.2-3
+   194	PR squash `2586328`; cf-20b 2026-05-09 amendment adds the
+   195	`.skb-grid > .skb-editor-content` + `.skb-grid .ProseMirror` two-level
+   196	grid rules for the editor-mount path per ADR-0016 v0.2 D11.1 amendment).
+   197	The editor-shell consumer at the mount site MUST import that stylesheet,
+   198	mirroring the SSR phase emission per ADR-0016 D9 phase strategy.
+   199	
+   200	### Editor-surface grid lock (Wave 6 cf-20b; ADR-0016 v0.2 D11.1 amendment)
+   201	
+   202	cf-20b promotes the editor-surface to a 12-col CSS Grid per the v2 contract
+   203	at `/mnt/d/download/web/v2-styles.css:137-147`. Two-level grid:
+   204	
+   205	1. Outer `.skb-grid` (the `<GridContainer>` wrapper) is a 12-col grid (C.2-3
+   206	   contract unchanged).
+   207	2. Inner `.ProseMirror` (Tiptap's render target) is **also** a 12-col grid
+   208	   (cf-20b NEW). The intermediate `.skb-editor-content` div spans
+   209	   `grid-column: 1 / -1` so the inner grid inherits the full container
+   210	   width. NodeView wrappers `.skb-block-nodeview` (Tiptap's direct
+   211	   children inside `.ProseMirror`) become grid items and read their
+   212	   placement from `node.attrs.{col, row?, colSpan, rowSpan}` per
+   213	   ADR-0016 D2.
+   214	
+   215	`EditorShell` always applies `skb-editor-content` to the `<EditorContent>`
+   216	host element so the apps/site grid CSS rule
+   217	(`.skb-grid > .skb-editor-content { grid-column: 1 / -1 }`) can target it.
+   218	Consumer-supplied `className` is concatenated AFTER the base class.
+   219	
+   220	Per ADR-0016 v0.2 D11.1 amendment, the limitation: ProseMirror's arrow-key
+   221	navigation goes to the next document-order node, NOT the visually-above
+   222	side-by-side block when two `colSpan ≤ 6` siblings sit in different visual
+   223	columns. Document this for end users + future cf-22 keyboard a11y PR; cf-20b
+   224	does NOT add a custom keymap.
+   225	
+   226	### Grid placement helpers (Wave 6 cf-20b; shared single source)
+   227	
+   228	The `BlockGridPosition → CSSProperties` mapping is now a single helper
+   229	exported from both the editor-shell barrel `@skb/editor-shell` AND the deep
+   230	subpath `@skb/editor-shell/src/grid-style.ts` (the deep subpath is required
+   231	for Astro SSR consumers — `apps/site/src/components/{Jupyter,NnViz,AgentFlow}.astro`
+   232	+ `apps/site/src/lib/mdx-adapter.ts` — to avoid pulling the editor-shell
+   233	React/Tiptap dependency tree into the SSR bundle, which would break
+   234	`astro build` with `require is not defined in ES module scope` from
+   235	transitively-loaded `@tensorflow/tfjs`).
+   236	
+   237	Public surface (added at cf-20b):
+   238	
+   239	```ts
+   240	export interface GridPlacementInput {
+   241	  readonly col: number;
+   242	  readonly row?: number;
+   243	  readonly colSpan: number;
+   244	  readonly rowSpan: number | 'auto';
+   245	}
+   246	
+   247	export interface GridPlacementOptions {
+   248	  /** When rowSpan is 'auto', the integer to substitute. Defaults to 1. */
+   249	  readonly autoRowSpan?: number;
+   250	}
+   251	
+   252	/** React CSSProperties consumer (BlockNodeView.tsx + mdx-adapter.ts). */
+   253	export function gridPlacementStyle(
+   254	  pos: GridPlacementInput,
+   255	  options?: GridPlacementOptions,
+   256	): CSSProperties;
+   257	
+   258	/** Astro inline-style-string consumer (3 heavy block .astro wrappers). */
+   259	export function gridPlacementStyleAttr(
+   260	  pos: GridPlacementInput,
+   261	  options?: GridPlacementOptions,
+   262	): string;
+   263	
+   264	/** Defensive coercion from arbitrary attrs / props record. */
+   265	export function extractGridPosition(
+   266	  attrs: Record<string, unknown> | undefined,
+   267	): GridPlacementInput | null;
+   268	```
+   269	
+   270	Formula (per ADR-0016 D2 CSS application block):
+   271	- `gridColumn = ${col} / span ${colSpan}`
+   272	- `gridRow = row !== undefined ? ${row} / span ${effectiveRowSpan} : span ${effectiveRowSpan}`
+   273	- `effectiveRowSpan = rowSpan === 'auto' ? autoHint : rowSpan` (autoHint
+   274	  defaults to 1 until `useAutoRowSpan` integration in cf-20c+).
+   275	
+   276	Three consumers, one source — the formula MUST stay byte-equal across
+   277	`BlockNodeView.tsx` (editor), `mdx-adapter.ts` (light-block read), and the
+   278	3 heavy `.astro` wrappers (read). Drift detection is via the shared module
+   279	import; any future renderer adding a 4th consumer SHOULD import
+   280	`gridPlacementStyle` rather than re-deriving the formula.
+   281	
+   282	`useAutoRowSpan` public surface:
+   283	
+   284	```ts
+   285	export function useAutoRowSpan(
+   286	  contentRef: RefObject<HTMLElement | null>,
+   287	  rowHeightPx = 48,           // matches --row-h
+   288	  gapPx = 14,                  // matches --gap
+   289	): number;
+   290	```
+   291	
+   292	The hook returns an integer rowSpan greater than or equal to 1. It implements
+   293	ADR-0016 D3's rendering-derived markdown rowSpan behavior: rowSpan is computed
+   294	from `scrollHeight` and is not itself a persistent document write. Its 3-stage
+   295	抖动收敛 behavior is:
+   296	
+   297	1. Stage 1: first ResizeObserver event establishes the initial rowSpan.
+   298	2. Stage 2: later font, image, and code-fence height changes inside one rAF
+   299	   window coalesce into a single render commit.
+   300	3. Stage 3: subsequent ResizeObserver events update only when the integer
+   301	   rowSpan delta is at least 1; delta 0 is ignored as pixel noise.
+   302	
+   303	Forward-pointers:
+   304	
+   305	- ADR-0016 D3 owns the auto-rowSpan hook spec and ResizeObserver constraints.
+   306	- ADR-0016 D11 owns the Tiptap inside / grid outside layering.
+   307	- ADR-0016 D12 owns the layout reducer schema and conflict arbitration; code
+   308	  implementation shipped at C.2-8 in `src/drag-drop/layout-reducer.ts` (epoch += 1
+   309	  only on drag-end-success; cancel + mode-none rollback to S0 snapshot).
+   310	- ADR-0016 section 502 row 4 of 4 names this CONTRACT.md as the editor-shell
+   311	  sister-doc sync site.
+   312	
+   313	Cross-package consumer note: `BlockGridPosition` from `@skb/block-foundation`
+   314	(W5-1 invariant authority; Pre-A2 ADR-0016 D2 lock + C.2-2 type
+   315	materialisation) is the type contract editor-shell reads from Tiptap NodeView
+   316	attrs. Per ADR-0016 D11 those attrs are passive data; active mutation flows
+   317	through the future W5-2 reducer.
+   318	
+   319	Q2 v1.1 absorbtion downstream-must-reference lock: editor-shell grid container
+   320	reads NodeView attrs assuming explicit `col` / `colSpan` / `rowSpan` per
+   321	Wave 5 plan v1.1 row C.2-3.5 hard-throw flip end-state (mdx-bridge defensive
+   322	defaults removed); `_gridAttrsExplicit` marker (C.2-1 to C.2-3 transitional)
+   323	SHALL NOT be referenced from editor-shell source. The ADR-0016 D2 defaults
+   324	(`col=1`, `colSpan=12`, `rowSpan=1`) MAY be honored at editor-shell as
+   325	React-side defensive-rendering defaults, an orthogonal concern from mdx-bridge
+   326	defensive defaults with the same numeric values but a distinct enforcement
+   327	layer.
+   328	
+   329	### Drag/Drop layer (C.2-5 + C.2-8 + C.2-9)
+   330	
+   331	C.2-5 and C.2-8 add the editor-side drag/drop UX primitives under
+   332	`packages/editor-shell/src/drag-drop/`:
+   333	
+   334	- `edge-rects.ts` exports `EDGE_W`, `GAP`, `EdgeRect`, `BlockLayout`, and
+   335	  `computeEdgeRects(blocks)`. It pre-computes the 4 half-in / half-out edge
+   336	  rectangles per snapshot block per ADR-0017 D2 and D5 option 1.
+   337	- `tiebreak.ts` exports `EdgeMatch`, `DragVelocity`, `tiebreak(matches,
+   338	  velocity)`, and `findMatches(cursorX, cursorY, edgeRects, blockRects)`.
+   339	  It implements ADR-0017 D3's signed-distance formula, primary
+   340	  `Math.abs(distance)` ordering, velocity-direction tiebreak at
+   341	  epsilon 0.5px/frame, spatial fallback, and `blockId.localeCompare` stable
+   342	  terminator.
+   343	- `outline-overlay.tsx` exports `OutlineOverlay` and `OutlineOverlayProps`.
+   344	  It implements the C.2-5 subset of ADR-0017 D4 scheme A: static base plus
+   345	  one active dashed accent for the affected edge. The `host` and
+   346	  `shifted-block` outline classes remain later integration scope.
+   347	- `drop-pulse.ts` exports `DropPulse`, `DropPulseProps`, and
+   348	  `dropPulseClassName`. It implements ADR-0017 D11: a 720ms success halo
+   349	  using `box-shadow: 0 0 0 4px var(--accent-success, oklch(70% 0.12 145 / 0.5))`.
+   350	  Consumers mount it only for `drag-end-success`; cancel, mode-none, and
+   351	  outside-grid drops do not trigger the pulse. The fallback is the ADR-0018
+   352	  Stage C.3 bridge until `--accent-success` lands in design tokens.
+   353	- `drag-ghost.ts` exports `DragGhost`, `DragGhostProps`, and
+   354	  `GhostKind = 'canvas' | 'runnable' | 'image' | 'markdown'`. It implements
+   355	  ADR-0017 D10 with `position: fixed`, cursor `translate(...)`, a
+   356	  `-1.5deg` baseline rotation, velocity-driven `+/-5deg` rotation at
+   357	  5px/frame, and the public `.ghost-canvas` / `.ghost-runnable` /
+   358	  `.ghost-image` / `.ghost-markdown` class roster. The glyph is plain text
+   359	  `◇`; SVG or icon-font styling is Stage C.3 scope.
+   360	- `esc-cancel.ts` exports `useEscCancel` and `EscCancelOptions`. It implements
+   361	  ADR-0017 D8 + Q8: the hook owns the global `keydown` subscription, calls
+   362	  `preventDefault()` and `stopPropagation()` only when `dragActive === true`,
+   363	  dispatches `drag-end-cancel` through the consumer callback, lets native Esc
+   364	  behavior pass through when inactive, and restores the drag-start focus target
+   365	  on drag-end.
+   366	- `layout-reducer.ts` exports `layoutReducer`, `LayoutAction`, `LayoutState`,
+   367	  and `GridSnapshot`. It implements ADR-0017 D12 plus ADR-0016 D12/Q12:
+   368	  `drag-start` saves S0 without changing epoch, `drag-over` is reference-equal
+   369	  no-op preview, `drag-end-success` commits S1 with `epoch + 1`, and
+   370	  `drag-end-cancel` / `drag-end-mode-none` roll back to S0 without changing
+   371	  epoch. `responsiveTransition: 'in-progress'` rejects `drag-start` inside
+   372	  the pure reducer. C.2-9 adds `responsive-transition-start` and
+   373	  `responsive-transition-end` action variants; both leave `epoch` unchanged and
+   374	  only flip `responsiveTransition` between `'in-progress'` and `'idle'`.
+   375	- `applyDropMode(input)` (Wave 6 cf-20c-1, 2026-05-09) — pure mutation algebra
+   376	  for ADR-0017 D1 drop modes. Computes the post-drop block positions for
+   377	  `split-left` / `split-right` / `split-top` / `split-bottom` / `empty` /
+   378	  `none`. Throws on invalid input (split with non-halvable colSpan; empty
+   379	  without target; palette insertion without newBlock; split-* without
+   380	  hostBlockId). Consumer (cf-20c-2 drag-handle UI wire) computes the input
+   381	  from pointer events + edge-rects + tiebreak, calls this function, and
+   382	  dispatches `drag-end-success` to layoutReducer with the result as the
+   383	  `mutation: GridSnapshot` parameter. Co-exported types: `ApplyDropModeInput`,
+   384	  `DropMode`, `GridSnapshotIdentified`, `IdentifiedBlock` (extends
+   385	  `BlockGridPosition` with stable `id` from ProseMirror node IDs at the
+   386	  consumer layer; `BlockGridPosition` itself is unchanged in
+   387	  `@skb/block-foundation`).
+   388	
+   389	Drag/drop edge-width is coupled to grid `--gap` via `EDGE_W = 2 * GAP`.
+   390	`EDGE_W = 28` and `GAP = 14` ensure the 14px gap between adjacent blocks is
+   391	fully covered by both neighbours' edge rects, eliminating the dead zone where
+   392	a cursor in the gap would miss every edge. Cross-package consumer parity:
+   393	`apps/site/src/styles/grid.css` owns `.skb-grid { --gap: 14px }` from C.2-3;
+   394	that value MUST stay byte-equal to the `GAP = 14` export from
+   395	`edge-rects.ts`. Drift is an algorithm replication failure mode, not a visual
+   396	token preference.
+   397	
+   398	The drag/drop layer consumes the W5-1 `BlockGridPosition` shape authority from
+   399	`@skb/block-foundation` conceptually: block bounding boxes are derived from
+   400	grid `{ col, row?, colSpan, rowSpan }` dimensions per ADR-0016 D11's Tiptap
+   401	inside / grid outside layering. The modules do not mutate NodeView attrs; they
+   402	emit geometric data and visual feedback for the layoutReducer (shipped at C.2-8)
+   403	which arbitrates drag-end-success vs drag-end-cancel mutations.
+   404	
+   405	Wave 5 plan v1.1 row C.2-3.5 is the active downstream constraint: drag/drop
+   406	modules MUST NOT reference `_gridAttrsExplicit`, the mdx-bridge transitional
+   407	marker removed at the hard-throw flip end-state (`b019a31`). ADR-0016 D2
+   408	numeric defaults may still be used as React-side defensive rendering defaults
+   409	at a future `BlockLayout` input boundary; that is orthogonal to mdx-bridge
+   410	hard-throw enforcement.
+   411	
+   412	`layoutReducer` + `layoutEpoch` shipped at C.2-8 per Wave 5 plan v1.3 row
+   413	C.2-8. C.2-4 establishes the W5-2 invariant prose, thin grid container, and
+   414	auto-row-span hook; C.2-8 realizes the ADR-0017 D8/D10/D11/D12 public surfaces
+   415	and the ADR-0016 D12 single-user, single-session mutation pipeline.
+   416	
+   417	### Resize layer (C.2-6)
+   418	
+   419	C.2-6 adds the editor-side resize visual primitives under
+   420	`packages/editor-shell/src/resize/`:
+   421	
+   422	- `col-ruler.tsx` exports `ColRuler` and `ColRulerProps`. It renders the
+   423	  active column snap stops during resize and returns `null` when
+   424	  `totalCols === 1` per ADR-0017 D9's mobile 1-col view-only branch.
+   425	- `size-tooltip.tsx` exports `SizeTooltip`, `SizeTooltipProps`, and
+   426	  `colSpanToFraction(colSpan, totalCols)`. It renders the fixed cursor tooltip
+   427	  at `cursorX + 12` / `cursorY - 8` and uses ADR-0017 D9's canonical fraction
+   428	  tokens such as `1/2`, `2/3`, and `full`.
+   429	
+   430	`ColRuler` consumes snap sets produced by `effectiveColSnaps(viewportCols)` from
+   431	`@skb/block-foundation` (ADR-0016 D6 Q4 authority). That helper is intentionally
+   432	not re-exported from the editor-shell barrel; consumers import it from
+   433	`@skb/block-foundation` directly while importing `ColRuler`, `SizeTooltip`, and
+   434	`colSpanToFraction` from editor-shell.
+   435	
+   436	The stop highlight literal `oklch(58% 0.16 35 / 0.4)` remains in the C.2-6
+   437	source per ADR-0017 D9, with migration to design tokens deferred to ADR-0018
+   438	and Stage C.3. Resize-handle DOM emission, pointer event wiring, and snap commit
+   439	remain later integration scope. C.2-9 ships the `.skb-grid--mobile` state
+   440	emission contract; the CSS rules under that selector land in C.2-11.
+   441	
+   442	Cross-package consumer parity: the `gap` default in `ColRuler` comes from
+   443	`@skb/block-foundation` `DEFAULT_GRID_GEOMETRY.gap` and MUST stay byte-equal to
+   444	`apps/site/src/styles/grid.css` `.skb-grid { --gap: 14px }` plus
+   445	`@skb/editor-shell` `drag-drop/edge-rects.ts` `GAP = 14`. Drift here is an
+   446	algorithmic-constant replication failure, not a visual-token preference.
+   447	
+   448	Wave 5 plan v1.1 row C.2-3.5 remains the active downstream constraint for the
+   449	resize layer: modules MUST NOT reference `_gridAttrsExplicit`, the mdx-bridge
+   450	transitional marker removed at the hard-throw flip end-state (`b019a31`).
+   451	
+   452	### Responsive viewport (C.2-9)
+   453	
+   454	C.2-9 adds `responsive-cols.ts` as the editor-shell owner for ADR-0016 D5's
+   455	desktop/tablet/mobile viewport FSM. `useResponsiveCols(options?)` subscribes to
+   456	two `matchMedia` queries, `(min-width: 1024px)` and `(min-width: 768px)`, and
+   457	maps them to `ViewportCols = 12 | 6 | 1`. `RESPONSIVE_BREAKPOINTS` is the
+   458	hardcoded bridge `{ tablet: 768, desktop: 1024 }` until Stage C.3-1 lands
+   459	`--bp-tablet` and `--bp-desktop` in design tokens.
+   460	
+   461	Consumers that participate in the W5-2 single-source mutation pipeline pass
+   462	`onTransitionStart` and `onTransitionEnd` callbacks which dispatch
+   463	`responsive-transition-start` / `responsive-transition-end` through
+   464	`layoutReducer`. Those actions do not mutate grid positions or increment
+   465	`layoutEpoch`; they only mark the responsive transition as in progress or idle
+   466	so the existing `drag-start` guard can reject drag during the transition per
+   467	ADR-0016 D12 and ADR-0017 D12.
+   468	
+   469	`GridContainerProps.viewportCols` is optional for backward compatibility.
+   470	When supplied, `GridContainer` emits `data-skb-viewport-cols` for test and
+   471	consumer selectors. `viewportCols === 1` also emits `.skb-grid--mobile`, the
+   472	ADR-0017 D9 class authority for the mobile 1-col view-only path. The CSS rules
+   473	under `.skb-grid--mobile` land in C.2-11; C.2-9 owns the editor-shell emission
+   474	side of the contract.
+   475	
+   476	Mobile rowSpan remains rendering-derived: consumers branch on
+   477	`viewportCols === 1` and use the existing `useAutoRowSpan` path so
+   478	`rowSpan='auto'` is measured at render time without persisting a replacement
+   479	integer. The EditorShellMount wire-up for that per-block branch lands in C.4-2.
+   480	
+   481	## Wave 3 Stage A expansion outline
+   482	
+   483	A2-A5 each Modify this CONTRACT.md as new exports land:
+   484	
+   485	- **A2** — `EditorShell` React component delivered in this PR (Tiptap
+   486	  `useEditor` mounting a 4-prop API surface; the original A2 build
+   487	  shipped with `[StarterKit]` only as the built-in extension list).
+   488	  Adds `@tiptap/{core,react,starter-kit}`, `react`, `react-dom`
+   489	  peer/runtime deps + happy-dom + @testing-library/react devDeps.
+   490	  *(Historical: Wave 6 carry-forward #15a 2026-05-08 added the
+   491	  extended `Link` extension to the built-in stack and a 5th prop
+   492	  `extensions?: Extensions`; see § Public surface above for the
+   493	  current shape.)*
+   494	- **A3** — `registerBlocks(registry)` helper delivered in this PR. Wires the
+   495	  8 block-* core + ui-default definitions into a `BlockRegistry` instance.
+   496	  Added 8 `@skb/block-*` + `@skb/block-foundation` workspace deps + 9
+   497	  composite-project tsconfig references. Also re-exports `proseExtensions`
+   498	  from block-foundation as a barrel convenience. `proseExtensions` is NOT
+   499	  exposed as an `EditorShell` prop in A3 (the speculative A2-outline form);
+   500	  consumers compose it directly into their `useEditor` extensions array.
+   501	- **A4** — `registerKernels(registry, adapter?)` helper delivered in this
+   502	  PR. Wires `PyodideAdapter` (default) into `kernel-registry`. Added
+   503	  `@skb/kernel-registry` + `@skb/kernel-pyodide` + `@skb/kernel-adapter`
+   504	  workspace deps (3 not 2 — `KernelAdapter` type lives in `@skb/kernel-adapter`,
+   505	  not re-exported by registry/pyodide).
+   506	- **A5** — `saveToMdx(editor, options?)` + `loadFromMdx(editor, source, options?)`
+   507	  delivered in this PR. Wraps `@skb/mdx-bridge`'s `tiptapToMdx` /
+   508	  `mdxToTiptap` for **prose-only** RTT. The `options.blockRegistry`
+   509	  parameter is forward-compat at the public API surface; threading
+   510	  through to mdx-bridge's per-call injection is deferred to B1 (because
+   511	  mdx-bridge does not yet accept a `{ blockRegistry }` option). Added
+   512	  `@skb/mdx-bridge` workspace dep — 13th `@skb/*` and Stage A close.
+   513	
+   514	## Stage A close note
+   515	
+   516	All 5 Stage A PRs are now delivered. Consumers can:
+   517	
+   518	1. Mount `EditorShell` (Tiptap useEditor with the built-in StarterKit + Link stack per § Public surface; A2 originally shipped with just StarterKit, and carry-forward #15a 2026-05-08 layered Link in)
+   519	2. Call `registerBlocks(registry)` to wire 8 block-* into a BlockRegistry (A3)
+   520	3. Call `registerKernels(registry, adapter?)` to wire PyodideAdapter into a KernelRegistry (A4)
+   521	4. Call `saveToMdx(editor, options?)` + `loadFromMdx(editor, source, options?)`
+   522	   for **prose-only** RTT (A5)
+   523	
+   524	**Component-block RTT is NOT yet operational** — Stage B (B1-B8) extends
+   525	mdx-bridge with `mdxJsxFlowElement` routing + per-call BlockRegistry
+   526	injection. Until B1 lands, attempting to save/load any document containing
+   527	the 8 Wave 2 component blocks (Callout / Code / Image / Math / Pdf /
+   528	Jupyter / NnViz / AgentFlow) will throw via mdx-bridge's existing
+   529	fail-loud rule. The `SaveLoadOptions.blockRegistry` parameter at the
+   530	saveLoad public API is accepted-but-unused until B1 threads it through.
+   531	
+   532	[ADR-0008 D1](../../docs/decisions/ADR-0008-wave-2-entry-policies.md) dead-dep
+   533	policy is satisfied at A5 by construction: every declared `@skb/*` workspace
+   534	dep has at least one `from '@skb/{pkg}'` source import. The 13 declared deps
+   535	+ 13 source imports (across `registerBlocks.ts` / `registerKernels.ts` /
+   536	`saveLoad.ts` / `index.ts`) + 13 tsconfig references hold three-way exact-match
+   537	symmetry.
+   538	
+   539	## Type variance note (Stage A A3 R3 retrospective; codified Wave 4 B4)
+   540	
+   541	`registerBlocks` casts 5 of 8 ui-defaults via `XxxUiDefault as unknown as BlockUIDefinition` and leaves the remaining 3 uncast. The asymmetry is structural, not historical: it traces ComponentType contravariance under `exactOptionalPropertyTypes: true`.
+   542	
+   543	- **5 with cast** (callout / code / image / math / pdf): each
+   544	  package's `XxxUiDefault` is typed
+   545	  `BlockUIDefinition<typeof XxxCore.propsSchema>` — a NARROW schema
+   546	  via `defineUI`'s generic. The narrow schema's
+   547	  `EditorView`/`RenderView` is `ComponentType<BlockViewProps&lt;NarrowSchema&gt;>`,
+   548	  which is NOT assignable to the registry's wider
+   549	  `ComponentType<BlockViewProps&lt;ZodTypeAny&gt;>` due to ComponentType
+   550	  contravariance. The cast collapses the variance gap. ESLint's
+   551	  `no-unnecessary-type-assertion` does NOT flag these casts because
+   552	  the assertion is genuinely required by tsc.
+   553	- **3 without cast** (jupyter / nn-viz / agent-flow): each package's
+   554	  `XxxUiDefault` resolves through `defineUI` with a wider component
+   555	  type signature that already accepts `BlockViewProps&lt;ZodTypeAny&gt;`
+   556	  without contravariance issue (verified at A3 EXECUTE 2026-05-01;
+   557	  tsc accepts the direct registration). Adding the cast here would
+   558	  be a no-op; ESLint's `no-unnecessary-type-assertion` would flag it.
+   559	
+   560	**Implication**: the 5/3 split is locked-in until the underlying
+   561	ui-default package types converge. Future blocks SHOULD pick the
+   562	3-camp signature shape (no cast required) when authoring new
+   563	ui-defaults; A3 R3 incident notes the asymmetry was first
+   564	surfaced when a contributor uniformly cast all 8, which lint then
+   565	rejected on the 3 unnecessary-cast cases. The cast-required vs
+   566	cast-free behavior is verified at every `pnpm typecheck` run +
+   567	`pnpm lint` run on `registerBlocks.ts`; any drift will surface
+   568	immediately.
+   569	
+   570	## C.4-3 user-affordance public surface
+   571	
+   572	C.4-3 adds the editor-facing affordance layer that `apps/site`
+   573	mounts around the Tiptap instance. The barrel exports these React
+   574	components and types:
+   575	
+   576	- `Palette` / `PaletteProps`: opens on Ctrl/Cmd+K, lists the eight
+   577	  Wave 2 block kinds, and calls `insertBlockKind(editor, kind)` when
+   578	  a kind is selected.
+   579	- `SlashMenu` / `SlashMenuProps`: listens on the editor DOM for `/`
+   580	  at line start, supports arrow-key navigation, and inserts the
+   581	  selected block on Enter or click.
+   582	- `DragHandle` / `DragHandleProps`: emits a draggable per-block handle
+   583	  (`data-skb-drag-handle`) and shows the C.2-8 `DropPulse` preview
+   584	  after drag completion.
+   585	- `Toolbar` / `ToolbarProps`: renders Bold / Italic controls while a
+   586	  non-empty Tiptap text selection exists, and delegates to
+   587	  `editor.chain().focus().toggleBold()/toggleItalic().run()`.
+   588	- `EditModeBanner` / `EditModeBannerProps`: renders the top edit-mode
+   589	  banner only when `editMode` is true.
+   590	- `SaveIndicator` / `SaveIndicatorProps` / `SaveIndicatorStatus`:
+   591	  renders the bottom-corner `Unsaved changes` / `Saving...` /
+   592	  `Saved at HH:MM` state owned by the consumer's save debounce.
+   593	
+   594	`registry-wire.tsx` exports `BLOCK_KIND_OPTIONS`, `insertBlockKind`,
+   595	and `wireRegistry(options)`. `wireRegistry` returns the canonical
+   596	eight `blockKinds`, Tiptap node extensions for those kinds, and the
+   597	insertion helper. It also idempotently registers mdx-bridge JSX
+   598	dispatch entries for the eight block packages so editor-built
+   599	component nodes can serialize through `saveToMdx(editor, { blockRegistry })`.
+   600	
+   601	When `wireRegistry({ blockRegistry })` receives a registry (Wave 6
+   602	carry-forward #18, 2026-05-08), each generated extension also installs
+   603	`addNodeView: () => ReactNodeViewRenderer(makeBlockNodeView({registry}))`,
+   604	which mounts the block's registered `EditorView` React component
+   605	inside a two-layer DOM:
+   606	- the outer `NodeViewWrapper` carries `data-skb-block-kind="<kind>"`
+   607	  (this attribute survives even on the unregistered fallback wrapper
+   608	  for downstream Tiptap inspectors / future drag-handle wiring),
+   609	- the inner non-editable host div carries `data-skb-block-host="<kind>"`
+   610	  (only present when the registry resolved a UI; absent on fallbacks).
+   611	
+   612	Real PDF iframes, KaTeX, React Flow graphs, syntax-highlighted code
+   613	bodies, images, callout containers, NN-Viz SVG topology, and Jupyter
+   614	containers all materialize on the edit surface. Without a registry
+   615	the extension falls back to the legacy `renderHTML` placeholder
+   616	("`<Label> block`" — preserved for no-registry test mounts; the
+   617	unregistered NodeView fallback wrapper additionally carries the
+   618	`skb-block-nodeview--unregistered` modifier class). The
+   619	`makeBlockNodeView` factory is exported from the package barrel for
+   620	downstream NodeView smoke tests.
+   621	
+   622	### BlockNodeView wrapper styles (Wave 6 cf-19 v0.2 + R2; 2026-05-09; cf-20a chrome split 2026-05-09)
+   623	
+   624	`@skb/editor-shell` ships TWO side-effect stylesheets that together bring
+   625	the v2 `.gblock` card chrome onto every block surface (per the v2
+   626	reference design at /mnt/d/download/web/v2-styles.css:154-249, plus the
+   627	v2-design-granularity "Block 容器（.gblock）状态" table):
+   628	
+   629	- **`@skb/editor-shell/block-chrome.css`** — Wave 6 cf-20a single source
+   630	  of card geometry + per-kind 2px top stripe. Two structural classes
+   631	  consume the rules: `.skb-block-nodeview` (editor mount) and
+   632	  `.skb-block-static` (apps/site read route via the
+   633	  `makeMdxAdapter(RenderView, kind)` adapter + the 3 heavy block Astro
+   634	  wrappers). Both classes carry `data-skb-block-kind="<kind>"` and
+   635	  resolve the same per-kind hue token. Pre-cf-20a the chrome lived in
+   636	  TWO places (the editor wrapper rule AND each block's inner CSS); the
+   637	  inner stripes were zeroed under `.skb-block-nodeview` via a
+   638	  nested-suppression rule. cf-20a deletes the inner stripes and the
+   639	  suppression rule, routing all 8 inner blocks through this shared
+   640	  module so a single edit fans out to both routes.
+   641	- **`@skb/editor-shell/BlockNodeView.css`** — editor-mount-only
+   642	  affordances layered on top: ProseMirror selected-node accent ring,
+   643	  focus-within border bridge, per-kind chip tint redefinitions
+   644	  (editor-local CSS variables), gutter shell + kind chip layout, body
+   645	  padding (offsets the absolutely-positioned gutter chip), unregistered
+   646	  fallback placeholder. The first line of this file is
+   647	  `@import './block-chrome.css'` so the editor wrapper inherits the
+   648	  chrome via either a direct global.css import OR transitively through
+   649	  BlockNodeView.css.
+   650	
+   651	Consumers (apps/site `global.css` is the canonical example) MUST import
+   652	both at app boot:
+   653	
+   654	```css
+   655	@import '@skb/editor-shell/block-chrome.css';   /* shared chrome */
+   656	@import '@skb/editor-shell/BlockNodeView.css';  /* editor-only affordances */
+   657	```
+   658	
+   659	DOM contract emitted by `BlockNodeView.tsx` (cf-19 v0.2):
+   660	
+   661	```
+   662	.skb-block-nodeview                    ← v2 .gblock card (carries data-skb-block-kind)
+   663	  .skb-block-nodeview__gutter          ← v2 .gblock-gutter shell (cf-20 button drop-in)
+   664	    .skb-block-nodeview__kind-chip     ← visible kind label (mono uppercase)
+   665	  .skb-block-nodeview__body            ← v2 .gblock-body padding shell (carries data-skb-block-host)
+   666	    <inner block component />          ← CalloutBody / CodeBody / etc.
+   667	```
+   668	
+   669	Public selectors:
+   670	
+   671	- `.skb-block-nodeview` — v2 `.gblock` card. `background: var(--surface)`
+   672	  + `border: 1px solid var(--border)` + `border-radius: 7px` +
+   673	  `margin-block: 8px`. Geometry is stable across hover/selected/focus
+   674	  state toggles (transparent baseline shadow that lights up on hover;
+   675	  border-color toggles within the existing 1px width).
+   676	- `.skb-block-nodeview:hover` — `border-color: var(--border-strong)` +
+   677	  `box-shadow: var(--shadow-sm)` (v2-styles.css:171).
+   678	- `.skb-block-nodeview.ProseMirror-selectednode` —
+   679	  `border-color: var(--accent)` + `box-shadow: 0 0 0 2px var(--skb-block-nodeview--accent-soft)`
+   680	  (v2-styles.css:172). ProseMirror sets this class on `NodeSelection`.
+   681	  The `--skb-block-nodeview--accent-soft` is an editor-local CSS variable
+   682	  scoped to the wrapper (R2 P2 honesty fix; see § Editor-local CSS
+   683	  variables below).
+   684	- `.skb-block-nodeview:focus-within:not(.ProseMirror-selectednode)` —
+   685	  softer accent border bridge so jupyter Run / nn-viz range focus reads
+   686	  as block-active without flashing the full selected ring.
+   687	- `.skb-block-nodeview[data-skb-block-kind="<kind>"]` — per-kind 2px
+   688	  top stripe (ADR-0018 D3 hue tokens). Hue map: callout/componentCode
+   689	  → runnable 145°; image → 60°; math → 280°; pdf → 0°; jupyter → 90°;
+   690	  nn-viz → 325°; agent-flow → 180°. Hue lives on the wrapper instead
+   691	  of the inner component CSS so the stripe sits flush with the card
+   692	  top edge per v2 `.gblock.k-canvas { border-top: ... }` model.
+   693	- `.skb-block-nodeview__gutter` — v2 `.gblock-gutter` shell. Absolutely
+   694	  positioned top-left, `opacity: 0.45` baseline, `1` on hover/focus/
+   695	  selected. Empty placeholder for cf-20 drag-handle + kebab buttons.
+   696	- `.skb-block-nodeview__kind-chip` — mono uppercase kind label, 10px,
+   697	  per-kind tinted background matching the top stripe hue (canvas-soft /
+   698	  runnable-soft / image-soft analog per v2 palette glyph treatment).
+   699	  The chip label collapses `componentCode` → `code` (the cf-15b internal
+   700	  rename was for ProseMirror namespace isolation; the user-facing name
+   701	  stays "code").
+   702	- `.skb-block-nodeview__body` — v2 `.gblock-body` padding shell.
+   703	  `padding: 28px 12px 8px` reserves room for the absolutely-positioned
+   704	  gutter chip. Canvas/image/runnable-family kinds (image/pdf/math/
+   705	  jupyter/nn-viz/agent-flow) drop side+bottom padding to `4px` per v2
+   706	  `.gblock-body.fit` analog.
+   707	- `.skb-block-nodeview--unregistered` + `.skb-block-nodeview__fallback`
+   708	  — dashed border-strong outline + monospaced placeholder body for the
+   709	  unregistered fallback path (no registry threaded into `wireRegistry`).
+   710	
+   711	#### Editor-local CSS variables (R2 P2 honesty fix)
+   712	
+   713	`BlockNodeView.css` declares a small set of CSS custom properties scoped
+   714	to `.skb-block-nodeview` itself (NOT promoted to global `:root`); each
+   715	`[data-skb-block-kind="<kind>"]` selector redefines them per-kind. They
+   716	are NOT exported via `@skb/design-tokens` because they are
+   717	editor-decoration-only and would balloon the global token surface
+   718	without clear cross-package reuse. Promotion to design-tokens is
+   719	documented as an out-of-scope cf-21+ candidate in the cf-19 PR.md.
+   720	
+   721	| editor-local CSS var | role | redefined per-kind? |
+   722	| --- | --- | --- |
+   723	| `--skb-block-nodeview--accent-soft` | wrapper outer-ring color on `.ProseMirror-selectednode` | no (single shared accent-soft) |
+   724	| `--skb-block-nodeview--chip-bg` | gutter chip background tint | yes (each kind matches its top-stripe hue) |
+   725	| `--skb-block-nodeview--chip-border` | gutter chip border tint | yes |
+   726	| `--skb-block-nodeview--chip-text` | gutter chip text color | yes |
+   727	
+   728	#### Per-block stripe single source (Wave 6 cf-20a 2026-05-09)
+   729	
+   730	The 8 block packages' `ui-default/<kind>.css` files NO LONGER ship
+   731	their own `border-top: 2px solid var(--accent-X)` rule. The chrome
+   732	authority is `@skb/editor-shell/src/block-chrome.css`, which selects on
+   733	both `.skb-block-nodeview[data-skb-block-kind="<kind>"]` (editor wrapper
+   734	emitted by `BlockNodeView.tsx`) AND `.skb-block-static[data-skb-block-kind="<kind>"]`
+   735	(read-route wrapper emitted by `apps/site/src/lib/mdx-adapter.ts`'s
+   736	`makeMdxAdapter(RenderView, kind)` plus the 3 heavy block Astro
+   737	wrappers `apps/site/src/components/{Jupyter,NnViz,AgentFlow}.astro`).
+   738	
+   739	Because the inner-component stripe rules are gone, the cf-19 R2 P3
+   740	nested-suppression block in `BlockNodeView.css` is also gone — there's
+   741	nothing to suppress. The wrapper is the single source of stripe truth
+   742	on BOTH routes; sister block packages keep their layout-only inner
+   743	rules (flex / grid / padding / variant tints / surface bg) without
+   744	duplicating chrome geometry.
+   745	
+   746	Sister block CONTRACT.md files document the cf-20a chrome handover
+   747	under their respective "Public surface" sections.
+   748	
+   749	`EditorShellProps.extensions` is now the sanctioned composition hook
+   750	for consumer-owned Tiptap extensions layered after the built-in
+   751	`StarterKit` (no `code: false` configuration post-#15b — the
+   752	block-Code Tiptap node was renamed from `code` to `componentCode`
+   753	so StarterKit's inline `code` mark is enabled) + `Link.extend({ addAttributes: { title } }).configure({ openOnClick: false })`
+   754	stack (carry-forwards #15a + #15b). C.4-3 uses it only for the block insertion
+   755	node specs produced by `wireRegistry`; block package implementations
+   756	remain untouched. StarterKit's inline `code` mark is enabled post-#15b
+   757	(the component-block formerly named `code` was renamed to
+   758	`componentCode`, so the ProseMirror namespace collision is gone).
+   759	StarterKit's `codeBlock` node remains available for Markdown fences.
+   760	
+   761	## Modifying this file
+   762	
+   763	Each A2-A5 PR Modifies this file to extend "Public surface" as exports land.
+   764	The "Wave 3 Stage A expansion outline" section is informational; once A5
+   765	closes Stage A, that section may be retired in favor of a stable public-surface
+   766	declaration (orchestrator decision at Stage A close ceremony).
+   767	
+   768	## Related
+   769	
+   770	- [ADR-0010 D7 #3](../../docs/decisions/ADR-0010-wave-2-close.md) — editor-shell composition deferral closed by Stage A
+   771	- [ADR-0011 D1+D6](../../docs/decisions/ADR-0011-linear-pipeline-execution-model.md) — pipeline + codex profiles
+   772	- [Wave 3 plan, Stage A](../../docs/superpowers/plans/2026-05-01-phase-1-wave-3-integration.md) — locked Stage A scope
+   773	- [packages/block-foundation/CONTRACT.md](../block-foundation/CONTRACT.md) — registry consumer pattern A3 will use
+   774	- [packages/mdx-bridge/CONTRACT.md](../mdx-bridge/CONTRACT.md) — per-call injection pattern B1 will thread through saveLoad
+
+exec
+/bin/bash -lc "nl -ba docs/adr/ADR-0017-editor-drag-drop-collision-contract.md | sed -n '44,61p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+nl: docs/adr/ADR-0017-editor-drag-drop-collision-contract.md: No such file or directory
+
+codex
+The first pass has the new implementation and tests. The ADR path in the repo differs from the filename I tried, so I’m locating ADR-0017 and narrowing CONTRACT.md to the actual new public-surface entry.
+exec
+/bin/bash -lc 'git status --short' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+?? content/notes/sample-blocks/state.json
+
+exec
+/bin/bash -lc 'rg -n "applyDropMode|ApplyDropMode|DropMode|IdentifiedBlock|GridSnapshotIdentified" packages/editor-shell/CONTRACT.md packages/editor-shell/src/index.ts' in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "rg --files | rg 'ADR-0017'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+packages/editor-shell/src/index.ts:60:export { applyDropMode } from './drag-drop/apply-drop-mode';
+packages/editor-shell/src/index.ts:62:  ApplyDropModeInput,
+packages/editor-shell/src/index.ts:63:  DropMode,
+packages/editor-shell/src/index.ts:64:  GridSnapshotIdentified,
+packages/editor-shell/src/index.ts:65:  IdentifiedBlock,
+packages/editor-shell/CONTRACT.md:375:- `applyDropMode(input)` (Wave 6 cf-20c-1, 2026-05-09) — pure mutation algebra
+packages/editor-shell/CONTRACT.md:383:  `mutation: GridSnapshot` parameter. Co-exported types: `ApplyDropModeInput`,
+packages/editor-shell/CONTRACT.md:384:  `DropMode`, `GridSnapshotIdentified`, `IdentifiedBlock` (extends
+
+ succeeded in 0ms:
+docs/decisions/ADR-0017-drag-drop-ux.md
+
+exec
+/bin/bash -lc 'git diff -- packages/editor-shell/src/index.ts packages/editor-shell/CONTRACT.md' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+exec
+/bin/bash -lc "nl -ba docs/decisions/ADR-0017-drag-drop-ux.md | sed -n '44,61p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+    44	### D1 — 4 边缘对称 drop modes (split-left/right/top/bottom + empty + none)
+    45	
+    46	| mode | 触发 | 行为 | layoutMutation source |
+    47	|---|---|---|---|
+    48	| `split-left` | 拖到 host 左边缘 EDGE_W (28px) 内 | host 缩到右半 (`colSpan / 2`); 新块占左半 (`col=host.col, colSpan=host.colSpan/2`) | `'drag'` |
+    49	| `split-right` | 拖到 host 右边缘 EDGE_W 内 | host 缩到左半; 新块占右半 (`col=host.col + host.colSpan/2`) | `'drag'` |
+    50	| `split-top` | 拖到 host 上边缘 EDGE_W 内 | 在 host 上方插新行; host 整体下移 + 后续行下移; 新块占整 row colSpan=host.colSpan | `'drag'` |
+    51	| `split-bottom` | 拖到 host 下边缘 EDGE_W 内 | 在 host 下方插新行; 后续行下移; 新块占整 row colSpan=host.colSpan | `'drag'` |
+    52	| `empty` | 拖到网格空区 (无 host edge rect 命中) | 新块直接落定 grid-auto-flow row 决定行号 | `'drag'` |
+    53	| `none` | 拖到 host 内部非边缘 (距离 4 edges 都 > EDGE_W) | 不显示 outline overlay; 仅 ghost 跟手 | (no mutation; cancel-on-release) |
+    54	
+    55	**重要区分** (per granularity v0.3.4 共识):
+    56	- `split-left` / `split-right` = **切 host 一半** (host 被压缩 colSpan / 2)
+    57	- `split-top` / `split-bottom` = **插新行** (host 不被切; 仅位置可能下移)
+    58	
+    59	切 host 的 colSpan/2 必落到 effective COL_SNAPS (per ADR-0016 D6 + Q4 absorbtion `effectiveColSnaps`). 若 host.colSpan / 2 不在 COL_SNAPS (e.g., host.colSpan=3 → 1.5 invalid), 则 split-left/right 拒绝触发 (UI 显示 "no-split" cursor); 用户必先 resize host 到 valid even-divide colSpan ∈ {2, 4, 6, 8, 12}.
+    60	
+    61	`split-top` / `split-bottom` 不受 colSpan 限制; 任意 host 都可插行.
+
+exec
+/bin/bash -lc "nl -ba packages/editor-shell/CONTRACT.md | sed -n '360,390p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+   360	- `esc-cancel.ts` exports `useEscCancel` and `EscCancelOptions`. It implements
+   361	  ADR-0017 D8 + Q8: the hook owns the global `keydown` subscription, calls
+   362	  `preventDefault()` and `stopPropagation()` only when `dragActive === true`,
+   363	  dispatches `drag-end-cancel` through the consumer callback, lets native Esc
+   364	  behavior pass through when inactive, and restores the drag-start focus target
+   365	  on drag-end.
+   366	- `layout-reducer.ts` exports `layoutReducer`, `LayoutAction`, `LayoutState`,
+   367	  and `GridSnapshot`. It implements ADR-0017 D12 plus ADR-0016 D12/Q12:
+   368	  `drag-start` saves S0 without changing epoch, `drag-over` is reference-equal
+   369	  no-op preview, `drag-end-success` commits S1 with `epoch + 1`, and
+   370	  `drag-end-cancel` / `drag-end-mode-none` roll back to S0 without changing
+   371	  epoch. `responsiveTransition: 'in-progress'` rejects `drag-start` inside
+   372	  the pure reducer. C.2-9 adds `responsive-transition-start` and
+   373	  `responsive-transition-end` action variants; both leave `epoch` unchanged and
+   374	  only flip `responsiveTransition` between `'in-progress'` and `'idle'`.
+   375	- `applyDropMode(input)` (Wave 6 cf-20c-1, 2026-05-09) — pure mutation algebra
+   376	  for ADR-0017 D1 drop modes. Computes the post-drop block positions for
+   377	  `split-left` / `split-right` / `split-top` / `split-bottom` / `empty` /
+   378	  `none`. Throws on invalid input (split with non-halvable colSpan; empty
+   379	  without target; palette insertion without newBlock; split-* without
+   380	  hostBlockId). Consumer (cf-20c-2 drag-handle UI wire) computes the input
+   381	  from pointer events + edge-rects + tiebreak, calls this function, and
+   382	  dispatches `drag-end-success` to layoutReducer with the result as the
+   383	  `mutation: GridSnapshot` parameter. Co-exported types: `ApplyDropModeInput`,
+   384	  `DropMode`, `GridSnapshotIdentified`, `IdentifiedBlock` (extends
+   385	  `BlockGridPosition` with stable `id` from ProseMirror node IDs at the
+   386	  consumer layer; `BlockGridPosition` itself is unchanged in
+   387	  `@skb/block-foundation`).
+   388	
+   389	Drag/drop edge-width is coupled to grid `--gap` via `EDGE_W = 2 * GAP`.
+   390	`EDGE_W = 28` and `GAP = 14` ensure the 14px gap between adjacent blocks is
+
+exec
+/bin/bash -lc "nl -ba packages/editor-shell/src/index.ts | sed -n '48,70p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+    48	export { tiebreak, findMatches } from './drag-drop/tiebreak';
+    49	export type { EdgeMatch, DragVelocity } from './drag-drop/tiebreak';
+    50	export { OutlineOverlay } from './drag-drop/outline-overlay';
+    51	export type { OutlineOverlayProps } from './drag-drop/outline-overlay';
+    52	export { DropPulse, dropPulseClassName } from './drag-drop/drop-pulse';
+    53	export type { DropPulseProps } from './drag-drop/drop-pulse';
+    54	export { DragGhost } from './drag-drop/drag-ghost';
+    55	export type { DragGhostProps, GhostKind } from './drag-drop/drag-ghost';
+    56	export { useEscCancel } from './drag-drop/esc-cancel';
+    57	export type { EscCancelOptions } from './drag-drop/esc-cancel';
+    58	export { layoutReducer } from './drag-drop/layout-reducer';
+    59	export type { GridSnapshot, LayoutAction, LayoutState } from './drag-drop/layout-reducer';
+    60	export { applyDropMode } from './drag-drop/apply-drop-mode';
+    61	export type {
+    62	  ApplyDropModeInput,
+    63	  DropMode,
+    64	  GridSnapshotIdentified,
+    65	  IdentifiedBlock,
+    66	} from './drag-drop/apply-drop-mode';
+    67	export { ColRuler } from './resize/col-ruler';
+    68	export type { ColRulerProps } from './resize/col-ruler';
+    69	export { SizeTooltip, colSpanToFraction } from './resize/size-tooltip';
+    70	export type { SizeTooltipProps } from './resize/size-tooltip';
+
+exec
+/bin/bash -lc 'git diff --cached --stat' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+exec
+/bin/bash -lc 'git log --oneline --decorate -5' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+f521bb6 (HEAD -> wave-6-cf-20c-1-apply-drop-mode-algebra, origin/wave-6-cf-20c-1-apply-drop-mode-algebra) Wave 6 cf-20c-1 — applyDropMode algebra (pure mutation function for ADR-0017 D1 drop modes)
+722f1c0 (origin/main, main) Wave 6 cf-20b — editor surface 12-col CSS Grid substrate (.ProseMirror → grid + per-block placement + ADR-0016 v0.2 D11.1 amendment) (#111)
+bb5dc27 Wave 6 cf-20a — inner-stripe cleanup + read-route .skb-block-static wrap (chrome single source of truth) (#110)
+3ba2fd6 Wave 6 cf-19 — editor block visual identity (v2 .gblock card chrome + per-kind stripe + gutter shell + kind chip) (#109)
+a0e498d Wave 6 cf-18 — wire all 8 component blocks into Tiptap NodeView (real components on edit surface) (#108)
+
+codex
+The implementation is already present in `HEAD` (`f521bb6`) with no staged diff; the only working-tree noise is an unrelated untracked `content/notes/sample-blocks/state.json`. I’m now checking the algebra itself against ADR-0017 D1 and the PR contract rather than trying to re-run the full suites.
+exec
+/bin/bash -lc 'git diff --name-only main...HEAD' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+docs/plans/wave-6-main/wave-6-cf-20c-1-apply-drop-mode-algebra.md
+packages/editor-shell/CONTRACT.md
+packages/editor-shell/src/drag-drop/__tests__/apply-drop-mode.test.ts
+packages/editor-shell/src/drag-drop/apply-drop-mode.ts
+packages/editor-shell/src/index.ts
+
+exec
+/bin/bash -lc 'git show --stat --oneline --name-only HEAD' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+f521bb6 Wave 6 cf-20c-1 — applyDropMode algebra (pure mutation function for ADR-0017 D1 drop modes)
+docs/plans/wave-6-main/wave-6-cf-20c-1-apply-drop-mode-algebra.md
+packages/editor-shell/CONTRACT.md
+packages/editor-shell/src/drag-drop/__tests__/apply-drop-mode.test.ts
+packages/editor-shell/src/drag-drop/apply-drop-mode.ts
+packages/editor-shell/src/index.ts
+
+exec
+/bin/bash -lc 'rg -n "sourceBlockId|newBlock|emptyTarget|sourceBlockId === null|hostBlockId" packages/editor-shell/src/drag-drop/__tests__/apply-drop-mode.test.ts' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+28:      sourceBlockId: 'src',
+29:      hostBlockId: 'a',
+42:      sourceBlockId: null,
+43:      hostBlockId: null,
+44:      newBlock: newBlk,
+45:      emptyTarget: { col: 1, row: 2 },
+57:      sourceBlockId: 'b',
+58:      hostBlockId: null,
+59:      emptyTarget: { col: 7, row: 3 },
+66:  it('throws when emptyTarget missing', () => {
+71:        sourceBlockId: null,
+72:        hostBlockId: null,
+73:        newBlock: block('new1', 0, 0, 12),
+75:    ).toThrow(/emptyTarget/);
+83:        sourceBlockId: null,
+84:        hostBlockId: null,
+85:        newBlock: block('x', 0, 0, 8),
+86:        emptyTarget: { col: 7, row: 1 },
+99:      sourceBlockId: null,
+100:      hostBlockId: 'host',
+101:      newBlock: newBlk,
+115:      sourceBlockId: null,
+116:      hostBlockId: 'host',
+117:      newBlock: block('new', 0, 0, 0),
+128:      sourceBlockId: null,
+129:      hostBlockId: 'host',
+130:      newBlock: block('new', 0, 0, 0),
+141:      sourceBlockId: null,
+142:      hostBlockId: 'host',
+143:      newBlock: block('new', 0, 0, 0),
+155:          sourceBlockId: null,
+156:          hostBlockId: 'host',
+157:          newBlock: block('new', 0, 0, 0),
+168:        sourceBlockId: null,
+169:        hostBlockId: 'host',
+170:        newBlock: block('new', 0, 0, 0),
+180:        sourceBlockId: null,
+181:        hostBlockId: 'host',
+182:        newBlock: block('new', 0, 0, 0),
+192:      sourceBlockId: 'source',
+193:      hostBlockId: 'host',
+207:      sourceBlockId: null,
+208:      hostBlockId: 'host',
+209:      newBlock: block('new', 0, 0, 0),
+223:          sourceBlockId: null,
+224:          hostBlockId: 'host',
+225:          newBlock: block('new', 0, 0, 0),
+243:      sourceBlockId: null,
+244:      hostBlockId: 'host',
+245:      newBlock: block('new', 0, 0, 0),
+264:      sourceBlockId: null,
+265:      hostBlockId: 'host',
+266:      newBlock: block('new', 0, 0, 0),
+281:          sourceBlockId: null,
