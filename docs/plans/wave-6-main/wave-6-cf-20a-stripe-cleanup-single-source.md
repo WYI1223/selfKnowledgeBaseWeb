@@ -261,7 +261,7 @@ emit screenshots at D9.5-compliant paths.
 
 ## e2e_smoke
 
-- flow_a: `/notes/sample-blocks/edit` mount loads via the
+- flow: `/notes/sample-blocks/edit` mount loads via the
     ApiAdapter chain (cf-18 NodeView wiring + cf-19 v0.2 wrapper
     chrome). Each of 8 component-block kinds mounts inside a discrete
     v2 `.gblock` card with a per-kind 2px top stripe in its
@@ -276,7 +276,7 @@ emit screenshots at D9.5-compliant paths.
     themselves unchanged because the chrome rule still paints the
     same stripe — just from a shared module now)
 
-- flow_b: `/notes/sample-blocks` (read route) renders 14 component
+- flow: `/notes/sample-blocks` (read route) renders 14 component
     blocks each wrapped in `.skb-block-static[data-skb-block-kind="<kind>"]`
     via `apps/site/src/lib/mdx-adapter.ts` (5 light blocks) and the
     3 heavy-block Astro wrappers `apps/site/src/components/{Jupyter,NnViz,AgentFlow}.astro`.
@@ -536,8 +536,12 @@ pnpm check
 git diff --name-only main..HEAD -- ':!docs/audits/codex-runs/' \
   ':!docs/audits/screenshots/' \
   ':!apps/site/playwright/visual-smoke-baseline/' \
-  ':!content/' | sort | wc -l
-# Expected: 33 cf-20a files. Breakdown:
+  ':!content/' \
+  ':!docs/plans/wave-6-main/wave-6-cf-20a-stripe-cleanup-single-source.md' \
+  | sort | wc -l
+# Expected: 33 cf-20a-relevant files (PR.md self-file excluded from count;
+#   if the self-file exclusion is dropped from the command, expected becomes 34).
+# Breakdown of the 33:
 #   - 2 NEW (block-chrome.css + sample-blocks-read.spec.ts + cf-20a PR.md = 3)
 #   - 11 source modifications (BlockNodeView.css + 8 block CSS + components.ts + lib/mdx-adapter.ts + 3 Astro wrappers + global.css + package.json + theme-tokens.ts = a lot — recount below)
 #   - 11 CONTRACT.md (editor-shell + 8 block + apps/site)
