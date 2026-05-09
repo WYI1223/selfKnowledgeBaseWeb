@@ -1,0 +1,80 @@
+/*
+ * @skb/editor-shell — BlockNodeView wrapper styles.
+ *
+ * Wave 6 cf-19 (2026-05-09) — gives the otherwise-invisible
+ * `<NodeViewWrapper class="skb-block-nodeview">` (BlockNodeView.tsx)
+ * a per-instance visual identity so 4 sequential same-kind blocks
+ * read as 4 distinct units rather than one super-block.
+ *
+ * The inner block component (CalloutBody / CodeBody / Image figure /
+ * Math span / Pdf iframe / Jupyter / NnViz / AgentFlow div) keeps full
+ * authority over background, padding, border-radius, and the per-kind
+ * 2px top stripe (ADR-0018 D3). This wrapper only contributes:
+ *
+ *   1. `margin-block` — visible breathing room between adjacent NodeViews
+ *      so 4 sequential callouts in the sample-blocks fixture clearly
+ *      separate. Tiptap's EditorContent does not collapse this margin
+ *      because it lives on the NodeView wrapper, not on a prose element.
+ *   2. transparent 2px outline by default; on `.ProseMirror-selectednode`
+ *      the outline becomes `var(--accent)` (orange-red, ADR-0018 D1
+ *      selection authority). Provides the "this is the active block"
+ *      affordance which previously did not exist for heavy blocks (no
+ *      :focus-visible ring of their own).
+ *   3. `:focus-within` mirrors the selected ring at 50% strength so
+ *      keyboard focus into block-internal controls (Run button on
+ *      jupyter, ranges on nn-viz) reads as block-active too.
+ *
+ * Imported as side-effect from BlockNodeView.tsx so any consumer of
+ * @skb/editor-shell that mounts a registry-backed NodeView gets the
+ * styles automatically. Consumers without bundler CSS support will
+ * see the wrapper as a plain transparent div (zero-padding, zero-margin
+ * default) — the inner component still renders its own visual identity.
+ */
+
+.skb-block-nodeview {
+  /* Per-instance breathing room — 8px above + below = clear "individual
+   * block" perception when 4 blocks of the same kind sequence (sample-
+   * blocks fixture stress case). Inner component's own margin is
+   * additive so display-math / jupyter etc. still get their existing
+   * `margin: var(--space-4) 0` on top of this. */
+  margin-block: 8px;
+
+  /* Transparent baseline outline. Switches color on selected/focus-within
+   * states below — keeps geometry stable so toggling the state does not
+   * shift block height. The 2px outline-offset matches the inner
+   * component's 2px top stripe so the focus ring sits flush around it. */
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+  border-radius: var(--radius, 6px);
+
+  transition: outline-color var(--duration-fast, 150ms) var(--ease-base, ease);
+}
+
+/* ProseMirror sets `.ProseMirror-selectednode` on the NodeView host when
+ * the block is selected (NodeSelection). That class lands on the outer
+ * NodeViewWrapper element. */
+.skb-block-nodeview.ProseMirror-selectednode {
+  outline-color: var(--accent, oklch(58% 0.16 35));
+}
+
+/* Soft state for keyboard focus into block-internal controls (e.g.
+ * jupyter Run button, nn-viz range slider). 50% alpha bridge keeps
+ * the visual softer than a full selection ring so we don't flash
+ * a strong accent every time focus moves through the block. */
+.skb-block-nodeview:focus-within:not(.ProseMirror-selectednode) {
+  outline-color: oklch(58% 0.16 35 / 0.4);
+}
+
+/* Unregistered fallback — keep the outline visible at low alpha so
+ * the placeholder "Unregistered block <kind>" message reads as a
+ * developer affordance rather than visual noise. */
+.skb-block-nodeview--unregistered {
+  outline-color: oklch(86% 0.006 80);
+}
+
+.skb-block-nodeview__fallback {
+  padding: 8px 12px;
+  color: var(--text-3, oklch(62% 0.01 80));
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 13px;
+}

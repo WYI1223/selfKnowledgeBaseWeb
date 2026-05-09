@@ -128,5 +128,72 @@ test('sample-blocks edit route loads non-empty content (mdxFlowExpression no lon
   // still see `pageerror` if the React error-boundary surfaced it).
   expect(consoleErrors.filter((m) => /loadFromMdx|mdx-bridge/.test(m))).toEqual([]);
 
+  // Wave 6 carry-forward #19 — visual identity regression lock per
+  // ADR-0018 D3 + cf-19 plan. Two assertions:
+  //
+  //  (a) Each component-block kind has a non-zero per-kind visual
+  //      signature on the editor surface. Light blocks + heavy blocks
+  //      satisfy this via 2px top stripe; inline math (data-display='false')
+  //      satisfies it via the canvas-soft tint background.
+  //
+  //  (b) The .skb-block-nodeview wrapper has non-zero margin-block so
+  //      4 sequential same-kind blocks read as 4 distinct units, plus
+  //      the wrapper's outline rule is reachable (proves the
+  //      @skb/editor-shell/BlockNodeView.css import in apps/site
+  //      global.css is wired through the bundler).
+  const visualProbe = await page.evaluate(() => {
+    const pm = document.querySelector('.ProseMirror');
+    if (!pm) return { error: 'no ProseMirror' };
+    const sel = (q: string) => pm.querySelector(q);
+    const px = (v: string) => parseFloat(v) || 0;
+    const stripe = (kind: string, innerSelector: string) => {
+      const host = sel(`[data-skb-block-host="${kind}"]`);
+      if (!host) return { kind, error: 'no host' };
+      const inner = host.querySelector(innerSelector);
+      if (!inner) return { kind, error: `no inner ${innerSelector}` };
+      const cs = window.getComputedStyle(inner);
+      return {
+        kind,
+        borderTopWidth: px(cs.borderTopWidth),
+        bg: cs.backgroundColor,
+      };
+    };
+    const wrap = sel('.skb-block-nodeview');
+    const wrapCs = wrap ? window.getComputedStyle(wrap) : null;
+    return {
+      perKind: [
+        stripe('callout', '[data-callout-variant]'),
+        stripe('componentCode', '[data-code-language]'),
+        stripe('image', '[data-image-loading]'),
+        stripe('math', "[data-block='math']"),
+        stripe('pdf', "[data-block='pdf']"),
+        stripe('jupyter', "[data-block='jupyter']"),
+        stripe('nn-viz', "[data-block='nn-viz']"),
+        stripe('agent-flow', "[data-block='agent-flow']"),
+      ],
+      wrapperMarginTop: wrapCs ? px(wrapCs.marginTop) : 0,
+      wrapperMarginBottom: wrapCs ? px(wrapCs.marginBottom) : 0,
+      wrapperOutlineStyle: wrapCs?.outlineStyle ?? 'none',
+    };
+  });
+  // (a) Per-kind signature: stripe OR tint.
+  for (const entry of visualProbe.perKind ?? []) {
+    if ('error' in entry) throw new Error(`visual probe ${entry.kind}: ${entry.error}`);
+    const hasStripe = entry.borderTopWidth >= 2;
+    const hasTint = entry.bg !== 'rgba(0, 0, 0, 0)' && entry.bg !== 'transparent';
+    expect(
+      hasStripe || hasTint,
+      `kind ${entry.kind} must have a 2px+ top stripe OR a non-transparent background tint (got border-top=${entry.borderTopWidth}px, bg=${entry.bg})`,
+    ).toBe(true);
+  }
+  // (b) Wrapper margin: non-zero on both sides so adjacent blocks breathe.
+  expect(visualProbe.wrapperMarginTop ?? 0).toBeGreaterThanOrEqual(8);
+  expect(visualProbe.wrapperMarginBottom ?? 0).toBeGreaterThanOrEqual(8);
+  // (b cont.) Outline style is 'solid' (the transparent baseline); the color
+  // toggles between transparent and accent on selected/focus, but the style
+  // staying 'solid' proves the .skb-block-nodeview rule is reachable via
+  // the @skb/editor-shell/BlockNodeView.css import in apps/site global.css.
+  expect(visualProbe.wrapperOutlineStyle).toBe('solid');
+
   await page.screenshot({ fullPage: true, path: SCREENSHOT_PATH });
 });

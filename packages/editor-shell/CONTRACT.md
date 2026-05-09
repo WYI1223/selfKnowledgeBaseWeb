@@ -522,6 +522,36 @@ unregistered NodeView fallback wrapper additionally carries the
 `makeBlockNodeView` factory is exported from the package barrel for
 downstream NodeView smoke tests.
 
+### BlockNodeView wrapper styles (Wave 6 cf-19; 2026-05-09)
+
+`@skb/editor-shell/BlockNodeView.css` is a side-effect stylesheet that
+gives the otherwise-invisible `<NodeViewWrapper class="skb-block-nodeview">`
+a per-instance visual identity. Consumers (apps/site `global.css` is the
+canonical example) MUST import it once at app boot:
+
+```css
+@import '@skb/editor-shell/BlockNodeView.css';
+```
+
+Public selectors:
+- `.skb-block-nodeview` — base wrapper. Applies `margin-block: 8px` and
+  a transparent 2px outline so geometry stays stable while the state
+  toggles. Inner block component keeps full authority over background,
+  padding, border-radius, and the per-kind 2px top stripe (ADR-0018 D3).
+- `.skb-block-nodeview.ProseMirror-selectednode` — outline switches to
+  `var(--accent)` (ADR-0018 D1 selection authority). ProseMirror sets
+  this class on `NodeSelection`.
+- `.skb-block-nodeview:focus-within:not(.ProseMirror-selectednode)` —
+  outline at 40% accent alpha so keyboard focus into block-internal
+  controls (jupyter Run, nn-viz range) reads as block-active.
+- `.skb-block-nodeview--unregistered` + `.skb-block-nodeview__fallback`
+  — soft outline + monospaced placeholder body for the unregistered
+  fallback path (no registry threaded into `wireRegistry`).
+
+The inner stylesheet authority remains each block package's
+`ui-default/<kind>.css`; this file only contributes the cross-cutting
+NodeView wrapper layer.
+
 `EditorShellProps.extensions` is now the sanctioned composition hook
 for consumer-owned Tiptap extensions layered after the built-in
 `StarterKit` (no `code: false` configuration post-#15b — the
