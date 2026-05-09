@@ -637,6 +637,66 @@ via `@media (max-width: 768px) { .gblock-handle, .skb-col-ruler, .skb-row-ladder
 .skb-size-tooltip { display: none } }` in `resize-handles.css`. Mirrors the
 cf-20c-2 drag-handle-button.css mobile pattern.
 
+#### Kebab menu wire (Wave 6 cf-20e 2026-05-09)
+
+Wave 6 cf-20e adds per-block actions (Delete / Duplicate / Change kind…) via
+a kebab button + floating menu inside the cf-19 gutter shell. Public surface
+added under `packages/editor-shell/src/kebab/`:
+
+- `kebab-button.tsx` exports `KebabButton({blockId, label?})`. Per-block
+  presentational component renders `<button class="skb-block-nodeview__kebab"
+  aria-label="Block actions" aria-haspopup="menu" aria-expanded={open}>⋮
+  </button>` inside a `.skb-block-nodeview__kebab-wrapper` (`position:
+  relative` host for the floating menu). Local `useState` for open + document-
+  level mousedown listener for click-outside (cf-20e D8) + keydown listener
+  for Esc-to-close. Pointer-events: auto override on the cf-19 gutter
+  pointer-events: none baseline.
+- `kebab-menu.tsx` exports `KebabMenu({blockId, kinds, onDelete, onDuplicate,
+  onChangeKind, onClose})`. Floating menu container rendered when the button
+  is open. 3 menu items: Delete (danger color) / Duplicate / Change kind…
+  (toggles inline sub-menu). Sub-menu lists the 8 BlockKindOption labels;
+  each item fires `onChangeKind(blockId, kind)` then `onClose()`.
+- `kebab-context.tsx` exports `KebabContext`, `KebabProvider`,
+  `KebabContextValue`. Mirrors cf-20c-2 `DragDropContext` / cf-20d
+  `ResizeContext` shape (per cf-20e D5 — consumer is single owner of editor
+  mutations across all 3 contexts; per-block components stay
+  presentational). The `kinds` field exposes `BLOCK_KIND_OPTIONS` so the
+  change-kind sub-menu doesn't import registry-wire directly.
+- `change-kind-attrs.ts` exports `buildChangeKindAttrs(sourceAttrs,
+  targetKind, targetDefaults)` — pure helper per cf-20e D3 drop-and-default
+  decision. Preserves universal grid attrs (`col`, `row?`, `colSpan`,
+  `rowSpan`) from source; supplies all kind-specific fields from target
+  defaults; drops all other source fields silently. Identity case (source
+  kind === target kind) is an intended "reset to defaults" affordance.
+  The `targetKind` param is `_targetKind`-prefixed (informational + future-
+  proofing for a per-kind translation table; cf-20e+ may amend D3).
+
+`KebabButton` is mounted inside `BlockNodeView` next to the cf-20c-2
+`DragHandleButton` so each Tiptap NodeView emits a kebab in the gutter row.
+`<KebabProvider value={...}>` MUST wrap the editor surface (typically nested
+inside cf-20c-2's `<DragDropProvider>` + cf-20d's `<ResizeProvider>`); the
+consumer (apps/site `EditorShellMount.tsx`) closures over the live Tiptap
+editor + dispatches the 3 imperative actions.
+
+Per cf-20e D6 + cf-20c-2 R3 dropEpoch reuse: the Duplicate action fires
+the success-pulse via the SAME `setLastDroppedFromExternal` infrastructure
+that drag-commit + resize-commit use (canonical "rapid-action animation
+isolation" pattern; cf-20e is the third action that exercises this field).
+Delete + change-kind do NOT fire pulses (delete removes; change-kind keeps
+the block in place — no positional change).
+
+Per cf-20e D7: duplicate uses the ProseMirror `tr.insert(insertPos,
+node.copy())` primitive directly (NOT Tiptap's high-level `insertContentAt(
+pos, node.toJSON())` which silently no-ops on schema-mismatch — cf-20e R0
+empirically saw this with the sample-blocks fixture; the direct
+`tr.insert(pos, copy)` path works reliably).
+
+Mobile (≤768px) view-only path per ADR-0017 D9: kebab + menu hidden via
+`@media (max-width: 768px) { .skb-block-nodeview__kebab-wrapper,
+.skb-block-nodeview__kebab, .skb-kebab-menu { display: none } }` in
+`kebab-menu.css`. Mirrors the cf-20c-2 drag-handle + cf-20d resize-handles
+mobile patterns.
+
 ### Responsive viewport (C.2-9)
 
 C.2-9 adds `responsive-cols.ts` as the editor-shell owner for ADR-0016 D5's

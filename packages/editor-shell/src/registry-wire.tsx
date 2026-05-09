@@ -86,6 +86,19 @@ function defaultAttrs(kind: BlockAffordanceKind): Record<string, unknown> {
   return { ...defaultBlockAttrs[kind] };
 }
 
+/**
+ * Wave 6 cf-20e (2026-05-09) — public re-export of `defaultAttrs` so
+ * cf-20e change-kind action consumers (EditorShellMount.tsx) can
+ * source the new kind's defaults for `buildChangeKindAttrs`. Returns
+ * a fresh shallow copy each call (caller may freely mutate the
+ * result without affecting the canonical defaults).
+ */
+export function defaultBlockAttrsFor(
+  kind: BlockAffordanceKind,
+): Record<string, unknown> {
+  return defaultAttrs(kind);
+}
+
 function createBlockExtension(option: BlockKindOption, registry?: BlockRegistry) {
   // Wave 6 carry-forward #18 2026-05-08 — when a registry is injected, the
   // node mounts the block's real `EditorView` via `ReactNodeViewRenderer`.
