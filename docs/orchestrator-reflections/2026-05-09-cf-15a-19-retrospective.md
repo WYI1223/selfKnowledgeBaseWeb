@@ -93,3 +93,21 @@ A second lesson: **cf-19's 4-R-round drift loop was a symptom, not a cause**. Ea
 Created `wave-6-cf-19.1-lint-fix-forward` branch to fix the "pre-existing main lint error in `grid-drag-drop.fixtures.ts:26` (`EdgeMode` redundant-type-constituents)" that ux-ui-lead's cf-20 scoping report flagged as a blocker. Ran `pnpm lint` workspace-wide on a clean main checkout: **0 errors, 9 warnings** (all pre-existing console / file-too-long, not blocking). The error ux-ui-lead reported either does not exist on current main, was fixed before this session, or was a stale artifact from an older lint config.
 
 Branch dropped without commit. Reflection lesson: **don't trust subagent-reported "pre-existing" issues without re-verifying on a fresh checkout** — subagents may carry stale state from earlier sessions / their own working tree contamination. Operational rule landed: orchestrator MUST re-verify pre-existing-error claims before scheduling a fix-forward PR. Adding to my agent dispatch protocol.
+
+## Update 2 — cf-20a R1 codex timeout (2026-05-09)
+
+**What happened**: First codex-pr-reviewer-55 R1 dispatch on cf-20a hit the 10-min `timeout 600` mid-`pnpm check` (after Playwright's 64-test full visual suite already PASSED with 50/14/0). No verdict was issued; output truncated at 9522 lines. Codex re-emitted 4 screenshot PNGs as verification artifacts that I restored (non-determinism noise, not cf-20a-relevant).
+
+**What surprised me**: Codex's R1 audit on a 33-file PR runs the full pnpm check + full Playwright suite even when both were green pre-dispatch. The reviewer is following ADR-0006 #9 ("If PR.md `ui_touch: true`, MUST run `pnpm --filter @skb/site test:visual` and verify PASS"), but that combined with size-check + typecheck + tests + build hits the 10-min ceiling.
+
+**What I'd do differently**: For PRs with ≥30 files OR a NEW shared-CSS module, dispatch codex with an explicit "skip pnpm check, evidence already submitted" instruction OR raise `timeout` to 900 seconds. I re-dispatched cf-20a R1 at 540s timeout (cushion against 600s gates) with explicit "skip gates, audit only" framing. Watching whether this works.
+
+**Operational rule landed**: Rule 5 — When dispatching codex-pr-reviewer-55 R1 on a PR with ≥30 files OR a NEW shared module, use `timeout 540` and explicitly tell codex which gates have already been verified by the orchestrator's own pre-dispatch run. Codex is allowed to re-run if it has a specific reason, but should not re-run preemptively.
+
+## Update 3 — cf-20a R2 also timed out reading aux docs (2026-05-09)
+
+**What happened**: cf-20a R2 (PR.md-only fixes) hit timeout after spending most of its 540s budget reading auxiliary docs (ADR-0006 / orchestrator-reflections / past codex-runs archive). The R2 prompt did NOT explicitly forbid aux reading; codex took its standard "load full audit context" path. Verdict never issued. R3 dispatched with explicit "no aux reading, verdict only" hard constraint + 300s timeout.
+
+**Lesson**: Codex-pr-reviewer-55's default behavior is exhaustive doc loading. For tight follow-up reviews of doc-only fixes, the orchestrator must explicitly say "skip aux reading" — even though the fixes are 2 lines, codex spends most of the budget on context loading.
+
+**Operational rule landed**: Rule 6 — For follow-up codex reviews on doc-only fixes (e.g. PR.md text drift), dispatch with explicit constraint list: (a) DO NOT re-read ADR-0006/0011/aux ADRs, (b) DO NOT re-run pnpm check/Playwright, (c) issue verdict in &lt;5 minutes. Use timeout 300. This applies to any FAIL→fix→re-review cycle where the change set is doc-only.
