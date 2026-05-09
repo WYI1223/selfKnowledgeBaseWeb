@@ -298,18 +298,33 @@ export function EditorShellMount({
         codex-pr-reviewer-55 R2 F2 caught as a real D11 violation. R2
         fix: pipeline re-measures the source NodeView at its NEW grid
         position via `editor.view.nodeDOM(livePos).getBoundingClientRect()`
-        AFTER Tiptap setNodeMarkup commits + 1 rAF for layout settle,
-        and exposes the result as `state.lastDroppedRect`. The
-        consumer renders `<DropPulseAtRect>` only when both
-        `lastDroppedBlockId !== null` AND `lastDroppedRect !== null`
-        — the rect dependency means the mount appears one frame after
-        the BlockId is set (the rAF gap during which the new rect is
-        being measured). Pulse animates 720ms then onAnimationEnd
-        fires clearLastDropped() resetting both BlockId + rect.
+        AFTER Tiptap setNodeMarkup commits + 2 rAFs (React commit
+        cycle + browser layout pass), and exposes the result as
+        `state.lastDroppedRect`. The consumer renders <DropPulseAtRect>
+        only when both `lastDroppedBlockId !== null` AND
+        `lastDroppedRect !== null` — the rect dependency means the
+        mount appears 2 frames after the dragend (the rAF window during
+        which the new rect is being measured). Pulse animates 720ms
+        then onAnimationEnd fires clearLastDropped() resetting both
+        BlockId + rect.
+
+        Wave 6 cf-20c-2 R3 F2 fix (2026-05-09) — `key={dropEpoch}`
+        forces React to unmount + remount the <DropPulseAtRect> (and
+        therefore the underlying <DropPulse>) across rapid drops.
+        Pre-R3 React's reconciliation reused the prior <DropPulse>
+        instance when a new drop happened within the 720ms animation
+        window; the keyframe didn't restart, producing a half-faded
+        pulse on the new landed position. With key={dropEpoch}, each
+        successful drop produces a fresh element and a fresh keyframe.
+        See use-drag-drop-pipeline.ts PipelineDragState.dropEpoch
+        JSDoc for the canonical "rapid-action animation isolation"
+        pattern (cf-20d resize will adopt this for its own
+        success-pulse mount).
       */}
       {pipeline.state.lastDroppedBlockId !== null &&
         pipeline.state.lastDroppedRect !== null && (
           <DropPulseAtRect
+            key={pipeline.state.dropEpoch}
             rect={pipeline.state.lastDroppedRect}
             onAnimationEnd={pipeline.clearLastDropped}
           />

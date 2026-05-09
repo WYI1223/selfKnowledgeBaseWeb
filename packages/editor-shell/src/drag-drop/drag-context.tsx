@@ -38,11 +38,16 @@ export interface DragDropContextValue {
   /** Called from the per-block drag-handle button's dragend handler. */
   readonly onDragEnd: (origin: DragHandleEndOrigin) => void;
   /**
-   * Wave 6 cf-20c-2 R1 F1 — currently-lifted source block ID.
+   * Wave 6 cf-20c-2 R2 F1 — currently-lifted source block ID.
    *
-   * Per ADR-0017 D6 source-lift: during an active drag, the source
-   * NodeView visually "lifts" (opacity 0.28, grayscale 0.4 per
-   * `/mnt/d/download/web/v2-styles.css:218-226 .gblock.dragging-self`).
+   * Per ADR-0017 D6 line 247 verbatim source-lift: during an active
+   * drag, the source NodeView visually "lifts" via
+   * `visibility: hidden + pointer-events: none` (preserves grid layout
+   * space, hides the visual). cf-20c-2 R1 originally implemented the
+   * v2-demo opacity/grayscale model; codex-pr-reviewer-55 R2 F1 caught
+   * that as a real D6 violation per D6 line 255 explicit rejection of
+   * the gray-half-transparent placeholder behavior. R2 fix in
+   * `BlockNodeView.css .skb-block-nodeview--dragging-self`.
    * `BlockNodeView.tsx` reads this field via `useContext(DragDropContext)`
    * and applies the `.skb-block-nodeview--dragging-self` modifier class
    * when its own block id matches. Null = no active drag (steady state).

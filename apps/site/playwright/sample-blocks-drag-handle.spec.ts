@@ -1,22 +1,30 @@
-import { execSync } from 'node:child_process';
-import { existsSync, unlinkSync } from 'node:fs';
+import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { expect, test } from '@playwright/test';
 
 /**
- * Wave 6 cf-20c-2 R2 fixture-isolation hook (2026-05-09).
+ * Wave 6 cf-20c-2 R3 F1 fix (2026-05-09) — byte-snapshot fixture
+ * isolation (replaces R2's destructive `git checkout` model).
  *
  * Pre-R2 the F4 terminal-drop test mutated `content/notes/sample-blocks/index.mdx`
  * via the cf-20c-2 wire's setNodeMarkup → tiptapToMdx → ApiAdapter.save
- * → file write chain. Subsequent test runs saw the post-mutation
- * baseline and the strict `7 / span 6` assertion failed because the
- * algebra computed against the mutated `4 / span 3` source baseline.
+ * → file write chain. R2 added `test.afterAll(restoreSampleBlocksFixture)`
+ * which shelled out to `git checkout -- <path>`. codex-pr-reviewer-55
+ * R3 F1 caught this as a real safety bug: running the spec
+ * **silently discards uncommitted edits** to the fixture file —
+ * anyone mid-edit on `sample-blocks/index.mdx` loses their work.
  *
- * Reset before terminal-drop tests:
- *   - `git checkout` the MDX file to restore baseline
- *   - delete the `state.json` sidecar so ApiAdapter.load() returns null
- *     (forces seed from the freshly-restored MDX file's body)
+ * R3 fix (per reviewer's recommendation): snapshot the EXACT bytes
+ * the file had at `beforeAll` time, restore those bytes at
+ * `afterAll`. Works whether or not the user has uncommitted edits;
+ * doesn't touch git.
+ *
+ * Operational rule landed (cf-20c-2 R3 reflection): tests that touch
+ * repository files MUST snapshot bytes pre-mutation; never use
+ * destructive git operations (`git checkout`, `git restore`,
+ * `git reset --hard`) in test code. Adding to the standard
+ * pre-dispatch checklist for any spec that triggers fs writes.
  */
 const SAMPLE_BLOCKS_MDX = resolve(
   process.cwd(),
@@ -27,34 +35,38 @@ const SAMPLE_BLOCKS_STATE = resolve(
   '../../content/notes/sample-blocks/state.json',
 );
 
+let originalMdxBytes: string | null = null;
+let originalStateBytes: string | null = null;
+
+test.beforeAll(() => {
+  // Snapshot the fixture's EXACT bytes (whatever the user has on
+  // disk — committed or not). Restore-after-test uses these snapshots
+  // so the test's mutation is invisible to anyone watching the file.
+  originalMdxBytes = readFileSync(SAMPLE_BLOCKS_MDX, 'utf8');
+  originalStateBytes = existsSync(SAMPLE_BLOCKS_STATE)
+    ? readFileSync(SAMPLE_BLOCKS_STATE, 'utf8')
+    : null;
+});
+
+/**
+ * Restore the snapshotted fixture bytes. Called both per-test (the F4
+ * terminal-drop test triggers the mutation; the test calls this BEFORE
+ * starting so prior runs in the same Playwright session don't leave
+ * a mutated baseline that breaks the strict `1 / span 12` initial
+ * assertion) AND in afterAll (cross-spec isolation: other spec files
+ * see clean fixture).
+ */
 function restoreSampleBlocksFixture(): void {
-  // Reset the MDX file to the git-tracked baseline. Use `git checkout --`
-  // which is idempotent + safe even when the file is unmodified.
-  try {
-    execSync(`git checkout -- ${JSON.stringify(SAMPLE_BLOCKS_MDX)}`, {
-      cwd: resolve(process.cwd(), '../..'),
-      stdio: 'pipe',
-    });
-  } catch {
-    // git not available OR file not tracked; ignore (test will fail
-    // downstream if the MDX is genuinely missing).
+  if (originalMdxBytes !== null) {
+    writeFileSync(SAMPLE_BLOCKS_MDX, originalMdxBytes, 'utf8');
   }
-  // Delete the state.json sidecar so the API adapter doesn't replay
-  // a prior-run mutated state.
-  if (existsSync(SAMPLE_BLOCKS_STATE)) {
+  if (originalStateBytes !== null) {
+    writeFileSync(SAMPLE_BLOCKS_STATE, originalStateBytes, 'utf8');
+  } else if (existsSync(SAMPLE_BLOCKS_STATE)) {
     unlinkSync(SAMPLE_BLOCKS_STATE);
   }
 }
 
-/**
- * Wave 6 cf-20c-2 R2 cross-spec isolation. The F4 test mutates the
- * sample-blocks MDX file via ApiAdapter.save → file write at the
- * server endpoint (`/api/notes/sample-blocks`). Without afterAll
- * cleanup, OTHER spec files (`sample-blocks-grid-layout.spec.ts`
- * etc.) inherit the mutated baseline and fail their `colSpan=12`
- * assertions. afterAll restores the file system to the git baseline
- * so cross-spec test order is irrelevant.
- */
 test.afterAll(() => {
   restoreSampleBlocksFixture();
 });
@@ -158,19 +170,24 @@ test('sample-blocks edit route — cf-20c-2 drag-handle wire (button + outline +
 test('cf-20c-2 R1 F1 — source-lift visual: dragstart applies .skb-block-nodeview--dragging-self to source NodeView only (ADR-0017 D6)', async ({
   page,
 }) => {
-  // Wave 6 cf-20c-2 R1 F1 lock — codex-pr-reviewer-55 R1 F1 caught
+  // Wave 6 cf-20c-2 R2 F1 lock — codex-pr-reviewer-55 R1 F1 caught
   // that ADR-0017 D6 source-lift was missing. The pipeline now
   // exposes `sourceBlockId` via DragDropContext; BlockNodeView reads
   // it and applies `.skb-block-nodeview--dragging-self` modifier
-  // class when its own block id matches. CSS sets opacity 0.28 +
-  // grayscale 0.4 + dashed outline + pointer-events: none.
+  // class when its own block id matches. CSS sets `visibility:
+  // hidden + pointer-events: none` per ADR-0017 D6 line 247 verbatim
+  // (R2 F1 fix; replaces R1's v2-demo opacity/grayscale model that
+  // D6 line 255 explicitly rejects).
   //
   // Three structural assertions:
   //  (a) Pre-drag: NO `.skb-block-nodeview--dragging-self` anywhere
   //      (steady-state baseline).
   //  (b) Post-dragstart: EXACTLY 1 `.skb-block-nodeview--dragging-self`
   //      AND it's the wrapper whose drag-handle was clicked (proves
-  //      sourceBlockId routing through context is correct).
+  //      sourceBlockId routing through context is correct), AND
+  //      computed `visibility === 'hidden'` + `pointer-events === 'none'`
+  //      (proves the CSS rule from ADR-0017 D6 line 247 is the one
+  //      applied — catches future regressions to opacity-based fades).
   //  (c) Post-cancel: 0 `.skb-block-nodeview--dragging-self` again
   //      (proves sourceBlockId resets to null on terminal action).
   //

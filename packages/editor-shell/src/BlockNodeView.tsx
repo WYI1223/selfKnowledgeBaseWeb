@@ -93,11 +93,16 @@ function blockIdFromProps(props: ReactNodeViewProps): string {
 }
 
 /**
- * Wave 6 cf-20c-2 R1 F1 — compose className from base + draggingSelf
- * + unregistered modifiers. Per ADR-0017 D6 source-lift, the source
- * NodeView gets `.skb-block-nodeview--dragging-self` during active
- * drag (CSS rule in BlockNodeView.css applies opacity 0.28 +
- * grayscale 0.4 per `/mnt/d/download/web/v2-styles.css:218-226`).
+ * Wave 6 cf-20c-2 R2 F1 — compose className from base + draggingSelf
+ * + unregistered modifiers. Per ADR-0017 D6 line 247 source-lift, the
+ * source NodeView gets `.skb-block-nodeview--dragging-self` during
+ * active drag (CSS rule in BlockNodeView.css applies
+ * `visibility: hidden + pointer-events: none + transition: none`,
+ * which preserves grid layout space while hiding the visual; the
+ * earlier R1 v2-demo opacity/grayscale model was rejected by
+ * codex-pr-reviewer-55 R2 F1 per ADR-0017 D6 line 255 explicit
+ * rejection — see BlockNodeView.css source-lift rule comment for
+ * the visibility-vs-display-none rationale).
  */
 function nodeViewClassName(isDraggingSelf: boolean, isUnregistered: boolean): string {
   const parts = ['skb-block-nodeview'];

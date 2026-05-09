@@ -97,10 +97,28 @@ export interface PipelineDragState {
    * SNAPSHOT rect (source's pre-drag position) which is wrong per
    * D11. R2 pipeline re-measures the source NodeView via
    * `editor.view.nodeDOM(livePos).getBoundingClientRect()` AFTER
-   * the Tiptap setNodeMarkup batch commits + one rAF for layout
-   * settle. null when no recent drop.
+   * the Tiptap setNodeMarkup batch commits + 2 rAFs for React
+   * commit + browser layout settle. null when no recent drop.
    */
   readonly lastDroppedRect: DOMRectReadOnly | null;
+  /**
+   * Wave 6 cf-20c-2 R3 F2 fix (2026-05-09) — monotonic counter
+   * incremented each time `lastDroppedBlockId` is set on
+   * drag-end-success. Consumers use this as a React `key` prop on the
+   * <DropPulseAtRect> mount so the animation remounts cleanly across
+   * rapid drops (drag → drop → drag → drop within 720ms faster than
+   * the prior pulse animation completes). Without the key, React's
+   * reconciliation reuses the prior <DropPulse> instance and the
+   * 720ms keyframe doesn't restart, producing a half-faded pulse on
+   * the new landed position. With `key={dropEpoch}`, React unmounts
+   * the prior pulse + mounts a fresh one at the new rect.
+   *
+   * Operational rule landed (cf-20c-2 R3 reflection): the dropEpoch
+   * pattern is the canonical "rapid-action animation isolation"
+   * pattern. cf-20d resize will adopt the same pattern for its own
+   * resize-success pulse.
+   */
+  readonly dropEpoch: number;
 }
 
 export interface UseDragDropPipelineOptions {
@@ -153,9 +171,14 @@ export function useDragDropPipeline(
   // Wave 6 cf-20c-2 R2 F2 — landed-position rect for DropPulse
   // anchoring per ADR-0017 D11 line 344. Set post-drop by re-
   // measuring the source NodeView at its NEW grid position; null
-  // until a successful drop AND the rAF after Tiptap setNodeMarkup
+  // until a successful drop AND the 2 rAFs after Tiptap setNodeMarkup
   // commits.
   const [lastDroppedRect, setLastDroppedRect] = useState<DOMRectReadOnly | null>(null);
+  // Wave 6 cf-20c-2 R3 F2 — monotonic drop epoch for React key-based
+  // animation remount across rapid drops. Increments each time
+  // lastDroppedBlockId transitions from null → blockId. See PipelineDragState
+  // JSDoc above for the full rationale.
+  const [dropEpoch, setDropEpoch] = useState(0);
 
   // Snapshot refs (preserved across renders; not state because
   // changing them shouldn't trigger re-render).
@@ -176,10 +199,15 @@ export function useDragDropPipeline(
       // onto themselves at the lifted position — meaningless mode).
       // Pre-R1 edges included the source; tiebreak still produced a
       // hit when the cursor returned to the source position. The
-      // source-lift visual on the source NodeView (opacity 0.28 +
-      // grayscale via .skb-block-nodeview--dragging-self CSS class) is
-      // applied separately via DragDropContext.sourceBlockId →
-      // BlockNodeView CSS class binding.
+      // source-lift visual on the source NodeView
+      // (`visibility: hidden + pointer-events: none` per ADR-0017 D6
+      // line 247 verbatim, applied via the
+      // `.skb-block-nodeview--dragging-self` CSS class — see
+      // `BlockNodeView.css` for the rule + cf-20c-2 R2 F1 fix
+      // rationale that replaced R1's v2-demo opacity/grayscale model
+      // which D6 line 255 explicitly rejects) is applied separately
+      // via DragDropContext.sourceBlockId → BlockNodeView CSS class
+      // binding.
       const layouts: BlockLayout[] = blocks
         .filter((b) => b.id !== blockId)
         .map((b) => {
@@ -335,7 +363,27 @@ export function useDragDropPipeline(
         })),
       };
       dispatchLayout({ type: 'drag-end-success', mutation: reducerSnapshot });
-      setLastDroppedBlockId(sourceBlockId);
+      // Wave 6 cf-20c-2 R3 F2 fix (2026-05-09) — atomic clear of
+      // prior drop state BEFORE the new measurement starts. Pre-R3
+      // the pipeline set the new lastDroppedBlockId immediately while
+      // the prior lastDroppedRect was still live (the new measurement
+      // happens 2 rAFs later). For rapid drops within 720ms (faster
+      // than DropPulse animation completes), there was a brief frame
+      // where the new pulse rendered at the OLD rect — visual
+      // misalignment.
+      //
+      // R3 fix sequence:
+      //   1. Clear both fields atomically (setLastDroppedBlockId(null)
+      //      + setLastDroppedRect(null)) so any pulse rendered between
+      //      now and the 2-rAF measure doesn't have stale state to
+      //      anchor at. Plus increment dropEpoch so the consumer's
+      //      <DropPulseAtRect key={dropEpoch}> remounts cleanly.
+      //   2. Wait 2 rAFs (React commit + browser layout per R2 F2).
+      //   3. Set both fields atomically with the new blockId AND the
+      //      freshly-measured rect — single state update batches the
+      //      re-render so consumer never sees blockId-without-rect.
+      setLastDroppedBlockId(null);
+      setLastDroppedRect(null);
       // Wave 6 cf-20c-2 R2 F2 fix — re-measure the source NodeView at
       // its NEW grid position and store the rect so the consumer's
       // <DropPulseAtRect> mounts at the LANDED position per ADR-0017
@@ -350,9 +398,9 @@ export function useDragDropPipeline(
       // TWO rAFs:
       //   - rAF 1: React commit cycle (NodeView re-renders with new attrs)
       //   - rAF 2: browser layout pass post-DOM-mutation
-      // One rAF is insufficient (verified empirically: cf-20c-2 R2
-      // probe with single rAF measured the pre-drop full-width rect,
-      // not the post-drop half-width landed rect). Two rAFs is the
+      // Single rAF is insufficient (verified empirically at cf-20c-2 R2:
+      // probe with one rAF measured the pre-drop full-width rect, not
+      // the post-drop half-width landed rect). Two rAFs is the
       // standard "wait for next paint" idiom in browser DnD code.
       if (didMutate) {
         requestAnimationFrame(() => {
@@ -365,7 +413,12 @@ export function useDragDropPipeline(
             if (!newSourceLive) return;
             const dom = editor.view.nodeDOM(newSourceLive.pos);
             if (dom instanceof HTMLElement) {
+              // R3 F2: set blockId + rect together; React batches
+              // these into a single render pass within the same
+              // synchronous block (React 18+ automatic batching).
+              setLastDroppedBlockId(sourceBlockId);
               setLastDroppedRect(dom.getBoundingClientRect());
+              setDropEpoch((prev) => prev + 1);
             }
           });
         });
@@ -412,6 +465,7 @@ export function useDragDropPipeline(
       sourceBlockId,
       lastDroppedBlockId,
       lastDroppedRect,
+      dropEpoch,
     },
     layoutState,
     onDragStart,

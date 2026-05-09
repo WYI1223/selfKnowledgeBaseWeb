@@ -401,13 +401,15 @@ C.2-5 and C.2-8 add the editor-side drag/drop UX primitives under
   drag-handle button to the lifecycle owner (`useDragDropPipeline()` mounted
   at `EditorShellMount.tsx`). Provider value: `{ onDragStart(blockId, origin),
   onDragEnd(origin), sourceBlockId }`. The `sourceBlockId` field
-  (Wave 6 cf-20c-2 R1 F1 fix 2026-05-09) exposes the currently-lifted
+  (Wave 6 cf-20c-2 R2 F1 fix 2026-05-09) exposes the currently-lifted
   drag source so `BlockNodeView.tsx` can apply the
   `.skb-block-nodeview--dragging-self` modifier class for the ADR-0017
-  D6 source-lift visual (opacity 0.28 + grayscale 0.4 per
-  `/mnt/d/download/web/v2-styles.css:218-226`); null = no active drag
-  (steady state). Default context value null = degraded mode (button
-  renders, drag callbacks no-op, no lift).
+  D6 line 247 source-lift visual (`visibility: hidden +
+  pointer-events: none + transition: none` — preserves grid layout
+  space while hiding the visual; replaces R1's v2-demo opacity +
+  grayscale model that ADR-0017 D6 line 255 explicitly rejects); null
+  = no active drag (steady state). Default context value null =
+  degraded mode (button renders, drag callbacks no-op, no lift).
 - `useDragDropPipeline({editor, gridSelector?})` (Wave 6 cf-20c-2) — drag/drop
   lifecycle owner hook. Composes the existing primitives (snapshot,
   edge-rects, tiebreak, `applyDropMode`, layoutReducer, OutlineOverlay,
@@ -450,6 +452,30 @@ C.2-5 and C.2-8 add the editor-side drag/drop UX primitives under
   位置 + outline fade-out 完成"). Pre-R2 the consumer used the
   snapshotted rect (pre-drag full-width source position) which
   produced a pulse at the wrong location.
+- **Rapid-action animation isolation pattern (cf-20c-2 R3 F2 fix
+  2026-05-09)** — `useDragDropPipeline` exposes a monotonic
+  `state.dropEpoch: number` counter incremented each successful drop.
+  Consumers MUST pass `key={pipeline.state.dropEpoch}` on the
+  `<DropPulseAtRect>` (or any animation component driven by
+  `lastDroppedBlockId` / `lastDroppedRect`) so React unmounts +
+  remounts the animation cleanly across rapid drops. Pre-R3 a drag →
+  drop → drag → drop sequence within 720ms (faster than the prior
+  pulse animation) produced a stale half-faded pulse at the new
+  landed position because React's reconciliation reused the prior
+  `<DropPulse>` instance and the keyframe didn't restart. The
+  `dropEpoch` key is the canonical "rapid-action animation isolation"
+  pattern; cf-20d resize will adopt it for its own success-pulse
+  mount.
+
+  Atomic state transitions (cf-20c-2 R3 F2): the pipeline ALSO clears
+  `lastDroppedBlockId` + `lastDroppedRect` to null AT THE START of
+  the drop handler (BEFORE the 2-rAF re-measure scheduling), then
+  sets both fields atomically together with the new `dropEpoch + 1`
+  value when the rect measurement completes. Consumers should NEVER
+  see a state where `lastDroppedBlockId !== null && lastDroppedRect
+  === null` — the conditional render `lastDroppedBlockId !== null &&
+  lastDroppedRect !== null` is defense-in-depth against any future
+  pipeline bug that breaks the atomic invariant.
 
 Drag/drop edge-width is coupled to grid `--gap` via `EDGE_W = 2 * GAP`.
 `EDGE_W = 28` and `GAP = 14` ensure the 14px gap between adjacent blocks is
