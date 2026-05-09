@@ -34,6 +34,12 @@ export { ApiAdapter, LocalStorageAdapter } from './save-adapter';
 export { proseExtensions } from '@skb/block-foundation';
 export { GridContainer } from './grid-container';
 export type { GridContainerProps } from './grid-container';
+export {
+  extractGridPosition,
+  gridPlacementStyle,
+  gridPlacementStyleAttr,
+} from './grid-style';
+export type { GridPlacementInput, GridPlacementOptions } from './grid-style';
 export { useAutoRowSpan } from './use-auto-row-span';
 export { useResponsiveCols, RESPONSIVE_BREAKPOINTS } from './responsive-cols';
 export type { UseResponsiveColsOptions, ViewportCols } from './responsive-cols';

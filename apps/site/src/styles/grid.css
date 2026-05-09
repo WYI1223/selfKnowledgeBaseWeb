@@ -6,6 +6,16 @@
  * from `@skb/design-tokens` :root (per ADR-0018 D1 layout tokens);
  * this file no longer redefines those values locally to enforce
  * single-source-of-truth grid geometry.
+ *
+ * Wave 6 cf-20b (2026-05-09) — editor-surface grid lock per ADR-0016 v0.2
+ * D11.1 amendment. The `.ProseMirror` editor element (Tiptap's render
+ * target inside `<EditorContent>`) now ALSO becomes a 12-col grid so
+ * the per-block NodeView wrappers `.skb-block-nodeview` (which sit
+ * 3 levels deep under `<GridContainer>` → EditorContent's `<div>` →
+ * `.ProseMirror`) can apply `style.gridColumn` and visually land in the
+ * 12-col grid. The outer `.skb-grid` rule below stays for the read
+ * route (where blocks are direct grid children via `<Content>` MDX
+ * expansion). v2-styles.css:137-147 is the contract source for both.
  */
 .skb-grid {
   --total-cols: 12;
@@ -18,13 +28,69 @@
 }
 
 /*
- * Wave 5 C.2-3 transitional fallback: until per-block grid attrs land
- * (C.2-4 editor-shell + C.2-1 mdx-bridge backfill flip), MDX children
- * without an explicit gridColumn style span the full grid width so
- * existing notes content remains readable. Per-block `style.gridColumn`
- * emission in C.2-4 overrides this fallback selector via specificity.
+ * Wave 6 cf-20b — editor-surface grid pass-through. When `.skb-grid`
+ * wraps `<EditorContent>` (which renders `<div class="skb-editor-content">
+ * <div class="ProseMirror">...</div></div>`), the children of `.ProseMirror`
+ * are the actual block + prose nodes that need to participate in the
+ * grid. Strategy: let `.skb-editor-content` span the full outer grid
+ * width (so it inherits 100% width as a grid item), then make
+ * `.ProseMirror` ITSELF a 12-col grid so its children become grid items
+ * at the right level. The outer `.skb-grid` rule above still applies to
+ * the read route (where blocks are direct children via
+ * `<Content components>`).
+ *
+ * Per ADR-0016 v0.2 D11.1 amendment: prose interleave is full — `<p>`,
+ * `<h1>`, `<h2>` etc. inside `.ProseMirror` are also gridded with the
+ * full-width fallback (`grid-column: 1 / -1` via the
+ * `:not([style*="grid-column"])` rule below). NodeView wrappers with
+ * explicit `style.gridColumn` (cf-20b BlockNodeView.tsx emission)
+ * resolve to their per-block placement.
+ *
+ * Earlier cf-20b draft used `display: contents` on `.skb-editor-content`
+ * to flatten the hierarchy. Discarded because CSS selectors operate on
+ * the DOM tree (NOT the layout tree); `.skb-grid > *:not([style*="grid-column"])`
+ * doesn't match `.ProseMirror` when the intermediate `.skb-editor-content`
+ * is `display: contents`. Two-level grid (outer `.skb-grid` + inner
+ * `.ProseMirror` grid) avoids the issue entirely; `.skb-editor-content`
+ * stays a normal grid item taking full width.
  */
-.skb-grid > *:not([style*="grid-column"]) {
+.skb-grid > .skb-editor-content {
+  /* Span the full outer grid so the inner `.ProseMirror` element gets
+   * the full container width to compute its own 1fr columns from. */
+  grid-column: 1 / -1;
+}
+
+.skb-grid .ProseMirror {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  grid-auto-rows: minmax(var(--row-h), auto);
+  gap: var(--gap);
+  grid-auto-flow: row;
+  /* Tiptap defaults give `.ProseMirror` `white-space: pre-wrap` for
+   * inline editing; that interacts poorly with grid item layout (forces
+   * the child to be ws-normal). Restore `white-space: normal` at the
+   * grid root so children inherit predictable wrapping. Inline marks
+   * (em / strong / code) still flow inline within their grid-item
+   * container. */
+  white-space: normal;
+}
+
+/*
+ * Wave 5 C.2-3 transitional fallback: MDX children without an explicit
+ * gridColumn style span the full grid width so prose stays readable.
+ * Per-block `style.gridColumn` emission (cf-20a `.skb-block-static` for
+ * read route + cf-20b `.skb-block-nodeview` for edit route) overrides
+ * via specificity. Selector list now covers both grid scopes (the
+ * outer `.skb-grid` direct children AND the inner `.ProseMirror` direct
+ * children, since both elements are `display: grid`).
+ *
+ * Wave 6 cf-20b: prose interleave per ADR-0016 v0.2 D11.1. Prose nodes
+ * (`<p>`, `<h1>`, `<h2>`, `<ul>`, etc.) without grid attrs are
+ * full-width by default — author can resize via cf-20d once the resize
+ * handles ship.
+ */
+.skb-grid > *:not([style*="grid-column"]),
+.skb-grid .ProseMirror > *:not([style*="grid-column"]) {
   grid-column: 1 / -1;
 }
 

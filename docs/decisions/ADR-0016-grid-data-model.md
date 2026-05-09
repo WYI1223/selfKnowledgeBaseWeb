@@ -2,7 +2,7 @@
 
 | 字段 | 值 |
 | ---- | --- |
-| 状态 | proposed (v0.1.1 post 12-Q plan-challenger absorbtion 2026-05-04: 11 ABSORBED + 1 PARTIALLY ABSORBED) |
+| 状态 | proposed (v0.1.1 post 12-Q plan-challenger absorbtion 2026-05-04; v0.2 cf-20b D11.1 amendment 2026-05-09 — editor-surface grid lock) |
 | 日期 | 2026-05-04 |
 | 作者 | orchestrator (Claude Opus 4.7 1M ctx) |
 | 触发 | [Wave 5 plan v0.2 D1+D5](../superpowers/plans/2026-05-04-phase-1-wave-5-integration.md) (Pre-A2 ADR-0016 grid 数据模型 design lock) + reframe v2 memory `project_wave4_reframe_v2.md` + granularity doc v0.3.4 § "v2 整体用户体验" + § "ADR-0012 Grid 数据模型与流动" body (旧编号 0012 → Wave 5 实际 ADR-0016 per plan v0.2 ADR 编号映射表 / D5) |
@@ -397,6 +397,124 @@ Per granularity v0.3.4 § "Tiptap 仅管 prose 块内 inline 富文本, grid + d
 - block grid attrs = Tiptap NodeView attrs 作 **被动数据** (NodeView 读取展示, NOT 主动 mutate; mutation 由 grid container 调用 NodeView attr-set API)
 
 **实施约束**: editor-shell grid container 必须在 Tiptap editor 实例外层 wrap; Tiptap doc 不直接控制 block 位置. Block 移动 / resize / drag 全部经 grid container API → editor-shell mutation pipeline → Tiptap state attr update → 同步 MDX (per Wave 5 plan v0.2 Stage C.4 save 路径 接口冻结 in Pre-A4).
+
+### D11.1 — Editor-surface grid lock (Wave 6 cf-20b amendment, 2026-05-09)
+
+**Status**: amendment to D11 (proposed v0.2; ADR-0016 stays `proposed` overall).
+
+**Trigger**: cf-20b implementation discovered that D8 only specifies the
+*Astro static-render* grid layout (`apps/site/src/pages/notes/[...slug].astro`
+wraps `<Content>` in `<div class="skb-grid">`), and D11 only locks the
+prose-data-flow concern. D11 silently leaves a gap for the **editor-mount
+path**: when `<EditorContent>` (Tiptap's render target) is wrapped in
+`<GridContainer>` (`.skb-grid`), the per-block NodeView wrappers
+(`.skb-block-nodeview`) sit two DOM levels deep:
+
+```
+<GridContainer class="skb-grid"> (display: grid; 12 cols)
+  └─ <div class="skb-editor-content"> (Tiptap host)
+       └─ <div class="ProseMirror"> (Tiptap editor element)
+            └─ <NodeViewWrapper class="skb-block-nodeview"> (×N)
+            └─ <p>, <h2>, etc. (prose nodes)
+```
+
+The outer `.skb-grid` `display: grid` only places its **direct children**
+(the `.skb-editor-content` div) as grid items. Block NodeViews don't
+participate in the grid because they're at depth 3, not depth 1.
+
+**Decision**: the editor-surface grid model is **two-level grid**:
+
+1. Outer `.skb-grid` is a 12-col grid (existing per D8). Used as-is on
+   the read route (where blocks are direct grid children via Astro's
+   `<Content components={componentsMap} />` MDX expansion).
+
+2. **NEW**: when `.skb-grid` wraps Tiptap's `<EditorContent>`, the
+   intermediate `.skb-editor-content` div spans `grid-column: 1 / -1`
+   so the inner `.ProseMirror` element inherits the full container
+   width. The `.ProseMirror` element is **itself** styled
+   `display: grid; grid-template-columns: repeat(12, minmax(0, 1fr));
+   grid-auto-rows: minmax(var(--row-h), auto); gap: var(--gap);
+   grid-auto-flow: row` so its direct children — the per-block
+   `.skb-block-nodeview` wrappers AND the prose nodes (`<p>`, `<h2>`,
+   `<ul>`) — become grid items at the correct level.
+
+**Per-block placement formula** (consumes ADR-0016 D2 `BlockGridPosition`
+shape):
+
+```
+gridColumn = `${col} / span ${colSpan}`
+gridRow    = row !== undefined
+               ? `${row} / span ${effectiveRowSpan}`
+               : `span ${effectiveRowSpan}`
+```
+
+where `effectiveRowSpan = rowSpan === 'auto' ? autoHint : rowSpan`
+(autoHint defaults to 1 until `useAutoRowSpan` integration in cf-20c+;
+prose rowSpan='auto' blocks fall through to the `:not([style*="grid-column"])`
+fallback rule until then).
+
+The shared formula lives in `@skb/editor-shell/src/grid-style.ts`
+(`gridPlacementStyle` for React `CSSProperties` consumers,
+`gridPlacementStyleAttr` for Astro inline style strings,
+`extractGridPosition` for defensive Tiptap-attrs / MDX-flat-props
+extraction). Three consumers, one source:
+
+| Consumer | Wrapper class | Source path | Output |
+|---|---|---|---|
+| `BlockNodeView.tsx` (editor-mount NodeView) | `.skb-block-nodeview` | `node.attrs` (Tiptap props) | React `CSSProperties` via `gridPlacementStyle` |
+| `apps/site/src/lib/mdx-adapter.ts` (5 light blocks read) | `.skb-block-static` | flat MDX props | React `CSSProperties` via `gridPlacementStyle` |
+| `apps/site/src/components/{Jupyter,NnViz,AgentFlow}.astro` (3 heavy blocks read) | `.skb-block-static` | `Astro.props` | inline `style="..."` string via `gridPlacementStyleAttr` |
+
+**Prose interleave decision (Q4)**: full interleave per `proseGridDefaults`
+(D10). Prose nodes (`<p>`, `<h1>`, `<h2>`, `<ul>`) inside `.ProseMirror`
+become grid items alongside the `.skb-block-nodeview` block wrappers.
+Prose without explicit `grid-column` falls through to the `:not([style*="grid-column"])`
+fallback rule and renders full-width (12 cols). cf-20d resize handles
+will introduce per-prose width control later.
+
+**Limitation note (arrow-key navigation visual ≠ source order)**: when
+two adjacent blocks have `colSpan ≤ 6` and sit side-by-side in the
+12-col grid (visually two columns), ProseMirror's arrow-key navigation
+(`ArrowDown` from a left-column block) goes to the next prose node in
+**document order**, NOT to the visually-above-left block. This is
+inherent to ProseMirror — its schema knows about node order, not visual
+layout. cf-20b accepts this limitation; cf-22 (keyboard a11y) may add a
+custom keymap that maps visual navigation to document jumps when grid
+columns differ. Document this in the editor-shell CONTRACT.md so users
++ test authors don't assume Word-like cursor behavior.
+
+**Out-of-Tiptap mutation discipline (per D11)**: D11.1 keeps grid attrs
+as **passive data** on the NodeView wrappers — `BlockNodeView.tsx`
+READS `node.attrs.{col, row, colSpan, rowSpan}` and computes
+`style.gridColumn`, but never WRITES back through the NodeView attr API.
+Mutations (drag/resize) flow through the cf-20c+ layoutReducer per D12
+unchanged. This amendment only locks the static rendering path; the
+mutation path is orthogonal.
+
+**SSR vs hydration phase (per D9 W5-1 fallback)**: SSR path (Astro
+static build) emits the read-route HTML with `style="grid-column: ${col} / span ${colSpan}; grid-row: ..."`
+on every `.skb-block-static`; `data-grid-fallback` attr is NOT used at
+cf-20b because the `extractGridPosition` helper already extracts at
+build time from MDX flat props (no fallback dims needed; the SSR HTML
+carries the final grid placement from byte 0). Heavy block boundary
+SSR fallback dims (per ADR-0014 W4-1) continue to apply for inner
+canvas dimensions; cf-20b doesn't change them.
+
+**Sister-doc sync (per ADR-0006 #6)**:
+
+- `packages/editor-shell/CONTRACT.md` adds public surface for
+  `gridPlacementStyle`, `gridPlacementStyleAttr`, `extractGridPosition`,
+  `GridPlacementInput`, `GridPlacementOptions` — exported from the
+  barrel AND deep-import `@skb/editor-shell/src/grid-style.ts` for
+  Astro SSR contexts (avoids barrel-pulling React/Tiptap deps).
+- `apps/site/CONTRACT.md` adds the editor-route `.skb-grid > .skb-editor-content`
+  + `.skb-grid .ProseMirror` two-level grid documentation.
+- `apps/site/src/styles/grid.css` is updated with the new selectors.
+- v2-styles.css source citation: lines 137-147 (`.doc { display: grid;
+  grid-template-columns: repeat(12, ...); grid-auto-rows: var(--row-h);
+  grid-auto-flow: row; gap: var(--gap) }`); lines 21-22 (`--row-h: 48px;
+  --gap: 14px`). cf-20b's editor-surface grid is the v2 `.doc` model
+  applied to `.ProseMirror` instead of a sibling element.
 
 ### D12 — Layout mutation 单一源 (`layoutEpoch` reducer; per Q9 absorbtion)
 

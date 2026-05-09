@@ -91,19 +91,38 @@
   direct children render with `grid-column: 1`. This is a rendering-only
   preview path: `rowSpan='auto'` is derived for layout, but persisted
   `rowSpan` values are unchanged per ADR-0016 D5.
-- C.2-3 is container-only. Per-block `gridColumn` and `gridRow` style emission
-  is deferred to C.2-4 editor-shell grid container work or a future
-  componentsMap-wrapper PR; apps/site must not add that style chain in this PR.
-- Transitional fallback (Wave 5 C.2-3 → C.2-4): MDX children inside `.skb-grid`
-  without an inline `style` attribute matching `grid-column` get `grid-column: 1 / -1`
-  via `.skb-grid > *:not([style*="grid-column"])` so unstyled prose remains
-  full-width readable until per-block grid emission lands. `grid-auto-rows`
-  uses `minmax(var(--row-h), auto)` so content height drives row height
-  rather than clamping to 48px.
+- Per-block `gridColumn` / `gridRow` style emission landed at Wave 6 cf-20b
+  (2026-05-09). Light-block read route: `apps/site/src/lib/mdx-adapter.ts`
+  consumes `extractGridPosition` + `gridPlacementStyle` from
+  `@skb/editor-shell/src/grid-style.ts` and applies inline style to the
+  `.skb-block-static` wrapper. Heavy-block read route: the 3 Astro wrappers
+  (`apps/site/src/components/{Jupyter,NnViz,AgentFlow}.astro`) consume
+  `gridPlacementStyleAttr` for inline `style="..."` strings. Edit route:
+  `BlockNodeView.tsx` reads `node.attrs.{col, colSpan, rowSpan}` and applies
+  `gridPlacementStyle` to the `.skb-block-nodeview` wrapper.
+- Transitional fallback (Wave 5 C.2-3 → cf-20b cleanup): MDX children inside
+  `.skb-grid` without an inline `style` attribute matching `grid-column` get
+  `grid-column: 1 / -1` via `.skb-grid > *:not([style*="grid-column"])` so
+  unstyled prose remains full-width readable. cf-20b extends this fallback
+  to the inner `.ProseMirror` grid as well so prose nodes (`<p>`, `<h2>`,
+  `<ul>`) inside the editor become full-width grid items by default.
+  `grid-auto-rows` uses `minmax(var(--row-h), auto)` so content height drives
+  row height rather than clamping to 48px.
+- **Editor-route two-level grid lock (Wave 6 cf-20b; ADR-0016 v0.2 D11.1
+  amendment)**: when `.skb-grid` wraps Tiptap's `<EditorContent>`, the
+  intermediate `.skb-editor-content` div spans `grid-column: 1 / -1` so the
+  inner `.ProseMirror` element inherits the full container width. The
+  `.ProseMirror` element is **itself** styled `display: grid;
+  grid-template-columns: repeat(12, ...)` so per-block NodeView wrappers
+  (`.skb-block-nodeview`, which sit at depth 3 under `.skb-grid`) become
+  grid items at the correct level. This is the editor-mount equivalent of
+  the read-route Astro `<Content>` flat-children layout. v2 contract
+  source: `/mnt/d/download/web/v2-styles.css:137-147`.
 - Architectural pointers: ADR-0016 D8 defines the Astro renderer `.skb-grid`
   wrapper, D9 defines the SSR vs hydration phase split, D11 keeps Tiptap inside
-  blocks while the grid stays outside, and ADR-0017 D11 is the downstream visual
-  feedback scope referenced by the grid architecture.
+  blocks while the grid stays outside, ADR-0016 v0.2 D11.1 amendment locks
+  the editor-surface two-level grid (cf-20b 2026-05-09), and ADR-0017 D11 is
+  the downstream visual feedback scope referenced by the grid architecture.
 
 ## Edit route (Wave 5)
 
