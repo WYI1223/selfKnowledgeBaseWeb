@@ -162,12 +162,14 @@ single-runtime authority predecessor disclosed in `mdx-bridge/CONTRACT.md`
 implementation is a release-blocker per ADR-0011 D5 + D6 codex-mdx-doctor /
 codex-pr-reviewer-55 audit profile triggers.
 
+## mdx-bridge 路由集成
+
+`mdx-bridge` 的 `mdastBlockToTiptap` (Wave 3) 把 `mdxJsxFlowElement{name:'NnViz'}` 路由到 `parseNnViz`，反向 `tiptapToMdastBlock` 拦截 `type='nn-viz'` 走 `serializeNnViz`；nn-viz block 无 children，递归不展开。
+
+JSX expression-form attrs (`layers={[{...}, {...}]}`, `showWeights={true}`) are supported post Wave 6 carry-forward #16 (2026-05-08): `parseNnViz` consumes `evalAttrExpression` from `@skb/block-foundation` to walk the estree on `mdxJsxAttributeValueExpression` — production sample-blocks ships `layers={[{ name: "input", units: 784, activation: "linear" }, ...]}` as JS-literal object array (unquoted keys; `JSON.parse` would reject). The serializer continues to emit `layers` as a JSON-encoded string for byte-stable round-trip — the expression-form path is parser-side only.
+
 ## Wave 3 work
 
-- **mdx-bridge routing**: `serializeNnViz` / `parseNnViz` stub 暴露稳定签名；
-  Wave 3 routing PR 会在 mdx-bridge/parse.ts 拦截 `mdxJsxFlowElement{name:'NnViz'}` →
-  `parseNnViz`，serialize.ts 反向；`layers` 从 string-encoded JSON 升级到
-  expression-attr 后再调整 emit 形式（nn-viz block 无 children）
 - **Training viz**：当前仅 inference 拓扑；Wave 3 加 `tf.callbacks` hook 流式
   渲染 epoch loss / accuracy 曲线
 - **Gradient flow viz**：`model.getLayer().getWeights()` 抽张量渲染热力图；

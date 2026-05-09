@@ -1,22 +1,23 @@
+import { evalAttrExpression } from '@skb/block-foundation';
 import { nnVizCore } from './core-definition';
 import type { LayerSpec, NnVizMdastJsxElement, NnVizTiptapNode } from './serialize';
 
 /**
- * MDX 解析 stub。Wave 3 mdx-bridge 在 mdastBlockToTiptap 看到
+ * MDX 解析。mdx-bridge 在 mdastBlockToTiptap 看到
  * mdxJsxFlowElement{name:'NnViz'} 时按 mdxComponent 路由到本函数（RFC §5）。
  *
- * Boolean attrs (`showWeights`) 三种 MDX 形式
- * (mdast-util-mdx-jsx convention)：
- *   - `<NnViz showWeights>` (boolean shorthand)   → attr.value === null  → true
- *   - `<NnViz showWeights="true">`                → "true"  → true
- *   - `<NnViz showWeights="false">`               → "false" → false
- * 任何其他形式 throw — 不静默 false。
+ * Attribute value extraction goes through `evalAttrExpression` (post Wave 6
+ * carry-forward #16 2026-05-08): each attr resolves to string | null | static
+ * JS literal (Literal / TemplateLiteral / ArrayExpression / ObjectExpression).
  *
- * `layers` 在 Wave 2 stub 中按 string-encoded JSON array 解析（serialize
- * emits JSON.stringify）。Wave 3 mdx-bridge 接 expression-attr 后改为直接
- * 接受 array literal 表达式；这层 stub 仅保证 round-trip 形状对齐。
+ * `showWeights` accepts: null shorthand → true; "true"/"false" string →
+ * boolean; or expression `{true}` / `{false}`.
  *
- * `modelUrl` 一律期望 string；null shorthand 仅 boolean attrs 适用。
+ * `layers` accepts: a LayerSpec[] (JS literal `[{...}, ...]` via expression)
+ * OR a JSON-encoded string `'[{...}]'` (legacy round-trip path that
+ * `serializeNnViz` still emits for byte-stability).
+ *
+ * `modelUrl` and other attrs require a string value.
  */
 export function parseNnViz(node: NnVizMdastJsxElement): NnVizTiptapNode {
   if (node.name !== nnVizCore.mdxComponent) {
@@ -26,28 +27,39 @@ export function parseNnViz(node: NnVizMdastJsxElement): NnVizTiptapNode {
   }
   const rawProps: Record<string, string | boolean | LayerSpec[]> = {};
   for (const attr of node.attributes) {
+    const v = evalAttrExpression(attr.value);
     if (attr.name === 'showWeights') {
-      if (attr.value === null) {
+      if (v === null) {
         rawProps[attr.name] = true;
-      } else if (attr.value === 'true' || attr.value === 'false') {
-        rawProps[attr.name] = attr.value === 'true';
+      } else if (typeof v === 'boolean') {
+        rawProps[attr.name] = v;
+      } else if (v === 'true' || v === 'false') {
+        rawProps[attr.name] = v === 'true';
       } else {
         throw new Error(
-          `parseNnViz: invalid showWeights attribute value: ${JSON.stringify(attr.value)}`,
+          `parseNnViz: invalid showWeights attribute value: ${JSON.stringify(v)}`,
         );
       }
     } else if (attr.name === 'layers') {
-      if (attr.value === null) {
+      if (v === null) {
         throw new Error(
-          'parseNnViz: attribute "layers" must have a string value (got null shorthand; only boolean attrs support shorthand)',
+          'parseNnViz: attribute "layers" must have a value (got null shorthand; only boolean attrs support shorthand)',
         );
       }
       let parsed: unknown;
-      try {
-        parsed = JSON.parse(attr.value);
-      } catch {
+      if (Array.isArray(v)) {
+        parsed = v;
+      } else if (typeof v === 'string') {
+        try {
+          parsed = JSON.parse(v);
+        } catch {
+          throw new Error(
+            `parseNnViz: layers attribute is not valid JSON: ${JSON.stringify(v)}`,
+          );
+        }
+      } else {
         throw new Error(
-          `parseNnViz: layers attribute is not valid JSON: ${JSON.stringify(attr.value)}`,
+          `parseNnViz: layers must be an array or JSON string; got ${typeof v}`,
         );
       }
       if (!Array.isArray(parsed)) {
@@ -57,12 +69,17 @@ export function parseNnViz(node: NnVizMdastJsxElement): NnVizTiptapNode {
       }
       rawProps[attr.name] = parsed as LayerSpec[];
     } else {
-      if (attr.value === null) {
+      if (v === null) {
         throw new Error(
           `parseNnViz: attribute "${attr.name}" must have a string value (got null shorthand; only boolean attrs support shorthand)`,
         );
       }
-      rawProps[attr.name] = attr.value;
+      if (typeof v !== 'string') {
+        throw new Error(
+          `parseNnViz: attribute "${attr.name}" must be a string, got ${typeof v}`,
+        );
+      }
+      rawProps[attr.name] = v;
     }
   }
   const validated = nnVizCore.propsSchema.parse(rawProps);

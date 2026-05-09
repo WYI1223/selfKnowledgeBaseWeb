@@ -1,6 +1,19 @@
 import { describe, it, expect } from 'vitest';
+import { unified } from 'unified';
+import remarkParse from 'remark-parse';
+import remarkMdx from 'remark-mdx';
 import { nnVizCore } from '../core/core-definition';
 import { serializeNnViz, parseNnViz } from '../core';
+import type { NnVizMdastJsxElement } from '../core/serialize';
+
+function parseMdxFlow(source: string): NnVizMdastJsxElement {
+  const tree = unified().use(remarkParse).use(remarkMdx).parse(source) as {
+    children: ReadonlyArray<{ type: string }>;
+  };
+  const flow = tree.children.find((n) => n.type === 'mdxJsxFlowElement');
+  if (!flow) throw new Error('parseMdxFlow: fixture did not produce an mdxJsxFlowElement');
+  return flow as unknown as NnVizMdastJsxElement;
+}
 
 describe('nnVizCore.propsSchema', () => {
   it('accepts valid props with all fields', () => {
@@ -220,5 +233,37 @@ describe('parseNnViz', () => {
     };
     const back = parseNnViz(serializeNnViz(node));
     expect(back).toEqual(node);
+  });
+});
+
+describe('parseNnViz — JSX expression form (Wave 6 carry-forward #16)', () => {
+  it('accepts the production sample-blocks fixture (layers as JS-literal object array)', () => {
+    const source = [
+      '<NnViz',
+      '  modelUrl="/sample-assets/models/mlp-mnist.json"',
+      '  layers={[',
+      '    { name: "input", units: 784, activation: "linear" },',
+      '    { name: "hidden-1", units: 128, activation: "relu" },',
+      '    { name: "output", units: 10, activation: "softmax" },',
+      '  ]}',
+      '  showWeights',
+      '/>',
+    ].join('\n');
+    const node = parseNnViz(parseMdxFlow(source));
+    expect(node.attrs.modelUrl).toBe('/sample-assets/models/mlp-mnist.json');
+    expect(node.attrs.layers).toEqual([
+      { name: 'input', units: 784, activation: 'linear' },
+      { name: 'hidden-1', units: 128, activation: 'relu' },
+      { name: 'output', units: 10, activation: 'softmax' },
+    ]);
+    expect(node.attrs.showWeights).toBe(true);
+  });
+
+  it('rejects layers when an entry uses an unsupported activation', () => {
+    expect(() =>
+      parseNnViz(
+        parseMdxFlow('<NnViz modelUrl="m.json" layers={[{ name: "x", units: 4, activation: "bogus" }]} />'),
+      ),
+    ).toThrow();
   });
 });

@@ -1,6 +1,19 @@
 import { describe, it, expect } from 'vitest';
+import { unified } from 'unified';
+import remarkParse from 'remark-parse';
+import remarkMdx from 'remark-mdx';
 import { jupyterCore } from '../core/core-definition';
 import { serializeJupyter, parseJupyter } from '../core';
+import type { JupyterMdastJsxElement } from '../core/serialize';
+
+function parseMdxFlow(source: string): JupyterMdastJsxElement {
+  const tree = unified().use(remarkParse).use(remarkMdx).parse(source) as {
+    children: ReadonlyArray<{ type: string }>;
+  };
+  const flow = tree.children.find((n) => n.type === 'mdxJsxFlowElement');
+  if (!flow) throw new Error('parseMdxFlow: fixture did not produce an mdxJsxFlowElement');
+  return flow as unknown as JupyterMdastJsxElement;
+}
 
 describe('jupyterCore.propsSchema', () => {
   it('accepts valid props with all fields', () => {
@@ -168,5 +181,40 @@ describe('parseJupyter', () => {
     };
     const back = parseJupyter(serializeJupyter(node));
     expect(back).toEqual(node);
+  });
+});
+
+describe('parseJupyter — JSX expression form (Wave 6 carry-forward #16)', () => {
+  it('accepts the production sample-blocks fixture (template-literal code + array libraries + bool shorthand)', () => {
+    const source = [
+      '<Jupyter',
+      '  code={`import numpy as np\\nprint("hi")\\n`}',
+      '  runOnLoad',
+      '  showLineNumbers',
+      '  libraries={["numpy"]}',
+      '/>',
+    ].join('\n');
+    const node = parseJupyter(parseMdxFlow(source));
+    expect(node.attrs.code).toBe('import numpy as np\nprint("hi")\n');
+    expect(node.attrs.runOnLoad).toBe(true);
+    expect(node.attrs.showLineNumbers).toBe(true);
+    expect(node.attrs.libraries).toEqual(['numpy']);
+  });
+
+  it('accepts boolean expression form runOnLoad={true} / showLineNumbers={false}', () => {
+    const node = parseJupyter(
+      parseMdxFlow(
+        '<Jupyter code="print(1)" runOnLoad={true} showLineNumbers={false} libraries={[]} />',
+      ),
+    );
+    expect(node.attrs.runOnLoad).toBe(true);
+    expect(node.attrs.showLineNumbers).toBe(false);
+    expect(node.attrs.libraries).toEqual([]);
+  });
+
+  it('rejects libraries with a non-string entry from a JS literal', () => {
+    expect(() =>
+      parseJupyter(parseMdxFlow('<Jupyter code="x" libraries={["ok", 1]} />')),
+    ).toThrow(/string\[\]/);
   });
 });

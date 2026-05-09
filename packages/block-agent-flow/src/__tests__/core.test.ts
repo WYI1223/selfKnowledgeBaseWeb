@@ -1,6 +1,19 @@
 import { describe, it, expect } from 'vitest';
+import { unified } from 'unified';
+import remarkParse from 'remark-parse';
+import remarkMdx from 'remark-mdx';
 import { agentFlowCore } from '../core/core-definition';
 import { serializeAgentFlow, parseAgentFlow } from '../core';
+import type { AgentFlowMdastJsxElement } from '../core/serialize';
+
+function parseMdxFlow(source: string): AgentFlowMdastJsxElement {
+  const tree = unified().use(remarkParse).use(remarkMdx).parse(source) as {
+    children: ReadonlyArray<{ type: string }>;
+  };
+  const flow = tree.children.find((n) => n.type === 'mdxJsxFlowElement');
+  if (!flow) throw new Error('parseMdxFlow: fixture did not produce an mdxJsxFlowElement');
+  return flow as unknown as AgentFlowMdastJsxElement;
+}
 
 describe('agentFlowCore.propsSchema', () => {
   it('accepts valid props with all fields', () => {
@@ -246,5 +259,45 @@ describe('parseAgentFlow', () => {
     expect(back.attrs.nodes).toEqual(node.attrs.nodes);
     expect(back.attrs.edges).toEqual(node.attrs.edges);
     expect(back.attrs.interactive).toBe(true);
+  });
+});
+
+describe('parseAgentFlow — JSX expression form (Wave 6 carry-forward #16)', () => {
+  it('accepts the production sample-blocks fixture (nested object arrays + boolean shorthand)', () => {
+    const source = [
+      '<AgentFlow',
+      '  nodes={[',
+      '    { id: "n1", label: "Planner", type: "agent", position: { x: 0, y: 0 } },',
+      '    { id: "n2", label: "Search", type: "tool", position: { x: 200, y: 0 } },',
+      '    { id: "n3", label: "Scratchpad", type: "memory", position: { x: 100, y: 120 } },',
+      '  ]}',
+      '  edges={[',
+      '    { id: "e1", source: "n1", target: "n2", label: "query" },',
+      '    { id: "e2", source: "n2", target: "n3", label: "cache" },',
+      '  ]}',
+      '  interactive',
+      '/>',
+    ].join('\n');
+    const node = parseAgentFlow(parseMdxFlow(source));
+    expect(node.attrs.nodes).toEqual([
+      { id: 'n1', label: 'Planner', type: 'agent', position: { x: 0, y: 0 } },
+      { id: 'n2', label: 'Search', type: 'tool', position: { x: 200, y: 0 } },
+      { id: 'n3', label: 'Scratchpad', type: 'memory', position: { x: 100, y: 120 } },
+    ]);
+    expect(node.attrs.edges).toEqual([
+      { id: 'e1', source: 'n1', target: 'n2', label: 'query' },
+      { id: 'e2', source: 'n2', target: 'n3', label: 'cache' },
+    ]);
+    expect(node.attrs.interactive).toBe(true);
+  });
+
+  it('rejects nodes when an entry has an invalid type discriminator', () => {
+    expect(() =>
+      parseAgentFlow(
+        parseMdxFlow(
+          '<AgentFlow nodes={[{ id: "x", label: "X", type: "ghost", position: { x: 0, y: 0 } }]} edges={[]} />',
+        ),
+      ),
+    ).toThrow();
   });
 });

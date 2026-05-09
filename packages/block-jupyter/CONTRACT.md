@@ -142,17 +142,11 @@ single-runtime authority predecessor disclosed in `mdx-bridge/CONTRACT.md`
 implementation is a release-blocker per ADR-0011 D5 + D6 codex-mdx-doctor /
 codex-pr-reviewer-55 audit profile triggers.
 
-## Wave 3 mdx-bridge 路由集成（pending）
+## mdx-bridge 路由集成
 
-当前 `serializeJupyter` / `parseJupyter` 是 stub —— 暴露稳定签名，未被 mdx-bridge 消费。
-Wave 3 mdx-bridge routing table PR 会：
+`mdx-bridge`'s `mdastBlockToTiptap` (Wave 3) 把 `mdxJsxFlowElement{name:'Jupyter'}` 路由到 `parseJupyter`，反向 `tiptapToMdastBlock` 拦截 `type='jupyter'` 走 `serializeJupyter`；jupyter block 无 children，递归不展开。
 
-1. 在 `mdx-bridge/parse.ts` 的 `mdastBlockToTiptap` 拦截 `mdxJsxFlowElement{name:'Jupyter'}` →
-   `parseJupyter(node)` → 嵌入 doc.content
-2. 在 `mdx-bridge/serialize.ts` 的 `tiptapToMdastBlock` 拦截 `type='jupyter'` →
-   `serializeJupyter(node)` → 进 mdast；`libraries` 从 string-encoded JSON 升级到
-   expression-attr 后再调整 emit 形式
-3. jupyter block 无 children，递归不展开
+JSX expression-form attrs (`code={` template-literal `}`, `libraries={["x","y"]}`, `runOnLoad={true}`, `showLineNumbers={true}`) are supported post Wave 6 carry-forward #16 (2026-05-08): `parseJupyter` consumes `evalAttrExpression` from `@skb/block-foundation` to walk the estree on `mdxJsxAttributeValueExpression`. The serializer continues to emit `libraries` as a JSON-encoded string and booleans as `String(boolean)` for byte-stable round-trip — the expression-form path is parser-side only (the production sample-blocks fixture uses expression form for `code` and `libraries`).
 
 ## Wave 3 future work
 

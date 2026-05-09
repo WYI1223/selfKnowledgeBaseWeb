@@ -7,7 +7,7 @@ Wave 1 covers prose; Wave 3 Stage B extends the walker for component blocks.
 
 - `mdxToTiptap(source: string, options?: MdxBridgeOptions): TiptapDoc` — parse MDX into a Tiptap-shaped tree
 - `tiptapToMdx(doc: TiptapDoc, options?: MdxBridgeOptions): string` — serialize the Tiptap-shaped tree back to MDX
-- `MdxBridgeOptions { blockRegistry?: BlockRegistry }` — per-call component block registry injection
+- `MdxBridgeOptions { blockRegistry?: BlockRegistry; softParse?: boolean }` — per-call component block registry injection; `softParse=true` swaps a per-block parse failure for an `[unsupported block <X>: ...]` placeholder paragraph (Wave 6 hotfix). JSX expression-form attrs (`<X foo={1}>`, `<Y bar={[{...}]}>`) reach per-block `parse*` functions through `evalAttrExpression` from `@skb/block-foundation` (Wave 6 carry-forward #16, 2026-05-08); see `block-foundation/CONTRACT.md` for the supported expression node types.
 - `registerJsxDispatch(entry: JsxDispatchEntry): void` / `getJsxDispatch(mdxComponent: string): JsxDispatchEntry | undefined` — mdx-bridge-local JSX dispatch table
 - `TiptapDoc`, `TiptapNode`, `TiptapMark`, `JsxDispatchEntry` — shape types
 

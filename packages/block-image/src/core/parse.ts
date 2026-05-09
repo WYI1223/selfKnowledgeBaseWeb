@@ -1,12 +1,15 @@
+import { evalAttrExpression } from '@skb/block-foundation';
 import { imageCore } from './core-definition';
 import type { ImageMdastJsxElement, ImageTiptapNode } from './serialize';
 
 /**
- * MDX 解析 stub。Wave 3 mdx-bridge 在 mdastBlockToTiptap 看到
+ * MDX 解析。mdx-bridge 在 mdastBlockToTiptap 看到
  * mdxJsxFlowElement{name:'Image'} 时按 mdxComponent 路由到本函数（RFC §5）。
  *
- * 当前 stub: 把 attributes 数组取回成 props 对象，propsSchema.parse 校验后构造
- * Tiptap node。children 透传，留 mdx-bridge 后续递归解析为 inline TiptapNode[].
+ * Attribute value extraction goes through `evalAttrExpression` (post Wave 6
+ * carry-forward #16 2026-05-08): `width={320}` / `height={180}` resolve to
+ * numbers via the Literal walk path; string-form `width="320"` continues to
+ * Number-coerce.
  */
 export function parseImage(node: ImageMdastJsxElement): ImageTiptapNode {
   if (node.name !== imageCore.mdxComponent) {
@@ -16,10 +19,32 @@ export function parseImage(node: ImageMdastJsxElement): ImageTiptapNode {
   }
   const rawProps: Record<string, string | number> = {};
   for (const attr of node.attributes) {
+    const v = evalAttrExpression(attr.value);
     if (attr.name === 'width' || attr.name === 'height') {
-      rawProps[attr.name] = Number(attr.value);
+      if (v === null) {
+        throw new Error(
+          `parseImage: attribute "${attr.name}" must have a value (got null shorthand)`,
+        );
+      }
+      const numeric = typeof v === 'number' ? v : Number(v);
+      if (!Number.isFinite(numeric)) {
+        throw new Error(
+          `parseImage: attribute "${attr.name}" must be a finite number, got ${JSON.stringify(v)}`,
+        );
+      }
+      rawProps[attr.name] = numeric;
     } else {
-      rawProps[attr.name] = attr.value;
+      if (v === null) {
+        throw new Error(
+          `parseImage: attribute "${attr.name}" must have a value (got null shorthand)`,
+        );
+      }
+      if (typeof v !== 'string') {
+        throw new Error(
+          `parseImage: attribute "${attr.name}" must be a string, got ${typeof v}`,
+        );
+      }
+      rawProps[attr.name] = v;
     }
   }
   const validated = imageCore.propsSchema.parse(rawProps);

@@ -1,5 +1,19 @@
 import { describe, it, expect } from 'vitest';
+import { unified } from 'unified';
+import remarkParse from 'remark-parse';
+import remarkMdx from 'remark-mdx';
 import { imageCore } from '../core/core-definition';
+import { parseImage } from '../core';
+import type { ImageMdastJsxElement } from '../core/serialize';
+
+function parseMdxFlow(source: string): ImageMdastJsxElement {
+  const tree = unified().use(remarkParse).use(remarkMdx).parse(source) as {
+    children: ReadonlyArray<{ type: string }>;
+  };
+  const flow = tree.children.find((n) => n.type === 'mdxJsxFlowElement');
+  if (!flow) throw new Error('parseMdxFlow: fixture did not produce an mdxJsxFlowElement');
+  return flow as unknown as ImageMdastJsxElement;
+}
 
 describe('imageCore.propsSchema', () => {
   it('accepts src + alt', () => {
@@ -38,5 +52,25 @@ describe('imageCore.propsSchema', () => {
     expect(imageCore.name).toBe('image');
     expect(imageCore.kind).toBe('component');
     expect(imageCore.mdxComponent).toBe('Image');
+  });
+});
+
+describe('parseImage — JSX expression form (Wave 6 carry-forward #16)', () => {
+  it('accepts the production sample-blocks fixture (numeric width/height expressions)', () => {
+    const node = parseImage(
+      parseMdxFlow(
+        '<Image src="/sample-assets/diagram-small.png" alt="Small diagram" width={320} height={180} />',
+      ),
+    );
+    expect(node.attrs.src).toBe('/sample-assets/diagram-small.png');
+    expect(node.attrs.alt).toBe('Small diagram');
+    expect(node.attrs.width).toBe(320);
+    expect(node.attrs.height).toBe(180);
+  });
+
+  it('rejects width via a non-finite expression', () => {
+    expect(() =>
+      parseImage(parseMdxFlow('<Image src="/x.png" alt="x" width={NaN} />')),
+    ).toThrow(/finite number/);
   });
 });
