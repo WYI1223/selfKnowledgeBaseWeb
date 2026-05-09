@@ -46,9 +46,11 @@ gate fields.
    + 2px accent-soft outer ring (via `box-shadow`) + focus-within soft
    accent border bridge. Per-kind 2px top stripe lives on the wrapper
    via `[data-skb-block-kind="<kind>"]` consuming ADR-0018 D3 hue
-   tokens (`--accent-callout`/`--accent-runnable`/`--accent-image`/
-   `--accent-math`/`--accent-pdf`/`--accent-jupyter`/`--accent-nn-viz`/
-   `--accent-agent-flow`). Inner-component stripe nesting suppression
+   tokens — 7 unique hue tokens with callout + componentCode sharing
+   `--accent-runnable` per ADR-0018 D3:
+   `--accent-runnable` (callout + componentCode) /
+   `--accent-image` / `--accent-math` / `--accent-pdf` /
+   `--accent-jupyter` / `--accent-nn-viz` / `--accent-agent-flow`. Inner-component stripe nesting suppression
    (R2 P3 fix): `.skb-block-nodeview [data-block]`/`[data-callout-variant]`/
    etc. selectors set `border-top: 0` so only the wrapper stripe
    renders on the editor path. Gutter chip per-kind tints + the
@@ -80,9 +82,15 @@ gate fields.
    editor-shell/BlockNodeView.css) so the wrapper rule + stripe
    tokens are reachable from the apps/site bundler.
 
-6. `packages/editor-shell/package.json` — **UNCHANGED in R2** (carried
-   from v0.1). `exports['./BlockNodeView.css']` so consumers can
-   `@import '@skb/editor-shell/BlockNodeView.css'`.
+6. `packages/editor-shell/package.json` — **R3 fix +1 line**:
+   `exports['./BlockNodeView.css']` (v0.1, so consumers can
+   `@import '@skb/editor-shell/BlockNodeView.css'`) PLUS
+   `exports['./src/*': './src/*']` (R3 fix, restores deep-subpath
+   compatibility for the 4 grid-* Playwright specs that import
+   `@skb/editor-shell/src/drag-drop/edge-rects` etc. — without it,
+   Node exports-map semantics block all unlisted subpaths and full
+   `pnpm --filter @skb/site test:visual` fails collection with
+   `Package subpath './src/...' is not defined by "exports"`).
 
 7. `packages/block-{callout,code,image,math,pdf,jupyter,nn-viz,agent-flow}/src/ui-default/<kind>.css`
    — **UNCHANGED in R2** (carried from v0.1: 5 light blocks already
