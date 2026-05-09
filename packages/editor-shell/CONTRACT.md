@@ -571,11 +571,21 @@ the actual interactive resize wire. Public surface added under
   gap})`. Right-margin ladder visualizing row snap stops per
   v2-styles.css:359-385. Position: `fixed` anchored to the resizing block's
   `right` edge + 8px offset.
-- `resize-snap.ts` exports pure helpers `snapToColSpan(cursorDeltaX,
-  startColSpan, containerWidth, gap, totalCols, activeSnaps)` →
-  `{colSpan, rawColSpan}` and `snapToRowSpan(cursorDeltaY, startRowSpan, rowH,
-  gap)` → integer rowSpan ≥ 1. Round-to-nearest-snap per cf-20d D6 (NOT
-  round-up; tie-break rounds UP to honor ADR-0016 D6 Q4 default tiebreak).
+- `resize-snap.ts` exports pure helpers
+  `snapToColSpan(cursorDeltaX, startColSpan, startCol, containerWidth, gap,
+  totalCols, activeSnaps)` → `{colSpan, rawColSpan}`,
+  `snapToRowSpan(cursorDeltaY, startRowSpan, rowH, gap)` → integer rowSpan ≥ 1,
+  and `buildResizeNextAttrs(axis, nextColSpan, nextRowSpan, colChanged,
+  rowChanged)` → `Record<string, number>` (axis-aware attr diff for
+  setNodeMarkup; right omits rowSpan, bottom omits colSpan, corner writes
+  both — per cf-20d D11 R1 F3 fix preserving prose `rowSpan='auto'`).
+  Round-to-nearest-snap per cf-20d D6 (NOT round-up; tie-break rounds UP
+  to honor ADR-0016 D6 Q4 default tiebreak).
+  R1 F2 fix (2026-05-09): `snapToColSpan` filters `activeSnaps` to the
+  non-overflowing subset `snap <= totalCols - startCol + 1` BEFORE
+  nearest-snap selection per ADR-0016 D2 grid-position invariant. If the
+  filter empties the set (e.g. col=12 + smallest snap=2 → overflow),
+  returns `startColSpan` as a no-op; user must drag-move leftward first.
 
 `ResizeHandles` is mounted inside `BlockNodeView` so each Tiptap NodeView
 emits the 3 handles. `<ResizeProvider value={...}>` MUST wrap the editor

@@ -70,7 +70,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Editor } from '@tiptap/core';
 import { liveBlockPositions, snapshotBlocks } from '../drag-drop/pipeline-snapshot';
-import { snapToColSpan, snapToRowSpan } from './resize-snap';
+import {
+  buildResizeNextAttrs,
+  snapToColSpan,
+  snapToRowSpan,
+} from './resize-snap';
 import type { ResizeAxis } from './resize-context';
 
 export interface PipelineResizeState {
@@ -140,8 +144,32 @@ export interface UseResizePipelineReturn {
 interface ResizeSnapshot {
   readonly blockId: string;
   readonly axis: ResizeAxis;
+  /**
+   * Block's `col` (1-based) at pointerdown. R1 F2 fix (2026-05-09):
+   * snapped at start so the snap function can filter candidates to
+   * the non-overflowing subset (`snap <= totalCols - col + 1` per
+   * ADR-0016 D2 invariant).
+   */
+  readonly startCol: number;
   readonly startColSpan: number;
-  readonly startRowSpan: number;
+  /**
+   * Block's rowSpan attr at pointerdown — preserved as `number |
+   * 'auto'`. R1 F3 fix (2026-05-09): pre-R1 the snapshot coerced
+   * non-numeric rowSpan to `1`, then the right-only commit wrote
+   * `rowSpan: 1` and DESTROYED the `'auto'` attribute (prose blocks
+   * stuck at 1 row). R1 fix: preserve the original; right-only
+   * commit omits rowSpan from setNodeMarkup; bottom + corner
+   * commits write the snapped integer.
+   */
+  readonly startRowSpanAttr: number | 'auto';
+  /**
+   * Resolved integer rowSpan at pointerdown — the value used by the
+   * snap math + as the baseline for the bottom/corner commit. For
+   * `startRowSpanAttr === 'auto'` we derive an integer hint from the
+   * source NodeView's measured height (so the snap math sees a
+   * realistic starting value).
+   */
+  readonly startRowSpanInt: number;
   readonly origin: { readonly x: number; readonly y: number };
   readonly containerWidth: number;
   readonly sourceRect: DOMRectReadOnly;
@@ -214,18 +242,35 @@ export function useResizePipeline(
           ? grid.getBoundingClientRect().width
           : startRect.width;
 
-      // Resolve start rowSpan to integer (D9 contract: resize commits
-      // an integer rowSpan even if the block started with rowSpan='auto').
-      const startRowSpan =
-        typeof target.rowSpan === 'number' && target.rowSpan >= 1
-          ? target.rowSpan
-          : 1;
+      // R1 F3 fix: preserve the original rowSpan attr (could be
+      // 'auto') for the commit-path axis-aware decision below. The
+      // snap math operates on an integer; for 'auto' we derive a
+      // hint from the measured DOM height (effectiveCellHeight
+      // inverse: rowSpan ≈ (height + gap) / (rowH + gap)).
+      const startRowSpanAttr: number | 'auto' = target.rowSpan;
+      let startRowSpanInt: number;
+      if (typeof startRowSpanAttr === 'number' && startRowSpanAttr >= 1) {
+        startRowSpanInt = startRowSpanAttr;
+      } else {
+        // 'auto' (or invalid): derive integer hint from rendered height.
+        const measuredHeight = startRect.height;
+        if (rowH > 0 && measuredHeight > 0) {
+          startRowSpanInt = Math.max(
+            1,
+            Math.round((measuredHeight + gap) / (rowH + gap)),
+          );
+        } else {
+          startRowSpanInt = 1;
+        }
+      }
 
       const snapshot: ResizeSnapshot = {
         blockId,
         axis: nextAxis,
+        startCol: target.col,
         startColSpan: target.colSpan,
-        startRowSpan,
+        startRowSpanAttr,
+        startRowSpanInt,
         origin,
         containerWidth,
         sourceRect: startRect,
@@ -237,10 +282,10 @@ export function useResizePipeline(
       setAxis(nextAxis);
       setCursor({ x: origin.x, y: origin.y });
       setSnapColSpan(target.colSpan);
-      setSnapRowSpan(startRowSpan);
+      setSnapRowSpan(startRowSpanInt);
       setSourceRect(startRect);
     },
-    [editor, gridSelector],
+    [editor, gridSelector, gap, rowH],
   );
 
   const onResizeEnd = useCallback(() => {
@@ -266,11 +311,13 @@ export function useResizePipeline(
 
       setCursor({ x: event.clientX, y: event.clientY });
 
-      // Snap math depends on axis.
+      // Snap math depends on axis. R1 F2 fix: pass startCol so
+      // snapToColSpan can filter overflowing snaps.
       if (snapshot.axis === 'right' || snapshot.axis === 'corner') {
         const result = snapToColSpan(
           dx,
           snapshot.startColSpan,
+          snapshot.startCol,
           snapshot.containerWidth,
           gap,
           totalCols,
@@ -281,7 +328,7 @@ export function useResizePipeline(
       if (snapshot.axis === 'bottom' || snapshot.axis === 'corner') {
         const newRowSpan = snapToRowSpan(
           dy,
-          snapshot.startRowSpan,
+          snapshot.startRowSpanInt,
           rowH,
           gap,
         );
@@ -300,12 +347,15 @@ export function useResizePipeline(
       const dy = event.clientY - snapshot.origin.y;
 
       // Resolve the final snap targets for this commit.
+      // R1 F2 fix: pass startCol to snapToColSpan so the snap-set
+      // filter rejects overflowing snaps before committing.
       let nextColSpan = snapshot.startColSpan;
-      let nextRowSpan = snapshot.startRowSpan;
+      let nextRowSpan = snapshot.startRowSpanInt;
       if (snapshot.axis === 'right' || snapshot.axis === 'corner') {
         nextColSpan = snapToColSpan(
           dx,
           snapshot.startColSpan,
+          snapshot.startCol,
           snapshot.containerWidth,
           gap,
           totalCols,
@@ -313,15 +363,39 @@ export function useResizePipeline(
         ).colSpan;
       }
       if (snapshot.axis === 'bottom' || snapshot.axis === 'corner') {
-        nextRowSpan = snapToRowSpan(dy, snapshot.startRowSpan, rowH, gap);
+        nextRowSpan = snapToRowSpan(
+          dy,
+          snapshot.startRowSpanInt,
+          rowH,
+          gap,
+        );
       }
 
       const colChanged = nextColSpan !== snapshot.startColSpan;
-      const rowChanged = nextRowSpan !== snapshot.startRowSpan;
+      const rowChanged = nextRowSpan !== snapshot.startRowSpanInt;
+      // R1 F3 fix: only the bottom + corner axes can change rowSpan;
+      // a right-only resize must NEVER write rowSpan (would destroy
+      // 'auto' on prose blocks).
+      const writeRowSpan =
+        rowChanged &&
+        (snapshot.axis === 'bottom' || snapshot.axis === 'corner');
 
-      if (!colChanged && !rowChanged) {
-        // No-op commit (cursor returned to start position). Reset
-        // without mutation; no success-pulse.
+      if (!colChanged && !writeRowSpan) {
+        // No-op commit (cursor returned to start position OR
+        // right-only axis with rowSpan unchanged because we won't
+        // write it anyway). Reset without mutation; no success-pulse.
+        resetState();
+        return;
+      }
+
+      // R1 F2 defense-in-depth: re-validate the post-snap position
+      // against the grid invariant before dispatching mutation.
+      // Should never fire (snapToColSpan already filtered), but if
+      // it does, treat as cancel.
+      if (
+        colChanged &&
+        snapshot.startCol + nextColSpan - 1 > totalCols
+      ) {
         resetState();
         return;
       }
@@ -335,7 +409,18 @@ export function useResizePipeline(
         return;
       }
 
-      // Dispatch Tiptap setNodeMarkup with the new attrs.
+      // R1 F3 fix: axis-aware attr write delegated to the pure
+      // `buildResizeNextAttrs` helper. Right-only axis omits rowSpan
+      // entirely (preserves 'auto' on prose); bottom-only omits
+      // colSpan; corner writes both (only reached for non-prose per
+      // ADR-0017 D9).
+      const nextAttrDiff = buildResizeNextAttrs(
+        snapshot.axis,
+        nextColSpan,
+        nextRowSpan,
+        colChanged,
+        rowChanged,
+      );
       editor
         .chain()
         .command(({ tr }) => {
@@ -343,8 +428,7 @@ export function useResizePipeline(
           if (!node) return false;
           const nextAttrs = {
             ...node.attrs,
-            colSpan: nextColSpan,
-            rowSpan: nextRowSpan,
+            ...nextAttrDiff,
           };
           tr.setNodeMarkup(live.pos, undefined, nextAttrs);
           return true;

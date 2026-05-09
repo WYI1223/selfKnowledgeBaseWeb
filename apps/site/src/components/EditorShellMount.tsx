@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { BlockRegistry, effectiveColSnaps } from '@skb/block-foundation';
+import {
+  BlockRegistry,
+  effectiveColSnaps,
+  type EffectiveViewportCols,
+} from '@skb/block-foundation';
 import {
   ApiAdapter,
   DragDropProvider,
@@ -23,6 +27,7 @@ import {
   useDragDropPipeline,
   useEscCancel,
   useResizePipeline,
+  useResponsiveCols,
   wireRegistry,
 } from '@skb/editor-shell';
 import { DropPulseAtRect, ResizeOverlays } from './EditorShellOverlays';
@@ -135,20 +140,19 @@ export function EditorShellMount({
   // `onCommitSuccess` callback wired to
   // `pipeline.setLastDroppedFromExternal`.
   //
-  // totalCols / activeColSnaps default to the desktop 12-col viewport
-  // baseline. cf-20d's mobile path is handled CSS-side via the
-  // resize-handles.css `@media (max-width: 768px) { display: none }`
-  // rule per ADR-0017 D9 — handles render in the React tree but are
-  // visually hidden on mobile, and any pointerdown is moot because
-  // the user can't interact with a display:none element. A
-  // useResponsiveCols-driven dynamic update (12 ↔ 1) is a future
-  // viewport-resize-during-edit polish (cf-20d ships the static-
-  // viewport baseline; the dynamic switch falls into the cf-23
-  // visual-unification pass).
-  const RESIZE_TOTAL_COLS = 12;
+  // R1 F1 fix (2026-05-09): totalCols + activeColSnaps now derive
+  // from `useResponsiveCols` per ADR-0016 D5 responsive viewport
+  // contract. Pre-R1 these were hardcoded `12` / `effectiveColSnaps(12)`
+  // which gave tablet users (≤1024px viewport, 6-col grid) the
+  // wrong snap stops `[2, 3, 4, 6, 8, 12]` instead of `[2, 3, 6]`.
+  // The `useResponsiveCols` hook subscribes to `(min-width: 1024px)`
+  // + `(min-width: 768px)` matchMedia and emits 12/6/1; we feed
+  // both the GridContainer (so the `.skb-grid--mobile` class fires
+  // correctly per ADR-0017 D9) AND the resize pipeline.
+  const viewportCols = useResponsiveCols();
   const resizeColSnaps = useMemo(
-    () => effectiveColSnaps(RESIZE_TOTAL_COLS),
-    [],
+    () => effectiveColSnaps(viewportCols satisfies EffectiveViewportCols),
+    [viewportCols],
   );
   const onResizeCommitSuccess = useCallback(
     (blockId: string, rect: DOMRectReadOnly) => {
@@ -158,7 +162,7 @@ export function EditorShellMount({
   );
   const resize = useResizePipeline({
     editor,
-    totalCols: RESIZE_TOTAL_COLS,
+    totalCols: viewportCols,
     activeColSnaps: resizeColSnaps,
     onCommitSuccess: onResizeCommitSuccess,
   });
@@ -316,7 +320,7 @@ export function EditorShellMount({
       )}
       <DragDropProvider value={dragContextValue}>
         <ResizeProvider value={resizeContextValue}>
-          <GridContainer>
+          <GridContainer viewportCols={viewportCols}>
             <Toolbar editor={editor} />
             <EditorShell
               extensions={wire.extensions}
@@ -378,7 +382,7 @@ export function EditorShellMount({
           snapColSpan={resize.state.snapColSpan}
           snapRowSpan={resize.state.snapRowSpan}
           sourceRect={resize.state.sourceRect}
-          totalCols={RESIZE_TOTAL_COLS}
+          totalCols={viewportCols}
           activeColSnaps={resizeColSnaps}
         />
       )}

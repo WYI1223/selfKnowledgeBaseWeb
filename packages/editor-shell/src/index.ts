@@ -95,7 +95,11 @@ export type {
 } from './resize/resize-context';
 export { RowLadder } from './resize/row-ladder';
 export type { RowLadderProps } from './resize/row-ladder';
-export { snapToColSpan, snapToRowSpan } from './resize/resize-snap';
+export {
+  buildResizeNextAttrs,
+  snapToColSpan,
+  snapToRowSpan,
+} from './resize/resize-snap';
 export { useResizePipeline } from './resize/use-resize-pipeline';
 export type {
   PipelineResizeState,

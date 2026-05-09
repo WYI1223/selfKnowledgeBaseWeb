@@ -586,6 +586,135 @@ MUST snapshot bytes, NEVER use git operations", the spec MUST use
 `afterAll`. The implementation is a near-copy of cf-20c-2's pattern
 in `sample-blocks-drag-handle.spec.ts`.
 
+### D9 — viewportCols-derived totalCols + activeColSnaps (R1 F1 fix; responsive resize)
+
+**R1 F1 fix lock (2026-05-09)** — codex-pr-reviewer-55 R1 F1 caught
+that `EditorShellMount.tsx` hardcoded `RESIZE_TOTAL_COLS = 12` +
+`effectiveColSnaps(12)` regardless of viewport. Per ADR-0016 D5
+responsive table, `.skb-grid` switches to **6 columns** at
+`max-width: 1024px` (tablet) and **1 column** at `max-width: 768px`
+(mobile). Tablet users dragging the right-edge handle pre-R1 got
+the wrong snap stops `[2, 3, 4, 6, 8, 12]` instead of `[2, 3, 6]`.
+
+**Decision**: derive `viewportCols` from `useResponsiveCols`
+(existing hook; subscribes to `(min-width: 1024px)` + `(min-width:
+768px)` matchMedia and emits `12 | 6 | 1`). Feed to:
+- `<GridContainer viewportCols={viewportCols}>` so the existing
+  `.skb-grid--mobile` className emission per ADR-0017 D9 fires
+  at the right viewport (was passing `undefined` pre-R1; now
+  active).
+- `useResizePipeline({totalCols: viewportCols, activeColSnaps:
+  effectiveColSnaps(viewportCols), ...})`.
+- `<ResizeOverlays totalCols={viewportCols} activeColSnaps={...}/>`
+  so `<ColRuler>` renders the correct stop set.
+
+The `effectiveColSnaps` function from `@skb/block-foundation` maps
+`12 → [2, 3, 4, 6, 8, 12]`, `6 → [2, 3, 6]`, `1 → [1]` per
+ADR-0016 D6 Q4 absorbtion. Mobile (`viewportCols === 1`) is
+handled by the existing CSS `@media (max-width: 768px) { display:
+none }` rule on all resize affordances per ADR-0017 D9 view-only
+contract; the snap math at `viewportCols=1` returns `[1]` but no
+handles are visible to drive it.
+
+**Implementation cost**: 5 lines of changes in
+`EditorShellMount.tsx` (1 import added; `RESIZE_TOTAL_COLS = 12`
+constant removed; `useResponsiveCols()` call added; `viewportCols`
+threaded into 3 prop sites). Pipeline already accepted `totalCols`
++ `activeColSnaps` as options — no API change required. Regression
+locked by new Playwright test at viewport=900px asserting only
+`[2, 3, 6]` snap stops are reachable.
+
+### D10 — startCol snapshot + overflow-filter at snap (R1 F2 fix; no invalid commits)
+
+**R1 F2 fix lock (2026-05-09)** — codex-pr-reviewer-55 R1 F2 caught
+that `snapToColSpan` only clamped `colSpan` to `[1, totalCols]`,
+ignoring the block's start `col`. A block at `col=7` could snap to
+`colSpan=8` or `12`, producing `col + colSpan - 1 = 14 > 12`
+(overflow). Per ADR-0016 D2 grid-position invariant
+`col + colSpan - 1 <= totalCols`, this is invalid; mdx-bridge
+schema would reject the resulting attr write at save-time, leaving
+the wire in an invalid intermediate state visible to the user.
+
+**Decision**: extend `snapToColSpan` signature to take `startCol`
+as a 3rd parameter (after `startColSpan`). The function filters
+`activeSnaps` to the non-overflowing subset
+`snap <= totalCols - startCol + 1` BEFORE the round-to-nearest
+selection. If the filter empties the set (e.g. `col=12 + smallest
+snap=2 → 12+2-1=13>12`), fall back to `startColSpan` (no-op
+resize); the `colChanged === false` guard in the pipeline ensures
+no setNodeMarkup dispatch + no success-pulse. The user must
+drag-move the block leftward first to make room.
+
+The pipeline's `ResizeSnapshot` interface gains a `startCol:
+number` field populated at `onResizeStart` from `target.col` (the
+snapshot block already exposes `col` via `SerializedBlock` from
+`pipeline-snapshot.ts`). Both pointermove (live snap-state update)
+and pointerup (final commit) pass `snapshot.startCol` through to
+`snapToColSpan`. The pointerup handler additionally re-validates
+`startCol + nextColSpan - 1 <= totalCols` as defense-in-depth (if
+the snap math somehow returns an overflowing value due to a future
+bug, the pipeline cancels rather than committing invalid state).
+
+**Implementation cost**: ~30 LOC across 2 files
+(`resize-snap.ts` + `use-resize-pipeline.ts`). Regression locked by
+8 new vitest cases under `describe('snapToColSpan — R1 F2
+overflow-filter for non-col=1 blocks')` covering `col=3, 5, 7,
+11, 12` × `colSpan=2, 6, 8` permutations.
+
+### D11 — rowSpan='auto' preservation on right-only resize (R1 F3 fix; axis-aware attr write)
+
+**R1 F3 fix lock (2026-05-09)** — codex-pr-reviewer-55 R1 F3 caught
+that `use-resize-pipeline.ts` coerced non-numeric rowSpan to `1` at
+snapshot AND wrote `rowSpan: nextRowSpan` on EVERY commit
+regardless of axis. For prose blocks with `rowSpan='auto'` (per
+ADR-0016 D3 + D10, render-derived height), a right-edge resize
+pre-R1 would:
+1. Coerce `'auto' → 1` at snapshot.
+2. Compute `nextRowSpan = 1` (no row delta).
+3. Write `rowSpan: 1` to the node — DESTROYING the `'auto'`
+   attribute. The prose block becomes stuck at rowSpan=1 (single
+   row), losing render-derived height.
+
+This is a real correctness bug, not just defensive: any prose
+block with multi-line content (e.g. a markdown paragraph that
+wraps to 3 lines) would visually shrink to 1 row after a right-
+edge resize.
+
+**Decision**: split the snapshot's `startRowSpan` field into two:
+- `startRowSpanAttr: number | 'auto'` — the original attr value
+  (preserved for the commit decision; never coerced).
+- `startRowSpanInt: number` — the integer derived for snap math.
+  For `startRowSpanAttr === 'auto'`, derive the integer hint from
+  the rendered DOM height: `Math.round((height + gap) / (rowH +
+  gap))`. The snap math operates on integers; consumers don't
+  need to handle the 'auto' branch.
+
+Extract the attr-diff-build to a NEW pure helper
+`buildResizeNextAttrs(axis, nextColSpan, nextRowSpan, colChanged,
+rowChanged)` returning `Record<string, number>`. Contract:
+- `axis === 'right'` → write `colSpan` only (NEVER `rowSpan`).
+- `axis === 'bottom'` → write `rowSpan` only (NEVER `colSpan`).
+- `axis === 'corner'` → write both, gated per `colChanged` /
+  `rowChanged`.
+
+The pipeline calls `editor.command(({tr}) => { tr.setNodeMarkup(pos,
+undefined, {...node.attrs, ...buildResizeNextAttrs(...)}) })` —
+spreading the attr-diff into the original `node.attrs` preserves
+all unmentioned attrs (including `rowSpan: 'auto'` on right-only
+resize). For non-prose with corner-axis resize, the integer
+`rowSpan` overrides any prior value; ADR-0017 D9 hides
+bottom/corner from prose-kind blocks so the override path is
+unreachable for prose.
+
+**Implementation cost**: ~50 LOC across 2 files
+(`resize-snap.ts` adds `buildResizeNextAttrs` ~30 LOC + JSDoc;
+`use-resize-pipeline.ts` snapshot field rename + commit branch
+delegation ~20 LOC). Regression locked by 10 new vitest cases
+under `describe('buildResizeNextAttrs — R1 F3 axis-aware attr
+diff')` including the explicit prose preservation flow assertion
+that merges `{rowSpan: 'auto'}` with the right-only diff and
+verifies `merged.rowSpan === 'auto'` (NOT overwritten).
+
 ## Acceptance
 
 ```bash

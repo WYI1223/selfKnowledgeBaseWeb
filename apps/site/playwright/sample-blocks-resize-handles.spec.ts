@@ -297,3 +297,131 @@ test('cf-20d — resize handles hidden on mobile (≤768px) per ADR-0017 D9 view
     ),
   ).toBe('none');
 });
+
+test('cf-20d R1 F1 — tablet (≤1024px, 6-col) right-edge resize uses [2, 3, 6] snaps NOT [2, 3, 4, 6, 8, 12]', async ({
+  page,
+}) => {
+  // R1 F1 fix lock (2026-05-09): EditorShellMount.tsx now derives
+  // `viewportCols` via `useResponsiveCols`; the resize pipeline
+  // consumes `effectiveColSnaps(viewportCols)` instead of the
+  // pre-R1 hardcoded `effectiveColSnaps(12)`. Tablet viewport
+  // (768 < width ≤ 1024) → 6-col grid → snaps `[2, 3, 6]` per
+  // ADR-0016 D6 + D5.
+  //
+  // Approach: at viewport=900px (tablet range), perform a right-
+  // edge resize from colSpan=12 with a generous-leftward delta
+  // (~600px). The pre-R1 12-col snap set would have allowed
+  // colSpan=8 or 4 as snap targets; the R1 6-col snap set forces
+  // landing at one of [2, 3, 6]. Assert the post-commit gridColumn
+  // matches `1 / span (2|3|6)`.
+  restoreSampleBlocksFixture();
+
+  await page.setViewportSize({ width: 900, height: 1024 });
+  await page.goto('/notes/sample-blocks/edit');
+  const editor = page.locator('.ProseMirror').first();
+  await expect(editor).toBeVisible({ timeout: 15_000 });
+  await expect(editor.locator('.skb-block-nodeview').first()).toBeVisible({
+    timeout: 10_000,
+  });
+  await page.waitForTimeout(500);
+
+  // Verify 6-col grid is active (.skb-grid emits its --total-cols=6
+  // CSS var via the @media (max-width: 1024px) rule in grid.css).
+  const gridTotalCols = await page
+    .locator('.skb-grid')
+    .first()
+    .evaluate(
+      (el) =>
+        getComputedStyle(el).getPropertyValue('--total-cols').trim(),
+    );
+  expect(gridTotalCols).toBe('6');
+
+  const firstWrapper = page.locator('.skb-block-nodeview').first();
+  const wrapperBox = await firstWrapper.boundingBox();
+  if (!wrapperBox) throw new Error('first wrapper has no bounding box');
+  const rightHandle = firstWrapper.locator('.gblock-handle.right').first();
+  const handleBox = await rightHandle.boundingBox();
+  if (!handleBox) throw new Error('right handle has no bounding box');
+
+  const downX = handleBox.x + handleBox.width / 2;
+  const downY = handleBox.y + handleBox.height / 2;
+  // Drag well leftward — past several "would-be 12-col snap stops"
+  // — so the snap MUST land at a fitting member of [2, 3, 6] in
+  // the 6-col viewport.
+  const targetX = wrapperBox.x + wrapperBox.width * 0.4;
+  const targetY = downY;
+
+  await rightHandle.dispatchEvent('pointerdown', {
+    bubbles: true,
+    cancelable: true,
+    clientX: downX,
+    clientY: downY,
+    button: 0,
+    pointerId: 1,
+    pointerType: 'mouse',
+  });
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) =>
+        requestAnimationFrame(() => resolve()),
+      ),
+  );
+  await page.evaluate(
+    ({ moveX, moveY }: { moveX: number; moveY: number }) => {
+      window.dispatchEvent(
+        new PointerEvent('pointermove', {
+          bubbles: true,
+          cancelable: true,
+          clientX: moveX,
+          clientY: moveY,
+          button: 0,
+          pointerId: 1,
+          pointerType: 'mouse',
+        }),
+      );
+    },
+    { moveX: targetX, moveY: targetY },
+  );
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) =>
+        requestAnimationFrame(() => resolve()),
+      ),
+  );
+  await page.evaluate(
+    ({ moveX, moveY }: { moveX: number; moveY: number }) => {
+      window.dispatchEvent(
+        new PointerEvent('pointerup', {
+          bubbles: true,
+          cancelable: true,
+          clientX: moveX,
+          clientY: moveY,
+          button: 0,
+          pointerId: 1,
+          pointerType: 'mouse',
+        }),
+      );
+    },
+    { moveX: targetX, moveY: targetY },
+  );
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) =>
+        requestAnimationFrame(() =>
+          requestAnimationFrame(() => resolve()),
+        ),
+      ),
+  );
+  await page.waitForTimeout(300);
+
+  const colAfter = await firstWrapper.evaluate(
+    (el) => (el as HTMLElement).style.gridColumn,
+  );
+  const colNormalized = colAfter.replace(/\s+/g, ' ').trim();
+  expect(
+    colNormalized,
+    'cf-20d R1 F1: tablet (6-col) right-edge resize MUST snap colSpan to one of [2, 3, 6] per ADR-0016 D6 effectiveColSnaps(6); pre-R1 hardcoded 12-col snaps would have allowed 4 or 8 here',
+  ).toMatch(/^1 \/ span (2|3|6)$/);
+
+  restoreSampleBlocksFixture();
+});
