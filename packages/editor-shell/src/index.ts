@@ -83,3 +83,27 @@ export { ColRuler } from './resize/col-ruler';
 export type { ColRulerProps } from './resize/col-ruler';
 export { SizeTooltip, colSpanToFraction } from './resize/size-tooltip';
 export type { SizeTooltipProps } from './resize/size-tooltip';
+export { ResizeHandles } from './resize/resize-handles';
+export type { ResizeHandlesProps } from './resize/resize-handles';
+export { ResizeContext, ResizeProvider } from './resize/resize-context';
+export type {
+  ResizeAxis,
+  ResizeContextValue,
+  ResizeProviderProps,
+  ResizeStartOrigin,
+  ResizeEndOrigin,
+} from './resize/resize-context';
+export { RowLadder } from './resize/row-ladder';
+export type { RowLadderProps } from './resize/row-ladder';
+export {
+  buildResizeNextAttrs,
+  normalizeOverflowPosition,
+  snapToColSpan,
+  snapToRowSpan,
+} from './resize/resize-snap';
+export { useResizePipeline } from './resize/use-resize-pipeline';
+export type {
+  PipelineResizeState,
+  UseResizePipelineOptions,
+  UseResizePipelineReturn,
+} from './resize/use-resize-pipeline';

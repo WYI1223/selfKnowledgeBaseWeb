@@ -277,6 +277,82 @@
   rect matches the post-drop source rect within 1px sub-pixel
   tolerance per ADR-0017 D11 line 344), AND mobile-hidden
   assertion.
+- **Resize handles wire (Wave 6 cf-20d 2026-05-09; R1 + R2 fixes 2026-05-09)**:
+  `EditorShellMount.tsx` additionally mounts `useResizePipeline({editor,
+  totalCols: viewportCols, activeColSnaps: effectiveColSnaps(viewportCols),
+  onCommitSuccess})` as the lifecycle owner of per-block resize gestures
+  (R1 F1 fix: `viewportCols` derives from `useResponsiveCols` per ADR-0016
+  D5; pre-R1 was hardcoded `12`/`effectiveColSnaps(12)` which gave tablet
+  users wrong snap stops. R2 F1 amendment: hook switched from min-width
+  to max-width matchMedia queries to match grid.css verbatim — pre-R2 the
+  hook had off-by-one at exact 1024/768 boundaries). The hook returns
+  `{state, onResizeStart, onResizeEnd}`; the mount nests
+  `<ResizeProvider value={{onResizeStart, onResizeEnd, resizingBlockId,
+  resizingAxis}}>` INSIDE the cf-20c-2 `<DragDropProvider>` so per-block
+  components can read both contexts independently. The mount also passes
+  `viewportCols` to `<GridContainer>` so the existing
+  `.skb-grid--mobile` className emission per ADR-0017 D9 fires at
+  viewport=1 (was `undefined` pre-R1). Each `.skb-block-nodeview` emits 3
+  resize handles (right + bottom + corner per
+  `/mnt/d/download/web/v2-styles.css:256-311`) via `<ResizeHandles
+  blockId gridKind?>` rendered inside `BlockNodeView.tsx`. Right handle is
+  always rendered; bottom + corner are gated by `gridKind !== 'prose'` per
+  ADR-0017 D9 (defensive default: render-all-3 for the 8 sample-blocks
+  fixtures which have `gridKind === undefined`). When `state.active` is true
+  the mount renders `<ColRuler>` (above grid via fixed-position anchor on
+  the source block's top edge), `<SizeTooltip>` (cursor follower with
+  fraction text per `colSpanToFraction`), and `<RowLadder>` (right-margin
+  ladder, only on bottom + corner axes). On commit (pointerup with snap
+  changed), the pipeline calls `setNodeMarkup` on the live PM position and
+  invokes `onCommitSuccess(blockId, liveRect)` 2 rAFs post-mutation;
+  consumer routes this to `pipeline.setLastDroppedFromExternal(...)` so the
+  resize success-pulse mounts via the SAME cf-20c-2 `<DropPulseAtRect>`
+  + `dropEpoch` infrastructure (cf-20d D3 reuse: dropEpoch is generic
+  "rapid-action animation isolation", not drag-specific). The pipeline's
+  attr-write path (R1 F2 + F3 + R2 F2 + R3 F1 fixes) snapshots the
+  block's `col` AND preserves the original `rowSpan` attr (could be
+  `'auto'` on prose); `snapToColSpan` filters overflowing snaps via
+  `snap <= totalCols - startCol + 1` per ADR-0016 D2 invariant;
+  `buildResizeNextAttrs` performs axis-aware attr write so right-only
+  resize NEVER touches `rowSpan` (preserves `'auto'`), bottom-only NEVER
+  touches `colSpan`, corner writes both. R2 F2 + R3 F1 amendment:
+  pipeline detects persisted overflow UNCONDITIONALLY before
+  setNodeMarkup (regardless of axis); R3 F1 amendment normalizes the
+  `{col, colSpan}` PAIR atomically via `normalizeOverflowPosition`
+  helper (R2 only normalized colSpan; missed `col > totalCols` case).
+  R3 left-clamps `col` to `[1, totalCols]` then picks the largest
+  `activeColSnaps` member ≤ `(totalCols - clampedCol + 1)` with
+  fallback to 1; pipeline writes BOTH `col` AND `colSpan` from the
+  helper return value in the same setNodeMarkup transaction —
+  recovers persisted-overflow state (block saved at desktop becomes
+  invalid at tablet/mobile viewport) in a single atomic write.
+  console.warn emitted for operator visibility. `useEscCancel` is wired with `dragActive: resize.state.active` so
+  Escape rolls the resize back without mutation per ADR-0017 D8. The v2
+  `.gblock.resizing` outline + body-hidden contract per
+  v2-styles.css:172-176 is implemented by the `.skb-block-nodeview--resizing`
+  modifier in `BlockNodeView.css`. Mobile (≤768px) hides ALL resize
+  affordances (.gblock-handle / .skb-col-ruler / .skb-row-ladder /
+  .skb-size-tooltip) via `display: none` per ADR-0017 D9 view-only contract.
+  Regression-lock spec:
+  `apps/site/playwright/sample-blocks-resize-handles.spec.ts` covers
+  handle visibility (14 right + 14 bottom + 14 corner per sample-blocks
+  fixture), right-edge resize commit (gridColumn mutates from
+  `1 / span 12` to `1 / span N` where N ∈ {2, 3, 4, 6, 8} per ADR-0016 D6
+  round-to-nearest-snap + dropEpoch reuse mounts the success-pulse anchor),
+  R1 F1 tablet snap-set lock (at viewport=900px the 6-col grid forces
+  N ∈ {2, 3, 6}), R2 F2 persisted-colSpan-overflow normalization lock
+  (col=4 colSpan=6 at tablet → bottom-only resize normalizes colSpan
+  to 3 in same setNodeMarkup transaction), R3 F1 col-overflow
+  normalization lock (col=7 colSpan=6 at tablet → bottom-only resize
+  writes BOTH col=6 AND colSpan=1 atomically — pre-R3 R2 only wrote
+  colSpan=1 leaving col=7 invalid), AND mobile-hidden lock at 375×812
+  viewport. Uses
+  byte-snapshot fixture isolation per cf-20c-2 R3 F1 (NEVER `git checkout`
+  in test code). Pointer-event boilerplate consolidated into
+  `apps/site/playwright/helpers/resize-pointer-events.ts`
+  (`dispatchResizeGesture` + rAF barriers) so each test is focused on
+  assertions, not the pointerdown→rAF→pointermove→rAF→pointerup→2-rAF
+  sequence boilerplate.
 - Block registry: C.4-2 verified that `EditorShellMount.tsx` constructs a
   route-local `BlockRegistry` and calls `registerBlocks` from
   `@skb/editor-shell`, whose helper registers all 8 Wave 2 block definitions

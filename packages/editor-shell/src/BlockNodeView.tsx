@@ -5,6 +5,8 @@ import type { ZodTypeAny } from 'zod';
 import { extractGridPosition, gridPlacementStyle } from './grid-style';
 import { DragHandleButton } from './drag-drop/drag-handle-button';
 import { DragDropContext } from './drag-drop/drag-context';
+import { ResizeHandles } from './resize/resize-handles';
+import { ResizeContext } from './resize/resize-context';
 
 /**
  * Wave 6 carry-forward #18 (2026-05-08) — bridge from a Tiptap NodeView to
@@ -104,10 +106,20 @@ function blockIdFromProps(props: ReactNodeViewProps): string {
  * rejection — see BlockNodeView.css source-lift rule comment for
  * the visibility-vs-display-none rationale).
  */
-function nodeViewClassName(isDraggingSelf: boolean, isUnregistered: boolean): string {
+function nodeViewClassName(
+  isDraggingSelf: boolean,
+  isUnregistered: boolean,
+  isResizing: boolean,
+): string {
   const parts = ['skb-block-nodeview'];
   if (isUnregistered) parts.push('skb-block-nodeview--unregistered');
   if (isDraggingSelf) parts.push('skb-block-nodeview--dragging-self');
+  // Wave 6 cf-20d (2026-05-09) — `.skb-block-nodeview--resizing`
+  // applies the v2 `.gblock.resizing` outline + body-hidden contract
+  // (per /mnt/d/download/web/v2-styles.css:172-176). Set when the
+  // ResizeContext's resizingBlockId matches this NodeView's blockId.
+  // CSS rule lives in resize-handles.css.
+  if (isResizing) parts.push('skb-block-nodeview--resizing');
   return parts.join(' ');
 }
 
@@ -128,10 +140,26 @@ export function makeBlockNodeView({
     const ctx = useContext(DragDropContext);
     const isDraggingSelf = blockId !== '' && ctx?.sourceBlockId === blockId;
 
+    // Wave 6 cf-20d (2026-05-09) — read resizingBlockId from
+    // ResizeContext (null when no resize pipeline is mounted OR when
+    // no resize is active). When this NodeView's blockId matches,
+    // apply the .skb-block-nodeview--resizing modifier so CSS shows
+    // the v2 dashed outline + body-hidden treatment per
+    // /mnt/d/download/web/v2-styles.css:172-176.
+    const resizeCtx = useContext(ResizeContext);
+    const isResizing =
+      blockId !== '' && resizeCtx?.resizingBlockId === blockId;
+
+    // gridKind is registered on BlockUIDefinition per ADR-0016 D10.
+    // The 8 sample-blocks BlockUIDefinition entries don't currently
+    // set it (data gap noted at cf-20d planning); defensive default
+    // = undefined → <ResizeHandles> renders all 3 handles.
+    const gridKind = ui?.gridKind;
+
     if (!ui) {
       return (
         <NodeViewWrapper
-          className={nodeViewClassName(isDraggingSelf, true)}
+          className={nodeViewClassName(isDraggingSelf, true, isResizing)}
           data-skb-block-kind={nodeName}
           style={wrapperStyle}
         >
@@ -144,13 +172,14 @@ export function makeBlockNodeView({
           <div className="skb-block-nodeview__fallback" contentEditable={false}>
             Unregistered block <code>{nodeName}</code>
           </div>
+          {blockId && <ResizeHandles blockId={blockId} gridKind={gridKind} />}
         </NodeViewWrapper>
       );
     }
     const EditorView: ComponentType<BlockViewProps<ZodTypeAny>> = ui.EditorView;
     return (
       <NodeViewWrapper
-        className={nodeViewClassName(isDraggingSelf, false)}
+        className={nodeViewClassName(isDraggingSelf, false, isResizing)}
         data-skb-block-kind={nodeName}
         style={wrapperStyle}
       >
@@ -167,6 +196,7 @@ export function makeBlockNodeView({
         >
           <EditorView props={editorProps} />
         </div>
+        {blockId && <ResizeHandles blockId={blockId} gridKind={gridKind} />}
       </NodeViewWrapper>
     );
   };
