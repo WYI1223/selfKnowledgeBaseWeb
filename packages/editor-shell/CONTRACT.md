@@ -422,14 +422,34 @@ C.2-5 and C.2-8 add the editor-side drag/drop UX primitives under
   resets to null preparing for the next drag cycle. Block ID source per
   cf-20c-2 D2: ProseMirror node `pos` as string (Path A; UUID-based
   stable IDs deferred to a future schema-mod PR). ADR-0017 D6
-  source-lift: `onDragStart` filters the source out of the snapshot
-  layouts BEFORE computing edge-rects, so the lifted source can never
-  self-match in tiebreak (cf-20c-2 R1 F1 fix). Velocity unit per
-  ADR-0017 D3: pipeline multiplies raw `delta px / delta ms` by
-  `VELOCITY_WINDOW_MS = 16` so `tiebreak()` reads `vx`/`vy` in the
-  contracted `px/frame at 60fps` unit (cf-20c-2 R1 F3 fix; pre-R1 the
-  raw px/ms unit under-triggered the direction filter for any drag
-  slower than ~30000 px/sec).
+  source-lift (cf-20c-2 R2 F1 fix; replaces R1's v2-demo
+  opacity/grayscale model that ADR-0017 D6 line 255 explicitly
+  rejects): `onDragStart` filters the source out of the snapshot
+  layouts BEFORE computing edge-rects (so the lifted source can never
+  self-match in tiebreak), AND the source NodeView wrapper applies
+  `.skb-block-nodeview--dragging-self` modifier (`visibility: hidden +
+  pointer-events: none` per ADR-0017 D6 line 247 verbatim). Velocity
+  unit per ADR-0017 D3: pipeline multiplies raw `delta px / delta ms`
+  by `VELOCITY_WINDOW_MS = 16` so `tiebreak()` reads `vx`/`vy` in the
+  contracted `px/frame at 60fps` unit (cf-20c-2 R1 F3 fix). Threshold
+  math: `tiebreak()` direction filter fires when `speed > 0.5 px/frame`;
+  at 60fps (16.67ms/frame) that's `~30 px/sec` minimum velocity to
+  trigger the direction-aware tiebreak. Pre-R1 the pipeline passed
+  raw `px/ms` (1 px/ms = 60000 px/sec at 60fps); the threshold check
+  required `raw_vx > 0.5 px/ms = 30000 px/sec` to fire — virtually
+  never reached by real cursor drags (typical drag 200-2000 px/sec).
+  R1 fix landed the unit alignment so the `> 0.5 px/frame` threshold
+  fires for any drag faster than ~30 px/sec (the intended threshold
+  per ADR-0017 D3). DropPulse landed-rect (cf-20c-2 R2 F2 fix;
+  replaces R1's pre-drag snapshot rect model): pipeline re-measures
+  the source NodeView via `editor.view.nodeDOM(livePos).getBoundingClientRect()`
+  AFTER Tiptap setNodeMarkup commits + 2 rAFs (React commit cycle +
+  browser layout pass), and exposes the result as
+  `state.lastDroppedRect` so the consumer's `<DropPulseAtRect>` mounts
+  at the LANDED position per ADR-0017 D11 line 344 ("源块进入新 grid
+  位置 + outline fade-out 完成"). Pre-R2 the consumer used the
+  snapshotted rect (pre-drag full-width source position) which
+  produced a pulse at the wrong location.
 
 Drag/drop edge-width is coupled to grid `--gap` via `EDGE_W = 2 * GAP`.
 `EDGE_W = 28` and `GAP = 14` ensure the 14px gap between adjacent blocks is

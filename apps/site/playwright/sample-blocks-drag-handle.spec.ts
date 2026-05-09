@@ -1,6 +1,63 @@
+import { execSync } from 'node:child_process';
+import { existsSync, unlinkSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { expect, test } from '@playwright/test';
+
+/**
+ * Wave 6 cf-20c-2 R2 fixture-isolation hook (2026-05-09).
+ *
+ * Pre-R2 the F4 terminal-drop test mutated `content/notes/sample-blocks/index.mdx`
+ * via the cf-20c-2 wire's setNodeMarkup → tiptapToMdx → ApiAdapter.save
+ * → file write chain. Subsequent test runs saw the post-mutation
+ * baseline and the strict `7 / span 6` assertion failed because the
+ * algebra computed against the mutated `4 / span 3` source baseline.
+ *
+ * Reset before terminal-drop tests:
+ *   - `git checkout` the MDX file to restore baseline
+ *   - delete the `state.json` sidecar so ApiAdapter.load() returns null
+ *     (forces seed from the freshly-restored MDX file's body)
+ */
+const SAMPLE_BLOCKS_MDX = resolve(
+  process.cwd(),
+  '../../content/notes/sample-blocks/index.mdx',
+);
+const SAMPLE_BLOCKS_STATE = resolve(
+  process.cwd(),
+  '../../content/notes/sample-blocks/state.json',
+);
+
+function restoreSampleBlocksFixture(): void {
+  // Reset the MDX file to the git-tracked baseline. Use `git checkout --`
+  // which is idempotent + safe even when the file is unmodified.
+  try {
+    execSync(`git checkout -- ${JSON.stringify(SAMPLE_BLOCKS_MDX)}`, {
+      cwd: resolve(process.cwd(), '../..'),
+      stdio: 'pipe',
+    });
+  } catch {
+    // git not available OR file not tracked; ignore (test will fail
+    // downstream if the MDX is genuinely missing).
+  }
+  // Delete the state.json sidecar so the API adapter doesn't replay
+  // a prior-run mutated state.
+  if (existsSync(SAMPLE_BLOCKS_STATE)) {
+    unlinkSync(SAMPLE_BLOCKS_STATE);
+  }
+}
+
+/**
+ * Wave 6 cf-20c-2 R2 cross-spec isolation. The F4 test mutates the
+ * sample-blocks MDX file via ApiAdapter.save → file write at the
+ * server endpoint (`/api/notes/sample-blocks`). Without afterAll
+ * cleanup, OTHER spec files (`sample-blocks-grid-layout.spec.ts`
+ * etc.) inherit the mutated baseline and fail their `colSpan=12`
+ * assertions. afterAll restores the file system to the git baseline
+ * so cross-spec test order is irrelevant.
+ */
+test.afterAll(() => {
+  restoreSampleBlocksFixture();
+});
 
 /**
  * Wave 6 cf-20c-2 (2026-05-09) — drag-handle UI + DnD wire integration
@@ -152,7 +209,30 @@ test('cf-20c-2 R1 F1 — source-lift visual: dragstart applies .skb-block-nodevi
   });
   expect(isLiftedSelf).toBe(true);
 
-  // (c) Cancel via Esc → source-lift class removed
+  // cf-20c-2 R2 F1 — STRICT computed-visibility assertion per ADR-0017
+  // D6 line 247 verbatim. Pre-R2 the spec only asserted the class
+  // was present; the cf-20c-2 R1 implementation used opacity 0.28 +
+  // grayscale (the v2-demo gray placeholder model that ADR-0017 D6
+  // line 255 explicitly rejects). Computed-style assertion catches
+  // any future regression that swaps `visibility: hidden` back to
+  // an opacity-based fade or any other "visible but dim" treatment.
+  const liftedWrapper = page.locator('.skb-block-nodeview--dragging-self').first();
+  const liftedVisibility = await liftedWrapper.evaluate(
+    (el) => window.getComputedStyle(el).visibility,
+  );
+  expect(
+    liftedVisibility,
+    'cf-20c-2 R2 F1: source-lift MUST use visibility: hidden per ADR-0017 D6 line 247 (NOT v2-demo opacity/grayscale model that D6 line 255 explicitly rejects)',
+  ).toBe('hidden');
+  const liftedPointerEvents = await liftedWrapper.evaluate(
+    (el) => window.getComputedStyle(el).pointerEvents,
+  );
+  expect(
+    liftedPointerEvents,
+    'cf-20c-2 R2 F1: source-lift MUST use pointer-events: none per ADR-0017 D6 line 247 (defense-in-depth on top of the pipeline edge-rect source filter)',
+  ).toBe('none');
+
+  // (c) Cancel via Esc → source-lift class removed; visibility restored
   await page.keyboard.press('Escape');
   await expect(page.locator('.skb-block-nodeview--dragging-self')).toHaveCount(0, {
     timeout: 3_000,
@@ -162,6 +242,11 @@ test('cf-20c-2 R1 F1 — source-lift visual: dragstart applies .skb-block-nodevi
 test('cf-20c-2 R1 F4 — terminal drop: dragstart → dragover edge → drop mutates ProseMirror node attrs + fires DropPulse (ADR-0017 D1 + D11)', async ({
   page,
 }) => {
+  // cf-20c-2 R2 fixture isolation: restore baseline MDX + clear state
+  // sidecar BEFORE the test runs (the mutation this test triggers
+  // would otherwise persist via ApiAdapter.save → file write).
+  restoreSampleBlocksFixture();
+
   // Wave 6 cf-20c-2 R1 F4 lock — codex-pr-reviewer-55 R1 caught
   // that pre-R1 Playwright coverage only fired dragstart + dragend,
   // never the terminal drop. So `applyDropMode` (cf-20c-1 algebra)
@@ -269,30 +354,74 @@ test('cf-20c-2 R1 F4 — terminal drop: dragstart → dragover edge → drop mut
   );
   await page.waitForTimeout(200); // Let React commit + Tiptap setNodeMarkup
 
-  // F4 (b): the source block's gridColumn style changed from
-  // `1 / span 12` (cf-20c-2 baseline) to `7 / span 6` (split-right
-  // shifted source to the right half of the host's 12 cols). React
-  // serializes `gridColumn: '7 / span 6'` as `style="grid-column:7 / span 6"`.
+  // F4 (b) — STRICT split-right algebra assertion (cf-20c-2 R2 F3).
+  // Pre-R2 the spec asserted `toContain('span 6')` which would
+  // false-positive accept `1 / span 6` (LEFT half — which is the
+  // TARGET's new position, NOT the source's landed position). R2
+  // tightens to exact-match `7 / span 6` for source AND `1 / span 6`
+  // for target. Per cf-20c-1 algebra (apply-drop-mode.ts split-right
+  // branch): host shrinks to `[col=1, colSpan=6]`; source moves to
+  // `[col=7, colSpan=6]` (right half of host's original 12 cols).
+  // Whitespace normalization (replace /\s+/g, ' ') accommodates
+  // browser DOM serialization variants ('7 / span 6' vs '7  /  span  6').
   const sourceColAfter = await page
     .locator('.skb-block-nodeview')
     .first()
     .evaluate((el) => el.style.gridColumn);
-  // Pre-drop: '1 / span 12'; post-drop: '7 / span 6'. Either form
-  // proves the mutation reached Tiptap. If the algebra rejected the
-  // drop (e.g. sourceBlockId === hostBlockId at the moment of drop),
-  // gridColumn stays at '1 / span 12'; that's the failure mode.
   expect(sourceColAfter).not.toBe(sourceColBefore);
-  expect(sourceColAfter).toMatch(/(span 6|7 \/ span 6)/);
+  const sourceNormalized = sourceColAfter.replace(/\s+/g, ' ').trim();
+  expect(
+    sourceNormalized,
+    'cf-20c-2 R2 F3: source MUST land at right half (col=7, colSpan=6) per cf-20c-1 split-right algebra; not just "any span 6"',
+  ).toBe('7 / span 6');
+
+  // F4 (c) — STRICT target reciprocal assertion (cf-20c-2 R2 F3).
+  // split-right doesn't just move the source; it ALSO shrinks the
+  // target host to the LEFT half (col=1, colSpan=6). Pre-R2 the spec
+  // didn't assert the target's mutation; the algebra could have
+  // failed reciprocally and the source-only assertion would pass.
+  const targetColAfter = await targetWrapper.evaluate(
+    (el) => (el as HTMLElement).style.gridColumn,
+  );
+  const targetNormalized = targetColAfter.replace(/\s+/g, ' ').trim();
+  expect(
+    targetNormalized,
+    'cf-20c-2 R2 F3: target host MUST shrink to left half (col=1, colSpan=6) per cf-20c-1 split-right algebra reciprocal mutation',
+  ).toBe('1 / span 6');
 
   // F2: DropPulse anchor mounted (proves drag-end-success branch ran
-  // AND lastDroppedBlockId is set AND the EditorShellMount conditional
-  // render path took effect). The 720ms animation will eventually
-  // unmount it via clearLastDropped onAnimationEnd, so we assert
-  // count >= 1 immediately after drop (timing race tolerance).
+  // AND lastDroppedBlockId is set AND lastDroppedRect is measured AND
+  // the EditorShellMount conditional render path took effect). The
+  // 720ms animation will eventually unmount it via clearLastDropped
+  // onAnimationEnd, so we assert count >= 1 immediately after drop
+  // (timing race tolerance). Wait one extra frame for the pipeline's
+  // post-drop rAF measurement that sets lastDroppedRect.
+  await page.waitForTimeout(50);
   const pulseAnchorCount = await page
     .locator('[data-skb-drop-pulse-anchor]')
     .count();
   expect(pulseAnchorCount).toBeGreaterThanOrEqual(1);
+
+  // F2 (R2): DropPulse anchor's rect MUST match the source NodeView's
+  // post-drop rect (within 1px tolerance for browser sub-pixel
+  // rounding) per ADR-0017 D11 line 344. Pre-R2 the anchor was at
+  // the source's pre-drag rect; R2 pipeline re-measures post-mutation
+  // and the anchor consumes lastDroppedRect.
+  const pulseAnchor = page.locator('[data-skb-drop-pulse-anchor]').first();
+  const pulseRect = await pulseAnchor.boundingBox();
+  const sourceRectAfter = await page
+    .locator('.skb-block-nodeview')
+    .first()
+    .boundingBox();
+  expect(pulseRect).not.toBeNull();
+  expect(sourceRectAfter).not.toBeNull();
+  expect(
+    Math.abs((pulseRect?.x ?? 0) - (sourceRectAfter?.x ?? 0)),
+    'cf-20c-2 R2 F2: pulse anchor x MUST match landed source x per ADR-0017 D11 line 344 (within 1px sub-pixel tolerance)',
+  ).toBeLessThanOrEqual(1);
+  expect(
+    Math.abs((pulseRect?.width ?? 0) - (sourceRectAfter?.width ?? 0)),
+  ).toBeLessThanOrEqual(1);
 });
 
 test('cf-20c-2 — drag handles are hidden on mobile (≤768px) per cf-20b R1 view-only path', async ({

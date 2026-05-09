@@ -239,19 +239,24 @@
   button drop-in via `BlockNodeView.tsx`) can dispatch up to the
   pipeline via React context AND so `BlockNodeView` can read
   `sourceBlockId` to apply the `.skb-block-nodeview--dragging-self`
-  modifier class for the ADR-0017 D6 source-lift visual (cf-20c-2 R1
-  F1 fix 2026-05-09 — opacity 0.28 + grayscale 0.4 + dashed outline
-  per `/mnt/d/download/web/v2-styles.css:218-226 .gblock.dragging-self`).
+  modifier class for the ADR-0017 D6 source-lift visual (cf-20c-2 R2
+  F1 fix 2026-05-09 — `visibility: hidden + pointer-events: none` per
+  ADR-0017 D6 line 247 verbatim; replaces R1's v2-demo
+  opacity/grayscale model that D6 line 255 explicitly rejects).
   When `state.active` is true the mount renders `<OutlineOverlay>`
   (active-edge dashed accent) AND `<DragGhost kind="markdown" mode="move">`
   (cursor follower) as siblings of the editor surface. When
-  `state.lastDroppedBlockId !== null` (cf-20c-2 R1 F2 fix 2026-05-09)
-  the mount additionally renders `<DropPulseAtRect rect={blockRects.get(lastDroppedBlockId)}
+  `state.lastDroppedBlockId !== null && state.lastDroppedRect !== null`
+  (cf-20c-2 R2 F2 fix 2026-05-09 — replaces R1's snapshot-rect model)
+  the mount additionally renders `<DropPulseAtRect rect={lastDroppedRect}
   onAnimationEnd={clearLastDropped} />` — a `position: fixed` wrapper
-  at the landed block's snapshotted bounding rect containing
-  `<DropPulse>`; the 720ms keyframe per ADR-0017 D11 fires; on
-  `onAnimationEnd` the pipeline's `clearLastDropped()` resets state
-  for the next cycle. `useEscCancel` is wired with `dragActive:
+  at the landed block's POST-DROP bounding rect (re-measured by the
+  pipeline via `editor.view.nodeDOM(livePos).getBoundingClientRect()`
+  AFTER Tiptap setNodeMarkup commits + 2 rAFs for React commit +
+  browser layout pass) per ADR-0017 D11 line 344 ("源块进入新 grid
+  位置 + outline fade-out 完成"); the 720ms keyframe fires; on
+  `onAnimationEnd` the pipeline's `clearLastDropped()` resets both
+  `lastDroppedBlockId` AND `lastDroppedRect` for the next cycle. `useEscCancel` is wired with `dragActive:
   state.active` so the global Escape key rolls the drag back to the
   S0 snapshot per ADR-0017 D8. The cf-19 standalone floating
   `<DragHandle />` is removed — per-block handles are the sole drag
@@ -262,11 +267,15 @@
   Regression-lock specs:
   `apps/site/playwright/sample-blocks-drag-handle.spec.ts` covers
   desktop drag lifecycle (handles present + dragstart mounts overlay
-  + ghost; Esc cancel unmounts both), source-lift visual (cf-20c-2 R1
+  + ghost; Esc cancel unmounts both), source-lift visual (cf-20c-2 R2
   F1: dragstart applies `.skb-block-nodeview--dragging-self` to source
-  only; Esc removes), terminal drop (cf-20c-2 R1 F4: dragstart →
-  dragover-edge → drop mutates source's gridColumn from `1 / span 12`
-  to `7 / span 6` AND DropPulse anchor mounts), AND mobile-hidden
+  only AND computed `visibility === 'hidden'` AND
+  `pointer-events === 'none'`; Esc removes), terminal drop (cf-20c-2
+  R2 F3+F4 strict: dragstart → dragover-edge → drop mutates source's
+  gridColumn EXACTLY from `1 / span 12` to `7 / span 6` AND target
+  reciprocally to `1 / span 6` AND DropPulse anchor mounts AND its
+  rect matches the post-drop source rect within 1px sub-pixel
+  tolerance per ADR-0017 D11 line 344), AND mobile-hidden
   assertion.
 - Block registry: C.4-2 verified that `EditorShellMount.tsx` constructs a
   route-local `BlockRegistry` and calls `registerBlocks` from

@@ -546,22 +546,33 @@ was not implemented in cf-20c-2 R0. Two omissions:
   consume the helper.
 
 - `BlockNodeView.css` adds a `.skb-block-nodeview--dragging-self`
-  rule per the v2 contract: `opacity: 0.28; filter: grayscale(0.4);
-  outline: 1.5px dashed var(--text-3); outline-offset: -2px;
-  pointer-events: none; transition: none`. The `pointer-events: none`
-  is defense-in-depth on top of the edge-rect filter — even if a
-  future renderer somehow re-includes the source in edgeRects, the
-  lifted DOM can't receive drop events. The "moving →" caption
-  pseudo-element is deferred to cf-23 read-mode unification (visual
-  polish PR).
+  rule. **R1 SHIPPED v2-demo gray model** (`opacity: 0.28; filter:
+  grayscale(0.4); outline: 1.5px dashed; outline-offset: -2px`) —
+  codex-pr-reviewer-55 R2 F1 caught this as a real D6 spec violation
+  because ADR-0017 D6 line 255 EXPLICITLY REJECTS that model:
+  > "v0.3 user 共识 改为 lift 模式: 源块完全消失" + 3 reasons (visual
+  > confusion / self-match / semantic clarity).
+  **R2 fixed to D6 line 247 verbatim**: `visibility: hidden;
+  pointer-events: none; transition: none`. Why `visibility: hidden`
+  over `display: none` (D6 lists both as alternatives): `display:
+  none` collapses the grid cell shifting downstream blocks during
+  drag — visually unstable AND breaks the "snapshot at drag-start"
+  model (snapshotted blockRects target pre-drag positions; if cells
+  collapse mid-drag, downstream blocks visually shift but the
+  snapshotted edge-rects still target their pre-drag positions,
+  producing tiebreak hits at empty visual space). `visibility:
+  hidden` preserves layout space while hiding the visual.
 
-**Regression lock**: NEW `sample-blocks-drag-handle.spec.ts` test
+**Regression lock**: `sample-blocks-drag-handle.spec.ts` test
 "cf-20c-2 R1 F1 — source-lift visual" asserts: pre-drag 0
 `.skb-block-nodeview--dragging-self`; post-dragstart EXACTLY 1
 (matching the wrapper containing the clicked handle); post-Esc 0.
-The edge-rect-exclusion half is unit-tested via the pipeline's
-`onDragStart` filter (not separately asserted in DOM because the
-filter operates on internal refs).
+**R2 strengthens** with computed-style assertions: `visibility ===
+'hidden'` AND `pointer-events === 'none'`. Style assertions catch
+any future regression that swaps visibility back to opacity or
+forgets pointer-events. The edge-rect-exclusion half is unit-tested
+via the pipeline's `onDragStart` filter (not separately asserted in
+DOM because the filter operates on internal refs).
 
 ### D9 — DropPulse mount path A (cf-20c-2 R1 F2 fix 2026-05-09)
 
@@ -584,33 +595,50 @@ or a sibling state); (c) the pulse is a tangible user-feedback
 affordance that's part of the v2 ADR-0017 D11 contract — shipping
 the wire makes the cf-20c-2 demo visually complete.
 
-**Fix (R1)**:
+**Fix (R1 wire + R2 landed-rect correction)**:
 
 - `useDragDropPipeline` exposes a NEW `clearLastDropped()` callback
-  alongside `state.lastDroppedBlockId`. The callback resets the
-  state to `null` after the pulse animation ends.
+  alongside `state.lastDroppedBlockId`. The callback resets state to
+  `null` after the pulse animation ends.
 
 - `EditorShellMount.tsx` mounts a NEW local helper component
-  `<DropPulseAtRect rect={pipeline.state.blockRects.get(lastDroppedBlockId)}
-  onAnimationEnd={pipeline.clearLastDropped} />` whenever
-  `lastDroppedBlockId !== null`. The helper renders `<DropPulse>`
-  inside a `position: fixed` wrapper at the landed block's rect.
+  `<DropPulseAtRect rect={...} onAnimationEnd={pipeline.clearLastDropped} />`
+  whenever `lastDroppedBlockId !== null`. The helper renders
+  `<DropPulse>` inside a `position: fixed` wrapper at the landed
+  block's rect.
 
-- The rect comes from the pipeline's `blockRects` Map snapshotted
-  at drag-start. cf-20c-2 R1 acknowledges this means the pulse
-  appears at the SOURCE block's pre-drag position (correct for the
-  "block landed here" semantic; the source was visually lifted +
-  is now at its new position via Tiptap's setNodeMarkup, but
-  blockRects still has the pre-drag rect). Future PR could re-measure
-  post-drop for the new position; cf-20c-2 R1 honors the simpler
-  "snapshot once, animate at original position" model since the
-  visual delta is small (the user dragged from there).
+- **R1 SHIPPED `rect={blockRects.get(lastDroppedBlockId)}`** — the
+  SNAPSHOT rect (source's pre-drag full-width position). cf-20c-2 R1
+  PR.md even acknowledged this was wrong but framed it as "simpler
+  model". codex-pr-reviewer-55 R2 F2 caught it as a real ADR-0017
+  D11 line 344 violation:
+  > "drop 落定瞬间 (源块进入新 grid 位置 + outline fade-out 完成)"
+  D11 specifies the pulse fires AT the new position, not the
+  snapshot.
+
+- **R2 fix**: `useDragDropPipeline` exposes new `state.lastDroppedRect`
+  (`DOMRectReadOnly | null`) field. Pipeline re-measures the source
+  NodeView via `editor.view.nodeDOM(livePos).getBoundingClientRect()`
+  AFTER Tiptap setNodeMarkup commits. **Two `requestAnimationFrame`s
+  required** (verified empirically with 1 rAF the measurement still
+  returns the pre-drop full-width rect; 2 rAFs gets the post-layout
+  half-width landed rect):
+    - rAF 1: React commit cycle (NodeView re-renders with new
+      attrs)
+    - rAF 2: browser layout pass post-DOM-mutation
+  This is the standard "wait for next paint" idiom in browser DnD.
+  `EditorShellMount.tsx` consumes `lastDroppedRect` directly; the
+  conditional render now requires BOTH `lastDroppedBlockId !== null
+  && lastDroppedRect !== null`. `clearLastDropped()` resets both
+  fields.
 
 **Regression lock**: the F4 terminal-drop spec (D11 below) asserts
-`[data-skb-drop-pulse-anchor]` count >= 1 after drop. The
-EditorShellMount wraps `<DropPulse>` in a `<div data-skb-drop-pulse-anchor>`
-positioned wrapper, so the data attribute uniquely identifies the
-pulse mount.
+`[data-skb-drop-pulse-anchor]` count >= 1 after drop. **R2 strengthens**:
+asserts the anchor's `getBoundingClientRect()` matches the source
+NodeView's post-drop `getBoundingClientRect()` within 1px sub-pixel
+tolerance per ADR-0017 D11 line 344. Pre-R2 the anchor matched the
+PRE-DROP source rect — the new strict assertion catches future
+regressions to the snapshot-rect model.
 
 ### D10 — Velocity unit alignment with `tiebreak()` contract (cf-20c-2 R1 F3 fix 2026-05-09)
 
@@ -846,10 +874,6 @@ cf-20 sequence — cf-20d resize + cf-20e kebab + cf-22 keyboard a11y
 not "out-of-scope" deferrals.)
 
 Items NOT in cf-20c-2 scope but referenced for context:
-- **DropPulse mount** — pipeline tracks `lastDroppedBlockId` but
-  doesn't render `<DropPulse>` at the landed block yet. cf-20d
-  (resize) needs the same pulse-on-success UX so centralizing in
-  cf-20d keeps the JSX shorter (cf-20c-2 D5 + D6 rationale).
 - **Empty-mode drop** — pipeline dispatches `drag-end-mode-none`
   when cursor isn't on an edge rect at drop. Empty-mode drop into
   bare grid area requires computing `emptyTarget` from cursor +

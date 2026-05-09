@@ -291,24 +291,26 @@ export function EditorShellMount({
       )}
 
       {/*
-        Wave 6 cf-20c-2 R1 F2 fix (2026-05-09) — DropPulse mount.
-        Pre-R1 the pipeline tracked `lastDroppedBlockId` but never
-        rendered <DropPulse>. cf-20c-2 R1 wires the mount here per
-        ADR-0017 D11 (drop-pulse fires ONLY on drag-end-success;
-        cancel + mode-none + outside-grid drop do NOT trigger).
-        Position the pulse at the landed block's bounding rect via
-        the pipeline's snapshotted blockRects map — the rect was
-        captured at drag-start and the position-mutation algebra
-        (cf-20c-1 applyDropMode) hasn't moved the SOURCE block in
-        DOM space yet at the moment lastDroppedBlockId is set
-        (Tiptap's setNodeMarkup batches the layout update one frame
-        later). The pulse animates 720ms then onAnimationEnd fires
-        clearLastDropped() which resets the state for the next drag.
+        Wave 6 cf-20c-2 R2 F2 fix (2026-05-09) — DropPulse mount at
+        LANDED rect per ADR-0017 D11 line 344 ("源块进入新 grid 位置"
+        — pulse fires AT the new position). cf-20c-2 R1 anchored the
+        pulse at the SNAPSHOT rect (source's pre-drag position) which
+        codex-pr-reviewer-55 R2 F2 caught as a real D11 violation. R2
+        fix: pipeline re-measures the source NodeView at its NEW grid
+        position via `editor.view.nodeDOM(livePos).getBoundingClientRect()`
+        AFTER Tiptap setNodeMarkup commits + 1 rAF for layout settle,
+        and exposes the result as `state.lastDroppedRect`. The
+        consumer renders `<DropPulseAtRect>` only when both
+        `lastDroppedBlockId !== null` AND `lastDroppedRect !== null`
+        — the rect dependency means the mount appears one frame after
+        the BlockId is set (the rAF gap during which the new rect is
+        being measured). Pulse animates 720ms then onAnimationEnd
+        fires clearLastDropped() resetting both BlockId + rect.
       */}
       {pipeline.state.lastDroppedBlockId !== null &&
-        pipeline.state.blockRects.get(pipeline.state.lastDroppedBlockId) && (
+        pipeline.state.lastDroppedRect !== null && (
           <DropPulseAtRect
-            rect={pipeline.state.blockRects.get(pipeline.state.lastDroppedBlockId)!}
+            rect={pipeline.state.lastDroppedRect}
             onAnimationEnd={pipeline.clearLastDropped}
           />
         )}
@@ -318,11 +320,16 @@ export function EditorShellMount({
 
 /**
  * Wave 6 cf-20c-2 R1 F2 helper — render a <DropPulse> at a fixed
- * viewport rect (the landed block's bounding rect snapshotted from
- * the pipeline). Needed because DropPulse uses `position: absolute;
- * inset: 0` which expects a positioned parent; the simplest way to
- * give it one without mounting inside ProseMirror is a `position:
- * fixed` wrapper at the rect coordinates.
+ * viewport rect (the landed block's bounding rect re-measured by
+ * the pipeline post-mutation). Needed because DropPulse uses
+ * `position: absolute; inset: 0` which expects a positioned parent;
+ * the simplest way to give it one without mounting inside ProseMirror
+ * is a `position: fixed` wrapper at the rect coordinates.
+ *
+ * Wave 6 cf-20c-2 R2 F2 (2026-05-09) — the rect now comes from
+ * `pipeline.state.lastDroppedRect` (post-drop landed position),
+ * NOT `pipeline.state.blockRects.get(lastDroppedBlockId)` (pre-drag
+ * snapshot). See ADR-0017 D11 line 344.
  */
 function DropPulseAtRect({
   rect,

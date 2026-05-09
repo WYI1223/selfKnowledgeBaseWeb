@@ -58,10 +58,18 @@
  */
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import type { Editor } from '@tiptap/core';
-import { applyDropMode, type GridSnapshotIdentified, type IdentifiedBlock } from './apply-drop-mode';
+import { applyDropMode, type GridSnapshotIdentified } from './apply-drop-mode';
 import { computeEdgeRects, type BlockLayout, type EdgeRect } from './edge-rects';
 import { findMatches, tiebreak, type EdgeMatch } from './tiebreak';
 import { layoutReducer, type LayoutState } from './layout-reducer';
+// Wave 6 cf-20c-2 R2 — extracted snapshot helpers (kept the main hook
+// file under the 500-line size-check hard limit).
+import {
+  liveBlockPositions,
+  measureBlockRects,
+  snapshotBlocks,
+  type SerializedBlock,
+} from './pipeline-snapshot';
 
 const VELOCITY_WINDOW_MS = 16;
 
@@ -80,6 +88,19 @@ export interface PipelineDragState {
   readonly sourceBlockId: string | null;
   /** Block ID that received the most recent drop (for DropPulse). */
   readonly lastDroppedBlockId: string | null;
+  /**
+   * Wave 6 cf-20c-2 R2 F2 fix (2026-05-09) — bounding rect of the
+   * source NodeView at its POST-DROP landed grid position. ADR-0017
+   * D11 line 344: "drop 落定瞬间 (源块进入新 grid 位置 + outline
+   * fade-out 完成)" — the pulse fires AT the new position. Pre-R2
+   * the consumer (EditorShellMount.tsx) anchored the pulse at the
+   * SNAPSHOT rect (source's pre-drag position) which is wrong per
+   * D11. R2 pipeline re-measures the source NodeView via
+   * `editor.view.nodeDOM(livePos).getBoundingClientRect()` AFTER
+   * the Tiptap setNodeMarkup batch commits + one rAF for layout
+   * settle. null when no recent drop.
+   */
+  readonly lastDroppedRect: DOMRectReadOnly | null;
 }
 
 export interface UseDragDropPipelineOptions {
@@ -112,106 +133,11 @@ export interface UseDragDropPipelineReturn {
   readonly clearLastDropped: () => void;
 }
 
-interface SerializedBlock extends IdentifiedBlock {
-  readonly pmPos: number;
-  readonly nodeName: string;
-}
-
 const INITIAL_LAYOUT_STATE: LayoutState = {
   epoch: 0,
   snapshot: null,
   baseline: { blocks: [] },
 };
-
-/**
- * Walk the editor doc and return one IdentifiedBlock per `.skb-block-nodeview`
- * NodeView. Block id = ProseMirror node `pos` as string. Used at
- * drag-start to populate the snapshot; never re-called during
- * drag-over (snapshot semantics per ADR-0017 D6 lift mode).
- */
-function snapshotBlocks(editor: Editor): SerializedBlock[] {
-  const blocks: SerializedBlock[] = [];
-  editor.state.doc.descendants((node, pos) => {
-    const isBlockNode = node.type.spec['group']?.toString().includes('block') ?? false;
-    if (!isBlockNode || !node.attrs) return undefined;
-    // Filter to NodeView blocks only (skip prose paragraphs etc.).
-    const colAttr: unknown = node.attrs['col'];
-    if (typeof colAttr !== 'number') return undefined;
-    const rowAttr: unknown = node.attrs['row'];
-    blocks.push({
-      id: String(pos),
-      pmPos: pos,
-      nodeName: node.type.name,
-      col: colAttr,
-      ...(typeof rowAttr === 'number' && { row: rowAttr }),
-      colSpan: node.attrs['colSpan'] as number,
-      rowSpan: (node.attrs['rowSpan'] as number | 'auto') ?? 1,
-    });
-    return false; // Don't descend into block nodes.
-  });
-  return blocks;
-}
-
-/**
- * Measure DOM bounding rects for every snapshot block. Selector pattern
- * `.skb-block-nodeview` is the editor-mount path (cf-19); we look up
- * the wrapper for each snapshot block by walking the editor's DOM.
- */
-function measureBlockRects(
-  editor: Editor,
-  blocks: readonly SerializedBlock[],
-): Map<string, DOMRectReadOnly> {
-  const rects = new Map<string, DOMRectReadOnly>();
-  const editorEl = editor.view.dom;
-  for (const block of blocks) {
-    const node = editor.view.nodeDOM(block.pmPos);
-    const el = node instanceof HTMLElement ? node : null;
-    if (el) {
-      rects.set(block.id, el.getBoundingClientRect());
-    } else {
-      // Fallback: scan for matching kind under editor DOM root.
-      const fallback = editorEl.querySelector(
-        `.skb-block-nodeview[data-skb-block-kind="${block.nodeName}"]`,
-      );
-      if (fallback instanceof HTMLElement) {
-        rects.set(block.id, fallback.getBoundingClientRect());
-      }
-    }
-  }
-  return rects;
-}
-
-/**
- * Translate snapshot id → live pmPos at drop-time. The snapshot id IS
- * the pmPos string at drag-start; positions may shift if an external
- * transaction mutated the doc during drag (rare but possible). We
- * walk the live doc and match by (nodeName + original pmPos) as a
- * best-effort; if a block can't be located, skip its attr update.
- */
-function liveBlockPositions(
-  editor: Editor,
-  snapshot: readonly SerializedBlock[],
-): Map<string, { pos: number; nodeName: string }> {
-  const map = new Map<string, { pos: number; nodeName: string }>();
-  const liveBlocks: Array<{ pos: number; nodeName: string }> = [];
-  editor.state.doc.descendants((node, pos) => {
-    if (typeof node.attrs?.['col'] !== 'number') return undefined;
-    liveBlocks.push({ pos, nodeName: node.type.name });
-    return false;
-  });
-  // Same-order match (sample-blocks fixtures all colSpan=12; block
-  // count is stable during a single drag transaction). Future
-  // cf-20c-3+ cross-doc-mutation case adds a stable id field per
-  // ADR-0016 D2 amendment.
-  for (let i = 0; i < snapshot.length && i < liveBlocks.length; i++) {
-    const snapBlock = snapshot[i];
-    const liveBlock = liveBlocks[i];
-    if (snapBlock && liveBlock && snapBlock.nodeName === liveBlock.nodeName) {
-      map.set(snapBlock.id, { pos: liveBlock.pos, nodeName: liveBlock.nodeName });
-    }
-  }
-  return map;
-}
 
 export function useDragDropPipeline(
   options: UseDragDropPipelineOptions,
@@ -224,6 +150,12 @@ export function useDragDropPipeline(
   const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
   const [sourceBlockId, setSourceBlockId] = useState<string | null>(null);
   const [lastDroppedBlockId, setLastDroppedBlockId] = useState<string | null>(null);
+  // Wave 6 cf-20c-2 R2 F2 — landed-position rect for DropPulse
+  // anchoring per ADR-0017 D11 line 344. Set post-drop by re-
+  // measuring the source NodeView at its NEW grid position; null
+  // until a successful drop AND the rAF after Tiptap setNodeMarkup
+  // commits.
+  const [lastDroppedRect, setLastDroppedRect] = useState<DOMRectReadOnly | null>(null);
 
   // Snapshot refs (preserved across renders; not state because
   // changing them shouldn't trigger re-render).
@@ -404,6 +336,40 @@ export function useDragDropPipeline(
       };
       dispatchLayout({ type: 'drag-end-success', mutation: reducerSnapshot });
       setLastDroppedBlockId(sourceBlockId);
+      // Wave 6 cf-20c-2 R2 F2 fix — re-measure the source NodeView at
+      // its NEW grid position and store the rect so the consumer's
+      // <DropPulseAtRect> mounts at the LANDED position per ADR-0017
+      // D11 line 344. Pre-R2 the consumer used the snapshotted rect
+      // (source's pre-drag position) — wrong per D11.
+      //
+      // Timing: setNodeMarkup synchronously advances the Tiptap
+      // transaction; React schedules a re-render with the new
+      // gridColumn inline style; the browser then runs layout to
+      // resolve the new grid placement; only THEN does
+      // getBoundingClientRect() return the landed rect. We need
+      // TWO rAFs:
+      //   - rAF 1: React commit cycle (NodeView re-renders with new attrs)
+      //   - rAF 2: browser layout pass post-DOM-mutation
+      // One rAF is insufficient (verified empirically: cf-20c-2 R2
+      // probe with single rAF measured the pre-drop full-width rect,
+      // not the post-drop half-width landed rect). Two rAFs is the
+      // standard "wait for next paint" idiom in browser DnD code.
+      if (didMutate) {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            // Tiptap's setNodeMarkup may have shifted live positions
+            // (split-* modes can re-order siblings). Re-walk the doc
+            // post-commit to find the source's current pos.
+            const newLivePositions = liveBlockPositions(editor, snapshotRef.current);
+            const newSourceLive = newLivePositions.get(sourceBlockId);
+            if (!newSourceLive) return;
+            const dom = editor.view.nodeDOM(newSourceLive.pos);
+            if (dom instanceof HTMLElement) {
+              setLastDroppedRect(dom.getBoundingClientRect());
+            }
+          });
+        });
+      }
       setActive(false);
       setActiveMatch(null);
       setCursor(null);
@@ -426,8 +392,14 @@ export function useDragDropPipeline(
   // `onAnimationEnd` callback it calls `clearLastDropped()` to unmount
   // the pulse so a follow-up drag's mount cycle isn't suppressed by a
   // stale "already pulsed" state.
+  // Wave 6 cf-20c-2 R2 F2 — also clears `lastDroppedRect` so the
+  // next drop's re-measure isn't mixed with the prior cycle's stale
+  // rect (the rect would be visually stale after consumers unmount
+  // the DropPulse anyway, but explicit reset keeps the state shape
+  // consistent).
   const clearLastDropped = useCallback(() => {
     setLastDroppedBlockId(null);
+    setLastDroppedRect(null);
   }, []);
 
   return {
@@ -439,6 +411,7 @@ export function useDragDropPipeline(
       cursor,
       sourceBlockId,
       lastDroppedBlockId,
+      lastDroppedRect,
     },
     layoutState,
     onDragStart,
