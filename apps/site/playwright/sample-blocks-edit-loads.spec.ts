@@ -128,22 +128,35 @@ test('sample-blocks edit route loads non-empty content (mdxFlowExpression no lon
   // still see `pageerror` if the React error-boundary surfaced it).
   expect(consoleErrors.filter((m) => /loadFromMdx|mdx-bridge/.test(m))).toEqual([]);
 
-  // Wave 6 carry-forward #19 v0.2 — v2 `.gblock` card chrome regression
-  // lock per /mnt/d/download/web/v2-styles.css:154-249 reference design.
-  // Three assertion families:
+  // Wave 6 carry-forward #19 v0.2 + R2 — v2 `.gblock` card chrome
+  // regression lock per /mnt/d/download/web/v2-styles.css:154-249
+  // reference design. R2 P4 fix: stripe color distinctness assertion
+  // catches "all kinds share fallback color" / "wrong kind→hue mapping"
+  // regressions.
+  //
+  // Four assertion families:
   //
   //  (a) Per-kind 2px top stripe lives on the .skb-block-nodeview
   //      wrapper (cf-19 v0.2 D2 — moved from inner component CSS so
-  //      the stripe sits flush with the card top edge).
+  //      the stripe sits flush with the card top edge). Width≥2 +
+  //      style solid + color non-transparent FOR ALL 8 KINDS.
   //
-  //  (b) Wrapper carries the v2 .gblock card chrome — border, radius,
-  //      surface bg, margin-block, transition. Hover/selected toggles
-  //      stay testable via static computed-style probes.
+  //  (b) (R2 P4) stripe colors are distinct across kinds: 7 unique
+  //      computed colors (callout + componentCode intentionally share
+  //      the runnable hue; the other 6 are unique per ADR-0018 D3).
+  //      Distinctness is sufficient to detect "all kinds resolved to
+  //      the same fallback" / "wrong kind→hue mapping" without doing
+  //      OKLCH→rgb token math in the test.
   //
-  //  (c) Per-block .skb-block-nodeview__gutter shell exists with kind
-  //      chip whose text matches the kind (collapsing the cf-15b internal
-  //      `componentCode` rename back to user-facing `code`). 4 sequential
-  //      same-kind blocks each get their own chip → visually distinct.
+  //  (c) Wrapper carries the v2 .gblock card chrome — border, radius,
+  //      surface bg, margin-block. Hover/selected toggles stay
+  //      testable via static computed-style probes.
+  //
+  //  (d) Per-block .skb-block-nodeview__gutter shell exists with kind
+  //      chip whose text matches the kind (collapsing the cf-15b
+  //      internal `componentCode` rename back to user-facing `code`).
+  //      4 sequential same-kind blocks each get their own chip →
+  //      visually distinct.
   const visualProbe = await page.evaluate(() => {
     const pm = document.querySelector('.ProseMirror');
     if (!pm) return { error: 'no ProseMirror' };
@@ -208,7 +221,34 @@ test('sample-blocks edit route loads non-empty content (mdxFlowExpression no lon
     expect(entry.borderTopColor).not.toBe('rgba(0, 0, 0, 0)');
   }
 
-  // (b) v2 .gblock card chrome on wrapper.
+  // (b) (R2 P4) stripe colors are distinct across kinds. 7 unique
+  // computed colors expected (callout & componentCode share the
+  // runnable hue per ADR-0018 D3 + cf-19 D2 table); the 6 single-hue
+  // kinds (image / math / pdf / jupyter / nn-viz / agent-flow) plus
+  // the shared runnable hue = 7 unique colors. This catches "all
+  // kinds resolved to the same fallback" / "wrong kind→hue mapping"
+  // without browser-specific OKLCH→rgb math.
+  const stripeColors = (visualProbe.kinds ?? [])
+    .map((e) => ('error' in e ? null : e.borderTopColor))
+    .filter((c): c is string => c !== null);
+  const uniqueColors = new Set(stripeColors);
+  expect(
+    uniqueColors.size,
+    `stripe colors are distinct across kinds: expected 7 unique computed colors (callout & componentCode share runnable hue), got ${uniqueColors.size} from [${stripeColors.join(', ')}]`,
+  ).toBe(7);
+  // Sanity: callout and componentCode (the hue-sharing pair) MUST
+  // resolve to the same color.
+  const calloutColor = visualProbe.kinds?.find(
+    (e) => !('error' in e) && e.kind === 'callout',
+  );
+  const codeColor = visualProbe.kinds?.find(
+    (e) => !('error' in e) && e.kind === 'componentCode',
+  );
+  expect(
+    calloutColor && !('error' in calloutColor) ? calloutColor.borderTopColor : null,
+  ).toBe(codeColor && !('error' in codeColor) ? codeColor.borderTopColor : 'unreachable');
+
+  // (c) v2 .gblock card chrome on wrapper.
   expect(visualProbe.cardChrome?.borderLeftWidth ?? 0).toBeGreaterThanOrEqual(1);
   expect(visualProbe.cardChrome?.borderLeftStyle).toBe('solid');
   expect(parseFloat(visualProbe.cardChrome?.borderRadius ?? '0')).toBeGreaterThanOrEqual(6);
@@ -218,7 +258,7 @@ test('sample-blocks edit route loads non-empty content (mdxFlowExpression no lon
   expect(visualProbe.cardChrome?.marginTop ?? 0).toBeGreaterThanOrEqual(8);
   expect(visualProbe.cardChrome?.marginBottom ?? 0).toBeGreaterThanOrEqual(8);
 
-  // (c) Gutter shell + kind chip per kind. Chip text equals the kind
+  // (d) Gutter shell + kind chip per kind. Chip text equals the kind
   // name except `componentCode` collapses to `code`.
   for (const entry of visualProbe.kinds ?? []) {
     if ('error' in entry) continue;

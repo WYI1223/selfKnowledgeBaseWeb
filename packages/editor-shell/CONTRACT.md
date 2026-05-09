@@ -522,7 +522,7 @@ unregistered NodeView fallback wrapper additionally carries the
 `makeBlockNodeView` factory is exported from the package barrel for
 downstream NodeView smoke tests.
 
-### BlockNodeView wrapper styles (Wave 6 cf-19 v0.2; 2026-05-09)
+### BlockNodeView wrapper styles (Wave 6 cf-19 v0.2 + R2; 2026-05-09)
 
 `@skb/editor-shell/BlockNodeView.css` is a side-effect stylesheet that
 brings the v2 `.gblock` card chrome onto the editor surface (per the
@@ -555,8 +555,11 @@ Public selectors:
 - `.skb-block-nodeview:hover` — `border-color: var(--border-strong)` +
   `box-shadow: var(--shadow-sm)` (v2-styles.css:171).
 - `.skb-block-nodeview.ProseMirror-selectednode` —
-  `border-color: var(--accent)` + `box-shadow: 0 0 0 2px var(--accent-soft)`
+  `border-color: var(--accent)` + `box-shadow: 0 0 0 2px var(--skb-block-nodeview--accent-soft)`
   (v2-styles.css:172). ProseMirror sets this class on `NodeSelection`.
+  The `--skb-block-nodeview--accent-soft` is an editor-local CSS variable
+  scoped to the wrapper (R2 P2 honesty fix; see § Editor-local CSS
+  variables below).
 - `.skb-block-nodeview:focus-within:not(.ProseMirror-selectednode)` —
   softer accent border bridge so jupyter Run / nn-viz range focus reads
   as block-active without flashing the full selected ring.
@@ -584,12 +587,50 @@ Public selectors:
   — dashed border-strong outline + monospaced placeholder body for the
   unregistered fallback path (no registry threaded into `wireRegistry`).
 
-Per-block stripe coexistence: each block package's
-`ui-default/<kind>.css` keeps its own `border-top` rule so the static
-read-route (`/notes/<slug>` Astro page) renders the stripe directly on
-the inner component when the NodeView wrapper is absent. The wrapper-
-level rule wins specificity-wise on the editor-mount path and gives
-the stripe its flush card-top placement.
+#### Editor-local CSS variables (R2 P2 honesty fix)
+
+`BlockNodeView.css` declares a small set of CSS custom properties scoped
+to `.skb-block-nodeview` itself (NOT promoted to global `:root`); each
+`[data-skb-block-kind="<kind>"]` selector redefines them per-kind. They
+are NOT exported via `@skb/design-tokens` because they are
+editor-decoration-only and would balloon the global token surface
+without clear cross-package reuse. Promotion to design-tokens is
+documented as an out-of-scope cf-21+ candidate in the cf-19 PR.md.
+
+| editor-local CSS var | role | redefined per-kind? |
+| --- | --- | --- |
+| `--skb-block-nodeview--accent-soft` | wrapper outer-ring color on `.ProseMirror-selectednode` | no (single shared accent-soft) |
+| `--skb-block-nodeview--chip-bg` | gutter chip background tint | yes (each kind matches its top-stripe hue) |
+| `--skb-block-nodeview--chip-border` | gutter chip border tint | yes |
+| `--skb-block-nodeview--chip-text` | gutter chip text color | yes |
+
+#### Per-block stripe coexistence + nested-suppression rule (R2 P3 fix)
+
+Each block package's `ui-default/<kind>.css` keeps its own
+`border-top: 2px solid var(--accent-X)` rule so the static read-route
+(`/notes/<slug>` Astro page) renders the stripe directly on the inner
+component when the NodeView wrapper is absent.
+
+To prevent a visible double 2px stripe on the editor-mount path (where
+both the wrapper rule AND the nested inner rule would otherwise paint),
+`BlockNodeView.css` ships an explicit nested-suppression block:
+
+```css
+.skb-block-nodeview [data-callout-variant],
+.skb-block-nodeview [data-code-language],
+.skb-block-nodeview [data-image-loading],
+.skb-block-nodeview [data-block='math'],
+.skb-block-nodeview [data-block='pdf'],
+.skb-block-nodeview [data-block='jupyter'],
+.skb-block-nodeview [data-block='nn-viz'],
+.skb-block-nodeview [data-block='agent-flow'] {
+  border-top: 0;
+}
+```
+
+Result: the wrapper is the single source of stripe truth on the
+editor path; the inner stripe still renders on the static read-route
+(no `.skb-block-nodeview` ancestor present there).
 
 `EditorShellProps.extensions` is now the sanctioned composition hook
 for consumer-owned Tiptap extensions layered after the built-in

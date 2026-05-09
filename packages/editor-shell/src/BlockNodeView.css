@@ -1,13 +1,37 @@
 /*
  * @skb/editor-shell — BlockNodeView wrapper styles (v2 `.gblock` card chrome).
  *
- * Wave 6 cf-19 v0.2 (2026-05-09) — restructured from v0.1 minimal
+ * Wave 6 cf-19 v0.2 + R2 (2026-05-09) — restructured from v0.1 minimal
  * outline-only to the full v2 `.gblock` card treatment per
- * /mnt/d/download/web/v2-styles.css:154-176 and the v2-design-granularity
+ * /mnt/d/download/web/v2-styles.css:154-249 and the v2-design-granularity
  * "Block 容器（.gblock）状态" table. The wrapper is now the canonical
  * editor-surface block boundary; per-kind 2px top stripe lives here on
- * the wrapper (flush with the card top edge) instead of inside each
- * inner block component CSS.
+ * the wrapper (flush with the card top edge) and the inner-component
+ * stripe is suppressed when nested under .skb-block-nodeview so only
+ * one stripe renders on the editor path.
+ *
+ * R2 honesty audit (codex-pr-reviewer-55 R1 P2 + P3 fix):
+ *   - Token authority: most color/border/radius/shadow values come from
+ *     @skb/design-tokens (--surface, --border, --border-strong, --accent,
+ *     --shadow-sm, --radius, --duration-fast, --ease-base, --mono,
+ *     --text-2, --text-3, --panel, --bg, and the 8 ADR-0018 D3 per-kind
+ *     hue tokens --accent-callout / --accent-runnable / --accent-image /
+ *     --accent-math / --accent-pdf / --accent-jupyter / --accent-nn-viz /
+ *     --accent-agent-flow). The ONE exception class is the "kind-soft"
+ *     chip tint set + the wrapper-level accent-soft outer-ring color:
+ *     these are scoped as editor-local CSS custom properties on
+ *     .skb-block-nodeview itself (NOT promoted to global :root) because
+ *     they are editor-decoration-only and would balloon the global
+ *     design-tokens surface (24 NEW per-kind chip tokens + 1 accent-soft)
+ *     without clear cross-package reuse. Promotion is documented as an
+ *     out-of-scope cf-21+ candidate in PR.md.
+ *   - Stripe coexistence: the wrapper carries the visible stripe; inner
+ *     block CSS rules (border-top: 2px solid var(--accent-X) on the
+ *     [data-block=...] / [data-callout-variant] / [data-code-language] /
+ *     [data-image-loading] selectors) are zeroed via descendant
+ *     selectors below when nested inside .skb-block-nodeview. Static
+ *     read-route /notes/<slug> renders inner blocks without the wrapper,
+ *     so the inner stripe still shows there.
  *
  * DOM contract (BlockNodeView.tsx):
  *   .skb-block-nodeview                    ← v2 .gblock card
@@ -15,22 +39,18 @@
  *       .skb-block-nodeview__kind-chip     ← visible kind label
  *     .skb-block-nodeview__body            ← v2 .gblock-body padding shell
  *       <inner block component />          ← CalloutBody / CodeBody / etc.
- *
- * Why both wrapper-level and inner-component-level stripes coexist:
- *   - The static read-route (apps/site /notes/<slug>) renders inner
- *     block components without this NodeView wrapper, so each block
- *     CSS keeps its own `border-top: 2px solid var(--accent-X)` for
- *     standalone use.
- *   - The editor-mount route mounts the wrapper around the inner
- *     component. The wrapper's per-kind stripe wins specificity-wise
- *     (descendant attribute selector vs root attribute selector) and
- *     sits flush at the card top edge, which is the v2 visual.
- *
- * All color/border/radius/shadow values come from @skb/design-tokens
- * (ADR-0018 D1+D3); zero hardcoded OKLCH literals.
  */
 
 .skb-block-nodeview {
+  /* Editor-local scoped CSS variables (R2 P2 honesty fix). Each
+   * .skb-block-nodeview[data-skb-block-kind="<kind>"] selector below
+   * redefines the chip-* trio for its own kind tint. The
+   * accent-soft is shared across kinds. */
+  --skb-block-nodeview--accent-soft: oklch(96% 0.04 35);
+  --skb-block-nodeview--chip-bg: var(--panel, oklch(98% 0.004 80));
+  --skb-block-nodeview--chip-border: var(--border, oklch(92% 0.005 80));
+  --skb-block-nodeview--chip-text: var(--text-2, oklch(45% 0.01 80));
+
   position: relative;
   background: var(--surface, #ffffff);
   border: 1px solid var(--border, oklch(92% 0.005 80));
@@ -48,18 +68,14 @@
 
 .skb-block-nodeview:hover {
   border-color: var(--border-strong, oklch(86% 0.006 80));
-  box-shadow: var(
-    --shadow-sm,
-    0 1px 2px rgba(20, 15, 10, 0.05),
-    0 1px 1px rgba(20, 15, 10, 0.04)
-  );
+  box-shadow: var(--shadow-sm, 0 1px 2px rgba(20, 15, 10, 0.05));
 }
 
 /* ProseMirror sets `.ProseMirror-selectednode` on the wrapper when
  * the block is the active NodeSelection. */
 .skb-block-nodeview.ProseMirror-selectednode {
   border-color: var(--accent, oklch(58% 0.16 35));
-  box-shadow: 0 0 0 2px var(--accent-soft, oklch(96% 0.04 35));
+  box-shadow: 0 0 0 2px var(--skb-block-nodeview--accent-soft);
 }
 
 /* Soft state for keyboard focus into block-internal controls (e.g.
@@ -73,7 +89,9 @@
 /* Authority: ADR-0018 D3 hue table. Each kind maps to a hue group
  * (canvas / runnable / image) per granularity v0.3.4 § "Block kind
  * 编码（视觉识别）". 5 lock-extended kinds (math/pdf/jupyter/nn-viz/
- * agent-flow) consume the per-kind tokens locked at Pre-A4. */
+ * agent-flow) consume the per-kind tokens locked at Pre-A4. Callout +
+ * componentCode intentionally share the runnable hue (7 unique
+ * stripe colors across 8 kinds). */
 .skb-block-nodeview[data-skb-block-kind='callout'] {
   border-top: 2px solid var(--accent-runnable, oklch(50% 0.12 145));
 }
@@ -99,6 +117,70 @@
   border-top: 2px solid var(--accent-agent-flow, oklch(55% 0.13 180));
 }
 
+/* === Inner-component stripe suppression (R2 P3 fix) ================ */
+/* Each block package's ui-default/<kind>.css ships its own
+ * `border-top: 2px solid var(--accent-X)` rule for the static
+ * read-route (/notes/<slug>). When the inner component renders nested
+ * inside our .skb-block-nodeview wrapper (the editor-mount path),
+ * both stripes would render at different DOM depths, producing a
+ * visible double 2px (4px) hue band. Zero the inner stripe in the
+ * nested context so the wrapper is the single source of stripe truth
+ * on the editor path; the static read-route is unaffected because
+ * those pages do not emit a .skb-block-nodeview ancestor. */
+.skb-block-nodeview [data-callout-variant],
+.skb-block-nodeview [data-code-language],
+.skb-block-nodeview [data-image-loading],
+.skb-block-nodeview [data-block='math'],
+.skb-block-nodeview [data-block='pdf'],
+.skb-block-nodeview [data-block='jupyter'],
+.skb-block-nodeview [data-block='nn-viz'],
+.skb-block-nodeview [data-block='agent-flow'] {
+  border-top: 0;
+}
+
+/* === Per-kind chip tint redefinitions ============================== */
+/* The chip-* trio is editor-decoration-only; each kind redefines its
+ * own value (canvas-soft / runnable-soft / image-soft analog per v2
+ * palette glyph treatment, v2-styles.css:71-78). These do NOT live in
+ * @skb/design-tokens — they're scoped to .skb-block-nodeview itself
+ * per the R2 P2 honesty fix above. */
+.skb-block-nodeview[data-skb-block-kind='callout'],
+.skb-block-nodeview[data-skb-block-kind='componentCode'] {
+  --skb-block-nodeview--chip-bg: oklch(95% 0.04 145);
+  --skb-block-nodeview--chip-border: oklch(85% 0.05 145);
+  --skb-block-nodeview--chip-text: oklch(40% 0.13 145);
+}
+.skb-block-nodeview[data-skb-block-kind='image'] {
+  --skb-block-nodeview--chip-bg: oklch(95% 0.025 60);
+  --skb-block-nodeview--chip-border: oklch(85% 0.04 60);
+  --skb-block-nodeview--chip-text: oklch(40% 0.10 60);
+}
+.skb-block-nodeview[data-skb-block-kind='math'] {
+  --skb-block-nodeview--chip-bg: oklch(95% 0.04 280);
+  --skb-block-nodeview--chip-border: oklch(85% 0.05 280);
+  --skb-block-nodeview--chip-text: oklch(40% 0.16 280);
+}
+.skb-block-nodeview[data-skb-block-kind='pdf'] {
+  --skb-block-nodeview--chip-bg: oklch(95% 0.04 0);
+  --skb-block-nodeview--chip-border: oklch(85% 0.05 0);
+  --skb-block-nodeview--chip-text: oklch(45% 0.16 0);
+}
+.skb-block-nodeview[data-skb-block-kind='jupyter'] {
+  --skb-block-nodeview--chip-bg: oklch(95% 0.04 90);
+  --skb-block-nodeview--chip-border: oklch(85% 0.05 90);
+  --skb-block-nodeview--chip-text: oklch(45% 0.14 90);
+}
+.skb-block-nodeview[data-skb-block-kind='nn-viz'] {
+  --skb-block-nodeview--chip-bg: oklch(95% 0.05 325);
+  --skb-block-nodeview--chip-border: oklch(85% 0.06 325);
+  --skb-block-nodeview--chip-text: oklch(40% 0.18 325);
+}
+.skb-block-nodeview[data-skb-block-kind='agent-flow'] {
+  --skb-block-nodeview--chip-bg: oklch(95% 0.04 180);
+  --skb-block-nodeview--chip-border: oklch(85% 0.05 180);
+  --skb-block-nodeview--chip-text: oklch(40% 0.13 180);
+}
+
 /* === Gutter shell ================================================== */
 /* v2-styles.css:230-249 `.gblock-gutter`. Empty placeholder that cf-20
  * will populate with drag-handle + kebab buttons; cf-19 ships only the
@@ -122,79 +204,34 @@
   opacity: 1;
 }
 
-/* Kind chip — small uppercase mono badge. Adopts v2 palette glyph
- * treatment (v2-styles.css:71-78) scaled into the gutter. The chip
- * background tints to the kind's hue group so the chip itself reads
- * as a kind indicator independent of the 2px top stripe. */
+/* Kind chip — small uppercase mono badge consuming the editor-local
+ * chip-* trio defined per kind above. */
 .skb-block-nodeview__kind-chip {
   font-family: var(--mono, ui-monospace, monospace);
   font-size: 10px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--text-2, oklch(45% 0.01 80));
-  background: var(--panel, oklch(98% 0.004 80));
-  border: 1px solid var(--border, oklch(92% 0.005 80));
+  color: var(--skb-block-nodeview--chip-text);
+  background: var(--skb-block-nodeview--chip-bg);
+  border: 1px solid var(--skb-block-nodeview--chip-border);
   border-radius: 4px;
   padding: 1px 6px;
   line-height: 1.4;
   white-space: nowrap;
 }
 
-/* Per-kind chip tint — same hue as the top stripe to reinforce the
- * kind identity (canvas-soft / runnable-soft / image-soft analog). */
-.skb-block-nodeview__kind-chip[data-skb-block-kind='callout'],
-.skb-block-nodeview__kind-chip[data-skb-block-kind='componentCode'] {
-  color: oklch(40% 0.13 145);
-  background: oklch(95% 0.04 145);
-  border-color: oklch(85% 0.05 145);
-}
-.skb-block-nodeview__kind-chip[data-skb-block-kind='image'] {
-  color: oklch(40% 0.10 60);
-  background: oklch(95% 0.025 60);
-  border-color: oklch(85% 0.04 60);
-}
-.skb-block-nodeview__kind-chip[data-skb-block-kind='math'] {
-  color: oklch(40% 0.16 280);
-  background: oklch(95% 0.04 280);
-  border-color: oklch(85% 0.05 280);
-}
-.skb-block-nodeview__kind-chip[data-skb-block-kind='pdf'] {
-  color: oklch(45% 0.16 0);
-  background: oklch(95% 0.04 0);
-  border-color: oklch(85% 0.05 0);
-}
-.skb-block-nodeview__kind-chip[data-skb-block-kind='jupyter'] {
-  color: oklch(45% 0.14 90);
-  background: oklch(95% 0.04 90);
-  border-color: oklch(85% 0.05 90);
-}
-.skb-block-nodeview__kind-chip[data-skb-block-kind='nn-viz'] {
-  color: oklch(40% 0.18 325);
-  background: oklch(95% 0.05 325);
-  border-color: oklch(85% 0.06 325);
-}
-.skb-block-nodeview__kind-chip[data-skb-block-kind='agent-flow'] {
-  color: oklch(40% 0.13 180);
-  background: oklch(95% 0.04 180);
-  border-color: oklch(85% 0.05 180);
-}
-
 /* === Body shell ==================================================== */
-/* v2-styles.css:197-204 `.gblock-body`. The default `padding: 4px 10px`
- * applies to all kinds; canvas/image/runnable family blocks manage
- * their own internal padding so we drop padding to 0 via the data-
- * attribute selector to mirror v2's `.gblock-body.fit` rule. */
+/* v2-styles.css:197-204 `.gblock-body`. The default `padding: 28px 12px
+ * 8px` reserves 28px top room for the absolutely-positioned gutter
+ * chip (top: 4px + chip ~16px tall = ~22px clearance, +6px breathing).
+ * Canvas/image/heavy-family kinds drop side+bottom padding to 4px per
+ * v2 `.gblock-body.fit` analog (the inner block manages its own
+ * canvas/iframe padding). */
 .skb-block-nodeview__body {
-  padding: 8px 12px;
-  /* Reserve top room for the absolutely-positioned gutter chip
-   * (top: 4px + chip ~16px tall = ~22px clearance). */
-  padding-top: 28px;
+  padding: 28px 12px 8px;
 }
 
-/* fit-body kinds (analog to v2 `.gblock-body.fit`): the inner block
- * component owns its own padding/canvas; the wrapper body just provides
- * the gutter clearance. */
 .skb-block-nodeview[data-skb-block-kind='image'] .skb-block-nodeview__body,
 .skb-block-nodeview[data-skb-block-kind='pdf'] .skb-block-nodeview__body,
 .skb-block-nodeview[data-skb-block-kind='math'] .skb-block-nodeview__body,
