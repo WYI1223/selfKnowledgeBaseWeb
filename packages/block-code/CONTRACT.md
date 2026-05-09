@@ -53,11 +53,13 @@ block-code ui-default 特定不变量：
 - **Design-token 消费**: `code.css` via `var(--color-*)` 是运行时唯一消费路径；`./ui-default/theme-tokens.ts` 的 `CODE_THEME_TOKENS` 是 typed mirror，per [ADR-0008 D1](../../docs/decisions/ADR-0008-wave-2-entry-policies.md) dead-dep mechanical scan 合规（CSS-only 消费不可见于 grep 审计；type-only `import { ColorTokenName } from '@skb/design-tokens'` 关闭 [ADR-0010 D3 #7a F3](../../docs/decisions/ADR-0010-wave-2-close.md)）。`code.css` 的 `var(--color-*)` 集合与 `CODE_THEME_TOKENS` 键集必须一致；不一致 `theme-tokens.test.ts` 失败。
 - **Wave 3 语法高亮延期**: 现阶段仅渲染纯文本 `<pre><code>`；高亮能力（`shiki` / `prism`）移至 Wave 3。
 
-## Wave 3 mdx-bridge 路由集成（pending）
+## mdx-bridge 路由集成
 
-1. `mdx-bridge/parse.ts` 拦截 `mdxJsxFlowElement{name:'Code'}` → `parseCode(node)`。
+1. `mdx-bridge/parse.ts` 拦截 `mdxJsxFlowElement{name:'Code'}` → `parseCode(node)`.
 2. `mdx-bridge/serialize.ts` 拦截 `type='componentCode'` → `serializeCode(node)` (Wave 6 carry-forward #15b 2026-05-08 — was `type='code'` pre-rename).
-3. children 递归走既有 mdx-bridge 流程。
+3. children 递归走既有 mdx-bridge 流程.
+
+JSX expression-form attrs (`code={` template literal `}`, `showLineNumbers={true}`) are supported post Wave 6 carry-forward #16 (2026-05-08): `parseCode` consumes `evalAttrExpression` from `@skb/block-foundation` so the production sample-blocks fixture (`<Code language="python" code={` template `} />`) parses without falling back to mdx-bridge softParse placeholders. Serialize continues to emit string-form for byte-stable round-trip.
 
 ## Forward-compat
 

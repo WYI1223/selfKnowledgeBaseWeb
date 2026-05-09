@@ -1,3 +1,4 @@
+import type { MdastJsxAttributeValue } from '@skb/block-foundation';
 import { nnVizCore } from './core-definition';
 
 /**
@@ -24,17 +25,19 @@ export interface NnVizTiptapNode {
 }
 
 /**
- * `value` is `string | null` per mdast-util-mdx-jsx convention:
+ * `value` is `MdastJsxAttributeValue` per mdast-util-mdx-jsx convention
+ * (string | null | mdxJsxAttributeValueExpression):
  *   - `<NnViz showWeights>` (boolean shorthand)        → attribute with `value: null`
  *   - `<NnViz showWeights="true">` / `"false"`         → string
- *   - `<NnViz modelUrl="https://...">`                 → string (always)
- *   - `<NnViz layers={[{...}]}>` (expression)          → handled in Wave 3 mdx-bridge
- *     when expression-attr support lands; Wave 2 stub only emits string-form for
- *     the array via JSON.stringify (mdx-bridge consumer will translate to expression).
+ *   - `<NnViz modelUrl="https://...">`                 → string
+ *   - `<NnViz layers={[{...}]}>` (expression)          → mdxJsxAttributeValueExpression
+ *     (Wave 6 carry-forward #16 2026-05-08 — sample-blocks fixture form;
+ *     `parseNnViz` walks the estree via `evalAttrExpression`).
  *
- * `parseNnViz` handles null shorthand for `showWeights`;
- * `serializeNnViz` always emits string form for round-trip stability — null
- * shorthand only on the parse side (mirror of block-math + block-jupyter pattern).
+ * `parseNnViz` handles null shorthand and expression-form attrs;
+ * `serializeNnViz` always emits string form for round-trip stability —
+ * the expression-form path is parser-side only (mirror of block-jupyter +
+ * block-agent-flow).
  */
 export interface NnVizMdastJsxElement {
   readonly type: 'mdxJsxFlowElement';
@@ -42,7 +45,7 @@ export interface NnVizMdastJsxElement {
   readonly attributes: ReadonlyArray<{
     readonly type: 'mdxJsxAttribute';
     readonly name: string;
-    readonly value: string | null;
+    readonly value: MdastJsxAttributeValue;
   }>;
   readonly children: readonly unknown[];
 }

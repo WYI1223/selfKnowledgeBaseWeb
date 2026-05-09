@@ -65,6 +65,17 @@ test('sample-blocks edit route loads non-empty content (mdxFlowExpression no lon
   // The legacy load-error banner must NOT be present.
   await expect(page.locator('[data-skb-load-error]')).toHaveCount(0);
 
+  // Wave 6 carry-forward #16 — the 4 blocks Pdf / Jupyter / NnViz /
+  // AgentFlow that previously parse-failed under JSX expression form
+  // (`page={1}`, `code={`...`}`, `layers={[{...}]}`, `nodes={[{...}]}`)
+  // now route through `evalAttrExpression` (block-foundation) and
+  // produce real Tiptap nodes. Pre-#16 they degraded to softParse
+  // placeholders matching `[unsupported block <Pdf>: ...]`. Assert
+  // none of those placeholders survive into the editor.
+  await expect(
+    editor.locator('text=/\\[unsupported block </'),
+  ).toHaveCount(0);
+
   // Wave 6 hotfix Bug B verification: nothing thrown to the page console
   // (the silent-catch class would have hidden a throw, but the test would
   // still see `pageerror` if the React error-boundary surfaced it).

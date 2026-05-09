@@ -1,6 +1,19 @@
 import { describe, it, expect } from 'vitest';
+import { unified } from 'unified';
+import remarkParse from 'remark-parse';
+import remarkMdx from 'remark-mdx';
 import { pdfCore } from '../core/core-definition';
 import { parsePdf, serializePdf } from '../core';
+import type { PdfMdastJsxElement } from '../core/serialize';
+
+function parseMdxFlow(source: string): PdfMdastJsxElement {
+  const tree = unified().use(remarkParse).use(remarkMdx).parse(source) as {
+    children: ReadonlyArray<{ type: string }>;
+  };
+  const flow = tree.children.find((n) => n.type === 'mdxJsxFlowElement');
+  if (!flow) throw new Error('parseMdxFlow: fixture did not produce an mdxJsxFlowElement');
+  return flow as unknown as PdfMdastJsxElement;
+}
 
 describe('pdfCore.propsSchema', () => {
   it('accepts valid src + page + searchable', () => {
@@ -149,5 +162,30 @@ describe('parsePdf', () => {
         children: [],
       }),
     ).toThrow(/expected mdxComponent="Pdf"/);
+  });
+});
+
+describe('parsePdf — JSX expression form (Wave 6 carry-forward #16)', () => {
+  it('accepts page={1} from the production sample-blocks fixture shape', () => {
+    const node = parsePdf(
+      parseMdxFlow('<Pdf src="/sample-assets/whitepaper.pdf" page={1} />'),
+    );
+    expect(node.attrs.src).toBe('/sample-assets/whitepaper.pdf');
+    expect(node.attrs.page).toBe(1);
+    expect(node.attrs.searchable).toBe(false);
+  });
+
+  it('accepts searchable={true} expression form', () => {
+    const node = parsePdf(parseMdxFlow('<Pdf src="/p.pdf" page={3} searchable={true} />'));
+    expect(node.attrs.page).toBe(3);
+    expect(node.attrs.searchable).toBe(true);
+  });
+
+  it('accepts the second sample-blocks fixture shape (page={3} + searchable shorthand)', () => {
+    const node = parsePdf(
+      parseMdxFlow('<Pdf src="/sample-assets/whitepaper.pdf" page={3} searchable />'),
+    );
+    expect(node.attrs.page).toBe(3);
+    expect(node.attrs.searchable).toBe(true);
   });
 });

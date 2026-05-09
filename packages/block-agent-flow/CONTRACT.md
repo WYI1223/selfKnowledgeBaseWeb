@@ -142,10 +142,11 @@ single-runtime authority predecessor disclosed in `mdx-bridge/CONTRACT.md`
 implementation is a release-blocker per ADR-0011 D5 + D6 codex-mdx-doctor /
 codex-pr-reviewer-55 audit profile triggers.
 
-## Wave 3 mdx-bridge 路由（pending）
+## mdx-bridge 路由集成
 
-`serializeAgentFlow` / `parseAgentFlow` 是 stub。Wave 3：mdast `AgentFlow` ↔
-Tiptap `agent-flow`；`nodes`/`edges` JSON-string → expression-attr；无 children。
+`mdx-bridge` 的 `mdastBlockToTiptap` (Wave 3) 把 `mdxJsxFlowElement{name:'AgentFlow'}` 路由到 `parseAgentFlow`，反向 `tiptapToMdastBlock` 拦截 `type='agent-flow'` 走 `serializeAgentFlow`；agent-flow block 无 children，递归不展开。
+
+JSX expression-form attrs (`nodes={[{...}]}`, `edges={[{...}]}`, `interactive={true}`) are supported post Wave 6 carry-forward #16 (2026-05-08): `parseAgentFlow` consumes `evalAttrExpression` from `@skb/block-foundation` to walk the estree on `mdxJsxAttributeValueExpression` — the production sample-blocks fixture ships nested object arrays (`{ position: { x: 0, y: 0 } }`) with unquoted JS-literal keys, which `JSON.parse` would reject. The serializer continues to emit `nodes` / `edges` as JSON-encoded strings for byte-stable round-trip — the expression-form path is parser-side only.
 
 ## Wave 3 future work
 

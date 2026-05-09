@@ -1,3 +1,4 @@
+import type { MdastJsxAttributeValue } from '@skb/block-foundation';
 import { pdfCore } from './core-definition';
 
 /**
@@ -16,14 +17,19 @@ export interface PdfTiptapNode {
 }
 
 /**
- * `value` is `string | null` per mdast-util-mdx-jsx convention:
+ * `value` is `MdastJsxAttributeValue` per mdast-util-mdx-jsx convention
+ * (string | null | mdxJsxAttributeValueExpression):
  *   - `<Pdf searchable>` (boolean shorthand) → attribute with `value: null`
  *   - `<Pdf searchable="true">` / `<Pdf searchable="false">` → string
  *   - `<Pdf src="...">` → string (always)
  *   - `<Pdf page="2">` → string (numeric coerced on parse)
- * `parsePdf` handles boolean shorthand for `searchable`; `serializePdf` always
- * emits string form (`String(boolean)` / `String(number)`) for round-trip
- * stability.
+ *   - `<Pdf page={1} />` → mdxJsxAttributeValueExpression (Wave 6 carry-forward
+ *     #16 2026-05-08 — sample-blocks fixture form; `parsePdf` walks the
+ *     attached estree via `evalAttrExpression`).
+ *
+ * `parsePdf` handles boolean shorthand for `searchable` and expression-form
+ * attrs; `serializePdf` always emits string form (`String(boolean)` /
+ * `String(number)`) for round-trip stability.
  */
 export interface PdfMdastJsxElement {
   readonly type: 'mdxJsxFlowElement';
@@ -31,7 +37,7 @@ export interface PdfMdastJsxElement {
   readonly attributes: ReadonlyArray<{
     readonly type: 'mdxJsxAttribute';
     readonly name: string;
-    readonly value: string | null;
+    readonly value: MdastJsxAttributeValue;
   }>;
   readonly children: readonly unknown[];
 }

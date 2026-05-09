@@ -26,6 +26,7 @@
 - `effectiveRowSpan(rowSpan, autoIntegerHint)` — ADR-0016 D2/D10 helper that resolves `'auto'` to the measured integer hint
 - `validateGridPosition(pos, totalCols?)` — ADR-0016 D2/D6/D7 helper that throws on explicit invalid grid positions
 - `isAutoRowSpan(uiDef)` — ADR-0016 D10 helper for `rowSpanSemantic === 'auto'` or `gridKind === 'prose'`
+- `evalAttrExpression(value)` / `MdastJsxAttributeValue` / `MdxJsxAttributeValueExpression` (Wave 6 carry-forward #16, 2026-05-08) — extract the static JS value from an `mdxJsxAttribute` value field, walking the estree on `mdxJsxAttributeValueExpression`. Supported expression node types: primitive `Literal` (string / number / boolean / null — BigInt and RegExp literals throw), `TemplateLiteral` (no interpolations), `ArrayExpression`, `ObjectExpression`, unary `+`/`-` on a numeric `Literal`, identifier `undefined` / `NaN` / `Infinity`. Throws on dynamic forms (Identifier, CallExpression, BinaryExpression, unary `!`, etc.). Consumed by all 6 component-block parsers that the production sample-blocks fixture exercises with JSX expression form: `parsePdf` (`<Pdf page={1} searchable={true}>`), `parseJupyter` (`<Jupyter code={\`...\`} libraries={[...]}>`), `parseNnViz` (`<NnViz layers={[{...}]}>`), `parseAgentFlow` (`<AgentFlow nodes={[{...}]} edges={[{...}]}>`), `parseCode` (`<Code code={\`...\`}>`) and `parseImage` (`<Image width={320} height={180}>`). Without the helper these would surface as `[unsupported block <X>: ...]` placeholders under mdx-bridge softParse.
 
 ## Invariants
 

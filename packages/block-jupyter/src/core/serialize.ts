@@ -1,3 +1,4 @@
+import type { MdastJsxAttributeValue } from '@skb/block-foundation';
 import { jupyterCore } from './core-definition';
 
 /**
@@ -18,17 +19,20 @@ export interface JupyterTiptapNode {
 }
 
 /**
- * `value` is `string | null` per mdast-util-mdx-jsx convention:
+ * `value` is `MdastJsxAttributeValue` per mdast-util-mdx-jsx convention
+ * (string | null | mdxJsxAttributeValueExpression):
  *   - `<Jupyter runOnLoad>` (boolean shorthand)        → attribute with `value: null`
  *   - `<Jupyter runOnLoad="true">` / `"false"`         → string
- *   - `<Jupyter code="print(1)">`                      → string (always)
- *   - `<Jupyter libraries={["sympy"]}>` (expression)   → handled in Wave 3 mdx-bridge
- *     when expression-attr support lands; Wave 2 stub only emits string-form for
- *     the array via JSON.stringify (mdx-bridge consumer will translate to expression).
+ *   - `<Jupyter code="print(1)">`                      → string
+ *   - `<Jupyter code={`...template...`}>`              → mdxJsxAttributeValueExpression
+ *     (Wave 6 carry-forward #16 2026-05-08 — sample-blocks uses template
+ *     literals for multiline cell source).
+ *   - `<Jupyter libraries={["sympy"]}>` (expression)   → mdxJsxAttributeValueExpression
+ *     (post-#16; `parseJupyter` walks the estree via `evalAttrExpression`).
  *
- * `parseJupyter` handles null shorthand for both boolean attrs (`runOnLoad` /
- * `showLineNumbers`); `serializeJupyter` always emits string form for round-trip
- * stability — null shorthand only on the parse side (mirror of block-math pattern).
+ * `parseJupyter` handles null shorthand + expression-form attrs;
+ * `serializeJupyter` always emits string form for round-trip stability
+ * (null shorthand and JSX expression are parser-side only).
  */
 export interface JupyterMdastJsxElement {
   readonly type: 'mdxJsxFlowElement';
@@ -36,7 +40,7 @@ export interface JupyterMdastJsxElement {
   readonly attributes: ReadonlyArray<{
     readonly type: 'mdxJsxAttribute';
     readonly name: string;
-    readonly value: string | null;
+    readonly value: MdastJsxAttributeValue;
   }>;
   readonly children: readonly unknown[];
 }

@@ -56,9 +56,11 @@ const propsSchema = z.object({
 - Wave 3 预留（invariant 兼容）:
   - 图库 / lightbox / blurhash 预览路径；当前 `data-image-loading` 作为语义扩展锚点可承接下一态态变体
 
-## Wave 3 mdx-bridge 路由集成（pending）
+## mdx-bridge 路由集成
 
-当前 `serializeImage` / `parseImage` 为稳定签名实现，等待 `mdx-bridge` routing PR 对接。
+`mdx-bridge` 的 `mdastBlockToTiptap` (Wave 3) 把 `mdxJsxFlowElement{name:'Image'}` 路由到 `parseImage`，反向 `tiptapToMdastBlock` 拦截 `type='image'` 走 `serializeImage`.
+
+JSX expression-form attrs (`width={320}`, `height={180}`) are supported post Wave 6 carry-forward #16 (2026-05-08): `parseImage` consumes `evalAttrExpression` from `@skb/block-foundation` to walk the estree carried on `mdxJsxAttributeValueExpression`. The serializer continues to emit `width` / `height` as string-form (`String(number)`) for byte-stable round-trip — expression-form is parser-side only (the production sample-blocks fixture uses expression form).
 
 ## Modifying this file
 

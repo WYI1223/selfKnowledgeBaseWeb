@@ -1,3 +1,4 @@
+import type { MdastJsxAttributeValue } from '@skb/block-foundation';
 import { codeCore } from './core-definition';
 
 /**
@@ -24,7 +25,7 @@ export interface CodeMdastJsxElement {
   readonly attributes: ReadonlyArray<{
     readonly type: 'mdxJsxAttribute';
     readonly name: string;
-    readonly value: string;
+    readonly value: MdastJsxAttributeValue;
   }>;
   readonly children: readonly unknown[];
 }

@@ -1,3 +1,4 @@
+import type { MdastJsxAttributeValue } from '@skb/block-foundation';
 import { agentFlowCore } from './core-definition';
 
 /**
@@ -33,16 +34,18 @@ export interface AgentFlowTiptapNode {
 }
 
 /**
- * `value` is `string | null` per mdast-util-mdx-jsx convention:
+ * `value` is `MdastJsxAttributeValue` per mdast-util-mdx-jsx convention
+ * (string | null | mdxJsxAttributeValueExpression):
  *   - `<AgentFlow interactive>` (boolean shorthand)         → attribute with `value: null`
  *   - `<AgentFlow interactive="true">` / `"false"`          → string
- *   - `<AgentFlow nodes={[...]}>` (expression)              → handled in Wave 3
- *     when expression-attr support lands; Wave 2 stub only emits string-form
- *     for arrays via JSON.stringify (mdx-bridge consumer will translate to expression).
+ *   - `<AgentFlow nodes={[...]}>` (expression)              → mdxJsxAttributeValueExpression
+ *     (Wave 6 carry-forward #16 2026-05-08 — sample-blocks fixture form;
+ *     `parseAgentFlow` walks the estree via `evalAttrExpression`).
  *
- * `parseAgentFlow` handles null shorthand for the boolean attr (`interactive`);
- * `serializeAgentFlow` always emits string form for round-trip stability — null
- * shorthand only on the parse side (mirror of block-jupyter / block-math pattern).
+ * `parseAgentFlow` handles null shorthand and expression-form attrs;
+ * `serializeAgentFlow` always emits string form for round-trip stability —
+ * the expression-form path is parser-side only (mirror of block-jupyter +
+ * block-nn-viz).
  */
 export interface AgentFlowMdastJsxElement {
   readonly type: 'mdxJsxFlowElement';
@@ -50,7 +53,7 @@ export interface AgentFlowMdastJsxElement {
   readonly attributes: ReadonlyArray<{
     readonly type: 'mdxJsxAttribute';
     readonly name: string;
-    readonly value: string | null;
+    readonly value: MdastJsxAttributeValue;
   }>;
   readonly children: readonly unknown[];
 }

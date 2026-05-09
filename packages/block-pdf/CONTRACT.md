@@ -90,16 +90,11 @@ block-pdf 特定不变量：
   让用户看见加载失败状态（spec D2 等价 D1 "red error box with the source visible"
   原则的 PDF 等价物）
 
-## Wave 3 mdx-bridge 路由集成（pending）
+## mdx-bridge 路由集成
 
-当前 `serializePdf` / `parsePdf` 是 stub —— 暴露稳定签名，未被 mdx-bridge 消费。
-Wave 3 mdx-bridge routing table PR 会：
+`mdx-bridge` 的 `mdastBlockToTiptap` (Wave 3) 把 `mdxJsxFlowElement{name:'Pdf'}` 路由到 `parsePdf`，反向 `tiptapToMdastBlock` 拦截 `type='pdf'` 走 `serializePdf`；pdf block 无 children，递归不展开。
 
-1. 在 `mdx-bridge/parse.ts` 的 `mdastBlockToTiptap` 拦截 `mdxJsxFlowElement{name:'Pdf'}` →
-   `parsePdf(node)` → 把返回 `PdfTiptapNode` 嵌入 doc.content
-2. 在 `mdx-bridge/serialize.ts` 的 `tiptapToMdastBlock` 拦截 `type='pdf'` →
-   `serializePdf(node)` → 返回 `mdxJsxFlowElement` 进 mdast
-3. pdf block 无 children，递归不展开
+JSX expression-form attrs (`page={1}`, `searchable={true}`) are supported post Wave 6 carry-forward #16 (2026-05-08): `parsePdf` consumes `evalAttrExpression` from `@skb/block-foundation` to walk the estree carried on `mdxJsxAttributeValueExpression`. The serializer continues to emit string-form (`page="1"`, `searchable="true"`) for byte-stable round-trip — expression-form is parser-side only.
 
 ## Wave 3 search-index 集成（pending, `searchable=true`）
 

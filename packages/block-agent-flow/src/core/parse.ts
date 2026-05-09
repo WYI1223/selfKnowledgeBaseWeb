@@ -1,19 +1,22 @@
+import { evalAttrExpression } from '@skb/block-foundation';
 import { agentFlowCore } from './core-definition';
 import type { AgentFlowMdastJsxElement, AgentFlowTiptapNode } from './serialize';
 
 /**
- * MDX 解析 stub. Wave 3 mdx-bridge 在 mdastBlockToTiptap 看到
+ * MDX 解析。mdx-bridge 在 mdastBlockToTiptap 看到
  * mdxJsxFlowElement{name:'AgentFlow'} 时按 mdxComponent 路由到本函数（RFC §5）。
  *
- * Boolean attr (`interactive`) 三种 MDX 形式 (mdast-util-mdx-jsx convention)：
- *   - `<AgentFlow interactive>` (boolean shorthand)   → attr.value === null  → true
- *   - `<AgentFlow interactive="true">`                → "true"  → true
- *   - `<AgentFlow interactive="false">`               → "false" → false
- * 任何其他形式 throw — 不静默 false。
+ * Attribute value extraction goes through `evalAttrExpression` (post Wave 6
+ * carry-forward #16 2026-05-08): each attr resolves to string | null | static
+ * JS literal (Literal / TemplateLiteral / ArrayExpression / ObjectExpression).
  *
- * `nodes` / `edges` 在 Wave 2 stub 中按 string-encoded JSON 解析（serialize emits
- * JSON.stringify）。Wave 3 mdx-bridge 接 expression-attr 后改为直接接受 array
- * literal 表达式；这层 stub 仅保证 round-trip 形状对齐。
+ * `interactive` accepts: null shorthand → true; "true"/"false" string →
+ * boolean; or expression `{true}` / `{false}`.
+ *
+ * `nodes` / `edges` accept: an array of objects (JS literal `[{...}, ...]`
+ * via expression form — the production sample-blocks shape) OR a JSON-encoded
+ * string `'[{...}]'` (legacy round-trip path that `serializeAgentFlow` still
+ * emits for byte-stability).
  */
 export function parseAgentFlow(node: AgentFlowMdastJsxElement): AgentFlowTiptapNode {
   if (node.name !== agentFlowCore.mdxComponent) {
@@ -23,28 +26,39 @@ export function parseAgentFlow(node: AgentFlowMdastJsxElement): AgentFlowTiptapN
   }
   const rawProps: Record<string, unknown> = {};
   for (const attr of node.attributes) {
+    const v = evalAttrExpression(attr.value);
     if (attr.name === 'interactive') {
-      if (attr.value === null) {
+      if (v === null) {
         rawProps[attr.name] = true;
-      } else if (attr.value === 'true' || attr.value === 'false') {
-        rawProps[attr.name] = attr.value === 'true';
+      } else if (typeof v === 'boolean') {
+        rawProps[attr.name] = v;
+      } else if (v === 'true' || v === 'false') {
+        rawProps[attr.name] = v === 'true';
       } else {
         throw new Error(
-          `parseAgentFlow: invalid ${attr.name} attribute value: ${JSON.stringify(attr.value)}`,
+          `parseAgentFlow: invalid ${attr.name} attribute value: ${JSON.stringify(v)}`,
         );
       }
     } else if (attr.name === 'nodes' || attr.name === 'edges') {
-      if (attr.value === null) {
+      if (v === null) {
         throw new Error(
-          `parseAgentFlow: attribute "${attr.name}" must have a string value (got null shorthand; only boolean attrs support shorthand)`,
+          `parseAgentFlow: attribute "${attr.name}" must have a value (got null shorthand; only boolean attrs support shorthand)`,
         );
       }
       let parsed: unknown;
-      try {
-        parsed = JSON.parse(attr.value);
-      } catch {
+      if (Array.isArray(v)) {
+        parsed = v;
+      } else if (typeof v === 'string') {
+        try {
+          parsed = JSON.parse(v);
+        } catch {
+          throw new Error(
+            `parseAgentFlow: ${attr.name} attribute is not valid JSON: ${JSON.stringify(v)}`,
+          );
+        }
+      } else {
         throw new Error(
-          `parseAgentFlow: ${attr.name} attribute is not valid JSON: ${JSON.stringify(attr.value)}`,
+          `parseAgentFlow: ${attr.name} must be an array or JSON string; got ${typeof v}`,
         );
       }
       if (!Array.isArray(parsed)) {
@@ -54,12 +68,17 @@ export function parseAgentFlow(node: AgentFlowMdastJsxElement): AgentFlowTiptapN
       }
       rawProps[attr.name] = parsed;
     } else {
-      if (attr.value === null) {
+      if (v === null) {
         throw new Error(
           `parseAgentFlow: attribute "${attr.name}" must have a string value (got null shorthand; only boolean attrs support shorthand)`,
         );
       }
-      rawProps[attr.name] = attr.value;
+      if (typeof v !== 'string') {
+        throw new Error(
+          `parseAgentFlow: attribute "${attr.name}" must be a string, got ${typeof v}`,
+        );
+      }
+      rawProps[attr.name] = v;
     }
   }
   const validated = agentFlowCore.propsSchema.parse(rawProps);
