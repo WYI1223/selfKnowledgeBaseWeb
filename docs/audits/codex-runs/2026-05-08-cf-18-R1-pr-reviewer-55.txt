@@ -1,0 +1,2000 @@
+Reading additional input from stdin...
+OpenAI Codex v0.125.0 (research preview)
+--------
+workdir: /home/weiyi/selfKnowledgeBaseWeb
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: danger-full-access
+reasoning effort: xhigh
+reasoning summaries: none
+session id: 019e0ada-5f1c-7d40-856e-e9a44469ce9d
+--------
+user
+Wave 6 carry-forward #18 R1. PR.md self at docs/plans/wave-6-main/wave-6-cf-18-block-nodeview-wiring.md.
+
+Scope: 7 files (1 NEW BlockNodeView.tsx React bridge + 1 registry-wire wire-in + 1 export update + 1 sister-doc + 1 Playwright strong-assertion replacement + 1 PR.md self + 1 hotfix screenshot regen).
+
+Why: cf-15a/15b/16/17 closed the data layer (mdxToTiptap → correct Tiptap nodes), but the render layer was never closed. `packages/editor-shell/src/registry-wire.tsx` createBlockExtension previously only registered Node.create with a renderHTML returning a literal '{Label} block' string placeholder. Live probe of /notes/sample-blocks/edit confirmed 14 placeholder divs (callout×4 / componentCode×1 / image×2 / math×2 / pdf×2 / jupyter×1 / nn-viz×1 / agent-flow×1) and zero real components mounted. cf-16's Playwright lock was a weak assertion ('no [unsupported block <' text) that passed against the placeholders.
+
+What cf-18 does: introduces makeBlockNodeView({registry}) factory that returns a React component using NodeViewWrapper + registry.getUI(node.type.name) → renders <ui.EditorView props={node.attrs} />. createBlockExtension takes the registry as 2nd arg and conditionally adds addNodeView: () => ReactNodeViewRenderer(makeBlockNodeView({registry})). wireRegistry({blockRegistry}) propagates the registry through. When no registry is injected (legacy/no-registry test mounts), addNodeView is omitted entirely so Tiptap falls back to the renderHTML placeholder.
+
+Live probe with cf-18 applied confirmed: 14 hosts mounted (data-skb-block-host=<kind> for each), 0 unregistered fallbacks, real DOM markers present (2 PDF iframes, 2 imgs, 2 KaTeX, 1 React Flow, 7 syntax-highlighted code bodies, 11 SVGs).
+
+Playwright strengthening: spec now asserts editor.locator('[data-skb-block-host]').toHaveCount(14); per-kind .first().toBeVisible() for all 8 kinds; .skb-block-nodeview--unregistered.toHaveCount(0); plus per-component DOM markers (iframe / img / .katex / .react-flow / pre code).
+
+D2 trigger: Row 1 yes (editor-shell CONTRACT.md adds new Public surface entry: makeBlockNodeView export + NodeView wiring rule). Row 4 no (no new ADR — design contained inside editor-shell). Stage 4 PRE-COMMIT CLAUDE REVIEW therefore fires.
+
+Local pre-checks: pnpm check exit 0 (41/41 tasks); editor-shell test 132/132; sample-blocks Playwright PASS in 2.7s with all per-kind .toBeVisible() assertions green; live probe via dev server confirms real React components mounted.
+
+Run full ADR-0006 v0.2 9-point audit + 9th-class hunt focused on:
+- BlockNodeView fallback behavior (no-registry mounts must not crash; existing 132 editor-shell tests must stay green)
+- nodeName → coreName lookup correctness (componentCode is camelCase per cf-15b; other 7 are kebab-case)
+- type widening risk (BlockViewProps<TSchema> erased to BlockViewProps<ZodTypeAny>; per-block EditorView strict-prop-typing not lost at runtime since attrs flow from defaultBlockAttrs which propsSchema validates)
+- heavy-block kernel/canvas/flow lifecycle in editor (jupyter Pyodide / nn-viz TFJS / agent-flow ReactFlow all mount client-side; no SSR concerns since editor is React Tiptap in browser)
+- sister-doc accuracy (editor-shell CONTRACT.md update at lines 497-518)
+- Playwright assertion timing (KaTeX / React Flow may need extra wait — adjusted timeout to 10_000 for React Flow)
+
+Verdict PASS or FAIL with line-anchored remediation. If PASS, on stage 5 you commit per ADR-0006 D8 explicit-file-list staging.
+codex
+I’ll use `superpowers:using-superpowers` first as required, then treat this as a pre-commit code review/audit with verification before any PASS claim or commit.
+exec
+/bin/bash -lc "sed -n '1,220p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/63976030/skills/using-superpowers/SKILL.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+---
+name: using-superpowers
+description: Use when starting any conversation - establishes how to find and use skills, requiring Skill tool invocation before ANY response including clarifying questions
+---
+
+<SUBAGENT-STOP>
+If you were dispatched as a subagent to execute a specific task, skip this skill.
+</SUBAGENT-STOP>
+
+<EXTREMELY-IMPORTANT>
+If you think there is even a 1% chance a skill might apply to what you are doing, you ABSOLUTELY MUST invoke the skill.
+
+IF A SKILL APPLIES TO YOUR TASK, YOU DO NOT HAVE A CHOICE. YOU MUST USE IT.
+
+This is not negotiable. This is not optional. You cannot rationalize your way out of this.
+</EXTREMELY-IMPORTANT>
+
+## Instruction Priority
+
+Superpowers skills override default system prompt behavior, but **user instructions always take precedence**:
+
+1. **User's explicit instructions** (CLAUDE.md, GEMINI.md, AGENTS.md, direct requests) — highest priority
+2. **Superpowers skills** — override default system behavior where they conflict
+3. **Default system prompt** — lowest priority
+
+If CLAUDE.md, GEMINI.md, or AGENTS.md says "don't use TDD" and a skill says "always use TDD," follow the user's instructions. The user is in control.
+
+## How to Access Skills
+
+**In Claude Code:** Use the `Skill` tool. When you invoke a skill, its content is loaded and presented to you—follow it directly. Never use the Read tool on skill files.
+
+**In Copilot CLI:** Use the `skill` tool. Skills are auto-discovered from installed plugins. The `skill` tool works the same as Claude Code's `Skill` tool.
+
+**In Gemini CLI:** Skills activate via the `activate_skill` tool. Gemini loads skill metadata at session start and activates the full content on demand.
+
+**In other environments:** Check your platform's documentation for how skills are loaded.
+
+## Platform Adaptation
+
+Skills use Claude Code tool names. Non-CC platforms: see `references/copilot-tools.md` (Copilot CLI), `references/codex-tools.md` (Codex) for tool equivalents. Gemini CLI users get the tool mapping loaded automatically via GEMINI.md.
+
+# Using Skills
+
+## The Rule
+
+**Invoke relevant or requested skills BEFORE any response or action.** Even a 1% chance a skill might apply means that you should invoke the skill to check. If an invoked skill turns out to be wrong for the situation, you don't need to use it.
+
+```dot
+digraph skill_flow {
+    "User message received" [shape=doublecircle];
+    "About to EnterPlanMode?" [shape=doublecircle];
+    "Already brainstormed?" [shape=diamond];
+    "Invoke brainstorming skill" [shape=box];
+    "Might any skill apply?" [shape=diamond];
+    "Invoke Skill tool" [shape=box];
+    "Announce: 'Using [skill] to [purpose]'" [shape=box];
+    "Has checklist?" [shape=diamond];
+    "Create TodoWrite todo per item" [shape=box];
+    "Follow skill exactly" [shape=box];
+    "Respond (including clarifications)" [shape=doublecircle];
+
+    "About to EnterPlanMode?" -> "Already brainstormed?";
+    "Already brainstormed?" -> "Invoke brainstorming skill" [label="no"];
+    "Already brainstormed?" -> "Might any skill apply?" [label="yes"];
+    "Invoke brainstorming skill" -> "Might any skill apply?";
+
+    "User message received" -> "Might any skill apply?";
+    "Might any skill apply?" -> "Invoke Skill tool" [label="yes, even 1%"];
+    "Might any skill apply?" -> "Respond (including clarifications)" [label="definitely not"];
+    "Invoke Skill tool" -> "Announce: 'Using [skill] to [purpose]'";
+    "Announce: 'Using [skill] to [purpose]'" -> "Has checklist?";
+    "Has checklist?" -> "Create TodoWrite todo per item" [label="yes"];
+    "Has checklist?" -> "Follow skill exactly" [label="no"];
+    "Create TodoWrite todo per item" -> "Follow skill exactly";
+}
+```
+
+## Red Flags
+
+These thoughts mean STOP—you're rationalizing:
+
+| Thought | Reality |
+|---------|---------|
+| "This is just a simple question" | Questions are tasks. Check for skills. |
+| "I need more context first" | Skill check comes BEFORE clarifying questions. |
+| "Let me explore the codebase first" | Skills tell you HOW to explore. Check first. |
+| "I can check git/files quickly" | Files lack conversation context. Check for skills. |
+| "Let me gather information first" | Skills tell you HOW to gather information. |
+| "This doesn't need a formal skill" | If a skill exists, use it. |
+| "I remember this skill" | Skills evolve. Read current version. |
+| "This doesn't count as a task" | Action = task. Check for skills. |
+| "The skill is overkill" | Simple things become complex. Use it. |
+| "I'll just do this one thing first" | Check BEFORE doing anything. |
+| "This feels productive" | Undisciplined action wastes time. Skills prevent this. |
+| "I know what that means" | Knowing the concept ≠ using the skill. Invoke it. |
+
+## Skill Priority
+
+When multiple skills could apply, use this order:
+
+1. **Process skills first** (brainstorming, debugging) - these determine HOW to approach the task
+2. **Implementation skills second** (frontend-design, mcp-builder) - these guide execution
+
+"Let's build X" → brainstorming first, then implementation skills.
+"Fix this bug" → debugging first, then domain-specific skills.
+
+## Skill Types
+
+**Rigid** (TDD, debugging): Follow exactly. Don't adapt away discipline.
+
+**Flexible** (patterns): Adapt principles to context.
+
+The skill itself tells you which.
+
+## User Instructions
+
+Instructions say WHAT, not HOW. "Add X" or "Fix Y" doesn't mean skip workflows.
+
+codex
+I’m going to inspect the plan and the exact seven-file diff, then run the targeted checks before deciding PASS/FAIL. Since the user explicitly authorizes stage 5 on PASS, I’ll only mutate git after the review criteria and verification are satisfied.
+exec
+/bin/bash -lc "sed -n '1,220p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/63976030/skills/verification-before-completion/SKILL.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+---
+name: verification-before-completion
+description: Use when about to claim work is complete, fixed, or passing, before committing or creating PRs - requires running verification commands and confirming output before making any success claims; evidence before assertions always
+---
+
+# Verification Before Completion
+
+## Overview
+
+Claiming work is complete without verification is dishonesty, not efficiency.
+
+**Core principle:** Evidence before claims, always.
+
+**Violating the letter of this rule is violating the spirit of this rule.**
+
+## The Iron Law
+
+```
+NO COMPLETION CLAIMS WITHOUT FRESH VERIFICATION EVIDENCE
+```
+
+If you haven't run the verification command in this message, you cannot claim it passes.
+
+## The Gate Function
+
+```
+BEFORE claiming any status or expressing satisfaction:
+
+1. IDENTIFY: What command proves this claim?
+2. RUN: Execute the FULL command (fresh, complete)
+3. READ: Full output, check exit code, count failures
+4. VERIFY: Does output confirm the claim?
+   - If NO: State actual status with evidence
+   - If YES: State claim WITH evidence
+5. ONLY THEN: Make the claim
+
+Skip any step = lying, not verifying
+```
+
+## Common Failures
+
+| Claim | Requires | Not Sufficient |
+|-------|----------|----------------|
+| Tests pass | Test command output: 0 failures | Previous run, "should pass" |
+| Linter clean | Linter output: 0 errors | Partial check, extrapolation |
+| Build succeeds | Build command: exit 0 | Linter passing, logs look good |
+| Bug fixed | Test original symptom: passes | Code changed, assumed fixed |
+| Regression test works | Red-green cycle verified | Test passes once |
+| Agent completed | VCS diff shows changes | Agent reports "success" |
+| Requirements met | Line-by-line checklist | Tests passing |
+
+## Red Flags - STOP
+
+- Using "should", "probably", "seems to"
+- Expressing satisfaction before verification ("Great!", "Perfect!", "Done!", etc.)
+- About to commit/push/PR without verification
+- Trusting agent success reports
+- Relying on partial verification
+- Thinking "just this once"
+- Tired and wanting work over
+- **ANY wording implying success without having run verification**
+
+## Rationalization Prevention
+
+| Excuse | Reality |
+|--------|---------|
+| "Should work now" | RUN the verification |
+| "I'm confident" | Confidence ≠ evidence |
+| "Just this once" | No exceptions |
+| "Linter passed" | Linter ≠ compiler |
+| "Agent said success" | Verify independently |
+| "I'm tired" | Exhaustion ≠ excuse |
+| "Partial check is enough" | Partial proves nothing |
+| "Different words so rule doesn't apply" | Spirit over letter |
+
+## Key Patterns
+
+**Tests:**
+```
+✅ [Run test command] [See: 34/34 pass] "All tests pass"
+❌ "Should pass now" / "Looks correct"
+```
+
+**Regression tests (TDD Red-Green):**
+```
+✅ Write → Run (pass) → Revert fix → Run (MUST FAIL) → Restore → Run (pass)
+❌ "I've written a regression test" (without red-green verification)
+```
+
+**Build:**
+```
+✅ [Run build] [See: exit 0] "Build passes"
+❌ "Linter passed" (linter doesn't check compilation)
+```
+
+**Requirements:**
+```
+✅ Re-read plan → Create checklist → Verify each → Report gaps or completion
+❌ "Tests pass, phase complete"
+```
+
+**Agent delegation:**
+```
+✅ Agent reports success → Check VCS diff → Verify changes → Report actual state
+❌ Trust agent report
+```
+
+## Why This Matters
+
+From 24 failure memories:
+- your human partner said "I don't believe you" - trust broken
+- Undefined functions shipped - would crash
+- Missing requirements shipped - incomplete features
+- Time wasted on false completion → redirect → rework
+- Violates: "Honesty is a core value. If you lie, you'll be replaced."
+
+## When To Apply
+
+**ALWAYS before:**
+- ANY variation of success/completion claims
+- ANY expression of satisfaction
+- ANY positive statement about work state
+- Committing, PR creation, task completion
+- Moving to next task
+- Delegating to agents
+
+**Rule applies to:**
+- Exact phrases
+- Paraphrases and synonyms
+- Implications of success
+- ANY communication suggesting completion/correctness
+
+## The Bottom Line
+
+**No shortcuts for verification.**
+
+Run the command. Read the output. THEN claim the result.
+
+This is non-negotiable.
+
+exec
+/bin/bash -lc 'git status --short' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+ M apps/site/playwright/sample-blocks-edit-loads.spec.ts
+ M docs/audits/screenshots/wave-6-hotfix-sample-blocks-edit-loads.png
+ M packages/editor-shell/CONTRACT.md
+ M packages/editor-shell/src/index.ts
+ M packages/editor-shell/src/registry-wire.tsx
+?? docs/plans/wave-6-main/wave-6-cf-18-block-nodeview-wiring.md
+?? packages/editor-shell/src/BlockNodeView.tsx
+
+exec
+/bin/bash -lc "sed -n '1,240p' docs/plans/wave-6-main/wave-6-cf-18-block-nodeview-wiring.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+# PR.md — Wave 6 carry-forward #18 — Block NodeView wiring (8 blocks)
+
+> Per ADR-0011 D2 schema. Linked from `docs/plans/active.md`.
+
+## Title
+
+`Wave 6 cf-18 — wire all 8 component blocks into Tiptap NodeView so the edit surface renders real components instead of "{Label} block" placeholders`
+
+## Why
+
+cf-15a / cf-15b / cf-16 closed the **data layer**: `mdxToTiptap` now produces correct Tiptap nodes (`{type:'pdf', attrs:{src,page,searchable}}` etc.) instead of throwing or surfacing softParse `[unsupported block <X>: ...]` placeholders. But the **render layer** never closed: `packages/editor-shell/src/registry-wire.tsx:88-114`'s `createBlockExtension` only registers a `Node.create` with a `renderHTML` returning `['div', {...}, '${option.label} block']` — a literal string placeholder. There is no `addNodeView` and no bridge to each block's existing `EditorView` React component.
+
+User-visible result on `/notes/sample-blocks/edit`: 14 placeholder divs (`callout×4 / componentCode×1 / image×2 / math×2 / pdf×2 / jupyter×1 / nn-viz×1 / agent-flow×1`) reading "Callout block", "Pdf block", etc. — no real PDF iframe, no React Flow graph, no KaTeX, no syntax-highlighted code body, no image, no callout container.
+
+The previous Wave 6 cf-16 Playwright lock (`assert no [unsupported block <` text) was a **weak assertion** — it passed against the placeholder divs because the placeholders don't contain that error sentinel. cf-18 replaces it with per-kind real-DOM markers.
+
+## What
+
+1. **Add `BlockNodeView` React bridge** in `editor-shell` — uses `@tiptap/react`'s `NodeViewWrapper`, looks up the block's `BlockUIDefinition` from the injected `BlockRegistry` by `node.type.name → coreName` mapping, and renders `<UI.EditorView props={node.attrs as ZodInfer<schema>} />`.
+
+2. **Wire `createBlockExtension`** to take the registry + use `addNodeView: () => ReactNodeViewRenderer(BlockNodeView, { ... })`. Each block kind's Tiptap Node now renders the real React component instead of the placeholder string.
+
+3. **Make `wireRegistry` propagate the registry** to `createBlockExtension` (closure capture of the registry passed in `RegistryWireOptions`).
+
+4. **NodeName mapping**: cf-15b renamed `'code'` → `'componentCode'` for the Tiptap node name; the block's `coreName` is also `'componentCode'`. Bridge looks up `registry.getCore(node.type.name)` then `registry.getUI(coreName)`. Other 7 blocks: nodeName === coreName.
+
+5. **Strengthen the Playwright spec** (`apps/site/playwright/sample-blocks-edit-loads.spec.ts`):
+   - assert presence of per-kind real-DOM markers (callout container, code body, image tag, KaTeX `.katex`, PDF iframe, Jupyter container, NN-Viz canvas/SVG, AgentFlow `.react-flow`)
+   - keep the "no `[unsupported block <` text" check
+   - keep the placeholder-div count at 0 (`[data-skb-block-kind]` should disappear once NodeView is rendered through ReactNodeViewRenderer)
+
+## Files
+
+| File | Change |
+|---|---|
+| `packages/editor-shell/src/BlockNodeView.tsx` | **NEW** — React bridge component (NodeViewWrapper + registry lookup + EditorView render) |
+| `packages/editor-shell/src/registry-wire.tsx` | Update `createBlockExtension` to accept registry + add `addNodeView`; thread registry through `wireRegistry` |
+| `packages/editor-shell/src/__tests__/registry-wire.test.ts` | Add NodeView render smoke tests |
+| `packages/editor-shell/src/index.ts` | Export `BlockNodeView` for tests |
+| `apps/site/playwright/sample-blocks-edit-loads.spec.ts` | Replace weak assertion with per-kind real-DOM markers (8 block kinds) |
+| `packages/editor-shell/CONTRACT.md` | Document the NodeView bridge in Public surface |
+| `docs/audits/screenshots/wave-6-hotfix-sample-blocks-edit-loads.png` | Regen (visual proof) |
+
+Total scope: ~7 files (1 new bridge + 1 wire update + 1 test add + 1 export update + 1 Playwright strengthening + 1 sister-doc + 1 screenshot).
+
+## Decisions
+
+**D1 — NodeView bridge in editor-shell, not per-block**: keep block packages framework-agnostic at the Tiptap layer. They already export `EditorView: ComponentType<BlockViewProps<TSchema>>`; editor-shell owns the Tiptap wiring. Each block stays free to swap UI implementations (`uiId='minimal'` etc.) without re-implementing NodeView.
+
+**D2 — atom node, not editable content**: every component block is `atom: true`. Inline editing of the block's interior (e.g. typing into a Pdf node) is out of scope; the block's React component owns its UI. Future work could add inner editable regions via `atom: false + addNodeView` `contentDOMElementTag`.
+
+**D3 — no HeavyBlockBoundary in editor**: HeavyBlockBoundary is for SSR zero-layout-shift on the static-render path (`apps/site/src/components.ts`). Tiptap NodeView mounts client-side; the heavy block's EditorView (which already handles its own kernel/canvas/flow lifecycle) mounts directly. Trade-off: opening `/notes/<slug>/edit` will trigger client-side load of Pyodide / TFJS / React Flow if those blocks are present. Acceptable on the edit surface; a future PR can add lazy-load gates if needed.
+
+**D4 — registry injected at `wireRegistry` time, not at NodeView render time**: a single `BlockRegistry` per `EditorShell` mount; closure-captured into the extensions array. No prop-drilling at NodeView render time.
+
+## Test plan
+
+- [ ] `pnpm --filter @skb/editor-shell test` — new NodeView smoke tests green; existing 132 tests remain green
+- [ ] `pnpm --filter @skb/site test:e2e -- sample-blocks-edit-loads` — Playwright passes per-kind real-DOM marker assertions for all 8 blocks
+- [ ] `pnpm check` — exit 0
+- [ ] Visual regression: regen `wave-6-hotfix-sample-blocks-edit-loads.png` shows real components (PDF iframe, React Flow graph, KaTeX, syntax-highlighted code, image, callout container, Jupyter skeleton, NN-Viz SVG)
+
+## Acceptance
+
+1. `BlockNodeView` exists at `packages/editor-shell/src/BlockNodeView.tsx`, exports a default React component compatible with `ReactNodeViewRenderer`
+2. `createBlockExtension` calls `addNodeView: () => ReactNodeViewRenderer(BlockNodeView)` — placeholder `renderHTML` removed or relegated to fallback only
+3. `wireRegistry({ blockRegistry })` propagates the registry into the extensions array; if no registry is provided the placeholder fallback still applies (so existing tests / no-registry mounts don't break)
+4. Sample-blocks Playwright asserts presence of: at least 1 callout container, 1 syntax-highlighted code body, 1 `<img>`, 1 `.katex`, 1 PDF `<iframe>`, 1 Jupyter container, 1 NN-Viz SVG/canvas, 1 React Flow `.react-flow`
+5. Sample-blocks Playwright asserts ZERO `[data-skb-block-kind]` placeholder divs in the editor
+6. `editor-shell/CONTRACT.md` documents the NodeView bridge under Public surface
+7. `pnpm check` exit 0
+8. ADR-0006 9-point sweep clean
+
+exec
+/bin/bash -lc "sed -n '1,220p' CLAUDE.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+# CLAUDE.md
+
+> **GENERATED FROM agent-contract.md — DO NOT EDIT BY HAND.**
+>
+> Edit `agent-contract.md` then run `pnpm generate:configs`. CI fails if drift detected.
+
+This file is the Claude Code entry point for the **SelfKnowledgeBaseWeb** monorepo. It tells
+every Claude session what the project is, the hard rules, the agent roster, and the workflow.
+
+- Spec: [docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md](docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md)
+- Active plan: [docs/plans/active.md](docs/plans/active.md)
+- Single source for agents: [agent-contract.md](agent-contract.md)
+- Codex tool invocations: [docs/runbooks/codex-tool-invocations.md](docs/runbooks/codex-tool-invocations.md)
+
+## Hard rules
+
+1. **File size**: 200 lines (target) / 300 lines (ESLint `max-lines` warn) / 500 lines
+   (`pnpm size-check` hard fail). Spec §3.6.
+2. **Cross-file references**: every doc/code change must keep doc cross-references and
+   contract files in sync (`packages/*/CONTRACT.md`, `agent-contract.md`).
+3. **Lychee link-check**: broken markdown links block merge. Run `pnpm link-check` locally.
+4. **`pnpm check` is mandatory before review** (lint + typecheck + test + build + size).
+5. **Git mutation discipline (ADR-0011 D1+D4)**: `git commit / branch / rebase / push`
+   only at D1 stage 5 (reviewer codex commit phase) or by orchestrator self for bootstrap
+   scope. Subagents (pr-writer / ux-ui-lead / refactorer / researcher) never run mutating
+   git commands.
+6. **Web access discipline (ADR-0011 D7)**: only the `researcher` Claude subagent (one-shot
+   per dispatch) may run `web_search` / `web_fetch`.
+7. **Cross-package moves (ADR-0011 D7)**: only the `refactorer` Claude subagent may
+   reorganize packages, and every reorganization requires an ADR under `docs/decisions/`.
+
+## Commands cheat-sheet
+
+| Command                 | Purpose                                               |
+| ----------------------- | ----------------------------------------------------- |
+| `pnpm install`          | Install workspace dependencies                        |
+| `pnpm dev`              | Run all `dev` scripts (parallel)                      |
+| `pnpm check`            | Lint + typecheck + test + build + size-check          |
+| `pnpm check:affected`   | Same, scoped to packages affected since `origin/main` |
+| `pnpm size-check`       | Hard 500-line limit on every source file              |
+| `pnpm link-check`       | Lychee scan over `./**/*.md`                          |
+| `pnpm generate:configs` | Re-derive everything from `agent-contract.md`         |
+| `pnpm format`           | Prettier write across the repo                        |
+
+## Review workflow (ADR-0011 D1 linear pipeline; supersedes Wave 1+2 tree workflow)
+
+Per PR (PRs run strictly serial; the next PR's PLAN waits for the previous PR's ACCEPT):
+
+```
+1. PLAN              pr-writer Claude subagent ↔ orchestrator → lock PR.md (D2 schema)
+       │
+       ▼
+2. EXECUTE           codex `codex-generic-executor` (or specialized scaffolder; or
+                     `ux-ui-lead` Claude subagent for UI/UX). TDD-front:
+                     write tests → write impl → vitest all PASS.
+       │
+       ▼
+3. REVIEW            codex `codex-pr-reviewer-55` (5.5) — line-level + spec-match.
+                     ADR-0006 9-point checklist mandatory. PASS → next stage.
+       │
+       ├── (D2 row 1+4 hit) → 4. PRE-COMMIT CLAUDE REVIEW   orchestrator self.
+       │                          Mitigates same-model echo chamber.
+       │
+       ▼
+5. COMMIT (+ push)   reviewer codex commits. Per ADR-0006 D8 explicit-file-list
+                     staging (`git reset HEAD` → `git add <list>` →
+                     `git diff --cached --stat` verify → `git commit`).
+       │
+       ▼
+6. ACCEPT            pr-writer Claude subagent (second invocation): verify the
+                     PR's diff actually meets PR.md's `acceptance:` block.
+```
+
+D2 trigger judgment (ADR-0007 D2 rows; locked by orchestrator at PLAN):
+- **D1 stage 4 PRE-COMMIT CLAUDE REVIEW fires** on D2 rows 1+4 (contract change OR new
+  ADR required). Other rows skip this stage but still go through codex review.
+- **High-risk classes** (rows 2 package add/remove, row 8 CI/deploy/auth/security) also
+  receive heightened reviewer scrutiny within stage 3 — ADR-0006 D8 staging discipline +
+  ADR-0006 9-point checklist 9th-class hunt.
+
+See [ADR-0011](docs/decisions/ADR-0011-linear-pipeline-execution-model.md) D1-D8 +
+[ADR-0007 D2](docs/decisions/ADR-0007-job-function-codex-heavy-execution.md).
+
+Codex tools (11 patterns: 5 scaffolders + plan-challenger + codex-pr-reviewer-55 +
+4 audit/exec profiles) are
+[orchestrator-direct Bash invocations](docs/runbooks/codex-tool-invocations.md) post
+ADR-0007 D5 + ADR-0011 D6.
+
+## Claude teammates (5)
+
+| Tier            | Name           | Role                                                                           |
+| --------------- | -------------- | ------------------------------------------------------------------------------ |
+| T0 Orchestrator | `orchestrator` | 整体规划 + dispatch 工种 + 维护 docs/plans/ + D1 pipeline 协调                 |
+| T2 Subagent     | `pr-writer`    | PR.md 起草（PLAN 调）+ ACCEPT 验收（COMMIT 后调）                              |
+| T2 Subagent     | `refactorer`   | 唯一跨包重组权（ADR-0011 D7 沿用，按需 one-shot dispatch）                     |
+| T2 Subagent     | `researcher`   | 唯一外网访问权（ADR-0011 D7 沿用，按需 one-shot dispatch）                     |
+| T2 Subagent     | `ux-ui-lead`   | 视觉单一权威 — 横跨 ui-default + apps/site + editor 子模块（仅 UI/UX PR 触发） |
+
+## Codex tool patterns (11)
+
+orchestrator-direct Bash invocations (ADR-0007 D5). Full canonical bash + triggers + audit-log paths in [docs/runbooks/codex-tool-invocations.md](docs/runbooks/codex-tool-invocations.md).
+
+| Pattern                   | Profile                   | Summary                                                                                            |
+| ------------------------- | ------------------------- | -------------------------------------------------------------------------------------------------- |
+| `codex-generic-executor`  | `codex-generic-executor`  | ADR-0011 D6 NEW Wave 3 默认 executor。gpt-5.5 + workspace-write sandbox。                          |
+| `codex-mdx-doctor`        | `codex-mdx-doctor`        | ADR-0011 D5 + D6 NEW Wave 3 audit profile。从 Wave 1+2 Tier 3                                      |
+| `codex-perf-auditor`      | `codex-perf-auditor`      | ADR-0011 D5 + D6 NEW Wave 3 audit profile。从 Wave 1+2 Tier 3                                      |
+| `codex-pr-reviewer-55`    | `codex-pr-reviewer-55`    | ADR-0011 D1 stage 3 默认 reviewer。replaces Wave 1+2 的 pr-gate（5.5）+                            |
+| `codex-structure-auditor` | `codex-structure-auditor` | ADR-0011 D5 + D6 NEW Wave 3 audit profile。从 Wave 1+2 Tier 3                                      |
+| `plan-challenger`         | `plan-challenger`         | lock 前挑战 orchestrator 的 wave / track / PR plan：检查 task 大小、可测性、边界场景。             |
+| `codex-api-crud-builder`  | `scaffolder`              | 在 apps/api 按 RESTful 风格生成 CRUD 端点骨架（Pydantic schema + 路由）。                          |
+| `codex-block-generator`   | `scaffolder`              | 在 simple-block-eng / ux-ui-lead / editor-eng 提交 template 后，按模板仿造其余 block / submodule。 |
+| `codex-css-stylist`       | `scaffolder`              | 写 packages/design-tokens / packages/ui 的 design tokens（颜色 / 间距 / 字体）+                    |
+| `codex-script-builder`    | `scaffolder`              | 写 scripts/refactor-move.ts / scripts/new-block.ts / scripts/extract-pdf-text.ts 等工具。          |
+| `codex-test-scaffolder`   | `scaffolder`              | 为每个 packages/<name> 生成 src/__tests__/ 下的 vitest 套件骨架，                                  |
+
+## Footer
+
+This file is GENERATED FROM `agent-contract.md`. Edits to this file will be overwritten
+on the next `pnpm generate:configs` run.
+
+exec
+/bin/bash -lc "sed -n '1,260p' docs/decisions/ADR-0006*" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+# ADR-0006: Cross-location asymmetry-audit checklist (process rule)
+
+| 字段 | 值                                    |
+| ---- | ------------------------------------- |
+| 状态 | accepted                              |
+| 日期 | 2026-04-30                            |
+| 作者 | orchestrator (Claude Opus 4.7 1M ctx) |
+| 触发 | Wave 1 codex 5.5 reviews caught 12 instances of the same meta-class across 6 tracks + 5 close-ceremony fix iterations (8 distinct items + 4 close-ceremony reinforcements of items #6 and #8) |
+| 替代 | 不替代任何 ADR；扩展 [ADR-0001](ADR-0001-stack-selection.md) §3.2 review chain |
+
+## Context
+
+Wave 1 implementation produced strong empirical evidence that **a single bug class** dominates the failure mode at line-level review:
+
+> **Cross-location asymmetry**: a value, schema, algorithm, or invariant exists in two or more places, and an edit to one location is not symmetrically applied to all peers, so behavior diverges silently.
+
+Across 6 tracks + 5 close-ceremony fix iterations, codex 5.5 (`pr-gate`) caught **12 instances** of this meta-class (8 distinct failure-mode items + 4 close-ceremony reinforcements of items #6 and #8). Every PR that lasted ≥ 2 review rounds hit at least one instance. The pattern is so consistent that linear "fix the cited blocker, ship v_n+1" iteration would not have caught the second-order asymmetry; codex specifically catches the symmetric counterpart that the worker missed.
+
+### Wave 1 empirical record (12 instances)
+
+| # | Track | Round | Asymmetry pair | Bug behavior |
+|---|---|---|---|---|
+| 1 | Track B (block-foundation + content-types) | R1 → fixed v3 | `listUIs` mutability vs `listCores` defensive copy | Caller mutation of return value polluted registry singleton |
+| 2 | Track D (apps/api) | R2 → fixed v4 | RFC 7235 `WWW-Authenticate` on framework-raised 401 vs custom `SkbError` 401 | 4 of 5 401 paths emitted spec-mandated header; the custom-error path silently dropped it |
+| 3 | Track F (editor-commands) | R3 → fixed v4 | `.strict()` on top-level Zod object vs nested `frontmatterSchema` | Top-level rejected unknown keys; nested still silently stripped them |
+| 4 | Track C (mdx-bridge) | R2 → fixed v4 | `marksEqual` link comparator: `href` only vs `href + title` | Same href, different titles silently merged into one link with the first title preserved |
+| 5 | Track F v5 | R3 → fixed v6 | One CONTRACT.md updated to reflect code; sister CONTRACT.md (`agent-tools`) had stale wording | Documentation-vs-code drift in the file the worker did not edit |
+| 6 | Track A | R1 → fixed v2 | FOUC inline IIFE saved-value algorithm + content schema | Truthy-coerce diverges from strict-whitelist for invalid / case-mismatched values; inline `z.object` redefinition diverges from `frontmatterSchema` authority |
+| 7 | Track A v2 | R2 → fixed v3 | FOUC inline IIFE try/catch scope | Wide try/catch in IIFE swallowed `matchMedia` exceptions while authority's narrow try/catch propagated; storage-throws scenarios produced light→dark hydration flash |
+| 8 | Wave 1 close bundle v1 | R1 → fixed v2 | ADR-0006 mandated reviewer-prompt updates vs actual `agent-contract.md` / generated `.claude/agents/*.md` / `docs/review-checklist.md` / `team-operations.md` content | The close-ceremony commit codified a process rule that mandates downstream behavior; consumer-side artifacts (reviewer prompts + runbook) had not been updated to embed the rule, so Wave 2 reviewers would not have seen it |
+| 9 | Wave 1 close bundle v2 | R2 → fixed v3 | ADR-0006:81 within-document drift "7 distinct instances" | Single bullet missed during the v1→v2 count sweep — sister-bullet variant of item #6 within a single document |
+| 10 | Wave 1 close bundle v3 | R3 → fixed v4 | ADR-0006:117 within-document drift "7 empirical instances + 18+ erratum candidates" (both numbers stale) | Second sister-bullet drift in the same file, a different bullet — proved per-citation fixes are themselves item #6 traps; comprehensive sweep at fix time is the robust pattern |
+| 11 | Wave 1 close bundle v4 (informational) | R4 (informational) → fixed v5 | structure baseline:66 "× 7 endpoints" while apps/api has 4 routes / 11 tests | Pre-existing content-accuracy drift in the structure baseline document (authored at v1) — content number mismatched real code; surfaced during the broader 11th-class hunt |
+| 12 | Wave 1 close bundle v5 | R2 (pr-gate) → fixed v6 | Regenerated `.claude/agents/code-reviewer.md` + `.claude/agents/pr-gate.md` + `docs/review-checklist.md` were not staged in the bundle commit — authority + generator code updated, but generator outputs remained at pre-update HEAD content | Sub-form of item #8: regenerating an artifact and `git add`'ing it are separate steps; a bundle that updates authority + generator without staging the regenerated outputs is silently stale. Motivated the "verify by clean second-run" step now part of item #8. |
+
+Codex's structured review consistently caught these with three patterns:
+
+1. After fixing one location, **codex audits all peer locations** (not just the cited site)
+2. After a value/schema acquires an attribute, **codex audits every comparator/serialization function** for that attribute
+3. After a "happy path" fix, **codex audits the exception path** for the same equivalence
+
+These three habits collectively define the process rule below.
+
+## Decision
+
+Adopt an **9-point asymmetry-audit checklist** (8 from v0.1 + 1 new at v0.2 amendment 2026-05-XX) as a mandatory part of `codex-pr-reviewer-55` (Wave 3+ default reviewer per ADR-0011 D6) review prompts. Reviewers MUST work through every applicable item before declaring PASS. (Pre-Wave-3 `code-reviewer` / `pr-gate` profile prompts are deprecated per ADR-0011 D6.)
+
+### The 9 items
+
+1. **Field/attribute audit**: After adding a field to a data shape (Zod schema, Pydantic model, TS interface, mdast attrs, etc.), audit every comparator / equality / serialization / canonicalization function that handles this shape. (Wave 1 evidence: instance #4 — `marksEqual` link branch missed `title` when serialize emitted it.)
+
+2. **Status code audit**: After adding a status code to one HTTP handler (or, generally, an exit/error code to one branch), audit every other handler emitting the same code. RFC-mandated headers (RFC 7235 `WWW-Authenticate` on 401, RFC 7231 `Allow` on 405) attach to **the status code itself**, not the framework code path that emitted it. (Wave 1 evidence: instance #2 — custom `SkbError` 401 path missed `WWW-Authenticate`.)
+
+3. **Strictness audit**: After adding `.strict()` (Zod) / `extra='forbid'` (Pydantic) at one level of an object schema, audit every nested object/sub-schema. The strictness setting **does not propagate**; nested objects must opt in independently. (Wave 1 evidence: instance #3 — top-level `.strict()` shipped while nested `frontmatterSchema` still silently stripped unknown keys.)
+
+4. **Consumer schema audit**: After defining a schema in a single-authority package (e.g. `@skb/content-types/frontmatterSchema`), audit every consumer for inline duplicates or inline redefinitions that should `import` instead. The "deferred swap" pattern — "I'll inline now and import later" — is a contract break that compounds over time. (Wave 1 evidence: instance #6 part 2 — apps/site/content.config.ts inlined `z.object(...)` rather than importing `frontmatterSchema`.)
+
+5. **Algorithm + runtime constant replication audit**: When an algorithm or runtime constant is replicated outside its authority (e.g. inline FOUC scripts, login challenge derivation, pre-hydration boot logic that cannot import from packages), audit every consumer-side replica for byte-equivalent reproduction. The replica must register a **regression test** that asserts equivalence against the authority across a representative input corpus. (Wave 1 evidence: instance #6 part 1 — FOUC IIFE truthy-coerce vs `getInitialTheme()` strict-whitelist; remediated with `apps/site/src/__tests__/fouc-script.test.ts` 16-row corpus.)
+
+6. **Sister-file documentation audit**: After updating one CONTRACT.md (or any document that describes a code surface), audit ALL related CONTRACT.md files in the package family for sister-file drift. Two CONTRACT.md files that describe two halves of the same contract must use **identical terminology** for the shared identifiers (function names, schema names, refine predicate names). (Wave 1 evidence: instance #5 — `editor-commands/CONTRACT.md` updated to cite `editBlockInputSchema` while `agent-tools/CONTRACT.md` still referred to the old shape.)
+
+7. **Exception-scope equivalence audit**: When replicating an algorithm + its exception handling across files, audit BOTH the happy-path semantics AND the `try/catch` scope between authority and replica. Narrow vs wide `try/catch` can produce divergent fall-through behavior even with identical happy-path logic. Specifically: when `localStorage` / `sessionStorage` / `IndexedDB` / `matchMedia` / any browser API in the algorithm path can throw, the `try/catch` MUST wrap ONLY the throwing call, with the fall-through branch (matchMedia / system default / DOM apply) running AFTER the catch handler — not inside it. (Wave 1 evidence: instance #7 — FOUC IIFE wide-scope try/catch swallowed matchMedia exceptions; remediated with narrow try/catch + 2 storage-throws regression tests.)
+
+8. **Authority-document → generated/consumed surface audit**: When updating an authority document (ADR, spec, `agent-contract.md`, runbook, CONVENTIONS) **OR a dependency authority (`package.json`)** that mandates behavior in downstream consumers, audit every consumer-side replica/generated artifact for synchronized update **AND staged-in-the-git-index in the same bundle**. Specifically: an ADR section that says "X file MUST be updated to do Y" requires the same commit to update X and provide a way to verify the synchronization. Generated artifacts (e.g. `docs/review-checklist.md` and `.claude/agents/*.md` derived from `agent-contract.md`; **`pnpm-lock.yaml` derived from `package.json`** — see sub-form C below) MUST be regenerated via the documented codegen step (`pnpm generate:configs` / `pnpm install`) AND **explicitly `git add`'d** so the git **index** (not just the working tree) contains the new content; runbooks (`docs/runbooks/team-operations.md`) MUST be cross-linked; Codex/Claude subagent prompt files MUST embed or reference the new rule.
+
+   **Operational sequence** (do not skip steps):
+   ```bash
+   # 1. Edit authority + generator code
+   # 2. Run codegen
+   pnpm generate:configs
+   # 3. Stage regenerated outputs (CRITICAL — see Pitfall below)
+   git add <regenerated/path/foo.md> <regenerated/path/bar.md>
+   # 4. Verify index reflects content (NOT just working tree):
+   git diff --cached --stat -- <regenerated paths>
+   #    → expects non-empty diff with the expected line counts
+   # 5. Verify idempotence: re-run codegen + confirm working tree matches index:
+   pnpm generate:configs
+   git status --short -- <regenerated paths>
+   #    → expects column-1 'M' (staged) + column-2 blank (working tree clean)
+   ```
+
+   **Pitfall (this is the load-bearing step)**: `git status --short` shows two columns: column 1 is index-vs-HEAD; column 2 is working-tree-vs-index. After running the generator without `git add`, you see `' M'` (space + M) — **working tree differs from index, but index still matches HEAD**. `git commit` only commits the index. Skipping `git add` means the regenerated content is in your working tree but NOT in the next commit. The bundle would land authority + generator-code changes WITHOUT the regenerated outputs, leaving consumers (Wave 2 reviewers reading `.claude/agents/*.md`) at pre-update content. Use `git diff --cached` (not `git status`) as the canonical staging-verification command — `--cached` shows index-vs-HEAD only, which is what `git commit` will produce.
+
+   **Pitfall extension — `pnpm-lock.yaml` is a generated artifact too (sub-form C below)**: when the authority is `package.json` (any dependency add / remove / version bump / `@types/*` shift), `pnpm install` regenerates `pnpm-lock.yaml` as a deterministic derived artifact. Skipping `git add pnpm-lock.yaml` produces the same class of failure as skipping `git add .claude/agents/*.md`: working tree has the synced lockfile but the **index** still holds HEAD's stale lockfile, so the bundle ships `package.json` ahead of its lockfile. CI runs `pnpm install --frozen-lockfile` from the bundled state, sees the stale lockfile disagreeing with the new `package.json`, and fails install. The same `git diff --cached --stat -- pnpm-lock.yaml` canonical verification applies. (Wave 1 erratum commit `e15ec36`; codified as sub-form C below.)
+
+   Generated-from-authority files carry their own header comment ("GENERATED FROM agent-contract.md — DO NOT EDIT BY HAND") OR YAML frontmatter declaring authority source — both forms are acceptable. `pnpm-lock.yaml` lacks an explicit header (the format is fixed by pnpm) but is implicitly declared by `pnpm install`'s contract — its authority is `package.json` + the workspace `pnpm-workspace.yaml`.
+
+   **Wave 1 evidence**: **instance #8** — ADR-0006 v1 commit codified reviewer-prompt mandates but did not update `agent-contract.md` / regenerate `.claude/agents/code-reviewer.md` / regenerate `.claude/agents/pr-gate.md` / cross-link `team-operations.md` / regenerate `docs/review-checklist.md`; pr-gate caught the dogfood failure during R1 review of the close-ceremony bundle, forcing a v2 fix. **instance #12 (sub-form A — pre-regeneration omission)** — v5 bundle updated authority files (`agent-contract.md`, generator code, `team-operations.md` cross-link) but had not run the generator at all post-edit; the 3 regenerated outputs were stale at HEAD content; pr-gate caught this during R2 review, forcing a v6 fix. **instance #12 (sub-form B — staging-vs-working-tree confusion)** — v6 bundle ran the generator (so working tree had new content) but did NOT `git add` the regenerated outputs; the git **index** still held HEAD blob hashes for the 3 generated files; orchestrator confused `git status --short` "M" prefix (working-tree-vs-index) with index-vs-HEAD; pr-gate caught this via `git ls-files --stage` blob-hash comparison during R3 review, forcing the v7 fix that explicitly stages with `git add` + verifies via `git diff --cached`. **instance #12 (sub-form C — lockfile is a generated-from-authority artifact)** — Wave 1 close ceremony commit `e15ec36` ("fix(deps): commit pnpm-lock.yaml for @tailwindcss/typography (lockfile drift)"): the design-tokens erratum (commit `fdc86a8`) added the `@tailwindcss/typography` dependency to `package.json` but did not stage the regenerated `pnpm-lock.yaml`; CI install used the pre-update lockfile, drifted against the new `package.json`, and failed `pnpm install --frozen-lockfile`. Resolution: commit `e15ec36` staged the lockfile separately. Lesson codified: when the authority is `package.json` (any dependency add / remove / version bump), `pnpm-lock.yaml` is the consumer-side generated artifact and must ride the same bundle — the class equivalence to `.claude/agents/*.md` regeneration is exact (deterministic derive + git-index staging required). The four sub-forms of the same item #8 class — pre-regeneration omission, post-regeneration commit-staging confusion, conceptually-correct-but-operationally-incomplete fix, AND lockfile-as-generated-artifact — together motivate the explicit operational sequence and `git diff --cached` canonical verification command codified above.
+
+9. **UI-touch + E2E spec audit (v0.2 amendment 2026-05-XX, ADR-0011 D9)**: When PR diff touches user-facing UI surfaces, reviewer MUST verify: (a) PR.md `ui_touch: true` + `e2e_smoke` field non-empty, (b) each `e2e_smoke` entry has corresponding Playwright spec file existing + test name resolvable, (c) `pnpm --filter @skb/site test:visual` PASSES locally during review, (d) referenced `screenshot_archive` path exists with file size ≥ 5KB. (Wave 5 evidence: C.4-prelude PR #72 — vitest unit + jsdom all PASS + pr-writer ACCEPT 23/23 PASS, but editor page had no toolbar/slash/palette/save-indicator/Edit-Mode visual; user smoke test discovered "看不到任何一点进步"; root cause = no E2E spec validating user-visible affordances; codified ADR-0011 D9 + this 9th asymmetry class.) **Path-pattern + exclusion authority (v0.2.1 cross-ref-only amendment 2026-05-07, Wave 6 Stage B.2)**: [ADR-0011 D9.1](ADR-0011-linear-pipeline-execution-model.md) is the canonical source of UI-touch path patterns AND their exclusions (Wave 6 Stage B.2 amendment excludes `apps/site/src/pages/api/**` server-only API routes — `prerender = false` JSON endpoints with no rendered HTML, no Playwright-meaningful flow). This item #9 references D9.1 by reference rather than inlining the pattern list — the inline shorthand was removed at the same B.2 amendment to prevent the authority-vs-consumer drift that ADR-0006 item #8 itself warns against. `scripts/check-ui-touch.ts` + `scripts/check-e2e-coverage.ts` + `scripts/check-screenshot-archive.ts` mirror D9.1 (patterns + exclusions) byte-equally per item #5.
+
+   The asymmetry: **"vitest unit PASS" vs "production user-visible behavior PASS"** is the load-bearing pair. Wave 5 R22 forward-fix two-class classification (impl-defect vs PR.md drift) was insufficient; D9.7 evidence demonstrates a third class — **product-experience-defect** — that vitest cannot catch. CI gate `scripts/check-e2e-coverage.ts` mechanically enforces (a)+(b); reviewer manual verifies (c)+(d).
+
+### Wave 2 prep notes (forward-compatibility application)
+
+The 8 items have specific Wave 2 trip-hazards already identified by Wave 1's review record:
+
+- **Item #1 + Wave 2 attr-bearing marks**: when the first attr-bearing mark beyond `link` is added to mdx-bridge (e.g. `highlight: {color}`, `kbd: {style}`), the worker MUST simultaneously update `wrapMark` AND `marksEqual` AND add a fixture exercising attr-equality + attr-distinction. Default `return true` in `marksEqual` is a silent-drop trap for any attr-bearing mark. (See pr-gate Track C v4 R3 caveat.)
+
+- **Item #2 + Wave 2 new error categories**: when Wave 2+ adds new HTTP error categories (e.g. `auth-rate-limit`, `kernel-timeout`), each new `SkbError` subclass MUST emit the same RFC-mandated headers as framework-raised peers. Add a unit test asserting header presence per error type. (See `apps/api/CONVENTIONS.md` §5 Pitfall + Pitfall continued.)
+
+- **Item #5 + Wave 2 client-side replications**: when apps/site adds new client-side algorithm replications (theme variants beyond light/dark, locale negotiation pre-hydration, etc.), the worker MUST audit both saved-value semantics AND try/catch scope against authority. (See `packages/design-tokens/CONTRACT.md` Inverse-direction obligation invariant.)
+
+- **Item #7 + future inline scripts**: ANY future `<script is:inline>` block in the project that needs pre-hydration replication of a package algorithm MUST follow the FOUC template (narrow try/catch + corpus regression test).
+
+## Consequences
+
+### Positive
+
+- **Catch the failure mode proactively**: Wave 1 evidence shows reviewer-applied checklist would have caught all 12 instances on the first review round (including the close-ceremony dogfood instance #8 + the 4 fix-loop reinforcements), eliminating 12 round-trip cycles
+- **Reviewer prompt clarity**: code-reviewer + pr-gate codex profile prompts gain a concrete, enumerable checklist rather than the implicit "look for symmetric counterparts" expectation
+- **Worker self-audit**: workers gain a pre-PR checklist they can run before reporting `ready-for-review`, catching their own asymmetries (memory: `feedback_verification_fresh_state.md` showed the verification-rigor lesson; this checklist is the analogous rigor at code-design level)
+- **Empirical grounding**: 12 distinct instances spread across 6 tracks + 5 close-ceremony fix iterations make this rule data-driven, not a "best practice" speculation; instances #9-12 reinforce items #6 + #8 specifically through close-ceremony fix-loop evidence
+
+### Costs
+
+- **Review-round time**: applying the 9-point audit at every review adds ~5-10 minutes per round of code-reviewer + pr-gate runtime. Acceptable trade-off given Wave 1 round-counts (Track F: 5 rounds; Track A: 3 rounds; Track C: 4 rounds; Track D: 4 rounds) — front-loading review thoroughness reduces total cycles
+- **Worker prompt overhead**: each spawn prompt now needs a reference to this ADR + the 9-point checklist. Marginal cost.
+- **False-positive risk**: items that don't apply (e.g. #2 "status code" doesn't apply to TS-only packages) need to be triaged and skipped. Reviewer profile prompts must explicitly say "skip items not applicable to this PR's scope" to avoid bloat.
+
+### Risks (mitigated)
+
+- **Risk**: workers might mechanically check items without thinking, producing false confidence. **Mitigation**: each item enumerates concrete failure modes from Wave 1, not abstract heuristics — easier to apply
+- **Risk**: this list might grow unbounded as Wave 2+ surfaces new asymmetry classes. **Mitigation**: ADR amendments are cheap; each new instance produces an ADR-0006 erratum capturing item #N+1. Wave 2 close ceremony reviews instances and adds items as needed.
+
+## Implementation
+
+### Reviewer prompt updates
+
+`codex-pr-reviewer-55` (Wave 3+ default reviewer per ADR-0011 D6) profile prompt MUST be updated to:
+
+1. State the 9-point checklist verbatim (or by reference to this ADR)
+2. Require the reviewer's verdict structure to include "asymmetry-audit applied: items {1..9} verdicts: ..."
+3. Explicitly mark FAIL if any applicable item is left un-audited
+4. For item #9 (v0.2): if PR.md `ui_touch: true`, MUST run `pnpm --filter @skb/site test:visual` and verify PASS before declaring overall PASS verdict
+
+`docs/runbooks/team-operations.md` §"角色与触发器" Tier 2 reviewer rows should cross-link to this ADR.
+
+### Worker pre-flight (template addition)
+
+Worker `ready-for-review` reports SHOULD include a brief asymmetry-audit summary: which of the 9 items applied, and the worker's self-audit verdict. Reviewers cross-check.
+
+### Wave 1 retroactive
+
+This ADR is **forward-applicable**. Wave 1 PRs that already shipped under earlier review without this checklist remain valid; the empirical instances they revealed are exactly what grounded this ADR. No retroactive re-review required.
+
+## Amendments
+
+### v0.2 (2026-05-XX; Wave 5 C.4-prelude product-experience-defect 失职)
+
+新增第 9 项 **UI-touch + E2E spec audit**（与 ADR-0011 D9 配套）。codify 第三类 forward-fix：**product-experience-defect**（之外原 R22 两类：impl-defect + PR.md drift）。CI gate `scripts/check-e2e-coverage.ts` + `scripts/check-screenshot-archive.ts` 机械 enforce。
+
+强制起点：本 amend PR 合 main 起，所有后续 UI-touch PR（per ADR-0011 D9.1 path patterns）适用。Wave 5 v1.3+ 全套 UI-touch PR 必跑。
+
+非破坏性 / 向后兼容：items 1-8 不变；新加 item 9 仅 enforce 在 UI-touch PR；非 UI-touch PR 自动 skip item 9（CI gate via `ui_touch: false`）。
+
+实证依据：详见 ADR-0011 D9.7。Wave 5 PR #72 vitest unit / jsdom / pr-writer ACCEPT 全 PASS 但 user 烟测无 toolbar/slash/palette/save-indicator/Edit-Mode 任一 affordance = "看不到任何一点进步"。事后 codify。
+
+## Related
+
+- [ADR-0001](ADR-0001-stack-selection.md) §3.2 review chain — this ADR specifies what reviewers MUST do; ADR-0001 specifies who reviews
+- [ADR-0002](ADR-0002-wave-1-close.md) Wave 1 close — collects the 12 empirical instances + 22 erratum candidates
+- [ADR-0004](ADR-0004-agent-team-dispatch-model.md) team dispatch — orchestrator dispatches review chain per this checklist
+- [docs/runbooks/team-operations.md](../runbooks/team-operations.md) — operational reference for reviewers and workers
+- [packages/design-tokens/CONTRACT.md](../../packages/design-tokens/CONTRACT.md) Inverse-direction obligation — concrete application of items #5 + #7
+- [apps/api/CONVENTIONS.md](../../apps/api/CONVENTIONS.md) §5 Pitfalls — concrete application of item #2
+
+exec
+/bin/bash -lc 'git diff -- packages/editor-shell/src/BlockNodeView.tsx packages/editor-shell/src/registry-wire.tsx packages/editor-shell/src/index.ts apps/site/playwright/sample-blocks-edit-loads.spec.ts packages/editor-shell/CONTRACT.md docs/plans/wave-6-main/wave-6-cf-18-block-nodeview-wiring.md' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+diff --git a/apps/site/playwright/sample-blocks-edit-loads.spec.ts b/apps/site/playwright/sample-blocks-edit-loads.spec.ts
+index 1712f54..c0e3c16 100644
+--- a/apps/site/playwright/sample-blocks-edit-loads.spec.ts
++++ b/apps/site/playwright/sample-blocks-edit-loads.spec.ts
+@@ -76,6 +76,44 @@ test('sample-blocks edit route loads non-empty content (mdxFlowExpression no lon
+     editor.locator('text=/\\[unsupported block </'),
+   ).toHaveCount(0);
+ 
++  // Wave 6 carry-forward #18 — every component block kind now mounts via
++  // `ReactNodeViewRenderer` → `BlockNodeView` → registry-resolved
++  // `EditorView`. Pre-#18 the editor showed 14 placeholder divs reading
++  // "{Label} block" (no PDF iframe, no React Flow, no KaTeX, etc.).
++  //
++  // Strong DOM-marker assertions per kind (counts mirror the production
++  // sample-blocks fixture — 4× Callout, 1× Code, 2× Image, 2× Math,
++  // 2× Pdf, 1× Jupyter, 1× NnViz, 1× AgentFlow):
++  //
++  // 1. Each NodeView host wrapper carries `data-skb-block-host` — there
++  //    must be 14 (one per fixture instance), with at least one per kind.
++  await expect(editor.locator('[data-skb-block-host]')).toHaveCount(14);
++  for (const kind of [
++    'callout',
++    'componentCode',
++    'image',
++    'math',
++    'pdf',
++    'jupyter',
++    'nn-viz',
++    'agent-flow',
++  ] as const) {
++    const host = editor.locator(`[data-skb-block-host="${kind}"]`).first();
++    await expect(host).toBeVisible({ timeout: 5_000 });
++  }
++  // 2. None of the NodeViews fell back to the "Unregistered block …"
++  //    placeholder (would imply registry not threaded into wireRegistry).
++  await expect(
++    editor.locator('.skb-block-nodeview--unregistered'),
++  ).toHaveCount(0);
++  // 3. Real-component DOM markers — proves the registered EditorView
++  //    actually mounted, not just an empty NodeViewWrapper:
++  await expect(editor.locator('iframe').first()).toBeVisible({ timeout: 5_000 }); // PDF
++  await expect(editor.locator('img').first()).toBeVisible({ timeout: 5_000 }); // Image
++  await expect(editor.locator('.katex').first()).toBeVisible({ timeout: 5_000 }); // Math
++  await expect(editor.locator('.react-flow').first()).toBeVisible({ timeout: 10_000 }); // AgentFlow
++  await expect(editor.locator('pre code').first()).toBeVisible({ timeout: 5_000 }); // Code body
++
+   // Wave 6 hotfix Bug B verification: nothing thrown to the page console
+   // (the silent-catch class would have hidden a throw, but the test would
+   // still see `pageerror` if the React error-boundary surfaced it).
+diff --git a/packages/editor-shell/CONTRACT.md b/packages/editor-shell/CONTRACT.md
+index 80b8681..716bf1b 100644
+--- a/packages/editor-shell/CONTRACT.md
++++ b/packages/editor-shell/CONTRACT.md
+@@ -496,11 +496,24 @@ components and types:
+ 
+ `registry-wire.tsx` exports `BLOCK_KIND_OPTIONS`, `insertBlockKind`,
+ and `wireRegistry(options)`. `wireRegistry` returns the canonical
+-eight `blockKinds`, minimal Tiptap node extensions for those kinds,
+-and the insertion helper. It also idempotently registers mdx-bridge
+-JSX dispatch entries for the eight block packages so editor-built
++eight `blockKinds`, Tiptap node extensions for those kinds, and the
++insertion helper. It also idempotently registers mdx-bridge JSX
++dispatch entries for the eight block packages so editor-built
+ component nodes can serialize through `saveToMdx(editor, { blockRegistry })`.
+ 
++When `wireRegistry({ blockRegistry })` receives a registry (Wave 6
++carry-forward #18, 2026-05-08), each generated extension also installs
++`addNodeView: () => ReactNodeViewRenderer(makeBlockNodeView({registry}))`,
++which mounts the block's registered `EditorView` React component
++inside a `NodeViewWrapper` carrying `data-skb-block-host="<kind>"` —
++real PDF iframes, KaTeX, React Flow graphs, syntax-highlighted code
++bodies, images, callout containers, NN-Viz SVG topology, and Jupyter
++containers all materialize on the edit surface. Without a registry
++the extension falls back to the legacy `renderHTML` placeholder
++("`<Label> block`" — preserved for no-registry test mounts). The
++`makeBlockNodeView` factory is exported from the package barrel for
++downstream NodeView smoke tests.
++
+ `EditorShellProps.extensions` is now the sanctioned composition hook
+ for consumer-owned Tiptap extensions layered after the built-in
+ `StarterKit` (no `code: false` configuration post-#15b — the
+diff --git a/packages/editor-shell/src/index.ts b/packages/editor-shell/src/index.ts
+index 02d80a6..fe5d7c3 100644
+--- a/packages/editor-shell/src/index.ts
++++ b/packages/editor-shell/src/index.ts
+@@ -27,6 +27,8 @@ export { registerBlocks } from './registerBlocks';
+ export { registerKernels } from './registerKernels';
+ export { saveToMdx, loadFromMdx } from './saveLoad';
+ export type { SaveLoadOptions } from './saveLoad';
++export { makeBlockNodeView } from './BlockNodeView';
++export type { BlockNodeViewFactoryProps } from './BlockNodeView';
+ export type { NoteSaveAdapter, NoteState, ReadonlyJSONValue } from './save-adapter';
+ export { ApiAdapter, LocalStorageAdapter } from './save-adapter';
+ export { proseExtensions } from '@skb/block-foundation';
+diff --git a/packages/editor-shell/src/registry-wire.tsx b/packages/editor-shell/src/registry-wire.tsx
+index d518671..7a2170d 100644
+--- a/packages/editor-shell/src/registry-wire.tsx
++++ b/packages/editor-shell/src/registry-wire.tsx
+@@ -1,6 +1,8 @@
+ import { Node, mergeAttributes, type Editor, type Extensions } from '@tiptap/core';
++import { ReactNodeViewRenderer } from '@tiptap/react';
+ import type { BlockRegistry } from '@skb/block-foundation';
+ import { getJsxDispatch, registerJsxDispatch } from '@skb/mdx-bridge';
++import { makeBlockNodeView } from './BlockNodeView';
+ import { parseCallout, serializeCallout } from '@skb/block-callout/core';
+ import { parseCode, serializeCode } from '@skb/block-code/core';
+ import { parseImage, serializeImage } from '@skb/block-image/core';
+@@ -84,7 +86,19 @@ function defaultAttrs(kind: BlockAffordanceKind): Record<string, unknown> {
+   return { ...defaultBlockAttrs[kind] };
+ }
+ 
+-function createBlockExtension(option: BlockKindOption) {
++function createBlockExtension(option: BlockKindOption, registry?: BlockRegistry) {
++  // Wave 6 carry-forward #18 2026-05-08 — when a registry is injected, the
++  // node mounts the block's real `EditorView` via `ReactNodeViewRenderer`.
++  // Without a registry, `addNodeView` is omitted entirely so Tiptap falls
++  // back to `renderHTML` (the placeholder div), preserving the legacy
++  // no-registry behavior used by existing smoke tests.
++  const nodeViewExtension = registry
++    ? {
++        addNodeView() {
++          return ReactNodeViewRenderer(makeBlockNodeView({ registry }));
++        },
++      }
++    : {};
+   return Node.create({
+     name: option.kind,
+     group: 'block',
+@@ -109,6 +123,7 @@ function createBlockExtension(option: BlockKindOption) {
+         `${option.label} block`,
+       ];
+     },
++    ...nodeViewExtension,
+   });
+ }
+ 
+@@ -150,7 +165,7 @@ export function wireRegistry(options: RegistryWireOptions): RegistryWire {
+   const blockKinds = options.blockKinds ?? BLOCK_KIND_OPTIONS;
+   return {
+     blockKinds,
+-    extensions: blockKinds.map(createBlockExtension),
++    extensions: blockKinds.map((option) => createBlockExtension(option, options.blockRegistry)),
+     insertBlock: insertBlockKind,
+   };
+ }
+
+exec
+/bin/bash -lc 'git diff --stat' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+ .../playwright/sample-blocks-edit-loads.spec.ts    |  38 +++++++++++++++++++++
+ .../wave-6-hotfix-sample-blocks-edit-loads.png     | Bin 248070 -> 351573 bytes
+ packages/editor-shell/CONTRACT.md                  |  19 +++++++++--
+ packages/editor-shell/src/index.ts                 |   2 ++
+ packages/editor-shell/src/registry-wire.tsx        |  19 +++++++++--
+ 5 files changed, 73 insertions(+), 5 deletions(-)
+
+codex
+The working tree matches the requested seven-file shape, but the normal diff only shows the five tracked edits because `BlockNodeView.tsx` and the PR.md file are still untracked. I’m reading the new bridge plus the registry APIs now, since most of the risk is in lookup semantics and runtime props flow.
+exec
+/bin/bash -lc "sed -n '1,240p' packages/editor-shell/src/BlockNodeView.tsx" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+import type { ComponentType } from 'react';
+import { NodeViewWrapper, type ReactNodeViewProps } from '@tiptap/react';
+import type { BlockRegistry, BlockViewProps } from '@skb/block-foundation';
+import type { ZodTypeAny } from 'zod';
+
+/**
+ * Wave 6 carry-forward #18 (2026-05-08) — bridge from a Tiptap NodeView to
+ * a block's registered `EditorView` React component.
+ *
+ * Lookup chain:
+ *   1. `node.type.name` is the Tiptap node name registered by
+ *      `createBlockExtension` (one per `BlockAffordanceKind`).
+ *   2. The Tiptap node name matches the block's `coreName` for every block
+ *      except `componentCode` (cf-15b rename — Tiptap node `componentCode`
+ *      maps to `block-code`'s `codeCore.name === 'componentCode'`).
+ *   3. `registry.getUI(coreName)` returns the first registered UI (uiId
+ *      defaulting to `'default'`), whose `EditorView` we then mount with
+ *      `props = node.attrs`.
+ *
+ * The fallback `<NodeViewWrapper>` placeholder ('Unregistered block …')
+ * fires only when:
+ *   - no `BlockRegistry` was injected at `wireRegistry` time, or
+ *   - the block's core/ui never got registered (consumer wired the
+ *     extension but skipped `registerBlocks`).
+ *
+ * Consumers must guarantee that `registerBlocks(registry)` ran before
+ * the Tiptap editor mount; mismatch is logged + degrades to placeholder
+ * rather than crashing the editor.
+ */
+export interface BlockNodeViewFactoryProps {
+  readonly registry?: BlockRegistry;
+}
+
+export function makeBlockNodeView({
+  registry,
+}: BlockNodeViewFactoryProps): ComponentType<ReactNodeViewProps> {
+  return function BlockNodeView(props: ReactNodeViewProps) {
+    const nodeName = props.node.type.name;
+    const ui = registry ? registry.getUI(nodeName) : undefined;
+    if (!ui) {
+      return (
+        <NodeViewWrapper
+          className="skb-block-nodeview skb-block-nodeview--unregistered"
+          data-skb-block-kind={nodeName}
+        >
+          <div className="skb-block-nodeview__fallback" contentEditable={false}>
+            Unregistered block <code>{nodeName}</code>
+          </div>
+        </NodeViewWrapper>
+      );
+    }
+    const EditorView: ComponentType<BlockViewProps<ZodTypeAny>> = ui.EditorView;
+    const editorProps = (props.node.attrs ?? {}) as Record<string, unknown>;
+    return (
+      <NodeViewWrapper
+        className="skb-block-nodeview"
+        data-skb-block-kind={nodeName}
+      >
+        <div contentEditable={false} data-skb-block-host={nodeName}>
+          <EditorView props={editorProps} />
+        </div>
+      </NodeViewWrapper>
+    );
+  };
+}
+
+exec
+/bin/bash -lc "sed -n '1,240p' packages/editor-shell/src/registry-wire.tsx" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+import { Node, mergeAttributes, type Editor, type Extensions } from '@tiptap/core';
+import { ReactNodeViewRenderer } from '@tiptap/react';
+import type { BlockRegistry } from '@skb/block-foundation';
+import { getJsxDispatch, registerJsxDispatch } from '@skb/mdx-bridge';
+import { makeBlockNodeView } from './BlockNodeView';
+import { parseCallout, serializeCallout } from '@skb/block-callout/core';
+import { parseCode, serializeCode } from '@skb/block-code/core';
+import { parseImage, serializeImage } from '@skb/block-image/core';
+import { parseMath, serializeMath } from '@skb/block-math/core';
+import { parsePdf, serializePdf } from '@skb/block-pdf/core';
+import { parseJupyter, serializeJupyter } from '@skb/block-jupyter/core';
+import { parseNnViz, serializeNnViz } from '@skb/block-nn-viz/core';
+import { parseAgentFlow, serializeAgentFlow } from '@skb/block-agent-flow/core';
+
+type JsxDispatchEntry = Parameters<typeof registerJsxDispatch>[0];
+
+// Wave 6 carry-forward #15b 2026-05-08 — 'code' renamed to
+// 'componentCode' so the Tiptap node name no longer collides with
+// StarterKit's inline `code` MARK (ProseMirror forbids same name on
+// both a node and a mark). User-facing slash-menu label stays
+// 'Code'; MDX tag stays `<Code>`; only the internal kind identifier
+// changed. See packages/block-code/src/core/core-definition.ts.
+export type BlockAffordanceKind =
+  | 'callout'
+  | 'componentCode'
+  | 'image'
+  | 'math'
+  | 'pdf'
+  | 'jupyter'
+  | 'nn-viz'
+  | 'agent-flow';
+
+export interface BlockKindOption {
+  kind: BlockAffordanceKind;
+  label: string;
+  mdxComponent: string;
+}
+
+export const BLOCK_KIND_OPTIONS: readonly BlockKindOption[] = [
+  { kind: 'callout', label: 'Callout', mdxComponent: 'Callout' },
+  { kind: 'componentCode', label: 'Code', mdxComponent: 'Code' },
+  { kind: 'image', label: 'Image', mdxComponent: 'Image' },
+  { kind: 'math', label: 'Math', mdxComponent: 'Math' },
+  { kind: 'pdf', label: 'Pdf', mdxComponent: 'Pdf' },
+  { kind: 'jupyter', label: 'Jupyter', mdxComponent: 'Jupyter' },
+  { kind: 'nn-viz', label: 'NN Viz', mdxComponent: 'NnViz' },
+  { kind: 'agent-flow', label: 'Agent Flow', mdxComponent: 'AgentFlow' },
+];
+
+const jsxDispatches = [
+  ['Callout', 'callout', parseCallout, serializeCallout],
+  ['Code', 'componentCode', parseCode, serializeCode],
+  ['Image', 'image', parseImage, serializeImage],
+  ['Math', 'math', parseMath, serializeMath],
+  ['Pdf', 'pdf', parsePdf, serializePdf],
+  ['Jupyter', 'jupyter', parseJupyter, serializeJupyter],
+  ['NnViz', 'nn-viz', parseNnViz, serializeNnViz],
+  ['AgentFlow', 'agent-flow', parseAgentFlow, serializeAgentFlow],
+] as const;
+
+const gridAttrs = { col: 1, colSpan: 12, rowSpan: 1 };
+
+const defaultBlockAttrs: Record<BlockAffordanceKind, Record<string, unknown>> = {
+  callout: { ...gridAttrs, variant: 'note', title: 'New callout' },
+  componentCode: { ...gridAttrs, language: 'ts', code: '// New code block', showLineNumbers: true },
+  image: { ...gridAttrs, src: '/sample-assets/diagram-small.png', alt: 'Inserted image' },
+  math: { ...gridAttrs, expression: 'x^2', display: true },
+  pdf: { ...gridAttrs, src: '/sample-assets/whitepaper.pdf', page: 1, searchable: false },
+  jupyter: {
+    ...gridAttrs,
+    code: 'print("hello")',
+    runOnLoad: false,
+    showLineNumbers: true,
+    libraries: [],
+  },
+  'nn-viz': {
+    ...gridAttrs,
+    modelUrl: '/sample-assets/models/mlp-mnist.json',
+    layers: [],
+    showWeights: false,
+  },
+  'agent-flow': { ...gridAttrs, nodes: [], edges: [], interactive: true },
+};
+
+function defaultAttrs(kind: BlockAffordanceKind): Record<string, unknown> {
+  return { ...defaultBlockAttrs[kind] };
+}
+
+function createBlockExtension(option: BlockKindOption, registry?: BlockRegistry) {
+  // Wave 6 carry-forward #18 2026-05-08 — when a registry is injected, the
+  // node mounts the block's real `EditorView` via `ReactNodeViewRenderer`.
+  // Without a registry, `addNodeView` is omitted entirely so Tiptap falls
+  // back to `renderHTML` (the placeholder div), preserving the legacy
+  // no-registry behavior used by existing smoke tests.
+  const nodeViewExtension = registry
+    ? {
+        addNodeView() {
+          return ReactNodeViewRenderer(makeBlockNodeView({ registry }));
+        },
+      }
+    : {};
+  return Node.create({
+    name: option.kind,
+    group: 'block',
+    atom: true,
+    selectable: true,
+
+    addAttributes() {
+      const attrs = defaultAttrs(option.kind);
+      return Object.fromEntries(
+        Object.entries(attrs).map(([name, defaultValue]) => [name, { default: defaultValue }]),
+      );
+    },
+
+    renderHTML({ HTMLAttributes }) {
+      return [
+        'div',
+        mergeAttributes(HTMLAttributes, {
+          'data-skb-block-kind': option.kind,
+          class: 'skb-inserted-block',
+          contenteditable: 'false',
+        }),
+        `${option.label} block`,
+      ];
+    },
+    ...nodeViewExtension,
+  });
+}
+
+export function insertBlockKind(editor: Editor | null, kind: BlockAffordanceKind): boolean {
+  if (!editor) return false;
+  if (typeof editor.chain !== 'function') return false;
+  const option = BLOCK_KIND_OPTIONS.find((candidate) => candidate.kind === kind);
+  if (!option) return false;
+  return editor
+    .chain()
+    .focus()
+    .insertContent({ type: option.kind, attrs: defaultAttrs(option.kind) })
+    .run();
+}
+
+export interface RegistryWireOptions {
+  blockRegistry?: BlockRegistry;
+  kernelRegistry?: unknown;
+  blockKinds?: readonly BlockKindOption[];
+}
+
+export interface RegistryWire {
+  blockKinds: readonly BlockKindOption[];
+  extensions: Extensions;
+  insertBlock: (editor: Editor | null, kind: BlockAffordanceKind) => boolean;
+}
+
+export function wireRegistry(options: RegistryWireOptions): RegistryWire {
+  for (const [mdxComponent, blockType, parse, serialize] of jsxDispatches) {
+    if (getJsxDispatch(mdxComponent)) continue;
+    registerJsxDispatch({
+      mdxComponent,
+      blockType,
+      parse: parse as unknown as JsxDispatchEntry['parse'],
+      serialize: serialize as unknown as JsxDispatchEntry['serialize'],
+    });
+  }
+
+  const blockKinds = options.blockKinds ?? BLOCK_KIND_OPTIONS;
+  return {
+    blockKinds,
+    extensions: blockKinds.map((option) => createBlockExtension(option, options.blockRegistry)),
+    insertBlock: insertBlockKind,
+  };
+}
+
+exec
+/bin/bash -lc "sed -n '1,180p' apps/site/playwright/sample-blocks-edit-loads.spec.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+import { resolve } from 'node:path';
+
+import { expect, test } from '@playwright/test';
+
+/**
+ * Wave 6 hotfix regression — pre-hotfix `/notes/sample-blocks/edit`
+ * mounted but the editor body was empty (`EDIT_BLOCKS_COUNT=0`,
+ * `EDIT_TEXT_LEN=0`) because `mdxToTiptap` threw on the 11
+ * `mdxFlowExpression` author comments in `content/notes/sample-blocks/index.mdx`
+ * and `EditorShellMount.handleCreate` swallowed the throw silently.
+ * This spec is the user-visible regression lock: open the real edit
+ * route and assert the editor's `.ProseMirror` actually contains
+ * recognizable note content (not just `<p><br></p>`).
+ *
+ * Pairs with `packages/mdx-bridge/src/__tests__/mdx-flow-expression.test.ts`
+ * which asserts the parser-level fix.
+ */
+
+const SCREENSHOT_PATH = resolve(
+  process.cwd(),
+  '../../docs/audits/screenshots/wave-6-hotfix-sample-blocks-edit-loads.png',
+);
+
+test('sample-blocks edit route loads non-empty content (mdxFlowExpression no longer breaks)', async ({
+  page,
+}) => {
+  const consoleErrors: string[] = [];
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') consoleErrors.push(msg.text());
+  });
+  page.on('pageerror', (err) => consoleErrors.push(`pageerror: ${err.message}`));
+
+  await page.goto('/notes/sample-blocks/edit');
+
+  const editor = page.locator('.ProseMirror').first();
+  await expect(editor).toBeVisible({ timeout: 15_000 });
+
+  // Give Tiptap + the loadWithFallback chain time to populate the doc.
+  await expect(async () => {
+    const text = (await editor.textContent()) ?? '';
+    expect(text.length).toBeGreaterThan(50);
+  }).toPass({ timeout: 10_000 });
+
+  // The fixture body opens with "This page is the Wave 2 close acceptance
+  // criterion (Z0)." — a stable substring that proves the prose layer
+  // round-tripped through mdxToTiptap.
+  await expect(editor).toContainText('Wave 2 close acceptance criterion', { timeout: 10_000 });
+
+  // Wave 6 carry-forward #15a — `@tiptap/extension-link` is now
+  // registered, so markdown links (e.g. the `[@skb/heavy-block-boundary](...)`
+  // reference inside the sample-blocks intro) survive into the editor
+  // as actual anchor elements rather than getting stripped by
+  // the `EDITOR_UNSUPPORTED_MARKS` sanitizer.
+  await expect(editor.locator('a').first()).toBeVisible({ timeout: 5_000 });
+
+  // Wave 6 carry-forward #15b — block-Code Tiptap node was renamed
+  // from `code` to `componentCode`, freeing StarterKit's inline `code`
+  // mark from the ProseMirror namespace collision. The sample-blocks
+  // intro paragraph contains backticked terms like `mdx-bridge` and
+  // `apps/site` that should now render as inline `<code>` elements
+  // (Tiptap renders the `code` mark as a `<code>` element by default).
+  // Pre-#15b they appeared as plain text.
+  await expect(editor.locator('code').first()).toBeVisible({ timeout: 5_000 });
+
+  // The legacy load-error banner must NOT be present.
+  await expect(page.locator('[data-skb-load-error]')).toHaveCount(0);
+
+  // Wave 6 carry-forward #16 — the 4 blocks Pdf / Jupyter / NnViz /
+  // AgentFlow that previously parse-failed under JSX expression form
+  // (`page={1}`, `code={`...`}`, `layers={[{...}]}`, `nodes={[{...}]}`)
+  // now route through `evalAttrExpression` (block-foundation) and
+  // produce real Tiptap nodes. Pre-#16 they degraded to softParse
+  // placeholders matching `[unsupported block <Pdf>: ...]`. Assert
+  // none of those placeholders survive into the editor.
+  await expect(
+    editor.locator('text=/\\[unsupported block </'),
+  ).toHaveCount(0);
+
+  // Wave 6 carry-forward #18 — every component block kind now mounts via
+  // `ReactNodeViewRenderer` → `BlockNodeView` → registry-resolved
+  // `EditorView`. Pre-#18 the editor showed 14 placeholder divs reading
+  // "{Label} block" (no PDF iframe, no React Flow, no KaTeX, etc.).
+  //
+  // Strong DOM-marker assertions per kind (counts mirror the production
+  // sample-blocks fixture — 4× Callout, 1× Code, 2× Image, 2× Math,
+  // 2× Pdf, 1× Jupyter, 1× NnViz, 1× AgentFlow):
+  //
+  // 1. Each NodeView host wrapper carries `data-skb-block-host` — there
+  //    must be 14 (one per fixture instance), with at least one per kind.
+  await expect(editor.locator('[data-skb-block-host]')).toHaveCount(14);
+  for (const kind of [
+    'callout',
+    'componentCode',
+    'image',
+    'math',
+    'pdf',
+    'jupyter',
+    'nn-viz',
+    'agent-flow',
+  ] as const) {
+    const host = editor.locator(`[data-skb-block-host="${kind}"]`).first();
+    await expect(host).toBeVisible({ timeout: 5_000 });
+  }
+  // 2. None of the NodeViews fell back to the "Unregistered block …"
+  //    placeholder (would imply registry not threaded into wireRegistry).
+  await expect(
+    editor.locator('.skb-block-nodeview--unregistered'),
+  ).toHaveCount(0);
+  // 3. Real-component DOM markers — proves the registered EditorView
+  //    actually mounted, not just an empty NodeViewWrapper:
+  await expect(editor.locator('iframe').first()).toBeVisible({ timeout: 5_000 }); // PDF
+  await expect(editor.locator('img').first()).toBeVisible({ timeout: 5_000 }); // Image
+  await expect(editor.locator('.katex').first()).toBeVisible({ timeout: 5_000 }); // Math
+  await expect(editor.locator('.react-flow').first()).toBeVisible({ timeout: 10_000 }); // AgentFlow
+  await expect(editor.locator('pre code').first()).toBeVisible({ timeout: 5_000 }); // Code body
+
+  // Wave 6 hotfix Bug B verification: nothing thrown to the page console
+  // (the silent-catch class would have hidden a throw, but the test would
+  // still see `pageerror` if the React error-boundary surfaced it).
+  expect(consoleErrors.filter((m) => /loadFromMdx|mdx-bridge/.test(m))).toEqual([]);
+
+  await page.screenshot({ fullPage: true, path: SCREENSHOT_PATH });
+});
+
+exec
+/bin/bash -lc "rg -n \"class BlockRegistry|interface BlockRegistry|type BlockRegistry|getCore\\(|getUI\\(|defaultBlockAttrs|BlockViewProps\" packages apps -g '*.ts' -g '*.tsx'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+packages/editor-shell/src/registry-wire.tsx:63:const defaultBlockAttrs: Record<BlockAffordanceKind, Record<string, unknown>> = {
+packages/editor-shell/src/registry-wire.tsx:86:  return { ...defaultBlockAttrs[kind] };
+packages/editor-shell/src/BlockNodeView.tsx:3:import type { BlockRegistry, BlockViewProps } from '@skb/block-foundation';
+packages/editor-shell/src/BlockNodeView.tsx:16: *   3. `registry.getUI(coreName)` returns the first registered UI (uiId
+packages/editor-shell/src/BlockNodeView.tsx:39:    const ui = registry ? registry.getUI(nodeName) : undefined;
+packages/editor-shell/src/BlockNodeView.tsx:52:    const EditorView: ComponentType<BlockViewProps<ZodTypeAny>> = ui.EditorView;
+packages/editor-shell/src/__tests__/registerBlocks.test.ts:28:  it('registers a default ui per core, retrievable via getUI(name)', () => {
+packages/editor-shell/src/__tests__/registerBlocks.test.ts:32:      const ui = registry.getUI(name);
+packages/editor-shell/src/registerBlocks.ts:1:import { type BlockRegistry, type BlockUIDefinition } from '@skb/block-foundation';
+packages/editor-shell/src/registerBlocks.ts:22:  // EditorView/RenderView ComponentType<BlockViewProps<NarrowSchema>> is not
+packages/editor-shell/src/registerBlocks.ts:23:  // assignable to ComponentType<BlockViewProps<ZodTypeAny>> due to
+packages/editor-shell/src/registerBlocks.ts:47:  // already accepts `BlockViewProps<ZodTypeAny>` without contravariance issue
+apps/site/src/lib/mdx-adapter.ts:6:// BlockViewProps`. Without an adapter `props` would be undefined and
+apps/site/src/lib/mdx-adapter.ts:7:// rendering breaks. The adapter wraps flat MDX props into BlockViewProps
+apps/site/src/__tests__/components-map.test.ts:21:  // BlockViewProps shape translation. Reference RenderView imports
+packages/mdx-bridge/src/serialize.ts:156:  const core = options.blockRegistry.getCore(node.type);
+packages/block-math/src/ui-default/Math.tsx:1:import type { BlockViewProps } from '@skb/block-foundation';
+packages/block-math/src/ui-default/Math.tsx:8: * `ComponentType<BlockViewProps<typeof ...>>` 显式标注，避免 generic 变 invariant
+packages/block-math/src/ui-default/Math.tsx:17:}: BlockViewProps<typeof mathCore.propsSchema>): JSX.Element {
+packages/block-jupyter/src/ui-default/jupyter.ui.ts:14: * BUT: JupyterEditorView 上有可选 `adapter` 参数（test 注入），BlockViewProps
+packages/block-jupyter/src/ui-default/jupyter.ui.ts:16: * `ComponentType<BlockViewProps<...>>` 时需要桥接 — adapter 仅 dev/test inject，
+packages/block-jupyter/src/ui-default/Jupyter.tsx:2:import type { BlockViewProps } from '@skb/block-foundation';
+packages/block-jupyter/src/ui-default/Jupyter.tsx:82:  extends BlockViewProps<typeof jupyterCore.propsSchema> {
+packages/block-math/src/__tests__/registry-integration.test.ts:8: * (defineUI 从 EditorView/RenderView 的 BlockViewProps<TSchema> 推 generic)。
+packages/block-math/src/__tests__/registry-integration.test.ts:24:    expect(reg.getCore('math')).toBe(mathCore);
+packages/block-math/src/__tests__/registry-integration.test.ts:31:    expect(reg.getUI('math')).toBe(mathUiDefault);
+packages/block-math/src/__tests__/registry-integration.test.ts:32:    expect(reg.getUI('math', 'default')).toBe(mathUiDefault);
+packages/block-math/src/__tests__/registry-integration.test.ts:40:    expect(reg.getUI('math')).toBe(mathUiDefault);
+packages/block-math/src/__tests__/registry-integration.test.ts:52:    expect(reg.getCore('not-math')).toBeUndefined();
+packages/block-foundation/src/registry.ts:24:export interface BlockViewProps<TSchema extends ZodTypeAny> {
+packages/block-foundation/src/registry.ts:39:  readonly EditorView: ComponentType<BlockViewProps<TSchema>>;
+packages/block-foundation/src/registry.ts:40:  readonly RenderView: ComponentType<BlockViewProps<TSchema>>;
+packages/block-foundation/src/registry.ts:73: * 同 core 多 UI 场景：getUI(name) 不带 uiId 时取首个注册的（约定为 'default'）。
+packages/block-foundation/src/registry.ts:75:export class BlockRegistry {
+packages/block-foundation/src/registry.ts:100:  getCore(name: string): BlockCoreDefinition | undefined {
+packages/block-foundation/src/registry.ts:109:  getUI(coreName: string, uiId?: string): BlockUIDefinition | undefined {
+packages/block-image/src/ui-default/EditorView.tsx:2:import type { BlockViewProps } from '@skb/block-foundation';
+packages/block-image/src/ui-default/EditorView.tsx:7:  BlockViewProps<typeof imageCore.propsSchema>
+packages/block-jupyter/src/__tests__/registry-integration.test.ts:9: * MathView annotates `BlockViewProps<typeof mathCore.propsSchema>` directly,
+packages/block-jupyter/src/__tests__/registry-integration.test.ts:21:    expect(reg.getCore('jupyter')).toBe(jupyterCore);
+packages/block-jupyter/src/__tests__/registry-integration.test.ts:28:    expect(reg.getUI('jupyter')).toBe(jupyterUiDefault);
+packages/block-jupyter/src/__tests__/registry-integration.test.ts:29:    expect(reg.getUI('jupyter', 'default')).toBe(jupyterUiDefault);
+packages/block-jupyter/src/__tests__/registry-integration.test.ts:37:    expect(reg.getUI('jupyter')).toBe(jupyterUiDefault);
+packages/block-jupyter/src/__tests__/registry-integration.test.ts:49:    expect(reg.getCore('not-jupyter')).toBeUndefined();
+packages/block-image/src/ui-default/RenderView.tsx:2:import type { BlockViewProps } from '@skb/block-foundation';
+packages/block-image/src/ui-default/RenderView.tsx:7:  BlockViewProps<typeof imageCore.propsSchema>
+packages/block-foundation/src/__tests__/registry.test.ts:30:    expect(reg.getCore('callout')).toBe(calloutCore);
+packages/block-foundation/src/__tests__/registry.test.ts:56:    expect(reg.getCore('rogue')).toBeUndefined();
+packages/block-foundation/src/__tests__/registry.test.ts:65:    expect(reg.getUI('callout')).toBe(calloutUIDefault);
+packages/block-foundation/src/__tests__/registry.test.ts:79:    expect(reg.getUI('callout')).toBe(calloutUIDefault);
+packages/block-foundation/src/__tests__/registry.test.ts:80:    expect(reg.getUI('callout', 'minimal')).toBe(minimal);
+packages/block-foundation/src/__tests__/registry.test.ts:99:    expect(reg.getUI('callout', 'rogue')).toBeUndefined();
+packages/block-nn-viz/src/ui-default/NnViz.tsx:2:import type { BlockViewProps } from '@skb/block-foundation';
+packages/block-nn-viz/src/ui-default/NnViz.tsx:29:export interface NnVizViewProps extends BlockViewProps<typeof nnVizCore.propsSchema> {
+packages/block-image/src/__tests__/ui-default.test.tsx:28:    expect(reg.getUI('image')).toBe(imageUiDefault);
+packages/block-image/src/__tests__/ui-default.test.tsx:29:    expect(reg.getUI('image', 'default')).toBe(imageUiDefault);
+packages/block-nn-viz/src/ui-default/nn-viz.ui.ts:14: * NnVizEditorView 上有可选 `loadLayersModel` 参数（test 注入），BlockViewProps
+packages/block-image/src/__tests__/registry-integration.test.ts:9:    expect(reg.getCore('image')).toBe(imageCore);
+packages/block-image/src/__tests__/registry-integration.test.ts:14:    expect(reg.getCore('unknown-block')).toBeUndefined();
+packages/block-callout/src/ui-default/EditorView.tsx:2:import type { BlockViewProps } from '@skb/block-foundation';
+packages/block-callout/src/ui-default/EditorView.tsx:7:  BlockViewProps<typeof calloutCore.propsSchema>
+packages/block-callout/src/ui-default/RenderView.tsx:2:import type { BlockViewProps } from '@skb/block-foundation';
+packages/block-callout/src/ui-default/RenderView.tsx:7:  BlockViewProps<typeof calloutCore.propsSchema>
+packages/block-pdf/src/ui-default/Pdf.tsx:1:import type { BlockViewProps } from '@skb/block-foundation';
+packages/block-pdf/src/ui-default/Pdf.tsx:8: * `ComponentType<BlockViewProps<typeof ...>>` 显式标注，避免 generic 变 invariant
+packages/block-pdf/src/ui-default/Pdf.tsx:21:}: BlockViewProps<typeof pdfCore.propsSchema>): JSX.Element {
+packages/block-callout/src/__tests__/ui-default.test.tsx:27:    expect(reg.getUI('callout')).toBe(calloutUiDefault);
+packages/block-callout/src/__tests__/ui-default.test.tsx:28:    expect(reg.getUI('callout', 'default')).toBe(calloutUiDefault);
+packages/block-nn-viz/src/__tests__/registry-integration.test.ts:17:    expect(reg.getCore('nn-viz')).toBe(nnVizCore);
+packages/block-nn-viz/src/__tests__/registry-integration.test.ts:24:    expect(reg.getUI('nn-viz')).toBe(nnVizUiDefault);
+packages/block-nn-viz/src/__tests__/registry-integration.test.ts:25:    expect(reg.getUI('nn-viz', 'default')).toBe(nnVizUiDefault);
+packages/block-nn-viz/src/__tests__/registry-integration.test.ts:33:    expect(reg.getUI('nn-viz')).toBe(nnVizUiDefault);
+packages/block-nn-viz/src/__tests__/registry-integration.test.ts:45:    expect(reg.getCore('not-nn-viz')).toBeUndefined();
+packages/block-callout/src/__tests__/registry-integration.test.ts:9:    expect(reg.getCore('callout')).toBe(calloutCore);
+packages/block-callout/src/__tests__/registry-integration.test.ts:14:    expect(reg.getCore('unknown-block')).toBeUndefined();
+packages/block-code/src/ui-default/RenderView.tsx:2:import type { BlockViewProps } from '@skb/block-foundation';
+packages/block-code/src/ui-default/RenderView.tsx:7:  BlockViewProps<typeof codeCore.propsSchema>
+packages/block-code/src/ui-default/EditorView.tsx:2:import type { BlockViewProps } from '@skb/block-foundation';
+packages/block-code/src/ui-default/EditorView.tsx:7:  BlockViewProps<typeof codeCore.propsSchema>
+packages/block-code/src/__tests__/ui-default.test.tsx:26:    expect(reg.getUI('componentCode')).toBe(codeUiDefault);
+packages/block-code/src/__tests__/ui-default.test.tsx:27:    expect(reg.getUI('componentCode', 'default')).toBe(codeUiDefault);
+packages/block-code/src/__tests__/registry-integration.test.ts:9:    expect(reg.getCore('componentCode')).toBe(codeCore);
+packages/block-code/src/__tests__/registry-integration.test.ts:14:    expect(reg.getCore('unknown-block')).toBeUndefined();
+packages/block-pdf/src/__tests__/registry-integration.test.ts:8: * (defineUI 从 EditorView/RenderView 的 BlockViewProps<TSchema> 推 generic)。
+packages/block-pdf/src/__tests__/registry-integration.test.ts:22:    expect(reg.getCore('pdf')).toBe(pdfCore);
+packages/block-pdf/src/__tests__/registry-integration.test.ts:29:    expect(reg.getUI('pdf')).toBe(pdfUiDefault);
+packages/block-pdf/src/__tests__/registry-integration.test.ts:30:    expect(reg.getUI('pdf', 'default')).toBe(pdfUiDefault);
+packages/block-pdf/src/__tests__/registry-integration.test.ts:38:    expect(reg.getUI('pdf')).toBe(pdfUiDefault);
+packages/block-pdf/src/__tests__/registry-integration.test.ts:50:    expect(reg.getCore('not-pdf')).toBeUndefined();
+packages/block-agent-flow/src/ui-default/AgentFlow.tsx:9:import type { BlockViewProps } from '@skb/block-foundation';
+packages/block-agent-flow/src/ui-default/AgentFlow.tsx:33:  extends BlockViewProps<typeof agentFlowCore.propsSchema> {
+packages/block-agent-flow/src/__tests__/registry-integration.test.ts:17:    expect(reg.getCore('agent-flow')).toBe(agentFlowCore);
+packages/block-agent-flow/src/__tests__/registry-integration.test.ts:24:    expect(reg.getUI('agent-flow')).toBe(agentFlowUiDefault);
+packages/block-agent-flow/src/__tests__/registry-integration.test.ts:25:    expect(reg.getUI('agent-flow', 'default')).toBe(agentFlowUiDefault);
+packages/block-agent-flow/src/__tests__/registry-integration.test.ts:33:    expect(reg.getUI('agent-flow')).toBe(agentFlowUiDefault);
+packages/block-agent-flow/src/__tests__/registry-integration.test.ts:45:    expect(reg.getCore('not-agent-flow')).toBeUndefined();
+
+exec
+/bin/bash -lc "sed -n '1,180p' packages/block-foundation/src/registry.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+import type { ZodTypeAny, infer as ZodInfer } from 'zod';
+import type { ComponentType } from 'react';
+import type {
+  BlockGridKind,
+  BlockGridPosition,
+  RowSpanSemantic,
+} from './types';
+
+export type BlockKind = 'prose' | 'component' | 'render' | 'viz';
+
+/**
+ * BlockCore：headless 层 —— 无 React 依赖，纯逻辑（props schema + MDX 序列化在
+ * mdx-bridge 处理）。Core 可被 Adopter 复用并配自定义 UI。
+ */
+export interface BlockCoreDefinition<TSchema extends ZodTypeAny = ZodTypeAny> {
+  /** kebab-case identifier，全局唯一 */
+  readonly name: string;
+  readonly kind: BlockKind;
+  readonly propsSchema: TSchema;
+  /** MDX 中实际使用的 PascalCase 组件名，例如 "Callout" / "JupyterBlock" */
+  readonly mdxComponent: string;
+}
+
+export interface BlockViewProps<TSchema extends ZodTypeAny> {
+  readonly props: ZodInfer<TSchema>;
+  readonly content?: string;
+  /** Wave 2 起追加 runtime context（kernel session / theme / etc.） */
+}
+
+/**
+ * BlockUI：presentational 层 —— React 组件，绑定到已注册的 core。
+ * 同一 core 可挂多个 UI（uiId 区分），Adopter 可写自己的 UI 替代 ui-default。
+ */
+export interface BlockUIDefinition<TSchema extends ZodTypeAny = ZodTypeAny> {
+  /** 必须指向已 registerCore 的 core */
+  readonly coreName: string;
+  /** UI 实现 id：'default' / 'minimal' / 用户自定义 */
+  readonly uiId: string;
+  readonly EditorView: ComponentType<BlockViewProps<TSchema>>;
+  readonly RenderView: ComponentType<BlockViewProps<TSchema>>;
+  /**
+   * ADR-0016 D2/D10 grid default. No block-foundation runtime default;
+   * editor-shell/mdx-bridge consumers may override on block insertion.
+   */
+  readonly gridDefault?: BlockGridPosition;
+  /**
+   * ADR-0016 D3/D10 row-span semantics. Default is 'integer' for backward
+   * compatibility when omitted.
+   */
+  readonly rowSpanSemantic?: RowSpanSemantic;
+  /**
+   * ADR-0016 D10 grid serialize/parse kind. Default mirrors BlockKind;
+   * runtime mirror wiring is deferred to C.2-4.
+   */
+  readonly gridKind?: BlockGridKind;
+}
+
+export function defineCore<T extends ZodTypeAny>(
+  def: BlockCoreDefinition<T>,
+): BlockCoreDefinition<T> {
+  return def;
+}
+
+export function defineUI<T extends ZodTypeAny>(
+  def: BlockUIDefinition<T>,
+): BlockUIDefinition<T> {
+  return def;
+}
+
+/**
+ * BlockRegistry：双层注册表（ADR-0003）。
+ * registerCore：挂业务定义；registerUI：挂视觉实现。
+ * 同 core 多 UI 场景：getUI(name) 不带 uiId 时取首个注册的（约定为 'default'）。
+ */
+export class BlockRegistry {
+  readonly #cores = new Map<string, BlockCoreDefinition>();
+  readonly #uis = new Map<string, BlockUIDefinition[]>();
+
+  registerCore(core: BlockCoreDefinition): void {
+    if (this.#cores.has(core.name)) {
+      throw new Error(`Duplicate core name: ${core.name}`);
+    }
+    this.#cores.set(core.name, core);
+  }
+
+  registerUI(ui: BlockUIDefinition): void {
+    if (!this.#cores.has(ui.coreName)) {
+      throw new Error(`Unknown core for UI registration: ${ui.coreName}`);
+    }
+    const existing = this.#uis.get(ui.coreName) ?? [];
+    if (existing.some((u) => u.uiId === ui.uiId)) {
+      throw new Error(
+        `Duplicate UI registration: core=${ui.coreName} uiId=${ui.uiId}`,
+      );
+    }
+    existing.push(ui);
+    this.#uis.set(ui.coreName, existing);
+  }
+
+  getCore(name: string): BlockCoreDefinition | undefined {
+    return this.#cores.get(name);
+  }
+
+  listCores(): readonly BlockCoreDefinition[] {
+    return [...this.#cores.values()];
+  }
+
+  /** 不传 uiId 时返回首个（约定为 'default'）；传了精确匹配 */
+  getUI(coreName: string, uiId?: string): BlockUIDefinition | undefined {
+    const list = this.#uis.get(coreName);
+    if (!list || list.length === 0) return undefined;
+    if (uiId === undefined) return list[0];
+    return list.find((u) => u.uiId === uiId);
+  }
+
+  listUIs(coreName: string): readonly BlockUIDefinition[] {
+    return [...(this.#uis.get(coreName) ?? [])];
+  }
+}
+
+exec
+/bin/bash -lc "sed -n '1,120p' packages/editor-shell/src/registerBlocks.ts" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+import { type BlockRegistry, type BlockUIDefinition } from '@skb/block-foundation';
+import { calloutCore } from '@skb/block-callout/core';
+import { calloutUiDefault } from '@skb/block-callout/ui-default';
+import { codeCore } from '@skb/block-code/core';
+import { codeUiDefault } from '@skb/block-code/ui-default';
+import { imageCore } from '@skb/block-image/core';
+import { imageUiDefault } from '@skb/block-image/ui-default';
+import { mathCore } from '@skb/block-math/core';
+import { mathUiDefault } from '@skb/block-math/ui-default';
+import { pdfCore } from '@skb/block-pdf/core';
+import { pdfUiDefault } from '@skb/block-pdf/ui-default';
+import { jupyterCore } from '@skb/block-jupyter/core';
+import { jupyterUiDefault } from '@skb/block-jupyter/ui-default';
+import { nnVizCore } from '@skb/block-nn-viz/core';
+import { nnVizUiDefault } from '@skb/block-nn-viz/ui-default';
+import { agentFlowCore } from '@skb/block-agent-flow/core';
+import { agentFlowUiDefault } from '@skb/block-agent-flow/ui-default';
+
+export function registerBlocks(registry: BlockRegistry): void {
+  // 5 of 8 ui-defaults need `as unknown as BlockUIDefinition` cast under
+  // exactOptionalPropertyTypes:true (callout/code/image/math/pdf): their
+  // EditorView/RenderView ComponentType<BlockViewProps<NarrowSchema>> is not
+  // assignable to ComponentType<BlockViewProps<ZodTypeAny>> due to
+  // ComponentType contravariance. The remaining 3 (jupyter/nn-viz/agent-flow)
+  // use a wider component-type signature that satisfies the variance
+  // directly — no cast required (ESLint's no-unnecessary-type-assertion
+  // flags any cast added there as a no-op).
+  registry.registerCore(calloutCore);
+  registry.registerUI(calloutUiDefault as unknown as BlockUIDefinition);
+
+  registry.registerCore(codeCore);
+  registry.registerUI(codeUiDefault as unknown as BlockUIDefinition);
+
+  registry.registerCore(imageCore);
+  registry.registerUI(imageUiDefault as unknown as BlockUIDefinition);
+
+  // 2 render blocks (math/pdf): inference-default UiDefault still narrows
+  // to the core's propsSchema via defineUI's generic; same cast required.
+  registry.registerCore(mathCore);
+  registry.registerUI(mathUiDefault as unknown as BlockUIDefinition);
+
+  registry.registerCore(pdfCore);
+  registry.registerUI(pdfUiDefault as unknown as BlockUIDefinition);
+
+  // 3 viz blocks (jupyter/nn-viz/agent-flow): no cast needed — these
+  // ui-defaults' EditorView/RenderView use a wider type signature that
+  // already accepts `BlockViewProps<ZodTypeAny>` without contravariance issue
+  // (verified at A3 EXECUTE time; ESLint's no-unnecessary-type-assertion
+  // confirms the `as unknown as BlockUIDefinition` here would be a no-op).
+  registry.registerCore(jupyterCore);
+  registry.registerUI(jupyterUiDefault);
+
+  registry.registerCore(nnVizCore);
+  registry.registerUI(nnVizUiDefault);
+
+  registry.registerCore(agentFlowCore);
+  registry.registerUI(agentFlowUiDefault);
+}
+
+exec
+/bin/bash -lc "rg -n \"wireRegistry\\(|createBlockExtension|extensions:.*wireRegistry|registerBlocks\\(\" packages/editor-shell apps/site packages -g '*.ts' -g '*.tsx'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+packages/editor-shell/src/registerBlocks.ts:19:export function registerBlocks(registry: BlockRegistry): void {
+packages/editor-shell/src/registry-wire.tsx:89:function createBlockExtension(option: BlockKindOption, registry?: BlockRegistry) {
+packages/editor-shell/src/registry-wire.tsx:154:export function wireRegistry(options: RegistryWireOptions): RegistryWire {
+packages/editor-shell/src/registry-wire.tsx:168:    extensions: blockKinds.map((option) => createBlockExtension(option, options.blockRegistry)),
+packages/editor-shell/src/BlockNodeView.tsx:12: *      `createBlockExtension` (one per `BlockAffordanceKind`).
+packages/editor-shell/src/BlockNodeView.tsx:26: * Consumers must guarantee that `registerBlocks(registry)` ran before
+packages/editor-shell/src/__tests__/registerBlocks.test.ts:22:    registerBlocks(registry);
+packages/editor-shell/src/__tests__/registerBlocks.test.ts:30:    registerBlocks(registry);
+packages/editor-shell/src/__tests__/registerBlocks.test.ts:41:    registerBlocks(registry);
+packages/editor-shell/src/__tests__/affordances.test.ts:124:    const wired = wireRegistry({});
+packages/editor-shell/src/registerBlocks.ts:19:export function registerBlocks(registry: BlockRegistry): void {
+packages/editor-shell/src/registry-wire.tsx:89:function createBlockExtension(option: BlockKindOption, registry?: BlockRegistry) {
+packages/editor-shell/src/registry-wire.tsx:154:export function wireRegistry(options: RegistryWireOptions): RegistryWire {
+packages/editor-shell/src/registry-wire.tsx:168:    extensions: blockKinds.map((option) => createBlockExtension(option, options.blockRegistry)),
+packages/editor-shell/src/BlockNodeView.tsx:12: *      `createBlockExtension` (one per `BlockAffordanceKind`).
+packages/editor-shell/src/BlockNodeView.tsx:26: * Consumers must guarantee that `registerBlocks(registry)` ran before
+packages/editor-shell/src/__tests__/registerBlocks.test.ts:22:    registerBlocks(registry);
+packages/editor-shell/src/__tests__/registerBlocks.test.ts:30:    registerBlocks(registry);
+packages/editor-shell/src/__tests__/registerBlocks.test.ts:41:    registerBlocks(registry);
+apps/site/src/components/EditorShellMount.tsx:101:    registerBlocks(registry);
+apps/site/src/components/EditorShellMount.tsx:103:    wireRef.current = wireRegistry({ blockRegistry: registry });
+apps/site/src/components/EditorShellMount.tsx:108:  const wire = wireRef.current ?? wireRegistry({});
+packages/editor-shell/src/__tests__/affordances.test.ts:124:    const wired = wireRegistry({});
+apps/site/src/__tests__/e2e/c4-2-block-registry.spec.ts:52:    expect(editorMountSource).toContain('registerBlocks(registry)');
+
+exec
+/bin/bash -lc "rg -n \"BlockNodeView|data-skb-block-host|skb-block-nodeview|data-skb-block-kind\" packages apps -g '*.ts' -g '*.tsx' -g '*.css' -g '*.scss'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+packages/editor-shell/src/index.ts:30:export { makeBlockNodeView } from './BlockNodeView';
+packages/editor-shell/src/index.ts:31:export type { BlockNodeViewFactoryProps } from './BlockNodeView';
+apps/site/playwright/sample-blocks-edit-loads.spec.ts:80:  // `ReactNodeViewRenderer` → `BlockNodeView` → registry-resolved
+apps/site/playwright/sample-blocks-edit-loads.spec.ts:88:  // 1. Each NodeView host wrapper carries `data-skb-block-host` — there
+apps/site/playwright/sample-blocks-edit-loads.spec.ts:90:  await expect(editor.locator('[data-skb-block-host]')).toHaveCount(14);
+apps/site/playwright/sample-blocks-edit-loads.spec.ts:101:    const host = editor.locator(`[data-skb-block-host="${kind}"]`).first();
+apps/site/playwright/sample-blocks-edit-loads.spec.ts:107:    editor.locator('.skb-block-nodeview--unregistered'),
+packages/editor-shell/src/registry-wire.tsx:5:import { makeBlockNodeView } from './BlockNodeView';
+packages/editor-shell/src/registry-wire.tsx:98:          return ReactNodeViewRenderer(makeBlockNodeView({ registry }));
+packages/editor-shell/src/registry-wire.tsx:119:          'data-skb-block-kind': option.kind,
+packages/editor-shell/src/BlockNodeView.tsx:30:export interface BlockNodeViewFactoryProps {
+packages/editor-shell/src/BlockNodeView.tsx:34:export function makeBlockNodeView({
+packages/editor-shell/src/BlockNodeView.tsx:36:}: BlockNodeViewFactoryProps): ComponentType<ReactNodeViewProps> {
+packages/editor-shell/src/BlockNodeView.tsx:37:  return function BlockNodeView(props: ReactNodeViewProps) {
+packages/editor-shell/src/BlockNodeView.tsx:43:          className="skb-block-nodeview skb-block-nodeview--unregistered"
+packages/editor-shell/src/BlockNodeView.tsx:44:          data-skb-block-kind={nodeName}
+packages/editor-shell/src/BlockNodeView.tsx:46:          <div className="skb-block-nodeview__fallback" contentEditable={false}>
+packages/editor-shell/src/BlockNodeView.tsx:56:        className="skb-block-nodeview"
+packages/editor-shell/src/BlockNodeView.tsx:57:        data-skb-block-kind={nodeName}
+packages/editor-shell/src/BlockNodeView.tsx:59:        <div contentEditable={false} data-skb-block-host={nodeName}>
+apps/site/src/__tests__/e2e/c4-3-slash-menu.spec.ts:34:    await expect(page.locator('[data-skb-block-kind="callout"]').first()).toBeVisible();
+
+exec
+/bin/bash -lc "sed -n '70,125p' apps/site/src/components/EditorShellMount.tsx" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+  void fallback.save(state).catch(() => undefined);
+  return apiResult;
+}
+
+export function EditorShellMount({
+  slug,
+  initialMdx = '',
+  editMode = false,
+}: EditorShellMountProps) {
+  const apiAdapterRef = useRef<ApiAdapter | null>(null);
+  const localAdapterRef = useRef<LocalStorageAdapter | null>(null);
+  const registryRef = useRef<BlockRegistry | null>(null);
+  const wireRef = useRef<ReturnType<typeof wireRegistry> | null>(null);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const saveSettleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const versionRef = useRef(1);
+  const [editor, setEditor] = useState<EditorInstance | null>(null);
+  const [ready, setReady] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<SaveIndicatorStatus>('idle');
+  const [savedAt, setSavedAt] = useState<Date | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  if (apiAdapterRef.current === null || apiAdapterRef.current.slug !== slug) {
+    apiAdapterRef.current = new ApiAdapter(slug);
+  }
+  if (localAdapterRef.current === null || localAdapterRef.current.slug !== slug) {
+    localAdapterRef.current = new LocalStorageAdapter(slug);
+  }
+
+  if (registryRef.current === null) {
+    const registry = new BlockRegistry();
+    registerBlocks(registry);
+    registryRef.current = registry;
+    wireRef.current = wireRegistry({ blockRegistry: registry });
+  }
+
+  const apiAdapter = apiAdapterRef.current;
+  const localAdapter = localAdapterRef.current;
+  const wire = wireRef.current ?? wireRegistry({});
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void loadWithFallback(apiAdapter, localAdapter).then(() => {
+      if (!cancelled) setReady(true);
+    });
+
+    return () => {
+      cancelled = true;
+      if (saveTimerRef.current !== null) clearTimeout(saveTimerRef.current);
+      if (saveSettleTimerRef.current !== null) clearTimeout(saveSettleTimerRef.current);
+    };
+  }, [apiAdapter, localAdapter]);
+
+  if (!ready) {
+    return (
+
+exec
+/bin/bash -lc "sed -n '125,260p' apps/site/src/components/EditorShellMount.tsx" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+    return (
+      <>
+        <EditModeBanner editMode={editMode} />
+        <div>Loading...</div>
+      </>
+    );
+  }
+
+  const handleCreate = (editor: EditorInstance) => {
+    setEditor(editor);
+    void loadWithFallback(apiAdapter, localAdapter).then((state) => {
+      const mdxSource = state?.mdxSource ?? initialMdx;
+      if (mdxSource) {
+        try {
+          loadFromMdx(editor, mdxSource, { blockRegistry: registryRef.current ?? undefined });
+        } catch (error) {
+          // Wave 6 hotfix — pre-hotfix this catch silently returned, leaving
+          // the editor empty + the indicator stuck at "saved" (the user
+          // could not tell that loadFromMdx had thrown). Surface the
+          // failure to both the console (operator) and the indicator/UI
+          // (user), per ADR-0011 D9.7. The editor itself stays mounted so
+          // the user can retry by reloading the route.
+          const message = error instanceof Error ? error.message : 'unknown';
+          console.error('[EditorShellMount] loadFromMdx failed for', slug, error);
+          setLoadError(message);
+          setSaveStatus('error');
+          return;
+        }
+      }
+      versionRef.current = state?.version ?? 1;
+      if (state?.lastModified) {
+        setSavedAt(new Date(state.lastModified));
+        setSaveStatus('saved');
+      }
+    });
+  };
+
+  const handleChange = (editor: EditorInstance) => {
+    if (saveTimerRef.current !== null) clearTimeout(saveTimerRef.current);
+    if (saveSettleTimerRef.current !== null) clearTimeout(saveSettleTimerRef.current);
+    setSaveStatus('unsaved');
+    saveTimerRef.current = setTimeout(() => {
+      try {
+        setSaveStatus('saving');
+        const mdxSource = saveToMdx(editor, { blockRegistry: registryRef.current ?? undefined });
+        versionRef.current += 1;
+        const lastModified = Date.now();
+        void saveWithBackup(apiAdapter, localAdapter, {
+          lastModified,
+          mdxSource,
+          version: versionRef.current,
+        }).then((result) => {
+          saveSettleTimerRef.current = setTimeout(() => {
+            if (result.ok) {
+              setSavedAt(new Date(lastModified));
+              setSaveStatus('saved');
+            } else {
+              setSaveStatus('error');
+            }
+          }, 250);
+        });
+      } catch {
+        setSaveStatus('error');
+        return;
+      }
+    }, 800);
+  };
+
+  return (
+    <>
+      <EditModeBanner editMode={editMode} />
+      {loadError !== null && (
+        <div
+          data-skb-load-error
+          role="alert"
+          style={{
+            background: 'var(--surface, #fff5f5)',
+            border: '1px solid var(--accent-danger, #c53030)',
+            borderRadius: 'var(--radius, 8px)',
+            color: 'var(--accent-danger, #c53030)',
+            fontSize: '14px',
+            margin: '12px 0',
+            padding: '12px 16px',
+          }}
+        >
+          <strong>Failed to load this note: </strong>
+          {loadError}
+          <br />
+          <span style={{ color: 'inherit', fontSize: '12px', opacity: 0.8 }}>
+            Reload the page to retry, or check the source file at
+            <code> content/notes/{slug}/index.mdx </code>
+            for an unsupported MDX construct.
+          </span>
+        </div>
+      )}
+      <GridContainer>
+        <DragHandle />
+        <Toolbar editor={editor} />
+        <EditorShell
+          extensions={wire.extensions}
+          onCreate={handleCreate}
+          onChange={handleChange}
+        />
+        <Palette editor={editor} kinds={wire.blockKinds} />
+        <SlashMenu editor={editor} kinds={wire.blockKinds} />
+      </GridContainer>
+      <SaveIndicator savedAt={savedAt} status={saveStatus} />
+    </>
+  );
+}
+
+codex
+One documentation inconsistency is emerging: the implementation intentionally keeps `data-skb-block-kind` on the React NodeView wrapper, while the PR.md acceptance text still says that selector should disappear. I’m continuing the audit before deciding whether that is the only blocker.
+exec
+/bin/bash -lc "nl -ba docs/plans/wave-6-main/wave-6-cf-18-block-nodeview-wiring.md | sed -n '1,180p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	# PR.md — Wave 6 carry-forward #18 — Block NodeView wiring (8 blocks)
+     2	
+     3	> Per ADR-0011 D2 schema. Linked from `docs/plans/active.md`.
+     4	
+     5	## Title
+     6	
+     7	`Wave 6 cf-18 — wire all 8 component blocks into Tiptap NodeView so the edit surface renders real components instead of "{Label} block" placeholders`
+     8	
+     9	## Why
+    10	
+    11	cf-15a / cf-15b / cf-16 closed the **data layer**: `mdxToTiptap` now produces correct Tiptap nodes (`{type:'pdf', attrs:{src,page,searchable}}` etc.) instead of throwing or surfacing softParse `[unsupported block <X>: ...]` placeholders. But the **render layer** never closed: `packages/editor-shell/src/registry-wire.tsx:88-114`'s `createBlockExtension` only registers a `Node.create` with a `renderHTML` returning `['div', {...}, '${option.label} block']` — a literal string placeholder. There is no `addNodeView` and no bridge to each block's existing `EditorView` React component.
+    12	
+    13	User-visible result on `/notes/sample-blocks/edit`: 14 placeholder divs (`callout×4 / componentCode×1 / image×2 / math×2 / pdf×2 / jupyter×1 / nn-viz×1 / agent-flow×1`) reading "Callout block", "Pdf block", etc. — no real PDF iframe, no React Flow graph, no KaTeX, no syntax-highlighted code body, no image, no callout container.
+    14	
+    15	The previous Wave 6 cf-16 Playwright lock (`assert no [unsupported block <` text) was a **weak assertion** — it passed against the placeholder divs because the placeholders don't contain that error sentinel. cf-18 replaces it with per-kind real-DOM markers.
+    16	
+    17	## What
+    18	
+    19	1. **Add `BlockNodeView` React bridge** in `editor-shell` — uses `@tiptap/react`'s `NodeViewWrapper`, looks up the block's `BlockUIDefinition` from the injected `BlockRegistry` by `node.type.name → coreName` mapping, and renders `<UI.EditorView props={node.attrs as ZodInfer<schema>} />`.
+    20	
+    21	2. **Wire `createBlockExtension`** to take the registry + use `addNodeView: () => ReactNodeViewRenderer(BlockNodeView, { ... })`. Each block kind's Tiptap Node now renders the real React component instead of the placeholder string.
+    22	
+    23	3. **Make `wireRegistry` propagate the registry** to `createBlockExtension` (closure capture of the registry passed in `RegistryWireOptions`).
+    24	
+    25	4. **NodeName mapping**: cf-15b renamed `'code'` → `'componentCode'` for the Tiptap node name; the block's `coreName` is also `'componentCode'`. Bridge looks up `registry.getCore(node.type.name)` then `registry.getUI(coreName)`. Other 7 blocks: nodeName === coreName.
+    26	
+    27	5. **Strengthen the Playwright spec** (`apps/site/playwright/sample-blocks-edit-loads.spec.ts`):
+    28	   - assert presence of per-kind real-DOM markers (callout container, code body, image tag, KaTeX `.katex`, PDF iframe, Jupyter container, NN-Viz canvas/SVG, AgentFlow `.react-flow`)
+    29	   - keep the "no `[unsupported block <` text" check
+    30	   - keep the placeholder-div count at 0 (`[data-skb-block-kind]` should disappear once NodeView is rendered through ReactNodeViewRenderer)
+    31	
+    32	## Files
+    33	
+    34	| File | Change |
+    35	|---|---|
+    36	| `packages/editor-shell/src/BlockNodeView.tsx` | **NEW** — React bridge component (NodeViewWrapper + registry lookup + EditorView render) |
+    37	| `packages/editor-shell/src/registry-wire.tsx` | Update `createBlockExtension` to accept registry + add `addNodeView`; thread registry through `wireRegistry` |
+    38	| `packages/editor-shell/src/__tests__/registry-wire.test.ts` | Add NodeView render smoke tests |
+    39	| `packages/editor-shell/src/index.ts` | Export `BlockNodeView` for tests |
+    40	| `apps/site/playwright/sample-blocks-edit-loads.spec.ts` | Replace weak assertion with per-kind real-DOM markers (8 block kinds) |
+    41	| `packages/editor-shell/CONTRACT.md` | Document the NodeView bridge in Public surface |
+    42	| `docs/audits/screenshots/wave-6-hotfix-sample-blocks-edit-loads.png` | Regen (visual proof) |
+    43	
+    44	Total scope: ~7 files (1 new bridge + 1 wire update + 1 test add + 1 export update + 1 Playwright strengthening + 1 sister-doc + 1 screenshot).
+    45	
+    46	## Decisions
+    47	
+    48	**D1 — NodeView bridge in editor-shell, not per-block**: keep block packages framework-agnostic at the Tiptap layer. They already export `EditorView: ComponentType<BlockViewProps<TSchema>>`; editor-shell owns the Tiptap wiring. Each block stays free to swap UI implementations (`uiId='minimal'` etc.) without re-implementing NodeView.
+    49	
+    50	**D2 — atom node, not editable content**: every component block is `atom: true`. Inline editing of the block's interior (e.g. typing into a Pdf node) is out of scope; the block's React component owns its UI. Future work could add inner editable regions via `atom: false + addNodeView` `contentDOMElementTag`.
+    51	
+    52	**D3 — no HeavyBlockBoundary in editor**: HeavyBlockBoundary is for SSR zero-layout-shift on the static-render path (`apps/site/src/components.ts`). Tiptap NodeView mounts client-side; the heavy block's EditorView (which already handles its own kernel/canvas/flow lifecycle) mounts directly. Trade-off: opening `/notes/<slug>/edit` will trigger client-side load of Pyodide / TFJS / React Flow if those blocks are present. Acceptable on the edit surface; a future PR can add lazy-load gates if needed.
+    53	
+    54	**D4 — registry injected at `wireRegistry` time, not at NodeView render time**: a single `BlockRegistry` per `EditorShell` mount; closure-captured into the extensions array. No prop-drilling at NodeView render time.
+    55	
+    56	## Test plan
+    57	
+    58	- [ ] `pnpm --filter @skb/editor-shell test` — new NodeView smoke tests green; existing 132 tests remain green
+    59	- [ ] `pnpm --filter @skb/site test:e2e -- sample-blocks-edit-loads` — Playwright passes per-kind real-DOM marker assertions for all 8 blocks
+    60	- [ ] `pnpm check` — exit 0
+    61	- [ ] Visual regression: regen `wave-6-hotfix-sample-blocks-edit-loads.png` shows real components (PDF iframe, React Flow graph, KaTeX, syntax-highlighted code, image, callout container, Jupyter skeleton, NN-Viz SVG)
+    62	
+    63	## Acceptance
+    64	
+    65	1. `BlockNodeView` exists at `packages/editor-shell/src/BlockNodeView.tsx`, exports a default React component compatible with `ReactNodeViewRenderer`
+    66	2. `createBlockExtension` calls `addNodeView: () => ReactNodeViewRenderer(BlockNodeView)` — placeholder `renderHTML` removed or relegated to fallback only
+    67	3. `wireRegistry({ blockRegistry })` propagates the registry into the extensions array; if no registry is provided the placeholder fallback still applies (so existing tests / no-registry mounts don't break)
+    68	4. Sample-blocks Playwright asserts presence of: at least 1 callout container, 1 syntax-highlighted code body, 1 `<img>`, 1 `.katex`, 1 PDF `<iframe>`, 1 Jupyter container, 1 NN-Viz SVG/canvas, 1 React Flow `.react-flow`
+    69	5. Sample-blocks Playwright asserts ZERO `[data-skb-block-kind]` placeholder divs in the editor
+    70	6. `editor-shell/CONTRACT.md` documents the NodeView bridge under Public surface
+    71	7. `pnpm check` exit 0
+    72	8. ADR-0006 9-point sweep clean
+
+exec
+/bin/bash -lc "nl -ba packages/editor-shell/src/BlockNodeView.tsx | sed -n '1,140p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	import type { ComponentType } from 'react';
+     2	import { NodeViewWrapper, type ReactNodeViewProps } from '@tiptap/react';
+     3	import type { BlockRegistry, BlockViewProps } from '@skb/block-foundation';
+     4	import type { ZodTypeAny } from 'zod';
+     5	
+     6	/**
+     7	 * Wave 6 carry-forward #18 (2026-05-08) — bridge from a Tiptap NodeView to
+     8	 * a block's registered `EditorView` React component.
+     9	 *
+    10	 * Lookup chain:
+    11	 *   1. `node.type.name` is the Tiptap node name registered by
+    12	 *      `createBlockExtension` (one per `BlockAffordanceKind`).
+    13	 *   2. The Tiptap node name matches the block's `coreName` for every block
+    14	 *      except `componentCode` (cf-15b rename — Tiptap node `componentCode`
+    15	 *      maps to `block-code`'s `codeCore.name === 'componentCode'`).
+    16	 *   3. `registry.getUI(coreName)` returns the first registered UI (uiId
+    17	 *      defaulting to `'default'`), whose `EditorView` we then mount with
+    18	 *      `props = node.attrs`.
+    19	 *
+    20	 * The fallback `<NodeViewWrapper>` placeholder ('Unregistered block …')
+    21	 * fires only when:
+    22	 *   - no `BlockRegistry` was injected at `wireRegistry` time, or
+    23	 *   - the block's core/ui never got registered (consumer wired the
+    24	 *     extension but skipped `registerBlocks`).
+    25	 *
+    26	 * Consumers must guarantee that `registerBlocks(registry)` ran before
+    27	 * the Tiptap editor mount; mismatch is logged + degrades to placeholder
+    28	 * rather than crashing the editor.
+    29	 */
+    30	export interface BlockNodeViewFactoryProps {
+    31	  readonly registry?: BlockRegistry;
+    32	}
+    33	
+    34	export function makeBlockNodeView({
+    35	  registry,
+    36	}: BlockNodeViewFactoryProps): ComponentType<ReactNodeViewProps> {
+    37	  return function BlockNodeView(props: ReactNodeViewProps) {
+    38	    const nodeName = props.node.type.name;
+    39	    const ui = registry ? registry.getUI(nodeName) : undefined;
+    40	    if (!ui) {
+    41	      return (
+    42	        <NodeViewWrapper
+    43	          className="skb-block-nodeview skb-block-nodeview--unregistered"
+    44	          data-skb-block-kind={nodeName}
+    45	        >
+    46	          <div className="skb-block-nodeview__fallback" contentEditable={false}>
+    47	            Unregistered block <code>{nodeName}</code>
+    48	          </div>
+    49	        </NodeViewWrapper>
+    50	      );
+    51	    }
+    52	    const EditorView: ComponentType<BlockViewProps<ZodTypeAny>> = ui.EditorView;
+    53	    const editorProps = (props.node.attrs ?? {}) as Record<string, unknown>;
+    54	    return (
+    55	      <NodeViewWrapper
+    56	        className="skb-block-nodeview"
+    57	        data-skb-block-kind={nodeName}
+    58	      >
+    59	        <div contentEditable={false} data-skb-block-host={nodeName}>
+    60	          <EditorView props={editorProps} />
+    61	        </div>
+    62	      </NodeViewWrapper>
+    63	    );
+    64	  };
+    65	}
+
+exec
+/bin/bash -lc "nl -ba apps/site/playwright/sample-blocks-edit-loads.spec.ts | sed -n '60,140p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+    60	  // `apps/site` that should now render as inline `<code>` elements
+    61	  // (Tiptap renders the `code` mark as a `<code>` element by default).
+    62	  // Pre-#15b they appeared as plain text.
+    63	  await expect(editor.locator('code').first()).toBeVisible({ timeout: 5_000 });
+    64	
+    65	  // The legacy load-error banner must NOT be present.
+    66	  await expect(page.locator('[data-skb-load-error]')).toHaveCount(0);
+    67	
+    68	  // Wave 6 carry-forward #16 — the 4 blocks Pdf / Jupyter / NnViz /
+    69	  // AgentFlow that previously parse-failed under JSX expression form
+    70	  // (`page={1}`, `code={`...`}`, `layers={[{...}]}`, `nodes={[{...}]}`)
+    71	  // now route through `evalAttrExpression` (block-foundation) and
+    72	  // produce real Tiptap nodes. Pre-#16 they degraded to softParse
+    73	  // placeholders matching `[unsupported block <Pdf>: ...]`. Assert
+    74	  // none of those placeholders survive into the editor.
+    75	  await expect(
+    76	    editor.locator('text=/\\[unsupported block </'),
+    77	  ).toHaveCount(0);
+    78	
+    79	  // Wave 6 carry-forward #18 — every component block kind now mounts via
+    80	  // `ReactNodeViewRenderer` → `BlockNodeView` → registry-resolved
+    81	  // `EditorView`. Pre-#18 the editor showed 14 placeholder divs reading
+    82	  // "{Label} block" (no PDF iframe, no React Flow, no KaTeX, etc.).
+    83	  //
+    84	  // Strong DOM-marker assertions per kind (counts mirror the production
+    85	  // sample-blocks fixture — 4× Callout, 1× Code, 2× Image, 2× Math,
+    86	  // 2× Pdf, 1× Jupyter, 1× NnViz, 1× AgentFlow):
+    87	  //
+    88	  // 1. Each NodeView host wrapper carries `data-skb-block-host` — there
+    89	  //    must be 14 (one per fixture instance), with at least one per kind.
+    90	  await expect(editor.locator('[data-skb-block-host]')).toHaveCount(14);
+    91	  for (const kind of [
+    92	    'callout',
+    93	    'componentCode',
+    94	    'image',
+    95	    'math',
+    96	    'pdf',
+    97	    'jupyter',
+    98	    'nn-viz',
+    99	    'agent-flow',
+   100	  ] as const) {
+   101	    const host = editor.locator(`[data-skb-block-host="${kind}"]`).first();
+   102	    await expect(host).toBeVisible({ timeout: 5_000 });
+   103	  }
+   104	  // 2. None of the NodeViews fell back to the "Unregistered block …"
+   105	  //    placeholder (would imply registry not threaded into wireRegistry).
+   106	  await expect(
+   107	    editor.locator('.skb-block-nodeview--unregistered'),
+   108	  ).toHaveCount(0);
+   109	  // 3. Real-component DOM markers — proves the registered EditorView
+   110	  //    actually mounted, not just an empty NodeViewWrapper:
+   111	  await expect(editor.locator('iframe').first()).toBeVisible({ timeout: 5_000 }); // PDF
+   112	  await expect(editor.locator('img').first()).toBeVisible({ timeout: 5_000 }); // Image
+   113	  await expect(editor.locator('.katex').first()).toBeVisible({ timeout: 5_000 }); // Math
+   114	  await expect(editor.locator('.react-flow').first()).toBeVisible({ timeout: 10_000 }); // AgentFlow
+   115	  await expect(editor.locator('pre code').first()).toBeVisible({ timeout: 5_000 }); // Code body
+   116	
+   117	  // Wave 6 hotfix Bug B verification: nothing thrown to the page console
+   118	  // (the silent-catch class would have hidden a throw, but the test would
+   119	  // still see `pageerror` if the React error-boundary surfaced it).
+   120	  expect(consoleErrors.filter((m) => /loadFromMdx|mdx-bridge/.test(m))).toEqual([]);
+   121	
+   122	  await page.screenshot({ fullPage: true, path: SCREENSHOT_PATH });
+   123	});
+
+exec
+/bin/bash -lc "nl -ba packages/editor-shell/CONTRACT.md | sed -n '488,525p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+   488	- `Toolbar` / `ToolbarProps`: renders Bold / Italic controls while a
+   489	  non-empty Tiptap text selection exists, and delegates to
+   490	  `editor.chain().focus().toggleBold()/toggleItalic().run()`.
+   491	- `EditModeBanner` / `EditModeBannerProps`: renders the top edit-mode
+   492	  banner only when `editMode` is true.
+   493	- `SaveIndicator` / `SaveIndicatorProps` / `SaveIndicatorStatus`:
+   494	  renders the bottom-corner `Unsaved changes` / `Saving...` /
+   495	  `Saved at HH:MM` state owned by the consumer's save debounce.
+   496	
+   497	`registry-wire.tsx` exports `BLOCK_KIND_OPTIONS`, `insertBlockKind`,
+   498	and `wireRegistry(options)`. `wireRegistry` returns the canonical
+   499	eight `blockKinds`, Tiptap node extensions for those kinds, and the
+   500	insertion helper. It also idempotently registers mdx-bridge JSX
+   501	dispatch entries for the eight block packages so editor-built
+   502	component nodes can serialize through `saveToMdx(editor, { blockRegistry })`.
+   503	
+   504	When `wireRegistry({ blockRegistry })` receives a registry (Wave 6
+   505	carry-forward #18, 2026-05-08), each generated extension also installs
+   506	`addNodeView: () => ReactNodeViewRenderer(makeBlockNodeView({registry}))`,
+   507	which mounts the block's registered `EditorView` React component
+   508	inside a `NodeViewWrapper` carrying `data-skb-block-host="<kind>"` —
+   509	real PDF iframes, KaTeX, React Flow graphs, syntax-highlighted code
+   510	bodies, images, callout containers, NN-Viz SVG topology, and Jupyter
+   511	containers all materialize on the edit surface. Without a registry
+   512	the extension falls back to the legacy `renderHTML` placeholder
+   513	("`<Label> block`" — preserved for no-registry test mounts). The
+   514	`makeBlockNodeView` factory is exported from the package barrel for
+   515	downstream NodeView smoke tests.
+   516	
+   517	`EditorShellProps.extensions` is now the sanctioned composition hook
+   518	for consumer-owned Tiptap extensions layered after the built-in
+   519	`StarterKit` (no `code: false` configuration post-#15b — the
+   520	block-Code Tiptap node was renamed from `code` to `componentCode`
+   521	so StarterKit's inline `code` mark is enabled) + `Link.extend({ addAttributes: { title } }).configure({ openOnClick: false })`
+   522	stack (carry-forwards #15a + #15b). C.4-3 uses it only for the block insertion
+   523	node specs produced by `wireRegistry`; block package implementations
+   524	remain untouched. StarterKit's inline `code` mark is enabled post-#15b
+   525	(the component-block formerly named `code` was renamed to
+
+codex
+I found two candidate doc/self-audit drifts: PR.md still claims a registry-wire unit test was added, but the scope and working tree have no such file change; it also says `[data-skb-block-kind]` should disappear, while the bridge now uses that attribute on `NodeViewWrapper`. I’m running the fresh verification commands anyway so the final verdict is based on both code review and current evidence.
+exec
+/bin/bash -lc 'pnpm --filter @skb/editor-shell test' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 2622ms:
+
+> @skb/editor-shell@0.0.0 test /home/weiyi/selfKnowledgeBaseWeb/packages/editor-shell
+> vitest run
+
+
+ RUN  v4.1.5 /home/weiyi/selfKnowledgeBaseWeb/packages/editor-shell
+

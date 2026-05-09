@@ -1,6 +1,8 @@
 import { Node, mergeAttributes, type Editor, type Extensions } from '@tiptap/core';
+import { ReactNodeViewRenderer } from '@tiptap/react';
 import type { BlockRegistry } from '@skb/block-foundation';
 import { getJsxDispatch, registerJsxDispatch } from '@skb/mdx-bridge';
+import { makeBlockNodeView } from './BlockNodeView';
 import { parseCallout, serializeCallout } from '@skb/block-callout/core';
 import { parseCode, serializeCode } from '@skb/block-code/core';
 import { parseImage, serializeImage } from '@skb/block-image/core';
@@ -84,7 +86,19 @@ function defaultAttrs(kind: BlockAffordanceKind): Record<string, unknown> {
   return { ...defaultBlockAttrs[kind] };
 }
 
-function createBlockExtension(option: BlockKindOption) {
+function createBlockExtension(option: BlockKindOption, registry?: BlockRegistry) {
+  // Wave 6 carry-forward #18 2026-05-08 — when a registry is injected, the
+  // node mounts the block's real `EditorView` via `ReactNodeViewRenderer`.
+  // Without a registry, `addNodeView` is omitted entirely so Tiptap falls
+  // back to `renderHTML` (the placeholder div), preserving the legacy
+  // no-registry behavior used by existing smoke tests.
+  const nodeViewExtension = registry
+    ? {
+        addNodeView() {
+          return ReactNodeViewRenderer(makeBlockNodeView({ registry }));
+        },
+      }
+    : {};
   return Node.create({
     name: option.kind,
     group: 'block',
@@ -109,6 +123,7 @@ function createBlockExtension(option: BlockKindOption) {
         `${option.label} block`,
       ];
     },
+    ...nodeViewExtension,
   });
 }
 
@@ -150,7 +165,7 @@ export function wireRegistry(options: RegistryWireOptions): RegistryWire {
   const blockKinds = options.blockKinds ?? BLOCK_KIND_OPTIONS;
   return {
     blockKinds,
-    extensions: blockKinds.map(createBlockExtension),
+    extensions: blockKinds.map((option) => createBlockExtension(option, options.blockRegistry)),
     insertBlock: insertBlockKind,
   };
 }
