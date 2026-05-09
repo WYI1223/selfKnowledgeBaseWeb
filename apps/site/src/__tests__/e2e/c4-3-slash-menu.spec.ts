@@ -32,7 +32,12 @@ test.describe('C.4-3 slash menu', () => {
     await menu.getByRole('menuitem', { name: 'Callout' }).click();
 
     await expect(page.locator('[data-skb-block-kind="callout"]').first()).toBeVisible();
-    await expect(editor).toContainText('Callout');
+    // Wave 6 cf-18 — slash-menu insertion now mounts the real
+    // CalloutEditorView (registry-driven NodeView) instead of the
+    // legacy "Callout block" placeholder string. The default attrs
+    // give the inserted block title="New callout"; assert that
+    // case-insensitively as a stable substring.
+    await expect(editor).toContainText('New callout');
 
     const archivePath = resolve(
       workspaceRoot,
