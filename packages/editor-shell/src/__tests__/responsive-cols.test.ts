@@ -4,7 +4,10 @@ import { act, renderHook } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { RESPONSIVE_BREAKPOINTS, useResponsiveCols } from '../responsive-cols';
 
-type QueryKey = 'desktop' | 'tablet';
+// R2 F1 fix (2026-05-09): hook now uses max-width queries (`mobile`
+// + `tablet`) to match grid.css verbatim. Pre-R2 the mock keys were
+// 'desktop' (min-width: 1024px) + 'tablet' (min-width: 768px).
+type QueryKey = 'mobile' | 'tablet';
 type MatchListener = (event: MediaQueryListEvent) => void;
 
 interface MockMediaQueryList {
@@ -38,11 +41,11 @@ function createMediaQueryList(media: string, matches: boolean): MockMediaQueryLi
 
 function installMatchMedia(matches: Record<QueryKey, boolean>) {
   const queries: Record<QueryKey, MockMediaQueryList> = {
-    desktop: createMediaQueryList('(min-width: 1024px)', matches.desktop),
-    tablet: createMediaQueryList('(min-width: 768px)', matches.tablet),
+    mobile: createMediaQueryList('(max-width: 768px)', matches.mobile),
+    tablet: createMediaQueryList('(max-width: 1024px)', matches.tablet),
   };
   const matchMedia = vi.fn((query: string) => {
-    if (query === queries.desktop.media) return queries.desktop as unknown as MediaQueryList;
+    if (query === queries.mobile.media) return queries.mobile as unknown as MediaQueryList;
     if (query === queries.tablet.media) return queries.tablet as unknown as MediaQueryList;
     throw new Error(`Unexpected media query: ${query}`);
   });
@@ -53,6 +56,21 @@ function installMatchMedia(matches: Record<QueryKey, boolean>) {
   return { matchMedia, queries };
 }
 
+/**
+ * R2 F1 fix (2026-05-09) — semantic helper for boundary tests. Maps
+ * a viewport pixel width to the matchMedia matches truth table per
+ * grid.css buckets:
+ *   width <= 768  → mobile=true,  tablet=true   → 1
+ *   768 < width <= 1024 → mobile=false, tablet=true   → 6
+ *   width > 1024  → mobile=false, tablet=false  → 12
+ */
+function matchesForWidth(width: number): Record<QueryKey, boolean> {
+  return {
+    mobile: width <= 768,
+    tablet: width <= 1024,
+  };
+}
+
 afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
@@ -60,7 +78,8 @@ afterEach(() => {
 
 describe('useResponsiveCols initial state', () => {
   it('desktop returns 12', () => {
-    installMatchMedia({ desktop: true, tablet: true });
+    // Desktop = width > 1024 → mobile=false, tablet=false
+    installMatchMedia({ mobile: false, tablet: false });
 
     const { result } = renderHook(() => useResponsiveCols());
 
@@ -68,7 +87,8 @@ describe('useResponsiveCols initial state', () => {
   });
 
   it('tablet returns 6', () => {
-    installMatchMedia({ desktop: false, tablet: true });
+    // Tablet = 768 < width <= 1024 → mobile=false, tablet=true
+    installMatchMedia({ mobile: false, tablet: true });
 
     const { result } = renderHook(() => useResponsiveCols());
 
@@ -76,7 +96,9 @@ describe('useResponsiveCols initial state', () => {
   });
 
   it('mobile returns 1', () => {
-    installMatchMedia({ desktop: false, tablet: false });
+    // Mobile = width <= 768 → mobile=true, tablet=true (max-width
+    // queries cascade)
+    installMatchMedia({ mobile: true, tablet: true });
 
     const { result } = renderHook(() => useResponsiveCols());
 
@@ -84,10 +106,64 @@ describe('useResponsiveCols initial state', () => {
   });
 });
 
+/**
+ * R2 F1 fix lock (2026-05-09) — boundary semantics matrix. Pre-R2
+ * the hook used min-width queries which gave 1024px=12 + 768px=6;
+ * grid.css uses max-width which gives 1024px=6 + 768px=1. R2
+ * aligns the hook to grid.css. These boundary tests pin the
+ * alignment.
+ */
+describe('useResponsiveCols R2 F1 — exact boundary widths align with grid.css max-width buckets', () => {
+  it('width=768 (mobile/tablet boundary) → 1 col (matches max-width: 768px)', () => {
+    installMatchMedia(matchesForWidth(768));
+    const { result } = renderHook(() => useResponsiveCols());
+    expect(result.current).toBe(1);
+  });
+
+  it('width=769 (just above mobile boundary) → 6 col', () => {
+    installMatchMedia(matchesForWidth(769));
+    const { result } = renderHook(() => useResponsiveCols());
+    expect(result.current).toBe(6);
+  });
+
+  it('width=1024 (tablet/desktop boundary) → 6 col (matches max-width: 1024px; pre-R2 hook gave 12 here — REGRESSION LOCK)', () => {
+    installMatchMedia(matchesForWidth(1024));
+    const { result } = renderHook(() => useResponsiveCols());
+    expect(result.current).toBe(6);
+  });
+
+  it('width=1025 (just above tablet boundary) → 12 col', () => {
+    installMatchMedia(matchesForWidth(1025));
+    const { result } = renderHook(() => useResponsiveCols());
+    expect(result.current).toBe(12);
+  });
+
+  it('width=375 (typical mobile, well below 768) → 1 col', () => {
+    installMatchMedia(matchesForWidth(375));
+    const { result } = renderHook(() => useResponsiveCols());
+    expect(result.current).toBe(1);
+  });
+
+  it('width=900 (typical tablet, between 768 and 1024) → 6 col', () => {
+    installMatchMedia(matchesForWidth(900));
+    const { result } = renderHook(() => useResponsiveCols());
+    expect(result.current).toBe(6);
+  });
+
+  it('width=1440 (typical desktop, well above 1024) → 12 col', () => {
+    installMatchMedia(matchesForWidth(1440));
+    const { result } = renderHook(() => useResponsiveCols());
+    expect(result.current).toBe(12);
+  });
+});
+
 describe('useResponsiveCols transition lifecycle', () => {
   it('desktop to tablet fires start then 320ms-delayed end', () => {
+    // R2 F1: starting at desktop (>1024) → mobile=false, tablet=false → 12.
+    // Trigger transition to tablet by setting tablet=true (viewport
+    // shrunk to ≤1024).
     vi.useFakeTimers();
-    const { queries } = installMatchMedia({ desktop: true, tablet: true });
+    const { queries } = installMatchMedia({ mobile: false, tablet: false });
     const onTransitionStart = vi.fn();
     const onTransitionEnd = vi.fn();
 
@@ -96,7 +172,7 @@ describe('useResponsiveCols transition lifecycle', () => {
     );
 
     act(() => {
-      queries.desktop.trigger(false);
+      queries.tablet.trigger(true);
     });
 
     expect(result.current).toBe(6);
@@ -116,7 +192,7 @@ describe('useResponsiveCols transition lifecycle', () => {
 
   it('preserves pending transition-end timer across rerender with new callback identities', () => {
     vi.useFakeTimers();
-    const { queries } = installMatchMedia({ desktop: true, tablet: true });
+    const { queries } = installMatchMedia({ mobile: false, tablet: false });
     const dispatch1 = vi.fn();
     const dispatch2 = vi.fn();
 
@@ -130,7 +206,7 @@ describe('useResponsiveCols transition lifecycle', () => {
     );
 
     act(() => {
-      queries.desktop.trigger(false);
+      queries.tablet.trigger(true);
     });
 
     expect(dispatch1).toHaveBeenCalledWith('responsive-transition-start');
@@ -147,7 +223,7 @@ describe('useResponsiveCols transition lifecycle', () => {
 
   it('unmount cleans up both listeners and clears pending timer', () => {
     vi.useFakeTimers();
-    const { queries } = installMatchMedia({ desktop: true, tablet: true });
+    const { queries } = installMatchMedia({ mobile: false, tablet: false });
     const onTransitionStart = vi.fn();
     const onTransitionEnd = vi.fn();
 
@@ -155,11 +231,11 @@ describe('useResponsiveCols transition lifecycle', () => {
       useResponsiveCols({ onTransitionStart, onTransitionEnd }),
     );
 
-    expect(queries.desktop.listeners.size).toBe(1);
+    expect(queries.mobile.listeners.size).toBe(1);
     expect(queries.tablet.listeners.size).toBe(1);
 
     act(() => {
-      queries.desktop.trigger(false);
+      queries.tablet.trigger(true);
     });
 
     expect(onTransitionStart).toHaveBeenCalledTimes(1);
@@ -171,9 +247,9 @@ describe('useResponsiveCols transition lifecycle', () => {
     });
 
     expect(onTransitionEnd).not.toHaveBeenCalled();
-    expect(queries.desktop.removeEventListener).toHaveBeenCalledTimes(1);
+    expect(queries.mobile.removeEventListener).toHaveBeenCalledTimes(1);
     expect(queries.tablet.removeEventListener).toHaveBeenCalledTimes(1);
-    expect(queries.desktop.listeners.size).toBe(0);
+    expect(queries.mobile.listeners.size).toBe(0);
     expect(queries.tablet.listeners.size).toBe(0);
   });
 });
@@ -187,7 +263,7 @@ describe('RESPONSIVE_BREAKPOINTS', () => {
 
 describe('useResponsiveCols SSR safety', () => {
   it('returns 12 default and does not subscribe when window is unavailable', () => {
-    const { matchMedia } = installMatchMedia({ desktop: false, tablet: false });
+    const { matchMedia } = installMatchMedia({ mobile: false, tablet: false });
     vi.stubGlobal('window', undefined);
     const values: number[] = [];
 

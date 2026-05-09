@@ -586,7 +586,7 @@ MUST snapshot bytes, NEVER use git operations", the spec MUST use
 `afterAll`. The implementation is a near-copy of cf-20c-2's pattern
 in `sample-blocks-drag-handle.spec.ts`.
 
-### D9 — viewportCols-derived totalCols + activeColSnaps (R1 F1 fix; responsive resize)
+### D9 — viewportCols-derived totalCols + activeColSnaps (R1 F1 fix; responsive resize) + boundary alignment with grid.css (R2 F1 amendment)
 
 **R1 F1 fix lock (2026-05-09)** — codex-pr-reviewer-55 R1 F1 caught
 that `EditorShellMount.tsx` hardcoded `RESIZE_TOTAL_COLS = 12` +
@@ -596,9 +596,8 @@ responsive table, `.skb-grid` switches to **6 columns** at
 (mobile). Tablet users dragging the right-edge handle pre-R1 got
 the wrong snap stops `[2, 3, 4, 6, 8, 12]` instead of `[2, 3, 6]`.
 
-**Decision**: derive `viewportCols` from `useResponsiveCols`
-(existing hook; subscribes to `(min-width: 1024px)` + `(min-width:
-768px)` matchMedia and emits `12 | 6 | 1`). Feed to:
+**R1 decision**: derive `viewportCols` from `useResponsiveCols`
+(existing hook; emits `12 | 6 | 1`). Feed to:
 - `<GridContainer viewportCols={viewportCols}>` so the existing
   `.skb-grid--mobile` className emission per ADR-0017 D9 fires
   at the right viewport (was passing `undefined` pre-R1; now
@@ -608,23 +607,46 @@ the wrong snap stops `[2, 3, 4, 6, 8, 12]` instead of `[2, 3, 6]`.
 - `<ResizeOverlays totalCols={viewportCols} activeColSnaps={...}/>`
   so `<ColRuler>` renders the correct stop set.
 
-The `effectiveColSnaps` function from `@skb/block-foundation` maps
-`12 → [2, 3, 4, 6, 8, 12]`, `6 → [2, 3, 6]`, `1 → [1]` per
-ADR-0016 D6 Q4 absorbtion. Mobile (`viewportCols === 1`) is
-handled by the existing CSS `@media (max-width: 768px) { display:
-none }` rule on all resize affordances per ADR-0017 D9 view-only
-contract; the snap math at `viewportCols=1` returns `[1]` but no
-handles are visible to drive it.
+**R2 F1 amendment lock (2026-05-09)** — codex-pr-reviewer-55 R2 F1
+caught a boundary off-by-one between `useResponsiveCols` (R1 used
+`(min-width: 1024px)` + `(min-width: 768px)`) and grid.css
+(`(max-width: 1024px)` + `(max-width: 768px)`). At the EXACT
+1024px boundary the hook said `12` while CSS painted a 6-col grid;
+tablet users at that pixel hit 12-col snap stops on a 6-col grid.
+Same off-by-one at 768px. R2 fix: switch the hook to MAX-WIDTH
+queries that match grid.css verbatim.
 
-**Implementation cost**: 5 lines of changes in
-`EditorShellMount.tsx` (1 import added; `RESIZE_TOTAL_COLS = 12`
-constant removed; `useResponsiveCols()` call added; `viewportCols`
-threaded into 3 prop sites). Pipeline already accepted `totalCols`
-+ `activeColSnaps` as options — no API change required. Regression
-locked by new Playwright test at viewport=900px asserting only
-`[2, 3, 6]` snap stops are reachable.
+**R2 bucket truth table (matches grid.css verbatim)**:
+- `width <= 768`        → 1 col   (matches `@media (max-width: 768px)`)
+- `768 < width <= 1024` → 6 col   (matches `@media (max-width: 1024px)` but NOT `(max-width: 768px)`)
+- `width > 1024`        → 12 col  (no max-width @media matches)
 
-### D10 — startCol snapshot + overflow-filter at snap (R1 F2 fix; no invalid commits)
+**Implementation cost (R1 + R2)**: 5 LOC in `EditorShellMount.tsx`
+(R1 — import + viewportCols derivation + 3 prop wirings) +
+~30 LOC in `responsive-cols.ts` (R2 — query swap +
+`colsFromMatches` rewrite + JSDoc bucket truth table) + ~10 LOC
+mock-helper update in `grid-resize-responsive.spec.ts`'s
+`queryMatchesWidth` to support both query forms (the AC#10 tests
+that pre-R2 relied on min-width get updated assertions using
+widths CLEARLY OUTSIDE the bucket boundaries; the dedicated
+boundary matrix lives in `responsive-cols.test.ts`). Pipeline API
+unchanged. Regression locked by:
+- (R1) Playwright test at viewport=900px asserting only `[2, 3, 6]`
+  snap stops are reachable + `--total-cols: 6` on `.skb-grid`.
+- (R2) 7 new vitest cases in `responsive-cols.test.ts` covering
+  the boundary matrix: 768 → 1, 769 → 6, 1024 → 6 (REGRESSION
+  LOCK; pre-R2 was 12 here), 1025 → 12, plus typical interior
+  widths 375 / 900 / 1440.
+
+**Operational rule landed (cf-20d R2 reflection)**: when a hook
+drives layout decisions paired with CSS @media queries, the
+breakpoint queries MUST be byte-equivalent to the CSS rules (same
+operator: max-width vs min-width; same threshold pixel; same
+inclusivity). Off-by-one at the EXACT boundary breaks deterministic
+behavior. Boundary widths (`768`, `1024`) MUST appear in the unit
+test matrix; "interior" coverage alone (e.g. 900) is insufficient.
+
+### D10 — startCol snapshot + overflow-filter at snap (R1 F2 fix; no invalid commits) + UNCONDITIONAL persisted-overflow normalize (R2 F2 amendment)
 
 **R1 F2 fix lock (2026-05-09)** — codex-pr-reviewer-55 R1 F2 caught
 that `snapToColSpan` only clamped `colSpan` to `[1, totalCols]`,
@@ -635,7 +657,7 @@ ignoring the block's start `col`. A block at `col=7` could snap to
 schema would reject the resulting attr write at save-time, leaving
 the wire in an invalid intermediate state visible to the user.
 
-**Decision**: extend `snapToColSpan` signature to take `startCol`
+**R1 decision**: extend `snapToColSpan` signature to take `startCol`
 as a 3rd parameter (after `startColSpan`). The function filters
 `activeSnaps` to the non-overflowing subset
 `snap <= totalCols - startCol + 1` BEFORE the round-to-nearest
@@ -651,15 +673,69 @@ snapshot block already exposes `col` via `SerializedBlock` from
 `pipeline-snapshot.ts`). Both pointermove (live snap-state update)
 and pointerup (final commit) pass `snapshot.startCol` through to
 `snapToColSpan`. The pointerup handler additionally re-validates
-`startCol + nextColSpan - 1 <= totalCols` as defense-in-depth (if
-the snap math somehow returns an overflowing value due to a future
-bug, the pipeline cancels rather than committing invalid state).
+`startCol + nextColSpan - 1 <= totalCols` as defense-in-depth.
 
-**Implementation cost**: ~30 LOC across 2 files
-(`resize-snap.ts` + `use-resize-pipeline.ts`). Regression locked by
-8 new vitest cases under `describe('snapToColSpan — R1 F2
-overflow-filter for non-col=1 blocks')` covering `col=3, 5, 7,
-11, 12` × `colSpan=2, 6, 8` permutations.
+**R2 F2 amendment lock (2026-05-09)** — codex-pr-reviewer-55 R2 F2
+caught that the R1 F2 defense was scoped to col-mutating axes
+(gated by `colChanged === true`). Reviewer's race scenario:
+- User saves block at desktop with `col=7, colSpan=8` (valid in
+  12-col).
+- User reloads at tablet (6-col); persisted attrs become invalid
+  (`7 + 8 - 1 = 14 > 6`).
+- User does bottom-only resize (`axis === 'bottom'`,
+  `colChanged === false`).
+- Pre-R2 `setNodeMarkup` writes the new rowSpan AND PRESERVES the
+  invalid col/colSpan attrs through the spread merge.
+- Result: bottom-only resize preserves the invalid grid position
+  (corruption, not recovery).
+
+**R2 fix**: pipeline detects
+`startCol + startColSpan - 1 > totalCols` UNCONDITIONALLY before
+setNodeMarkup (regardless of axis). If true, normalizes
+`colSpan = max(1, totalCols - startCol + 1)` and includes the
+normalized colSpan in THIS commit's setNodeMarkup transaction
+(single atomic write — recovery, not corruption). Per cf-20d D10
+R2 amendment decision: **normalize over cancel** — refusing the
+commit would drop the user's intended row resize, while
+normalizing recovers the persisted state in the same transaction
+the user explicitly initiated. A `console.warn` is emitted so
+operators see the recovery in dev tools.
+
+The R2 fix is implemented inline in the pipeline (NOT in
+`buildResizeNextAttrs`) because the helper's contract is
+axis-decision purity; the persist-state-recovery is a wire-layer
+concern. The pipeline computes
+`normalizedColSpan = persistedOverflow ? max(1, totalCols -
+startCol + 1) : null` and injects it into the attr diff iff
+`normalizedColSpan !== null && !('colSpan' in nextAttrDiff)`
+(i.e. only when the axis-aware diff didn't already include
+colSpan). The "no-op commit" guard now also checks
+`!persistedOverflow` so a no-change resize on a persisted-overflow
+block STILL triggers the normalization commit.
+
+**Implementation cost (R1 + R2)**: ~30 LOC R1 + ~30 LOC R2 across
+2 files (`resize-snap.ts` for R1; `use-resize-pipeline.ts` for
+both). Regression locked by:
+- (R1) 8 new vitest cases under `describe('snapToColSpan — R1 F2
+  overflow-filter for non-col=1 blocks')` covering
+  `col=3, 5, 7, 11, 12` × `colSpan=2, 6, 8` permutations.
+- (R2) 1 new Playwright test
+  `cf-20d R2 F2 — bottom-only resize on persisted-overflow block
+  normalizes colSpan in same setNodeMarkup transaction` —
+  installs an MDX fixture with persisted-overflow attrs
+  (`col=4, colSpan=6`) at tablet (6-col) viewport, performs
+  bottom-only resize, asserts post-commit `gridColumn === '4 / span 3'`
+  (normalized: `max(1, 6 - 4 + 1) = 3`) NOT `4 / span 6`
+  (preserved invalid).
+
+**Operational rule landed (cf-20d R2 reflection)**: defense
+checks at a wire layer must run UNCONDITIONALLY when the validated
+state is the persisted (input) state, NOT just when the commit
+mutates that state. Persisted state can become invalid
+independently of the current user action (viewport switch,
+external mutation, schema migration). The defense scope is "is
+the state valid BEFORE we write?" — never just "does my action
+make it invalid?".
 
 ### D11 — rowSpan='auto' preservation on right-only resize (R1 F3 fix; axis-aware attr write)
 

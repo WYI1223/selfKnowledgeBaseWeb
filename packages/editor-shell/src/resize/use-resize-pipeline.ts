@@ -1,71 +1,30 @@
 /**
  * @skb/editor-shell useResizePipeline — resize lifecycle owner.
  *
- * Wave 6 cf-20d (2026-05-09) — composes the existing resize visual
- * primitives (<ColRuler>, <SizeTooltip>, <RowLadder>) + the new
- * pure `resize-snap.ts` math + Tiptap `setNodeMarkup` into the
- * actual interactive resize wire. Mirrors the cf-20c-2
- * `useDragDropPipeline` shape (snapshot at start, mutate at commit,
- * NEVER mid-pointermove per the cf-20c-2 R1 reflection rule).
+ * Wave 6 cf-20d (2026-05-09; R1+R2 fixes 2026-05-09) — composes the
+ * existing resize visual primitives (<ColRuler>, <SizeTooltip>,
+ * <RowLadder>) + the pure `resize-snap.ts` math + Tiptap
+ * `setNodeMarkup` into the interactive resize wire. Mirrors the
+ * cf-20c-2 `useDragDropPipeline` shape (snapshot at start, mutate at
+ * commit, NEVER mid-pointermove per the cf-20c-2 R1 reflection rule).
  *
- * Lifecycle (per ADR-0017 D9 + v2-styles.css commit-on-release model):
+ * Lifecycle: pointerdown (snapshot startCol + startColSpan +
+ * startRowSpanAttr|Int + cursor origin + sourceRect + containerWidth)
+ * → window pointermove (snap math drives reactive overlay state;
+ * never mutates Tiptap) → window pointerup (commit-on-release;
+ * setNodeMarkup with axis-aware attr diff via buildResizeNextAttrs;
+ * 2-rAF re-measure; onCommitSuccess callback for dropEpoch reuse) /
+ * esc-cancel / pointercancel (rollback without mutation per
+ * ADR-0017 D8).
  *
- *   resize-start (pointerdown on .gblock-handle.{right|bottom|corner})
- *     ↓
- *     1. Snapshot: { sourceBlockId, axis, startColSpan, startRowSpan,
- *        startRect, containerWidth }
- *     2. Set state.active = true; record cursor origin.
- *     3. Add window-level pointermove + pointerup + pointercancel
- *        listeners (auto-removed on cleanup).
- *
- *   pointermove (window-level)
- *     ↓
- *     1. Compute cursorDeltaX/Y from origin.
- *     2. Resolve snap: snapToColSpan / snapToRowSpan per axis.
- *     3. Update reactive state (cursorX, cursorY, snapColSpan,
- *        snapRowSpan) — drives <ColRuler> stop highlight + <SizeTooltip>
- *        text + <RowLadder> active-rung. NEVER dispatches Tiptap
- *        mutations during pointermove.
- *
- *   pointerup (window-level)
- *     ↓
- *     1. If snap === start values: cancel without mutation (no-op
- *        commit; unchanged-resize is treated as an early bailout).
- *     2. Resolve live PM position via the doc walk (stable ID = pos).
- *     3. Dispatch Tiptap setNodeMarkup with the new attrs (colSpan
- *        for right; rowSpan for bottom; both for corner).
- *     4. Wait 2 rAFs for React commit + browser layout.
- *     5. Re-measure source NodeView at landed position.
- *     6. Invoke `onCommitSuccess(blockId, liveRect)` so the consumer
- *        (EditorShellMount.tsx) can reuse the cf-20c-2 dropEpoch
- *        infrastructure to fire the success-pulse at the new size.
- *     7. Clear all reactive state.
- *
- *   esc-cancel (window keydown)
- *     ↓
- *     Rollback (no Tiptap mutation; per ADR-0017 D8). The pipeline
- *     emits no commit-success callback.
- *
- *   pointercancel (browser-emitted, e.g. user releases over chrome)
- *     ↓
- *     Same as esc-cancel: rollback without mutation.
- *
- * dropEpoch reuse rationale (cf-20d D3 decision; per cf-20c-2 R3
- * reflection "rapid-action animation isolation" canonical pattern):
- *   The cf-20c-2 pipeline owns the success-pulse fields
- *   (lastDroppedBlockId / lastDroppedRect / dropEpoch). cf-20d
- *   resize-commit needs to fire the SAME pulse at the new size.
- *   Two clean designs were considered:
- *     - Option A: extract pulse state into a third sibling hook
- *       `useActionPulse()` consumed by both pipelines + the consumer.
- *     - Option B: cf-20d pipeline accepts an `onCommitSuccess(blockId,
- *       liveRect)` callback as an option; consumer wires it to the
- *       drag pipeline's external setter.
- *   cf-20d ships Option B (simpler; no speculative extraction; the
- *   consumer is already the pulse-mount owner). The drag pipeline
- *   gains a new `setLastDroppedFromExternal(blockId, rect)` method
- *   that wraps the internal setter + dropEpoch increment so resize
- *   commits route through the same canonical "dropped" state.
+ * Decisions in CONTRACT.md (Resize wire section): D1 commit-on-
+ * release; D2 gridKind===prose skips bottom+corner; D3 dropEpoch
+ * reuse via onCommitSuccess → setLastDroppedFromExternal; D6 round-
+ * to-nearest snap; D9 viewportCols-derived totalCols+activeColSnaps
+ * (R1 F1); D10 startCol overflow-filter (R1 F2) + UNCONDITIONAL
+ * persisted-overflow normalize (R2 F2); D11 rowSpan='auto'
+ * preservation via buildResizeNextAttrs axis-aware attr write
+ * (R1 F3).
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Editor } from '@tiptap/core';
@@ -380,15 +339,39 @@ export function useResizePipeline(
         rowChanged &&
         (snapshot.axis === 'bottom' || snapshot.axis === 'corner');
 
-      if (!colChanged && !writeRowSpan) {
+      // R2 F2 fix (2026-05-09) — UNCONDITIONAL persisted-overflow
+      // defense. Pre-R2 the overflow check ran ONLY when colChanged
+      // was true (col-mutating axes). Race scenario the reviewer
+      // identified: user saved a block at desktop with `col=7,
+      // colSpan=8` (valid in 12-col); reloads at tablet (6-col) →
+      // `7 + 8 - 1 = 14 > 6` (invalid). User does bottom-only
+      // resize (axis='bottom', colChanged=false). Pre-R2 the
+      // setNodeMarkup call wrote the new rowSpan AND preserved the
+      // INVALID col/colSpan attrs via the spread. R2 fix:
+      // unconditionally re-check the persisted position; if invalid,
+      // normalize colSpan to `max(1, totalCols - startCol + 1)` and
+      // include the normalized colSpan in THIS commit's
+      // setNodeMarkup transaction (single atomic write — recovery,
+      // not corruption).
+      //
+      // Per cf-20d D10 R2 amendment: normalize (recoverable) over
+      // cancel (drops the user's intended row resize).
+      const persistedOverflow =
+        snapshot.startCol + snapshot.startColSpan - 1 > totalCols;
+      const normalizedColSpan = persistedOverflow
+        ? Math.max(1, totalCols - snapshot.startCol + 1)
+        : null;
+
+      if (!colChanged && !writeRowSpan && !persistedOverflow) {
         // No-op commit (cursor returned to start position OR
         // right-only axis with rowSpan unchanged because we won't
-        // write it anyway). Reset without mutation; no success-pulse.
+        // write it anyway), AND the persisted state isn't broken.
+        // Reset without mutation; no success-pulse.
         resetState();
         return;
       }
 
-      // R1 F2 defense-in-depth: re-validate the post-snap position
+      // R1 F2 defense-in-depth: re-validate the POST-snap position
       // against the grid invariant before dispatching mutation.
       // Should never fire (snapToColSpan already filtered), but if
       // it does, treat as cancel.
@@ -414,13 +397,28 @@ export function useResizePipeline(
       // entirely (preserves 'auto' on prose); bottom-only omits
       // colSpan; corner writes both (only reached for non-prose per
       // ADR-0017 D9).
-      const nextAttrDiff = buildResizeNextAttrs(
+      const nextAttrDiff: Record<string, number> = buildResizeNextAttrs(
         snapshot.axis,
         nextColSpan,
         nextRowSpan,
         colChanged,
         rowChanged,
       );
+      // R2 F2 fix: when persistedOverflow detected AND the axis-
+      // aware diff didn't already include colSpan (e.g. bottom-only
+      // axis), force the normalized colSpan into the diff so the
+      // single setNodeMarkup transaction recovers the invalid grid
+      // position atomically with the user's intended row mutation.
+      // Console-warn so operators see the recovery in dev tools.
+      if (normalizedColSpan !== null && !('colSpan' in nextAttrDiff)) {
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[useResizePipeline R2 F2] persisted grid overflow detected at block ${snapshot.blockId} ` +
+            `(col=${snapshot.startCol}, colSpan=${snapshot.startColSpan}, totalCols=${totalCols}); ` +
+            `normalizing colSpan to ${normalizedColSpan} as part of ${snapshot.axis}-axis commit.`,
+        );
+        nextAttrDiff['colSpan'] = normalizedColSpan;
+      }
       editor
         .chain()
         .command(({ tr }) => {

@@ -586,6 +586,23 @@ the actual interactive resize wire. Public surface added under
   nearest-snap selection per ADR-0016 D2 grid-position invariant. If the
   filter empties the set (e.g. col=12 + smallest snap=2 → overflow),
   returns `startColSpan` as a no-op; user must drag-move leftward first.
+  R2 F1 fix (2026-05-09): `useResponsiveCols` switched to MAX-WIDTH
+  matchMedia queries (`(max-width: 768px)` + `(max-width: 1024px)`) to
+  match grid.css verbatim. Bucket truth table: width<=768→1,
+  768<width<=1024→6, width>1024→12. Pre-R2 the hook used min-width
+  which gave off-by-one at exact 1024/768 boundaries. Boundary widths
+  MUST appear in the unit-test matrix.
+  R2 F2 fix (2026-05-09): pipeline detects
+  `startCol + startColSpan - 1 > totalCols` UNCONDITIONALLY before
+  setNodeMarkup (regardless of axis). On detection, normalizes
+  `colSpan = max(1, totalCols - startCol + 1)` and includes it in the
+  same setNodeMarkup transaction as the user's intended axis mutation.
+  Recovery (single atomic write), NOT corruption — fixes the race
+  scenario where a block saved at desktop with valid attrs becomes
+  invalid at tablet/mobile viewport and a bottom-only resize at the
+  smaller viewport pre-R2 would have preserved the invalid attrs
+  through the spread merge. console.warn emitted so operators see the
+  recovery in dev tools.
 
 `ResizeHandles` is mounted inside `BlockNodeView` so each Tiptap NodeView
 emits the 3 handles. `<ResizeProvider value={...}>` MUST wrap the editor

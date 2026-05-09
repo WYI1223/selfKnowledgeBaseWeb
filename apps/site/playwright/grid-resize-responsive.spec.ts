@@ -65,11 +65,22 @@ function installHappyDomGlobals(win: Window, resizeObserver?: unknown): () => vo
 }
 
 function queryMatchesWidth(query: string, width: number): boolean {
+  // min-width queries (legacy; preserved for any consumer still using them)
   if (query === `(min-width: ${RESPONSIVE_BREAKPOINTS.desktop}px)`) {
     return width >= RESPONSIVE_BREAKPOINTS.desktop;
   }
   if (query === `(min-width: ${RESPONSIVE_BREAKPOINTS.tablet}px)`) {
     return width >= RESPONSIVE_BREAKPOINTS.tablet;
+  }
+  // max-width queries — Wave 6 cf-20d R2 F1: useResponsiveCols
+  // switched to max-width to match grid.css verbatim. Pre-R2 the
+  // hook used min-width which caused off-by-one at 1024px / 768px
+  // boundaries.
+  if (query === `(max-width: ${RESPONSIVE_BREAKPOINTS.desktop}px)`) {
+    return width <= RESPONSIVE_BREAKPOINTS.desktop;
+  }
+  if (query === `(max-width: ${RESPONSIVE_BREAKPOINTS.tablet}px)`) {
+    return width <= RESPONSIVE_BREAKPOINTS.tablet;
   }
 
   throw new Error(`unsupported matchMedia query: ${query}`);
@@ -264,8 +275,22 @@ test.describe('AC#10 resize feedback primitives synthetic harness', () => {
 
 test.describe('ADR-0016 D5 responsive viewport switch + GridContainer wire', () => {
   test('AC#10 — useResponsiveCols matchMedia -> ViewportCols', () => {
+    // Wave 6 cf-20d R2 F1 boundary alignment (2026-05-09): hook
+    // switched from min-width to max-width queries to match
+    // grid.css verbatim. New bucket truth table:
+    //   width <= 768  → 1 col
+    //   768 < width <= 1024 → 6 col
+    //   width > 1024  → 12 col
+    // Pre-R2 widths AT the boundary returned the higher bucket
+    // (off-by-one). Test now uses widths CLEARLY OUTSIDE each
+    // bucket boundary so the assertion is independent of the
+    // boundary inclusivity (which has its own dedicated boundary
+    // tests in packages/editor-shell/src/__tests__/responsive-cols.test.ts).
     const win = new Window();
-    const controller = installMatchMedia(win, RESPONSIVE_BREAKPOINTS.desktop);
+    const controller = installMatchMedia(
+      win,
+      RESPONSIVE_BREAKPOINTS.desktop + 1, // 1025 → desktop bucket (12)
+    );
     const restoreGlobals = installHappyDomGlobals(win);
 
     function ColsHarness() {
@@ -286,10 +311,12 @@ test.describe('ADR-0016 D5 responsive viewport switch + GridContainer wire', () 
       const target = () => host.querySelector('[data-cols]') as HTMLElement | null;
       expect(target()?.dataset.cols).toBe('12');
 
-      act(() => controller.setWidth(RESPONSIVE_BREAKPOINTS.tablet));
+      // Tablet bucket: 768 < width <= 1024. Pick 900 (clearly inside).
+      act(() => controller.setWidth(900));
       expect(target()?.dataset.cols).toBe('6');
 
-      act(() => controller.setWidth(RESPONSIVE_BREAKPOINTS.tablet - 1));
+      // Mobile bucket: width <= 768. Pick 375 (typical mobile, clearly inside).
+      act(() => controller.setWidth(375));
       expect(target()?.dataset.cols).toBe('1');
     } finally {
       act(() => root?.unmount());
@@ -328,8 +355,16 @@ test.describe('ADR-0016 D5 responsive viewport switch + GridContainer wire', () 
   });
 
   test('AC#10 — useAutoRowSpan re-measures under viewport switch without mutating persistent rowSpan integer', () => {
+    // Wave 6 cf-20d R2 F1 boundary alignment: use width OUTSIDE
+    // the bucket boundary (1025) so the assertion is independent
+    // of the corrected boundary inclusivity. Pre-R2 width=1024
+    // gave cols=12; post-R2 width=1024 gives cols=6 (max-width:
+    // 1024 matches).
     const win = new Window();
-    const controller = installMatchMedia(win, RESPONSIVE_BREAKPOINTS.desktop);
+    const controller = installMatchMedia(
+      win,
+      RESPONSIVE_BREAKPOINTS.desktop + 1,
+    );
 
     class MockResizeObserver {
       static instances: MockResizeObserver[] = [];
