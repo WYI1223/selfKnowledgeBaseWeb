@@ -98,6 +98,203 @@ test('sample-blocks edit route — cf-20c-2 drag-handle wire (button + outline +
   await page.screenshot({ fullPage: false, path: SCREENSHOT_PATH });
 });
 
+test('cf-20c-2 R1 F1 — source-lift visual: dragstart applies .skb-block-nodeview--dragging-self to source NodeView only (ADR-0017 D6)', async ({
+  page,
+}) => {
+  // Wave 6 cf-20c-2 R1 F1 lock — codex-pr-reviewer-55 R1 F1 caught
+  // that ADR-0017 D6 source-lift was missing. The pipeline now
+  // exposes `sourceBlockId` via DragDropContext; BlockNodeView reads
+  // it and applies `.skb-block-nodeview--dragging-self` modifier
+  // class when its own block id matches. CSS sets opacity 0.28 +
+  // grayscale 0.4 + dashed outline + pointer-events: none.
+  //
+  // Three structural assertions:
+  //  (a) Pre-drag: NO `.skb-block-nodeview--dragging-self` anywhere
+  //      (steady-state baseline).
+  //  (b) Post-dragstart: EXACTLY 1 `.skb-block-nodeview--dragging-self`
+  //      AND it's the wrapper whose drag-handle was clicked (proves
+  //      sourceBlockId routing through context is correct).
+  //  (c) Post-cancel: 0 `.skb-block-nodeview--dragging-self` again
+  //      (proves sourceBlockId resets to null on terminal action).
+  //
+  // Edge-rect exclusion of source (the other half of D6 source-lift)
+  // is unit-tested via the pipeline's `onDragStart` filter; not
+  // re-asserted here because Playwright would have to introspect the
+  // pipeline's internal `edgeRects` ref which isn't observable from
+  // DOM.
+  await page.goto('/notes/sample-blocks/edit');
+  const editor = page.locator('.ProseMirror').first();
+  await expect(editor).toBeVisible({ timeout: 15_000 });
+  await expect(editor.locator('.skb-block-nodeview').first()).toBeVisible({
+    timeout: 10_000,
+  });
+
+  // (a) Pre-drag: no source-lift class anywhere
+  await expect(page.locator('.skb-block-nodeview--dragging-self')).toHaveCount(0);
+
+  // (b) Dispatch dragstart on the FIRST handle, expect exactly 1 source-lift
+  const firstHandle = page
+    .locator('.skb-block-nodeview .skb-block-nodeview__drag-handle')
+    .first();
+  const sourceBlockId = await firstHandle.getAttribute('data-skb-drag-handle');
+  expect(sourceBlockId).toMatch(/^\d+$/);
+
+  await firstHandle.dispatchEvent('dragstart');
+  await expect(page.locator('.skb-block-nodeview--dragging-self')).toHaveCount(1, {
+    timeout: 5_000,
+  });
+  // The lifted wrapper is the one containing the dragged handle.
+  // Verify by walking up: closest ancestor `.skb-block-nodeview` of
+  // the clicked handle has the modifier class.
+  const isLiftedSelf = await firstHandle.evaluate((el) => {
+    const wrapper = el.closest('.skb-block-nodeview');
+    return wrapper?.classList.contains('skb-block-nodeview--dragging-self') ?? false;
+  });
+  expect(isLiftedSelf).toBe(true);
+
+  // (c) Cancel via Esc → source-lift class removed
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.skb-block-nodeview--dragging-self')).toHaveCount(0, {
+    timeout: 3_000,
+  });
+});
+
+test('cf-20c-2 R1 F4 — terminal drop: dragstart → dragover edge → drop mutates ProseMirror node attrs + fires DropPulse (ADR-0017 D1 + D11)', async ({
+  page,
+}) => {
+  // Wave 6 cf-20c-2 R1 F4 lock — codex-pr-reviewer-55 R1 caught
+  // that pre-R1 Playwright coverage only fired dragstart + dragend,
+  // never the terminal drop. So `applyDropMode` (cf-20c-1 algebra)
+  // never ran and ProseMirror attrs never mutated under integration
+  // testing. F4 fix: full lifecycle assertion that exercises
+  // dragstart → dragover (at edge zone) → drop → mutation + pulse.
+  //
+  // Sample-blocks fixtures are all `colSpan=12` so a split-right on
+  // a colSpan=12 host produces colSpan=6 + colSpan=6 (host shrinks
+  // to left half, source moves to right half). The applyDropMode
+  // algebra is unit-tested at apply-drop-mode.test.ts; this spec
+  // verifies the WIRE — that the algebra's output reaches Tiptap's
+  // setNodeMarkup AND the resulting attrs surface as updated inline
+  // gridColumn styles.
+  //
+  // Cf-20c-2 R1 F2 lock: also assert the DropPulse mounts on
+  // success. The pulse element carries `data-skb-drop-pulse-anchor`
+  // (the EditorShellMount wrapper) — count > 0 proves the pulse
+  // mounted; we don't wait for the full 720ms animation since the
+  // anchor element is what matters structurally.
+  await page.goto('/notes/sample-blocks/edit');
+  const editor = page.locator('.ProseMirror').first();
+  await expect(editor).toBeVisible({ timeout: 15_000 });
+  await expect(editor.locator('.skb-block-nodeview').first()).toBeVisible({
+    timeout: 10_000,
+  });
+  await page.waitForTimeout(500);
+
+  // Pick source (first NodeView) + target (second NodeView). Both are
+  // colSpan=12 in sample-blocks fixtures; a drop at the target's right
+  // edge (within EDGE_W=28 → 14px inside) triggers split-right which
+  // halves the target to colSpan=6 + places source at col=7 colSpan=6.
+  const allWrappers = await page.locator('.skb-block-nodeview').all();
+  expect(allWrappers.length).toBeGreaterThanOrEqual(2);
+
+  const firstWrapper = allWrappers[0];
+  const targetWrapper = allWrappers[1];
+  if (!firstWrapper || !targetWrapper) throw new Error('expected at least 2 NodeView wrappers');
+  const sourceHandle = firstWrapper.locator('.skb-block-nodeview__drag-handle');
+  const sourceBlockId = await sourceHandle.getAttribute('data-skb-drag-handle');
+  const targetBlockId = await targetWrapper
+    .locator('.skb-block-nodeview__drag-handle')
+    .getAttribute('data-skb-drag-handle');
+  expect(sourceBlockId).toMatch(/^\d+$/);
+  expect(targetBlockId).toMatch(/^\d+$/);
+
+  const targetBox = await targetWrapper.boundingBox();
+  if (!targetBox) throw new Error('target wrapper has no bounding box');
+
+  // Drop coordinates: 6px inside the target's right edge (well within
+  // EDGE_W=28 → 14px hit zone for split-right per ADR-0017 D2).
+  const dropX = targetBox.x + targetBox.width - 6;
+  const dropY = targetBox.y + targetBox.height / 2;
+
+  // Capture pre-drop attrs of the source for diff comparison
+  const sourceColBefore = await page
+    .locator('.skb-block-nodeview')
+    .first()
+    .evaluate((el) => el.style.gridColumn);
+
+  // Fire the full drag lifecycle. We dispatch on the document body
+  // for dragover + drop since the pipeline's listener attaches to
+  // the .skb-grid container; bubbling carries the events up.
+  await sourceHandle.dispatchEvent('dragstart');
+  await page.waitForTimeout(50);
+
+  // Use page.evaluate so we can construct a real DragEvent with
+  // clientX/Y (Playwright's locator.dispatchEvent doesn't propagate
+  // those reliably across all browsers). CRITICAL: separate dragover
+  // from drop with `requestAnimationFrame` so React commits the
+  // pipeline's `setActiveMatch` state from dragover before drop's
+  // closure-captured `activeMatch` reads. Without the rAF gap, drop
+  // sees `activeMatch === null` (stale closure) and dispatches
+  // drag-end-mode-none (rollback) — gridColumn stays unchanged.
+  await page.evaluate(
+    ({ x, y }) => {
+      const grid = document.querySelector('.skb-grid');
+      if (!grid) throw new Error('no .skb-grid');
+      const dt = new DataTransfer();
+      const dragoverEvent = new DragEvent('dragover', {
+        bubbles: true,
+        cancelable: true,
+        clientX: x,
+        clientY: y,
+        dataTransfer: dt,
+      });
+      grid.dispatchEvent(dragoverEvent);
+      // Wait one frame so React commits setActiveMatch before drop fires.
+      return new Promise<void>((resolve) => {
+        requestAnimationFrame(() => {
+          const dropEvent = new DragEvent('drop', {
+            bubbles: true,
+            cancelable: true,
+            clientX: x,
+            clientY: y,
+            dataTransfer: dt,
+          });
+          grid.dispatchEvent(dropEvent);
+          // One more frame so React commits the post-drop state.
+          requestAnimationFrame(() => resolve());
+        });
+      });
+    },
+    { x: dropX, y: dropY },
+  );
+  await page.waitForTimeout(200); // Let React commit + Tiptap setNodeMarkup
+
+  // F4 (b): the source block's gridColumn style changed from
+  // `1 / span 12` (cf-20c-2 baseline) to `7 / span 6` (split-right
+  // shifted source to the right half of the host's 12 cols). React
+  // serializes `gridColumn: '7 / span 6'` as `style="grid-column:7 / span 6"`.
+  const sourceColAfter = await page
+    .locator('.skb-block-nodeview')
+    .first()
+    .evaluate((el) => el.style.gridColumn);
+  // Pre-drop: '1 / span 12'; post-drop: '7 / span 6'. Either form
+  // proves the mutation reached Tiptap. If the algebra rejected the
+  // drop (e.g. sourceBlockId === hostBlockId at the moment of drop),
+  // gridColumn stays at '1 / span 12'; that's the failure mode.
+  expect(sourceColAfter).not.toBe(sourceColBefore);
+  expect(sourceColAfter).toMatch(/(span 6|7 \/ span 6)/);
+
+  // F2: DropPulse anchor mounted (proves drag-end-success branch ran
+  // AND lastDroppedBlockId is set AND the EditorShellMount conditional
+  // render path took effect). The 720ms animation will eventually
+  // unmount it via clearLastDropped onAnimationEnd, so we assert
+  // count >= 1 immediately after drop (timing race tolerance).
+  const pulseAnchorCount = await page
+    .locator('[data-skb-drop-pulse-anchor]')
+    .count();
+  expect(pulseAnchorCount).toBeGreaterThanOrEqual(1);
+});
+
 test('cf-20c-2 — drag handles are hidden on mobile (≤768px) per cf-20b R1 view-only path', async ({
   page,
 }) => {

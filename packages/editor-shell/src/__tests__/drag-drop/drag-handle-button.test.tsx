@@ -41,7 +41,7 @@ describe('DragHandleButton', () => {
   it('renders with data-skb-drag-handle=<blockId> + aria-label + draggable=true', () => {
     const noop = vi.fn();
     const { container } = render(
-      withCtx({ onDragStart: noop, onDragEnd: noop }, <DragHandleButton blockId="42" />),
+      withCtx({ onDragStart: noop, onDragEnd: noop, sourceBlockId: null }, <DragHandleButton blockId="42" />),
     );
     const btn = getButton(container);
 
@@ -59,7 +59,7 @@ describe('DragHandleButton', () => {
     const noop = vi.fn();
     const { container } = render(
       withCtx(
-        { onDragStart: noop, onDragEnd: noop },
+        { onDragStart: noop, onDragEnd: noop, sourceBlockId: null },
         <DragHandleButton blockId="9" label="Move callout" />,
       ),
     );
@@ -70,7 +70,7 @@ describe('DragHandleButton', () => {
     const onDragStart = vi.fn();
     const onDragEnd = vi.fn();
     const { container } = render(
-      withCtx({ onDragStart, onDragEnd }, <DragHandleButton blockId="7" />),
+      withCtx({ onDragStart, onDragEnd, sourceBlockId: null }, <DragHandleButton blockId="7" />),
     );
     const btn = getButton(container);
 
@@ -98,7 +98,7 @@ describe('DragHandleButton', () => {
     const onDragStart = vi.fn();
     const onDragEnd = vi.fn();
     const { container } = render(
-      withCtx({ onDragStart, onDragEnd }, <DragHandleButton blockId="3" />),
+      withCtx({ onDragStart, onDragEnd, sourceBlockId: null }, <DragHandleButton blockId="3" />),
     );
     const btn = getButton(container);
 

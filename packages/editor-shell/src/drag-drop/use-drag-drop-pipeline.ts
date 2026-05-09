@@ -102,6 +102,14 @@ export interface UseDragDropPipelineReturn {
   readonly onDragStart: (blockId: string, origin: { x: number; y: number }) => void;
   /** Bound to the per-block drag-handle button's dragend (cleanup fallback). */
   readonly onDragEnd: (origin: { x: number; y: number }) => void;
+  /**
+   * Wave 6 cf-20c-2 R1 F2 — DropPulse cleanup callback.
+   * Consumer (EditorShellMount) wires `<DropPulse onAnimationEnd={clearLastDropped} />`
+   * so the pulse unmounts after its 720ms keyframe completes; the
+   * pipeline's `lastDroppedBlockId` resets to `null`, preparing the
+   * state for the next drag cycle.
+   */
+  readonly clearLastDropped: () => void;
 }
 
 interface SerializedBlock extends IdentifiedBlock {
@@ -229,7 +237,19 @@ export function useDragDropPipeline(
       if (!editor) return;
       const blocks = snapshotBlocks(editor);
       const rects = measureBlockRects(editor, blocks);
+      // Wave 6 cf-20c-2 R1 F1 fix (2026-05-09) — ADR-0017 D6 source-
+      // lift compliance. Edge-rects MUST be computed from the
+      // baseline-WITHOUT-source so the drop hit-test never matches
+      // the source block's own edges (which would let the user drop
+      // onto themselves at the lifted position — meaningless mode).
+      // Pre-R1 edges included the source; tiebreak still produced a
+      // hit when the cursor returned to the source position. The
+      // source-lift visual on the source NodeView (opacity 0.28 +
+      // grayscale via .skb-block-nodeview--dragging-self CSS class) is
+      // applied separately via DragDropContext.sourceBlockId →
+      // BlockNodeView CSS class binding.
       const layouts: BlockLayout[] = blocks
+        .filter((b) => b.id !== blockId)
         .map((b) => {
           const rect = rects.get(b.id);
           return rect ? { blockId: b.id, rect } : null;
@@ -273,9 +293,26 @@ export function useDragDropPipeline(
       const y = event.clientY;
       const last = lastCursorRef.current;
       const now = performance.now();
+      // Wave 6 cf-20c-2 R1 F3 fix (2026-05-09) — velocity unit
+      // alignment with `tiebreak()` contract. ADR-0017 D3 specifies
+      // the velocity threshold + direction-aware tiebreak in
+      // **px/frame** at 60fps (16.67ms/frame); `tiebreak()` reads
+      // `velocity.vx` / `vy` in those units. Pre-R1 the pipeline
+      // computed raw `delta px / delta ms` which under-triggered the
+      // direction filter (e.g. a real cursor moving at 60 px/sec —
+      // a slow drag — has `vxPxPerMs ≈ 0.06` which is FAR below the
+      // 0.5 px/frame threshold; tiebreak fell back to spatial order
+      // even when the user had clear directional intent). Multiply
+      // by VELOCITY_WINDOW_MS (= 16) so the unit is px/frame
+      // assuming 60fps. Real frame rate may differ but the threshold
+      // is intentionally tolerant (0.5 px/frame ≈ 30 px/sec) and
+      // the math holds for any framerate ≥ 30fps.
       const velocity =
         last && now - last.t < VELOCITY_WINDOW_MS * 4
-          ? { vx: (x - last.x) / Math.max(1, now - last.t), vy: (y - last.y) / Math.max(1, now - last.t) }
+          ? {
+              vx: ((x - last.x) / Math.max(1, now - last.t)) * VELOCITY_WINDOW_MS,
+              vy: ((y - last.y) / Math.max(1, now - last.t)) * VELOCITY_WINDOW_MS,
+            }
           : { vx: 0, vy: 0 };
       lastCursorRef.current = { x, y, t: now };
       setCursor({ x, y });
@@ -383,6 +420,16 @@ export function useDragDropPipeline(
     };
   }, [active, editor, gridSelector, activeMatch, sourceBlockId]);
 
+  // Wave 6 cf-20c-2 R1 F2 fix (2026-05-09) — DropPulse cleanup hook.
+  // The consumer (EditorShellMount.tsx) renders <DropPulse> inside the
+  // landed block when `lastDroppedBlockId !== null`; on the
+  // `onAnimationEnd` callback it calls `clearLastDropped()` to unmount
+  // the pulse so a follow-up drag's mount cycle isn't suppressed by a
+  // stale "already pulsed" state.
+  const clearLastDropped = useCallback(() => {
+    setLastDroppedBlockId(null);
+  }, []);
+
   return {
     state: {
       active,
@@ -396,5 +443,6 @@ export function useDragDropPipeline(
     layoutState,
     onDragStart,
     onDragEnd,
+    clearLastDropped,
   };
 }

@@ -1,9 +1,10 @@
-import type { ComponentType } from 'react';
+import { useContext, type ComponentType } from 'react';
 import { NodeViewWrapper, type ReactNodeViewProps } from '@tiptap/react';
 import type { BlockRegistry, BlockViewProps } from '@skb/block-foundation';
 import type { ZodTypeAny } from 'zod';
 import { extractGridPosition, gridPlacementStyle } from './grid-style';
 import { DragHandleButton } from './drag-drop/drag-handle-button';
+import { DragDropContext } from './drag-drop/drag-context';
 
 /**
  * Wave 6 carry-forward #18 (2026-05-08) — bridge from a Tiptap NodeView to
@@ -91,6 +92,20 @@ function blockIdFromProps(props: ReactNodeViewProps): string {
   return typeof pos === 'number' ? String(pos) : '';
 }
 
+/**
+ * Wave 6 cf-20c-2 R1 F1 — compose className from base + draggingSelf
+ * + unregistered modifiers. Per ADR-0017 D6 source-lift, the source
+ * NodeView gets `.skb-block-nodeview--dragging-self` during active
+ * drag (CSS rule in BlockNodeView.css applies opacity 0.28 +
+ * grayscale 0.4 per `/mnt/d/download/web/v2-styles.css:218-226`).
+ */
+function nodeViewClassName(isDraggingSelf: boolean, isUnregistered: boolean): string {
+  const parts = ['skb-block-nodeview'];
+  if (isUnregistered) parts.push('skb-block-nodeview--unregistered');
+  if (isDraggingSelf) parts.push('skb-block-nodeview--dragging-self');
+  return parts.join(' ');
+}
+
 export function makeBlockNodeView({
   registry,
 }: BlockNodeViewFactoryProps): ComponentType<ReactNodeViewProps> {
@@ -101,11 +116,17 @@ export function makeBlockNodeView({
     const gridPos = extractGridPosition(editorProps);
     const wrapperStyle = gridPos ? gridPlacementStyle(gridPos) : undefined;
     const blockId = blockIdFromProps(props);
+    // Wave 6 cf-20c-2 R1 F1 — read sourceBlockId from DragDropContext
+    // (null when no drag pipeline is mounted OR when no drag is
+    // active). When this NodeView's blockId matches, apply the
+    // dragging-self modifier class so CSS lifts the source visually.
+    const ctx = useContext(DragDropContext);
+    const isDraggingSelf = blockId !== '' && ctx?.sourceBlockId === blockId;
 
     if (!ui) {
       return (
         <NodeViewWrapper
-          className="skb-block-nodeview skb-block-nodeview--unregistered"
+          className={nodeViewClassName(isDraggingSelf, true)}
           data-skb-block-kind={nodeName}
           style={wrapperStyle}
         >
@@ -124,7 +145,7 @@ export function makeBlockNodeView({
     const EditorView: ComponentType<BlockViewProps<ZodTypeAny>> = ui.EditorView;
     return (
       <NodeViewWrapper
-        className="skb-block-nodeview"
+        className={nodeViewClassName(isDraggingSelf, false)}
         data-skb-block-kind={nodeName}
         style={wrapperStyle}
       >

@@ -400,18 +400,36 @@ C.2-5 and C.2-8 add the editor-side drag/drop UX primitives under
   (Wave 6 cf-20c-2) — React context bridging the per-block presentational
   drag-handle button to the lifecycle owner (`useDragDropPipeline()` mounted
   at `EditorShellMount.tsx`). Provider value: `{ onDragStart(blockId, origin),
-  onDragEnd(origin) }`. Default null = degraded mode (button renders, drag
-  callbacks no-op).
+  onDragEnd(origin), sourceBlockId }`. The `sourceBlockId` field
+  (Wave 6 cf-20c-2 R1 F1 fix 2026-05-09) exposes the currently-lifted
+  drag source so `BlockNodeView.tsx` can apply the
+  `.skb-block-nodeview--dragging-self` modifier class for the ADR-0017
+  D6 source-lift visual (opacity 0.28 + grayscale 0.4 per
+  `/mnt/d/download/web/v2-styles.css:218-226`); null = no active drag
+  (steady state). Default context value null = degraded mode (button
+  renders, drag callbacks no-op, no lift).
 - `useDragDropPipeline({editor, gridSelector?})` (Wave 6 cf-20c-2) — drag/drop
   lifecycle owner hook. Composes the existing primitives (snapshot,
   edge-rects, tiebreak, `applyDropMode`, layoutReducer, OutlineOverlay,
   DragGhost, DropPulse, useEscCancel) into the actual interactive drag.
-  Returns `{state, layoutState, onDragStart, onDragEnd}`. The `state.active`
-  / `state.activeMatch` / `state.cursor` / `state.lastDroppedBlockId`
-  fields drive `<OutlineOverlay>` + `<DragGhost>` + `<DropPulse>` mounts
-  at the consumer layer. Block ID source per cf-20c-2 D2: ProseMirror
-  node `pos` as string (Path A; UUID-based stable IDs deferred to a
-  future schema-mod PR per cf-20c-2 D2 rationale).
+  Returns `{state, layoutState, onDragStart, onDragEnd, clearLastDropped}`.
+  The `state.active` / `state.activeMatch` / `state.cursor` /
+  `state.lastDroppedBlockId` fields drive `<OutlineOverlay>` +
+  `<DragGhost>` + `<DropPulse>` mounts at the consumer layer.
+  `clearLastDropped()` (Wave 6 cf-20c-2 R1 F2 fix 2026-05-09) is wired
+  to `<DropPulse onAnimationEnd={clearLastDropped} />` at the consumer
+  layer so the pulse unmounts after its 720ms keyframe; `lastDroppedBlockId`
+  resets to null preparing for the next drag cycle. Block ID source per
+  cf-20c-2 D2: ProseMirror node `pos` as string (Path A; UUID-based
+  stable IDs deferred to a future schema-mod PR). ADR-0017 D6
+  source-lift: `onDragStart` filters the source out of the snapshot
+  layouts BEFORE computing edge-rects, so the lifted source can never
+  self-match in tiebreak (cf-20c-2 R1 F1 fix). Velocity unit per
+  ADR-0017 D3: pipeline multiplies raw `delta px / delta ms` by
+  `VELOCITY_WINDOW_MS = 16` so `tiebreak()` reads `vx`/`vy` in the
+  contracted `px/frame at 60fps` unit (cf-20c-2 R1 F3 fix; pre-R1 the
+  raw px/ms unit under-triggered the direction filter for any drag
+  slower than ~30000 px/sec).
 
 Drag/drop edge-width is coupled to grid `--gap` via `EDGE_W = 2 * GAP`.
 `EDGE_W = 28` and `GAP = 14` ensure the 14px gap between adjacent blocks is

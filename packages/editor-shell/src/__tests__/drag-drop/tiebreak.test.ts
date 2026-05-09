@@ -71,6 +71,26 @@ describe('tiebreak', () => {
     expect(tiebreak([velocityWinner, spatialWinner], { vx: 0.4, vy: 0.3 })).toBe(spatialWinner);
   });
 
+  it('step 2 px/frame contract: slow rightward drag at 1 px/frame still triggers direction filter (cf-20c-2 R1 F3)', () => {
+    // Wave 6 cf-20c-2 R1 F3 lock — the velocity unit contract is
+    // **px/frame at 60fps**, not px/ms or px/sec. A real cursor
+    // moving at 60 px/sec (a slow but intentional drag) computes
+    // to ~1 px/frame at 60fps, which IS above the 0.5 threshold;
+    // the direction filter MUST fire.
+    //
+    // Pre-R1 the pipeline (`use-drag-drop-pipeline.ts`) passed raw
+    // `delta px / delta ms` (~0.06 for 60 px/sec), well below
+    // threshold; tiebreak fell back to spatial order, ignoring the
+    // user's directional intent. R1 fix: pipeline multiplies by 16
+    // (≈ 1 frame at 60fps). This test documents the contract by
+    // asserting tiebreak honors direction at vx=1 (the corrected unit
+    // for a slow real drag).
+    const leftBlock = match('left', 'split-right', 7, 0, 0);
+    const rightBlock = match('right', 'split-left', 7, 114, 0);
+
+    expect(tiebreak([leftBlock, rightBlock], { vx: 1, vy: 0 })).toBe(rightBlock);
+  });
+
   it('step 3 spatial x-axis smaller left wins', () => {
     const leftmost = match('left', 'split-left', 4, 0, 0);
     const rightmost = match('right', 'split-left', 4, 100, 0);

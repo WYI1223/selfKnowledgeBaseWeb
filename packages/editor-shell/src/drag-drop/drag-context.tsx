@@ -37,6 +37,17 @@ export interface DragDropContextValue {
   readonly onDragStart: (blockId: string, origin: DragHandleStartOrigin) => void;
   /** Called from the per-block drag-handle button's dragend handler. */
   readonly onDragEnd: (origin: DragHandleEndOrigin) => void;
+  /**
+   * Wave 6 cf-20c-2 R1 F1 — currently-lifted source block ID.
+   *
+   * Per ADR-0017 D6 source-lift: during an active drag, the source
+   * NodeView visually "lifts" (opacity 0.28, grayscale 0.4 per
+   * `/mnt/d/download/web/v2-styles.css:218-226 .gblock.dragging-self`).
+   * `BlockNodeView.tsx` reads this field via `useContext(DragDropContext)`
+   * and applies the `.skb-block-nodeview--dragging-self` modifier class
+   * when its own block id matches. Null = no active drag (steady state).
+   */
+  readonly sourceBlockId: string | null;
 }
 
 /**

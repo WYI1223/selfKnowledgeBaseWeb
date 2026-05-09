@@ -508,6 +508,196 @@ NodeViews exist) and assert per-block handle structure + dragstart
 overlay mount. Pre-cf-20c-2 assertions on the standalone DragHandle
 are removed entirely (no replacement; the standalone is deprecated).
 
+### D8 — ADR-0017 D6 source-lift implementation (cf-20c-2 R1 F1 fix 2026-05-09)
+
+**Trigger**: codex-pr-reviewer-55 R1 F1 caught that ADR-0017 D6
+("拖动源块视觉消失 (lifted) — 落点判定基于无源块的 grid")
+was not implemented in cf-20c-2 R0. Two omissions:
+
+1. **Edge-rect inclusion of source** — `use-drag-drop-pipeline.ts`
+   `onDragStart` snapshotted ALL blocks including the source. The
+   resulting `edgeRects` array contained 4 edges for the source
+   itself, which `tiebreak()` could match if the cursor returned
+   over the source's old position during drag-over (producing a
+   meaningless self-match drop).
+
+2. **Visual lift on the source NodeView** — no DOM cue that the
+   block was being moved (vs duplicated). Per v2 contract at
+   `/mnt/d/download/web/v2-styles.css:218-226 .gblock.dragging-self`:
+   opacity 0.28 + grayscale(0.4) + dashed outline + "moving →" caption.
+
+**Fix (R1)**:
+
+- `onDragStart` filters out the source from layouts BEFORE calling
+  `computeEdgeRects`: `blocks.filter((b) => b.id !== blockId)`.
+  After R1 the edgeRects array contains only non-source blocks; the
+  source can never self-match in tiebreak.
+
+- `DragDropContextValue` extends to expose `sourceBlockId: string | null`.
+  `EditorShellMount.tsx` includes the field in its memoized provider
+  value (now depends on `pipeline.state.sourceBlockId`).
+
+- `BlockNodeView.tsx` reads `useContext(DragDropContext)` and
+  computes `isDraggingSelf = blockId !== '' && ctx?.sourceBlockId === blockId`.
+  The `nodeViewClassName(isDraggingSelf, isUnregistered)` helper
+  composes `.skb-block-nodeview` + `.skb-block-nodeview--unregistered`
+  + `.skb-block-nodeview--dragging-self` modifier classes
+  conditionally. Both the registered + unregistered fallback paths
+  consume the helper.
+
+- `BlockNodeView.css` adds a `.skb-block-nodeview--dragging-self`
+  rule per the v2 contract: `opacity: 0.28; filter: grayscale(0.4);
+  outline: 1.5px dashed var(--text-3); outline-offset: -2px;
+  pointer-events: none; transition: none`. The `pointer-events: none`
+  is defense-in-depth on top of the edge-rect filter — even if a
+  future renderer somehow re-includes the source in edgeRects, the
+  lifted DOM can't receive drop events. The "moving →" caption
+  pseudo-element is deferred to cf-23 read-mode unification (visual
+  polish PR).
+
+**Regression lock**: NEW `sample-blocks-drag-handle.spec.ts` test
+"cf-20c-2 R1 F1 — source-lift visual" asserts: pre-drag 0
+`.skb-block-nodeview--dragging-self`; post-dragstart EXACTLY 1
+(matching the wrapper containing the clicked handle); post-Esc 0.
+The edge-rect-exclusion half is unit-tested via the pipeline's
+`onDragStart` filter (not separately asserted in DOM because the
+filter operates on internal refs).
+
+### D9 — DropPulse mount path A (cf-20c-2 R1 F2 fix 2026-05-09)
+
+**Trigger**: codex-pr-reviewer-55 R1 F2 caught that the pipeline
+JSDoc + `editor-shell/CONTRACT.md` claimed `<DropPulse>` was wired
+on drag-end-success but `EditorShellMount.tsx` never rendered it.
+The pipeline tracked `lastDroppedBlockId` but the consumer mount
+was missing. Two fix paths:
+
+- **Path A (recommended by reviewer; chosen)**: wire DropPulse at
+  the EditorShellMount layer.
+- **Path B**: defer to cf-20d (resize) and remove the doc claim.
+
+cf-20c-2 R1 picks Path A because (a) the doc claim was already
+shipped to main as part of cf-20c-2 R0; reverting requires another
+doc-only PR; (b) cf-20d will need pulse-on-success-resize too but
+the EditorShellMount-side mount is reusable (cf-20d adds a second
+"successful action" trigger to the same `lastDroppedBlockId` field
+or a sibling state); (c) the pulse is a tangible user-feedback
+affordance that's part of the v2 ADR-0017 D11 contract — shipping
+the wire makes the cf-20c-2 demo visually complete.
+
+**Fix (R1)**:
+
+- `useDragDropPipeline` exposes a NEW `clearLastDropped()` callback
+  alongside `state.lastDroppedBlockId`. The callback resets the
+  state to `null` after the pulse animation ends.
+
+- `EditorShellMount.tsx` mounts a NEW local helper component
+  `<DropPulseAtRect rect={pipeline.state.blockRects.get(lastDroppedBlockId)}
+  onAnimationEnd={pipeline.clearLastDropped} />` whenever
+  `lastDroppedBlockId !== null`. The helper renders `<DropPulse>`
+  inside a `position: fixed` wrapper at the landed block's rect.
+
+- The rect comes from the pipeline's `blockRects` Map snapshotted
+  at drag-start. cf-20c-2 R1 acknowledges this means the pulse
+  appears at the SOURCE block's pre-drag position (correct for the
+  "block landed here" semantic; the source was visually lifted +
+  is now at its new position via Tiptap's setNodeMarkup, but
+  blockRects still has the pre-drag rect). Future PR could re-measure
+  post-drop for the new position; cf-20c-2 R1 honors the simpler
+  "snapshot once, animate at original position" model since the
+  visual delta is small (the user dragged from there).
+
+**Regression lock**: the F4 terminal-drop spec (D11 below) asserts
+`[data-skb-drop-pulse-anchor]` count >= 1 after drop. The
+EditorShellMount wraps `<DropPulse>` in a `<div data-skb-drop-pulse-anchor>`
+positioned wrapper, so the data attribute uniquely identifies the
+pulse mount.
+
+### D10 — Velocity unit alignment with `tiebreak()` contract (cf-20c-2 R1 F3 fix 2026-05-09)
+
+**Trigger**: codex-pr-reviewer-55 R1 F3 caught a unit mismatch.
+ADR-0017 D3 specifies the velocity threshold + direction-aware
+tiebreak in **px/frame at 60fps** (16.67ms/frame); `tiebreak()`'s
+threshold is `0.5 px/frame`. cf-20c-2 R0 pipeline computed velocity
+as raw `delta px / delta ms` (px/ms). A real cursor moving at 60
+px/sec — a typical slow drag — has `vxPxPerMs ≈ 0.06`, FAR below
+the 0.5 px/frame threshold. Direction-aware tiebreak under-triggered;
+fell back to spatial ordering even when the user had clear
+directional intent (e.g. dragging rightward over a gap between two
+adjacent blocks; user intends split-left on the right block but
+spatial fallback picked split-right on the left block).
+
+**Fix (R1)**: pipeline multiplies the raw px/ms by `VELOCITY_WINDOW_MS = 16`
+(≈ 1 frame at 60fps) before passing to `tiebreak()`. Math:
+`(delta_px / delta_ms) * 16 = delta_px / (delta_ms / 16) = px/frame_at_60fps`.
+Real frame rate may differ (mobile devices at 30fps, low-end
+hardware) but the threshold is intentionally tolerant — at 30fps
+the unit becomes "px/2-frame" but the threshold of 0.5 still
+corresponds to a meaningful directional intent (≥ 30 px/sec is
+above noise floor).
+
+**Regression lock**: NEW vitest case in `tiebreak.test.ts`:
+"step 2 px/frame contract: slow rightward drag at 1 px/frame still
+triggers direction filter". Asserts `tiebreak({vx: 1, vy: 0})`
+honors direction (rightward → split-left on right block) at the
+corrected unit. Pre-R1 the pipeline would have computed `vx ≈ 0.06`
+(below threshold) and the test would have caught the wrong fallback.
+
+### D11 — Terminal-drop Playwright integration spec (cf-20c-2 R1 F4 fix 2026-05-09)
+
+**Trigger**: codex-pr-reviewer-55 R1 F4 caught that the cf-20c-2
+R0 Playwright suite never exercised the terminal drop. Both the
+new `sample-blocks-drag-handle.spec.ts` AND the carried-forward
+`c4-3-drag-handle.spec.ts` only fired `dragstart` + `Esc cancel`
+or `dragend` (without `dragover` + `drop`). So `applyDropMode`
+algebra was never invoked; ProseMirror attrs never mutated;
+DropPulse couldn't appear; epoch increment was never asserted.
+
+The wire could have been broken in any of these layers and the
+R0 suite would have stayed green.
+
+**Fix (R1)**: NEW spec in `sample-blocks-drag-handle.spec.ts`:
+"cf-20c-2 R1 F4 — terminal drop: dragstart → dragover edge → drop
+mutates ProseMirror node attrs + fires DropPulse". Full lifecycle:
+
+1. Pick first NodeView wrapper as source, second as target (both
+   colSpan=12 in sample-blocks fixtures).
+2. Compute drop coordinates 6px inside target's right edge (within
+   EDGE_W=28 → 14px hit zone for split-right per ADR-0017 D2).
+3. Capture `sourceColBefore = '1 / span 12'` (cf-20b D2 inline
+   placement).
+4. Dispatch `dragstart` on source handle.
+5. Use `page.evaluate` to construct DragEvent with `clientX/Y` +
+   `dataTransfer = new DataTransfer()`, dispatch `dragover` on
+   `.skb-grid`.
+6. Wait one `requestAnimationFrame` so React commits the pipeline's
+   `setActiveMatch` from dragover BEFORE drop fires.
+7. Dispatch `drop` with same coordinates.
+8. Assert `sourceColAfter !== sourceColBefore` + matches
+   `(span 6|7 \/ span 6)` (split-right algebra: source moves to
+   right half col=7 colSpan=6).
+9. Assert `[data-skb-drop-pulse-anchor]` count >= 1 (DropPulse
+   wrapper mounted via D9 fix).
+
+**Critical timing detail discovered during F4 implementation**:
+the dragover + drop must be separated by a `requestAnimationFrame`
+because the pipeline's drop handler closure captures `activeMatch`
+from React state. Synchronous dragover-then-drop dispatch reads a
+stale (null) `activeMatch` because React batches the
+`setActiveMatch(winner)` call from dragover to the next render.
+Without the rAF gap, drop dispatches `drag-end-mode-none` (rollback)
+and the wire appears broken even when correct. Documented in the
+spec's inline comment so future test authors don't lose this hour
+debugging.
+
+**Operational rule landed**: **Playwright integration tests for
+React state-driven event chains MUST separate sequential events
+with `requestAnimationFrame` (or `await page.waitForTimeout(20)`) when
+the second event reads state set by the first.** Synchronous
+dispatch reads the closure-captured stale state, not the post-render
+committed state. This applies to any cf-20d resize test, cf-20e
+kebab-action test, cf-22 keyboard test that exercises chained UI
+events.
+
 ## Acceptance
 
 ```bash
@@ -523,15 +713,15 @@ pnpm exec tsx scripts/check-ui-touch.ts \
 ```
 
 ```bash
-# AC-2: editor-shell + apps/site test suites green
+# AC-2: editor-shell + apps/site test suites green (R1 +1 vitest from F3 tiebreak unit)
 pnpm --filter @skb/editor-shell test 2>&1 | grep -E 'Tests'
-# Expected: 185 passed (152 cf-20b + 27 cf-20c-1 algebra + 6 cf-20c-2 button)
+# Expected: 186 passed (185 cf-20c-2 R0 + 1 R1 F3 tiebreak px/frame contract test)
 pnpm --filter @skb/site test 2>&1 | grep -E 'Tests'
 # Expected: 78 passed | 1 skipped (carried from cf-20b R2)
 ```
 
 ```bash
-# AC-3: targeted Playwright passes (drag-handle integration + carried specs)
+# AC-3: targeted Playwright passes (drag-handle R0 + R1 specs + carried)
 pnpm --filter @skb/site exec playwright test \
   playwright/sample-blocks-drag-handle.spec.ts \
   playwright/sample-blocks-edit-loads.spec.ts \
@@ -539,13 +729,13 @@ pnpm --filter @skb/site exec playwright test \
   playwright/sample-blocks-grid-layout.spec.ts \
   src/__tests__/e2e/c4-3-drag-handle.spec.ts \
   --reporter=line --workers=1 2>&1 | tail -3
-# Expected: 9 passed (2 new cf-20c-2 + 1 edit-loads + 1 read + 3 grid-layout + 1 updated c4-3 + 1 cf-20b R1 mobile)
+# Expected: 11 passed (4 in sample-blocks-drag-handle: R0 wire + R1 F1 source-lift + R1 F4 terminal drop + R0 mobile-hidden; +1 edit-loads + 1 read + 3 grid-layout + 1 updated c4-3)
 ```
 
 ```bash
 # AC-4: full apps/site Playwright suite passes
 pnpm --filter @skb/site exec playwright test --reporter=line --workers=1 2>&1 | tail -3
-# Expected: 55 passed | 14 skipped | 0 failed (was 53 in cf-20b R2; +2 new cf-20c-2 specs)
+# Expected: 57 passed | 14 skipped | 0 failed (was 55 in cf-20c-2 R0; +2 new R1 specs: F1 source-lift + F4 terminal drop)
 ```
 
 ```bash
@@ -599,6 +789,37 @@ grep -cE '!important;' apps/site/src/styles/grid.css
 # AC-12: HTML5 native DnD MIME constant exported (cf-20c-2 D1 Q7 verdict)
 grep -E 'DRAG_HANDLE_MIME = .application/x-skb-block-id.' packages/editor-shell/src/drag-drop/drag-handle-button.tsx
 # Expected: 1 match (the private MIME so other DnD handlers don't pick up our payload)
+```
+
+```bash
+# AC-13 (cf-20c-2 R1 F1 lock): source-lift CSS class present in
+# BlockNodeView.css; pipeline filter excludes source from edge-rects
+grep -cE '^\.skb-block-nodeview--dragging-self' packages/editor-shell/src/BlockNodeView.css
+# Expected: 1 (the source-lift CSS rule per ADR-0017 D6 v2 contract)
+grep -cE '\.filter\(\(b\) => b\.id !== blockId\)' packages/editor-shell/src/drag-drop/use-drag-drop-pipeline.ts
+# Expected: 1 (the edge-rect source exclusion at onDragStart per ADR-0017 D6)
+```
+
+```bash
+# AC-14 (cf-20c-2 R1 F2 lock): DropPulse mounted via clearLastDropped
+grep -cE 'clearLastDropped' packages/editor-shell/src/drag-drop/use-drag-drop-pipeline.ts
+# Expected: ≥ 3 (state setter binding + return type + return value)
+grep -cE 'data-skb-drop-pulse-anchor' apps/site/src/components/EditorShellMount.tsx
+# Expected: 1 (the DropPulseAtRect helper wrapper)
+```
+
+```bash
+# AC-15 (cf-20c-2 R1 F3 lock): velocity unit alignment with tiebreak px/frame contract
+grep -cE 'VELOCITY_WINDOW_MS' packages/editor-shell/src/drag-drop/use-drag-drop-pipeline.ts
+# Expected: ≥ 3 (constant declaration + 2 multiplications in the velocity computation)
+```
+
+```bash
+# AC-16 (cf-20c-2 R1 F4 lock): terminal-drop Playwright spec exists + asserts mutation
+grep -cE 'cf-20c-2 R1 F4 — terminal drop' apps/site/playwright/sample-blocks-drag-handle.spec.ts
+# Expected: 1 (the test name)
+grep -cE "expect\(sourceColAfter\)\.not\.toBe\(sourceColBefore\)" apps/site/playwright/sample-blocks-drag-handle.spec.ts
+# Expected: 1 (the assertion that the source's gridColumn actually mutated post-drop)
 ```
 
 ## Reflection landing

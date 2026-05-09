@@ -4,6 +4,7 @@ import {
   ApiAdapter,
   DragDropProvider,
   DragGhost,
+  DropPulse,
   EditModeBanner,
   EditorShell,
   GridContainer,
@@ -99,10 +100,17 @@ export function EditorShellMount({
   // on drop. The pipeline state drives <OutlineOverlay> + <DragGhost>
   // mounts below; the per-block <DragHandleButton> inside each
   // BlockNodeView gutter calls into the pipeline via DragDropProvider.
+  // R1 F1: dragContextValue now also exposes `sourceBlockId` so the
+  // per-block BlockNodeView can apply the .skb-block-nodeview--dragging-self
+  // CSS modifier (ADR-0017 D6 source-lift visual).
   const pipeline = useDragDropPipeline({ editor });
   const dragContextValue = useMemo(
-    () => ({ onDragStart: pipeline.onDragStart, onDragEnd: pipeline.onDragEnd }),
-    [pipeline.onDragStart, pipeline.onDragEnd],
+    () => ({
+      onDragStart: pipeline.onDragStart,
+      onDragEnd: pipeline.onDragEnd,
+      sourceBlockId: pipeline.state.sourceBlockId,
+    }),
+    [pipeline.onDragStart, pipeline.onDragEnd, pipeline.state.sourceBlockId],
   );
   // Esc cancel during active drag (per ADR-0017 D8).
   useEscCancel({
@@ -281,6 +289,62 @@ export function EditorShellMount({
           )}
         </>
       )}
+
+      {/*
+        Wave 6 cf-20c-2 R1 F2 fix (2026-05-09) — DropPulse mount.
+        Pre-R1 the pipeline tracked `lastDroppedBlockId` but never
+        rendered <DropPulse>. cf-20c-2 R1 wires the mount here per
+        ADR-0017 D11 (drop-pulse fires ONLY on drag-end-success;
+        cancel + mode-none + outside-grid drop do NOT trigger).
+        Position the pulse at the landed block's bounding rect via
+        the pipeline's snapshotted blockRects map — the rect was
+        captured at drag-start and the position-mutation algebra
+        (cf-20c-1 applyDropMode) hasn't moved the SOURCE block in
+        DOM space yet at the moment lastDroppedBlockId is set
+        (Tiptap's setNodeMarkup batches the layout update one frame
+        later). The pulse animates 720ms then onAnimationEnd fires
+        clearLastDropped() which resets the state for the next drag.
+      */}
+      {pipeline.state.lastDroppedBlockId !== null &&
+        pipeline.state.blockRects.get(pipeline.state.lastDroppedBlockId) && (
+          <DropPulseAtRect
+            rect={pipeline.state.blockRects.get(pipeline.state.lastDroppedBlockId)!}
+            onAnimationEnd={pipeline.clearLastDropped}
+          />
+        )}
     </>
+  );
+}
+
+/**
+ * Wave 6 cf-20c-2 R1 F2 helper — render a <DropPulse> at a fixed
+ * viewport rect (the landed block's bounding rect snapshotted from
+ * the pipeline). Needed because DropPulse uses `position: absolute;
+ * inset: 0` which expects a positioned parent; the simplest way to
+ * give it one without mounting inside ProseMirror is a `position:
+ * fixed` wrapper at the rect coordinates.
+ */
+function DropPulseAtRect({
+  rect,
+  onAnimationEnd,
+}: {
+  rect: DOMRectReadOnly;
+  onAnimationEnd: () => void;
+}) {
+  return (
+    <div
+      data-skb-drop-pulse-anchor
+      style={{
+        position: 'fixed',
+        left: `${rect.left}px`,
+        top: `${rect.top}px`,
+        width: `${rect.width}px`,
+        height: `${rect.height}px`,
+        pointerEvents: 'none',
+        zIndex: 50,
+      }}
+    >
+      <DropPulse onAnimationEnd={onAnimationEnd} />
+    </div>
   );
 }
