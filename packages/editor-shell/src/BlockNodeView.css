@@ -10,28 +10,48 @@
  * stripe is suppressed when nested under .skb-block-nodeview so only
  * one stripe renders on the editor path.
  *
- * R2 honesty audit (codex-pr-reviewer-55 R1 P2 + P3 fix):
- *   - Token authority: most color/border/radius/shadow values come from
- *     @skb/design-tokens (--surface, --border, --border-strong, --accent,
- *     --shadow-sm, --radius, --duration-fast, --ease-base, --mono,
- *     --text-2, --text-3, --panel, --bg, and the 8 ADR-0018 D3 per-kind
- *     hue tokens --accent-callout / --accent-runnable / --accent-image /
- *     --accent-math / --accent-pdf / --accent-jupyter / --accent-nn-viz /
- *     --accent-agent-flow). The ONE exception class is the "kind-soft"
- *     chip tint set + the wrapper-level accent-soft outer-ring color:
- *     these are scoped as editor-local CSS custom properties on
- *     .skb-block-nodeview itself (NOT promoted to global :root) because
- *     they are editor-decoration-only and would balloon the global
- *     design-tokens surface (24 NEW per-kind chip tokens + 1 accent-soft)
- *     without clear cross-package reuse. Promotion is documented as an
- *     out-of-scope cf-21+ candidate in PR.md.
- *   - Stripe coexistence: the wrapper carries the visible stripe; inner
- *     block CSS rules (border-top: 2px solid var(--accent-X) on the
- *     [data-block=...] / [data-callout-variant] / [data-code-language] /
- *     [data-image-loading] selectors) are zeroed via descendant
- *     selectors below when nested inside .skb-block-nodeview. Static
- *     read-route /notes/<slug> renders inner blocks without the wrapper,
- *     so the inner stripe still shows there.
+ * R2 honesty audit (codex-pr-reviewer-55 R1 P2 + P3; R3 F2 follow-up):
+ *   - Token authority: 18 distinct @skb/design-tokens CSS variables are
+ *     consumed by this file. Source-of-truth verification command:
+ *       grep -oE 'var\(--[a-z0-9-]+' packages/editor-shell/src/BlockNodeView.css | sort -u
+ *     Two groups:
+ *       (a) 7 ADR-0018 D3 per-kind hue tokens for the wrapper top
+ *           stripe — `--accent-runnable` (used by callout AND
+ *           componentCode per cf-19 D2; only 7 unique stripe colors
+ *           across 8 kinds), `--accent-image`, `--accent-math`,
+ *           `--accent-pdf`, `--accent-jupyter`, `--accent-nn-viz`,
+ *           `--accent-agent-flow`.
+ *       (b) 11 chrome / typography tokens — `--surface`, `--border`,
+ *           `--border-strong`, `--accent` (selected + focus-within
+ *           border-color), `--shadow-sm` (hover lift), `--panel` (chip
+ *           default bg fallback before per-kind redefinition), `--text-2`
+ *           (chip default text fallback), `--text-3` (unregistered
+ *           fallback body text), `--mono` (chip + fallback body
+ *           typography), `--duration-fast` + `--ease-base` (transition).
+ *     NOT consumed by this file (negative-space lock so future drift
+ *     against this comment is detectable): `--radius`, `--bg`,
+ *     `--accent-soft` (only inline-default fallback inside the
+ *     editor-local --skb-block-nodeview--accent-soft declaration —
+ *     not a direct consumption), `--accent-canvas` (kind-canvas is not
+ *     mounted on the editor surface). `--accent-callout` is intentionally
+ *     unused because it is NOT a real token in design-tokens; callout
+ *     consumes `--accent-runnable` per ADR-0018 D3 hue grouping.
+ *   - Editor-local CSS variables (4 total, scoped to .skb-block-nodeview
+ *     itself, NOT promoted to global :root): `--skb-block-nodeview--accent-soft`
+ *     (1 shared, the selected outer-ring color); `--skb-block-nodeview--chip-bg`,
+ *     `--skb-block-nodeview--chip-border`, `--skb-block-nodeview--chip-text`
+ *     (3 redefined per kind for the gutter chip tint). Rationale: editor-
+ *     decoration-only; promoting to global tokens would add 4 base + up
+ *     to 24 per-kind variants for limited cross-package reuse. Promotion
+ *     to design-tokens is documented as an out-of-scope cf-21+ candidate
+ *     in the cf-19 PR.md.
+ *   - Stripe coexistence (P3 closure): the wrapper carries the visible
+ *     stripe; inner block CSS rules (border-top: 2px solid var(--accent-X)
+ *     on the [data-block=...] / [data-callout-variant] / [data-code-language] /
+ *     [data-image-loading] selectors) are zeroed via descendant selectors
+ *     below when nested inside .skb-block-nodeview. Static read-route
+ *     /notes/<slug> renders inner blocks without the wrapper, so the
+ *     inner stripe still shows there.
  *
  * DOM contract (BlockNodeView.tsx):
  *   .skb-block-nodeview                    ← v2 .gblock card

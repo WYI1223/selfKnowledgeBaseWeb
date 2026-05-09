@@ -16,8 +16,9 @@ the wrapper so it sits flush at the card top edge; suppress the inner
 component stripe inside the wrapper (single source of stripe truth on
 the editor path; static read-route inner stripes preserved). Extend
 `apps/site/playwright/sample-blocks-edit-loads.spec.ts` to lock the new
-visual identity per kind (8 unique stripe colors + .gblock card chrome
-+ gutter shell + chip text). Update sister-doc
+visual identity per kind (8 per-kind stripe probes / 7 unique computed
+colors — callout + componentCode share the runnable hue per ADR-0018
+D3 — + .gblock card chrome + gutter shell + chip text). Update sister-doc
 `packages/editor-shell/CONTRACT.md` § Public surface to document the
 new DOM contract and 7 public selectors. Plan-doc PR.md (this file)
 records the design decisions, scope fences, and ADR-0011 D9 metadata
@@ -107,7 +108,8 @@ with a new `### BlockNodeView wrapper styles` public-surface section
 declaring 7 NEW public CSS selectors (`.skb-block-nodeview` +
 `__gutter` + `__kind-chip` + `__body` + `--unregistered` +
 `__fallback` + the per-kind `[data-skb-block-kind="<kind>"]` family)
-and 8 NEW editor-local CSS variables. That is a CONTRACT.md change in
+and 4 editor-local CSS variables (`--skb-block-nodeview--accent-soft` +
+`--chip-bg` + `--chip-border` + `--chip-text`). That is a CONTRACT.md change in
 1 package per Row 1 → **PRE-COMMIT CLAUDE REVIEW (stage 4) fires**.
 Codex-pr-reviewer-55 R1 caught the v0.2 mis-classification; R2 PR.md
 records the corrected verdict so the orchestrator dispatch ledger is
@@ -132,8 +134,9 @@ obligation; the regen'd screenshot satisfies D9.5.
     ApiAdapter chain (cf-18 NodeView wiring + cf-19 v0.2 wrapper
     chrome). Each of 8 component-block kinds now mounts inside a
     discrete v2 `.gblock` card with a per-kind 2px top stripe in
-    its ADR-0018 D3 hue (8 stripe colors total, callout + code
-    sharing the runnable 145° hue → 7 unique colors). The
+    its ADR-0018 D3 hue (8 per-kind stripe probes / 7 unique
+    computed colors — callout + componentCode share the runnable
+    145° hue per cf-19 D2 table). The
     `.skb-block-nodeview__gutter` shell renders top-left of every
     card with the kind chip text matching the kind name (with
     `componentCode` displayed as `code`). 4 sequential same-kind
