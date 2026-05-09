@@ -81,8 +81,10 @@ export function makeKebabDelete(editor: Editor | null) {
  * inserted block's bounding rect is re-measured + handed to the
  * cf-20c-2 dropEpoch infrastructure for the success-pulse.
  *
- * Per cf-20e D7: `node.toJSON()` is Tiptap canonical serialization;
- * the inserted node gets a new ProseMirror pos automatically. cf-20e
+ * Per cf-20e D7: uses ProseMirror `tr.insert(insertPos, node.copy())`
+ * primitive (NOT Tiptap insertContentAt which silently no-ops on
+ * schema-mismatch — empirically observed at R0). `node.copy()` shares
+ * source's attrs + marks but with a fresh content Fragment. cf-20e
  * doesn't have stable UUID attrs (cf-20c-2 D2 path A uses pos-as-id),
  * so no UUID clearing needed; future schema-mod PR will need to
  * clear UUIDs on duplicate.

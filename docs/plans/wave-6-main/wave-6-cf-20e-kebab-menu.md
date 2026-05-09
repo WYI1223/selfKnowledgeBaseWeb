@@ -40,7 +40,7 @@ reuse the cf-20c-2 dropEpoch infrastructure for the success-pulse on
 duplicate (positional change visual feedback). MODIFY
 `apps/site/src/styles/global.css` to import `kebab-menu.css`. NEW
 `apps/site/playwright/sample-blocks-kebab-menu.spec.ts` (~250 LOC,
-4 tests: button visibility / delete commit / duplicate commit /
+5 tests: button visibility / delete commit / duplicate commit /
 change-kind commit) consuming the cf-20c-2 byte-snapshot fixture
 isolation pattern. NEW vitest unit
 `packages/editor-shell/src/__tests__/kebab/change-kind-attrs.test.ts`
@@ -147,11 +147,14 @@ callbacks):
      `editor.chain().command(({tr, state}) => { const pos = ...; const
      node = tr.doc.nodeAt(pos); tr.delete(pos, pos + node.nodeSize);
      return true }).run()`.
-   - `onDuplicate(blockId)` — find live PM position; capture
-     `node.toJSON()`; dispatch
-     `editor.chain().insertContentAt(pos + node.nodeSize, nodeJson).run()`.
-     Optionally fire success-pulse via `pipeline.setLastDroppedFromExternal`
-     after 2-rAF re-measure (cf-20c-2 R3 dropEpoch pattern reuse).
+   - `onDuplicate(blockId)` — find live PM position; capture the
+     node reference; dispatch via `editor.chain().command(({tr}) => {
+     tr.insert(insertPos, node.copy()); return true }).run()`. Uses
+     ProseMirror `tr.insert` primitive directly, NOT Tiptap's
+     `insertContentAt(pos, nodeJson)` which empirically silently no-ops
+     on schema-mismatch (per cf-20e D7 + R0 finding). Fires success-pulse
+     via `pipeline.setLastDroppedFromExternal` after 2-rAF re-measure
+     (cf-20c-2 R3 dropEpoch pattern reuse, third consumer).
    - `onChangeKind(blockId, newKind)` — find live PM position; resolve
      new node type via `editor.schema.nodes[newKind]`; build new
      attrs via `buildChangeKindAttrs(node.attrs, newKind,
@@ -471,14 +474,23 @@ visually anchors at the duplicated block's bounding rect after
 change-kind do NOT fire pulses (delete removes the block; change-
 kind keeps the block in place — no positional change to celebrate).
 
-### D7 — `node.toJSON()` for duplicate (Tiptap canonical pattern); fresh PM positions assigned automatically
+### D7 — `tr.insert(insertPos, node.copy())` for duplicate (ProseMirror primitive); Tiptap insertContentAt silently no-ops on schema-mismatch
 
-Tiptap's `node.toJSON()` returns the canonical serialized
-representation; `editor.chain().insertContentAt(pos + nodeSize,
-nodeJson).run()` re-creates a structurally identical node at the
-new position with fresh ProseMirror positions (the inserted node
-gets a new `pos` per ProseMirror's internal indexing). Future
-cf-20e+ schema-mod PRs that introduce stable UUID attrs will need
+R0 empirically observed: `editor.chain().insertContentAt(pos + nodeSize,
+node.toJSON()).run()` returned success (chain reported no error) but
+NO node was actually inserted into the doc. The Tiptap insertContentAt
+implementation silently no-ops when the JSON-roundtripped attrs don't
+exactly match the target NodeType's `addAttributes` defaults shape
+— a known behavior class.
+
+cf-20e ships `editor.chain().command(({tr}) => { tr.insert(insertPos,
+node.copy()); return true }).run()` instead — direct ProseMirror
+`tr.insert` primitive bypassing the Tiptap parser. `node.copy()`
+produces a structurally identical Node sharing the source's attrs
++ marks but with a fresh content Fragment. Reliable across all 8
+component-block kinds.
+
+Future cf-20e+ schema-mod PRs that introduce stable UUID attrs will need
 to clear those at duplicate (so the duplicate doesn't have the
 SAME UUID as the source — that would break drop-pulse anchoring +
 any other UUID-keyed state). cf-20e doesn't have stable UUIDs yet
@@ -525,13 +537,13 @@ pnpm --filter @skb/site exec playwright test \
   playwright/sample-blocks-drag-handle.spec.ts \
   playwright/sample-blocks-edit-loads.spec.ts \
   --reporter=line --workers=1 2>&1 | tail -3
-# Expected: 14 passed (4 new cf-20e + 6 cf-20d + 3 cf-20c-2 + 1 edit-loads)
+# Expected: 15 passed (5 new cf-20e + 6 cf-20d + 3 cf-20c-2 + 1 edit-loads)
 ```
 
 ```bash
 # AC-4: full apps/site Playwright suite passes
 pnpm --filter @skb/site exec playwright test --reporter=line --workers=1 2>&1 | tail -3
-# Expected: 67 passed | 14 skipped | 0 failed (was 63 in cf-20d; +4 new kebab specs)
+# Expected: 68 passed | 14 skipped | 0 failed (was 63 in cf-20d; +5 new kebab specs)
 ```
 
 ```bash

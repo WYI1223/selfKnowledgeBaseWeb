@@ -10,8 +10,9 @@ import { expect, test } from '@playwright/test';
  * `<button class="skb-block-nodeview__kebab">⋮</button>` inside the
  * cf-19 gutter shell + a floating menu with 3 actions:
  *   - Delete (silent; Tiptap history Cmd+Z to undo)
- *   - Duplicate (insertContentAt + cf-20c-2 R3 dropEpoch reuse for
- *     success-pulse)
+ *   - Duplicate (tr.insert primitive + cf-20c-2 R3 dropEpoch reuse for
+ *     success-pulse; NOT insertContentAt which silently no-ops on
+ *     schema-mismatch per cf-20e D7)
  *   - Change kind… (sub-menu with 8 BlockKind options;
  *     drop-and-default attr translation per cf-20e D3)
  *
@@ -200,7 +201,7 @@ test('cf-20e — Duplicate action inserts a copy + fires success-pulse via cf-20
   await page
     .locator('.skb-kebab-menu .skb-kebab-menu__item[data-skb-kebab-action="duplicate"]')
     .click();
-  // Wait for Tiptap insertContentAt + 2-rAF re-measure + success-pulse mount.
+  // Wait for ProseMirror tr.insert + 2-rAF re-measure + success-pulse mount.
   await page.waitForTimeout(400);
 
   const afterCount = await wrappers.count();
@@ -214,7 +215,7 @@ test('cf-20e — Duplicate action inserts a copy + fires success-pulse via cf-20
   const secondKindAfter = await wrappers.nth(1).getAttribute('data-skb-block-kind');
   expect(
     secondKindAfter,
-    'cf-20e Duplicate: duplicated block MUST share `data-skb-block-kind` with the source (cf-20e D7 node.toJSON canonical serialization)',
+    'cf-20e Duplicate: duplicated block MUST share `data-skb-block-kind` with the source (cf-20e D7 tr.insert + node.copy primitive)',
   ).toBe(sourceKind);
 
   // cf-20e D6: success-pulse mounts via cf-20c-2 dropEpoch reuse.
