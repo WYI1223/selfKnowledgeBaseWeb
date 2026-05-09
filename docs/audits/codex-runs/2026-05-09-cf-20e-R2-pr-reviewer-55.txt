@@ -1,0 +1,631 @@
+Reading additional input from stdin...
+OpenAI Codex v0.125.0 (research preview)
+--------
+workdir: /home/weiyi/selfKnowledgeBaseWeb
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: danger-full-access
+reasoning effort: xhigh
+reasoning summaries: none
+session id: 019e0e8e-dd67-7ab2-b1b9-c402d580a027
+--------
+user
+Wave 6 cf-20e R2 — verdict-only verification of R1 doc-drift fixes.
+
+Branch wave-6-cf-20e-kebab-menu @ commit 816af51 on top of b48daf5. R1 returned FAIL with 2 PR.md/comment doc drifts; orchestrator fixed both in-place (no code changes).
+
+CONSTRAINTS PER RULES 5+6:
+- DO NOT re-run pnpm check or full Playwright (no code changes since R1's pre-verified gates)
+- DO NOT re-read ADR-0006 / orchestrator-reflections / aux ADRs
+- READ: 816af51 commit content (PR.md + EditorShellKebabActions.ts + sample-blocks-kebab-menu.spec.ts; 3 files only)
+- Verdict in <5 min
+
+R1 F1 (PR.md D7 + 2 source comments said insertContentAt/node.toJSON when impl uses tr.insert/node.copy) RESOLVED:
+- PR.md D7 section rewritten to describe tr.insert+node.copy + explicit reference to insertContentAt empirical no-op
+- PR.md line 152 (Files section) duplicated callback now describes tr.insert primitive
+- EditorShellKebabActions.ts line 84 JSDoc updated
+- sample-blocks-kebab-menu.spec.ts line 13 + 218 doc-comment updated
+
+R1 F2 (PR.md said 4 specs / 14 passed / 67 passed; reality 5/15/68) RESOLVED:
+- 5 sites in PR.md updated to 5 specs / 15 passed / 68 passed (lines 43, 540, 546)
+
+Verify both findings closed by spot-checking the 3 modified files. Verdict PASS or FAIL with line-anchored remediation. If PASS, on stage 5 you commit per ADR-0006 D8 explicit-file-list staging.
+exec
+/bin/bash -lc "sed -n '1,220p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/63976030/skills/using-superpowers/SKILL.md && sed -n '1,220p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/63976030/skills/verification-before-completion/SKILL.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+---
+name: using-superpowers
+description: Use when starting any conversation - establishes how to find and use skills, requiring Skill tool invocation before ANY response including clarifying questions
+---
+
+<SUBAGENT-STOP>
+If you were dispatched as a subagent to execute a specific task, skip this skill.
+</SUBAGENT-STOP>
+
+<EXTREMELY-IMPORTANT>
+If you think there is even a 1% chance a skill might apply to what you are doing, you ABSOLUTELY MUST invoke the skill.
+
+IF A SKILL APPLIES TO YOUR TASK, YOU DO NOT HAVE A CHOICE. YOU MUST USE IT.
+
+This is not negotiable. This is not optional. You cannot rationalize your way out of this.
+</EXTREMELY-IMPORTANT>
+
+## Instruction Priority
+
+Superpowers skills override default system prompt behavior, but **user instructions always take precedence**:
+
+1. **User's explicit instructions** (CLAUDE.md, GEMINI.md, AGENTS.md, direct requests) — highest priority
+2. **Superpowers skills** — override default system behavior where they conflict
+3. **Default system prompt** — lowest priority
+
+If CLAUDE.md, GEMINI.md, or AGENTS.md says "don't use TDD" and a skill says "always use TDD," follow the user's instructions. The user is in control.
+
+## How to Access Skills
+
+**In Claude Code:** Use the `Skill` tool. When you invoke a skill, its content is loaded and presented to you—follow it directly. Never use the Read tool on skill files.
+
+**In Copilot CLI:** Use the `skill` tool. Skills are auto-discovered from installed plugins. The `skill` tool works the same as Claude Code's `Skill` tool.
+
+**In Gemini CLI:** Skills activate via the `activate_skill` tool. Gemini loads skill metadata at session start and activates the full content on demand.
+
+**In other environments:** Check your platform's documentation for how skills are loaded.
+
+## Platform Adaptation
+
+Skills use Claude Code tool names. Non-CC platforms: see `references/copilot-tools.md` (Copilot CLI), `references/codex-tools.md` (Codex) for tool equivalents. Gemini CLI users get the tool mapping loaded automatically via GEMINI.md.
+
+# Using Skills
+
+## The Rule
+
+**Invoke relevant or requested skills BEFORE any response or action.** Even a 1% chance a skill might apply means that you should invoke the skill to check. If an invoked skill turns out to be wrong for the situation, you don't need to use it.
+
+```dot
+digraph skill_flow {
+    "User message received" [shape=doublecircle];
+    "About to EnterPlanMode?" [shape=doublecircle];
+    "Already brainstormed?" [shape=diamond];
+    "Invoke brainstorming skill" [shape=box];
+    "Might any skill apply?" [shape=diamond];
+    "Invoke Skill tool" [shape=box];
+    "Announce: 'Using [skill] to [purpose]'" [shape=box];
+    "Has checklist?" [shape=diamond];
+    "Create TodoWrite todo per item" [shape=box];
+    "Follow skill exactly" [shape=box];
+    "Respond (including clarifications)" [shape=doublecircle];
+
+    "About to EnterPlanMode?" -> "Already brainstormed?";
+    "Already brainstormed?" -> "Invoke brainstorming skill" [label="no"];
+    "Already brainstormed?" -> "Might any skill apply?" [label="yes"];
+    "Invoke brainstorming skill" -> "Might any skill apply?";
+
+    "User message received" -> "Might any skill apply?";
+    "Might any skill apply?" -> "Invoke Skill tool" [label="yes, even 1%"];
+    "Might any skill apply?" -> "Respond (including clarifications)" [label="definitely not"];
+    "Invoke Skill tool" -> "Announce: 'Using [skill] to [purpose]'";
+    "Announce: 'Using [skill] to [purpose]'" -> "Has checklist?";
+    "Has checklist?" -> "Create TodoWrite todo per item" [label="yes"];
+    "Has checklist?" -> "Follow skill exactly" [label="no"];
+    "Create TodoWrite todo per item" -> "Follow skill exactly";
+}
+```
+
+## Red Flags
+
+These thoughts mean STOP—you're rationalizing:
+
+| Thought | Reality |
+|---------|---------|
+| "This is just a simple question" | Questions are tasks. Check for skills. |
+| "I need more context first" | Skill check comes BEFORE clarifying questions. |
+| "Let me explore the codebase first" | Skills tell you HOW to explore. Check first. |
+| "I can check git/files quickly" | Files lack conversation context. Check for skills. |
+| "Let me gather information first" | Skills tell you HOW to gather information. |
+| "This doesn't need a formal skill" | If a skill exists, use it. |
+| "I remember this skill" | Skills evolve. Read current version. |
+| "This doesn't count as a task" | Action = task. Check for skills. |
+| "The skill is overkill" | Simple things become complex. Use it. |
+| "I'll just do this one thing first" | Check BEFORE doing anything. |
+| "This feels productive" | Undisciplined action wastes time. Skills prevent this. |
+| "I know what that means" | Knowing the concept ≠ using the skill. Invoke it. |
+
+## Skill Priority
+
+When multiple skills could apply, use this order:
+
+1. **Process skills first** (brainstorming, debugging) - these determine HOW to approach the task
+2. **Implementation skills second** (frontend-design, mcp-builder) - these guide execution
+
+"Let's build X" → brainstorming first, then implementation skills.
+"Fix this bug" → debugging first, then domain-specific skills.
+
+## Skill Types
+
+**Rigid** (TDD, debugging): Follow exactly. Don't adapt away discipline.
+
+**Flexible** (patterns): Adapt principles to context.
+
+The skill itself tells you which.
+
+## User Instructions
+
+Instructions say WHAT, not HOW. "Add X" or "Fix Y" doesn't mean skip workflows.
+---
+name: verification-before-completion
+description: Use when about to claim work is complete, fixed, or passing, before committing or creating PRs - requires running verification commands and confirming output before making any success claims; evidence before assertions always
+---
+
+# Verification Before Completion
+
+## Overview
+
+Claiming work is complete without verification is dishonesty, not efficiency.
+
+**Core principle:** Evidence before claims, always.
+
+**Violating the letter of this rule is violating the spirit of this rule.**
+
+## The Iron Law
+
+```
+NO COMPLETION CLAIMS WITHOUT FRESH VERIFICATION EVIDENCE
+```
+
+If you haven't run the verification command in this message, you cannot claim it passes.
+
+## The Gate Function
+
+```
+BEFORE claiming any status or expressing satisfaction:
+
+1. IDENTIFY: What command proves this claim?
+2. RUN: Execute the FULL command (fresh, complete)
+3. READ: Full output, check exit code, count failures
+4. VERIFY: Does output confirm the claim?
+   - If NO: State actual status with evidence
+   - If YES: State claim WITH evidence
+5. ONLY THEN: Make the claim
+
+Skip any step = lying, not verifying
+```
+
+## Common Failures
+
+| Claim | Requires | Not Sufficient |
+|-------|----------|----------------|
+| Tests pass | Test command output: 0 failures | Previous run, "should pass" |
+| Linter clean | Linter output: 0 errors | Partial check, extrapolation |
+| Build succeeds | Build command: exit 0 | Linter passing, logs look good |
+| Bug fixed | Test original symptom: passes | Code changed, assumed fixed |
+| Regression test works | Red-green cycle verified | Test passes once |
+| Agent completed | VCS diff shows changes | Agent reports "success" |
+| Requirements met | Line-by-line checklist | Tests passing |
+
+## Red Flags - STOP
+
+- Using "should", "probably", "seems to"
+- Expressing satisfaction before verification ("Great!", "Perfect!", "Done!", etc.)
+- About to commit/push/PR without verification
+- Trusting agent success reports
+- Relying on partial verification
+- Thinking "just this once"
+- Tired and wanting work over
+- **ANY wording implying success without having run verification**
+
+## Rationalization Prevention
+
+| Excuse | Reality |
+|--------|---------|
+| "Should work now" | RUN the verification |
+| "I'm confident" | Confidence ≠ evidence |
+| "Just this once" | No exceptions |
+| "Linter passed" | Linter ≠ compiler |
+| "Agent said success" | Verify independently |
+| "I'm tired" | Exhaustion ≠ excuse |
+| "Partial check is enough" | Partial proves nothing |
+| "Different words so rule doesn't apply" | Spirit over letter |
+
+## Key Patterns
+
+**Tests:**
+```
+✅ [Run test command] [See: 34/34 pass] "All tests pass"
+❌ "Should pass now" / "Looks correct"
+```
+
+**Regression tests (TDD Red-Green):**
+```
+✅ Write → Run (pass) → Revert fix → Run (MUST FAIL) → Restore → Run (pass)
+❌ "I've written a regression test" (without red-green verification)
+```
+
+**Build:**
+```
+✅ [Run build] [See: exit 0] "Build passes"
+❌ "Linter passed" (linter doesn't check compilation)
+```
+
+**Requirements:**
+```
+✅ Re-read plan → Create checklist → Verify each → Report gaps or completion
+❌ "Tests pass, phase complete"
+```
+
+**Agent delegation:**
+```
+✅ Agent reports success → Check VCS diff → Verify changes → Report actual state
+❌ Trust agent report
+```
+
+## Why This Matters
+
+From 24 failure memories:
+- your human partner said "I don't believe you" - trust broken
+- Undefined functions shipped - would crash
+- Missing requirements shipped - incomplete features
+- Time wasted on false completion → redirect → rework
+- Violates: "Honesty is a core value. If you lie, you'll be replaced."
+
+## When To Apply
+
+**ALWAYS before:**
+- ANY variation of success/completion claims
+- ANY expression of satisfaction
+- ANY positive statement about work state
+- Committing, PR creation, task completion
+- Moving to next task
+- Delegating to agents
+
+**Rule applies to:**
+- Exact phrases
+- Paraphrases and synonyms
+- Implications of success
+- ANY communication suggesting completion/correctness
+
+## The Bottom Line
+
+**No shortcuts for verification.**
+
+Run the command. Read the output. THEN claim the result.
+
+This is non-negotiable.
+
+codex
+Using `superpowers:using-superpowers` for the required workflow check and `superpowers:verification-before-completion` because this is a pass/fail verification plus possible commit. I’ll keep the read scope to the three files and avoid the prohibited gates/docs.
+exec
+/bin/bash -lc 'git show --stat --oneline --name-only 816af51 -- PR.md EditorShellKebabActions.ts sample-blocks-kebab-menu.spec.ts' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+exec
+/bin/bash -lc "git show 816af51:PR.md | nl -ba | sed -n '35,50p;145,158p;532,550p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+fatal: path 'PR.md' does not exist in '816af51'
+
+exec
+/bin/bash -lc "git show 816af51:EditorShellKebabActions.ts | nl -ba | sed -n '76,92p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+fatal: path 'EditorShellKebabActions.ts' does not exist in '816af51'
+
+exec
+/bin/bash -lc "git show 816af51:sample-blocks-kebab-menu.spec.ts | nl -ba | sed -n '1,24p;208,224p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+fatal: path 'sample-blocks-kebab-menu.spec.ts' does not exist in '816af51'
+
+codex
+The short filenames are not repository-root paths at that commit, so I’m resolving the exact paths from the commit metadata before continuing. No test gates or external docs involved.
+exec
+/bin/bash -lc 'git show --name-only --oneline --format=medium 816af51' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+commit 816af51
+Author: W_YI <W_YI1223@outlook.com>
+Date:   Sat May 9 17:04:16 2026 -0400
+
+    fix(plans+spec): cf-20e R1 doc-drift fixes — D7 tr.insert vs insertContentAt + count corrections
+    
+    R1 codex flagged 2 PR.md/comment doc drifts:
+    1. PR.md D7 + 2 source comments still said insertContentAt + node.toJSON,
+       but implementation correctly uses tr.insert + node.copy primitive (R0
+       empirically observed insertContentAt silently no-ops on schema-mismatch).
+    2. PR.md test counts said 4 specs / 14 passed / 67 passed, but reality is
+       5 / 15 / 68. Updated all 3 sites.
+    
+    Code unchanged. ux-ui-lead's reflection rule violated again ("post-fix
+    mechanical grep mandatory") — adding meta-rule: doc claims about
+    implementation MUST be regenerated AFTER the implementation lands, not
+    written from the spec brief.
+    
+    Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+
+apps/site/playwright/sample-blocks-kebab-menu.spec.ts
+apps/site/src/components/EditorShellKebabActions.ts
+docs/plans/wave-6-main/wave-6-cf-20e-kebab-menu.md
+
+exec
+/bin/bash -lc "git show 816af51:docs/plans/wave-6-main/wave-6-cf-20e-kebab-menu.md | nl -ba | sed -n '35,50p;145,158p;280,330p;532,550p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+    35	exports map entry. MODIFY
+    36	`apps/site/src/components/EditorShellMount.tsx` (~50 LOC delta) to
+    37	wire `<KebabProvider>` with imperative `onDelete` / `onDuplicate` /
+    38	`onChangeKind` callbacks that operate on the live Tiptap editor +
+    39	reuse the cf-20c-2 dropEpoch infrastructure for the success-pulse on
+    40	duplicate (positional change visual feedback). MODIFY
+    41	`apps/site/src/styles/global.css` to import `kebab-menu.css`. NEW
+    42	`apps/site/playwright/sample-blocks-kebab-menu.spec.ts` (~250 LOC,
+    43	5 tests: button visibility / delete commit / duplicate commit /
+    44	change-kind commit) consuming the cf-20c-2 byte-snapshot fixture
+    45	isolation pattern. NEW vitest unit
+    46	`packages/editor-shell/src/__tests__/kebab/change-kind-attrs.test.ts`
+    47	covering the pure attr-translation logic. Update `editor-shell/CONTRACT.md`
+    48	+ `apps/site/CONTRACT.md` per ADR-0006 #6 sister-doc rule.
+    49	
+    50	## files
+   145	     `liveBlockPositions` snapshot pattern (reuses the cf-20c-2
+   146	     pipeline-snapshot helper); dispatch
+   147	     `editor.chain().command(({tr, state}) => { const pos = ...; const
+   148	     node = tr.doc.nodeAt(pos); tr.delete(pos, pos + node.nodeSize);
+   149	     return true }).run()`.
+   150	   - `onDuplicate(blockId)` — find live PM position; capture the
+   151	     node reference; dispatch via `editor.chain().command(({tr}) => {
+   152	     tr.insert(insertPos, node.copy()); return true }).run()`. Uses
+   153	     ProseMirror `tr.insert` primitive directly, NOT Tiptap's
+   154	     `insertContentAt(pos, nodeJson)` which empirically silently no-ops
+   155	     on schema-mismatch (per cf-20e D7 + R0 finding). Fires success-pulse
+   156	     via `pipeline.setLastDroppedFromExternal` after 2-rAF re-measure
+   157	     (cf-20c-2 R3 dropEpoch pattern reuse, third consumer).
+   158	   - `onChangeKind(blockId, newKind)` — find live PM position; resolve
+   280	    - first kebab has `aria-label="Block actions"` + computed `cursor: pointer`
+   281	    - pre-click: 0 `.skb-kebab-menu` mounted
+   282	    - click first kebab: 1 `.skb-kebab-menu` mounted with 3 `.skb-kebab-menu__item` elements
+   283	    - menu items text: "Delete", "Duplicate", "Change kind…"
+   284	    - Esc: menu unmounts (0 `.skb-kebab-menu`)
+   285	    - click first kebab → click "Delete": block count decreases by 1
+   286	    - click first kebab → click "Duplicate": block count increases by 1; new block matches source's `data-skb-block-kind`
+   287	    - click first kebab → click "Change kind…" → "Code": first block's `data-skb-block-kind === "componentCode"`; gridColumn unchanged (`1 / span 12`)
+   288	
+   289	- flow: `/notes/sample-blocks/edit` at viewport 375×812 (mobile per
+   290	    ADR-0017 D9). All `.skb-block-nodeview__kebab` rendered in the
+   291	    React tree but each has computed `display === 'none'` per the
+   292	    cf-20e mobile @media rule. Click on the kebab area does not open
+   293	    the menu (button is display:none — pointer events route through).
+   294	  target_url: /notes/sample-blocks/edit (at 375×812 viewport)
+   295	  playwright_spec: apps/site/playwright/sample-blocks-kebab-menu.spec.ts:"cf-20e kebab hidden on mobile (≤768px) per ADR-0017 D9"
+   296	  screenshot_archive: docs/audits/screenshots/wave-6-cf-20e-kebab-menu.png
+   297	  assertions:
+   298	    - viewport set to 375×812
+   299	    - .skb-block-nodeview__kebab count > 0 in DOM (React tree unchanged)
+   300	    - first .skb-block-nodeview__kebab computed `display === 'none'`
+   301	
+   302	## Why (user feedback)
+   303	
+   304	cf-20e is PR 6 of 9 in the locked cf-20 sequence. User directive
+   305	2026-05-09 (verbatim, dispatched as cf-20a + carried through):
+   306	
+   307	> "全部做，不允许 defer，必须保质保量，出现问题会直接让你推翻重写。
+   308	>  ... 全部对齐 v2."
+   309	
+   310	cf-20d closed the resize half. cf-20e closes the per-block actions
+   311	half — Delete / Duplicate / Change-kind are the canonical block
+   312	operations in any block-editor (Notion / Tiptap reference UI both
+   313	have them in a kebab menu). Pre-cf-20e the editor had no per-block
+   314	delete or duplicate UI (user had to select the block via keyboard
+   315	+ Tiptap default keymap, which is unintuitive); change-kind required
+   316	direct MDX file editing.
+   317	
+   318	## Design source
+   319	
+   320	- v2-design-granularity does NOT specify kebab visuals (cf-20e
+   321	  designs minimal-Notion-like floating menu inline; the visual
+   322	  contract is documented in `kebab-menu.css` JSDoc + cf-20e D2
+   323	  decision below).
+   324	- ADR-0017 D9 mobile view-only contract — kebab hidden via @media
+   325	  matching cf-20c-2 drag-handle + cf-20d resize handles.
+   326	- ADR-0011 D9.1 BlockKind union expansion — the 8-kind enumeration
+   327	  for the change-kind sub-menu is sourced from `BLOCK_KIND_OPTIONS`
+   328	  in `registry-wire.tsx` (cf-15b authority).
+   329	- cf-20c-2 DragDropContext + drag-handle-button.tsx pattern — kebab
+   330	  follows the same React-context-to-presentational-component shape.
+   532	```bash
+   533	# AC-3: targeted Playwright passes (kebab spec + carried)
+   534	pnpm --filter @skb/site exec playwright test \
+   535	  playwright/sample-blocks-kebab-menu.spec.ts \
+   536	  playwright/sample-blocks-resize-handles.spec.ts \
+   537	  playwright/sample-blocks-drag-handle.spec.ts \
+   538	  playwright/sample-blocks-edit-loads.spec.ts \
+   539	  --reporter=line --workers=1 2>&1 | tail -3
+   540	# Expected: 15 passed (5 new cf-20e + 6 cf-20d + 3 cf-20c-2 + 1 edit-loads)
+   541	```
+   542	
+   543	```bash
+   544	# AC-4: full apps/site Playwright suite passes
+   545	pnpm --filter @skb/site exec playwright test --reporter=line --workers=1 2>&1 | tail -3
+   546	# Expected: 68 passed | 14 skipped | 0 failed (was 63 in cf-20d; +5 new kebab specs)
+   547	```
+   548	
+   549	```bash
+   550	# AC-5: pnpm check exit 0
+
+exec
+/bin/bash -lc "git show 816af51:apps/site/src/components/EditorShellKebabActions.ts | nl -ba | sed -n '76,92p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+    76	}
+    77	
+    78	/**
+    79	 * Imperative duplicate: insert a copy of the node at `pos +
+    80	 * nodeSize`. After 2 rAFs (React commit + browser layout) the
+    81	 * inserted block's bounding rect is re-measured + handed to the
+    82	 * cf-20c-2 dropEpoch infrastructure for the success-pulse.
+    83	 *
+    84	 * Per cf-20e D7: uses ProseMirror `tr.insert(insertPos, node.copy())`
+    85	 * primitive (NOT Tiptap insertContentAt which silently no-ops on
+    86	 * schema-mismatch — empirically observed at R0). `node.copy()` shares
+    87	 * source's attrs + marks but with a fresh content Fragment. cf-20e
+    88	 * doesn't have stable UUID attrs (cf-20c-2 D2 path A uses pos-as-id),
+    89	 * so no UUID clearing needed; future schema-mod PR will need to
+    90	 * clear UUIDs on duplicate.
+    91	 */
+    92	export function makeKebabDuplicate(
+
+exec
+/bin/bash -lc "git show 816af51:apps/site/playwright/sample-blocks-kebab-menu.spec.ts | nl -ba | sed -n '1,24p;208,224p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+     2	import { resolve } from 'node:path';
+     3	
+     4	import { expect, test } from '@playwright/test';
+     5	
+     6	/**
+     7	 * Wave 6 cf-20e (2026-05-09) — kebab menu (per-block actions) integration spec.
+     8	 *
+     9	 * cf-20e wires the kebab affordance per the cf-20e brief: per-block
+    10	 * `<button class="skb-block-nodeview__kebab">⋮</button>` inside the
+    11	 * cf-19 gutter shell + a floating menu with 3 actions:
+    12	 *   - Delete (silent; Tiptap history Cmd+Z to undo)
+    13	 *   - Duplicate (tr.insert primitive + cf-20c-2 R3 dropEpoch reuse for
+    14	 *     success-pulse; NOT insertContentAt which silently no-ops on
+    15	 *     schema-mismatch per cf-20e D7)
+    16	 *   - Change kind… (sub-menu with 8 BlockKind options;
+    17	 *     drop-and-default attr translation per cf-20e D3)
+    18	 *
+    19	 * Byte-snapshot fixture isolation per cf-20c-2 R3 F1 reflection rule:
+    20	 * "tests that touch repository files MUST snapshot bytes pre-mutation;
+    21	 * never use destructive git operations". The 3 commit-style tests
+    22	 * (delete / duplicate / change-kind) trigger Tiptap mutations →
+    23	 * tiptapToMdx → ApiAdapter.save → file write chain; snapshot before +
+    24	 * restore after.
+   208	  expect(
+   209	    afterCount,
+   210	    'cf-20e Duplicate: block count MUST increase by 1 after the Duplicate action',
+   211	  ).toBe(beforeCount + 1);
+   212	
+   213	  // The new SECOND block (just inserted after the first) has the same
+   214	  // kind as the source.
+   215	  const secondKindAfter = await wrappers.nth(1).getAttribute('data-skb-block-kind');
+   216	  expect(
+   217	    secondKindAfter,
+   218	    'cf-20e Duplicate: duplicated block MUST share `data-skb-block-kind` with the source (cf-20e D7 tr.insert + node.copy primitive)',
+   219	  ).toBe(sourceKind);
+   220	
+   221	  // cf-20e D6: success-pulse mounts via cf-20c-2 dropEpoch reuse.
+   222	  // The pulse anchor element is `[data-skb-drop-pulse-anchor]`.
+   223	  await page.waitForTimeout(50);
+   224	  const pulseAnchorCount = await page
+
+exec
+/bin/bash -lc 'for f in docs/plans/wave-6-main/wave-6-cf-20e-kebab-menu.md apps/site/src/components/EditorShellKebabActions.ts apps/site/playwright/sample-blocks-kebab-menu.spec.ts; do git show 816af51:$f | grep -nE '"'insertContentAt|node\\.toJSON|tr\\.insert|node\\.copy|4 specs|14 passed|67 passed|5 specs|15 passed|68 passed' | sed \"s#"'^#$f:#"; done' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+docs/plans/wave-6-main/wave-6-cf-20e-kebab-menu.md:152:     tr.insert(insertPos, node.copy()); return true }).run()`. Uses
+docs/plans/wave-6-main/wave-6-cf-20e-kebab-menu.md:153:     ProseMirror `tr.insert` primitive directly, NOT Tiptap's
+docs/plans/wave-6-main/wave-6-cf-20e-kebab-menu.md:154:     `insertContentAt(pos, nodeJson)` which empirically silently no-ops
+docs/plans/wave-6-main/wave-6-cf-20e-kebab-menu.md:477:### D7 — `tr.insert(insertPos, node.copy())` for duplicate (ProseMirror primitive); Tiptap insertContentAt silently no-ops on schema-mismatch
+docs/plans/wave-6-main/wave-6-cf-20e-kebab-menu.md:479:R0 empirically observed: `editor.chain().insertContentAt(pos + nodeSize,
+docs/plans/wave-6-main/wave-6-cf-20e-kebab-menu.md:480:node.toJSON()).run()` returned success (chain reported no error) but
+docs/plans/wave-6-main/wave-6-cf-20e-kebab-menu.md:481:NO node was actually inserted into the doc. The Tiptap insertContentAt
+docs/plans/wave-6-main/wave-6-cf-20e-kebab-menu.md:486:cf-20e ships `editor.chain().command(({tr}) => { tr.insert(insertPos,
+docs/plans/wave-6-main/wave-6-cf-20e-kebab-menu.md:487:node.copy()); return true }).run()` instead — direct ProseMirror
+docs/plans/wave-6-main/wave-6-cf-20e-kebab-menu.md:488:`tr.insert` primitive bypassing the Tiptap parser. `node.copy()`
+docs/plans/wave-6-main/wave-6-cf-20e-kebab-menu.md:540:# Expected: 15 passed (5 new cf-20e + 6 cf-20d + 3 cf-20c-2 + 1 edit-loads)
+docs/plans/wave-6-main/wave-6-cf-20e-kebab-menu.md:546:# Expected: 68 passed | 14 skipped | 0 failed (was 63 in cf-20d; +5 new kebab specs)
+apps/site/src/components/EditorShellKebabActions.ts:24: * casts a real `node.copy()` result through the structural type
+apps/site/src/components/EditorShellKebabActions.ts:84: * Per cf-20e D7: uses ProseMirror `tr.insert(insertPos, node.copy())`
+apps/site/src/components/EditorShellKebabActions.ts:85: * primitive (NOT Tiptap insertContentAt which silently no-ops on
+apps/site/src/components/EditorShellKebabActions.ts:86: * schema-mismatch — empirically observed at R0). `node.copy()` shares
+apps/site/src/components/EditorShellKebabActions.ts:106:    // Use ProseMirror's `tr.insert(pos, node.copy())` directly via
+apps/site/src/components/EditorShellKebabActions.ts:107:    // the Tiptap command wrapper. `node.copy()` clones the node
+apps/site/src/components/EditorShellKebabActions.ts:110:    // attrs). This is more reliable than `insertContentAt(pos,
+apps/site/src/components/EditorShellKebabActions.ts:111:    // node.toJSON())` which goes through Tiptap's parser and can
+apps/site/src/components/EditorShellKebabActions.ts:114:    // fixture — the chain insertContentAt returned but no node was
+apps/site/src/components/EditorShellKebabActions.ts:115:    // inserted; the direct tr.insert path works reliably).
+apps/site/src/components/EditorShellKebabActions.ts:120:        tr.insert(insertPos, (node as any).copy());
+apps/site/playwright/sample-blocks-kebab-menu.spec.ts:13: *   - Duplicate (tr.insert primitive + cf-20c-2 R3 dropEpoch reuse for
+apps/site/playwright/sample-blocks-kebab-menu.spec.ts:14: *     success-pulse; NOT insertContentAt which silently no-ops on
+apps/site/playwright/sample-blocks-kebab-menu.spec.ts:204:  // Wait for ProseMirror tr.insert + 2-rAF re-measure + success-pulse mount.
+apps/site/playwright/sample-blocks-kebab-menu.spec.ts:218:    'cf-20e Duplicate: duplicated block MUST share `data-skb-block-kind` with the source (cf-20e D7 tr.insert + node.copy primitive)',
+
+codex
+The first pass shows the expected `tr.insert`/`node.copy` wording in the plan and source comments, with old `insertContentAt` references retained only as the documented failed path. I’m doing one exact-string sweep for the stale count/drift phrases before the verdict.
+exec
+/bin/bash -lc 'for f in docs/plans/wave-6-main/wave-6-cf-20e-kebab-menu.md apps/site/src/components/EditorShellKebabActions.ts apps/site/playwright/sample-blocks-kebab-menu.spec.ts; do git show 816af51:$f | grep -nE '"'4 specs|4 tests|14 passed|67 passed' | sed \"s#"'^#$f:#"; done' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+exec
+/bin/bash -lc "git show 816af51:docs/plans/wave-6-main/wave-6-cf-20e-kebab-menu.md | nl -ba | sed -n '470,492p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+   470	duplicate ALSO routes the success-pulse through
+   471	`pipeline.setLastDroppedFromExternal(blockId, rect)`. The pulse
+   472	visually anchors at the duplicated block's bounding rect after
+   473	2-rAF re-measure (post-Tiptap commit + browser layout). Delete +
+   474	change-kind do NOT fire pulses (delete removes the block; change-
+   475	kind keeps the block in place — no positional change to celebrate).
+   476	
+   477	### D7 — `tr.insert(insertPos, node.copy())` for duplicate (ProseMirror primitive); Tiptap insertContentAt silently no-ops on schema-mismatch
+   478	
+   479	R0 empirically observed: `editor.chain().insertContentAt(pos + nodeSize,
+   480	node.toJSON()).run()` returned success (chain reported no error) but
+   481	NO node was actually inserted into the doc. The Tiptap insertContentAt
+   482	implementation silently no-ops when the JSON-roundtripped attrs don't
+   483	exactly match the target NodeType's `addAttributes` defaults shape
+   484	— a known behavior class.
+   485	
+   486	cf-20e ships `editor.chain().command(({tr}) => { tr.insert(insertPos,
+   487	node.copy()); return true }).run()` instead — direct ProseMirror
+   488	`tr.insert` primitive bypassing the Tiptap parser. `node.copy()`
+   489	produces a structurally identical Node sharing the source's attrs
+   490	+ marks but with a fresh content Fragment. Reliable across all 8
+   491	component-block kinds.
+   492	
+
+exec
+/bin/bash -lc "git show 816af51:apps/site/src/components/EditorShellKebabActions.ts | nl -ba | sed -n '100,122p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+   100	    if (!editor) return;
+   101	    const pos = posFromBlockId(blockId);
+   102	    if (pos === null) return;
+   103	    const node = editor.state.doc.nodeAt(pos);
+   104	    if (!node) return;
+   105	    const insertPos = pos + node.nodeSize;
+   106	    // Use ProseMirror's `tr.insert(pos, node.copy())` directly via
+   107	    // the Tiptap command wrapper. `node.copy()` clones the node
+   108	    // without its content (atom blocks like ours have no content,
+   109	    // so copy() reproduces the entire node structurally including
+   110	    // attrs). This is more reliable than `insertContentAt(pos,
+   111	    // node.toJSON())` which goes through Tiptap's parser and can
+   112	    // silently no-op if the JSON shape doesn't match the schema's
+   113	    // expectations precisely (cf-20e R0 saw this with sample-blocks
+   114	    // fixture — the chain insertContentAt returned but no node was
+   115	    // inserted; the direct tr.insert path works reliably).
+   116	    editor
+   117	      .chain()
+   118	      .command(({ tr }: TiptapCommandArg) => {
+   119	        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   120	        tr.insert(insertPos, (node as any).copy());
+   121	        return true;
+   122	      })
+
+exec
+/bin/bash -lc 'git status --short --branch' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+## wave-6-cf-20e-kebab-menu...origin/wave-6-cf-20e-kebab-menu
+
+exec
+/bin/bash -lc 'git rev-parse --short HEAD && git rev-parse --short origin/wave-6-cf-20e-kebab-menu' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+816af51
+816af51
+
+codex
+PASS.
+
+F1 is closed: [PR doc](/home/weiyi/selfKnowledgeBaseWeb/docs/plans/wave-6-main/wave-6-cf-20e-kebab-menu.md:152) now documents `tr.insert(insertPos, node.copy())`, D7 at line 477 frames `insertContentAt` as the failed empirical path, and the source comments align at [EditorShellKebabActions.ts](/home/weiyi/selfKnowledgeBaseWeb/apps/site/src/components/EditorShellKebabActions.ts:84) plus [sample-blocks-kebab-menu.spec.ts](/home/weiyi/selfKnowledgeBaseWeb/apps/site/playwright/sample-blocks-kebab-menu.spec.ts:13) and line 218.
+
+F2 is closed: PR.md now has 5 tests at line 43, 15 passed at line 540, and 68 passed at line 546. Exact stale-string sweep found no `4 specs`, `4 tests`, `14 passed`, or `67 passed` in the three allowed files.
+
+No prohibited gates were rerun. Stage 5 commit was not created because the worktree is clean and `HEAD`/origin already point at `816af51`; there were no explicit-file-list changes left to stage.
+2026-05-09T21:06:48.575429Z ERROR codex_core::session: failed to record rollout items: thread 019e0e8e-dd67-7ab2-b1b9-c402d580a027 not found
+tokens used
+31,996
+PASS.
+
+F1 is closed: [PR doc](/home/weiyi/selfKnowledgeBaseWeb/docs/plans/wave-6-main/wave-6-cf-20e-kebab-menu.md:152) now documents `tr.insert(insertPos, node.copy())`, D7 at line 477 frames `insertContentAt` as the failed empirical path, and the source comments align at [EditorShellKebabActions.ts](/home/weiyi/selfKnowledgeBaseWeb/apps/site/src/components/EditorShellKebabActions.ts:84) plus [sample-blocks-kebab-menu.spec.ts](/home/weiyi/selfKnowledgeBaseWeb/apps/site/playwright/sample-blocks-kebab-menu.spec.ts:13) and line 218.
+
+F2 is closed: PR.md now has 5 tests at line 43, 15 passed at line 540, and 68 passed at line 546. Exact stale-string sweep found no `4 specs`, `4 tests`, `14 passed`, or `67 passed` in the three allowed files.
+
+No prohibited gates were rerun. Stage 5 commit was not created because the worktree is clean and `HEAD`/origin already point at `816af51`; there were no explicit-file-list changes left to stage.
