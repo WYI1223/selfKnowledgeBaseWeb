@@ -1,0 +1,2000 @@
+Reading additional input from stdin...
+OpenAI Codex v0.125.0 (research preview)
+--------
+workdir: /home/weiyi/selfKnowledgeBaseWeb
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: danger-full-access
+reasoning effort: xhigh
+reasoning summaries: none
+session id: 019e0e21-0d93-7622-b41e-8885a1c3314a
+--------
+user
+Wave 6 cf-20d R2. R1 returned FAIL with 3 real correctness bugs (F1 tablet snap-set hardcode + F2 col-overflow + F3 prose rowSpan destruction); ux-ui-lead fixed all 3 in commit 7ae0f02 on top of cf76d06. Branch wave-6-cf-20d-resize-handles.
+
+CONSTRAINTS PER RULES 5+6:
+- DO NOT preemptively re-run pnpm check or full Playwright (orchestrator + ux-ui-lead pre-verified: pnpm check 41/41; full Playwright 61 PASS / 14 SKIP / 0 FAIL; editor-shell 223 vitest; size-check 424 files all under 500)
+- DO NOT re-read ADR-0006 / orchestrator-reflections / aux ADR archive
+- READ: 7ae0f02 commit content (modified resize-snap.ts + use-resize-pipeline.ts + EditorShellMount.tsx + 3 spec/CONTRACT/PR.md files) + ADR-0017 D7+D9 + ADR-0016 D2+D3+D5+D6
+- Verdict in <8 min
+
+R1 F1 (tablet snap-set hardcode) RESOLVED: removed RESIZE_TOTAL_COLS=12 hardcode in EditorShellMount.tsx; threaded useResponsiveCols → viewportCols → GridContainer + useResizePipeline({totalCols, activeColSnaps}) + ResizeOverlays. EffectiveViewportCols typed effectiveColSnaps() call. NEW Playwright at viewport=900px asserts only [2, 3, 6] snap stops reachable.
+
+R1 F2 (col-overflow snap-filter) RESOLVED: snapToColSpan extended with startCol 3rd parameter; overflow-filter snap <= totalCols - startCol + 1 per ADR-0016 D2; empty-set fallback returns startColSpan no-op. ResizeSnapshot.startCol field populated at onResizeStart; passed to both pointermove + pointerup snap calls; defense-in-depth re-validation startCol + nextColSpan - 1 <= totalCols before commit. 8 NEW vitest cases for non-col=1 across viewports.
+
+R1 F3 (prose rowSpan='auto' destruction) RESOLVED: NEW pure helper buildResizeNextAttrs(axis, ...) returns axis-aware attr diff (right omits rowSpan, bottom omits colSpan, corner writes both). Snapshot preserves startRowSpanAttr ('auto' | integer) AND derived startRowSpanInt (from rendered DOM height when 'auto'). Right-only commit branch delegates to buildResizeNextAttrs so tr.setNodeMarkup preserves original 'auto' attr. 10 NEW vitest cases including explicit prose preservation flow.
+
+23 files in 7ae0f02: source (3 — EditorShellMount/resize-snap/use-resize-pipeline) + tests (2 — resize-snap.test.ts + sample-blocks-resize-handles.spec.ts) + docs (3 — PR.md + 2 CONTRACTs) + reflection (2 — log + index) + auto-emitted screenshots (13).
+
+ux-ui-lead's pre-dispatch gates: pnpm check 41/41; editor-shell 223 vitest (was 205, +18 from R1 F2+F3); apps/site Playwright 61 PASS / 14 SKIP / 0 FAIL (was 60, +1 R1 F1 tablet); size-check 424 files all under 500 LOC.
+
+D2 trigger UNCHANGED from R1: Row 1 + Row 5. Stage 4 PRE-COMMIT CLAUDE REVIEW fires.
+
+Run static ADR-0006 9-point audit + 9th-class hunt verifying all 3 R1 findings closed + no NEW regressions from the responsive viewport threading or axis-aware diff helper. Verdict PASS or FAIL with line-anchored remediation. If PASS, on stage 5 you commit per ADR-0006 D8 explicit-file-list staging.
+codex
+I’ll use the `superpowers:using-superpowers` skill first because it is required at conversation start, then I’ll do a static review only against the files and ADR slices you named.
+exec
+/bin/bash -lc "sed -n '1,220p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/63976030/skills/using-superpowers/SKILL.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+---
+name: using-superpowers
+description: Use when starting any conversation - establishes how to find and use skills, requiring Skill tool invocation before ANY response including clarifying questions
+---
+
+<SUBAGENT-STOP>
+If you were dispatched as a subagent to execute a specific task, skip this skill.
+</SUBAGENT-STOP>
+
+<EXTREMELY-IMPORTANT>
+If you think there is even a 1% chance a skill might apply to what you are doing, you ABSOLUTELY MUST invoke the skill.
+
+IF A SKILL APPLIES TO YOUR TASK, YOU DO NOT HAVE A CHOICE. YOU MUST USE IT.
+
+This is not negotiable. This is not optional. You cannot rationalize your way out of this.
+</EXTREMELY-IMPORTANT>
+
+## Instruction Priority
+
+Superpowers skills override default system prompt behavior, but **user instructions always take precedence**:
+
+1. **User's explicit instructions** (CLAUDE.md, GEMINI.md, AGENTS.md, direct requests) — highest priority
+2. **Superpowers skills** — override default system behavior where they conflict
+3. **Default system prompt** — lowest priority
+
+If CLAUDE.md, GEMINI.md, or AGENTS.md says "don't use TDD" and a skill says "always use TDD," follow the user's instructions. The user is in control.
+
+## How to Access Skills
+
+**In Claude Code:** Use the `Skill` tool. When you invoke a skill, its content is loaded and presented to you—follow it directly. Never use the Read tool on skill files.
+
+**In Copilot CLI:** Use the `skill` tool. Skills are auto-discovered from installed plugins. The `skill` tool works the same as Claude Code's `Skill` tool.
+
+**In Gemini CLI:** Skills activate via the `activate_skill` tool. Gemini loads skill metadata at session start and activates the full content on demand.
+
+**In other environments:** Check your platform's documentation for how skills are loaded.
+
+## Platform Adaptation
+
+Skills use Claude Code tool names. Non-CC platforms: see `references/copilot-tools.md` (Copilot CLI), `references/codex-tools.md` (Codex) for tool equivalents. Gemini CLI users get the tool mapping loaded automatically via GEMINI.md.
+
+# Using Skills
+
+## The Rule
+
+**Invoke relevant or requested skills BEFORE any response or action.** Even a 1% chance a skill might apply means that you should invoke the skill to check. If an invoked skill turns out to be wrong for the situation, you don't need to use it.
+
+```dot
+digraph skill_flow {
+    "User message received" [shape=doublecircle];
+    "About to EnterPlanMode?" [shape=doublecircle];
+    "Already brainstormed?" [shape=diamond];
+    "Invoke brainstorming skill" [shape=box];
+    "Might any skill apply?" [shape=diamond];
+    "Invoke Skill tool" [shape=box];
+    "Announce: 'Using [skill] to [purpose]'" [shape=box];
+    "Has checklist?" [shape=diamond];
+    "Create TodoWrite todo per item" [shape=box];
+    "Follow skill exactly" [shape=box];
+    "Respond (including clarifications)" [shape=doublecircle];
+
+    "About to EnterPlanMode?" -> "Already brainstormed?";
+    "Already brainstormed?" -> "Invoke brainstorming skill" [label="no"];
+    "Already brainstormed?" -> "Might any skill apply?" [label="yes"];
+    "Invoke brainstorming skill" -> "Might any skill apply?";
+
+    "User message received" -> "Might any skill apply?";
+    "Might any skill apply?" -> "Invoke Skill tool" [label="yes, even 1%"];
+    "Might any skill apply?" -> "Respond (including clarifications)" [label="definitely not"];
+    "Invoke Skill tool" -> "Announce: 'Using [skill] to [purpose]'";
+    "Announce: 'Using [skill] to [purpose]'" -> "Has checklist?";
+    "Has checklist?" -> "Create TodoWrite todo per item" [label="yes"];
+    "Has checklist?" -> "Follow skill exactly" [label="no"];
+    "Create TodoWrite todo per item" -> "Follow skill exactly";
+}
+```
+
+## Red Flags
+
+These thoughts mean STOP—you're rationalizing:
+
+| Thought | Reality |
+|---------|---------|
+| "This is just a simple question" | Questions are tasks. Check for skills. |
+| "I need more context first" | Skill check comes BEFORE clarifying questions. |
+| "Let me explore the codebase first" | Skills tell you HOW to explore. Check first. |
+| "I can check git/files quickly" | Files lack conversation context. Check for skills. |
+| "Let me gather information first" | Skills tell you HOW to gather information. |
+| "This doesn't need a formal skill" | If a skill exists, use it. |
+| "I remember this skill" | Skills evolve. Read current version. |
+| "This doesn't count as a task" | Action = task. Check for skills. |
+| "The skill is overkill" | Simple things become complex. Use it. |
+| "I'll just do this one thing first" | Check BEFORE doing anything. |
+| "This feels productive" | Undisciplined action wastes time. Skills prevent this. |
+| "I know what that means" | Knowing the concept ≠ using the skill. Invoke it. |
+
+## Skill Priority
+
+When multiple skills could apply, use this order:
+
+1. **Process skills first** (brainstorming, debugging) - these determine HOW to approach the task
+2. **Implementation skills second** (frontend-design, mcp-builder) - these guide execution
+
+"Let's build X" → brainstorming first, then implementation skills.
+"Fix this bug" → debugging first, then domain-specific skills.
+
+## Skill Types
+
+**Rigid** (TDD, debugging): Follow exactly. Don't adapt away discipline.
+
+**Flexible** (patterns): Adapt principles to context.
+
+The skill itself tells you which.
+
+## User Instructions
+
+Instructions say WHAT, not HOW. "Add X" or "Fix Y" doesn't mean skip workflows.
+
+codex
+I’m gathering the required source of truth now: the exact 7ae0f02 diff, the touched source/test files, and only the ADR-0016/0017 decision slices you requested. I’m staying off the full verification commands per your rule.
+exec
+/bin/bash -lc 'git status --short --branch' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+## wave-6-cf-20d-resize-handles...origin/wave-6-cf-20d-resize-handles
+
+exec
+/bin/bash -lc 'git show --name-status --stat --oneline 7ae0f02' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+7ae0f02 Wave 6 cf-20d R1 — 3 codex findings (responsive snap-set + overflow-filter + rowSpan='auto' preservation)
+M	apps/site/CONTRACT.md
+M	apps/site/playwright/sample-blocks-resize-handles.spec.ts
+M	apps/site/playwright/visual-smoke-baseline/wave-5-c2-baseline-edit-route.png
+M	apps/site/src/components/EditorShellMount.tsx
+M	docs/audits/screenshots/wave-5-c2-8-drag-modules-mount.png
+M	docs/audits/screenshots/wave-5-c2-9-responsive-fsm-mount.png
+M	docs/audits/screenshots/wave-5-c4-1-note-save-adapter.png
+M	docs/audits/screenshots/wave-5-c4-2-block-registry.png
+M	docs/audits/screenshots/wave-5-c4-3-drag-handle.png
+M	docs/audits/screenshots/wave-5-c4-3-save-indicator.png
+M	docs/audits/screenshots/wave-5-c4-4-save-roundtrip.png
+M	docs/audits/screenshots/wave-5-c4-5-edit-flow-e2e.png
+M	docs/audits/screenshots/wave-6-cf-20b-sample-blocks-grid-layout.png
+M	docs/audits/screenshots/wave-6-cf-20c-2-drag-handle-wire.png
+M	docs/audits/screenshots/wave-6-cf-20d-resize-handles.png
+M	docs/audits/screenshots/wave-6-hotfix-sample-blocks-edit-loads.png
+M	docs/orchestrator-reflections/2026-05-09-cf-15a-19-retrospective.md
+M	docs/plans/wave-6-main/wave-6-cf-20d-resize-handles.md
+M	packages/editor-shell/CONTRACT.md
+M	packages/editor-shell/src/__tests__/resize/resize-snap.test.ts
+M	packages/editor-shell/src/index.ts
+M	packages/editor-shell/src/resize/resize-snap.ts
+M	packages/editor-shell/src/resize/use-resize-pipeline.ts
+
+exec
+/bin/bash -lc "rg --files | rg '("'^|/)CLAUDE'"\\.md"'$|ADR-001[67]|resize-snap|use-resize-pipeline|EditorShellMount|sample-blocks-resize-handles|CONTRACT|PR'"\\.md'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+packages/editor-shell/src/resize/use-resize-pipeline.ts
+packages/editor-shell/src/resize/resize-snap.ts
+apps/api/app/ws/CONTRACT.md
+apps/api/app/llm/CONTRACT.md
+apps/api/app/CONTRACT.md
+packages/editor-shell/src/__tests__/resize/resize-snap.test.ts
+packages/editor-shell/CONTRACT.md
+apps/site/playwright/sample-blocks-resize-handles.spec.ts
+packages/content-types/CONTRACT.md
+apps/site/CONTRACT.md
+packages/editor-commands/CONTRACT.md
+packages/block-jupyter/CONTRACT.md
+packages/agent-tools/CONTRACT.md
+packages/editor-toolbar/CONTRACT.md
+packages/kernel-registry/CONTRACT.md
+apps/site/src/components/EditorShellMount.tsx
+apps/site/src/components/EditorShellMount.astro
+packages/block-nn-viz/CONTRACT.md
+CLAUDE.md
+packages/heavy-block-boundary/CONTRACT.md
+packages/block-agent-flow/CONTRACT.md
+packages/block-foundation/CONTRACT.md
+docs/decisions/ADR-0016-grid-data-model.md
+docs/decisions/ADR-0017-drag-drop-ux.md
+packages/mdx-bridge/CONTRACT.md
+packages/block-image/CONTRACT.md
+packages/block-pdf/CONTRACT.md
+packages/kernel-pyodide/CONTRACT.md
+packages/kernel-adapter/CONTRACT.md
+packages/block-callout/CONTRACT.md
+packages/design-tokens/CONTRACT.md
+packages/block-code/CONTRACT.md
+packages/editor-slash-menu/CONTRACT.md
+packages/block-math/CONTRACT.md
+packages/editor-drag-handle/CONTRACT.md
+
+exec
+/bin/bash -lc "sed -n '1,220p' CLAUDE.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+# CLAUDE.md
+
+> **GENERATED FROM agent-contract.md — DO NOT EDIT BY HAND.**
+>
+> Edit `agent-contract.md` then run `pnpm generate:configs`. CI fails if drift detected.
+
+This file is the Claude Code entry point for the **SelfKnowledgeBaseWeb** monorepo. It tells
+every Claude session what the project is, the hard rules, the agent roster, and the workflow.
+
+- Spec: [docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md](docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md)
+- Active plan: [docs/plans/active.md](docs/plans/active.md)
+- Single source for agents: [agent-contract.md](agent-contract.md)
+- Codex tool invocations: [docs/runbooks/codex-tool-invocations.md](docs/runbooks/codex-tool-invocations.md)
+
+## Hard rules
+
+1. **File size**: 200 lines (target) / 300 lines (ESLint `max-lines` warn) / 500 lines
+   (`pnpm size-check` hard fail). Spec §3.6.
+2. **Cross-file references**: every doc/code change must keep doc cross-references and
+   contract files in sync (`packages/*/CONTRACT.md`, `agent-contract.md`).
+3. **Lychee link-check**: broken markdown links block merge. Run `pnpm link-check` locally.
+4. **`pnpm check` is mandatory before review** (lint + typecheck + test + build + size).
+5. **Git mutation discipline (ADR-0011 D1+D4)**: `git commit / branch / rebase / push`
+   only at D1 stage 5 (reviewer codex commit phase) or by orchestrator self for bootstrap
+   scope. Subagents (pr-writer / ux-ui-lead / refactorer / researcher) never run mutating
+   git commands.
+6. **Web access discipline (ADR-0011 D7)**: only the `researcher` Claude subagent (one-shot
+   per dispatch) may run `web_search` / `web_fetch`.
+7. **Cross-package moves (ADR-0011 D7)**: only the `refactorer` Claude subagent may
+   reorganize packages, and every reorganization requires an ADR under `docs/decisions/`.
+
+## Commands cheat-sheet
+
+| Command                 | Purpose                                               |
+| ----------------------- | ----------------------------------------------------- |
+| `pnpm install`          | Install workspace dependencies                        |
+| `pnpm dev`              | Run all `dev` scripts (parallel)                      |
+| `pnpm check`            | Lint + typecheck + test + build + size-check          |
+| `pnpm check:affected`   | Same, scoped to packages affected since `origin/main` |
+| `pnpm size-check`       | Hard 500-line limit on every source file              |
+| `pnpm link-check`       | Lychee scan over `./**/*.md`                          |
+| `pnpm generate:configs` | Re-derive everything from `agent-contract.md`         |
+| `pnpm format`           | Prettier write across the repo                        |
+
+## Review workflow (ADR-0011 D1 linear pipeline; supersedes Wave 1+2 tree workflow)
+
+Per PR (PRs run strictly serial; the next PR's PLAN waits for the previous PR's ACCEPT):
+
+```
+1. PLAN              pr-writer Claude subagent ↔ orchestrator → lock PR.md (D2 schema)
+       │
+       ▼
+2. EXECUTE           codex `codex-generic-executor` (or specialized scaffolder; or
+                     `ux-ui-lead` Claude subagent for UI/UX). TDD-front:
+                     write tests → write impl → vitest all PASS.
+       │
+       ▼
+3. REVIEW            codex `codex-pr-reviewer-55` (5.5) — line-level + spec-match.
+                     ADR-0006 9-point checklist mandatory. PASS → next stage.
+       │
+       ├── (D2 row 1+4 hit) → 4. PRE-COMMIT CLAUDE REVIEW   orchestrator self.
+       │                          Mitigates same-model echo chamber.
+       │
+       ▼
+5. COMMIT (+ push)   reviewer codex commits. Per ADR-0006 D8 explicit-file-list
+                     staging (`git reset HEAD` → `git add <list>` →
+                     `git diff --cached --stat` verify → `git commit`).
+       │
+       ▼
+6. ACCEPT            pr-writer Claude subagent (second invocation): verify the
+                     PR's diff actually meets PR.md's `acceptance:` block.
+```
+
+D2 trigger judgment (ADR-0007 D2 rows; locked by orchestrator at PLAN):
+- **D1 stage 4 PRE-COMMIT CLAUDE REVIEW fires** on D2 rows 1+4 (contract change OR new
+  ADR required). Other rows skip this stage but still go through codex review.
+- **High-risk classes** (rows 2 package add/remove, row 8 CI/deploy/auth/security) also
+  receive heightened reviewer scrutiny within stage 3 — ADR-0006 D8 staging discipline +
+  ADR-0006 9-point checklist 9th-class hunt.
+
+See [ADR-0011](docs/decisions/ADR-0011-linear-pipeline-execution-model.md) D1-D8 +
+[ADR-0007 D2](docs/decisions/ADR-0007-job-function-codex-heavy-execution.md).
+
+Codex tools (11 patterns: 5 scaffolders + plan-challenger + codex-pr-reviewer-55 +
+4 audit/exec profiles) are
+[orchestrator-direct Bash invocations](docs/runbooks/codex-tool-invocations.md) post
+ADR-0007 D5 + ADR-0011 D6.
+
+## Claude teammates (5)
+
+| Tier            | Name           | Role                                                                           |
+| --------------- | -------------- | ------------------------------------------------------------------------------ |
+| T0 Orchestrator | `orchestrator` | 整体规划 + dispatch 工种 + 维护 docs/plans/ + D1 pipeline 协调                 |
+| T2 Subagent     | `pr-writer`    | PR.md 起草（PLAN 调）+ ACCEPT 验收（COMMIT 后调）                              |
+| T2 Subagent     | `refactorer`   | 唯一跨包重组权（ADR-0011 D7 沿用，按需 one-shot dispatch）                     |
+| T2 Subagent     | `researcher`   | 唯一外网访问权（ADR-0011 D7 沿用，按需 one-shot dispatch）                     |
+| T2 Subagent     | `ux-ui-lead`   | 视觉单一权威 — 横跨 ui-default + apps/site + editor 子模块（仅 UI/UX PR 触发） |
+
+## Codex tool patterns (11)
+
+orchestrator-direct Bash invocations (ADR-0007 D5). Full canonical bash + triggers + audit-log paths in [docs/runbooks/codex-tool-invocations.md](docs/runbooks/codex-tool-invocations.md).
+
+| Pattern                   | Profile                   | Summary                                                                                            |
+| ------------------------- | ------------------------- | -------------------------------------------------------------------------------------------------- |
+| `codex-generic-executor`  | `codex-generic-executor`  | ADR-0011 D6 NEW Wave 3 默认 executor。gpt-5.5 + workspace-write sandbox。                          |
+| `codex-mdx-doctor`        | `codex-mdx-doctor`        | ADR-0011 D5 + D6 NEW Wave 3 audit profile。从 Wave 1+2 Tier 3                                      |
+| `codex-perf-auditor`      | `codex-perf-auditor`      | ADR-0011 D5 + D6 NEW Wave 3 audit profile。从 Wave 1+2 Tier 3                                      |
+| `codex-pr-reviewer-55`    | `codex-pr-reviewer-55`    | ADR-0011 D1 stage 3 默认 reviewer。replaces Wave 1+2 的 pr-gate（5.5）+                            |
+| `codex-structure-auditor` | `codex-structure-auditor` | ADR-0011 D5 + D6 NEW Wave 3 audit profile。从 Wave 1+2 Tier 3                                      |
+| `plan-challenger`         | `plan-challenger`         | lock 前挑战 orchestrator 的 wave / track / PR plan：检查 task 大小、可测性、边界场景。             |
+| `codex-api-crud-builder`  | `scaffolder`              | 在 apps/api 按 RESTful 风格生成 CRUD 端点骨架（Pydantic schema + 路由）。                          |
+| `codex-block-generator`   | `scaffolder`              | 在 simple-block-eng / ux-ui-lead / editor-eng 提交 template 后，按模板仿造其余 block / submodule。 |
+| `codex-css-stylist`       | `scaffolder`              | 写 packages/design-tokens / packages/ui 的 design tokens（颜色 / 间距 / 字体）+                    |
+| `codex-script-builder`    | `scaffolder`              | 写 scripts/refactor-move.ts / scripts/new-block.ts / scripts/extract-pdf-text.ts 等工具。          |
+| `codex-test-scaffolder`   | `scaffolder`              | 为每个 packages/<name> 生成 src/__tests__/ 下的 vitest 套件骨架，                                  |
+
+## Footer
+
+This file is GENERATED FROM `agent-contract.md`. Edits to this file will be overwritten
+on the next `pnpm generate:configs` run.
+
+exec
+/bin/bash -lc "rg -n '"'^###? .*D[2356]|'"\\bD[2356]\\b|Decision.*D[2356]|ADR-0016|columns|rowSpan|colSpan|viewport|snap' docs/decisions/ADR-0016-grid-data-model.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+1:# ADR-0016: Grid 数据模型与流动 (12-col grid + row flow + COL_SNAPS + 响应式)
+8:| 触发 | [Wave 5 plan v0.2 D1+D5](../superpowers/plans/2026-05-04-phase-1-wave-5-integration.md) (Pre-A2 ADR-0016 grid 数据模型 design lock) + reframe v2 memory `project_wave4_reframe_v2.md` + granularity doc v0.3.4 § "v2 整体用户体验" + § "ADR-0012 Grid 数据模型与流动" body (旧编号 0012 → Wave 5 实际 ADR-0016 per plan v0.2 ADR 编号映射表 / D5) |
+15:设计源 = granularity doc v0.3.4 § "v2 整体用户体验" (心智模型 + 核心动作 + 大小语言 + markdown 高度自适应) + § "ADR-0012 Grid 数据模型与流动" body (旧编号 0012 → Wave 5 ADR-0016 新编号 per plan v0.2 D5 ADR 编号映射表) + v2-styles.css 实施现状 (`.grid { grid-template-columns: repeat(12, minmax(0, 1fr)); grid-auto-rows: var(--row-h); grid-auto-flow: row; gap: var(--gap); }` 实测, lines 140-145).
+23:v2 demo 在 part 2 user 共识基础上引入 4 处 drift; Wave 5 ADR-0016 锁后修复:
+27:| 3 | `grid-auto-flow: row` (保留空格) | `grid-auto-flow: dense` (自动填洞) | ADR-0016 D1 锁 row, NOT dense |
+28:| 4 | 响应式 桌面 12 / 平板 6 / 手机 1 | 无响应式 | ADR-0016 D5 锁 |
+29:| 6 | Snap [1/12, 1/6, 1/4, 1/3, 1/2, full] (part 2 共识) | Snap [1/6, 1/4, 1/3, 1/2, 2/3, full] | v0.3 user 接受 demo 这套; ADR-0016 D6 锁 [2,3,4,6,8,12] |
+30:| (内部 不对称) | markdown rowSpan='auto' rendering-derived 不入持久化; 其他 block rowSpan = 用户设定整数 入持久化 | v2 demo `useAutoRowSpan` hook 已雏形 | ADR-0016 D3+D4 显式锁不对称 |
+37:- **Pre-A3 ADR-0017**: drag/drop UX (4 边缘对称 + outline overlay 方案 A + edge rects + lift) — 消费 ADR-0016 数据模型
+39:- **ADR-0014 v0.5 amendment** (Stage C.2): HeavyBlockBoundary `dims` 在 grid context 跟 colSpan/rowSpan 联动 — 此 ADR 锁定 W5-1 公式作为 v0.5 amendment 的 source
+41:ADR-0011 D1 KEPT 不变. Pre-A2 plan-challenger codex 4-round per ADR-0007 D5 + R13 + Wave 4 Pre-A2 ADR-0014 12/12 absorbed precedent (final challenge count post-dispatch; absorbtion table at ADR end).
+52:  grid-template-columns: repeat(12, minmax(0, 1fr));
+65:`var(--row-h) = 48px` 是 base row height (one rowSpan unit); `var(--gap) = 14px` 是 column + row gap (与 ADR-0017 EDGE_W = 28px half-in/half-out 数学对应).
+67:### D2 — 数据模型: `{col, row?, colSpan, rowSpan: number | 'auto'}`
+80:  readonly colSpan: number;    // 1 ≤ colSpan ≤ 12; col + colSpan - 1 ≤ 12
+83:  readonly rowSpan: number | 'auto';   // 整数 ≥ 1, OR 'auto' (per D3 不对称)
+89:- `col` = 1-based grid column line 起始位置 (1 = leftmost; 12 = rightmost; col + colSpan - 1 必须 ≤ 12)
+93:- `colSpan` = 跨列数, 必为 ∈ COL_SNAPS = [2,3,4,6,8,12] (per D6 snap 锁)
+94:- `rowSpan` = 整数跨行数 OR `'auto'` (markdown rendering-derived; per D3 不对称)
+100:  gridColumn: `${pos.col} / span ${pos.colSpan}`,
+102:    ? `${pos.row} / span ${effectiveRowSpan(pos.rowSpan)}`
+103:    : `span ${effectiveRowSpan(pos.rowSpan)}`,
+107:`effectiveRowSpan(rowSpan)` 返回:
+108:- 若 `rowSpan === 'auto'`: 从 `useAutoRowSpan` hook 拿当前 ResizeObserver-driven rowSpan 整数 (per D3)
+109:- 否则: `rowSpan` 整数本身
+111:### D3 — markdown rowSpan='auto' rendering-derived (不入持久化的不对称)
+113:**不对称 (CRITICAL)**: markdown blocks **rowSpan = 'auto'** 是 **rendering-derived** (ResizeObserver 测 scrollHeight 反算行数), **NOT 入持久化**. 其他 block (canvas / image / runnable / heavy blocks) **rowSpan = 整数** 是 **用户设定**, **入持久化**.
+130:  const [rowSpan, setRowSpan] = useState(1);
+136:      // rows fit including (rowSpan - 1) gaps:
+137:      // total = rowSpan * rowH + (rowSpan - 1) * gap
+138:      // → rowSpan = ceil((total + gap) / (rowH + gap))
+147:  return rowSpan;
+154:- 每次 rowSpan 变化触发 grid 重排; CSS `transition: grid-row 180ms cubic-bezier(.2,.7,.2,1)` (v2-styles.css 实测) 给视觉缓冲
+155:- vitest 覆盖: empty md (rowSpan = 1) / 1 段 md / 多段 md / paste 大段触发 ResizeObserver / unmount 期间 ResizeObserver leak
+163:3. **后续 RO 事件**: 阈值差 (Δ rowSpan) ≥ 1 才更新; Δ = 0 静默 (避免 pixel-noise 触发 spurious update)
+172:{/* markdown block: rowSpan 不写 */}
+173:<Markdown col={1} colSpan={6}>
+177:{/* canvas block: rowSpan 整数 写 */}
+178:<Canvas col={7} colSpan={6} rowSpan={6} title="Neuron map" />
+181:mdx-bridge `tiptapToMdx` 必须实现这个不对称: markdown 块 (kind='prose' OR kind='component' with mdxComponent='Markdown') 不 serialize rowSpan; 其他块 serialize rowSpan 整数.
+183:mdx-bridge `mdxToTiptap` 反向: markdown 块若 MDX 中无 rowSpan attr → Tiptap state rowSpan='auto'; **其他块若 MDX 中无 rowSpan attr → mdx-bridge throws** (per Wave 5 plan v1.1 row C.2-3.5 R14 amendment 2026-05-05; transitional `_gridAttrsExplicit` defensive default + console.warn path removed at C.2-3.5 execution; end-state hard-throw per ADR-0016 D7).
+185:### D4 — 其他 block rowSpan = 用户设定整数, 入持久化
+187:Non-markdown blocks (canvas / image / runnable / heavy plugin placeholder) `rowSpan` = 用户拖 resize handle bottom 设定的整数 (≥ 1). 入持久化 (MDX serialize).
+189:整数语义: `rowSpan` 个 row-h 单位高度 + (rowSpan - 1) 个 gap 高度. 即:
+192:height(px) = rowSpan * 48 + (rowSpan - 1) * 14
+193:           = rowSpan * 62 - 14
+196:(rowSpan = 1 → 48px; rowSpan = 2 → 110px; rowSpan = 6 → 358px; rowSpan = 8 → 482px.)
+198:### D5 — Responsive: 桌面 12 / 平板 6 / 手机 1
+200:| 屏幕宽度 | grid 列数 | 粒度 (effective COL_SNAPS) | rowSpan adapt |
+204:| < 768px (手机) | 1 列 | full (12 在 viewport-narrow 下默认 stack) | rowSpan='auto' 强制 (内容自适应; 用户整数 ignored, NOT 改持久化值; per D8 viewport-narrow 渲染 override) |
+206:Astro renderer 通过 `@media` query 切换 `grid-template-columns: repeat(N, minmax(0, 1fr))` 与 effective COL_SNAPS (per ADR-0017 col-ruler).
+212:12 ↔ 6 ↔ 1 viewport 切换时事件顺序与状态规约:
+217:| **T1 colSpan adapt** | 遍历每个 block: 若现 `colSpan` 仍 valid in new `effectiveColSnaps`(viewportCols) → preserve; 否则 clamp 到最近 snap (round-up 优先 per Q4 absorbtion) | < 16ms (1 frame) |
+218:| **T2 rowSpan freeze** | rowSpan='auto' blocks 临时 freeze 当前值 (避免 ResizeObserver race during transition); rowSpan=integer 不变 | < 16ms |
+220:| **T4 rowSpan re-measure** | rowSpan='auto' blocks 解 freeze + ResizeObserver 重新测量; `useAutoRowSpan` 两阶段稳态 (per D3 absorbtion) 确保稳定 | < 320ms total post-T0 |
+224:**rowSpan 不改持久化值** (D5 mobile path 与桌面 path 不对称的认知冲突 mitigation):
+226:mobile (1-col) 时若 user 回复 desktop, **持久化的 rowSpan integer 仍然是用户原先在 desktop 设的值**, NOT 被 mobile path overwritten. mobile 期间 `rowSpan-rendered` (rendering-derived) 与 `rowSpan-persisted` 二分明确:
+227:- 数据模型 schema (持久化): rowSpan = integer (or 'auto' for markdown)
+228:- rendering pipeline: viewport-cols=1 时, **all blocks 渲染 rowSpan='auto' rendering-derived** (不论持久化值; useAutoRowSpan + ResizeObserver-driven)
+229:- viewport 回复 ≥ 6: 渲染回到持久化值
+233:### D6 — COL_SNAPS = `[2, 3, 4, 6, 8, 12]`
+243:- 1/6 (colSpan=2): metadata / sidebar 小块
+244:- 1/4 (colSpan=3): 三栏布局 narrow column
+245:- 1/3 (colSpan=4): 三栏布局 medium column / canvas mid
+246:- 1/2 (colSpan=6): 双栏布局 / canvas + markdown 配对
+247:- 2/3 (colSpan=8): main note + sidebar 配额 (主笔记)
+248:- full (colSpan=12): 标题 / 单段 markdown / heavy plugin placeholder
+250:**与 part 2 共识的差异**: part 2 user 同意 `[1/12, 1/6, 1/4, 1/3, 1/2, full]`. v0.3 user 接受 v2 demo 的 `[1/6, 1/4, 1/3, 1/2, 2/3, full]`: 1/12 太窄无意义弃, 2/3 主笔记 + 1/3 边栏配额高频留. **此 ADR-0016 D6 = v0.3 user 共识锁**.
+252:resize 时浮 col-ruler 高亮 6 stop (per ADR-0017 col-ruler scope). resize 落定值 必须 snap 到 COL_SNAPS 之一; 非 snap 值 拒绝 (UI 不允许 1, 5, 7, 9, 10, 11 等). 1 col 单独允许仅 viewport-narrow 1 col mobile 强制路径 (D5).
+254:**`effectiveColSnaps(viewportCols)` 显式映射 (per Q4 absorbtion)**:
+257:export function effectiveColSnaps(viewportCols: 12 | 6 | 1): readonly number[] {
+258:  switch (viewportCols) {
+266:**Non-snap 拒绝 + 方向记录 (per Q4 absorbtion)**: drag/resize 时 user cursor 落到非 snap 值 (如拖到 1.5 col, 5 col, etc.):
+268:2. **kind = round-to-nearest-snap**: cursor 计算 col-ruler 上 6 stop 距离, 选最近 stop snap (per ADR-0017 hit-test)
+269:3. **方向记录**: snap 时记录 user 意图方向 (`'up' | 'down' | 'kept'`); 影响 col-ruler highlight 方向 + size-tooltip 显示文案 (e.g., "snap → 1/2" up 方向)
+271:非 snap 值**永远不入持久化** (拒绝 silent-truncate); UI 必显示 snap 反馈.
+273:### D7 — MDX serialize: 保留 col / row / colSpan / rowSpan 字段 (git diff 友好)
+278:<Canvas col={7} row={2} colSpan={6} rowSpan={6} title="Neuron map" />
+279:<Code col={1} colSpan={6} rowSpan={4} lang="python">...</Code>
+280:<Image col={7} colSpan={6} rowSpan={3} src="..." alt="..." />
+284:- `col` + `colSpan` always serialize (D2 必填)
+285:- `row` serialize 仅当 user 显式设定行号 (D2 可选; auto-place 省略)
+286:- `rowSpan` serialize 仅当 NOT markdown block (D3 不对称; markdown 不写)
+288:`mdxToTiptap` 反向: 解析 MDX attrs 重建 grid position; 缺失 col/colSpan = invalid (mdx-bridge throws); row 缺失 = undefined (auto-place); rowSpan 缺失:
+289:- markdown block (mdxComponent='Markdown' OR kind='prose'): rowSpan='auto'
+297:2. 每个 block 渲染加 `style={{ gridColumn, gridRow }}` 由 D2 公式生成
+298:3. `@media` viewport breakpoint 切换 `grid-template-columns: repeat(N, ...)` 12/6/1 (per D5)
+299:4. 1-col mobile 路径: `grid-template-columns: 1fr` + 所有 blocks `grid-column: 1` + rowSpan=auto rendering-derived (per D5 rowSpan adapt)
+307:> **W5-1: Grid context dimensions ↔ colSpan/rowSpan 联动 (ADR-0016)**: 任意 block 在 grid context 渲染时, 其 visible bounding box dims 由 `{col, row?, colSpan, rowSpan}` 唯一决定:
+309:> - `width(px) = colSpan * (1fr) + (colSpan - 1) * gap` — 1fr = `(container-width - 11 * gap) / 12`; 实际 px 由响应式 (D5) 动态计算 (12-col / 6-col / 1-col)
+310:> - `height(px) = rowSpan * row-h + (rowSpan - 1) * gap = rowSpan * 62 - 14` (per D4; row-h=48, gap=14 默认)
+311:> - markdown block (rowSpan='auto') height 由 `useAutoRowSpan` hook ResizeObserver-driven (per D3)
+313:> **HeavyBlockBoundary consumer (per ADR-0014 v0.5 amendment, Stage C.2)**: `heavyBoundaryDimensions` per-kind 必须与 colSpan/rowSpan 联动; e.g., AgentFlow `colSpan=6 rowSpan=6` → dims = `{ width: 6*(1fr)+5*14, height: 6*48+5*14 = 358 }`. 默认 fallback dims (Wave 4 ADR-0014 D5 锁定值) 仅用于 SSR 阶段 colSpan/rowSpan 未知时.
+319:W5-1 公式 `width = colSpan * (1fr) + (colSpan - 1) * gap` 中 `1fr` 是 viewport + container-width derived dynamic value. SSR (Astro static build) 阶段 viewport-width 不可知 → `1fr` 不可定值. 公式必须分两个阶段:
+325:| **Steady state** (post-hydration) | W5-1 公式 dynamic (per matchMedia viewport change → re-measure) | (data attr removed OR `data-grid-fallback="dynamic"`) | drag/resize/responsive 转场都触 W5-1 路径 |
+330:- HeavyBlockBoundary `heavyBoundaryDimensions` (per ADR-0014 W4-1 D5; v0.5 amendment 在 Stage C.2 联动 colSpan/rowSpan): SSR 用 W4-1 fallback; hydration 后由 W5-1 公式 derive (per ADR-0014 v0.5 amendment 的具体 D-list)
+342:  /** Grid 默认 position (per ADR-0016 D2). Optional;
+346:  /** rowSpan 语义 declaration (per ADR-0016 D3 不对称).
+350:  readonly rowSpanSemantic?: 'auto' | 'integer';
+360:mdx-bridge `tiptapToMdx` 与 `mdxToTiptap` (per D7) 通过 `gridKind`/`rowSpanSemantic` 显式查询 (NOT 'mdxComponent === "Markdown"' heuristic), 避免脆弱字符串匹配:
+364:  blockUIDef.rowSpanSemantic === 'auto' ||
+375:  rowSpanSemantic: 'auto' as const,         // markdown 内容驱动 rowSpan
+377:  defaultColSpan: 12,                        // full-width 默认 (user resize 可改 snap)
+385:- `block-callout` / `block-code` / `block-image` / `block-math` / `block-pdf` / heavy plugin placeholders: `gridKind` 与 `BlockKind` 默认 mirror (component / render / viz); `rowSpanSemantic = 'integer'`; `gridDefault = { col: 1, colSpan: 12, rowSpan: 1 }` (full-width default)
+387:- 所有 block 实施 `effectiveCellHeight(rowSpan, rowH, gap)` + `effectiveColWidth(colSpan, containerWidth, gap, totalCols)` helpers (per Q2 absorbtion — 公式从 design-tokens runtime 常量 derive, 避免硬编码 row-h=48 / gap=14 漂移); helpers 在 `@skb/block-foundation/grid-math.ts` 导出
+389:CONTRACT.md `## Public surface` 必同步 (ADR-0006 D8 + D2 row 1): `BlockGridPosition` + `COL_SNAPS` + `effectiveColSnaps` + `proseGridDefaults` + `effectiveCellHeight` + `effectiveColWidth` + `BlockUIDefinition.gridDefault/rowSpanSemantic/gridKind` 字段.
+403:**Status**: amendment to D11 (proposed v0.2; ADR-0016 stays `proposed` overall).
+435:   `display: grid; grid-template-columns: repeat(12, minmax(0, 1fr));
+441:**Per-block placement formula** (consumes ADR-0016 D2 `BlockGridPosition`
+445:gridColumn = `${col} / span ${colSpan}`
+451:where `effectiveRowSpan = rowSpan === 'auto' ? autoHint : rowSpan`
+453:prose rowSpan='auto' blocks fall through to the `:not([style*="grid-column"])`
+476:two adjacent blocks have `colSpan ≤ 6` and sit side-by-side in the
+477:12-col grid (visually two columns), ProseMirror's arrow-key navigation
+483:columns differ. Document this in the editor-shell CONTRACT.md so users
+488:READS `node.attrs.{col, row, colSpan, rowSpan}` and computes
+495:static build) emits the read-route HTML with `style="grid-column: ${col} / span ${colSpan}; grid-row: ..."`
+514:  grid-template-columns: repeat(12, ...); grid-auto-rows: var(--row-h);
+524:// editor-shell layout reducer (Stage C.2 实施 PR scope; ADR-0016 D12 锁 schema)
+535:  // 1. user-initiated > derived: drag/resize > auto-measure (markdown rowSpan='auto')
+546:| `drag` (block 移动) | `auto-measure` (markdown rowSpan='auto' 同帧改) | drag wins | user-initiated > derived |
+548:| `responsive` (viewport 切换) | `auto-measure` | responsive wins, then auto-measure 在 T4 phase 重新测 | per D5 转场态 FSM |
+558:| **字段归属** (BlockGridPosition shape: col/row/colSpan/rowSpan) | `@skb/block-foundation` `BlockGridPosition` interface (per D2) | TypeScript types + Zod schema export |
+559:| **数据模型校验** (col 1-12 / colSpan ∈ COL_SNAPS / rowSpan integer ≥ 1 OR 'auto') | `@skb/block-foundation/src/grid-schema.ts` Zod schema | 在 mdx-bridge `mdxToTiptap` 解析时 .parse() 强制; runtime 也 validate |
+560:| **rowSpan='auto' 决策路径** | `BlockUIDefinition.rowSpanSemantic` (per D10) OR `proseGridDefaults.rowSpanSemantic` (prose path) | gridKind='prose' shortcut 也 OK |
+572:1. **AC#1 (TypeScript types compile)**: `BlockGridPosition` interface (D2 shape) + `COL_SNAPS` const (D6) export from `@skb/block-foundation`; `pnpm tsc --noEmit -p packages/block-foundation` 0 errors.
+573:2. **AC#2 (mdx-bridge serialize round-trip)**: 每 block kind (callout/code/image/math/pdf + 3 heavy plugin placeholder + markdown) round-trip fixture: `parse(serialize(input)) === input` 字节等价 (per ADR-0008 D2 RFC consumer + ADR-0014 W4-1 sister)
+574:3. **AC#3 (markdown rowSpan='auto' NOT in MDX output)**: serialize markdown block with rowSpan='auto' → output MDX no `rowSpan=` attr present
+575:4. **AC#4 (其他 block rowSpan integer in MDX output)**: serialize non-markdown block with rowSpan=N (integer) → output MDX has `rowSpan={N}` attr present
+576:5. **AC#5 (useAutoRowSpan hook ResizeObserver vitest)**: 4 fixture (empty md / 1 段 / 多段 / paste-large) verify rowSpan integer correct + unmount no leak
+577:6. **AC#6 (Astro renderer grid layout)**: apps/site `astro build` produces `.skb-grid { grid-template-columns: repeat(12, minmax(0, 1fr)); grid-auto-flow: row; }` (NOT dense) — verifiable via `grep -E 'grid-auto-flow:\s*row[^a-z]' dist/_astro/*.css`; absence of `dense` keyword
+578:7. **AC#7 (Responsive matchMedia mock)**: vitest with `matchMedia` mock 切换 `(min-width: 1024px)` / `(min-width: 768px) and (max-width: 1023px)` / `(max-width: 767px)` 验证 `effectiveCols(viewport)` = 12 / 6 / 1
+579:8. **AC#8 (rowSpan adapt on mobile)**: 1-col mobile 路径 vitest: 任意 rowSpan integer 值 (持久化) 在 `effectiveCols=1` rendering 路径下被 `useAutoRowSpan` overide (NOT 改持久化值; rendering 层 derive)
+581:10. **AC#10 (BlockUIDefinition grid 字段)**: `BlockUIDefinition<T>` interface includes optional `gridDefault?: BlockGridPosition` + `rowSpanSemantic?: 'auto' | 'integer'`; existing 8 block packages migrated (in Stage C.2 实施 PR; ADR lock 仅 schema)
+582:11. **AC#11 (W5-1 invariant assertable)**: `packages/block-foundation/CONTRACT.md` `## Invariants` § contains W5-1 prose with 公式 `height(px) = rowSpan * 62 - 14` + ADR-0014 v0.5 amendment 引用; `grep -cE '^- \*\*W5-1' packages/block-foundation/CONTRACT.md` ≥ 1
+584:Stage C.2 实施 PR 必逐条 cross-reference AC#1-#11 验证 (per ADR-0011 D2 SOTed-PR.md `## acceptance` 字段).
+589:- **AC#8 ResizeObserver + matchMedia 协同**: vitest 同时 mock matchMedia 切换 + 触发 ResizeObserver; 验证 mobile path rowSpan-rendered ≠ rowSpan-persisted (per D5 转场态)
+590:- **AC#11 W5-1 invariant 语义证明**: grep prose presence (现) + parse 公式 numeric assertion (Stage C.2 实施 PR 加: extract `height(px) = rowSpan * 62 - 14` 公式 + assert rowSpan=1→48, rowSpan=2→110, rowSpan=6→358 numeric)
+598:- Wave 5 Stage C.2 grid + drag/drop 全部从此数据模型 derive; ADR-0017 (drag/drop UX) 直接消费 D2 + D6 + D8 (col/colSpan/rowSpan + COL_SNAPS + Astro renderer)
+599:- markdown rowSpan='auto' 不对称显式化 = 避免 Wave 5 Stage C.4 save 路径 implementation 时 silent drift; mdx-bridge serialize 边界明确
+600:- W5-1 invariant 给 ADR-0014 v0.5 amendment (HeavyBlockBoundary dims 联动 colSpan/rowSpan) 提供精确 source; 避免 heavy plugin placeholder dims hard-coded 漂移
+606:- 数据模型 复杂度 +1 字段 (rowSpan: number | 'auto') = TypeScript 类型 narrowing 至消费端;
+607:  mitigation: BlockUIDefinition.rowSpanSemantic 显式 declaration (D10) + W5-1 invariant 文档化
+615:- 1-col mobile 路径 rowSpan='auto' 强制 (D5+D8) 不改持久化值; rendering 层 derive 而非数据模型 mutate; 与桌面 / 平板 path 不对称 (额外的"渲染 override")
+620:ADR-0016 D9 `block-foundation/CONTRACT.md` 锁 W5-1 invariant 主权威; **4 sister CONTRACTs 必须在 Stage C.2 实施 PRs 中同步加 W5-1 forward-pointer reference** (per ADR-0006 8-point audit item #6 sister-doc-sync; same-PR with 各自 implementation):
+624:| `packages/heavy-block-boundary/CONTRACT.md` (assumed exists per Wave 4 ADR-0014 W4-1 sister) | ADR-0014 v0.5 amendment PR | "W5-1 联动 colSpan/rowSpan: heavyBoundaryDimensions per-kind formula derive from W5-1; SSR fallback 与 hydration 切换路径见 ADR-0016 D9" |
+625:| `packages/mdx-bridge/CONTRACT.md` | C.2-1 mdx-bridge serialize PR (transitional defensive defaults) + **C.2-3.5 hard-throw flip PR** (per Wave 5 plan v1.1 R14 amendment 2026-05-05; transition removal + ADR-0016 D7 end-state lock) | "MDX serialize 字段 col/row/colSpan/rowSpan per ADR-0016 D7; markdown rowSpan='auto' 不写 不对称 per D3+D4 + proseGridDefaults D10; C.2-1 → C.2-3.5 transition documented per Wave 5 plan v1.1 amendment (ADR-0015 R14 first real-test enforcement)" |
+626:| `apps/site/CONTRACT.md` | apps/site Astro renderer grid layout PR (Stage C.2 D8) | "Astro renderer `.skb-grid` container 渲染规则 per ADR-0016 D8; `@media` Responsive 12/6/1 per D5 + 转场态 FSM" |
+627:| `packages/editor-shell/CONTRACT.md` (assumed exists; create if NOT) | editor-shell grid 集成 PR (Stage C.2) | "editor-shell layoutReducer + layoutEpoch single-source mutation per ADR-0016 D12; 冲突仲裁规则 per 权威矩阵 section" |
+629:至 **Pre-A2 (this ADR lock) NOT touch** these sister CONTRACTs (留 Stage C.2 实施 PR per scope-fence whitelist; Wave 5 plan v0.2 D12); ADR-0016 prose 仅 forward-pointer 这些 sync requirements. Stage C.2 实施 PR REVIEW + ACCEPT 必逐 sister CONTRACT 验证 forward-pointer 落地 (ADR-0006 D8 同 commit sync; reviewer codex 8th-class hunt 必查).
+633:per [ADR-0007 D5](ADR-0007-job-function-codex-heavy-execution.md) + [ADR-0011 D2](ADR-0011-linear-pipeline-execution-model.md) v0.1.1 SOTed-PR.md amendment + memory `feedback_soted_pr_md_discipline.md` + ADR-0013 D4 R13 + Wave 4 Pre-A2 ADR-0014 12/12 absorbed precedent.
+635:dispatch: `codex exec --yolo --profile plan-challenger ...` (Pre-A2 ADR-0016 design-lock 4-round style); audit log path: `/tmp/codex-runs/2026-05-04-Pre-A2-plan-challenge.txt` raw (282 KB / 4267 lines; below R21 500 KB threshold) + `docs/audits/codex-runs/2026-05-04-Pre-A2-plan-challenge.txt` curated archive (113 lines: head -50 prompt + grep verdict-shaped lines).
+640:| Q2 | D2 公式 row-h=48 / gap=14 硬编码 (主题 token 变化漂移风险) | medium | **ABSORBED** | D10 加 `effectiveCellHeight(rowSpan, rowH, gap)` + `effectiveColWidth(colSpan, containerWidth, gap, totalCols)` helpers in `@skb/block-foundation/grid-math.ts`; design-tokens (ADR-0018) authority. Locked at D10. |
+641:| Q3 | D3/D4 markdown 行高自适应边界覆盖不全 (字体 / 图片 / 多次 RO 抖动收敛) | high | **ABSORBED** | D3 加 "两阶段稳态" 3-stage 规则 + 字体加载 `document.fonts.ready` await + Δ rowSpan ≥ 1 阈值规则. Locked at D3. |
+642:| Q4 | D6 6-col / 1-col effective COL_SNAPS + 非 snap 回退策略未明示 | medium | **ABSORBED** | D6 加 `effectiveColSnaps(viewportCols)` 显式 mapping (12/6/1 → 不同 snap 集合) + non-snap 拒绝 + 方向记录 (round-up 默认). Locked at D6. |
+643:| Q5 | D5 跨断点瞬态行为 (12↔6↔1 切换顺序 / colSpan preserve / rowSpan freeze / 320ms 稳定过渡) 未规范 | high | **ABSORBED** | D5 加 "转场态有限状态机" 5-phase (T0-T4); 总转场预算 ≤ 320ms; mobile vs desktop rowSpan 不对称认知 mitigation. Locked at D5. |
+646:| Q8 | D10 rowSpanSemantic 在 BlockUIDefinition 但 markdown 在 proseExtensions 模型语义来源不一致 | medium | **ABSORBED** | D10 加 `proseGridDefaults` const export from `@skb/block-foundation` (与 `proseExtensions` 平行); editor-shell + mdx-bridge 共同消费. NOT 引入 `GridNodeMetadata` 顶层规则 (太重). Locked at D10. |
+647:| Q9 | D11 NodeView attrs '被动数据' 但 useAutoRowSpan + drag/resize 同帧竞争 rowSpan 仲裁未定义 | high | **ABSORBED** | NEW D12 "Layout mutation 单一源 (layoutEpoch reducer)"; 冲突仲裁规则表 (drag > auto-measure; responsive wins T1 then auto-measure T4); single-user 单 session 假设 explicit; CRDT/OT Phase 2+. Locked at D12. |
+650:| Q12 | D2 trigger Pre-A2 写 row 1+4; Stage C.2 实施跨包 ≥3 packages 必 row 5 | medium | **ABSORBED** | NEW Compliance trailing note: Pre-A2 lock 与 Stage C.2 实施触发面分离; Pre-A2 row1+row4; Stage C.2 任 PR touch ≥3 packages (mdx-bridge + block-foundation + editor-shell + apps/site + heavy-boundary) 必 row 5 + stage 4. Locked at Compliance section. |
+658:- This ADR satisfies [Wave 5 plan v0.2 Pre-A2 acceptance](../superpowers/plans/2026-05-04-phase-1-wave-5-integration.md) (ADR-0016 design lock + plan-challenger 4-round + W5-1 invariant in CONTRACT.md)
+660:- This ADR ratifies granularity doc v0.3.4 § "ADR-0012 grid 数据模型与流动" body content (gatekeeper-side scratch at `/mnt/d/download/web/v2-design-granularity.md`, NOT in git per gatekeeper-side discipline; prose form per memory `feedback_lychee_user_local_paths`) 旧编号 0012 → Wave 5 ADR-0016 新编号 (per Wave 5 plan v0.2 D5 ADR 编号映射表)
+662:- This ADR does NOT amend [ADR-0008](ADR-0008-wave-2-entry-policies.md) D1 dead-dep policy; ADR-0016 不新增 package, 仅扩展 block-foundation `BlockUIDefinition`
+664:- **Pre-A2 D2 trigger 触发面分离 (per Q12 absorbtion)**: 此 Pre-A2 ADR design-lock = D2 row 1 (CONTRACT W5-1) + row 4 (NEW ADR) HIT → stage 4 PRE-COMMIT CLAUDE REVIEW fires. **Stage C.2 实施 PR 触发面更广**: 任何 Stage C.2 PR touching ≥3 packages (典型: mdx-bridge + block-foundation + editor-shell + apps/site + heavy-block-boundary 跨包改动) **必 D2 row 5 (cross ≥3 packages) + row 1 (sister-doc sync) + row 4 (ADR-0014 v0.5 amendment co-ship 时) HIT → stage 4 强制**. orchestrator 在 Stage C.2 plan-challenger (Pre-A5 v1.0 lock 时) 必逐 PR 重判 D2 trigger; Pre-A2 lock 不预设 Stage C.2 D2 行为
+668:- [Wave 5 plan v0.2](../superpowers/plans/2026-05-04-phase-1-wave-5-integration.md) — Pre-A2 scope source + ADR 编号映射表 D5
+669:- [ADR-0015 D6 Wave 5 plan-draft handoff](ADR-0015-wave-4-close.md) — explicit authorization for Pre-A2 work
+677:- granularity doc v0.3.4 (`/mnt/d/download/web/v2-design-granularity.md`) — gatekeeper-side scratch; § "v2 整体用户体验" + § "ADR-0012 grid 数据模型与流动" body 是此 ADR 设计意图 source (per Wave 5 plan v0.2 D5 ADR 编号映射表 0012 → 0016)
+
+exec
+/bin/bash -lc "rg -n '"'^###? .*D[79]|'"\\bD[79]\\b|Decision.*D[79]|ADR-0017|drag|resize|handle|viewport|touch|pointer' docs/decisions/ADR-0017-drag-drop-ux.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+1:# ADR-0017: Drag/Drop UX — 4 边缘对称 + outline overlay 方案 A + edge rects + lift 模式
+8:| 触发 | [Wave 5 plan v0.2 D1+D5](../superpowers/plans/2026-05-04-phase-1-wave-5-integration.md) (Pre-A3 ADR-0017 drag/drop UX design lock) + reframe v2 memory `project_wave4_reframe_v2.md` + granularity doc v0.3.4 § "v2 整体用户体验 / 4 种 Drop 语义 / Drop 视觉 / 命中检测算法 / 源块 lift" body (旧编号 0013 → Wave 5 实际 ADR-0017 per plan v0.2 ADR 编号映射表 / D5) |
+9:| 关系 | 不替代任何 ADR；扩展 [ADR-0016](ADR-0016-grid-data-model.md) (consume W5-1 invariant + COL_SNAPS + effectiveColSnaps + layoutEpoch reducer); 扩展 [ADR-0014](ADR-0014-heavy-block-boundary.md) (drag/drop 触发 HeavyBlockBoundary skeleton during transit); 不动 [ADR-0009](ADR-0009-block-kind-union-expansion.md) BlockKind |
+13:Wave 5 reframe v2 (2026-05-04 gatekeeper directive; absorbed via Wave 5 plan v0.2 Pre-A3 scope) 把 **drag/drop UX** 前移到 Wave 5 Stage C.2 实施. 此 ADR 锁定 4 边缘对称 drop modes + outline overlay 方案 A + 命中检测算法 + 源块 lift 模式 + col-ruler + drag-ghost + drop-pulse 共识, 作为 Stage C.2 实施 PR 的契约.
+15:设计源 = granularity doc v0.3.4 § "4 种 Drop 语义 (4 边缘对称)" + § "Drop 视觉: 静态底层 + per-affected-block outline overlay" + § "命中检测算法 (推荐选项 1)" + § "v2 编辑器 UX 要素 / Outline overlay" + § "v2 demo vs 设计意图的 6 个 drift" body (旧编号 0013 → Wave 5 ADR-0017 新编号 per plan v0.2 D5 ADR 编号映射表) + drag-storyboard.css 实施现状.
+21:drag/drop 与 grid data model (ADR-0016) 的边界: ADR-0016 锁数据模型 + 流动 + 响应式; ADR-0017 锁 mutation 触发器 + 视觉反馈 + 命中算法. 共享 BlockGridPosition shape + COL_SNAPS + W5-1 width/height 公式 + D12 layoutEpoch reducer.
+27:| 1 | 4 边缘对称 (左右切 host / 上下插行) | 仅 right + bottom | ADR-0017 D1 锁 4 边对称 |
+28:| 2 | 静态底层 + per-block outline overlay 方案 A | 实际 reflow simulation 方案 B 半成品 + bug | ADR-0017 D4 锁方案 A 真正实施 |
+29:| 5 | EDGE_SPLIT_PX = 14 (part 3 共识) | 死常量; 实际 EDGE_W = 28 (half-in/half-out) | ADR-0017 D2 锁 EDGE_W = 28 (= 14 进 + 14 出 = gap=14 数学对应) |
+36:- **Pre-A3 (this ADR)**: drag/drop UX + 命中算法 + outline overlay + 源块 lift
+38:- **Stage C.2 实施**: drag/drop UX 完整实施 (per ADR-0017 D-list); 消费 ADR-0016 W5-1 + D12 layoutEpoch + COL_SNAPS
+48:| `split-left` | 拖到 host 左边缘 EDGE_W (28px) 内 | host 缩到右半 (`colSpan / 2`); 新块占左半 (`col=host.col, colSpan=host.colSpan/2`) | `'drag'` |
+49:| `split-right` | 拖到 host 右边缘 EDGE_W 内 | host 缩到左半; 新块占右半 (`col=host.col + host.colSpan/2`) | `'drag'` |
+50:| `split-top` | 拖到 host 上边缘 EDGE_W 内 | 在 host 上方插新行; host 整体下移 + 后续行下移; 新块占整 row colSpan=host.colSpan | `'drag'` |
+51:| `split-bottom` | 拖到 host 下边缘 EDGE_W 内 | 在 host 下方插新行; 后续行下移; 新块占整 row colSpan=host.colSpan | `'drag'` |
+52:| `empty` | 拖到网格空区 (无 host edge rect 命中) | 新块直接落定 grid-auto-flow row 决定行号 | `'drag'` |
+59:切 host 的 colSpan/2 必落到 effective COL_SNAPS (per ADR-0016 D6 + Q4 absorbtion `effectiveColSnaps`). 若 host.colSpan / 2 不在 COL_SNAPS (e.g., host.colSpan=3 → 1.5 invalid), 则 split-left/right 拒绝触发 (UI 显示 "no-split" cursor); 用户必先 resize host 到 valid even-divide colSpan ∈ {2, 4, 6, 8, 12}.
+174:drag 期间 **底层 grid 在 完全不动**. 在底层之上画一组 dashed accent outline 矩形:
+184:drag-cancel 时 (Esc per D8 OR 拖出网格区域释放): outlines 立即清除 (无 transition); 源块 unlift (per D6); grid 状态完全恢复.
+189:.skb-outline-shifted-block { z-index: 10; pointer-events: none; opacity: 0.5; }
+190:.skb-outline-host           { z-index: 20; pointer-events: none; opacity: 0.55; }
+191:.skb-outline-new            { z-index: 30; pointer-events: none; opacity: 0.7; }
+194:新块 outline > host outline > shifted-block outline (下层); 同层 (e.g., 多 shifted-block) 按 row/col 序稳定排布. 重叠时上层 dashed border 叠加保证最终 (`new`) outline 始终可读. `pointer-events: none` 确保 outline 不阻挡 cursor → edge rect hit-test.
+196:**Reflow / resize invalidation (per Q5 absorbtion — drag 中 grid 尺寸变化)**:
+198:drag 期间监听:
+199:- `ResizeObserver` 注册到 grid container; 尺寸变化 (e.g., user 拖 viewport / window resize) 触发 `dirty=true` 标记
+202:- drag 不中断 (continue with new edge rects); ghost cursor 跟随保持
+205:**视觉反射统一约束层 (per Q1 absorbtion partial — D4/D9/D10/D11 间统一约束)**:
+207:drag/drop UX 视觉元素 (outline overlay D4 + col-ruler D9 + drag-ghost D10 + drop-pulse D11) 共享:
+210:- 展示状态机: `drag-active` (D6 drag-start 起) / `resize-active` (D9 resize 起) / `drop-pulse-active` (D11 720ms) — 同 stage 仅 1 active state
+211:- 禁用条件: `effectiveCols === 1` mobile 路径 → resize handles + col-ruler + size-tooltip + drag-ghost + outline overlay + drop-pulse + drag-handle 全 disabled (per Q9 absorbtion + R3 fix consistency with D9 + Consequences mobile view-only); 仅 Tiptap content-edit 保留 (markdown 内 inline 编辑 OK)
+219:drag-start 时给每个 snapshot block (per D6 lift 后的快照, 不含源块) 算 4 个 edge rects:
+232:drag-over 时遍历所有 edge rects 做"点-在-矩形"测试; 多个命中按 D3 tiebreak. per-event O(n) where n = block 数; n=30 时 < 0.05ms/frame (60fps preserved).
+236:drag-start 建 `cell(col, row) → block[]` 映射 (最多 12 cols × 30 rows = 360 cells); drag-over 用 cursor → cell 纯算术 O(1), 只查该 cell + 周围 8 cells. 适合 500+ blocks 的超大 doc.
+240:每块内嵌 4 个 `<div class="edge-zone-{top|right|bottom|left}">` 作 drop 区; 浏览器 dispatch `dragenter` / `dragover` 给具体 zone; 0 ops/frame; DOM 节点 ×5 增长 + CSS 复杂 + 调试困难.
+244:### D6 — 源块 lift 模式 (drag-start 时源块从 grid lift; 视觉消失)
+246:drag-start 时源块从 grid 中 lift:
+247:- DOM: `display: none` (or `visibility: hidden` + `pointer-events: none`)
+248:- snapshot: drag-start frame 拍一张 grid 快照 (源块 lift 后); 后续 drag-over edge rect 计算基于这个 snapshot, **不含源块** (避免源块 edge rect 自命中)
+249:- ghost: 一个 `.drag-ghost` fixed 浮跟随 cursor (per D10)
+251:drag-cancel: 源块 unlift; 恢复 `display` (or `visibility`); 源块 grid 位置不变.
+253:drag-end (drop): 源块从 lift 状态进入 mutation pipeline; layoutReducer (per ADR-0016 D12) 计算新 BlockGridPosition; CSS transition 自动滑到新位置.
+258:- lift 模式语义更清晰: drag = 拿走 + 放; 不是 拿+占位+放
+260:**网格外松手 = no-op cancel (per Q6 absorbtion)**: drag-end 落在网格 container 外 (cursor leaves `<div class="skb-grid">` viewport box) 时:
+261:- 不执行任何 layoutMutation (NO `'drag'` source, NO `'drag-cancel'` source)
+267:- 视觉与 drag-cancel 完全等价 (per D8 Esc 取消 + Q12 epoch 策略)
+269:外部 drop event semantics: `mouseup` outside grid OR window blur OR tab switch 都属此类; ghost / 源块 / outline 完全恢复 drag-start 前 snapshot.
+271:**Markdown 预览几何契约 (per Q7 absorbtion — drag 中 outline rowSpan 与 drop 后 rowSpan 不一致风险)**:
+273:markdown 块 (rowSpan='auto') drag 中 outline overlay 显示几何:
+274:- drag-start 时 freeze `useAutoRowSpan` 当前测量值 = `frozenRowSpan`; outline overlay 用 `frozenRowSpan` 计算 height
+275:- drag-over 期间 outline overlay 始终用 `frozenRowSpan` (即使 markdown 内容此时被 ResizeObserver 测变化也忽略, 避免 outline 高度抖动)
+276:- drag-end 落定: layoutMutation `source = 'drag'` 仅 mutate col/colSpan/row; rowSpan='auto' 由 ResizeObserver 在 落定 后 (per ADR-0016 D3 两阶段稳态) 重新测量
+278:- drag-cancel: `frozenRowSpan` 解 freeze; useAutoRowSpan 恢复 ResizeObserver-driven
+280:视觉跳变 mitigation: outline 显示的是 "drag-start 瞬间高度" (frozen); drop 后实际高度可能 Δ ≤ 几行 (用户编辑期间内容长度变化通常很小). 为零跳变需要 (a) drag 中持续 ResizeObserver-track + outline 跟随 — 抖动风险高; (b) drag-end 后强制 ResizeObserver 立即重测 (per D3 两阶段稳态 first RO 触发) + 180ms transition. 选 (b) 路径; 抖动 mitigated by 两阶段稳态规则.
+282:### D7 — `useAutoRowSpan` hook (consume ADR-0016 D3)
+284:drag/drop UX 操作 markdown 块 (kind='prose' OR rowSpanSemantic='auto') 时 rowSpan 由 `useAutoRowSpan` hook (per ADR-0016 D3 + 两阶段稳态) 反算. drag/drop 仅 mutate `col / colSpan / row` (持久化字段); rowSpan='auto' 不入持久化, 由 ResizeObserver 在 drop 后重新测量 rendering-derived.
+286:**冲突仲裁** (per ADR-0016 D12 layoutEpoch reducer): drag-end 时 layoutMutation `source = 'drag'` 优先于 `source = 'auto-measure'` (per ADR-0016 D12 表格); 即 drag 落定瞬间 rowSpan 由 D5 transition 状态机决定 (T2 freeze + T4 重新测量).
+290:drag 期间任何时刻 user 按 Esc → `dragMutation.source = 'drag-cancel'`:
+294:- grid 状态完全恢复 (drag-start 前 snapshot)
+296:实施: editor-shell 全局 keydown listener with `key === 'Escape'`; layoutReducer 接收 `'drag-cancel'` source 触发 rollback. layoutEpoch 不递增 (cancel 不算 mutation).
+300:drag 活动状态 (`drag-active`) 期间 Esc 优先级:
+302:1. **drag-active === true**: keydown listener 在 drag-cancel 路径 `preventDefault()` + `stopPropagation()`; **NOT** 触发 textarea blur / Tiptap selection-clear / native browser ESC behavior; 不主动 focus 失效
+303:2. drag-end 后 (drop OR cancel 都 fire): `drag-active === false`; restore 最近 focus 状态 (drag-start 时 active element 若是 textarea/Tiptap 则 re-focus); textarea 内容 NOT 改变 (drag 期间无 native ESC 透传)
+304:3. **drag-active === false**: Esc 走 native behavior (textarea blur / Tiptap deselect / etc.) + Tiptap 自身 keymap
+306:实施约束: editor-shell `useDragActive()` hook 维护 global `drag-active` state; 所有依赖 ESC 的 consumer (Tiptap keymap / textarea / global handlers) 必须 check `drag-active` flag.
+308:### D9 — col-ruler + size-tooltip (resize feedback; consume ADR-0016 D6 COL_SNAPS)
+310:resize 时 (拖 block 右/下/角 handle):
+311:- **col-ruler**: 浮在 grid 容器顶部, 显示 12 columns (or effective viewport cols) 的 6 个 stop (= effectiveColSnaps); cursor 命中 stop 时 stop highlight `oklch(58% 0.16 35 / 0.4)` (accent-soft per ADR-0018)
+314:resize 落定 (release):
+317:- layoutMutation `source = 'resize'`
+319:**Resize handle 显示规则**:
+320:- `.gblock-handle.right` (cursor `ew-resize`) — **所有 block** 都有 (effectiveCols ≥ 6 时)
+321:- `.gblock-handle.bottom` (cursor `ns-resize`) — **仅** kind='render' / 'viz' / kind='component' (canvas / image / runnable / heavy plugin placeholder); markdown (kind='prose') NO bottom handle (rowSpan='auto' 内容驱动 per ADR-0016 D3)
+322:- `.gblock-handle.corner` (cursor `nwse-resize`) — 同 bottom 规则
+326:- **resize disabled**: `.gblock-handle.right` / `.bottom` / `.corner` 全部 hide (`display: none` via `.skb-grid--mobile` className 控制); col-ruler hide; size-tooltip 不渲染; cursor 默认 (NOT resize cursor)
+327:- **drag/drop disabled**: drag-handle (`.gblock-gutter` 内的 `⋮⋮` button) hide; ghost / outline overlay / drop-pulse / Esc cancel 全 inactive; pointer-events 在 `.gblock` 上 read-only (除 markdown block 内 Tiptap 编辑保留)
+328:- mobile path 块仅纵向自适应 (rowSpan='auto' 强制 per ADR-0016 D5); 用户可滚动浏览 + Tiptap 内编辑 markdown 内容; **不能** 拖动块 / resize / split host
+329:- 心智: mobile = preview-mode + content-edit (touch keyboard 编辑 markdown OK); desktop = author-mode (drag/drop/resize 全功能)
+331:**Touch / mobile drag explicit out-of-scope** (consistent with Consequences + Wave 5 plan v0.2 + PR.md): Wave 5 仅 desktop 鼠标 drag (mousedown/mousemove/mouseup); touchstart/touchmove/touchend listener NOT 实现; mobile 1-col 完全 view-only + Tiptap content-edit.
+333:### D10 — drag-ghost (cursor 跟随 + per-kind 着色)
+335:`.drag-ghost`:
+340:drag-start 时创建 ghost; drag-end 销毁. cursor velocity ≥ 5px/frame 时 ghost 微旋角度 ±5° 反馈 cursor 速度方向; velocity = 0 时 ghost 角度 = -1.5deg (静态 baseline).
+351:**drop-pulse 不在 drag-cancel 时触发** (cancel 没 drop event); 网格外松手 (per D6 Q6 absorbtion no-op cancel) 也不触发.
+355:drag/drop 所有 mutations 都经过 `@skb/editor-shell` `layoutReducer` with `layoutEpoch` version stamp (per ADR-0016 D12).
+357:**Epoch 唯一策略 (per Q12 absorbtion — drag-start NOT change epoch; drag-end-success +1; cancel/外部释放 NOT change)**:
+361:| **drag-start** (lift; per D6) | `epoch unchanged` (e.g., still N) | save snapshot S0 = grid state with 源块 lifted | (rollback target for cancel) |
+362:| **drag-over** (cursor 移动 + edge rect hit-test + outline preview) | `epoch unchanged` (NO mutation) | (use S0 as base; preview not committed) | (still S0) |
+363:| **drag-end-success** (drop 在 grid 内有效 mode 落定) | `epoch += 1` (one-shot N → N+1) | new state S1 committed to history | (S1 is new baseline) |
+364:| **drag-end-cancel** (Esc per D8 OR 网格外松手 per D6 Q6) | `epoch unchanged` (no mutation) | (S0 still baseline) | rollback to S0 (revert lift) |
+365:| **drag-end-mode-none** (cursor 在 block 内非边缘 release) | `epoch unchanged` (no mutation; degenerate cancel) | (S0 still baseline) | rollback to S0 |
+367:历史链 (undo/redo) 仅记录 epoch 增加的 commit (drag-end-success); cancel / no-op 不污染历史. user undo (Ctrl+Z) 触发 `epoch -= 1` rollback to history[epoch - 1].
+369:**冲突仲裁** (per ADR-0016 D12): drag (user-initiated) 优先于 auto-measure (markdown rowSpan='auto'); responsive transition (per ADR-0016 D5 转场态 FSM) 期间 drag 拒绝 (UI grayed cursor). 单用户单 session 假设 explicit (CRDT/OT Phase 2+).
+373:`@skb/editor-shell` 包 + `apps/site` Astro renderer (drag-handle source) + visual smoke playwright 必满足:
+375:1. **AC#1 (4 mode 视觉验证)**: 4 mode (split-left/right/top/bottom) + empty + none 各 1 vitest unit (mock cursor at edge position) + 1 playwright scenario per mode (drag-and-drop 完整流程; 验证 outline overlay correct + drop 落定结果)
+378:4. **AC#4 (静态底层不动 during drag)**: drag-over 期间 grid container CSS computed style + block.gridColumn / block.gridRow 持续不变; 仅 `.drag-overlay-*` element 显示; vitest + playwright DOM mutation observer
+380:6. **AC#6 (hit-test 性能 budget)**: n=30 blocks drag-over 60fps (per-event ≤ 16ms / frame); per-event O(n) ≤ 0.05ms; playwright `performance.now()` budget assertion (Stage C.2 实施 PR 加 fixture; AC#6 要求形式 fixture 模板)
+381:7. **AC#7 (源块 lift 模式)**: drag-start 时源块 `display: none` (or `visibility: hidden`); snapshot edge rects 不含源块 (avoid self-match); drag-cancel 时源块恢复; vitest unit + playwright assertion `getComputedStyle(srcBlock).display === 'none'` during drag
+382:8. **AC#8 (useAutoRowSpan integration with ADR-0016 D3)**: drop 落定 markdown block 时 rowSpan='auto' 从 useAutoRowSpan hook 重新测量; mutation 仅 mutate col / colSpan / row (NOT rowSpan); vitest fixture: drag markdown block to new position → drop → ResizeObserver 触发 → rowSpan 再次正确反算 (per ADR-0016 D3 两阶段稳态)
+383:9. **AC#9 (全局 Esc 取消)**: drag 中按 Esc → 源块 unlift + outline 清除 + ghost 消失 + grid 状态完全恢复 (drag-start 前 snapshot); layoutEpoch unchanged; vitest unit + playwright mid-drag escape
+384:10. **AC#10 (col-ruler 命中 stop highlight)**: resize 拖 right handle 时 col-ruler 显示 effective COL_SNAPS (12-col → 6 stops [2,3,4,6,8,12]; 6-col → 3 stops [2,3,6]); cursor 命中 stop 时 stop highlight; size-tooltip 显示 fraction; vitest + playwright snapshot
+385:11. **AC#11 (drag-ghost 视觉跟随)**: drag-start ghost element exists with `position: fixed`; drag-over ghost.x/y matches cursor; per-kind 着色 (vitest snapshot per kind className); drag-end ghost destroyed
+404:- D6 源块 lift 改变 v2 demo 行为 = user 视觉感知与 demo 不一致; mitigation 是 v0.3 user 共识 + 文档化 + drop-pulse 落定反馈给 user 明确 "drag = 拿走 + 放" 心智
+405:- D9 resize handle 显示规则按 kind 二分 = block kind 添加时 resize handle 行为决策必跟; mitigation 通过 BlockUIDefinition.gridKind (per ADR-0016 D10) 显式 declarative
+409:- Modal canvas (granularity 旧 ADR-0014; Wave 5+ ADR-0019+) drag/drop 内部行为 OUT OF SCOPE; modal 内 canvas node/edge editing 留 Phase 2+ ADR
+411:- Touch / mobile drag (touchstart/touchmove/touchend) OUT OF SCOPE; Wave 5 仅 desktop 鼠标拖; mobile 路径 (per ADR-0016 D5 1-col) view-only 无 drag
+412:- AC#6 性能 budget assertion = playwright `performance.now()` 测试; Stage C.2 实施 PR 加 fixture (ADR-0017 D-list 锁要求形式; fixture 实质留 Stage C.2)
+418:dispatch: `codex exec --yolo --profile plan-challenger ...` (Pre-A3 ADR-0017 design-lock 4-round style); audit log path: `/tmp/codex-runs/2026-05-04-Pre-A3-plan-challenge.txt` raw + `docs/audits/codex-runs/2026-05-04-Pre-A3-plan-challenge.txt` curated archive (head -50 + R21 grep verdicts if log > 500 KB).
+422:| Q1 | D-list D1-D12 拆分 D9/D10/D11 是否应合并为统一"视觉反射层"小节 | low | **PARTIALLY ABSORBED** | D-list 保持 D1-D12 拆分 (各自独立可测可 ratify); 但 D4 末尾加 "视觉反射统一约束层" note (token 来源 + 展示状态机 + 禁用条件) 让后续实现者统一理解口径. Locked at D4 trailing prose. |
+425:| Q4 | D4 outline 3 类 z-index / 叠加策略 / pointer-events / opacity 重叠保底可读性未定义 | medium | **ABSORBED** | D4 末尾加 "Outline 图层优先级" CSS block (z-index: shifted 10 / host 20 / new 30; pointer-events: none; opacity 0.5/0.55/0.7); 同层按 row/col 序稳定排布. Locked at D4 trailing CSS block. |
+426:| Q5 | drag-start 预计算 edge rects; drag 中 grid container 尺寸变化未重算导致命中偏差 | high | **ABSORBED** | D4 末尾加 "Reflow / resize invalidation" — `ResizeObserver` 标记 dirty; effectiveCols 改 立即重算; 下一 rAF 重建 edge rects; drag 不中断. Locked at D4 trailing prose. |
+427:| Q6 | drag-end 落网格外释放语义未定义 (cancel vs no-op) | medium | **ABSORBED** | D6 末尾加 "网格外松手 = no-op cancel" — 不执行 layoutMutation; epoch unchanged; ghost / 源块 lift / outline 全清; drop-pulse 不触发. mouseup outside / window blur / tab switch 都属此类. Locked at D6 trailing prose. |
+428:| Q7 | markdown rowSpan='auto' 落位前后 outline preview 高度与实际可能不一致瞬时跳跃 | medium | **ABSORBED** | D6 末尾加 "Markdown 预览几何契约" — drag-start 时 freeze useAutoRowSpan 当前值; outline overlay drag-over 期间用 frozen 值; drag-end 后 ResizeObserver 重测 (per ADR-0016 D3 两阶段稳态) + CSS transition 缓冲. Locked at D6 trailing prose. |
+429:| Q8 | 全局 Esc 在 textarea/Tiptap focus 时与 native ESC 冲突 | medium | **ABSORBED** | D8 末尾加 "Esc focus textarea 冲突优先级" — drag-active 时 keydown listener preventDefault + stopPropagation; NOT blur textarea; drag-end 后 restore focus. Tiptap keymap consume drag-active flag. Locked at D8 trailing prose. |
+430:| Q9 | mobile 1-col 路径 resize 交互未定义; col-ruler 退化误导 | medium | **ABSORBED** | D9 末尾加 "Mobile 1-col 路径全 view-only" — resize handles + col-ruler + size-tooltip 全 hide via `.skb-grid--mobile` className; **drag/drop UX 全 disabled** (drag-handle hide + ghost/outline/drop-pulse/Esc 全 inactive); Tiptap content-edit 保留 (markdown 内容编辑 OK). Touch / mobile drag 显式 OUT OF SCOPE consistent with Consequences + PR.md. Locked at D9 trailing prose. |
+433:| Q12 | drag-start epoch handling "implementation choice" 与 rollback/undo 语义不闭环 | high | **ABSORBED** | D12 加 "Epoch 唯一策略" 表 — drag-start: epoch unchanged (snapshot S0); drag-over: unchanged; drag-end-success: epoch+1; drag-end-cancel/外部释放: unchanged + rollback to S0; drag-end-mode-none: 同 cancel. 历史链仅记 epoch+1 commits. Locked at D12 Epoch 表. |
+442:- This ADR satisfies [Wave 5 plan v0.2 Pre-A3 acceptance](../superpowers/plans/2026-05-04-phase-1-wave-5-integration.md) (ADR-0017 design lock + plan-challenger 4-round)
+443:- This ADR fulfills [ADR-0011 D1 stage 4 PRE-COMMIT CLAUDE REVIEW](ADR-0011-linear-pipeline-execution-model.md) trigger criteria (Row 4 NEW ADR HIT; Row 1 NO — ADR-0017 不动 CONTRACT; editor-shell drag/drop UX 是 internal implementation, sister-doc-sync 留 Stage C.2 实施 PR)
+444:- This ADR ratifies granularity doc v0.3.4 § "4 种 Drop 语义" + § "Drop 视觉" + § "命中检测算法" + § "源块 drag 时 lift" body content (gatekeeper-side scratch at `/mnt/d/download/web/v2-design-granularity.md`, NOT in git per gatekeeper-side discipline; prose form per memory `feedback_lychee_user_local_paths`) 旧编号 0013 → Wave 5 ADR-0017 新编号 (per Wave 5 plan v0.2 D5 ADR 编号映射表)
+446:- This ADR does NOT amend [ADR-0014](ADR-0014-heavy-block-boundary.md); HeavyBlockBoundary skeleton during drag transit 留 Stage C.2 实施 PR (consume W5-1 dims + drag/drop 状态)
+448:- **Pre-A3 D2 trigger 触发面分离 (per Wave 5 plan v0.2 D13 + Pre-A2 ADR-0016 Q12 absorbtion 同质 escalation)**: 此 Pre-A3 ADR design-lock = D2 row 4 (NEW ADR) HIT → stage 4 PRE-COMMIT CLAUDE REVIEW fires. **Stage C.2 drag/drop 实施 PR** 触发面更广: 任 PR touching ≥3 packages (典型: editor-shell + apps/site + block-foundation + design-tokens 跨包) **必 D2 row 5 (cross ≥3 packages) + row 1 (sister CONTRACT sync; editor-shell CONTRACT.md 创建 OR W5-2 invariant) HIT → stage 4 强制**. orchestrator 在 Stage C.2 plan-challenger (Pre-A5 v1.0 lock 时) 必逐 PR 重判 D2 trigger; Pre-A3 lock 不预设 Stage C.2 D2 行为
+449:- **Per Q10 absorbtion clarification**: drag-ghost per-kind 着色 (D10) `.ghost-markdown` 中性灰 决策来源 = ADR-0016 D10 `proseGridDefaults.gridKind === 'prose'` (proseExtensions path) OR `BlockUIDefinition.gridKind === 'prose'` (component path); 颜色映射由 `gridKind` 标签决定, NOT 依赖 `BlockUIDefinition` 全写路径. markdown 通过 proseExtensions 暴露 + `proseGridDefaults` 提供 gridKind label = ghost 着色 query 一致 不依赖 BlockUIDefinition 重复写
+450:- **Per Q13 absorbtion Stage C.2 D2 row 1 escalation explicit**: Stage C.2 drag/drop 实施 PR 创建 `packages/editor-shell/CONTRACT.md` (NEW; if 不存在; ADR-0017 此 Pre-A3 留 forward-pointer 不实际 create) + W5-2 invariant 加 (editor-shell layoutReducer + EDGE_W + tiebreak + 命中算法 single-source export) → 必 D2 row 1 (NEW CONTRACT) + row 5 (cross ≥3 packages: editor-shell + block-foundation 消费者 + apps/site + design-tokens) HIT → stage 4 PRE-COMMIT CLAUDE REVIEW + ADR-0006 8-point #6 sister-doc-sync 必查; orchestrator Pre-A5 v1.0 lock 时 plan-challenger 验证 Stage C.2 PR 拆分粒度 + D2 trigger 准确性 (per Wave 5 plan v0.2 D13 late-surface escalation)
+455:- [ADR-0016 grid 数据模型](ADR-0016-grid-data-model.md) — Pre-A2 design-lock; W5-1 + D12 layoutEpoch + COL_SNAPS + effectiveColSnaps + useAutoRowSpan 都被 ADR-0017 消费
+456:- [ADR-0015 D6 Wave 5 plan-draft handoff](ADR-0015-wave-4-close.md) — Wave 5 deferred items binding (drag/drop forward to Wave 5 Stage C.2)
+457:- [ADR-0014 HeavyBlockBoundary](ADR-0014-heavy-block-boundary.md) — drag transit during heavy block + skeleton 留 Stage C.2 实施
+460:- [ADR-0003 Headless / Presentational](ADR-0003-headless-presentational-split.md) — drag-handle is UI 层, layoutReducer is core 层 (per editor-shell internal)
+463:- granularity doc v0.3.4 (`/mnt/d/download/web/v2-design-granularity.md`) — gatekeeper-side scratch; § "4 种 Drop 语义" + § "Drop 视觉" + § "命中检测算法" + § "源块 drag 时 lift" body 是此 ADR 设计意图 source (per Wave 5 plan v0.2 D5 ADR 编号映射表 0013 → 0017)
+464:- drag-storyboard.css (`/mnt/d/download/web/drag-storyboard.css`) — 16 KB v2 demo drag UX storyboard CSS implementation reference
+
+exec
+/bin/bash -lc 'git show --format=fuller --patch --find-renames 7ae0f02 -- apps/site/src/components/EditorShellMount.tsx packages/editor-shell/src/resize/resize-snap.ts packages/editor-shell/src/resize/use-resize-pipeline.ts packages/editor-shell/src/__tests__/resize/resize-snap.test.ts apps/site/playwright/sample-blocks-resize-handles.spec.ts apps/site/CONTRACT.md packages/editor-shell/CONTRACT.md docs/plans/wave-6-main/wave-6-cf-20d-resize-handles.md' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+commit 7ae0f02175bf5cf081301d927617b2999d22d645
+Author:     W_YI <W_YI1223@outlook.com>
+AuthorDate: Sat May 9 15:04:29 2026 -0400
+Commit:     W_YI <W_YI1223@outlook.com>
+CommitDate: Sat May 9 15:04:29 2026 -0400
+
+    Wave 6 cf-20d R1 — 3 codex findings (responsive snap-set + overflow-filter + rowSpan='auto' preservation)
+    
+    F1: tablet (≤1024px) resize was hardcoded to 12-col snaps; now derives via
+    useResponsiveCols + threads viewportCols into GridContainer + ResizePipeline +
+    ResizeOverlays. NEW Playwright case at viewport=900px asserts only [2, 3, 6]
+    snap stops are reachable, NOT [2, 3, 4, 6, 8, 12].
+    
+    F2: snapToColSpan extended with startCol parameter; overflow-filter snap <=
+    totalCols - startCol + 1 prevents col=7 + colSpan=8 invalid commits.
+    ResizeSnapshot.startCol field; defense-in-depth re-validation before commit.
+    8 new vitest cases for non-col=1 blocks across viewports.
+    
+    F3: NEW pure helper buildResizeNextAttrs(axis, ...) returns axis-aware attr
+    diff (right omits rowSpan, bottom omits colSpan, corner writes both). Snapshot
+    preserves startRowSpanAttr ('auto' or integer); right-only commits leave
+    prose rowSpan='auto' intact per ADR-0017 D9 + ADR-0016 D3. 10 new vitest cases.
+    
+    223 vitest passed (was 205); 61 Playwright passed / 14 skipped / 0 failed (was 60).
+    size-check 424 files all under 500.
+    
+    4 operational rules landed in cf-20d R1 reflection: responsive viewport is
+    first-class input; multi-param test matrix; defensive type-narrowing parallel
+    fields (*Attr + *Int); axis × col=1/≠1 × rowSpan integer/'auto' pre-ship matrix.
+    
+    Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+
+diff --git a/apps/site/CONTRACT.md b/apps/site/CONTRACT.md
+index 63f1938..b1c7ad2 100644
+--- a/apps/site/CONTRACT.md
++++ b/apps/site/CONTRACT.md
+@@ -277,15 +277,21 @@
+   rect matches the post-drop source rect within 1px sub-pixel
+   tolerance per ADR-0017 D11 line 344), AND mobile-hidden
+   assertion.
+-- **Resize handles wire (Wave 6 cf-20d 2026-05-09)**: `EditorShellMount.tsx`
+-  additionally mounts `useResizePipeline({editor, totalCols: 12,
+-  activeColSnaps: effectiveColSnaps(12), onCommitSuccess})` as the lifecycle
+-  owner of per-block resize gestures. The hook returns
++- **Resize handles wire (Wave 6 cf-20d 2026-05-09; R1 fixes 2026-05-09)**:
++  `EditorShellMount.tsx` additionally mounts `useResizePipeline({editor,
++  totalCols: viewportCols, activeColSnaps: effectiveColSnaps(viewportCols),
++  onCommitSuccess})` as the lifecycle owner of per-block resize gestures
++  (R1 F1 fix: `viewportCols` derives from `useResponsiveCols` per ADR-0016
++  D5; pre-R1 was hardcoded `12`/`effectiveColSnaps(12)` which gave tablet
++  users wrong snap stops). The hook returns
+   `{state, onResizeStart, onResizeEnd}`; the mount nests
+   `<ResizeProvider value={{onResizeStart, onResizeEnd, resizingBlockId,
+   resizingAxis}}>` INSIDE the cf-20c-2 `<DragDropProvider>` so per-block
+-  components can read both contexts independently. Each `.skb-block-nodeview`
+-  emits 3 resize handles (right + bottom + corner per
++  components can read both contexts independently. The mount also passes
++  `viewportCols` to `<GridContainer>` so the existing
++  `.skb-grid--mobile` className emission per ADR-0017 D9 fires at
++  viewport=1 (was `undefined` pre-R1). Each `.skb-block-nodeview` emits 3
++  resize handles (right + bottom + corner per
+   `/mnt/d/download/web/v2-styles.css:256-311`) via `<ResizeHandles
+   blockId gridKind?>` rendered inside `BlockNodeView.tsx`. Right handle is
+   always rendered; bottom + corner are gated by `gridKind !== 'prose'` per
+@@ -300,22 +306,30 @@
+   consumer routes this to `pipeline.setLastDroppedFromExternal(...)` so the
+   resize success-pulse mounts via the SAME cf-20c-2 `<DropPulseAtRect>`
+   + `dropEpoch` infrastructure (cf-20d D3 reuse: dropEpoch is generic
+-  "rapid-action animation isolation", not drag-specific). `useEscCancel` is
+-  wired with `dragActive: resize.state.active` so Escape rolls the resize
+-  back without mutation per ADR-0017 D8. The v2 `.gblock.resizing` outline
+-  + body-hidden contract per v2-styles.css:172-176 is implemented by the
+-  `.skb-block-nodeview--resizing` modifier in `BlockNodeView.css`. Mobile
+-  (≤768px) hides ALL resize affordances (.gblock-handle / .skb-col-ruler /
+-  .skb-row-ladder / .skb-size-tooltip) via `display: none` per ADR-0017 D9
+-  view-only contract.
++  "rapid-action animation isolation", not drag-specific). The pipeline's
++  attr-write path (R1 F2 + F3 fixes) snapshots the block's `col` AND
++  preserves the original `rowSpan` attr (could be `'auto'` on prose);
++  `snapToColSpan` filters overflowing snaps via `snap <= totalCols -
++  startCol + 1` per ADR-0016 D2 invariant; `buildResizeNextAttrs` performs
++  axis-aware attr write so right-only resize NEVER touches `rowSpan`
++  (preserves `'auto'`), bottom-only NEVER touches `colSpan`, corner writes
++  both. `useEscCancel` is wired with `dragActive: resize.state.active` so
++  Escape rolls the resize back without mutation per ADR-0017 D8. The v2
++  `.gblock.resizing` outline + body-hidden contract per
++  v2-styles.css:172-176 is implemented by the `.skb-block-nodeview--resizing`
++  modifier in `BlockNodeView.css`. Mobile (≤768px) hides ALL resize
++  affordances (.gblock-handle / .skb-col-ruler / .skb-row-ladder /
++  .skb-size-tooltip) via `display: none` per ADR-0017 D9 view-only contract.
+   Regression-lock spec:
+   `apps/site/playwright/sample-blocks-resize-handles.spec.ts` covers
+   handle visibility (14 right + 14 bottom + 14 corner per sample-blocks
+   fixture), right-edge resize commit (gridColumn mutates from
+   `1 / span 12` to `1 / span N` where N ∈ {2, 3, 4, 6, 8} per ADR-0016 D6
+   round-to-nearest-snap + dropEpoch reuse mounts the success-pulse anchor),
+-  AND mobile-hidden lock at 375×812 viewport. Uses byte-snapshot fixture
+-  isolation per cf-20c-2 R3 F1 (NEVER `git checkout` in test code).
++  R1 F1 tablet snap-set lock (at viewport=900px the 6-col grid forces
++  N ∈ {2, 3, 6}), AND mobile-hidden lock at 375×812 viewport. Uses
++  byte-snapshot fixture isolation per cf-20c-2 R3 F1 (NEVER `git checkout`
++  in test code).
+ - Block registry: C.4-2 verified that `EditorShellMount.tsx` constructs a
+   route-local `BlockRegistry` and calls `registerBlocks` from
+   `@skb/editor-shell`, whose helper registers all 8 Wave 2 block definitions
+diff --git a/apps/site/playwright/sample-blocks-resize-handles.spec.ts b/apps/site/playwright/sample-blocks-resize-handles.spec.ts
+index 27cf036..81c7f05 100644
+--- a/apps/site/playwright/sample-blocks-resize-handles.spec.ts
++++ b/apps/site/playwright/sample-blocks-resize-handles.spec.ts
+@@ -297,3 +297,131 @@ test('cf-20d — resize handles hidden on mobile (≤768px) per ADR-0017 D9 view
+     ),
+   ).toBe('none');
+ });
++
++test('cf-20d R1 F1 — tablet (≤1024px, 6-col) right-edge resize uses [2, 3, 6] snaps NOT [2, 3, 4, 6, 8, 12]', async ({
++  page,
++}) => {
++  // R1 F1 fix lock (2026-05-09): EditorShellMount.tsx now derives
++  // `viewportCols` via `useResponsiveCols`; the resize pipeline
++  // consumes `effectiveColSnaps(viewportCols)` instead of the
++  // pre-R1 hardcoded `effectiveColSnaps(12)`. Tablet viewport
++  // (768 < width ≤ 1024) → 6-col grid → snaps `[2, 3, 6]` per
++  // ADR-0016 D6 + D5.
++  //
++  // Approach: at viewport=900px (tablet range), perform a right-
++  // edge resize from colSpan=12 with a generous-leftward delta
++  // (~600px). The pre-R1 12-col snap set would have allowed
++  // colSpan=8 or 4 as snap targets; the R1 6-col snap set forces
++  // landing at one of [2, 3, 6]. Assert the post-commit gridColumn
++  // matches `1 / span (2|3|6)`.
++  restoreSampleBlocksFixture();
++
++  await page.setViewportSize({ width: 900, height: 1024 });
++  await page.goto('/notes/sample-blocks/edit');
++  const editor = page.locator('.ProseMirror').first();
++  await expect(editor).toBeVisible({ timeout: 15_000 });
++  await expect(editor.locator('.skb-block-nodeview').first()).toBeVisible({
++    timeout: 10_000,
++  });
++  await page.waitForTimeout(500);
++
++  // Verify 6-col grid is active (.skb-grid emits its --total-cols=6
++  // CSS var via the @media (max-width: 1024px) rule in grid.css).
++  const gridTotalCols = await page
++    .locator('.skb-grid')
++    .first()
++    .evaluate(
++      (el) =>
++        getComputedStyle(el).getPropertyValue('--total-cols').trim(),
++    );
++  expect(gridTotalCols).toBe('6');
++
++  const firstWrapper = page.locator('.skb-block-nodeview').first();
++  const wrapperBox = await firstWrapper.boundingBox();
++  if (!wrapperBox) throw new Error('first wrapper has no bounding box');
++  const rightHandle = firstWrapper.locator('.gblock-handle.right').first();
++  const handleBox = await rightHandle.boundingBox();
++  if (!handleBox) throw new Error('right handle has no bounding box');
++
++  const downX = handleBox.x + handleBox.width / 2;
++  const downY = handleBox.y + handleBox.height / 2;
++  // Drag well leftward — past several "would-be 12-col snap stops"
++  // — so the snap MUST land at a fitting member of [2, 3, 6] in
++  // the 6-col viewport.
++  const targetX = wrapperBox.x + wrapperBox.width * 0.4;
++  const targetY = downY;
++
++  await rightHandle.dispatchEvent('pointerdown', {
++    bubbles: true,
++    cancelable: true,
++    clientX: downX,
++    clientY: downY,
++    button: 0,
++    pointerId: 1,
++    pointerType: 'mouse',
++  });
++  await page.evaluate(
++    () =>
++      new Promise<void>((resolve) =>
++        requestAnimationFrame(() => resolve()),
++      ),
++  );
++  await page.evaluate(
++    ({ moveX, moveY }: { moveX: number; moveY: number }) => {
++      window.dispatchEvent(
++        new PointerEvent('pointermove', {
++          bubbles: true,
++          cancelable: true,
++          clientX: moveX,
++          clientY: moveY,
++          button: 0,
++          pointerId: 1,
++          pointerType: 'mouse',
++        }),
++      );
++    },
++    { moveX: targetX, moveY: targetY },
++  );
++  await page.evaluate(
++    () =>
++      new Promise<void>((resolve) =>
++        requestAnimationFrame(() => resolve()),
++      ),
++  );
++  await page.evaluate(
++    ({ moveX, moveY }: { moveX: number; moveY: number }) => {
++      window.dispatchEvent(
++        new PointerEvent('pointerup', {
++          bubbles: true,
++          cancelable: true,
++          clientX: moveX,
++          clientY: moveY,
++          button: 0,
++          pointerId: 1,
++          pointerType: 'mouse',
++        }),
++      );
++    },
++    { moveX: targetX, moveY: targetY },
++  );
++  await page.evaluate(
++    () =>
++      new Promise<void>((resolve) =>
++        requestAnimationFrame(() =>
++          requestAnimationFrame(() => resolve()),
++        ),
++      ),
++  );
++  await page.waitForTimeout(300);
++
++  const colAfter = await firstWrapper.evaluate(
++    (el) => (el as HTMLElement).style.gridColumn,
++  );
++  const colNormalized = colAfter.replace(/\s+/g, ' ').trim();
++  expect(
++    colNormalized,
++    'cf-20d R1 F1: tablet (6-col) right-edge resize MUST snap colSpan to one of [2, 3, 6] per ADR-0016 D6 effectiveColSnaps(6); pre-R1 hardcoded 12-col snaps would have allowed 4 or 8 here',
++  ).toMatch(/^1 \/ span (2|3|6)$/);
++
++  restoreSampleBlocksFixture();
++});
+diff --git a/apps/site/src/components/EditorShellMount.tsx b/apps/site/src/components/EditorShellMount.tsx
+index afa8a36..4b5b0d7 100644
+--- a/apps/site/src/components/EditorShellMount.tsx
++++ b/apps/site/src/components/EditorShellMount.tsx
+@@ -1,5 +1,9 @@
+ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+-import { BlockRegistry, effectiveColSnaps } from '@skb/block-foundation';
++import {
++  BlockRegistry,
++  effectiveColSnaps,
++  type EffectiveViewportCols,
++} from '@skb/block-foundation';
+ import {
+   ApiAdapter,
+   DragDropProvider,
+@@ -23,6 +27,7 @@ import {
+   useDragDropPipeline,
+   useEscCancel,
+   useResizePipeline,
++  useResponsiveCols,
+   wireRegistry,
+ } from '@skb/editor-shell';
+ import { DropPulseAtRect, ResizeOverlays } from './EditorShellOverlays';
+@@ -135,20 +140,19 @@ export function EditorShellMount({
+   // `onCommitSuccess` callback wired to
+   // `pipeline.setLastDroppedFromExternal`.
+   //
+-  // totalCols / activeColSnaps default to the desktop 12-col viewport
+-  // baseline. cf-20d's mobile path is handled CSS-side via the
+-  // resize-handles.css `@media (max-width: 768px) { display: none }`
+-  // rule per ADR-0017 D9 — handles render in the React tree but are
+-  // visually hidden on mobile, and any pointerdown is moot because
+-  // the user can't interact with a display:none element. A
+-  // useResponsiveCols-driven dynamic update (12 ↔ 1) is a future
+-  // viewport-resize-during-edit polish (cf-20d ships the static-
+-  // viewport baseline; the dynamic switch falls into the cf-23
+-  // visual-unification pass).
+-  const RESIZE_TOTAL_COLS = 12;
++  // R1 F1 fix (2026-05-09): totalCols + activeColSnaps now derive
++  // from `useResponsiveCols` per ADR-0016 D5 responsive viewport
++  // contract. Pre-R1 these were hardcoded `12` / `effectiveColSnaps(12)`
++  // which gave tablet users (≤1024px viewport, 6-col grid) the
++  // wrong snap stops `[2, 3, 4, 6, 8, 12]` instead of `[2, 3, 6]`.
++  // The `useResponsiveCols` hook subscribes to `(min-width: 1024px)`
++  // + `(min-width: 768px)` matchMedia and emits 12/6/1; we feed
++  // both the GridContainer (so the `.skb-grid--mobile` class fires
++  // correctly per ADR-0017 D9) AND the resize pipeline.
++  const viewportCols = useResponsiveCols();
+   const resizeColSnaps = useMemo(
+-    () => effectiveColSnaps(RESIZE_TOTAL_COLS),
+-    [],
++    () => effectiveColSnaps(viewportCols satisfies EffectiveViewportCols),
++    [viewportCols],
+   );
+   const onResizeCommitSuccess = useCallback(
+     (blockId: string, rect: DOMRectReadOnly) => {
+@@ -158,7 +162,7 @@ export function EditorShellMount({
+   );
+   const resize = useResizePipeline({
+     editor,
+-    totalCols: RESIZE_TOTAL_COLS,
++    totalCols: viewportCols,
+     activeColSnaps: resizeColSnaps,
+     onCommitSuccess: onResizeCommitSuccess,
+   });
+@@ -316,7 +320,7 @@ export function EditorShellMount({
+       )}
+       <DragDropProvider value={dragContextValue}>
+         <ResizeProvider value={resizeContextValue}>
+-          <GridContainer>
++          <GridContainer viewportCols={viewportCols}>
+             <Toolbar editor={editor} />
+             <EditorShell
+               extensions={wire.extensions}
+@@ -378,7 +382,7 @@ export function EditorShellMount({
+           snapColSpan={resize.state.snapColSpan}
+           snapRowSpan={resize.state.snapRowSpan}
+           sourceRect={resize.state.sourceRect}
+-          totalCols={RESIZE_TOTAL_COLS}
++          totalCols={viewportCols}
+           activeColSnaps={resizeColSnaps}
+         />
+       )}
+diff --git a/docs/plans/wave-6-main/wave-6-cf-20d-resize-handles.md b/docs/plans/wave-6-main/wave-6-cf-20d-resize-handles.md
+index a8bc25f..29cc772 100644
+--- a/docs/plans/wave-6-main/wave-6-cf-20d-resize-handles.md
++++ b/docs/plans/wave-6-main/wave-6-cf-20d-resize-handles.md
+@@ -586,6 +586,135 @@ MUST snapshot bytes, NEVER use git operations", the spec MUST use
+ `afterAll`. The implementation is a near-copy of cf-20c-2's pattern
+ in `sample-blocks-drag-handle.spec.ts`.
+ 
++### D9 — viewportCols-derived totalCols + activeColSnaps (R1 F1 fix; responsive resize)
++
++**R1 F1 fix lock (2026-05-09)** — codex-pr-reviewer-55 R1 F1 caught
++that `EditorShellMount.tsx` hardcoded `RESIZE_TOTAL_COLS = 12` +
++`effectiveColSnaps(12)` regardless of viewport. Per ADR-0016 D5
++responsive table, `.skb-grid` switches to **6 columns** at
++`max-width: 1024px` (tablet) and **1 column** at `max-width: 768px`
++(mobile). Tablet users dragging the right-edge handle pre-R1 got
++the wrong snap stops `[2, 3, 4, 6, 8, 12]` instead of `[2, 3, 6]`.
++
++**Decision**: derive `viewportCols` from `useResponsiveCols`
++(existing hook; subscribes to `(min-width: 1024px)` + `(min-width:
++768px)` matchMedia and emits `12 | 6 | 1`). Feed to:
++- `<GridContainer viewportCols={viewportCols}>` so the existing
++  `.skb-grid--mobile` className emission per ADR-0017 D9 fires
++  at the right viewport (was passing `undefined` pre-R1; now
++  active).
++- `useResizePipeline({totalCols: viewportCols, activeColSnaps:
++  effectiveColSnaps(viewportCols), ...})`.
++- `<ResizeOverlays totalCols={viewportCols} activeColSnaps={...}/>`
++  so `<ColRuler>` renders the correct stop set.
++
++The `effectiveColSnaps` function from `@skb/block-foundation` maps
++`12 → [2, 3, 4, 6, 8, 12]`, `6 → [2, 3, 6]`, `1 → [1]` per
++ADR-0016 D6 Q4 absorbtion. Mobile (`viewportCols === 1`) is
++handled by the existing CSS `@media (max-width: 768px) { display:
++none }` rule on all resize affordances per ADR-0017 D9 view-only
++contract; the snap math at `viewportCols=1` returns `[1]` but no
++handles are visible to drive it.
++
++**Implementation cost**: 5 lines of changes in
++`EditorShellMount.tsx` (1 import added; `RESIZE_TOTAL_COLS = 12`
++constant removed; `useResponsiveCols()` call added; `viewportCols`
++threaded into 3 prop sites). Pipeline already accepted `totalCols`
+++ `activeColSnaps` as options — no API change required. Regression
++locked by new Playwright test at viewport=900px asserting only
++`[2, 3, 6]` snap stops are reachable.
++
++### D10 — startCol snapshot + overflow-filter at snap (R1 F2 fix; no invalid commits)
++
++**R1 F2 fix lock (2026-05-09)** — codex-pr-reviewer-55 R1 F2 caught
++that `snapToColSpan` only clamped `colSpan` to `[1, totalCols]`,
++ignoring the block's start `col`. A block at `col=7` could snap to
++`colSpan=8` or `12`, producing `col + colSpan - 1 = 14 > 12`
++(overflow). Per ADR-0016 D2 grid-position invariant
++`col + colSpan - 1 <= totalCols`, this is invalid; mdx-bridge
++schema would reject the resulting attr write at save-time, leaving
++the wire in an invalid intermediate state visible to the user.
++
++**Decision**: extend `snapToColSpan` signature to take `startCol`
++as a 3rd parameter (after `startColSpan`). The function filters
++`activeSnaps` to the non-overflowing subset
++`snap <= totalCols - startCol + 1` BEFORE the round-to-nearest
++selection. If the filter empties the set (e.g. `col=12 + smallest
++snap=2 → 12+2-1=13>12`), fall back to `startColSpan` (no-op
++resize); the `colChanged === false` guard in the pipeline ensures
++no setNodeMarkup dispatch + no success-pulse. The user must
++drag-move the block leftward first to make room.
++
++The pipeline's `ResizeSnapshot` interface gains a `startCol:
++number` field populated at `onResizeStart` from `target.col` (the
++snapshot block already exposes `col` via `SerializedBlock` from
++`pipeline-snapshot.ts`). Both pointermove (live snap-state update)
++and pointerup (final commit) pass `snapshot.startCol` through to
++`snapToColSpan`. The pointerup handler additionally re-validates
++`startCol + nextColSpan - 1 <= totalCols` as defense-in-depth (if
++the snap math somehow returns an overflowing value due to a future
++bug, the pipeline cancels rather than committing invalid state).
++
++**Implementation cost**: ~30 LOC across 2 files
++(`resize-snap.ts` + `use-resize-pipeline.ts`). Regression locked by
++8 new vitest cases under `describe('snapToColSpan — R1 F2
++overflow-filter for non-col=1 blocks')` covering `col=3, 5, 7,
++11, 12` × `colSpan=2, 6, 8` permutations.
++
++### D11 — rowSpan='auto' preservation on right-only resize (R1 F3 fix; axis-aware attr write)
++
++**R1 F3 fix lock (2026-05-09)** — codex-pr-reviewer-55 R1 F3 caught
++that `use-resize-pipeline.ts` coerced non-numeric rowSpan to `1` at
++snapshot AND wrote `rowSpan: nextRowSpan` on EVERY commit
++regardless of axis. For prose blocks with `rowSpan='auto'` (per
++ADR-0016 D3 + D10, render-derived height), a right-edge resize
++pre-R1 would:
++1. Coerce `'auto' → 1` at snapshot.
++2. Compute `nextRowSpan = 1` (no row delta).
++3. Write `rowSpan: 1` to the node — DESTROYING the `'auto'`
++   attribute. The prose block becomes stuck at rowSpan=1 (single
++   row), losing render-derived height.
++
++This is a real correctness bug, not just defensive: any prose
++block with multi-line content (e.g. a markdown paragraph that
++wraps to 3 lines) would visually shrink to 1 row after a right-
++edge resize.
++
++**Decision**: split the snapshot's `startRowSpan` field into two:
++- `startRowSpanAttr: number | 'auto'` — the original attr value
++  (preserved for the commit decision; never coerced).
++- `startRowSpanInt: number` — the integer derived for snap math.
++  For `startRowSpanAttr === 'auto'`, derive the integer hint from
++  the rendered DOM height: `Math.round((height + gap) / (rowH +
++  gap))`. The snap math operates on integers; consumers don't
++  need to handle the 'auto' branch.
++
++Extract the attr-diff-build to a NEW pure helper
++`buildResizeNextAttrs(axis, nextColSpan, nextRowSpan, colChanged,
++rowChanged)` returning `Record<string, number>`. Contract:
++- `axis === 'right'` → write `colSpan` only (NEVER `rowSpan`).
++- `axis === 'bottom'` → write `rowSpan` only (NEVER `colSpan`).
++- `axis === 'corner'` → write both, gated per `colChanged` /
++  `rowChanged`.
++
++The pipeline calls `editor.command(({tr}) => { tr.setNodeMarkup(pos,
++undefined, {...node.attrs, ...buildResizeNextAttrs(...)}) })` —
++spreading the attr-diff into the original `node.attrs` preserves
++all unmentioned attrs (including `rowSpan: 'auto'` on right-only
++resize). For non-prose with corner-axis resize, the integer
++`rowSpan` overrides any prior value; ADR-0017 D9 hides
++bottom/corner from prose-kind blocks so the override path is
++unreachable for prose.
++
++**Implementation cost**: ~50 LOC across 2 files
++(`resize-snap.ts` adds `buildResizeNextAttrs` ~30 LOC + JSDoc;
++`use-resize-pipeline.ts` snapshot field rename + commit branch
++delegation ~20 LOC). Regression locked by 10 new vitest cases
++under `describe('buildResizeNextAttrs — R1 F3 axis-aware attr
++diff')` including the explicit prose preservation flow assertion
++that merges `{rowSpan: 'auto'}` with the right-only diff and
++verifies `merged.rowSpan === 'auto'` (NOT overwritten).
++
+ ## Acceptance
+ 
+ ```bash
+diff --git a/packages/editor-shell/CONTRACT.md b/packages/editor-shell/CONTRACT.md
+index 3750b39..815f307 100644
+--- a/packages/editor-shell/CONTRACT.md
++++ b/packages/editor-shell/CONTRACT.md
+@@ -571,11 +571,21 @@ the actual interactive resize wire. Public surface added under
+   gap})`. Right-margin ladder visualizing row snap stops per
+   v2-styles.css:359-385. Position: `fixed` anchored to the resizing block's
+   `right` edge + 8px offset.
+-- `resize-snap.ts` exports pure helpers `snapToColSpan(cursorDeltaX,
+-  startColSpan, containerWidth, gap, totalCols, activeSnaps)` →
+-  `{colSpan, rawColSpan}` and `snapToRowSpan(cursorDeltaY, startRowSpan, rowH,
+-  gap)` → integer rowSpan ≥ 1. Round-to-nearest-snap per cf-20d D6 (NOT
+-  round-up; tie-break rounds UP to honor ADR-0016 D6 Q4 default tiebreak).
++- `resize-snap.ts` exports pure helpers
++  `snapToColSpan(cursorDeltaX, startColSpan, startCol, containerWidth, gap,
++  totalCols, activeSnaps)` → `{colSpan, rawColSpan}`,
++  `snapToRowSpan(cursorDeltaY, startRowSpan, rowH, gap)` → integer rowSpan ≥ 1,
++  and `buildResizeNextAttrs(axis, nextColSpan, nextRowSpan, colChanged,
++  rowChanged)` → `Record<string, number>` (axis-aware attr diff for
++  setNodeMarkup; right omits rowSpan, bottom omits colSpan, corner writes
++  both — per cf-20d D11 R1 F3 fix preserving prose `rowSpan='auto'`).
++  Round-to-nearest-snap per cf-20d D6 (NOT round-up; tie-break rounds UP
++  to honor ADR-0016 D6 Q4 default tiebreak).
++  R1 F2 fix (2026-05-09): `snapToColSpan` filters `activeSnaps` to the
++  non-overflowing subset `snap <= totalCols - startCol + 1` BEFORE
++  nearest-snap selection per ADR-0016 D2 grid-position invariant. If the
++  filter empties the set (e.g. col=12 + smallest snap=2 → overflow),
++  returns `startColSpan` as a no-op; user must drag-move leftward first.
+ 
+ `ResizeHandles` is mounted inside `BlockNodeView` so each Tiptap NodeView
+ emits the 3 handles. `<ResizeProvider value={...}>` MUST wrap the editor
+diff --git a/packages/editor-shell/src/__tests__/resize/resize-snap.test.ts b/packages/editor-shell/src/__tests__/resize/resize-snap.test.ts
+index 1d8e703..8b95170 100644
+--- a/packages/editor-shell/src/__tests__/resize/resize-snap.test.ts
++++ b/packages/editor-shell/src/__tests__/resize/resize-snap.test.ts
+@@ -10,9 +10,19 @@
+  *   - Round-to-nearest-snap (NOT round-up).
+  *   - Tie-break: round UP (D6 Q4 default tiebreak).
+  *   - Clamp to [1, totalCols].
++ *
++ * R1 F2 lock (2026-05-09): all `snapToColSpan` calls take a
++ * `startCol` arg so the function can filter overflowing snaps per
++ * ADR-0016 D2 invariant `col + colSpan - 1 <= totalCols`. Default
++ * `startCol = 1` for happy-path cases (block at left edge); F2-
++ * specific cases below cover non-col=1 blocks.
+  */
+ import { describe, expect, it } from 'vitest';
+-import { snapToColSpan, snapToRowSpan } from '../../resize/resize-snap';
++import {
++  buildResizeNextAttrs,
++  snapToColSpan,
++  snapToRowSpan,
++} from '../../resize/resize-snap';
+ 
+ const COL_SNAPS_12 = [2, 3, 4, 6, 8, 12] as const;
+ const COL_SNAPS_6 = [2, 3, 6] as const;
+@@ -25,7 +35,15 @@ const ROW_H = 48;
+ 
+ describe('snapToColSpan', () => {
+   it('zero delta returns the start colSpan as the snap', () => {
+-    const result = snapToColSpan(0, 6, CONTAINER_WIDTH, GAP, 12, COL_SNAPS_12);
++    const result = snapToColSpan(
++      0,
++      6,
++      1,
++      CONTAINER_WIDTH,
++      GAP,
++      12,
++      COL_SNAPS_12,
++    );
+     expect(result.colSpan).toBe(6);
+   });
+ 
+@@ -34,6 +52,7 @@ describe('snapToColSpan', () => {
+     const result = snapToColSpan(
+       -1000,
+       12,
++      1,
+       CONTAINER_WIDTH,
+       GAP,
+       12,
+@@ -47,6 +66,7 @@ describe('snapToColSpan', () => {
+     const result = snapToColSpan(
+       1000,
+       2,
++      1,
+       CONTAINER_WIDTH,
+       GAP,
+       12,
+@@ -56,11 +76,10 @@ describe('snapToColSpan', () => {
+   });
+ 
+   it('shrinks 12 → 6 when cursor moves left by half the container width', () => {
+-    // Half the container ≈ 600 px. Starting at colSpan=12 (full width)
+-    // shrinking by ~600 px → raw colSpan ≈ 6 → snaps to 6.
+     const result = snapToColSpan(
+       -600,
+       12,
++      1,
+       CONTAINER_WIDTH,
+       GAP,
+       12,
+@@ -70,10 +89,10 @@ describe('snapToColSpan', () => {
+   });
+ 
+   it('shrinks 12 → 4 when cursor moves left by ~2/3 container width', () => {
+-    // Move left by ~800 px from colSpan=12 → raw ≈ 4 → snaps to 4.
+     const result = snapToColSpan(
+       -800,
+       12,
++      1,
+       CONTAINER_WIDTH,
+       GAP,
+       12,
+@@ -83,44 +102,43 @@ describe('snapToColSpan', () => {
+   });
+ 
+   it('rounds 5.5 raw colSpan UP to 6 per the D6 Q4 tiebreak default', () => {
+-    // Construct delta so raw colSpan = 5.5 exactly.
+-    // raw = startColSpan + dx / (oneFrac + gap)
+-    // For start=5, raw=5.5 → dx = 0.5 * (oneFrac + gap)
+     const oneFrac = (CONTAINER_WIDTH - 11 * GAP) / 12;
+     const dx = 0.5 * (oneFrac + GAP);
+     const result = snapToColSpan(
+       dx,
+       5,
++      1,
+       CONTAINER_WIDTH,
+       GAP,
+       12,
+       [4, 5, 6, 7],
+     );
+-    // Raw exactly 5.5; equidistant from 5 and 6; round-up tiebreak
+-    // picks 6.
+     expect(result.colSpan).toBe(6);
+   });
+ 
+   it('respects the 6-col viewport snap set ([2, 3, 6])', () => {
+-    // Resizing on a 6-col viewport from colSpan=3 by half a column
+-    // width → raw = 3.5; nearest in [2, 3, 6] is 3 (distance 0.5
+-    // vs distance 1 to 2 vs distance 2.5 to 6).
+     const containerWidth = 600;
+     const oneFrac = (containerWidth - 5 * GAP) / 6;
+     const dx = 0.5 * (oneFrac + GAP);
+-    const result = snapToColSpan(dx, 3, containerWidth, GAP, 6, COL_SNAPS_6);
+-    // 3.5 is equidistant from 3 and 4 — but 4 isn't in [2,3,6]; the
+-    // candidates are 2 (d=1.5), 3 (d=0.5), 6 (d=2.5). Nearest = 3.
++    const result = snapToColSpan(
++      dx,
++      3,
++      1,
++      containerWidth,
++      GAP,
++      6,
++      COL_SNAPS_6,
++    );
+     expect(result.colSpan).toBe(3);
+   });
+ 
+   it('returns startColSpan when activeSnaps is empty', () => {
+-    const result = snapToColSpan(100, 6, CONTAINER_WIDTH, GAP, 12, []);
++    const result = snapToColSpan(100, 6, 1, CONTAINER_WIDTH, GAP, 12, []);
+     expect(result.colSpan).toBe(6);
+   });
+ 
+   it('returns startColSpan when containerWidth is 0 (test mounts before layout)', () => {
+-    const result = snapToColSpan(100, 6, 0, GAP, 12, COL_SNAPS_12);
++    const result = snapToColSpan(100, 6, 1, 0, GAP, 12, COL_SNAPS_12);
+     expect(result.colSpan).toBe(6);
+   });
+ 
+@@ -128,19 +146,147 @@ describe('snapToColSpan', () => {
+     const result = snapToColSpan(
+       -300,
+       12,
++      1,
+       CONTAINER_WIDTH,
+       GAP,
+       12,
+       COL_SNAPS_12,
+     );
+-    // raw = 12 + (-300) / (87.2 + 14) ≈ 12 - 2.965 ≈ 9.04; nearest
+-    // snap in [2,3,4,6,8,12] is 8 (distance 1.04 vs 2.96 to 12).
+     expect(result.colSpan).toBe(8);
+     expect(result.rawColSpan).toBeGreaterThan(8);
+     expect(result.rawColSpan).toBeLessThan(12);
+   });
+ });
+ 
++/**
++ * R1 F2 fix (2026-05-09) — overflow-filter tests for non-col=1
++ * blocks. Pre-R1 the function clamped only to `[1, totalCols]`;
++ * blocks with `col > 1` could snap to colSpan values that overflow
++ * the grid (e.g. col=7 + colSpan=8 → 7+8-1=14 > 12). R1 fix:
++ * filter activeSnaps to `snap <= totalCols - col + 1` BEFORE
++ * picking nearest.
++ */
++describe('snapToColSpan — R1 F2 overflow-filter for non-col=1 blocks', () => {
++  it('col=3 + start=6 + large positive delta → max snap = 6 (NOT 8 or 12)', () => {
++    // 3 + 6 - 1 = 8 ≤ 12 ✓; 3 + 8 - 1 = 10 ≤ 12 ✓; 3 + 12 - 1 = 14 > 12 ✗.
++    // So fitting snaps from [2,3,4,6,8,12] are [2,3,4,6,8].
++    // Large positive delta drives raw far above 8 → snap = 8 (largest
++    // fitting). Wait: 3 + 8 - 1 = 10 ≤ 12, so 8 IS valid here.
++    const result = snapToColSpan(
++      1000,
++      6,
++      3,
++      CONTAINER_WIDTH,
++      GAP,
++      12,
++      COL_SNAPS_12,
++    );
++    expect(result.colSpan).toBe(8);
++  });
++
++  it('col=5 + start=6 + large positive delta → max snap = 8 (NOT 12)', () => {
++    // 5 + 8 - 1 = 12 ≤ 12 ✓; 5 + 12 - 1 = 16 > 12 ✗.
++    // Fitting snaps = [2,3,4,6,8].
++    const result = snapToColSpan(
++      1000,
++      6,
++      5,
++      CONTAINER_WIDTH,
++      GAP,
++      12,
++      COL_SNAPS_12,
++    );
++    expect(result.colSpan).toBe(8);
++  });
++
++  it('col=7 + start=6 + large positive delta → max snap = 6 (NOT 8 or 12)', () => {
++    // 7 + 6 - 1 = 12 ≤ 12 ✓; 7 + 8 - 1 = 14 > 12 ✗.
++    // Fitting snaps from [2,3,4,6,8,12] = [2,3,4,6].
++    const result = snapToColSpan(
++      1000,
++      6,
++      7,
++      CONTAINER_WIDTH,
++      GAP,
++      12,
++      COL_SNAPS_12,
++    );
++    expect(result.colSpan).toBe(6);
++  });
++
++  it('col=11 + start=2 + large positive delta → max snap = 2 (only 2 fits)', () => {
++    // 11 + 2 - 1 = 12 ≤ 12 ✓; 11 + 3 - 1 = 13 > 12 ✗.
++    // Fitting snaps from [2,3,4,6,8,12] = [2].
++    const result = snapToColSpan(
++      1000,
++      2,
++      11,
++      CONTAINER_WIDTH,
++      GAP,
++      12,
++      COL_SNAPS_12,
++    );
++    expect(result.colSpan).toBe(2);
++  });
++
++  it('col=12 + start=2 → no snap fits → returns startColSpan as no-op', () => {
++    // 12 + 2 - 1 = 13 > 12 — even smallest snap=2 overflows.
++    // Per R1 F2: fall back to startColSpan as a no-op (user must
++    // drag-move leftward first).
++    const result = snapToColSpan(
++      0,
++      2,
++      12,
++      CONTAINER_WIDTH,
++      GAP,
++      12,
++      COL_SNAPS_12,
++    );
++    expect(result.colSpan).toBe(2);
++  });
++
++  it('col=12 + start=2 + positive delta → still returns startColSpan (no overflow possible)', () => {
++    const result = snapToColSpan(
++      1000,
++      2,
++      12,
++      CONTAINER_WIDTH,
++      GAP,
++      12,
++      COL_SNAPS_12,
++    );
++    expect(result.colSpan).toBe(2);
++  });
++
++  it('col=4 + start=8 + zero delta → keeps start=8 (8 fits at col=4: 4+8-1=11)', () => {
++    const result = snapToColSpan(
++      0,
++      8,
++      4,
++      CONTAINER_WIDTH,
++      GAP,
++      12,
++      COL_SNAPS_12,
++    );
++    expect(result.colSpan).toBe(8);
++  });
++
++  it('6-col viewport: col=4 + start=3 + positive delta → max snap = 3 (NOT 6)', () => {
++    // 6-col viewport, snaps = [2,3,6]; 4+6-1=9>6 ✗; 4+3-1=6 ≤ 6 ✓.
++    const containerWidth = 600;
++    const result = snapToColSpan(
++      1000,
++      3,
++      4,
++      containerWidth,
++      GAP,
++      6,
++      COL_SNAPS_6,
++    );
++    expect(result.colSpan).toBe(3);
++  });
++});
++
+ describe('snapToRowSpan', () => {
+   it('zero delta returns the start rowSpan', () => {
+     expect(snapToRowSpan(0, 3, ROW_H, GAP)).toBe(3);
+@@ -188,3 +334,84 @@ describe('snapToRowSpan', () => {
+     expect(snapToRowSpan(dy, 1, ROW_H, GAP)).toBe(4);
+   });
+ });
++
++/**
++ * R1 F3 fix (2026-05-09) — `buildResizeNextAttrs` axis-aware attr
++ * diff contract. The right-only axis MUST NEVER touch rowSpan
++ * (would destroy `'auto'` on prose blocks); bottom-only MUST NEVER
++ * touch colSpan; corner writes both. Per ADR-0017 D9 + cf-20d D1
++ * commit-on-release.
++ */
++describe('buildResizeNextAttrs — R1 F3 axis-aware attr diff', () => {
++  it("right + colChanged → writes colSpan only (preserves rowSpan='auto' on prose)", () => {
++    const diff = buildResizeNextAttrs('right', 6, 99, true, false);
++    expect(diff).toEqual({ colSpan: 6 });
++    expect(diff).not.toHaveProperty('rowSpan');
++  });
++
++  it('right + rowChanged + colChanged → STILL writes colSpan only (axis filter)', () => {
++    // Defense-in-depth: even if the snap math somehow detected a
++    // rowSpan change (it shouldn't, since right-only doesn't
++    // compute rowSpan), the helper must still NOT write rowSpan.
++    const diff = buildResizeNextAttrs('right', 6, 5, true, true);
++    expect(diff).toEqual({ colSpan: 6 });
++    expect(diff).not.toHaveProperty('rowSpan');
++  });
++
++  it('right + nothing changed → empty diff', () => {
++    const diff = buildResizeNextAttrs('right', 12, 1, false, false);
++    expect(diff).toEqual({});
++  });
++
++  it('bottom + rowChanged → writes rowSpan only (NEVER colSpan)', () => {
++    const diff = buildResizeNextAttrs('bottom', 99, 4, false, true);
++    expect(diff).toEqual({ rowSpan: 4 });
++    expect(diff).not.toHaveProperty('colSpan');
++  });
++
++  it('bottom + colChanged + rowChanged → STILL writes rowSpan only', () => {
++    const diff = buildResizeNextAttrs('bottom', 6, 4, true, true);
++    expect(diff).toEqual({ rowSpan: 4 });
++    expect(diff).not.toHaveProperty('colSpan');
++  });
++
++  it('corner + both changed → writes BOTH colSpan AND rowSpan', () => {
++    const diff = buildResizeNextAttrs('corner', 6, 4, true, true);
++    expect(diff).toEqual({ colSpan: 6, rowSpan: 4 });
++  });
++
++  it('corner + colChanged only → writes colSpan only', () => {
++    const diff = buildResizeNextAttrs('corner', 6, 1, true, false);
++    expect(diff).toEqual({ colSpan: 6 });
++  });
++
++  it('corner + rowChanged only → writes rowSpan only', () => {
++    const diff = buildResizeNextAttrs('corner', 12, 4, false, true);
++    expect(diff).toEqual({ rowSpan: 4 });
++  });
++
++  it('corner + nothing changed → empty diff', () => {
++    const diff = buildResizeNextAttrs('corner', 12, 1, false, false);
++    expect(diff).toEqual({});
++  });
++
++  it('right-only commit on prose: snapshot rowSpan=auto preservation flow', () => {
++    // Simulates the F3 prose preservation contract: prose block
++    // started with rowSpan='auto', user dragged right handle. The
++    // snapshot's startRowSpanInt was derived from rendered height
++    // (e.g. 3); the snap computed nextRowSpan=3 (no row change);
++    // the colChanged=true triggers commit with axis='right'. The
++    // helper output must NOT contain rowSpan so spread into
++    // node.attrs leaves the original 'auto' intact.
++    const originalAttrs = {
++      col: 1,
++      colSpan: 12,
++      rowSpan: 'auto' as const,
++      variant: 'note',
++    };
++    const diff = buildResizeNextAttrs('right', 6, 3, true, false);
++    const merged = { ...originalAttrs, ...diff };
++    expect(merged.rowSpan).toBe('auto'); // PRESERVED, not overwritten with 3
++    expect(merged.colSpan).toBe(6); // updated
++  });
++});
+diff --git a/packages/editor-shell/src/resize/resize-snap.ts b/packages/editor-shell/src/resize/resize-snap.ts
+index d67759d..83f4cd8 100644
+--- a/packages/editor-shell/src/resize/resize-snap.ts
++++ b/packages/editor-shell/src/resize/resize-snap.ts
+@@ -49,24 +49,44 @@
+  *                      origin (positive = rightward = grow). In CSS
+  *                      pixels (clientX delta).
+  * @param startColSpan  The block's colSpan at pointerdown.
++ * @param startCol      The block's `col` (1-based) at pointerdown.
++ *                      Used to filter the snap set to non-overflowing
++ *                      candidates per ADR-0016 D2 grid-position
++ *                      invariant `col + colSpan - 1 <= totalCols`.
++ *                      (R1 F2 fix — see function body.)
+  * @param containerWidth The grid container's content width in CSS
+- *                      pixels (one row of the 12-col grid).
++ *                      pixels (one row of the totalCols grid).
+  * @param gap           The grid gap in CSS pixels (matches CSS
+  *                      `gap` property). Per
+  *                      `DEFAULT_GRID_GEOMETRY.gap = 14` at cf-20d.
+- * @param totalCols     The grid total columns (typically 12; mobile
+- *                      collapses to 1 — caller handles mobile by
+- *                      not invoking resize at all).
++ * @param totalCols     The grid total columns at the current
++ *                      viewport (12 desktop / 6 tablet / 1 mobile
++ *                      per ADR-0016 D5). Caller derives via
++ *                      `useResponsiveCols`. (R1 F1 fix — was
++ *                      hardcoded to 12 pre-R1.)
+  * @param activeSnaps   The set of valid snap targets (per
+  *                      `effectiveColSnaps(viewportCols)` from
+  *                      block-foundation).
+  * @returns             The snapped colSpan + the cursor's "raw"
+- *                      (pre-snap) colSpan as a fraction (used by
+- *                      <SizeTooltip> for live cursor feedback).
++ *                      (pre-snap) colSpan (used by <SizeTooltip> for
++ *                      live cursor feedback).
++ *
++ * Wave 6 cf-20d R1 F2 fix (2026-05-09) — added `startCol` param +
++ * overflow-filter on candidate snaps. Pre-R1 the function only
++ * clamped to `[1, totalCols]` which let a block at `col=7` snap to
++ * `colSpan=8` or `12` — producing `col + colSpan - 1 = 14 > 12`
++ * (overflow). The mdx-bridge schema would reject the resulting attr
++ * write at save-time; the wire would land an invalid intermediate
++ * state. R1 fix: filter `activeSnaps` to those satisfying the
++ * grid-position invariant before nearest-snap selection. If the
++ * filter empties the set (the start `col` is so far right that no
++ * snap fits), fall back to `startColSpan` (no-op resize for that
++ * block — user must drag-move first).
+  */
+ export function snapToColSpan(
+   cursorDeltaX: number,
+   startColSpan: number,
++  startCol: number,
+   containerWidth: number,
+   gap: number,
+   totalCols: number,
+@@ -91,11 +111,26 @@ export function snapToColSpan(
+   // col mapped to one frac + one interior gap).
+   const rawColSpan = startColSpan + cursorDeltaX / (oneFrac + gap);
+ 
++  // R1 F2 fix: filter snaps to the non-overflowing subset per
++  // ADR-0016 D2 grid-position invariant `col + colSpan - 1 <= totalCols`.
++  // Equivalently: `snap <= totalCols - startCol + 1`.
++  const maxFittingSnap = totalCols - startCol + 1;
++  const fittingSnaps = activeSnaps.filter((snap) => snap <= maxFittingSnap);
++
++  if (fittingSnaps.length === 0) {
++    // Block is too far right for any valid snap (e.g. col=12 with
++    // smallest snap=2 → 12+2-1=13>12 overflow). Fall back to
++    // startColSpan as a no-op — the user must drag-move the block
++    // leftward first to make room. Returning startColSpan also
++    // ensures the no-op-commit guard in the pipeline triggers.
++    return { colSpan: startColSpan, rawColSpan };
++  }
++
+   // Round-to-nearest-snap with round-up tiebreak (D6 Q4 default).
+-  let bestSnap = activeSnaps[0]!;
++  let bestSnap = fittingSnaps[0]!;
+   let bestDistance = Math.abs(rawColSpan - bestSnap);
+-  for (let i = 1; i < activeSnaps.length; i += 1) {
+-    const snap = activeSnaps[i]!;
++  for (let i = 1; i < fittingSnaps.length; i += 1) {
++    const snap = fittingSnaps[i]!;
+     const distance = Math.abs(rawColSpan - snap);
+     if (
+       distance < bestDistance ||
+@@ -155,3 +190,44 @@ export function snapToRowSpan(
+ 
+   return Math.max(1, rounded);
+ }
++
++/**
++ * Wave 6 cf-20d R1 F3 fix (2026-05-09) — pure helper that builds
++ * the `setNodeMarkup` next-attrs object given the resize axis +
++ * snap deltas. Extracted from `use-resize-pipeline.ts`'s commit
++ * branch so the F3 axis-aware contract can be unit-tested without
++ * spinning up a Tiptap editor.
++ *
++ * F3 contract:
++ *   - `axis === 'right'`  → write `colSpan` only (NEVER `rowSpan`,
++ *     even if rowSpan changed; preserves prose `rowSpan='auto'`).
++ *   - `axis === 'bottom'` → write `rowSpan` only (NEVER `colSpan`).
++ *   - `axis === 'corner'` → write both `colSpan` AND `rowSpan` (only
++ *     for non-prose blocks per ADR-0017 D9 — corner handle hidden
++ *     for prose).
++ *
++ * The "no-op" guard (caller decides whether to dispatch at all) is
++ * the responsibility of the consumer; this helper only computes the
++ * attr-diff. Returns a plain object suitable for spreading into
++ * `{ ...node.attrs, ...buildResizeNextAttrs(...) }`.
++ */
++export function buildResizeNextAttrs(
++  axis: 'right' | 'bottom' | 'corner',
++  nextColSpan: number,
++  nextRowSpan: number,
++  colChanged: boolean,
++  rowChanged: boolean,
++): Record<string, number> {
++  const attrs: Record<string, number> = {};
++  // colSpan: always write on right + corner if changed (NEVER on
++  // bottom — bottom doesn't touch colSpan dimension).
++  if ((axis === 'right' || axis === 'corner') && colChanged) {
++    attrs['colSpan'] = nextColSpan;
++  }
++  // rowSpan: write on bottom + corner if changed (NEVER on right —
++  // right doesn't touch rowSpan dimension; preserves 'auto' on prose).
++  if ((axis === 'bottom' || axis === 'corner') && rowChanged) {
++    attrs['rowSpan'] = nextRowSpan;
++  }
++  return attrs;
++}
+diff --git a/packages/editor-shell/src/resize/use-resize-pipeline.ts b/packages/editor-shell/src/resize/use-resize-pipeline.ts
+index 3097e96..c99d537 100644
+--- a/packages/editor-shell/src/resize/use-resize-pipeline.ts
++++ b/packages/editor-shell/src/resize/use-resize-pipeline.ts
+@@ -70,7 +70,11 @@
+ import { useCallback, useEffect, useRef, useState } from 'react';
+ import type { Editor } from '@tiptap/core';
+ import { liveBlockPositions, snapshotBlocks } from '../drag-drop/pipeline-snapshot';
+-import { snapToColSpan, snapToRowSpan } from './resize-snap';
++import {
++  buildResizeNextAttrs,
++  snapToColSpan,
++  snapToRowSpan,
++} from './resize-snap';
+ import type { ResizeAxis } from './resize-context';
+ 
+ export interface PipelineResizeState {
+@@ -140,8 +144,32 @@ export interface UseResizePipelineReturn {
+ interface ResizeSnapshot {
+   readonly blockId: string;
+   readonly axis: ResizeAxis;
++  /**
++   * Block's `col` (1-based) at pointerdown. R1 F2 fix (2026-05-09):
++   * snapped at start so the snap function can filter candidates to
++   * the non-overflowing subset (`snap <= totalCols - col + 1` per
++   * ADR-0016 D2 invariant).
++   */
++  readonly startCol: number;
+   readonly startColSpan: number;
+-  readonly startRowSpan: number;
++  /**
++   * Block's rowSpan attr at pointerdown — preserved as `number |
++   * 'auto'`. R1 F3 fix (2026-05-09): pre-R1 the snapshot coerced
++   * non-numeric rowSpan to `1`, then the right-only commit wrote
++   * `rowSpan: 1` and DESTROYED the `'auto'` attribute (prose blocks
++   * stuck at 1 row). R1 fix: preserve the original; right-only
++   * commit omits rowSpan from setNodeMarkup; bottom + corner
++   * commits write the snapped integer.
++   */
++  readonly startRowSpanAttr: number | 'auto';
++  /**
++   * Resolved integer rowSpan at pointerdown — the value used by the
++   * snap math + as the baseline for the bottom/corner commit. For
++   * `startRowSpanAttr === 'auto'` we derive an integer hint from the
++   * source NodeView's measured height (so the snap math sees a
++   * realistic starting value).
++   */
++  readonly startRowSpanInt: number;
+   readonly origin: { readonly x: number; readonly y: number };
+   readonly containerWidth: number;
+   readonly sourceRect: DOMRectReadOnly;
+@@ -214,18 +242,35 @@ export function useResizePipeline(
+           ? grid.getBoundingClientRect().width
+           : startRect.width;
+ 
+-      // Resolve start rowSpan to integer (D9 contract: resize commits
+-      // an integer rowSpan even if the block started with rowSpan='auto').
+-      const startRowSpan =
+-        typeof target.rowSpan === 'number' && target.rowSpan >= 1
+-          ? target.rowSpan
+-          : 1;
++      // R1 F3 fix: preserve the original rowSpan attr (could be
++      // 'auto') for the commit-path axis-aware decision below. The
++      // snap math operates on an integer; for 'auto' we derive a
++      // hint from the measured DOM height (effectiveCellHeight
++      // inverse: rowSpan ≈ (height + gap) / (rowH + gap)).
++      const startRowSpanAttr: number | 'auto' = target.rowSpan;
++      let startRowSpanInt: number;
++      if (typeof startRowSpanAttr === 'number' && startRowSpanAttr >= 1) {
++        startRowSpanInt = startRowSpanAttr;
++      } else {
++        // 'auto' (or invalid): derive integer hint from rendered height.
++        const measuredHeight = startRect.height;
++        if (rowH > 0 && measuredHeight > 0) {
++          startRowSpanInt = Math.max(
++            1,
++            Math.round((measuredHeight + gap) / (rowH + gap)),
++          );
++        } else {
++          startRowSpanInt = 1;
++        }
++      }
+ 
+       const snapshot: ResizeSnapshot = {
+         blockId,
+         axis: nextAxis,
++        startCol: target.col,
+         startColSpan: target.colSpan,
+-        startRowSpan,
++        startRowSpanAttr,
++        startRowSpanInt,
+         origin,
+         containerWidth,
+         sourceRect: startRect,
+@@ -237,10 +282,10 @@ export function useResizePipeline(
+       setAxis(nextAxis);
+       setCursor({ x: origin.x, y: origin.y });
+       setSnapColSpan(target.colSpan);
+-      setSnapRowSpan(startRowSpan);
++      setSnapRowSpan(startRowSpanInt);
+       setSourceRect(startRect);
+     },
+-    [editor, gridSelector],
++    [editor, gridSelector, gap, rowH],
+   );
+ 
+   const onResizeEnd = useCallback(() => {
+@@ -266,11 +311,13 @@ export function useResizePipeline(
+ 
+       setCursor({ x: event.clientX, y: event.clientY });
+ 
+-      // Snap math depends on axis.
++      // Snap math depends on axis. R1 F2 fix: pass startCol so
++      // snapToColSpan can filter overflowing snaps.
+       if (snapshot.axis === 'right' || snapshot.axis === 'corner') {
+         const result = snapToColSpan(
+           dx,
+           snapshot.startColSpan,
++          snapshot.startCol,
+           snapshot.containerWidth,
+           gap,
+           totalCols,
+@@ -281,7 +328,7 @@ export function useResizePipeline(
+       if (snapshot.axis === 'bottom' || snapshot.axis === 'corner') {
+         const newRowSpan = snapToRowSpan(
+           dy,
+-          snapshot.startRowSpan,
++          snapshot.startRowSpanInt,
+           rowH,
+           gap,
+         );
+@@ -300,12 +347,15 @@ export function useResizePipeline(
+       const dy = event.clientY - snapshot.origin.y;
+ 
+       // Resolve the final snap targets for this commit.
++      // R1 F2 fix: pass startCol to snapToColSpan so the snap-set
++      // filter rejects overflowing snaps before committing.
+       let nextColSpan = snapshot.startColSpan;
+-      let nextRowSpan = snapshot.startRowSpan;
++      let nextRowSpan = snapshot.startRowSpanInt;
+       if (snapshot.axis === 'right' || snapshot.axis === 'corner') {
+         nextColSpan = snapToColSpan(
+           dx,
+           snapshot.startColSpan,
++          snapshot.startCol,
+           snapshot.containerWidth,
+           gap,
+           totalCols,
+@@ -313,15 +363,39 @@ export function useResizePipeline(
+         ).colSpan;
+       }
+       if (snapshot.axis === 'bottom' || snapshot.axis === 'corner') {
+-        nextRowSpan = snapToRowSpan(dy, snapshot.startRowSpan, rowH, gap);
++        nextRowSpan = snapToRowSpan(
++          dy,
++          snapshot.startRowSpanInt,
++          rowH,
++          gap,
++        );
+       }
+ 
+       const colChanged = nextColSpan !== snapshot.startColSpan;
+-      const rowChanged = nextRowSpan !== snapshot.startRowSpan;
++      const rowChanged = nextRowSpan !== snapshot.startRowSpanInt;
++      // R1 F3 fix: only the bottom + corner axes can change rowSpan;
++      // a right-only resize must NEVER write rowSpan (would destroy
++      // 'auto' on prose blocks).
++      const writeRowSpan =
++        rowChanged &&
++        (snapshot.axis === 'bottom' || snapshot.axis === 'corner');
++
++      if (!colChanged && !writeRowSpan) {
++        // No-op commit (cursor returned to start position OR
++        // right-only axis with rowSpan unchanged because we won't
++        // write it anyway). Reset without mutation; no success-pulse.
++        resetState();
++        return;
++      }
+ 
+-      if (!colChanged && !rowChanged) {
+-        // No-op commit (cursor returned to start position). Reset
+-        // without mutation; no success-pulse.
++      // R1 F2 defense-in-depth: re-validate the post-snap position
++      // against the grid invariant before dispatching mutation.
++      // Should never fire (snapToColSpan already filtered), but if
++      // it does, treat as cancel.
++      if (
++        colChanged &&
++        snapshot.startCol + nextColSpan - 1 > totalCols
++      ) {
+         resetState();
+         return;
+       }
+@@ -335,7 +409,18 @@ export function useResizePipeline(
+         return;
+       }
+ 
+-      // Dispatch Tiptap setNodeMarkup with the new attrs.
++      // R1 F3 fix: axis-aware attr write delegated to the pure
++      // `buildResizeNextAttrs` helper. Right-only axis omits rowSpan
++      // entirely (preserves 'auto' on prose); bottom-only omits
++      // colSpan; corner writes both (only reached for non-prose per
++      // ADR-0017 D9).
++      const nextAttrDiff = buildResizeNextAttrs(
++        snapshot.axis,
++        nextColSpan,
++        nextRowSpan,
++        colChanged,
++        rowChanged,
++      );
+       editor
+         .chain()
+         .command(({ tr }) => {
+@@ -343,8 +428,7 @@ export function useResizePipeline(
+           if (!node) return false;
+           const nextAttrs = {
+             ...node.attrs,
+-            colSpan: nextColSpan,
+-            rowSpan: nextRowSpan,
++            ...nextAttrDiff,
+           };
+           tr.setNodeMarkup(live.pos, undefined, nextAttrs);
+           return true;
+
+codex
+The branch is clean and already points at the R1 fix commit content, so there is no uncommitted patch to stage at the moment. I’m now reading the concrete implementation with line numbers and checking the three prior failures against the current control flow.
+exec
+/bin/bash -lc "nl -ba apps/site/src/components/EditorShellMount.tsx | sed -n '1,430p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+     2	import {
+     3	  BlockRegistry,
+     4	  effectiveColSnaps,
+     5	  type EffectiveViewportCols,
+     6	} from '@skb/block-foundation';
+     7	import {
+     8	  ApiAdapter,
+     9	  DragDropProvider,
+    10	  DragGhost,
+    11	  EditModeBanner,
+    12	  EditorShell,
+    13	  GridContainer,
+    14	  LocalStorageAdapter,
+    15	  type NoteState,
+    16	  OutlineOverlay,
+    17	  Palette,
+    18	  ResizeProvider,
+    19	  SaveIndicator,
+    20	  SlashMenu,
+    21	  Toolbar,
+    22	  loadFromMdx,
+    23	  registerBlocks,
+    24	  saveToMdx,
+    25	  type EditorShellProps,
+    26	  type SaveIndicatorStatus,
+    27	  useDragDropPipeline,
+    28	  useEscCancel,
+    29	  useResizePipeline,
+    30	  useResponsiveCols,
+    31	  wireRegistry,
+    32	} from '@skb/editor-shell';
+    33	import { DropPulseAtRect, ResizeOverlays } from './EditorShellOverlays';
+    34	
+    35	export interface EditorShellMountProps {
+    36	  slug: string;
+    37	  initialMdx?: string;
+    38	  editMode?: boolean;
+    39	}
+    40	
+    41	type EditorInstance = Parameters<NonNullable<EditorShellProps['onCreate']>>[0];
+    42	
+    43	/**
+    44	 * Wave 6 Stage B.4 adapter selection per ADR-0018 v0.6 D13:
+    45	 *   load: ApiAdapter primary; on throw OR null result → LocalStorageAdapter fallback
+    46	 *   save: ApiAdapter primary; on { ok: false } → LocalStorageAdapter backup write
+    47	 *
+    48	 * The primary path makes the server file at content/notes/<slug>/index.mdx
+    49	 * the source of truth (closes the user-reported "/notes/<slug> and
+    50	 * /notes/<slug>/edit don't sync" gap). LocalStorageAdapter is retained for
+    51	 * offline degraded-mode editing — load() returns null when the API is
+    52	 * unreachable; save() falls through to localStorage so unsaved edits are not
+    53	 * lost across a network blip.
+    54	 */
+    55	async function loadWithFallback(
+    56	  primary: ApiAdapter,
+    57	  fallback: LocalStorageAdapter,
+    58	): Promise<NoteState | null> {
+    59	  try {
+    60	    const apiState = await primary.load();
+    61	    if (apiState !== null) return apiState;
+    62	  } catch {
+    63	    // network / 5xx — fall through to LocalStorageAdapter
+    64	  }
+    65	  try {
+    66	    return await fallback.load();
+    67	  } catch {
+    68	    return null;
+    69	  }
+    70	}
+    71	
+    72	async function saveWithBackup(
+    73	  primary: ApiAdapter,
+    74	  fallback: LocalStorageAdapter,
+    75	  state: NoteState,
+    76	): Promise<{ ok: boolean; error?: string }> {
+    77	  const apiResult = await primary.save(state);
+    78	  if (apiResult.ok) return apiResult;
+    79	  // ApiAdapter failed → write to LocalStorageAdapter as backup so the
+    80	  // user's edit survives the next page load even when the server path is
+    81	  // degraded. The user-visible verdict still reflects the API failure.
+    82	  void fallback.save(state).catch(() => undefined);
+    83	  return apiResult;
+    84	}
+    85	
+    86	export function EditorShellMount({
+    87	  slug,
+    88	  initialMdx = '',
+    89	  editMode = false,
+    90	}: EditorShellMountProps) {
+    91	  const apiAdapterRef = useRef<ApiAdapter | null>(null);
+    92	  const localAdapterRef = useRef<LocalStorageAdapter | null>(null);
+    93	  const registryRef = useRef<BlockRegistry | null>(null);
+    94	  const wireRef = useRef<ReturnType<typeof wireRegistry> | null>(null);
+    95	  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    96	  const saveSettleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    97	  const versionRef = useRef(1);
+    98	  const [editor, setEditor] = useState<EditorInstance | null>(null);
+    99	  const [ready, setReady] = useState(false);
+   100	  const [saveStatus, setSaveStatus] = useState<SaveIndicatorStatus>('idle');
+   101	  const [savedAt, setSavedAt] = useState<Date | null>(null);
+   102	  const [loadError, setLoadError] = useState<string | null>(null);
+   103	
+   104	  // Wave 6 cf-20c-2 (2026-05-09) — drag/drop pipeline lifecycle owner.
+   105	  // Snapshots blocks at drag-start, computes edge-rects + tiebreak on
+   106	  // drag-over, applies applyDropMode + dispatches Tiptap setNodeMarkup
+   107	  // on drop. The pipeline state drives <OutlineOverlay> + <DragGhost>
+   108	  // mounts below; the per-block <DragHandleButton> inside each
+   109	  // BlockNodeView gutter calls into the pipeline via DragDropProvider.
+   110	  // R1 F1: dragContextValue now also exposes `sourceBlockId` so the
+   111	  // per-block BlockNodeView can apply the .skb-block-nodeview--dragging-self

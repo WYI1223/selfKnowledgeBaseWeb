@@ -1,0 +1,2000 @@
+Reading additional input from stdin...
+OpenAI Codex v0.125.0 (research preview)
+--------
+workdir: /home/weiyi/selfKnowledgeBaseWeb
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: danger-full-access
+reasoning effort: xhigh
+reasoning summaries: none
+session id: 019e0e3e-e50c-7a33-abef-9e94fdb1b77c
+--------
+user
+Wave 6 cf-20d R3. R2 returned FAIL with 2 findings (boundary off-by-one + unconditional overflow defense); ux-ui-lead fixed both in commit a1e96f2 on top of 7ae0f02. Branch wave-6-cf-20d-resize-handles.
+
+CONSTRAINTS PER RULES 5+6:
+- DO NOT preemptively re-run pnpm check or full Playwright (orchestrator + ux-ui-lead pre-verified: pnpm check 41/41; full Playwright 62 PASS / 14 SKIP / 0 FAIL; editor-shell 230 vitest; size-check 425 files all under 500 LOC)
+- DO NOT re-read ADR-0006 / orchestrator-reflections / aux ADRs
+- READ: a1e96f2 commit content (modified responsive-cols.ts + use-resize-pipeline.ts + 1 NEW spec helper + modified specs + 3 docs) + grid.css responsive bucket lines
+- Verdict in <8 min
+
+R2 F1 (boundary off-by-one) RESOLVED: responsive-cols.ts swapped from (min-width: 1024px) + (min-width: 768px) to (max-width: 768px) + (max-width: 1024px); cascade: if mobile→1 elif tablet→6 else 12. Bucket truth table in JSDoc. 7 NEW boundary test cases at 768/769/1024/1025 + interior 375/900/1440. Existing tests updated to use widths CLEARLY OUTSIDE bucket boundary. Playwright queryMatchesWidth supports both query forms.
+
+R2 F2 (unconditional overflow defense) RESOLVED: persistedOverflow = startCol + startColSpan - 1 > totalCols UNCONDITIONAL check before setNodeMarkup; when true, normalizedColSpan = max(1, totalCols - startCol + 1) injected into attr diff IFF axis-aware diff didn't already include colSpan; no-op-commit guard now includes !persistedOverflow so persisted-overflow blocks STILL trigger recovery; console.warn for operator visibility. NEW Playwright spec for 6-col viewport bottom-only resize on persisted-overflow.
+
+Bonus: NEW apps/site/playwright/helpers/resize-pointer-events.ts (158 LOC) extracted from spec boilerplate. dispatchResizeGesture composes pointerdown→rAF→pointermove→rAF→pointerup→2-rAF. 3 existing tests refactored; spec dropped 596→426 LOC. Trimmed use-resize-pipeline.ts JSDoc (70→22 lines) to keep under 500 LOC; now 496.
+
+23 files in a1e96f2: source (2 modified — responsive-cols.ts + use-resize-pipeline.ts) + tests (3 modified + 1 NEW helper) + docs (3 modified — PR.md + 2 CONTRACTs) + reflection (2) + auto-emitted screenshots (12).
+
+ux-ui-lead's pre-dispatch gates: pnpm check 41/41; editor-shell vitest 230 PASS (was 223 R1, +7 R2 F1 boundary cases); apps/site vitest 78 / 1 skip; apps/site Playwright 62 PASS / 14 SKIP / 0 FAIL (was 61 R1, +1 R2 F2); size-check 425 files all under 500.
+
+D2 trigger UNCHANGED: Row 1 + Row 5. Stage 4 PRE-COMMIT CLAUDE REVIEW fires.
+
+Run static ADR-0006 9-point audit + 9th-class hunt verifying R2 F1+F2 closed + no NEW regressions from the boundary swap or unconditional defense + helper extraction. Verdict PASS or FAIL with line-anchored remediation. If PASS, on stage 5 you commit per ADR-0006 D8 explicit-file-list staging.
+exec
+/bin/bash -lc "sed -n '1,220p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/63976030/skills/using-superpowers/SKILL.md && sed -n '1,220p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/63976030/skills/requesting-code-review/SKILL.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+---
+name: using-superpowers
+description: Use when starting any conversation - establishes how to find and use skills, requiring Skill tool invocation before ANY response including clarifying questions
+---
+
+<SUBAGENT-STOP>
+If you were dispatched as a subagent to execute a specific task, skip this skill.
+</SUBAGENT-STOP>
+
+<EXTREMELY-IMPORTANT>
+If you think there is even a 1% chance a skill might apply to what you are doing, you ABSOLUTELY MUST invoke the skill.
+
+IF A SKILL APPLIES TO YOUR TASK, YOU DO NOT HAVE A CHOICE. YOU MUST USE IT.
+
+This is not negotiable. This is not optional. You cannot rationalize your way out of this.
+</EXTREMELY-IMPORTANT>
+
+## Instruction Priority
+
+Superpowers skills override default system prompt behavior, but **user instructions always take precedence**:
+
+1. **User's explicit instructions** (CLAUDE.md, GEMINI.md, AGENTS.md, direct requests) — highest priority
+2. **Superpowers skills** — override default system behavior where they conflict
+3. **Default system prompt** — lowest priority
+
+If CLAUDE.md, GEMINI.md, or AGENTS.md says "don't use TDD" and a skill says "always use TDD," follow the user's instructions. The user is in control.
+
+## How to Access Skills
+
+**In Claude Code:** Use the `Skill` tool. When you invoke a skill, its content is loaded and presented to you—follow it directly. Never use the Read tool on skill files.
+
+**In Copilot CLI:** Use the `skill` tool. Skills are auto-discovered from installed plugins. The `skill` tool works the same as Claude Code's `Skill` tool.
+
+**In Gemini CLI:** Skills activate via the `activate_skill` tool. Gemini loads skill metadata at session start and activates the full content on demand.
+
+**In other environments:** Check your platform's documentation for how skills are loaded.
+
+## Platform Adaptation
+
+Skills use Claude Code tool names. Non-CC platforms: see `references/copilot-tools.md` (Copilot CLI), `references/codex-tools.md` (Codex) for tool equivalents. Gemini CLI users get the tool mapping loaded automatically via GEMINI.md.
+
+# Using Skills
+
+## The Rule
+
+**Invoke relevant or requested skills BEFORE any response or action.** Even a 1% chance a skill might apply means that you should invoke the skill to check. If an invoked skill turns out to be wrong for the situation, you don't need to use it.
+
+```dot
+digraph skill_flow {
+    "User message received" [shape=doublecircle];
+    "About to EnterPlanMode?" [shape=doublecircle];
+    "Already brainstormed?" [shape=diamond];
+    "Invoke brainstorming skill" [shape=box];
+    "Might any skill apply?" [shape=diamond];
+    "Invoke Skill tool" [shape=box];
+    "Announce: 'Using [skill] to [purpose]'" [shape=box];
+    "Has checklist?" [shape=diamond];
+    "Create TodoWrite todo per item" [shape=box];
+    "Follow skill exactly" [shape=box];
+    "Respond (including clarifications)" [shape=doublecircle];
+
+    "About to EnterPlanMode?" -> "Already brainstormed?";
+    "Already brainstormed?" -> "Invoke brainstorming skill" [label="no"];
+    "Already brainstormed?" -> "Might any skill apply?" [label="yes"];
+    "Invoke brainstorming skill" -> "Might any skill apply?";
+
+    "User message received" -> "Might any skill apply?";
+    "Might any skill apply?" -> "Invoke Skill tool" [label="yes, even 1%"];
+    "Might any skill apply?" -> "Respond (including clarifications)" [label="definitely not"];
+    "Invoke Skill tool" -> "Announce: 'Using [skill] to [purpose]'";
+    "Announce: 'Using [skill] to [purpose]'" -> "Has checklist?";
+    "Has checklist?" -> "Create TodoWrite todo per item" [label="yes"];
+    "Has checklist?" -> "Follow skill exactly" [label="no"];
+    "Create TodoWrite todo per item" -> "Follow skill exactly";
+}
+```
+
+## Red Flags
+
+These thoughts mean STOP—you're rationalizing:
+
+| Thought | Reality |
+|---------|---------|
+| "This is just a simple question" | Questions are tasks. Check for skills. |
+| "I need more context first" | Skill check comes BEFORE clarifying questions. |
+| "Let me explore the codebase first" | Skills tell you HOW to explore. Check first. |
+| "I can check git/files quickly" | Files lack conversation context. Check for skills. |
+| "Let me gather information first" | Skills tell you HOW to gather information. |
+| "This doesn't need a formal skill" | If a skill exists, use it. |
+| "I remember this skill" | Skills evolve. Read current version. |
+| "This doesn't count as a task" | Action = task. Check for skills. |
+| "The skill is overkill" | Simple things become complex. Use it. |
+| "I'll just do this one thing first" | Check BEFORE doing anything. |
+| "This feels productive" | Undisciplined action wastes time. Skills prevent this. |
+| "I know what that means" | Knowing the concept ≠ using the skill. Invoke it. |
+
+## Skill Priority
+
+When multiple skills could apply, use this order:
+
+1. **Process skills first** (brainstorming, debugging) - these determine HOW to approach the task
+2. **Implementation skills second** (frontend-design, mcp-builder) - these guide execution
+
+"Let's build X" → brainstorming first, then implementation skills.
+"Fix this bug" → debugging first, then domain-specific skills.
+
+## Skill Types
+
+**Rigid** (TDD, debugging): Follow exactly. Don't adapt away discipline.
+
+**Flexible** (patterns): Adapt principles to context.
+
+The skill itself tells you which.
+
+## User Instructions
+
+Instructions say WHAT, not HOW. "Add X" or "Fix Y" doesn't mean skip workflows.
+---
+name: requesting-code-review
+description: Use when completing tasks, implementing major features, or before merging to verify work meets requirements
+---
+
+# Requesting Code Review
+
+Dispatch a code reviewer subagent to catch issues before they cascade. The reviewer gets precisely crafted context for evaluation — never your session's history. This keeps the reviewer focused on the work product, not your thought process, and preserves your own context for continued work.
+
+**Core principle:** Review early, review often.
+
+## When to Request Review
+
+**Mandatory:**
+- After each task in subagent-driven development
+- After completing major feature
+- Before merge to main
+
+**Optional but valuable:**
+- When stuck (fresh perspective)
+- Before refactoring (baseline check)
+- After fixing complex bug
+
+## How to Request
+
+**1. Get git SHAs:**
+```bash
+BASE_SHA=$(git rev-parse HEAD~1)  # or origin/main
+HEAD_SHA=$(git rev-parse HEAD)
+```
+
+**2. Dispatch code reviewer subagent:**
+
+Use Task tool with `general-purpose` type, fill template at `code-reviewer.md`
+
+**Placeholders:**
+- `{DESCRIPTION}` - Brief summary of what you built
+- `{PLAN_OR_REQUIREMENTS}` - What it should do
+- `{BASE_SHA}` - Starting commit
+- `{HEAD_SHA}` - Ending commit
+
+**3. Act on feedback:**
+- Fix Critical issues immediately
+- Fix Important issues before proceeding
+- Note Minor issues for later
+- Push back if reviewer is wrong (with reasoning)
+
+## Example
+
+```
+[Just completed Task 2: Add verification function]
+
+You: Let me request code review before proceeding.
+
+BASE_SHA=$(git log --oneline | grep "Task 1" | head -1 | awk '{print $1}')
+HEAD_SHA=$(git rev-parse HEAD)
+
+[Dispatch code reviewer subagent]
+  DESCRIPTION: Added verifyIndex() and repairIndex() with 4 issue types
+  PLAN_OR_REQUIREMENTS: Task 2 from docs/superpowers/plans/deployment-plan.md
+  BASE_SHA: a7981ec
+  HEAD_SHA: 3df7661
+
+[Subagent returns]:
+  Strengths: Clean architecture, real tests
+  Issues:
+    Important: Missing progress indicators
+    Minor: Magic number (100) for reporting interval
+  Assessment: Ready to proceed
+
+You: [Fix progress indicators]
+[Continue to Task 3]
+```
+
+## Integration with Workflows
+
+**Subagent-Driven Development:**
+- Review after EACH task
+- Catch issues before they compound
+- Fix before moving to next task
+
+**Executing Plans:**
+- Review after each task or at natural checkpoints
+- Get feedback, apply, continue
+
+**Ad-Hoc Development:**
+- Review before merge
+- Review when stuck
+
+## Red Flags
+
+**Never:**
+- Skip review because "it's simple"
+- Ignore Critical issues
+- Proceed with unfixed Important issues
+- Argue with valid technical feedback
+
+**If reviewer wrong:**
+- Push back with technical reasoning
+- Show code/tests that prove it works
+- Request clarification
+
+See template at: requesting-code-review/code-reviewer.md
+
+codex
+Using `superpowers:using-superpowers` for process discipline. I’m treating this as a static review, respecting the constraints: no broad test reruns, no ADR rereads, and only the requested commit/files plus bucket CSS context.
+exec
+/bin/bash -lc "sed -n '1,220p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/63976030/skills/receiving-code-review/SKILL.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+---
+name: receiving-code-review
+description: Use when receiving code review feedback, before implementing suggestions, especially if feedback seems unclear or technically questionable - requires technical rigor and verification, not performative agreement or blind implementation
+---
+
+# Code Review Reception
+
+## Overview
+
+Code review requires technical evaluation, not emotional performance.
+
+**Core principle:** Verify before implementing. Ask before assuming. Technical correctness over social comfort.
+
+## The Response Pattern
+
+```
+WHEN receiving code review feedback:
+
+1. READ: Complete feedback without reacting
+2. UNDERSTAND: Restate requirement in own words (or ask)
+3. VERIFY: Check against codebase reality
+4. EVALUATE: Technically sound for THIS codebase?
+5. RESPOND: Technical acknowledgment or reasoned pushback
+6. IMPLEMENT: One item at a time, test each
+```
+
+## Forbidden Responses
+
+**NEVER:**
+- "You're absolutely right!" (explicit CLAUDE.md violation)
+- "Great point!" / "Excellent feedback!" (performative)
+- "Let me implement that now" (before verification)
+
+**INSTEAD:**
+- Restate the technical requirement
+- Ask clarifying questions
+- Push back with technical reasoning if wrong
+- Just start working (actions > words)
+
+## Handling Unclear Feedback
+
+```
+IF any item is unclear:
+  STOP - do not implement anything yet
+  ASK for clarification on unclear items
+
+WHY: Items may be related. Partial understanding = wrong implementation.
+```
+
+**Example:**
+```
+your human partner: "Fix 1-6"
+You understand 1,2,3,6. Unclear on 4,5.
+
+❌ WRONG: Implement 1,2,3,6 now, ask about 4,5 later
+✅ RIGHT: "I understand items 1,2,3,6. Need clarification on 4 and 5 before proceeding."
+```
+
+## Source-Specific Handling
+
+### From your human partner
+- **Trusted** - implement after understanding
+- **Still ask** if scope unclear
+- **No performative agreement**
+- **Skip to action** or technical acknowledgment
+
+### From External Reviewers
+```
+BEFORE implementing:
+  1. Check: Technically correct for THIS codebase?
+  2. Check: Breaks existing functionality?
+  3. Check: Reason for current implementation?
+  4. Check: Works on all platforms/versions?
+  5. Check: Does reviewer understand full context?
+
+IF suggestion seems wrong:
+  Push back with technical reasoning
+
+IF can't easily verify:
+  Say so: "I can't verify this without [X]. Should I [investigate/ask/proceed]?"
+
+IF conflicts with your human partner's prior decisions:
+  Stop and discuss with your human partner first
+```
+
+**your human partner's rule:** "External feedback - be skeptical, but check carefully"
+
+## YAGNI Check for "Professional" Features
+
+```
+IF reviewer suggests "implementing properly":
+  grep codebase for actual usage
+
+  IF unused: "This endpoint isn't called. Remove it (YAGNI)?"
+  IF used: Then implement properly
+```
+
+**your human partner's rule:** "You and reviewer both report to me. If we don't need this feature, don't add it."
+
+## Implementation Order
+
+```
+FOR multi-item feedback:
+  1. Clarify anything unclear FIRST
+  2. Then implement in this order:
+     - Blocking issues (breaks, security)
+     - Simple fixes (typos, imports)
+     - Complex fixes (refactoring, logic)
+  3. Test each fix individually
+  4. Verify no regressions
+```
+
+## When To Push Back
+
+Push back when:
+- Suggestion breaks existing functionality
+- Reviewer lacks full context
+- Violates YAGNI (unused feature)
+- Technically incorrect for this stack
+- Legacy/compatibility reasons exist
+- Conflicts with your human partner's architectural decisions
+
+**How to push back:**
+- Use technical reasoning, not defensiveness
+- Ask specific questions
+- Reference working tests/code
+- Involve your human partner if architectural
+
+**Signal if uncomfortable pushing back out loud:** "Strange things are afoot at the Circle K"
+
+## Acknowledging Correct Feedback
+
+When feedback IS correct:
+```
+✅ "Fixed. [Brief description of what changed]"
+✅ "Good catch - [specific issue]. Fixed in [location]."
+✅ [Just fix it and show in the code]
+
+❌ "You're absolutely right!"
+❌ "Great point!"
+❌ "Thanks for catching that!"
+❌ "Thanks for [anything]"
+❌ ANY gratitude expression
+```
+
+**Why no thanks:** Actions speak. Just fix it. The code itself shows you heard the feedback.
+
+**If you catch yourself about to write "Thanks":** DELETE IT. State the fix instead.
+
+## Gracefully Correcting Your Pushback
+
+If you pushed back and were wrong:
+```
+✅ "You were right - I checked [X] and it does [Y]. Implementing now."
+✅ "Verified this and you're correct. My initial understanding was wrong because [reason]. Fixing."
+
+❌ Long apology
+❌ Defending why you pushed back
+❌ Over-explaining
+```
+
+State the correction factually and move on.
+
+## Common Mistakes
+
+| Mistake | Fix |
+|---------|-----|
+| Performative agreement | State requirement or just act |
+| Blind implementation | Verify against codebase first |
+| Batch without testing | One at a time, test each |
+| Assuming reviewer is right | Check if breaks things |
+| Avoiding pushback | Technical correctness > comfort |
+| Partial implementation | Clarify all items first |
+| Can't verify, proceed anyway | State limitation, ask for direction |
+
+## Real Examples
+
+**Performative Agreement (Bad):**
+```
+Reviewer: "Remove legacy code"
+❌ "You're absolutely right! Let me remove that..."
+```
+
+**Technical Verification (Good):**
+```
+Reviewer: "Remove legacy code"
+✅ "Checking... build target is 10.15+, this API needs 13+. Need legacy for backward compat. Current impl has wrong bundle ID - fix it or drop pre-13 support?"
+```
+
+**YAGNI (Good):**
+```
+Reviewer: "Implement proper metrics tracking with database, date filters, CSV export"
+✅ "Grepped codebase - nothing calls this endpoint. Remove it (YAGNI)? Or is there usage I'm missing?"
+```
+
+**Unclear Item (Good):**
+```
+your human partner: "Fix items 1-6"
+You understand 1,2,3,6. Unclear on 4,5.
+✅ "Understand 1,2,3,6. Need clarification on 4 and 5 before implementing."
+```
+
+## GitHub Thread Replies
+
+When replying to inline review comments on GitHub, reply in the comment thread (`gh api repos/{owner}/{repo}/pulls/{pr}/comments/{id}/replies`), not as a top-level PR comment.
+
+## The Bottom Line
+
+**External feedback = suggestions to evaluate, not orders to follow.**
+
+Verify. Question. Then implement.
+
+No performative agreement. Technical rigor always.
+
+codex
+I’m gathering the actual patch surface now: commit metadata/name status, the changed source/spec files, and the responsive grid CSS lines that define the runtime breakpoint buckets.
+exec
+/bin/bash -lc 'git show --name-status --format=fuller a1e96f2' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+commit a1e96f2203cae82c1c9229b1036b42236b04c138
+Author:     W_YI <W_YI1223@outlook.com>
+AuthorDate: Sat May 9 15:37:01 2026 -0400
+Commit:     W_YI <W_YI1223@outlook.com>
+CommitDate: Sat May 9 15:37:01 2026 -0400
+
+    Wave 6 cf-20d R2 — boundary off-by-one + unconditional overflow defense
+    
+    F1: useResponsiveCols swapped from min-width queries to max-width matching
+    grid.css exactly. Cascade if mobile→1 elif tablet→6 else 12. 7 NEW boundary
+    test cases at 768/769/1024/1025 + interior 375/900/1440. Operational rule:
+    hook ↔ CSS @media query byte-equivalence required.
+    
+    F2: unconditional persistedOverflow check before setNodeMarkup (regardless of
+    axis). Normalizes colSpan when invalid (preferred over cancel — recovery in
+    same transaction as user intent). New Playwright case for 6-col viewport
+    bottom-only resize on persisted-overflow block.
+    
+    Plus spec helper extraction: NEW resize-pointer-events.ts (158 LOC) with
+    dispatchResizeGesture composing pointerdown→rAF→pointermove→rAF→pointerup→2-rAF.
+    Consolidates boilerplate from 3 tests; spec drops 596→426 LOC.
+    
+    Trimmed JSDoc from use-resize-pipeline.ts (~70→22 lines) to keep file under
+    500-line hard limit (now 496). Lifecycle docs live in CONTRACT.md.
+    
+    230 vitest passed (was 223); 62 Playwright PASS / 14 SKIP / 0 FAIL (was 61).
+    size-check 425 files all under 500 LOC.
+    
+    4 operational rules landed (R2 reflection): boundary-constant ±1 testing;
+    hook ↔ CSS query byte-equivalence; defense scope (new state vs persisted);
+    normalize-over-cancel for recovery defenses.
+    
+    Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+
+M	apps/site/CONTRACT.md
+M	apps/site/playwright/grid-resize-responsive.spec.ts
+A	apps/site/playwright/helpers/resize-pointer-events.ts
+M	apps/site/playwright/sample-blocks-resize-handles.spec.ts
+M	apps/site/playwright/visual-smoke-baseline/wave-5-c2-baseline-edit-route.png
+M	docs/audits/screenshots/wave-5-c2-8-drag-modules-mount.png
+M	docs/audits/screenshots/wave-5-c2-9-responsive-fsm-mount.png
+M	docs/audits/screenshots/wave-5-c4-1-note-save-adapter.png
+M	docs/audits/screenshots/wave-5-c4-2-block-registry.png
+M	docs/audits/screenshots/wave-5-c4-3-drag-handle.png
+M	docs/audits/screenshots/wave-5-c4-3-save-indicator.png
+M	docs/audits/screenshots/wave-5-c4-4-save-roundtrip.png
+M	docs/audits/screenshots/wave-5-c4-5-edit-flow-e2e.png
+M	docs/audits/screenshots/wave-6-cf-20b-sample-blocks-grid-layout.png
+M	docs/audits/screenshots/wave-6-cf-20c-2-drag-handle-wire.png
+M	docs/audits/screenshots/wave-6-cf-20d-resize-handles.png
+M	docs/audits/screenshots/wave-6-hotfix-sample-blocks-edit-loads.png
+M	docs/orchestrator-reflections/2026-05-09-cf-15a-19-retrospective.md
+M	docs/plans/wave-6-main/wave-6-cf-20d-resize-handles.md
+M	packages/editor-shell/CONTRACT.md
+M	packages/editor-shell/src/__tests__/responsive-cols.test.ts
+M	packages/editor-shell/src/resize/use-resize-pipeline.ts
+M	packages/editor-shell/src/responsive-cols.ts
+
+exec
+/bin/bash -lc 'git show --stat --oneline a1e96f2' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+a1e96f2 Wave 6 cf-20d R2 — boundary off-by-one + unconditional overflow defense
+ apps/site/CONTRACT.md                              |  29 ++-
+ .../site/playwright/grid-resize-responsive.spec.ts |  43 +++-
+ .../playwright/helpers/resize-pointer-events.ts    | 155 ++++++++++++
+ .../sample-blocks-resize-handles.spec.ts           | 271 ++++++++++-----------
+ .../wave-5-c2-baseline-edit-route.png              | Bin 532300 -> 532569 bytes
+ .../screenshots/wave-5-c2-8-drag-modules-mount.png | Bin 92552 -> 92728 bytes
+ .../wave-5-c2-9-responsive-fsm-mount.png           | Bin 93508 -> 93646 bytes
+ .../screenshots/wave-5-c4-1-note-save-adapter.png  | Bin 84176 -> 84270 bytes
+ .../screenshots/wave-5-c4-2-block-registry.png     | Bin 84176 -> 84270 bytes
+ .../audits/screenshots/wave-5-c4-3-drag-handle.png | Bin 84176 -> 84270 bytes
+ .../screenshots/wave-5-c4-3-save-indicator.png     | Bin 40379 -> 40390 bytes
+ .../screenshots/wave-5-c4-4-save-roundtrip.png     | Bin 39866 -> 39881 bytes
+ .../screenshots/wave-5-c4-5-edit-flow-e2e.png      | Bin 40911 -> 40925 bytes
+ .../wave-6-cf-20b-sample-blocks-grid-layout.png    | Bin 84176 -> 84270 bytes
+ .../wave-6-cf-20c-2-drag-handle-wire.png           | Bin 84075 -> 84270 bytes
+ .../screenshots/wave-6-cf-20d-resize-handles.png   | Bin 84176 -> 84270 bytes
+ .../wave-6-hotfix-sample-blocks-edit-loads.png     | Bin 530538 -> 530651 bytes
+ .../2026-05-09-cf-15a-19-retrospective.md          |  42 ++++
+ .../wave-6-main/wave-6-cf-20d-resize-handles.md    | 138 ++++++++---
+ packages/editor-shell/CONTRACT.md                  |  17 ++
+ .../src/__tests__/responsive-cols.test.ts          | 110 +++++++--
+ .../editor-shell/src/resize/use-resize-pipeline.ts | 132 +++++-----
+ packages/editor-shell/src/responsive-cols.ts       |  57 ++++-
+ 23 files changed, 720 insertions(+), 274 deletions(-)
+
+exec
+/bin/bash -lc 'git diff --name-only 7ae0f02 a1e96f2' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+apps/site/CONTRACT.md
+apps/site/playwright/grid-resize-responsive.spec.ts
+apps/site/playwright/helpers/resize-pointer-events.ts
+apps/site/playwright/sample-blocks-resize-handles.spec.ts
+apps/site/playwright/visual-smoke-baseline/wave-5-c2-baseline-edit-route.png
+docs/audits/screenshots/wave-5-c2-8-drag-modules-mount.png
+docs/audits/screenshots/wave-5-c2-9-responsive-fsm-mount.png
+docs/audits/screenshots/wave-5-c4-1-note-save-adapter.png
+docs/audits/screenshots/wave-5-c4-2-block-registry.png
+docs/audits/screenshots/wave-5-c4-3-drag-handle.png
+docs/audits/screenshots/wave-5-c4-3-save-indicator.png
+docs/audits/screenshots/wave-5-c4-4-save-roundtrip.png
+docs/audits/screenshots/wave-5-c4-5-edit-flow-e2e.png
+docs/audits/screenshots/wave-6-cf-20b-sample-blocks-grid-layout.png
+docs/audits/screenshots/wave-6-cf-20c-2-drag-handle-wire.png
+docs/audits/screenshots/wave-6-cf-20d-resize-handles.png
+docs/audits/screenshots/wave-6-hotfix-sample-blocks-edit-loads.png
+docs/orchestrator-reflections/2026-05-09-cf-15a-19-retrospective.md
+docs/plans/wave-6-main/wave-6-cf-20d-resize-handles.md
+packages/editor-shell/CONTRACT.md
+packages/editor-shell/src/__tests__/responsive-cols.test.ts
+packages/editor-shell/src/resize/use-resize-pipeline.ts
+packages/editor-shell/src/responsive-cols.ts
+
+exec
+/bin/bash -lc "rg -n \"grid-template-columns|responsive|--.*cols|1024|768|col\" apps packages -g 'grid.css' -g '*.css'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+packages/editor-shell/src/block-chrome.css:38: *       only 7 unique stripe colors across 8 kinds), --accent-image,
+packages/editor-shell/src/block-chrome.css:42: *       --accent (selected + focus-within border-color), --shadow-sm
+packages/editor-shell/src/block-chrome.css:56:   * lights up. Border color toggles within the existing 1px width. */
+packages/editor-shell/src/block-chrome.css:60:    border-color var(--duration-fast, 120ms) var(--ease-base, ease);
+packages/editor-shell/src/block-chrome.css:65:  border-color: var(--border-strong, oklch(86% 0.006 80));
+packages/editor-shell/src/block-chrome.css:73: * runnable hue (7 unique stripe colors across 8 kinds). The selectors
+packages/editor-shell/src/BlockNodeView.css:34: *   --accent (selected + focus-within border-color), --panel + --text-2
+packages/editor-shell/src/BlockNodeView.css:41: * (1 shared, the selected outer-ring color); `--skb-block-nodeview--chip-bg`,
+packages/editor-shell/src/BlockNodeView.css:70:  border-color: var(--accent, oklch(58% 0.16 35));
+packages/editor-shell/src/BlockNodeView.css:78:  border-color: var(--accent, oklch(58% 0.16 35));
+packages/editor-shell/src/BlockNodeView.css:155:  color: var(--skb-block-nodeview--chip-text);
+packages/editor-shell/src/BlockNodeView.css:188:  border-color: var(--border-strong, oklch(86% 0.006 80));
+packages/editor-shell/src/BlockNodeView.css:194:  color: var(--text-3, oklch(62% 0.01 80));
+packages/editor-shell/src/BlockNodeView.css:216: * equivalent): `display: none` collapses the grid cell, shifting
+packages/editor-shell/src/BlockNodeView.css:220: * source's cell collapses, downstream blocks visually shift but the
+packages/editor-shell/src/BlockNodeView.css:237:   * border-color stays for the steady-state hover/select toggles. */
+packages/editor-shell/src/BlockNodeView.css:249: * Why outline NOT border-color (precedence rationale):
+packages/editor-shell/src/BlockNodeView.css:250: *   The cf-19 baseline applies `border-color` transitions on hover +
+packages/editor-shell/src/BlockNodeView.css:258: *   `display: none` would collapse the body's layout box, causing the
+packages/editor-shell/src/BlockNodeView.css:263: *   happens at pointerup when setNodeMarkup commits the new colSpan/
+packages/editor-shell/src/resize/resize-handles.css:3: * resize wire (3 handles + col-ruler styles + size-tooltip styles +
+packages/editor-shell/src/resize/resize-handles.css:13: *   - .col-ruler + .col-ruler-stop                        v2:324-357
+packages/editor-shell/src/resize/resize-handles.css:17: * Mobile (≤768px) view-only path per ADR-0017 D9 + cf-20b R1 mobile
+packages/editor-shell/src/resize/resize-handles.css:19: * (handles + col-ruler + row-ladder + size-tooltip). The same media
+packages/editor-shell/src/resize/resize-handles.css:119:  border-color: var(--accent, oklch(58% 0.16 35));
+packages/editor-shell/src/resize/resize-handles.css:130:  color: var(--surface, #ffffff);
+packages/editor-shell/src/resize/resize-handles.css:137:/* === .skb-col-ruler (consumed by <ColRuler>) ======================== */
+packages/editor-shell/src/resize/resize-handles.css:138:/* v2:324-357 — 12-col grid above the doc with stops at activeSnaps */
+packages/editor-shell/src/resize/resize-handles.css:139:.skb-col-ruler {
+packages/editor-shell/src/resize/resize-handles.css:143:.skb-col-ruler-stop {
+packages/editor-shell/src/resize/resize-handles.css:147:.skb-col-ruler-stop--active {
+packages/editor-shell/src/resize/resize-handles.css:149:  background-color: var(--accent, oklch(58% 0.16 35)) !important;
+packages/editor-shell/src/resize/resize-handles.css:161:  background: color-mix(
+packages/editor-shell/src/resize/resize-handles.css:180:/* === Mobile (≤768px) view-only path per ADR-0017 D9 ================= */
+packages/editor-shell/src/resize/resize-handles.css:190: * applicability when viewport ≤ 768px. */
+packages/editor-shell/src/resize/resize-handles.css:191:@media (max-width: 768px) {
+packages/editor-shell/src/resize/resize-handles.css:196:  .skb-col-ruler,
+packages/editor-shell/src/drag-drop/drag-handle-button.css:14: *   text-2 color (var(--text-2))
+packages/editor-shell/src/drag-drop/drag-handle-button.css:18: *   :hover → panel bg + text color + border-strong
+packages/editor-shell/src/drag-drop/drag-handle-button.css:42:  color: var(--text-2, oklch(45% 0.01 80));
+packages/editor-shell/src/drag-drop/drag-handle-button.css:57:  color: var(--text, oklch(22% 0.01 80));
+packages/editor-shell/src/drag-drop/drag-handle-button.css:58:  border-color: var(--border-strong, oklch(86% 0.006 80));
+packages/editor-shell/src/drag-drop/drag-handle-button.css:71: * Mobile (≤768px) view-only path per ADR-0017 D9 + cf-20b R1 mobile
+packages/editor-shell/src/drag-drop/drag-handle-button.css:77:@media (max-width: 768px) {
+packages/block-pdf/src/ui-default/pdf.css:11: * @skb/design-tokens 拉（--color-* / --space-* / --radius-*）。
+packages/block-pdf/src/ui-default/pdf.css:24:  background: rgb(var(--color-surface-1));
+packages/block-callout/src/ui-default/callout.css:29:  color: rgb(var(--color-fg));
+packages/block-callout/src/ui-default/callout.css:30:  background-color: rgb(var(--color-surface-1));
+packages/block-callout/src/ui-default/callout.css:41:  background-color: rgb(var(--color-note));
+packages/block-callout/src/ui-default/callout.css:45:/* Variant accent + tint colors */
+packages/block-callout/src/ui-default/callout.css:47:  background-color: rgb(var(--color-note));
+packages/block-callout/src/ui-default/callout.css:50:  background-color: rgb(var(--color-surface-1));
+packages/block-callout/src/ui-default/callout.css:54:  background-color: rgb(var(--color-success));
+packages/block-callout/src/ui-default/callout.css:57:  background-color: rgb(var(--color-success) / 0.06);
+packages/block-callout/src/ui-default/callout.css:61:  background-color: rgb(var(--color-warn));
+packages/block-callout/src/ui-default/callout.css:64:  background-color: rgb(var(--color-warn) / 0.08);
+packages/block-callout/src/ui-default/callout.css:68:  background-color: rgb(var(--color-error));
+packages/block-callout/src/ui-default/callout.css:71:  background-color: rgb(var(--color-error) / 0.06);
+packages/block-callout/src/ui-default/callout.css:85:  color: rgb(var(--color-note));
+packages/block-callout/src/ui-default/callout.css:88:  color: rgb(var(--color-success));
+packages/block-callout/src/ui-default/callout.css:91:  color: rgb(var(--color-warn));
+packages/block-callout/src/ui-default/callout.css:94:  color: rgb(var(--color-error));
+packages/block-callout/src/ui-default/callout.css:105:  color: rgb(var(--color-fg));
+packages/block-callout/src/ui-default/callout.css:109:  color: rgb(var(--color-fg) / 0.9);
+packages/block-callout/src/ui-default/callout.css:119:  color: rgb(var(--color-muted));
+packages/block-callout/src/ui-default/callout.css:125:  outline: 2px solid rgb(var(--color-accent));
+packages/block-jupyter/src/ui-default/jupyter.css:4: * Tokens come from @skb/design-tokens (--color-* / --space-* / --radius-* /
+packages/block-jupyter/src/ui-default/jupyter.css:10: *   - block-math/ui-default/math.css uses --color-error for error escalation;
+packages/block-jupyter/src/ui-default/jupyter.css:28:  background: rgb(var(--color-surface-1));
+packages/block-jupyter/src/ui-default/jupyter.css:29:  color: rgb(var(--color-fg));
+packages/block-jupyter/src/ui-default/jupyter.css:42:  border: 1px solid rgb(var(--color-accent));
+packages/block-jupyter/src/ui-default/jupyter.css:43:  background: rgb(var(--color-accent));
+packages/block-jupyter/src/ui-default/jupyter.css:44:  color: rgb(var(--color-accent-fg));
+packages/block-jupyter/src/ui-default/jupyter.css:58:  color: rgb(var(--color-muted));
+packages/block-jupyter/src/ui-default/jupyter.css:63:  color: rgb(var(--color-error));
+packages/block-jupyter/src/ui-default/jupyter.css:69:  background: rgb(var(--color-surface-2));
+packages/block-jupyter/src/ui-default/jupyter.css:91:  color: rgb(var(--color-muted));
+packages/block-jupyter/src/ui-default/jupyter.css:98:  background: rgb(var(--color-surface-2));
+packages/block-jupyter/src/ui-default/jupyter.css:112:  color: rgb(var(--color-error));
+packages/block-nn-viz/src/ui-default/nn-viz.css:4: * Tokens come from @skb/design-tokens (--color-* / --space-* / --radius-* /
+packages/block-nn-viz/src/ui-default/nn-viz.css:10: *   - block-jupyter/ui-default/jupyter.css uses --color-error for error
+packages/block-nn-viz/src/ui-default/nn-viz.css:28:  background: rgb(var(--color-surface-1));
+packages/block-nn-viz/src/ui-default/nn-viz.css:29:  color: rgb(var(--color-fg));
+packages/block-nn-viz/src/ui-default/nn-viz.css:35:  color: rgb(var(--color-muted));
+packages/block-nn-viz/src/ui-default/nn-viz.css:42:  color: rgb(var(--color-error));
+packages/block-nn-viz/src/ui-default/nn-viz.css:48:  background: rgb(var(--color-surface-2));
+packages/block-nn-viz/src/ui-default/nn-viz.css:54:  fill: rgb(var(--color-accent));
+packages/block-nn-viz/src/ui-default/nn-viz.css:55:  stroke: rgb(var(--color-fg));
+packages/block-nn-viz/src/ui-default/nn-viz.css:60:  stroke: rgb(var(--color-muted));
+packages/block-nn-viz/src/ui-default/nn-viz.css:66:  fill: rgb(var(--color-fg));
+packages/block-nn-viz/src/ui-default/nn-viz.css:84:  color: rgb(var(--color-muted));
+packages/block-nn-viz/src/ui-default/nn-viz.css:88:  accent-color: rgb(var(--color-accent));
+packages/editor-toolbar/src/ui-default/toolbar.css:6:  background: var(--skb-color-surface-1, #ffffff);
+packages/editor-toolbar/src/ui-default/toolbar.css:7:  border: 1px solid var(--skb-color-border, rgba(0, 0, 0, 0.08));
+packages/editor-toolbar/src/ui-default/toolbar.css:9:  color: var(--skb-color-fg, #1a1a1a);
+packages/editor-toolbar/src/ui-default/toolbar.css:30:  color: inherit;
+packages/editor-toolbar/src/ui-default/toolbar.css:32:  transition: background-color 120ms ease, color 120ms ease;
+packages/editor-toolbar/src/ui-default/toolbar.css:36:  background: var(--skb-color-surface-2, rgba(0, 0, 0, 0.04));
+packages/editor-toolbar/src/ui-default/toolbar.css:40:  outline: 2px solid var(--skb-color-accent, #3b82f6);
+packages/editor-toolbar/src/ui-default/toolbar.css:45:  background: var(--skb-color-accent-soft, rgba(59, 130, 246, 0.15));
+packages/editor-toolbar/src/ui-default/toolbar.css:46:  color: var(--skb-color-accent, #3b82f6);
+packages/editor-drag-handle/src/ui-default/drag-handle.css:5:  background: var(--skb-color-surface-1, #ffffff);
+packages/editor-drag-handle/src/ui-default/drag-handle.css:6:  border: 1px solid var(--skb-color-border, rgba(0, 0, 0, 0.08));
+packages/editor-drag-handle/src/ui-default/drag-handle.css:8:  color: var(--skb-color-fg, #1a1a1a);
+packages/editor-drag-handle/src/ui-default/drag-handle.css:29:  color: inherit;
+packages/editor-drag-handle/src/ui-default/drag-handle.css:31:  transition: background-color 120ms ease, color 120ms ease;
+packages/editor-drag-handle/src/ui-default/drag-handle.css:35:  background: var(--skb-color-surface-2, rgba(0, 0, 0, 0.04));
+packages/editor-drag-handle/src/ui-default/drag-handle.css:39:  outline: 2px solid var(--skb-color-accent, #3b82f6);
+packages/editor-drag-handle/src/ui-default/drag-handle.css:45:  flex-direction: column;
+packages/editor-drag-handle/src/ui-default/drag-handle.css:47:  border-left: 1px solid var(--skb-color-border, rgba(0, 0, 0, 0.08));
+packages/editor-drag-handle/src/ui-default/drag-handle.css:59:  color: inherit;
+packages/editor-drag-handle/src/ui-default/drag-handle.css:62:  transition: background-color 120ms ease, color 120ms ease;
+packages/editor-drag-handle/src/ui-default/drag-handle.css:66:  background: var(--skb-color-surface-2, rgba(0, 0, 0, 0.04));
+packages/editor-drag-handle/src/ui-default/drag-handle.css:70:  outline: 2px solid var(--skb-color-accent, #3b82f6);
+packages/editor-drag-handle/src/ui-default/drag-handle.css:75:  color: var(--skb-color-danger, #b91c1c);
+packages/editor-drag-handle/src/ui-default/drag-handle.css:89:  color: var(--skb-color-fg-subtle, #6b7280);
+packages/heavy-block-boundary/src/heavy-block-skeleton.css:15: * `--color-*` / `--text-*` / `--radius-*` namespace with rgb-triple values.
+packages/heavy-block-boundary/src/heavy-block-skeleton.css:24:  border: 1px solid var(--skb-color-border, #e5e7eb);
+packages/heavy-block-boundary/src/heavy-block-skeleton.css:25:  background: var(--skb-color-skeleton-bg, #f9fafb);
+packages/heavy-block-boundary/src/heavy-block-skeleton.css:43:  border: 3px solid var(--skb-color-spinner-track, #e5e7eb);
+packages/heavy-block-boundary/src/heavy-block-skeleton.css:44:  border-top-color: var(--skb-color-spinner-fg, #3b82f6);
+packages/heavy-block-boundary/src/heavy-block-skeleton.css:51:  color: var(--skb-color-text-secondary, #6b7280);
+packages/heavy-block-boundary/src/heavy-block-skeleton.css:65:  color: var(--skb-color-text-secondary, #6b7280);
+packages/heavy-block-boundary/src/heavy-block-skeleton.css:72:  border: 1px solid var(--skb-color-border, #e5e7eb);
+packages/heavy-block-boundary/src/heavy-block-skeleton.css:74:  background: var(--skb-color-skeleton-bg, #f9fafb);
+packages/heavy-block-boundary/src/heavy-block-skeleton.css:75:  color: var(--skb-color-text-secondary, #6b7280);
+packages/block-code/src/ui-default/code.css:6: * CSS variables only (`--color-*`, `--space-*`, `--radius-*`, `--font-mono`).
+packages/block-code/src/ui-default/code.css:17: * code-specific layout (flex column + inner pre/lineno padding) only.
+packages/block-code/src/ui-default/code.css:21:  flex-direction: column;
+packages/block-code/src/ui-default/code.css:23:  background-color: rgb(var(--color-surface-1));
+packages/block-code/src/ui-default/code.css:24:  color: rgb(var(--color-fg));
+packages/block-code/src/ui-default/code.css:37:  color: rgb(var(--color-muted));
+packages/block-code/src/ui-default/code.css:46:  background: rgb(var(--color-surface-2));
+packages/block-code/src/ui-default/code.css:47:  color: rgb(var(--color-fg));
+packages/block-code/src/ui-default/code.css:67:  color: rgb(var(--color-muted));
+packages/block-code/src/ui-default/code.css:81:  outline: 2px solid rgb(var(--color-accent));
+packages/block-image/src/ui-default/image.css:24:  color: rgb(var(--color-fg));
+packages/block-image/src/ui-default/image.css:38:  color: rgb(var(--color-muted));
+packages/editor-slash-menu/src/ui-default/slash-menu.css:5:  background: var(--skb-color-surface-1, #ffffff);
+packages/editor-slash-menu/src/ui-default/slash-menu.css:6:  border: 1px solid var(--skb-color-border, rgba(0, 0, 0, 0.12));
+packages/editor-slash-menu/src/ui-default/slash-menu.css:8:  color: var(--skb-color-fg, #1a1a1a);
+packages/editor-slash-menu/src/ui-default/slash-menu.css:31:  color: inherit;
+packages/editor-slash-menu/src/ui-default/slash-menu.css:34:  transition: background-color 120ms ease, color 120ms ease;
+packages/editor-slash-menu/src/ui-default/slash-menu.css:38:  background: var(--skb-color-surface-2, rgba(0, 0, 0, 0.04));
+packages/editor-slash-menu/src/ui-default/slash-menu.css:42:  outline: 2px solid var(--skb-color-accent, #3b82f6);
+packages/editor-slash-menu/src/ui-default/slash-menu.css:48:  background: var(--skb-color-accent-soft, rgba(59, 130, 246, 0.15));
+packages/editor-slash-menu/src/ui-default/slash-menu.css:49:  color: var(--skb-color-accent, #3b82f6);
+packages/block-agent-flow/src/ui-default/agent-flow.css:4: * Tokens come from @skb/design-tokens (--color-* / --space-* / --radius-* /
+packages/block-agent-flow/src/ui-default/agent-flow.css:10: *   - block-jupyter/ui-default/jupyter.css uses --color-error for
+packages/block-agent-flow/src/ui-default/agent-flow.css:15: * styles the SKB-owned wrapper + node/edge color tokens. Tests render the
+packages/block-agent-flow/src/ui-default/agent-flow.css:32:  background: rgb(var(--color-surface-1));
+packages/block-agent-flow/src/ui-default/agent-flow.css:33:  color: rgb(var(--color-fg));
+packages/block-agent-flow/src/ui-default/agent-flow.css:46:  color: rgb(var(--color-muted));
+packages/block-agent-flow/src/ui-default/agent-flow.css:50:  color: rgb(var(--color-error));
+packages/block-agent-flow/src/ui-default/agent-flow.css:55:  background: rgb(var(--color-surface-2));
+packages/block-agent-flow/src/ui-default/agent-flow.css:57:  color: rgb(var(--color-error));
+packages/block-agent-flow/src/ui-default/agent-flow.css:63:  background: rgb(var(--color-surface-2));
+packages/block-agent-flow/src/ui-default/agent-flow.css:75:  fill: rgb(var(--color-surface-1));
+packages/block-agent-flow/src/ui-default/agent-flow.css:76:  stroke: rgb(var(--color-border));
+packages/block-agent-flow/src/ui-default/agent-flow.css:81:  stroke: rgb(var(--color-accent));
+packages/block-agent-flow/src/ui-default/agent-flow.css:85:  stroke: rgb(var(--color-muted));
+packages/block-agent-flow/src/ui-default/agent-flow.css:89:  stroke: rgb(var(--color-fg));
+packages/block-agent-flow/src/ui-default/agent-flow.css:94:  stroke: rgb(var(--color-accent));
+packages/block-agent-flow/src/ui-default/agent-flow.css:99:  fill: rgb(var(--color-fg));
+packages/block-agent-flow/src/ui-default/agent-flow.css:105:  stroke: rgb(var(--color-muted));
+packages/block-math/src/ui-default/math.css:6: * Tokens come from @skb/design-tokens (--color-* / --space-* / --radius-*).
+packages/block-math/src/ui-default/math.css:25:  color: rgb(var(--color-fg));
+packages/block-math/src/ui-default/math.css:31:  color: rgb(var(--color-fg));
+packages/block-math/src/ui-default/math.css:48: *   - 软错误 (unknown command, unicode warning) → 内联 `style="color:#cc0000"`
+packages/block-math/src/ui-default/math.css:51: * 两条路径都 escalate 到带 --color-error token 的 box，spec D1 "red error box with
+packages/block-math/src/ui-default/math.css:56:  border: 1px solid rgb(var(--color-error));
+packages/block-math/src/ui-default/math.css:58:  background: rgb(var(--color-error) / 0.08);
+apps/site/src/styles/prose.css:16:  color: var(--text-2);
+apps/site/src/styles/prose.css:24:  color: oklch(35% 0.06 90);
+apps/site/src/styles/prose.css:42:  color: oklch(45% 0.18 280);
+apps/site/src/styles/prose.css:46:  color: oklch(45% 0.13 215);
+apps/site/src/styles/prose.css:50:  color: oklch(45% 0.1 145);
+apps/site/src/styles/prose.css:60:  color: var(--canvas);
+apps/site/src/styles/prose.css:74:  color: inherit;
+apps/site/src/styles/global.css:45: * Wave 6 cf-20d (2026-05-09) — resize handles + col-ruler/row-ladder/
+apps/site/src/styles/global.css:48: * per-block on .skb-block-nodeview wrappers; col-ruler floats above
+apps/site/src/styles/global.css:51: * fraction text. Mobile (≤768px) hides ALL resize affordances per
+apps/site/src/styles/grid.css:3: * ADR-0016 D5/D8/D9: browser layout resolves 12/6/1 columns from
+apps/site/src/styles/grid.css:12: * target inside `<EditorContent>`) now ALSO becomes a 12-col grid so
+apps/site/src/styles/grid.css:16: * 12-col grid. The outer `.skb-grid` rule below stays for the read
+apps/site/src/styles/grid.css:21:  --total-cols: 12;
+apps/site/src/styles/grid.css:24:  grid-template-columns: repeat(12, minmax(0, 1fr));
+apps/site/src/styles/grid.css:37: * `.ProseMirror` ITSELF a 12-col grid so its children become grid items
+apps/site/src/styles/grid.css:44: * full-width fallback (`grid-column: 1 / -1` via the
+apps/site/src/styles/grid.css:45: * `:not([style*="grid-column"])` rule below). NodeView wrappers with
+apps/site/src/styles/grid.css:51: * the DOM tree (NOT the layout tree); `.skb-grid > *:not([style*="grid-column"])`
+apps/site/src/styles/grid.css:59:   * the full container width to compute its own 1fr columns from. */
+apps/site/src/styles/grid.css:60:  grid-column: 1 / -1;
+apps/site/src/styles/grid.css:65:  grid-template-columns: repeat(12, minmax(0, 1fr));
+apps/site/src/styles/grid.css:92:.skb-grid > *:not([style*="grid-column"]),
+apps/site/src/styles/grid.css:93:.skb-grid .ProseMirror > *:not([style*="grid-column"]) {
+apps/site/src/styles/grid.css:94:  grid-column: 1 / -1;
+apps/site/src/styles/grid.css:97:@media (max-width: 1024px) {
+apps/site/src/styles/grid.css:99:    --total-cols: 6;
+apps/site/src/styles/grid.css:101:    grid-template-columns: repeat(6, minmax(0, 1fr));
+apps/site/src/styles/grid.css:105:@media (max-width: 768px) {
+apps/site/src/styles/grid.css:107:    --total-cols: 1;
+apps/site/src/styles/grid.css:109:    grid-template-columns: 1fr;
+apps/site/src/styles/grid.css:114:   * the cf-20b-emitted inline `style="grid-column: ${col} / span ${colSpan}"`
+apps/site/src/styles/grid.css:118:   * wins per CSS specificity, so blocks like `colSpan=12` retain their
+apps/site/src/styles/grid.css:120:   * to a single 1fr column — producing 12× horizontal overflow
+apps/site/src/styles/grid.css:126:   * v0.2 D11.1 amendment); mobile responsive override per ADR-0016 D5
+apps/site/src/styles/grid.css:127:   * + apps/site/CONTRACT.md "≤768px → 1 col" requires beating that
+apps/site/src/styles/grid.css:145:    grid-column: 1 / -1 !important;
+apps/site/src/styles/grid.css:151:   * Even with `grid-column: 1 / -1` forcing block wrappers to the
+apps/site/src/styles/grid.css:152:   * single mobile column, CSS Grid's default `min-width: auto` on
+apps/site/src/styles/grid.css:159:   * 1fr column to ~6.4k px and bypassing the viewport-width
+apps/site/src/styles/grid.css:170:   * Selector list mirrors the grid-column rule above (covers `.skb-prose`
+apps/site/src/styles/grid.css:189:   * fits inside the now-collapsed `.skb-block-static`/`.skb-block-nodeview`
+apps/site/src/styles/grid.css:194:   * dimensions from grid colSpan/rowSpan (W5-1 invariant) post
+packages/design-tokens/src/tokens.css:5: * preset can compose `rgb(var(--color-xxx) / <alpha-value>)` and support
+packages/design-tokens/src/tokens.css:12:  /* === color/surface === */
+packages/design-tokens/src/tokens.css:13:  --color-bg: 255 255 255;
+packages/design-tokens/src/tokens.css:14:  --color-fg: 17 24 39;
+packages/design-tokens/src/tokens.css:15:  --color-surface-1: 249 250 251;
+packages/design-tokens/src/tokens.css:16:  --color-surface-2: 243 244 246;
+packages/design-tokens/src/tokens.css:17:  --color-border: 229 231 235;
+packages/design-tokens/src/tokens.css:18:  --color-muted: 107 114 128;
+packages/design-tokens/src/tokens.css:20:  /* === color/accent === */
+packages/design-tokens/src/tokens.css:21:  --color-accent: 59 130 246;
+packages/design-tokens/src/tokens.css:22:  --color-accent-fg: 255 255 255;
+packages/design-tokens/src/tokens.css:24:  /* === color/semantic === */
+packages/design-tokens/src/tokens.css:25:  --color-info: 59 130 246;
+packages/design-tokens/src/tokens.css:26:  --color-warn: 234 179 8;
+packages/design-tokens/src/tokens.css:27:  --color-note: 107 114 128;
+packages/design-tokens/src/tokens.css:28:  --color-success: 34 197 94;
+packages/design-tokens/src/tokens.css:29:  --color-error: 239 68 68;
+packages/design-tokens/src/tokens-fallback.css:1:@supports not (color: oklch(0 0 0)) {
+packages/design-tokens/src/tokens-dark.css:5: * inline FOUC script). Only color + shadow change; spacing/type/radius/motion
+packages/design-tokens/src/tokens-dark.css:10: * `--color-*` keys remain mirrored below, preserving that key-set invariant.
+packages/design-tokens/src/tokens-dark.css:14:  /* === color/surface === */
+packages/design-tokens/src/tokens-dark.css:15:  --color-bg: 17 24 39;
+packages/design-tokens/src/tokens-dark.css:16:  --color-fg: 243 244 246;
+packages/design-tokens/src/tokens-dark.css:17:  --color-surface-1: 31 41 55;
+packages/design-tokens/src/tokens-dark.css:18:  --color-surface-2: 55 65 81;
+packages/design-tokens/src/tokens-dark.css:19:  --color-border: 75 85 99;
+packages/design-tokens/src/tokens-dark.css:20:  --color-muted: 156 163 175;
+packages/design-tokens/src/tokens-dark.css:22:  /* === color/accent === */
+packages/design-tokens/src/tokens-dark.css:23:  --color-accent: 96 165 250;
+packages/design-tokens/src/tokens-dark.css:24:  --color-accent-fg: 17 24 39;
+packages/design-tokens/src/tokens-dark.css:26:  /* === color/semantic === */
+packages/design-tokens/src/tokens-dark.css:27:  --color-info: 96 165 250;
+packages/design-tokens/src/tokens-dark.css:28:  --color-warn: 250 204 21;
+packages/design-tokens/src/tokens-dark.css:29:  --color-note: 156 163 175;
+packages/design-tokens/src/tokens-dark.css:30:  --color-success: 74 222 128;
+packages/design-tokens/src/tokens-dark.css:31:  --color-error: 248 113 113;
+
+exec
+/bin/bash -lc 'git diff --unified=80 7ae0f02 a1e96f2 -- packages/editor-shell/src/responsive-cols.ts' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+diff --git a/packages/editor-shell/src/responsive-cols.ts b/packages/editor-shell/src/responsive-cols.ts
+index c3fff9b..4871c83 100644
+--- a/packages/editor-shell/src/responsive-cols.ts
++++ b/packages/editor-shell/src/responsive-cols.ts
+@@ -1,106 +1,139 @@
+ /**
+  * @skb/editor-shell responsive viewport columns for ADR-0016 D5 and ADR-0017 D9.
+  *
+  * Load-bearing constants: tablet 768px and desktop 1024px mirror ADR-0016 D5
+  * for the 12 / 6 / 1 viewport switch and the T0-T4 transition budget. The
+  * 320ms delay marks the stable transition boundary where consumers may
+  * re-measure rendering-derived mobile rowSpan='auto' without persisting the
+  * integer rowSpan. ADR-0017 D9 keeps the mobile 1-col path view-only via the
+  * `.skb-grid--mobile` class emitted by GridContainer.
+  *
++ * Wave 6 cf-20d R2 F1 fix (2026-05-09) — boundary alignment with grid.css.
++ * Pre-R2 the hook used `(min-width: 1024px)` + `(min-width: 768px)` which
++ * gave: 1024px exactly → 12, but `apps/site/src/styles/grid.css:97`
++ * `(max-width: 1024px)` → 6-col grid (≤1024 = 6). At the EXACT 1024px
++ * boundary the hook said 12 while the CSS painted a 6-col grid; tablet
++ * users at that pixel hit 12-col snap stops on a 6-col grid. Same off-by-
++ * one at 768px boundary. R2 fix: switch to MAX-WIDTH queries that match
++ * the CSS buckets byte-equivalent.
++ *
++ * Bucket truth table (matches grid.css verbatim):
++ *   width <= 768   → 1 col   (matches `@media (max-width: 768px)`)
++ *   768 < width <= 1024 → 6 col   (matches `@media (max-width: 1024px)`
++ *                                  but NOT `(max-width: 768px)`)
++ *   width > 1024   → 12 col  (no max-width @media matches)
++ *
++ * Operational rule landed (cf-20d R2 reflection): when a hook drives
++ * layout decisions paired with CSS @media, the breakpoint queries MUST
++ * be byte-equivalent to the CSS rules (same operator: max-width vs
++ * min-width; same threshold pixel; same inclusivity). Off-by-one at the
++ * EXACT boundary breaks deterministic behavior. Adding `1024` and
++ * `768` to the unit-test boundary matrix as mandatory cases.
++ *
+  * TODO(Stage C.3-1): replace the hardcoded numeric bridge with design-token
+  * breakpoint vars once `--bp-tablet` and `--bp-desktop` land.
+  */
+ import { useEffect, useRef, useState } from 'react';
+ 
+ export type ViewportCols = 12 | 6 | 1;
+ 
+ export interface UseResponsiveColsOptions {
+   readonly onTransitionStart?: () => void;
+   readonly onTransitionEnd?: () => void;
+ }
+ 
+ export const RESPONSIVE_BREAKPOINTS = {
+   tablet: 768,
+   desktop: 1024,
+ } as const;
+ 
+ const TRANSITION_END_MS = 320;
+ 
+-function colsFromMatches(desktopMatches: boolean, tabletMatches: boolean): ViewportCols {
+-  if (desktopMatches && tabletMatches) return 12;
+-  if (!desktopMatches && tabletMatches) return 6;
+-  if (!desktopMatches && !tabletMatches) return 1;
+-
++/**
++ * R2 F1 fix: bucket the viewport from max-width matches (CSS-aligned).
++ *
++ * @param mobileMatches  `(max-width: 768px)` matches → ≤768px → 1 col
++ * @param tabletMatches  `(max-width: 1024px)` matches AND mobile DOESN'T → 6 col
++ * @returns 12 / 6 / 1 per CSS-bucket truth table above.
++ */
++function colsFromMatches(
++  mobileMatches: boolean,
++  tabletMatches: boolean,
++): ViewportCols {
++  if (mobileMatches) return 1;
++  if (tabletMatches) return 6;
+   return 12;
+ }
+ 
+ function currentViewportCols(): ViewportCols {
+   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return 12;
+ 
+   return colsFromMatches(
+-    window.matchMedia('(min-width: 1024px)').matches,
+-    window.matchMedia('(min-width: 768px)').matches,
++    window.matchMedia('(max-width: 768px)').matches,
++    window.matchMedia('(max-width: 1024px)').matches,
+   );
+ }
+ 
+ export function useResponsiveCols(options: UseResponsiveColsOptions = {}): ViewportCols {
+   const { onTransitionStart, onTransitionEnd } = options;
+   const [viewportCols, setViewportCols] = useState<ViewportCols>(() => currentViewportCols());
+   const viewportColsRef = useRef(viewportCols);
+   const onTransitionStartRef = useRef(onTransitionStart);
+   const onTransitionEndRef = useRef(onTransitionEnd);
+   const endTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+ 
+   useEffect(() => {
+     onTransitionStartRef.current = onTransitionStart;
+   }, [onTransitionStart]);
+ 
+   useEffect(() => {
+     onTransitionEndRef.current = onTransitionEnd;
+   }, [onTransitionEnd]);
+ 
+   useEffect(() => {
+     viewportColsRef.current = viewportCols;
+   }, [viewportCols]);
+ 
+   useEffect(() => {
+     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined;
+ 
+-    const desktopQuery = window.matchMedia('(min-width: 1024px)');
+-    const tabletQuery = window.matchMedia('(min-width: 768px)');
++    // R2 F1 fix: max-width queries match grid.css verbatim. Pre-R2
++    // the hook used min-width which caused an off-by-one at the
++    // EXACT 1024 / 768 boundaries.
++    const mobileQuery = window.matchMedia('(max-width: 768px)');
++    const tabletQuery = window.matchMedia('(max-width: 1024px)');
+ 
+     const clearEndTimer = () => {
+       if (endTimerRef.current !== null) {
+         clearTimeout(endTimerRef.current);
+         endTimerRef.current = null;
+       }
+     };
+ 
+     const handleChange = () => {
+-      const nextCols = colsFromMatches(desktopQuery.matches, tabletQuery.matches);
++      const nextCols = colsFromMatches(mobileQuery.matches, tabletQuery.matches);
+       if (nextCols === viewportColsRef.current) return;
+ 
+       onTransitionStartRef.current?.();
+ 
+       viewportColsRef.current = nextCols;
+       setViewportCols(nextCols);
+       clearEndTimer();
+       endTimerRef.current = setTimeout(() => {
+         endTimerRef.current = null;
+         onTransitionEndRef.current?.();
+       }, TRANSITION_END_MS);
+     };
+ 
+-    desktopQuery.addEventListener('change', handleChange);
++    mobileQuery.addEventListener('change', handleChange);
+     tabletQuery.addEventListener('change', handleChange);
+ 
+     return () => {
+-      desktopQuery.removeEventListener('change', handleChange);
++      mobileQuery.removeEventListener('change', handleChange);
+       tabletQuery.removeEventListener('change', handleChange);
+       clearEndTimer();
+     };
+   }, []);
+ 
+   return viewportCols;
+ }
+
+exec
+/bin/bash -lc 'git diff --unified=100 7ae0f02 a1e96f2 -- packages/editor-shell/src/resize/use-resize-pipeline.ts' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+diff --git a/packages/editor-shell/src/resize/use-resize-pipeline.ts b/packages/editor-shell/src/resize/use-resize-pipeline.ts
+index c99d537..b818475 100644
+--- a/packages/editor-shell/src/resize/use-resize-pipeline.ts
++++ b/packages/editor-shell/src/resize/use-resize-pipeline.ts
+@@ -1,168 +1,127 @@
+ /**
+  * @skb/editor-shell useResizePipeline — resize lifecycle owner.
+  *
+- * Wave 6 cf-20d (2026-05-09) — composes the existing resize visual
+- * primitives (<ColRuler>, <SizeTooltip>, <RowLadder>) + the new
+- * pure `resize-snap.ts` math + Tiptap `setNodeMarkup` into the
+- * actual interactive resize wire. Mirrors the cf-20c-2
+- * `useDragDropPipeline` shape (snapshot at start, mutate at commit,
+- * NEVER mid-pointermove per the cf-20c-2 R1 reflection rule).
++ * Wave 6 cf-20d (2026-05-09; R1+R2 fixes 2026-05-09) — composes the
++ * existing resize visual primitives (<ColRuler>, <SizeTooltip>,
++ * <RowLadder>) + the pure `resize-snap.ts` math + Tiptap
++ * `setNodeMarkup` into the interactive resize wire. Mirrors the
++ * cf-20c-2 `useDragDropPipeline` shape (snapshot at start, mutate at
++ * commit, NEVER mid-pointermove per the cf-20c-2 R1 reflection rule).
+  *
+- * Lifecycle (per ADR-0017 D9 + v2-styles.css commit-on-release model):
++ * Lifecycle: pointerdown (snapshot startCol + startColSpan +
++ * startRowSpanAttr|Int + cursor origin + sourceRect + containerWidth)
++ * → window pointermove (snap math drives reactive overlay state;
++ * never mutates Tiptap) → window pointerup (commit-on-release;
++ * setNodeMarkup with axis-aware attr diff via buildResizeNextAttrs;
++ * 2-rAF re-measure; onCommitSuccess callback for dropEpoch reuse) /
++ * esc-cancel / pointercancel (rollback without mutation per
++ * ADR-0017 D8).
+  *
+- *   resize-start (pointerdown on .gblock-handle.{right|bottom|corner})
+- *     ↓
+- *     1. Snapshot: { sourceBlockId, axis, startColSpan, startRowSpan,
+- *        startRect, containerWidth }
+- *     2. Set state.active = true; record cursor origin.
+- *     3. Add window-level pointermove + pointerup + pointercancel
+- *        listeners (auto-removed on cleanup).
+- *
+- *   pointermove (window-level)
+- *     ↓
+- *     1. Compute cursorDeltaX/Y from origin.
+- *     2. Resolve snap: snapToColSpan / snapToRowSpan per axis.
+- *     3. Update reactive state (cursorX, cursorY, snapColSpan,
+- *        snapRowSpan) — drives <ColRuler> stop highlight + <SizeTooltip>
+- *        text + <RowLadder> active-rung. NEVER dispatches Tiptap
+- *        mutations during pointermove.
+- *
+- *   pointerup (window-level)
+- *     ↓
+- *     1. If snap === start values: cancel without mutation (no-op
+- *        commit; unchanged-resize is treated as an early bailout).
+- *     2. Resolve live PM position via the doc walk (stable ID = pos).
+- *     3. Dispatch Tiptap setNodeMarkup with the new attrs (colSpan
+- *        for right; rowSpan for bottom; both for corner).
+- *     4. Wait 2 rAFs for React commit + browser layout.
+- *     5. Re-measure source NodeView at landed position.
+- *     6. Invoke `onCommitSuccess(blockId, liveRect)` so the consumer
+- *        (EditorShellMount.tsx) can reuse the cf-20c-2 dropEpoch
+- *        infrastructure to fire the success-pulse at the new size.
+- *     7. Clear all reactive state.
+- *
+- *   esc-cancel (window keydown)
+- *     ↓
+- *     Rollback (no Tiptap mutation; per ADR-0017 D8). The pipeline
+- *     emits no commit-success callback.
+- *
+- *   pointercancel (browser-emitted, e.g. user releases over chrome)
+- *     ↓
+- *     Same as esc-cancel: rollback without mutation.
+- *
+- * dropEpoch reuse rationale (cf-20d D3 decision; per cf-20c-2 R3
+- * reflection "rapid-action animation isolation" canonical pattern):
+- *   The cf-20c-2 pipeline owns the success-pulse fields
+- *   (lastDroppedBlockId / lastDroppedRect / dropEpoch). cf-20d
+- *   resize-commit needs to fire the SAME pulse at the new size.
+- *   Two clean designs were considered:
+- *     - Option A: extract pulse state into a third sibling hook
+- *       `useActionPulse()` consumed by both pipelines + the consumer.
+- *     - Option B: cf-20d pipeline accepts an `onCommitSuccess(blockId,
+- *       liveRect)` callback as an option; consumer wires it to the
+- *       drag pipeline's external setter.
+- *   cf-20d ships Option B (simpler; no speculative extraction; the
+- *   consumer is already the pulse-mount owner). The drag pipeline
+- *   gains a new `setLastDroppedFromExternal(blockId, rect)` method
+- *   that wraps the internal setter + dropEpoch increment so resize
+- *   commits route through the same canonical "dropped" state.
++ * Decisions in CONTRACT.md (Resize wire section): D1 commit-on-
++ * release; D2 gridKind===prose skips bottom+corner; D3 dropEpoch
++ * reuse via onCommitSuccess → setLastDroppedFromExternal; D6 round-
++ * to-nearest snap; D9 viewportCols-derived totalCols+activeColSnaps
++ * (R1 F1); D10 startCol overflow-filter (R1 F2) + UNCONDITIONAL
++ * persisted-overflow normalize (R2 F2); D11 rowSpan='auto'
++ * preservation via buildResizeNextAttrs axis-aware attr write
++ * (R1 F3).
+  */
+ import { useCallback, useEffect, useRef, useState } from 'react';
+ import type { Editor } from '@tiptap/core';
+ import { liveBlockPositions, snapshotBlocks } from '../drag-drop/pipeline-snapshot';
+ import {
+   buildResizeNextAttrs,
+   snapToColSpan,
+   snapToRowSpan,
+ } from './resize-snap';
+ import type { ResizeAxis } from './resize-context';
+ 
+ export interface PipelineResizeState {
+   /** True from pointerdown until commit/cancel/pointercancel. */
+   readonly active: boolean;
+   /** Source block being resized (set on pointerdown). */
+   readonly sourceBlockId: string | null;
+   /** Active resize axis (null when no resize is active). */
+   readonly axis: ResizeAxis | null;
+   /** Cursor position (for <SizeTooltip> following). */
+   readonly cursor: { readonly x: number; readonly y: number } | null;
+   /** Currently-resolved snap colSpan (right + corner axes; else null). */
+   readonly snapColSpan: number | null;
+   /** Currently-resolved snap rowSpan (bottom + corner axes; else null). */
+   readonly snapRowSpan: number | null;
+   /** Bounding rect of the source NodeView at pointerdown. */
+   readonly sourceRect: DOMRectReadOnly | null;
+ }
+ 
+ export interface UseResizePipelineOptions {
+   /** The Tiptap editor instance; null until onCreate fires. */
+   readonly editor: Editor | null;
+   /**
+    * Selector for the grid container element. Defaults to '.skb-grid'.
+    * Used to read containerWidth for the snap math.
+    */
+   readonly gridSelector?: string;
+   /**
+    * Effective columns at the current viewport (12 / 6 / 1). cf-20d
+    * uses this to choose `effectiveColSnaps()` from block-foundation;
+    * caller derives via `useResponsiveCols`.
+    */
+   readonly totalCols: number;
+   /** Snap targets for the right-edge resize (per `effectiveColSnaps`). */
+   readonly activeColSnaps: readonly number[];
+   /**
+    * Grid `--row-h` in CSS pixels. Defaults to 48 per
+    * `DEFAULT_GRID_GEOMETRY.rowH`.
+    */
+   readonly rowH?: number;
+   /** Grid gap in CSS pixels. Defaults to 14. */
+   readonly gap?: number;
+   /**
+    * Invoked on a successful commit (after Tiptap mutation + 2-rAF
+    * re-measure). Consumer wires this to the cf-20c-2 drag pipeline's
+    * `setLastDroppedFromExternal(blockId, rect)` so the success-pulse
+    * fires at the landed size. cf-20c-2 R3 dropEpoch reuse pattern.
+    */
+   readonly onCommitSuccess?: (
+     blockId: string,
+     liveRect: DOMRectReadOnly,
+   ) => void;
+ }
+ 
+ export interface UseResizePipelineReturn {
+   readonly state: PipelineResizeState;
+   /** Bound to <ResizeHandles> via ResizeContext. */
+   readonly onResizeStart: (
+     blockId: string,
+     axis: ResizeAxis,
+     origin: { x: number; y: number },
+   ) => void;
+   /** Cleanup fallback (pointercancel route). */
+   readonly onResizeEnd: (origin: { x: number; y: number }) => void;
+ }
+ 
+ interface ResizeSnapshot {
+   readonly blockId: string;
+   readonly axis: ResizeAxis;
+   /**
+    * Block's `col` (1-based) at pointerdown. R1 F2 fix (2026-05-09):
+    * snapped at start so the snap function can filter candidates to
+    * the non-overflowing subset (`snap <= totalCols - col + 1` per
+    * ADR-0016 D2 invariant).
+    */
+   readonly startCol: number;
+   readonly startColSpan: number;
+   /**
+    * Block's rowSpan attr at pointerdown — preserved as `number |
+    * 'auto'`. R1 F3 fix (2026-05-09): pre-R1 the snapshot coerced
+    * non-numeric rowSpan to `1`, then the right-only commit wrote
+    * `rowSpan: 1` and DESTROYED the `'auto'` attribute (prose blocks
+    * stuck at 1 row). R1 fix: preserve the original; right-only
+    * commit omits rowSpan from setNodeMarkup; bottom + corner
+    * commits write the snapped integer.
+    */
+   readonly startRowSpanAttr: number | 'auto';
+   /**
+    * Resolved integer rowSpan at pointerdown — the value used by the
+    * snap math + as the baseline for the bottom/corner commit. For
+    * `startRowSpanAttr === 'auto'` we derive an integer hint from the
+@@ -283,216 +242,255 @@ export function useResizePipeline(
+       setCursor({ x: origin.x, y: origin.y });
+       setSnapColSpan(target.colSpan);
+       setSnapRowSpan(startRowSpanInt);
+       setSourceRect(startRect);
+     },
+     [editor, gridSelector, gap, rowH],
+   );
+ 
+   const onResizeEnd = useCallback(() => {
+     // Cleanup-only fallback for pointercancel (rare browser-emitted
+     // event). The window-level pointerup handler below is the primary
+     // commit path. If active=true here, treat as cancel (no mutation).
+     if (active) {
+       resetState();
+     }
+   }, [active, resetState]);
+ 
+   // Window-level pointermove / pointerup / pointercancel listeners.
+   // Attached when active=true.
+   useEffect(() => {
+     if (!active) return;
+ 
+     const handlePointerMove = (event: PointerEvent): void => {
+       const snapshot = snapshotRef.current;
+       if (!snapshot) return;
+ 
+       const dx = event.clientX - snapshot.origin.x;
+       const dy = event.clientY - snapshot.origin.y;
+ 
+       setCursor({ x: event.clientX, y: event.clientY });
+ 
+       // Snap math depends on axis. R1 F2 fix: pass startCol so
+       // snapToColSpan can filter overflowing snaps.
+       if (snapshot.axis === 'right' || snapshot.axis === 'corner') {
+         const result = snapToColSpan(
+           dx,
+           snapshot.startColSpan,
+           snapshot.startCol,
+           snapshot.containerWidth,
+           gap,
+           totalCols,
+           activeColSnaps,
+         );
+         setSnapColSpan(result.colSpan);
+       }
+       if (snapshot.axis === 'bottom' || snapshot.axis === 'corner') {
+         const newRowSpan = snapToRowSpan(
+           dy,
+           snapshot.startRowSpanInt,
+           rowH,
+           gap,
+         );
+         setSnapRowSpan(newRowSpan);
+       }
+     };
+ 
+     const handlePointerUp = (event: PointerEvent): void => {
+       const snapshot = snapshotRef.current;
+       if (!snapshot || !editor) {
+         resetState();
+         return;
+       }
+ 
+       const dx = event.clientX - snapshot.origin.x;
+       const dy = event.clientY - snapshot.origin.y;
+ 
+       // Resolve the final snap targets for this commit.
+       // R1 F2 fix: pass startCol to snapToColSpan so the snap-set
+       // filter rejects overflowing snaps before committing.
+       let nextColSpan = snapshot.startColSpan;
+       let nextRowSpan = snapshot.startRowSpanInt;
+       if (snapshot.axis === 'right' || snapshot.axis === 'corner') {
+         nextColSpan = snapToColSpan(
+           dx,
+           snapshot.startColSpan,
+           snapshot.startCol,
+           snapshot.containerWidth,
+           gap,
+           totalCols,
+           activeColSnaps,
+         ).colSpan;
+       }
+       if (snapshot.axis === 'bottom' || snapshot.axis === 'corner') {
+         nextRowSpan = snapToRowSpan(
+           dy,
+           snapshot.startRowSpanInt,
+           rowH,
+           gap,
+         );
+       }
+ 
+       const colChanged = nextColSpan !== snapshot.startColSpan;
+       const rowChanged = nextRowSpan !== snapshot.startRowSpanInt;
+       // R1 F3 fix: only the bottom + corner axes can change rowSpan;
+       // a right-only resize must NEVER write rowSpan (would destroy
+       // 'auto' on prose blocks).
+       const writeRowSpan =
+         rowChanged &&
+         (snapshot.axis === 'bottom' || snapshot.axis === 'corner');
+ 
+-      if (!colChanged && !writeRowSpan) {
++      // R2 F2 fix (2026-05-09) — UNCONDITIONAL persisted-overflow
++      // defense. Pre-R2 the overflow check ran ONLY when colChanged
++      // was true (col-mutating axes). Race scenario the reviewer
++      // identified: user saved a block at desktop with `col=7,
++      // colSpan=8` (valid in 12-col); reloads at tablet (6-col) →
++      // `7 + 8 - 1 = 14 > 6` (invalid). User does bottom-only
++      // resize (axis='bottom', colChanged=false). Pre-R2 the
++      // setNodeMarkup call wrote the new rowSpan AND preserved the
++      // INVALID col/colSpan attrs via the spread. R2 fix:
++      // unconditionally re-check the persisted position; if invalid,
++      // normalize colSpan to `max(1, totalCols - startCol + 1)` and
++      // include the normalized colSpan in THIS commit's
++      // setNodeMarkup transaction (single atomic write — recovery,
++      // not corruption).
++      //
++      // Per cf-20d D10 R2 amendment: normalize (recoverable) over
++      // cancel (drops the user's intended row resize).
++      const persistedOverflow =
++        snapshot.startCol + snapshot.startColSpan - 1 > totalCols;
++      const normalizedColSpan = persistedOverflow
++        ? Math.max(1, totalCols - snapshot.startCol + 1)
++        : null;
++
++      if (!colChanged && !writeRowSpan && !persistedOverflow) {
+         // No-op commit (cursor returned to start position OR
+         // right-only axis with rowSpan unchanged because we won't
+-        // write it anyway). Reset without mutation; no success-pulse.
++        // write it anyway), AND the persisted state isn't broken.
++        // Reset without mutation; no success-pulse.
+         resetState();
+         return;
+       }
+ 
+-      // R1 F2 defense-in-depth: re-validate the post-snap position
++      // R1 F2 defense-in-depth: re-validate the POST-snap position
+       // against the grid invariant before dispatching mutation.
+       // Should never fire (snapToColSpan already filtered), but if
+       // it does, treat as cancel.
+       if (
+         colChanged &&
+         snapshot.startCol + nextColSpan - 1 > totalCols
+       ) {
+         resetState();
+         return;
+       }
+ 
+       // Resolve live PM position (snapshot.blockId === pos string).
+       const blocks = snapshotBlocks(editor);
+       const livePositions = liveBlockPositions(editor, blocks);
+       const live = livePositions.get(snapshot.blockId);
+       if (!live) {
+         resetState();
+         return;
+       }
+ 
+       // R1 F3 fix: axis-aware attr write delegated to the pure
+       // `buildResizeNextAttrs` helper. Right-only axis omits rowSpan
+       // entirely (preserves 'auto' on prose); bottom-only omits
+       // colSpan; corner writes both (only reached for non-prose per
+       // ADR-0017 D9).
+-      const nextAttrDiff = buildResizeNextAttrs(
++      const nextAttrDiff: Record<string, number> = buildResizeNextAttrs(
+         snapshot.axis,
+         nextColSpan,
+         nextRowSpan,
+         colChanged,
+         rowChanged,
+       );
++      // R2 F2 fix: when persistedOverflow detected AND the axis-
++      // aware diff didn't already include colSpan (e.g. bottom-only
++      // axis), force the normalized colSpan into the diff so the
++      // single setNodeMarkup transaction recovers the invalid grid
++      // position atomically with the user's intended row mutation.
++      // Console-warn so operators see the recovery in dev tools.
++      if (normalizedColSpan !== null && !('colSpan' in nextAttrDiff)) {
++        // eslint-disable-next-line no-console
++        console.warn(
++          `[useResizePipeline R2 F2] persisted grid overflow detected at block ${snapshot.blockId} ` +
++            `(col=${snapshot.startCol}, colSpan=${snapshot.startColSpan}, totalCols=${totalCols}); ` +
++            `normalizing colSpan to ${normalizedColSpan} as part of ${snapshot.axis}-axis commit.`,
++        );
++        nextAttrDiff['colSpan'] = normalizedColSpan;
++      }
+       editor
+         .chain()
+         .command(({ tr }) => {
+           const node = tr.doc.nodeAt(live.pos);
+           if (!node) return false;
+           const nextAttrs = {
+             ...node.attrs,
+             ...nextAttrDiff,
+           };
+           tr.setNodeMarkup(live.pos, undefined, nextAttrs);
+           return true;
+         })
+         .run();
+ 
+       // Re-measure source NodeView at landed position post-mutation
+       // (mirrors cf-20c-2 R2 F2 + R3 F2 sequence). 2 rAFs to allow
+       // React commit + browser layout pass before the
+       // getBoundingClientRect() returns the new size.
+       const blockId = snapshot.blockId;
+       requestAnimationFrame(() => {
+         requestAnimationFrame(() => {
+           const newBlocks = snapshotBlocks(editor);
+           const newLivePositions = liveBlockPositions(editor, newBlocks);
+           const newLive = newLivePositions.get(blockId);
+           if (!newLive) return;
+           const newDom = editor.view.nodeDOM(newLive.pos);
+           if (newDom instanceof HTMLElement) {
+             const newRect = newDom.getBoundingClientRect();
+             // Reuse cf-20c-2 dropEpoch infrastructure via the
+             // consumer-supplied callback (D3 decision).
+             onCommitSuccess?.(blockId, newRect);
+           }
+         });
+       });
+ 
+       resetState();
+     };
+ 
+     const handlePointerCancel = (): void => {
+       resetState();
+     };
+ 
+     window.addEventListener('pointermove', handlePointerMove);
+     window.addEventListener('pointerup', handlePointerUp);
+     window.addEventListener('pointercancel', handlePointerCancel);
+     return () => {
+       window.removeEventListener('pointermove', handlePointerMove);
+       window.removeEventListener('pointerup', handlePointerUp);
+       window.removeEventListener('pointercancel', handlePointerCancel);
+     };
+   }, [
+     active,
+     editor,
+     totalCols,
+     activeColSnaps,
+     gap,
+     rowH,
+     onCommitSuccess,
+     resetState,
+   ]);
+ 
+   return {
+     state: {
+       active,
+       sourceBlockId,
+       axis,
+       cursor,
+       snapColSpan,
+       snapRowSpan,
+       sourceRect,
+     },
+     onResizeStart,
+     onResizeEnd,
+   };
+ }
+
+exec
+/bin/bash -lc 'git diff --unified=80 7ae0f02 a1e96f2 -- packages/editor-shell/src/__tests__/responsive-cols.test.ts' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+diff --git a/packages/editor-shell/src/__tests__/responsive-cols.test.ts b/packages/editor-shell/src/__tests__/responsive-cols.test.ts
+index dcb151d..20ea01d 100644
+--- a/packages/editor-shell/src/__tests__/responsive-cols.test.ts
++++ b/packages/editor-shell/src/__tests__/responsive-cols.test.ts
+@@ -1,214 +1,290 @@
+ import { createElement } from 'react';
+ import { renderToString } from 'react-dom/server';
+ import { act, renderHook } from '@testing-library/react';
+ import { afterEach, describe, expect, it, vi } from 'vitest';
+ import { RESPONSIVE_BREAKPOINTS, useResponsiveCols } from '../responsive-cols';
+ 
+-type QueryKey = 'desktop' | 'tablet';
++// R2 F1 fix (2026-05-09): hook now uses max-width queries (`mobile`
++// + `tablet`) to match grid.css verbatim. Pre-R2 the mock keys were
++// 'desktop' (min-width: 1024px) + 'tablet' (min-width: 768px).
++type QueryKey = 'mobile' | 'tablet';
+ type MatchListener = (event: MediaQueryListEvent) => void;
+ 
+ interface MockMediaQueryList {
+   readonly media: string;
+   matches: boolean;
+   readonly addEventListener: ReturnType<typeof vi.fn>;
+   readonly removeEventListener: ReturnType<typeof vi.fn>;
+   readonly listeners: Set<MatchListener>;
+   trigger: (matches: boolean) => void;
+ }
+ 
+ function createMediaQueryList(media: string, matches: boolean): MockMediaQueryList {
+   const listeners = new Set<MatchListener>();
+   return {
+     media,
+     matches,
+     listeners,
+     addEventListener: vi.fn((event: string, listener: MatchListener) => {
+       if (event === 'change') listeners.add(listener);
+     }),
+     removeEventListener: vi.fn((event: string, listener: MatchListener) => {
+       if (event === 'change') listeners.delete(listener);
+     }),
+     trigger(nextMatches: boolean) {
+       this.matches = nextMatches;
+       const event = { matches: nextMatches, media } as MediaQueryListEvent;
+       listeners.forEach((listener) => listener(event));
+     },
+   };
+ }
+ 
+ function installMatchMedia(matches: Record<QueryKey, boolean>) {
+   const queries: Record<QueryKey, MockMediaQueryList> = {
+-    desktop: createMediaQueryList('(min-width: 1024px)', matches.desktop),
+-    tablet: createMediaQueryList('(min-width: 768px)', matches.tablet),
++    mobile: createMediaQueryList('(max-width: 768px)', matches.mobile),
++    tablet: createMediaQueryList('(max-width: 1024px)', matches.tablet),
+   };
+   const matchMedia = vi.fn((query: string) => {
+-    if (query === queries.desktop.media) return queries.desktop as unknown as MediaQueryList;
++    if (query === queries.mobile.media) return queries.mobile as unknown as MediaQueryList;
+     if (query === queries.tablet.media) return queries.tablet as unknown as MediaQueryList;
+     throw new Error(`Unexpected media query: ${query}`);
+   });
+ 
+   vi.stubGlobal('matchMedia', matchMedia);
+   Object.defineProperty(window, 'matchMedia', { configurable: true, value: matchMedia });
+ 
+   return { matchMedia, queries };
+ }
+ 
++/**
++ * R2 F1 fix (2026-05-09) — semantic helper for boundary tests. Maps
++ * a viewport pixel width to the matchMedia matches truth table per
++ * grid.css buckets:
++ *   width <= 768  → mobile=true,  tablet=true   → 1
++ *   768 < width <= 1024 → mobile=false, tablet=true   → 6
++ *   width > 1024  → mobile=false, tablet=false  → 12
++ */
++function matchesForWidth(width: number): Record<QueryKey, boolean> {
++  return {
++    mobile: width <= 768,
++    tablet: width <= 1024,
++  };
++}
++
+ afterEach(() => {
+   vi.useRealTimers();
+   vi.unstubAllGlobals();
+ });
+ 
+ describe('useResponsiveCols initial state', () => {
+   it('desktop returns 12', () => {
+-    installMatchMedia({ desktop: true, tablet: true });
++    // Desktop = width > 1024 → mobile=false, tablet=false
++    installMatchMedia({ mobile: false, tablet: false });
+ 
+     const { result } = renderHook(() => useResponsiveCols());
+ 
+     expect(result.current).toBe(12);
+   });
+ 
+   it('tablet returns 6', () => {
+-    installMatchMedia({ desktop: false, tablet: true });
++    // Tablet = 768 < width <= 1024 → mobile=false, tablet=true
++    installMatchMedia({ mobile: false, tablet: true });
+ 
+     const { result } = renderHook(() => useResponsiveCols());
+ 
+     expect(result.current).toBe(6);
+   });
+ 
+   it('mobile returns 1', () => {
+-    installMatchMedia({ desktop: false, tablet: false });
++    // Mobile = width <= 768 → mobile=true, tablet=true (max-width
++    // queries cascade)
++    installMatchMedia({ mobile: true, tablet: true });
+ 
+     const { result } = renderHook(() => useResponsiveCols());
+ 
+     expect(result.current).toBe(1);
+   });
+ });
+ 
++/**
++ * R2 F1 fix lock (2026-05-09) — boundary semantics matrix. Pre-R2
++ * the hook used min-width queries which gave 1024px=12 + 768px=6;
++ * grid.css uses max-width which gives 1024px=6 + 768px=1. R2
++ * aligns the hook to grid.css. These boundary tests pin the
++ * alignment.
++ */
++describe('useResponsiveCols R2 F1 — exact boundary widths align with grid.css max-width buckets', () => {
++  it('width=768 (mobile/tablet boundary) → 1 col (matches max-width: 768px)', () => {
++    installMatchMedia(matchesForWidth(768));
++    const { result } = renderHook(() => useResponsiveCols());
++    expect(result.current).toBe(1);
++  });
++
++  it('width=769 (just above mobile boundary) → 6 col', () => {
++    installMatchMedia(matchesForWidth(769));
++    const { result } = renderHook(() => useResponsiveCols());
++    expect(result.current).toBe(6);
++  });
++
++  it('width=1024 (tablet/desktop boundary) → 6 col (matches max-width: 1024px; pre-R2 hook gave 12 here — REGRESSION LOCK)', () => {
++    installMatchMedia(matchesForWidth(1024));
++    const { result } = renderHook(() => useResponsiveCols());
++    expect(result.current).toBe(6);
++  });
++
++  it('width=1025 (just above tablet boundary) → 12 col', () => {
++    installMatchMedia(matchesForWidth(1025));
++    const { result } = renderHook(() => useResponsiveCols());
++    expect(result.current).toBe(12);
++  });
++
++  it('width=375 (typical mobile, well below 768) → 1 col', () => {
++    installMatchMedia(matchesForWidth(375));
++    const { result } = renderHook(() => useResponsiveCols());
++    expect(result.current).toBe(1);
++  });
++
++  it('width=900 (typical tablet, between 768 and 1024) → 6 col', () => {
++    installMatchMedia(matchesForWidth(900));
++    const { result } = renderHook(() => useResponsiveCols());
++    expect(result.current).toBe(6);
++  });
++
++  it('width=1440 (typical desktop, well above 1024) → 12 col', () => {
++    installMatchMedia(matchesForWidth(1440));
++    const { result } = renderHook(() => useResponsiveCols());
++    expect(result.current).toBe(12);
++  });
++});
++
+ describe('useResponsiveCols transition lifecycle', () => {
+   it('desktop to tablet fires start then 320ms-delayed end', () => {
++    // R2 F1: starting at desktop (>1024) → mobile=false, tablet=false → 12.
++    // Trigger transition to tablet by setting tablet=true (viewport
++    // shrunk to ≤1024).
+     vi.useFakeTimers();
+-    const { queries } = installMatchMedia({ desktop: true, tablet: true });
++    const { queries } = installMatchMedia({ mobile: false, tablet: false });
+     const onTransitionStart = vi.fn();
+     const onTransitionEnd = vi.fn();
+ 
+     const { result } = renderHook(() =>
+       useResponsiveCols({ onTransitionStart, onTransitionEnd }),
+     );
+ 
+     act(() => {
+-      queries.desktop.trigger(false);
++      queries.tablet.trigger(true);
+     });
+ 
+     expect(result.current).toBe(6);
+     expect(onTransitionStart).toHaveBeenCalledTimes(1);
+     expect(onTransitionEnd).not.toHaveBeenCalled();
+ 
+     act(() => {
+       vi.advanceTimersByTime(100);
+     });
+     expect(onTransitionEnd).not.toHaveBeenCalled();
+ 
+     act(() => {
+       vi.advanceTimersByTime(220);
+     });
+     expect(onTransitionEnd).toHaveBeenCalledTimes(1);
+   });
+ 
+   it('preserves pending transition-end timer across rerender with new callback identities', () => {
+     vi.useFakeTimers();
+-    const { queries } = installMatchMedia({ desktop: true, tablet: true });
++    const { queries } = installMatchMedia({ mobile: false, tablet: false });
+     const dispatch1 = vi.fn();
+     const dispatch2 = vi.fn();
+ 
+     const { rerender } = renderHook(
+       ({ dispatch }: { readonly dispatch: (event: string) => void }) =>
+         useResponsiveCols({
+           onTransitionStart: () => dispatch('responsive-transition-start'),
+           onTransitionEnd: () => dispatch('responsive-transition-end'),
+         }),
+       { initialProps: { dispatch: dispatch1 } },
+     );
+ 
+     act(() => {
+-      queries.desktop.trigger(false);
++      queries.tablet.trigger(true);
+     });
+ 
+     expect(dispatch1).toHaveBeenCalledWith('responsive-transition-start');
+ 
+     rerender({ dispatch: dispatch2 });
+ 
+     act(() => {
+       vi.advanceTimersByTime(320);
+     });
+ 
+     expect(dispatch1).not.toHaveBeenCalledWith('responsive-transition-end');
+     expect(dispatch2).toHaveBeenCalledWith('responsive-transition-end');
+   });
+ 
+   it('unmount cleans up both listeners and clears pending timer', () => {
+     vi.useFakeTimers();
+-    const { queries } = installMatchMedia({ desktop: true, tablet: true });
++    const { queries } = installMatchMedia({ mobile: false, tablet: false });
+     const onTransitionStart = vi.fn();
+     const onTransitionEnd = vi.fn();
+ 
+     const { unmount } = renderHook(() =>
+       useResponsiveCols({ onTransitionStart, onTransitionEnd }),
+     );
+ 
+-    expect(queries.desktop.listeners.size).toBe(1);
++    expect(queries.mobile.listeners.size).toBe(1);
+     expect(queries.tablet.listeners.size).toBe(1);
+ 
+     act(() => {
+-      queries.desktop.trigger(false);
++      queries.tablet.trigger(true);
+     });
+ 
+     expect(onTransitionStart).toHaveBeenCalledTimes(1);
+ 
+     unmount();
+ 
+     act(() => {
+       vi.advanceTimersByTime(320);
+     });
+ 
+     expect(onTransitionEnd).not.toHaveBeenCalled();
+-    expect(queries.desktop.removeEventListener).toHaveBeenCalledTimes(1);
++    expect(queries.mobile.removeEventListener).toHaveBeenCalledTimes(1);
+     expect(queries.tablet.removeEventListener).toHaveBeenCalledTimes(1);
+-    expect(queries.desktop.listeners.size).toBe(0);
++    expect(queries.mobile.listeners.size).toBe(0);
+     expect(queries.tablet.listeners.size).toBe(0);
+   });
+ });
+ 
+ describe('RESPONSIVE_BREAKPOINTS', () => {
+   it('uses ADR-0016 D5 tablet 768 and desktop 1024 values', () => {
+     expect(RESPONSIVE_BREAKPOINTS.tablet).toBe(768);
+     expect(RESPONSIVE_BREAKPOINTS.desktop).toBe(1024);
+   });
+ });
+ 
+ describe('useResponsiveCols SSR safety', () => {
+   it('returns 12 default and does not subscribe when window is unavailable', () => {
+-    const { matchMedia } = installMatchMedia({ desktop: false, tablet: false });
++    const { matchMedia } = installMatchMedia({ mobile: false, tablet: false });
+     vi.stubGlobal('window', undefined);
+     const values: number[] = [];
+ 
+     function SsrProbe() {
+       const cols = useResponsiveCols();
+       values.push(cols);
+       return createElement('div', null, String(cols));
+     }
+ 
+     expect(renderToString(createElement(SsrProbe))).toContain('12');
+     expect(values).toEqual([12]);
+     expect(matchMedia).not.toHaveBeenCalled();
+   });
+ 
+   it('handles missing window.matchMedia gracefully', () => {
+     Object.defineProperty(window, 'matchMedia', { configurable: true, value: undefined });
+ 
+     const { result } = renderHook(() => useResponsiveCols());
+ 
+     expect([12, 6, 1]).toContain(result.current);
+     expect(result.current).toBe(12);
+     expect(window.matchMedia).toBeUndefined();
+   });
+ });
+
+exec
+/bin/bash -lc "nl -ba apps/site/src/styles/grid.css | sed -n '90,210p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+    90	 * handles ship.
+    91	 */
+    92	.skb-grid > *:not([style*="grid-column"]),
+    93	.skb-grid .ProseMirror > *:not([style*="grid-column"]) {
+    94	  grid-column: 1 / -1;
+    95	}
+    96	
+    97	@media (max-width: 1024px) {
+    98	  .skb-grid {
+    99	    --total-cols: 6;
+   100	
+   101	    grid-template-columns: repeat(6, minmax(0, 1fr));
+   102	  }
+   103	}
+   104	
+   105	@media (max-width: 768px) {
+   106	  .skb-grid {
+   107	    --total-cols: 1;
+   108	
+   109	    grid-template-columns: 1fr;
+   110	  }
+   111	
+   112	  /*
+   113	   * Wave 6 cf-20b R1 hotfix (2026-05-09) — mobile override MUST beat
+   114	   * the cf-20b-emitted inline `style="grid-column: ${col} / span ${colSpan}"`
+   115	   * on `.skb-block-static` (read route 5 light blocks via mdx-adapter +
+   116	   * 3 heavy via Astro wrappers) AND `.skb-block-nodeview` (editor
+   117	   * route via BlockNodeView.tsx). Without `!important`, inline style
+   118	   * wins per CSS specificity, so blocks like `colSpan=12` retain their
+   119	   * 12-cell width even though the mobile breakpoint switched the grid
+   120	   * to a single 1fr column — producing 12× horizontal overflow
+   121	   * (verified at 375×812: scrollWidth=6450px when viewport=343px;
+   122	   * codex-pr-reviewer-55 R1 caught this).
+   123	   *
+   124	   * `!important` is intentional here, NOT an anti-pattern: the cf-20b
+   125	   * inline emission is a desktop placement contract (per ADR-0016
+   126	   * v0.2 D11.1 amendment); mobile responsive override per ADR-0016 D5
+   127	   * + apps/site/CONTRACT.md "≤768px → 1 col" requires beating that
+   128	   * inline-style intent in a single, scoped media query.
+   129	   *
+   130	   * R1 followup (during fix-write): the initial `.skb-grid > *,
+   131	   * .skb-grid .ProseMirror > *` selector list missed the read-route
+   132	   * case because `.skb-block-static` is nested INSIDE `.skb-prose`
+   133	   * (the `notes/[...slug].astro` template wraps `<Content>` in
+   134	   * `<div class="skb-prose">`), so it's NOT a direct child of
+   135	   * `.skb-grid`. The corrected selector list explicitly targets BOTH
+   136	   * structural wrapper classes by name (`.skb-block-static` for read,
+   137	   * `.skb-block-nodeview` for editor) regardless of their depth in
+   138	   * the DOM tree. Outer-grid direct-child rule kept for any future
+   139	   * non-block top-level grid item that needs the same mobile flatten.
+   140	   */
+   141	  .skb-grid > *,
+   142	  .skb-grid .ProseMirror > *,
+   143	  .skb-grid .skb-block-static,
+   144	  .skb-grid .skb-block-nodeview {
+   145	    grid-column: 1 / -1 !important;
+   146	  }
+   147	
+   148	  /*
+   149	   * Wave 6 cf-20b R1 hotfix part 2 — `min-width: 0` on grid items.
+   150	   *
+   151	   * Even with `grid-column: 1 / -1` forcing block wrappers to the
+   152	   * single mobile column, CSS Grid's default `min-width: auto` on
+   153	   * grid items resolves to each item's `min-content` width, which
+   154	   * = the largest unbreakable child. The sample-blocks fixture
+   155	   * contains `<pre class="skb-code-pre">` Python code (6392px wide
+   156	   * unbreakable text), `<svg>` NN-Viz topology (6400px), and
+   157	   * `<iframe>` PDF viewers (6424px) — any one of these pushes the
+   158	   * grid track to its content's intrinsic min-content, ballooning the
+   159	   * 1fr column to ~6.4k px and bypassing the viewport-width
+   160	   * constraint.
+   161	   *
+   162	   * `min-width: 0` (with `!important` for the same reason as above)
+   163	   * tells grid items to shrink below their content min-content. The
+   164	   * inner code block's own `overflow-x: auto` (from
+   165	   * `block-code/ui-default/code.css`) then handles the long-line
+   166	   * scroll within the now-343px-wide card, so users see a horizontally-
+   167	   * scrollable code box INSIDE the block instead of the entire page
+   168	   * scrolling horizontally.
+   169	   *
+   170	   * Selector list mirrors the grid-column rule above (covers `.skb-prose`
+   171	   * via `.skb-grid > *` AND the explicit block wrappers).
+   172	   */
+   173	  .skb-grid > *,
+   174	  .skb-grid .ProseMirror > *,
+   175	  .skb-grid .skb-block-static,
+   176	  .skb-grid .skb-block-nodeview {
+   177	    min-width: 0 !important;
+   178	  }
+   179	
+   180	  /*
+   181	   * Wave 6 cf-20b R1 hotfix part 3 — heavy-block placeholder cap.
+   182	   *
+   183	   * `@skb/heavy-block-boundary` SSR-emits `<div class="heavy-block-skeleton"
+   184	   * style="width:600px;min-height:400px">` (per ADR-0014 D5
+   185	   * heavyBoundaryDimensions); 600px exceeds the 343px mobile viewport
+   186	   * by ~257px and bypasses our wrapper's `min-width: 0` because the
+   187	   * inline `width:600px` is on the inner element, not the wrapper.
+   188	   * Cap it at the parent width on mobile so the heavy-block placeholder
+   189	   * fits inside the now-collapsed `.skb-block-static`/`.skb-block-nodeview`
+   190	   * card. `max-width: 100%` is sufficient because the parent is now
+   191	   * track-width (343px); the cap is mobile-only so desktop SSR
+   192	   * fallback dims (per ADR-0014 W4-1 zero-layout-shift) are unaffected.
+   193	   * Wave 5 ADR-0014 v0.5 amendment will dynamically derive heavy
+   194	   * dimensions from grid colSpan/rowSpan (W5-1 invariant) post
+   195	   * hydration; cf-20b R1 mobile cap is a forward-compat layer that
+   196	   * coexists with that future amendment.
+   197	   */
+   198	  .skb-grid .heavy-block-skeleton {
+   199	    max-width: 100% !important;
+   200	  }
+   201	
+   202	  /*
+   203	   * Wave 6 cf-20b R1 hotfix part 4 — block content overflow scroll.
+   204	   *
+   205	   * After parts 1-3, the block wrapper itself fits the viewport, but
+   206	   * inner content (long `<pre>` code, NN-Viz svg with intrinsic 6400px
+   207	   * viewBox, agent-flow svg topology, etc.) can still extend past the
+   208	   * wrapper's right edge if the inner CSS doesn't already clip/scroll.
+   209	   * Force overflow-x scroll on the wrapper as a defense-in-depth so the
+   210	   * page itself never scrolls horizontally on mobile (the cf-19 mobile
+
+codex
+The first issue’s boundary swap is visibly aligned with `grid.css`: both use inclusive `max-width: 1024px` then `max-width: 768px`, so 1024 lands in tablet and 768 lands in mobile. I’m now checking the overflow recovery path for axis interactions and attr-diff behavior.
+exec
+/bin/bash -lc "nl -ba packages/editor-shell/src/responsive-cols.ts | sed -n '1,170p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	/**
+     2	 * @skb/editor-shell responsive viewport columns for ADR-0016 D5 and ADR-0017 D9.
+     3	 *
+     4	 * Load-bearing constants: tablet 768px and desktop 1024px mirror ADR-0016 D5
+     5	 * for the 12 / 6 / 1 viewport switch and the T0-T4 transition budget. The
+     6	 * 320ms delay marks the stable transition boundary where consumers may
+     7	 * re-measure rendering-derived mobile rowSpan='auto' without persisting the
+     8	 * integer rowSpan. ADR-0017 D9 keeps the mobile 1-col path view-only via the
+     9	 * `.skb-grid--mobile` class emitted by GridContainer.
+    10	 *
+    11	 * Wave 6 cf-20d R2 F1 fix (2026-05-09) — boundary alignment with grid.css.
+    12	 * Pre-R2 the hook used `(min-width: 1024px)` + `(min-width: 768px)` which
+    13	 * gave: 1024px exactly → 12, but `apps/site/src/styles/grid.css:97`
+    14	 * `(max-width: 1024px)` → 6-col grid (≤1024 = 6). At the EXACT 1024px
+    15	 * boundary the hook said 12 while the CSS painted a 6-col grid; tablet
+    16	 * users at that pixel hit 12-col snap stops on a 6-col grid. Same off-by-
+    17	 * one at 768px boundary. R2 fix: switch to MAX-WIDTH queries that match
+    18	 * the CSS buckets byte-equivalent.
+    19	 *
+    20	 * Bucket truth table (matches grid.css verbatim):
+    21	 *   width <= 768   → 1 col   (matches `@media (max-width: 768px)`)
+    22	 *   768 < width <= 1024 → 6 col   (matches `@media (max-width: 1024px)`
+    23	 *                                  but NOT `(max-width: 768px)`)
+    24	 *   width > 1024   → 12 col  (no max-width @media matches)
+    25	 *
+    26	 * Operational rule landed (cf-20d R2 reflection): when a hook drives
+    27	 * layout decisions paired with CSS @media, the breakpoint queries MUST
+    28	 * be byte-equivalent to the CSS rules (same operator: max-width vs
+    29	 * min-width; same threshold pixel; same inclusivity). Off-by-one at the
+    30	 * EXACT boundary breaks deterministic behavior. Adding `1024` and
+    31	 * `768` to the unit-test boundary matrix as mandatory cases.
+    32	 *
+    33	 * TODO(Stage C.3-1): replace the hardcoded numeric bridge with design-token
+    34	 * breakpoint vars once `--bp-tablet` and `--bp-desktop` land.
+    35	 */
+    36	import { useEffect, useRef, useState } from 'react';
+    37	
+    38	export type ViewportCols = 12 | 6 | 1;
+    39	
+    40	export interface UseResponsiveColsOptions {
+    41	  readonly onTransitionStart?: () => void;
+    42	  readonly onTransitionEnd?: () => void;
+    43	}
+    44	
+    45	export const RESPONSIVE_BREAKPOINTS = {
+    46	  tablet: 768,
+    47	  desktop: 1024,
+    48	} as const;
+    49	
+    50	const TRANSITION_END_MS = 320;
+    51	
+    52	/**
+    53	 * R2 F1 fix: bucket the viewport from max-width matches (CSS-aligned).
+    54	 *
+    55	 * @param mobileMatches  `(max-width: 768px)` matches → ≤768px → 1 col
+    56	 * @param tabletMatches  `(max-width: 1024px)` matches AND mobile DOESN'T → 6 col
+    57	 * @returns 12 / 6 / 1 per CSS-bucket truth table above.
+    58	 */
+    59	function colsFromMatches(
+    60	  mobileMatches: boolean,
+    61	  tabletMatches: boolean,
+    62	): ViewportCols {
+    63	  if (mobileMatches) return 1;
+    64	  if (tabletMatches) return 6;
+    65	  return 12;
+    66	}
+    67	
+    68	function currentViewportCols(): ViewportCols {
+    69	  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return 12;
+    70	
+    71	  return colsFromMatches(
+    72	    window.matchMedia('(max-width: 768px)').matches,
+    73	    window.matchMedia('(max-width: 1024px)').matches,
+    74	  );
+    75	}
+    76	
+    77	export function useResponsiveCols(options: UseResponsiveColsOptions = {}): ViewportCols {
+    78	  const { onTransitionStart, onTransitionEnd } = options;
+    79	  const [viewportCols, setViewportCols] = useState<ViewportCols>(() => currentViewportCols());
+    80	  const viewportColsRef = useRef(viewportCols);
+    81	  const onTransitionStartRef = useRef(onTransitionStart);
+    82	  const onTransitionEndRef = useRef(onTransitionEnd);
+    83	  const endTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    84	

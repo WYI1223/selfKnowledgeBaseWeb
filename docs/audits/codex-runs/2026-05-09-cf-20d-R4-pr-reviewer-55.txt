@@ -1,0 +1,2000 @@
+Reading additional input from stdin...
+OpenAI Codex v0.125.0 (research preview)
+--------
+workdir: /home/weiyi/selfKnowledgeBaseWeb
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: danger-full-access
+reasoning effort: xhigh
+reasoning summaries: none
+session id: 019e0e56-d2ec-7b10-9185-6b79159b5d32
+--------
+user
+Wave 6 cf-20d R4 — verdict-only verification of R3 fixes.
+
+Branch wave-6-cf-20d-resize-handles @ commit 108c606 on top of a1e96f2 + 7ae0f02 + cf76d06. R3 returned FAIL with 2 findings; ux-ui-lead fixed both.
+
+CONSTRAINTS PER RULES 5+6:
+- DO NOT preemptively re-run pnpm check or full Playwright (orchestrator + ux-ui-lead pre-verified: pnpm check 41/41; Playwright 63 PASS / 14 SKIP / 0 FAIL; editor-shell 241 vitest)
+- DO NOT re-read ADR-0006 / aux ADRs / orchestrator-reflections
+- READ: 108c606 commit content (resize-snap.ts + use-resize-pipeline.ts + index.ts barrel + 1 NEW vitest file + 1 spec + helpers + 4 docs)
+- Verdict in <5 min
+
+R3 F1 (BLOCKING — col-AND-colSpan normalize) RESOLVED: NEW normalizeOverflowPosition(startCol, startColSpan, totalCols, activeColSnaps): {col, colSpan} | null pure helper. Detection covers BOTH overflow conditions (col-overflow AND colSpan-overflow); left-clamp col first; pick largest activeColSnap ≤ maxFit; fallback to 1 (mobile). Pipeline writes BOTH col AND colSpan from helper return value into same setNodeMarkup. 11 NEW vitest cases. NEW Playwright test (col=7 colSpan=6 → 6 / span 1).
+
+R3 F2 (doc drift) RESOLVED: ran mechanical grep per cf-20c-2 R3 F3 rule; fixed 2 live drift sites (editor-shell/CONTRACT.md:637 + EditorShellMount.tsx:148-149). 3 remaining min-width hits all explicit historical markers ('Pre-R2 the hook used min-width').
+
+25 files in 108c606: source (3 — resize-snap.ts + use-resize-pipeline.ts + index.ts) + tests (3 — normalize-overflow-position.test.ts NEW + sample-blocks-resize-handles.spec.ts + helpers/resize-pointer-events.ts) + docs (5 — PR.md + 2 CONTRACTs + EditorShellMount.tsx + reflection log) + 1 reflection index + 13 auto-emitted screenshots.
+
+ux-ui-lead's pre-dispatch gates: pnpm check 41/41; editor-shell 241 vitest (was 230 R2, +11 R3 F1 normalize); apps/site Playwright 63 / 14 SKIP / 0 FAIL (was 62 R2, +1 R3 F1); size-check 426 files all under 500 LOC.
+
+D2 trigger UNCHANGED: Row 1 + Row 5. Stage 4 PRE-COMMIT CLAUDE REVIEW fires.
+
+Static spot-check the 2 R3 fixes. Verdict PASS or FAIL with line-anchored remediation. If PASS, on stage 5 you commit per ADR-0006 D8 explicit-file-list staging.
+codex
+Using `superpowers:using-superpowers` for session rules, plus the code-review workflow since this is a verdict-only fix verification. I’ll inspect only the specified commit/files and avoid full gates.
+exec
+/bin/bash -lc "sed -n '1,220p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/63976030/skills/using-superpowers/SKILL.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+---
+name: using-superpowers
+description: Use when starting any conversation - establishes how to find and use skills, requiring Skill tool invocation before ANY response including clarifying questions
+---
+
+<SUBAGENT-STOP>
+If you were dispatched as a subagent to execute a specific task, skip this skill.
+</SUBAGENT-STOP>
+
+<EXTREMELY-IMPORTANT>
+If you think there is even a 1% chance a skill might apply to what you are doing, you ABSOLUTELY MUST invoke the skill.
+
+IF A SKILL APPLIES TO YOUR TASK, YOU DO NOT HAVE A CHOICE. YOU MUST USE IT.
+
+This is not negotiable. This is not optional. You cannot rationalize your way out of this.
+</EXTREMELY-IMPORTANT>
+
+## Instruction Priority
+
+Superpowers skills override default system prompt behavior, but **user instructions always take precedence**:
+
+1. **User's explicit instructions** (CLAUDE.md, GEMINI.md, AGENTS.md, direct requests) — highest priority
+2. **Superpowers skills** — override default system behavior where they conflict
+3. **Default system prompt** — lowest priority
+
+If CLAUDE.md, GEMINI.md, or AGENTS.md says "don't use TDD" and a skill says "always use TDD," follow the user's instructions. The user is in control.
+
+## How to Access Skills
+
+**In Claude Code:** Use the `Skill` tool. When you invoke a skill, its content is loaded and presented to you—follow it directly. Never use the Read tool on skill files.
+
+**In Copilot CLI:** Use the `skill` tool. Skills are auto-discovered from installed plugins. The `skill` tool works the same as Claude Code's `Skill` tool.
+
+**In Gemini CLI:** Skills activate via the `activate_skill` tool. Gemini loads skill metadata at session start and activates the full content on demand.
+
+**In other environments:** Check your platform's documentation for how skills are loaded.
+
+## Platform Adaptation
+
+Skills use Claude Code tool names. Non-CC platforms: see `references/copilot-tools.md` (Copilot CLI), `references/codex-tools.md` (Codex) for tool equivalents. Gemini CLI users get the tool mapping loaded automatically via GEMINI.md.
+
+# Using Skills
+
+## The Rule
+
+**Invoke relevant or requested skills BEFORE any response or action.** Even a 1% chance a skill might apply means that you should invoke the skill to check. If an invoked skill turns out to be wrong for the situation, you don't need to use it.
+
+```dot
+digraph skill_flow {
+    "User message received" [shape=doublecircle];
+    "About to EnterPlanMode?" [shape=doublecircle];
+    "Already brainstormed?" [shape=diamond];
+    "Invoke brainstorming skill" [shape=box];
+    "Might any skill apply?" [shape=diamond];
+    "Invoke Skill tool" [shape=box];
+    "Announce: 'Using [skill] to [purpose]'" [shape=box];
+    "Has checklist?" [shape=diamond];
+    "Create TodoWrite todo per item" [shape=box];
+    "Follow skill exactly" [shape=box];
+    "Respond (including clarifications)" [shape=doublecircle];
+
+    "About to EnterPlanMode?" -> "Already brainstormed?";
+    "Already brainstormed?" -> "Invoke brainstorming skill" [label="no"];
+    "Already brainstormed?" -> "Might any skill apply?" [label="yes"];
+    "Invoke brainstorming skill" -> "Might any skill apply?";
+
+    "User message received" -> "Might any skill apply?";
+    "Might any skill apply?" -> "Invoke Skill tool" [label="yes, even 1%"];
+    "Might any skill apply?" -> "Respond (including clarifications)" [label="definitely not"];
+    "Invoke Skill tool" -> "Announce: 'Using [skill] to [purpose]'";
+    "Announce: 'Using [skill] to [purpose]'" -> "Has checklist?";
+    "Has checklist?" -> "Create TodoWrite todo per item" [label="yes"];
+    "Has checklist?" -> "Follow skill exactly" [label="no"];
+    "Create TodoWrite todo per item" -> "Follow skill exactly";
+}
+```
+
+## Red Flags
+
+These thoughts mean STOP—you're rationalizing:
+
+| Thought | Reality |
+|---------|---------|
+| "This is just a simple question" | Questions are tasks. Check for skills. |
+| "I need more context first" | Skill check comes BEFORE clarifying questions. |
+| "Let me explore the codebase first" | Skills tell you HOW to explore. Check first. |
+| "I can check git/files quickly" | Files lack conversation context. Check for skills. |
+| "Let me gather information first" | Skills tell you HOW to gather information. |
+| "This doesn't need a formal skill" | If a skill exists, use it. |
+| "I remember this skill" | Skills evolve. Read current version. |
+| "This doesn't count as a task" | Action = task. Check for skills. |
+| "The skill is overkill" | Simple things become complex. Use it. |
+| "I'll just do this one thing first" | Check BEFORE doing anything. |
+| "This feels productive" | Undisciplined action wastes time. Skills prevent this. |
+| "I know what that means" | Knowing the concept ≠ using the skill. Invoke it. |
+
+## Skill Priority
+
+When multiple skills could apply, use this order:
+
+1. **Process skills first** (brainstorming, debugging) - these determine HOW to approach the task
+2. **Implementation skills second** (frontend-design, mcp-builder) - these guide execution
+
+"Let's build X" → brainstorming first, then implementation skills.
+"Fix this bug" → debugging first, then domain-specific skills.
+
+## Skill Types
+
+**Rigid** (TDD, debugging): Follow exactly. Don't adapt away discipline.
+
+**Flexible** (patterns): Adapt principles to context.
+
+The skill itself tells you which.
+
+## User Instructions
+
+Instructions say WHAT, not HOW. "Add X" or "Fix Y" doesn't mean skip workflows.
+
+exec
+/bin/bash -lc "sed -n '1,220p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/63976030/skills/receiving-code-review/SKILL.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+---
+name: receiving-code-review
+description: Use when receiving code review feedback, before implementing suggestions, especially if feedback seems unclear or technically questionable - requires technical rigor and verification, not performative agreement or blind implementation
+---
+
+# Code Review Reception
+
+## Overview
+
+Code review requires technical evaluation, not emotional performance.
+
+**Core principle:** Verify before implementing. Ask before assuming. Technical correctness over social comfort.
+
+## The Response Pattern
+
+```
+WHEN receiving code review feedback:
+
+1. READ: Complete feedback without reacting
+2. UNDERSTAND: Restate requirement in own words (or ask)
+3. VERIFY: Check against codebase reality
+4. EVALUATE: Technically sound for THIS codebase?
+5. RESPOND: Technical acknowledgment or reasoned pushback
+6. IMPLEMENT: One item at a time, test each
+```
+
+## Forbidden Responses
+
+**NEVER:**
+- "You're absolutely right!" (explicit CLAUDE.md violation)
+- "Great point!" / "Excellent feedback!" (performative)
+- "Let me implement that now" (before verification)
+
+**INSTEAD:**
+- Restate the technical requirement
+- Ask clarifying questions
+- Push back with technical reasoning if wrong
+- Just start working (actions > words)
+
+## Handling Unclear Feedback
+
+```
+IF any item is unclear:
+  STOP - do not implement anything yet
+  ASK for clarification on unclear items
+
+WHY: Items may be related. Partial understanding = wrong implementation.
+```
+
+**Example:**
+```
+your human partner: "Fix 1-6"
+You understand 1,2,3,6. Unclear on 4,5.
+
+❌ WRONG: Implement 1,2,3,6 now, ask about 4,5 later
+✅ RIGHT: "I understand items 1,2,3,6. Need clarification on 4 and 5 before proceeding."
+```
+
+## Source-Specific Handling
+
+### From your human partner
+- **Trusted** - implement after understanding
+- **Still ask** if scope unclear
+- **No performative agreement**
+- **Skip to action** or technical acknowledgment
+
+### From External Reviewers
+```
+BEFORE implementing:
+  1. Check: Technically correct for THIS codebase?
+  2. Check: Breaks existing functionality?
+  3. Check: Reason for current implementation?
+  4. Check: Works on all platforms/versions?
+  5. Check: Does reviewer understand full context?
+
+IF suggestion seems wrong:
+  Push back with technical reasoning
+
+IF can't easily verify:
+  Say so: "I can't verify this without [X]. Should I [investigate/ask/proceed]?"
+
+IF conflicts with your human partner's prior decisions:
+  Stop and discuss with your human partner first
+```
+
+**your human partner's rule:** "External feedback - be skeptical, but check carefully"
+
+## YAGNI Check for "Professional" Features
+
+```
+IF reviewer suggests "implementing properly":
+  grep codebase for actual usage
+
+  IF unused: "This endpoint isn't called. Remove it (YAGNI)?"
+  IF used: Then implement properly
+```
+
+**your human partner's rule:** "You and reviewer both report to me. If we don't need this feature, don't add it."
+
+## Implementation Order
+
+```
+FOR multi-item feedback:
+  1. Clarify anything unclear FIRST
+  2. Then implement in this order:
+     - Blocking issues (breaks, security)
+     - Simple fixes (typos, imports)
+     - Complex fixes (refactoring, logic)
+  3. Test each fix individually
+  4. Verify no regressions
+```
+
+## When To Push Back
+
+Push back when:
+- Suggestion breaks existing functionality
+- Reviewer lacks full context
+- Violates YAGNI (unused feature)
+- Technically incorrect for this stack
+- Legacy/compatibility reasons exist
+- Conflicts with your human partner's architectural decisions
+
+**How to push back:**
+- Use technical reasoning, not defensiveness
+- Ask specific questions
+- Reference working tests/code
+- Involve your human partner if architectural
+
+**Signal if uncomfortable pushing back out loud:** "Strange things are afoot at the Circle K"
+
+## Acknowledging Correct Feedback
+
+When feedback IS correct:
+```
+✅ "Fixed. [Brief description of what changed]"
+✅ "Good catch - [specific issue]. Fixed in [location]."
+✅ [Just fix it and show in the code]
+
+❌ "You're absolutely right!"
+❌ "Great point!"
+❌ "Thanks for catching that!"
+❌ "Thanks for [anything]"
+❌ ANY gratitude expression
+```
+
+**Why no thanks:** Actions speak. Just fix it. The code itself shows you heard the feedback.
+
+**If you catch yourself about to write "Thanks":** DELETE IT. State the fix instead.
+
+## Gracefully Correcting Your Pushback
+
+If you pushed back and were wrong:
+```
+✅ "You were right - I checked [X] and it does [Y]. Implementing now."
+✅ "Verified this and you're correct. My initial understanding was wrong because [reason]. Fixing."
+
+❌ Long apology
+❌ Defending why you pushed back
+❌ Over-explaining
+```
+
+State the correction factually and move on.
+
+## Common Mistakes
+
+| Mistake | Fix |
+|---------|-----|
+| Performative agreement | State requirement or just act |
+| Blind implementation | Verify against codebase first |
+| Batch without testing | One at a time, test each |
+| Assuming reviewer is right | Check if breaks things |
+| Avoiding pushback | Technical correctness > comfort |
+| Partial implementation | Clarify all items first |
+| Can't verify, proceed anyway | State limitation, ask for direction |
+
+## Real Examples
+
+**Performative Agreement (Bad):**
+```
+Reviewer: "Remove legacy code"
+❌ "You're absolutely right! Let me remove that..."
+```
+
+**Technical Verification (Good):**
+```
+Reviewer: "Remove legacy code"
+✅ "Checking... build target is 10.15+, this API needs 13+. Need legacy for backward compat. Current impl has wrong bundle ID - fix it or drop pre-13 support?"
+```
+
+**YAGNI (Good):**
+```
+Reviewer: "Implement proper metrics tracking with database, date filters, CSV export"
+✅ "Grepped codebase - nothing calls this endpoint. Remove it (YAGNI)? Or is there usage I'm missing?"
+```
+
+**Unclear Item (Good):**
+```
+your human partner: "Fix items 1-6"
+You understand 1,2,3,6. Unclear on 4,5.
+✅ "Understand 1,2,3,6. Need clarification on 4 and 5 before implementing."
+```
+
+## GitHub Thread Replies
+
+When replying to inline review comments on GitHub, reply in the comment thread (`gh api repos/{owner}/{repo}/pulls/{pr}/comments/{id}/replies`), not as a top-level PR comment.
+
+## The Bottom Line
+
+**External feedback = suggestions to evaluate, not orders to follow.**
+
+Verify. Question. Then implement.
+
+No performative agreement. Technical rigor always.
+
+exec
+/bin/bash -lc "sed -n '1,220p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/63976030/skills/verification-before-completion/SKILL.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+---
+name: verification-before-completion
+description: Use when about to claim work is complete, fixed, or passing, before committing or creating PRs - requires running verification commands and confirming output before making any success claims; evidence before assertions always
+---
+
+# Verification Before Completion
+
+## Overview
+
+Claiming work is complete without verification is dishonesty, not efficiency.
+
+**Core principle:** Evidence before claims, always.
+
+**Violating the letter of this rule is violating the spirit of this rule.**
+
+## The Iron Law
+
+```
+NO COMPLETION CLAIMS WITHOUT FRESH VERIFICATION EVIDENCE
+```
+
+If you haven't run the verification command in this message, you cannot claim it passes.
+
+## The Gate Function
+
+```
+BEFORE claiming any status or expressing satisfaction:
+
+1. IDENTIFY: What command proves this claim?
+2. RUN: Execute the FULL command (fresh, complete)
+3. READ: Full output, check exit code, count failures
+4. VERIFY: Does output confirm the claim?
+   - If NO: State actual status with evidence
+   - If YES: State claim WITH evidence
+5. ONLY THEN: Make the claim
+
+Skip any step = lying, not verifying
+```
+
+## Common Failures
+
+| Claim | Requires | Not Sufficient |
+|-------|----------|----------------|
+| Tests pass | Test command output: 0 failures | Previous run, "should pass" |
+| Linter clean | Linter output: 0 errors | Partial check, extrapolation |
+| Build succeeds | Build command: exit 0 | Linter passing, logs look good |
+| Bug fixed | Test original symptom: passes | Code changed, assumed fixed |
+| Regression test works | Red-green cycle verified | Test passes once |
+| Agent completed | VCS diff shows changes | Agent reports "success" |
+| Requirements met | Line-by-line checklist | Tests passing |
+
+## Red Flags - STOP
+
+- Using "should", "probably", "seems to"
+- Expressing satisfaction before verification ("Great!", "Perfect!", "Done!", etc.)
+- About to commit/push/PR without verification
+- Trusting agent success reports
+- Relying on partial verification
+- Thinking "just this once"
+- Tired and wanting work over
+- **ANY wording implying success without having run verification**
+
+## Rationalization Prevention
+
+| Excuse | Reality |
+|--------|---------|
+| "Should work now" | RUN the verification |
+| "I'm confident" | Confidence ≠ evidence |
+| "Just this once" | No exceptions |
+| "Linter passed" | Linter ≠ compiler |
+| "Agent said success" | Verify independently |
+| "I'm tired" | Exhaustion ≠ excuse |
+| "Partial check is enough" | Partial proves nothing |
+| "Different words so rule doesn't apply" | Spirit over letter |
+
+## Key Patterns
+
+**Tests:**
+```
+✅ [Run test command] [See: 34/34 pass] "All tests pass"
+❌ "Should pass now" / "Looks correct"
+```
+
+**Regression tests (TDD Red-Green):**
+```
+✅ Write → Run (pass) → Revert fix → Run (MUST FAIL) → Restore → Run (pass)
+❌ "I've written a regression test" (without red-green verification)
+```
+
+**Build:**
+```
+✅ [Run build] [See: exit 0] "Build passes"
+❌ "Linter passed" (linter doesn't check compilation)
+```
+
+**Requirements:**
+```
+✅ Re-read plan → Create checklist → Verify each → Report gaps or completion
+❌ "Tests pass, phase complete"
+```
+
+**Agent delegation:**
+```
+✅ Agent reports success → Check VCS diff → Verify changes → Report actual state
+❌ Trust agent report
+```
+
+## Why This Matters
+
+From 24 failure memories:
+- your human partner said "I don't believe you" - trust broken
+- Undefined functions shipped - would crash
+- Missing requirements shipped - incomplete features
+- Time wasted on false completion → redirect → rework
+- Violates: "Honesty is a core value. If you lie, you'll be replaced."
+
+## When To Apply
+
+**ALWAYS before:**
+- ANY variation of success/completion claims
+- ANY expression of satisfaction
+- ANY positive statement about work state
+- Committing, PR creation, task completion
+- Moving to next task
+- Delegating to agents
+
+**Rule applies to:**
+- Exact phrases
+- Paraphrases and synonyms
+- Implications of success
+- ANY communication suggesting completion/correctness
+
+## The Bottom Line
+
+**No shortcuts for verification.**
+
+Run the command. Read the output. THEN claim the result.
+
+This is non-negotiable.
+
+codex
+I’m checking the local branch state and the target commit diff now. The review scope is the two R3 findings: overflow normalization behavior and live doc drift, with no broad test reruns.
+exec
+/bin/bash -lc "sed -n '1,220p' CLAUDE.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+# CLAUDE.md
+
+> **GENERATED FROM agent-contract.md — DO NOT EDIT BY HAND.**
+>
+> Edit `agent-contract.md` then run `pnpm generate:configs`. CI fails if drift detected.
+
+This file is the Claude Code entry point for the **SelfKnowledgeBaseWeb** monorepo. It tells
+every Claude session what the project is, the hard rules, the agent roster, and the workflow.
+
+- Spec: [docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md](docs/superpowers/specs/2026-04-29-self-knowledge-base-design.md)
+- Active plan: [docs/plans/active.md](docs/plans/active.md)
+- Single source for agents: [agent-contract.md](agent-contract.md)
+- Codex tool invocations: [docs/runbooks/codex-tool-invocations.md](docs/runbooks/codex-tool-invocations.md)
+
+## Hard rules
+
+1. **File size**: 200 lines (target) / 300 lines (ESLint `max-lines` warn) / 500 lines
+   (`pnpm size-check` hard fail). Spec §3.6.
+2. **Cross-file references**: every doc/code change must keep doc cross-references and
+   contract files in sync (`packages/*/CONTRACT.md`, `agent-contract.md`).
+3. **Lychee link-check**: broken markdown links block merge. Run `pnpm link-check` locally.
+4. **`pnpm check` is mandatory before review** (lint + typecheck + test + build + size).
+5. **Git mutation discipline (ADR-0011 D1+D4)**: `git commit / branch / rebase / push`
+   only at D1 stage 5 (reviewer codex commit phase) or by orchestrator self for bootstrap
+   scope. Subagents (pr-writer / ux-ui-lead / refactorer / researcher) never run mutating
+   git commands.
+6. **Web access discipline (ADR-0011 D7)**: only the `researcher` Claude subagent (one-shot
+   per dispatch) may run `web_search` / `web_fetch`.
+7. **Cross-package moves (ADR-0011 D7)**: only the `refactorer` Claude subagent may
+   reorganize packages, and every reorganization requires an ADR under `docs/decisions/`.
+
+## Commands cheat-sheet
+
+| Command                 | Purpose                                               |
+| ----------------------- | ----------------------------------------------------- |
+| `pnpm install`          | Install workspace dependencies                        |
+| `pnpm dev`              | Run all `dev` scripts (parallel)                      |
+| `pnpm check`            | Lint + typecheck + test + build + size-check          |
+| `pnpm check:affected`   | Same, scoped to packages affected since `origin/main` |
+| `pnpm size-check`       | Hard 500-line limit on every source file              |
+| `pnpm link-check`       | Lychee scan over `./**/*.md`                          |
+| `pnpm generate:configs` | Re-derive everything from `agent-contract.md`         |
+| `pnpm format`           | Prettier write across the repo                        |
+
+## Review workflow (ADR-0011 D1 linear pipeline; supersedes Wave 1+2 tree workflow)
+
+Per PR (PRs run strictly serial; the next PR's PLAN waits for the previous PR's ACCEPT):
+
+```
+1. PLAN              pr-writer Claude subagent ↔ orchestrator → lock PR.md (D2 schema)
+       │
+       ▼
+2. EXECUTE           codex `codex-generic-executor` (or specialized scaffolder; or
+                     `ux-ui-lead` Claude subagent for UI/UX). TDD-front:
+                     write tests → write impl → vitest all PASS.
+       │
+       ▼
+3. REVIEW            codex `codex-pr-reviewer-55` (5.5) — line-level + spec-match.
+                     ADR-0006 9-point checklist mandatory. PASS → next stage.
+       │
+       ├── (D2 row 1+4 hit) → 4. PRE-COMMIT CLAUDE REVIEW   orchestrator self.
+       │                          Mitigates same-model echo chamber.
+       │
+       ▼
+5. COMMIT (+ push)   reviewer codex commits. Per ADR-0006 D8 explicit-file-list
+                     staging (`git reset HEAD` → `git add <list>` →
+                     `git diff --cached --stat` verify → `git commit`).
+       │
+       ▼
+6. ACCEPT            pr-writer Claude subagent (second invocation): verify the
+                     PR's diff actually meets PR.md's `acceptance:` block.
+```
+
+D2 trigger judgment (ADR-0007 D2 rows; locked by orchestrator at PLAN):
+- **D1 stage 4 PRE-COMMIT CLAUDE REVIEW fires** on D2 rows 1+4 (contract change OR new
+  ADR required). Other rows skip this stage but still go through codex review.
+- **High-risk classes** (rows 2 package add/remove, row 8 CI/deploy/auth/security) also
+  receive heightened reviewer scrutiny within stage 3 — ADR-0006 D8 staging discipline +
+  ADR-0006 9-point checklist 9th-class hunt.
+
+See [ADR-0011](docs/decisions/ADR-0011-linear-pipeline-execution-model.md) D1-D8 +
+[ADR-0007 D2](docs/decisions/ADR-0007-job-function-codex-heavy-execution.md).
+
+Codex tools (11 patterns: 5 scaffolders + plan-challenger + codex-pr-reviewer-55 +
+4 audit/exec profiles) are
+[orchestrator-direct Bash invocations](docs/runbooks/codex-tool-invocations.md) post
+ADR-0007 D5 + ADR-0011 D6.
+
+## Claude teammates (5)
+
+| Tier            | Name           | Role                                                                           |
+| --------------- | -------------- | ------------------------------------------------------------------------------ |
+| T0 Orchestrator | `orchestrator` | 整体规划 + dispatch 工种 + 维护 docs/plans/ + D1 pipeline 协调                 |
+| T2 Subagent     | `pr-writer`    | PR.md 起草（PLAN 调）+ ACCEPT 验收（COMMIT 后调）                              |
+| T2 Subagent     | `refactorer`   | 唯一跨包重组权（ADR-0011 D7 沿用，按需 one-shot dispatch）                     |
+| T2 Subagent     | `researcher`   | 唯一外网访问权（ADR-0011 D7 沿用，按需 one-shot dispatch）                     |
+| T2 Subagent     | `ux-ui-lead`   | 视觉单一权威 — 横跨 ui-default + apps/site + editor 子模块（仅 UI/UX PR 触发） |
+
+## Codex tool patterns (11)
+
+orchestrator-direct Bash invocations (ADR-0007 D5). Full canonical bash + triggers + audit-log paths in [docs/runbooks/codex-tool-invocations.md](docs/runbooks/codex-tool-invocations.md).
+
+| Pattern                   | Profile                   | Summary                                                                                            |
+| ------------------------- | ------------------------- | -------------------------------------------------------------------------------------------------- |
+| `codex-generic-executor`  | `codex-generic-executor`  | ADR-0011 D6 NEW Wave 3 默认 executor。gpt-5.5 + workspace-write sandbox。                          |
+| `codex-mdx-doctor`        | `codex-mdx-doctor`        | ADR-0011 D5 + D6 NEW Wave 3 audit profile。从 Wave 1+2 Tier 3                                      |
+| `codex-perf-auditor`      | `codex-perf-auditor`      | ADR-0011 D5 + D6 NEW Wave 3 audit profile。从 Wave 1+2 Tier 3                                      |
+| `codex-pr-reviewer-55`    | `codex-pr-reviewer-55`    | ADR-0011 D1 stage 3 默认 reviewer。replaces Wave 1+2 的 pr-gate（5.5）+                            |
+| `codex-structure-auditor` | `codex-structure-auditor` | ADR-0011 D5 + D6 NEW Wave 3 audit profile。从 Wave 1+2 Tier 3                                      |
+| `plan-challenger`         | `plan-challenger`         | lock 前挑战 orchestrator 的 wave / track / PR plan：检查 task 大小、可测性、边界场景。             |
+| `codex-api-crud-builder`  | `scaffolder`              | 在 apps/api 按 RESTful 风格生成 CRUD 端点骨架（Pydantic schema + 路由）。                          |
+| `codex-block-generator`   | `scaffolder`              | 在 simple-block-eng / ux-ui-lead / editor-eng 提交 template 后，按模板仿造其余 block / submodule。 |
+| `codex-css-stylist`       | `scaffolder`              | 写 packages/design-tokens / packages/ui 的 design tokens（颜色 / 间距 / 字体）+                    |
+| `codex-script-builder`    | `scaffolder`              | 写 scripts/refactor-move.ts / scripts/new-block.ts / scripts/extract-pdf-text.ts 等工具。          |
+| `codex-test-scaffolder`   | `scaffolder`              | 为每个 packages/<name> 生成 src/__tests__/ 下的 vitest 套件骨架，                                  |
+
+## Footer
+
+This file is GENERATED FROM `agent-contract.md`. Edits to this file will be overwritten
+on the next `pnpm generate:configs` run.
+
+exec
+/bin/bash -lc 'git status --short' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+exec
+/bin/bash -lc 'git rev-parse --abbrev-ref HEAD' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+wave-6-cf-20d-resize-handles
+
+exec
+/bin/bash -lc 'git rev-parse HEAD' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+108c606f52f81fb586d8cf31de32fef70f78906c
+
+exec
+/bin/bash -lc 'git show --stat --oneline --name-only 108c606' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+108c606 Wave 6 cf-20d R3 — col-AND-colSpan normalize + grep-verified doc sweep
+apps/site/CONTRACT.md
+apps/site/playwright/helpers/resize-pointer-events.ts
+apps/site/playwright/sample-blocks-resize-handles.spec.ts
+apps/site/playwright/visual-smoke-baseline/wave-5-c2-baseline-edit-route.png
+apps/site/src/components/EditorShellMount.tsx
+docs/audits/screenshots/wave-5-c2-8-drag-modules-mount.png
+docs/audits/screenshots/wave-5-c2-9-responsive-fsm-mount.png
+docs/audits/screenshots/wave-5-c4-1-note-save-adapter.png
+docs/audits/screenshots/wave-5-c4-2-block-registry.png
+docs/audits/screenshots/wave-5-c4-3-drag-handle.png
+docs/audits/screenshots/wave-5-c4-3-save-indicator.png
+docs/audits/screenshots/wave-5-c4-4-save-roundtrip.png
+docs/audits/screenshots/wave-5-c4-5-edit-flow-e2e.png
+docs/audits/screenshots/wave-6-cf-20b-sample-blocks-grid-layout.png
+docs/audits/screenshots/wave-6-cf-20c-2-drag-handle-wire.png
+docs/audits/screenshots/wave-6-cf-20d-resize-handles.png
+docs/audits/screenshots/wave-6-hotfix-sample-blocks-edit-loads.png
+docs/orchestrator-reflections/2026-05-09-cf-15a-19-retrospective.md
+docs/plans/wave-6-main/wave-6-cf-20d-resize-handles.md
+packages/editor-shell/CONTRACT.md
+packages/editor-shell/src/__tests__/resize/normalize-overflow-position.test.ts
+packages/editor-shell/src/__tests__/resize/resize-snap.test.ts
+packages/editor-shell/src/index.ts
+packages/editor-shell/src/resize/resize-snap.ts
+packages/editor-shell/src/resize/use-resize-pipeline.ts
+
+codex
+The branch and HEAD match the requested `wave-6-cf-20d-resize-handles` / `108c606`, and the worktree is clean. I’m reading the implementation and targeted tests next, including line numbers for any verdict.
+exec
+/bin/bash -lc 'git show --unified=120 --format=medium 108c606 -- packages/editor-shell/src/resize/resize-snap.ts packages/editor-shell/src/resize/use-resize-pipeline.ts packages/editor-shell/src/index.ts' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+commit 108c606f52f81fb586d8cf31de32fef70f78906c
+Author: W_YI <W_YI1223@outlook.com>
+Date:   Sat May 9 16:03:16 2026 -0400
+
+    Wave 6 cf-20d R3 — col-AND-colSpan normalize + grep-verified doc sweep
+    
+    F1 (BLOCKING): R2 F2 only normalized colSpan; missed col-overflow case
+    (col=7, colSpan=6 valid at 12-col → invalid at 6-col tablet). NEW
+    normalizeOverflowPosition() pure helper handles BOTH overflow conditions.
+    Left-clamp col first; pick largest activeColSnap ≤ maxFit; fallback to 1
+    (mobile). Pipeline writes BOTH col AND colSpan in same setNodeMarkup.
+    11 NEW vitest cases covering colSpan-only / col-only / both / mobile /
+    exact-edge / clearly-valid / col<1 / empty activeSnaps. NEW Playwright
+    case (col=7 colSpan=6 fixture → asserts 6 / span 1).
+    
+    F2 (doc drift): per cf-20c-2 R3 F3 mechanical-grep rule, ran
+    grep -rnE 'min-width.*1024|min-width.*768|subscribes to.*min-width' →
+    2 live drift sites fixed (CONTRACT.md:637 + EditorShellMount.tsx:148).
+    3 remaining hits all carry explicit "Pre-R2" historical markers
+    (correctly preserved per cf-20c-2 R3 F3 rule).
+    
+    241 vitest passed (was 230 R2); 63 Playwright PASS / 14 SKIP / 0 FAIL
+    (was 62). size-check 426 files all under 500 LOC.
+    
+    3 operational rules landed (R3 reflection):
+    - multi-field invariant test enumeration (each field independently triggers)
+    - defense formula assumption validation (assumptions either upstream-validated or formula-generalized)
+    - post-fix mechanical grep is MANDATORY (3rd time this rule has landed; admitted violation)
+    
+    Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+
+diff --git a/packages/editor-shell/src/index.ts b/packages/editor-shell/src/index.ts
+index 051dc68..7bab6b9 100644
+--- a/packages/editor-shell/src/index.ts
++++ b/packages/editor-shell/src/index.ts
+@@ -1,108 +1,109 @@
+ export { EditorShell } from './EditorShell';
+ export type { EditorShellProps } from './EditorShell';
+ export { Palette } from './palette';
+ export type { PaletteProps } from './palette';
+ export { SlashMenu } from './slash-menu';
+ export type { SlashMenuProps } from './slash-menu';
+ export { DragHandle } from './drag-handle';
+ export type { DragHandleProps } from './drag-handle';
+ export { Toolbar } from './toolbar';
+ export type { ToolbarProps } from './toolbar';
+ export { EditModeBanner } from './edit-mode-banner';
+ export type { EditModeBannerProps } from './edit-mode-banner';
+ export { SaveIndicator } from './save-indicator';
+ export type { SaveIndicatorProps, SaveIndicatorStatus } from './save-indicator';
+ export {
+   BLOCK_KIND_OPTIONS,
+   insertBlockKind,
+   wireRegistry,
+ } from './registry-wire';
+ export type {
+   BlockAffordanceKind,
+   BlockKindOption,
+   RegistryWire,
+   RegistryWireOptions,
+ } from './registry-wire';
+ export { registerBlocks } from './registerBlocks';
+ export { registerKernels } from './registerKernels';
+ export { saveToMdx, loadFromMdx } from './saveLoad';
+ export type { SaveLoadOptions } from './saveLoad';
+ export { makeBlockNodeView } from './BlockNodeView';
+ export type { BlockNodeViewFactoryProps } from './BlockNodeView';
+ export type { NoteSaveAdapter, NoteState, ReadonlyJSONValue } from './save-adapter';
+ export { ApiAdapter, LocalStorageAdapter } from './save-adapter';
+ export { proseExtensions } from '@skb/block-foundation';
+ export { GridContainer } from './grid-container';
+ export type { GridContainerProps } from './grid-container';
+ export {
+   extractGridPosition,
+   gridPlacementStyle,
+   gridPlacementStyleAttr,
+ } from './grid-style';
+ export type { GridPlacementInput, GridPlacementOptions } from './grid-style';
+ export { useAutoRowSpan } from './use-auto-row-span';
+ export { useResponsiveCols, RESPONSIVE_BREAKPOINTS } from './responsive-cols';
+ export type { UseResponsiveColsOptions, ViewportCols } from './responsive-cols';
+ export { EDGE_W, GAP, computeEdgeRects } from './drag-drop/edge-rects';
+ export type { EdgeRect, BlockLayout } from './drag-drop/edge-rects';
+ export { tiebreak, findMatches } from './drag-drop/tiebreak';
+ export type { EdgeMatch, DragVelocity } from './drag-drop/tiebreak';
+ export { OutlineOverlay } from './drag-drop/outline-overlay';
+ export type { OutlineOverlayProps } from './drag-drop/outline-overlay';
+ export { DropPulse, dropPulseClassName } from './drag-drop/drop-pulse';
+ export type { DropPulseProps } from './drag-drop/drop-pulse';
+ export { DragGhost } from './drag-drop/drag-ghost';
+ export type { DragGhostProps, GhostKind } from './drag-drop/drag-ghost';
+ export { useEscCancel } from './drag-drop/esc-cancel';
+ export type { EscCancelOptions } from './drag-drop/esc-cancel';
+ export { layoutReducer } from './drag-drop/layout-reducer';
+ export type { GridSnapshot, LayoutAction, LayoutState } from './drag-drop/layout-reducer';
+ export { applyDropMode } from './drag-drop/apply-drop-mode';
+ export type {
+   ApplyDropModeInput,
+   DropMode,
+   GridSnapshotIdentified,
+   IdentifiedBlock,
+ } from './drag-drop/apply-drop-mode';
+ export { DragHandleButton, DRAG_HANDLE_MIME } from './drag-drop/drag-handle-button';
+ export type { DragHandleButtonProps } from './drag-drop/drag-handle-button';
+ export { DragDropContext, DragDropProvider } from './drag-drop/drag-context';
+ export type {
+   DragDropContextValue,
+   DragDropProviderProps,
+   DragHandleStartOrigin,
+   DragHandleEndOrigin,
+ } from './drag-drop/drag-context';
+ export { useDragDropPipeline } from './drag-drop/use-drag-drop-pipeline';
+ export type {
+   PipelineDragState,
+   UseDragDropPipelineOptions,
+   UseDragDropPipelineReturn,
+ } from './drag-drop/use-drag-drop-pipeline';
+ export { ColRuler } from './resize/col-ruler';
+ export type { ColRulerProps } from './resize/col-ruler';
+ export { SizeTooltip, colSpanToFraction } from './resize/size-tooltip';
+ export type { SizeTooltipProps } from './resize/size-tooltip';
+ export { ResizeHandles } from './resize/resize-handles';
+ export type { ResizeHandlesProps } from './resize/resize-handles';
+ export { ResizeContext, ResizeProvider } from './resize/resize-context';
+ export type {
+   ResizeAxis,
+   ResizeContextValue,
+   ResizeProviderProps,
+   ResizeStartOrigin,
+   ResizeEndOrigin,
+ } from './resize/resize-context';
+ export { RowLadder } from './resize/row-ladder';
+ export type { RowLadderProps } from './resize/row-ladder';
+ export {
+   buildResizeNextAttrs,
++  normalizeOverflowPosition,
+   snapToColSpan,
+   snapToRowSpan,
+ } from './resize/resize-snap';
+ export { useResizePipeline } from './resize/use-resize-pipeline';
+ export type {
+   PipelineResizeState,
+   UseResizePipelineOptions,
+   UseResizePipelineReturn,
+ } from './resize/use-resize-pipeline';
+diff --git a/packages/editor-shell/src/resize/resize-snap.ts b/packages/editor-shell/src/resize/resize-snap.ts
+index 83f4cd8..40a11fd 100644
+--- a/packages/editor-shell/src/resize/resize-snap.ts
++++ b/packages/editor-shell/src/resize/resize-snap.ts
+@@ -114,120 +114,192 @@ export function snapToColSpan(
+   // R1 F2 fix: filter snaps to the non-overflowing subset per
+   // ADR-0016 D2 grid-position invariant `col + colSpan - 1 <= totalCols`.
+   // Equivalently: `snap <= totalCols - startCol + 1`.
+   const maxFittingSnap = totalCols - startCol + 1;
+   const fittingSnaps = activeSnaps.filter((snap) => snap <= maxFittingSnap);
+ 
+   if (fittingSnaps.length === 0) {
+     // Block is too far right for any valid snap (e.g. col=12 with
+     // smallest snap=2 → 12+2-1=13>12 overflow). Fall back to
+     // startColSpan as a no-op — the user must drag-move the block
+     // leftward first to make room. Returning startColSpan also
+     // ensures the no-op-commit guard in the pipeline triggers.
+     return { colSpan: startColSpan, rawColSpan };
+   }
+ 
+   // Round-to-nearest-snap with round-up tiebreak (D6 Q4 default).
+   let bestSnap = fittingSnaps[0]!;
+   let bestDistance = Math.abs(rawColSpan - bestSnap);
+   for (let i = 1; i < fittingSnaps.length; i += 1) {
+     const snap = fittingSnaps[i]!;
+     const distance = Math.abs(rawColSpan - snap);
+     if (
+       distance < bestDistance ||
+       // Round-up tie-break: when `distance === bestDistance` AND the
+       // new snap is larger, prefer the larger snap.
+       (distance === bestDistance && snap > bestSnap)
+     ) {
+       bestDistance = distance;
+       bestSnap = snap;
+     }
+   }
+ 
+   // Clamp to [1, totalCols] defensive guard (shouldn't trigger when
+   // activeSnaps is well-formed per `effectiveColSnaps`).
+   const clamped = Math.max(1, Math.min(totalCols, bestSnap));
+ 
+   return { colSpan: clamped, rawColSpan };
+ }
+ 
+ /**
+  * Compute the snapped rowSpan for a bottom-edge resize at the given
+  * cursor delta.
+  *
+  * @param cursorDeltaY  Pointer Y displacement from the pointerdown
+  *                      origin (positive = downward = grow).
+  * @param startRowSpan  The block's rowSpan at pointerdown. Caller
+  *                      MUST resolve `'auto'` to its current integer
+  *                      via `useAutoRowSpan` before invoking this
+  *                      helper (resize commits an integer rowSpan
+  *                      regardless of starting `'auto'` semantic per
+  *                      ADR-0017 D9).
+  * @param rowH          Grid `--row-h` in CSS pixels. Per
+  *                      `DEFAULT_GRID_GEOMETRY.rowH = 48`.
+  * @param gap           Grid gap in CSS pixels.
+  * @returns             The snapped integer rowSpan (≥ 1).
+  */
+ export function snapToRowSpan(
+   cursorDeltaY: number,
+   startRowSpan: number,
+   rowH: number,
+   gap: number,
+ ): number {
+   if (rowH <= 0) {
+     return Math.max(1, startRowSpan);
+   }
+ 
+   // Each additional row adds one gap + one row-h to the visible
+   // height (mirrors `effectiveCellHeight = rowSpan*rowH + (rowSpan-1)*gap`).
+   // At dy=0 → rawRowSpan = startRowSpan (no-op).
+   const rawRowSpan = startRowSpan + cursorDeltaY / (rowH + gap);
+ 
+   // Round-to-nearest with round-up tiebreak (the .5 case takes the
+   // ceiling per ADR-0016 D6 Q4 default).
+   const fractional = rawRowSpan - Math.floor(rawRowSpan);
+   const rounded =
+     fractional < 0.5 ? Math.floor(rawRowSpan) : Math.ceil(rawRowSpan);
+ 
+   return Math.max(1, rounded);
+ }
+ 
+ /**
+  * Wave 6 cf-20d R1 F3 fix (2026-05-09) — pure helper that builds
+  * the `setNodeMarkup` next-attrs object given the resize axis +
+  * snap deltas. Extracted from `use-resize-pipeline.ts`'s commit
+  * branch so the F3 axis-aware contract can be unit-tested without
+  * spinning up a Tiptap editor.
+  *
+  * F3 contract:
+  *   - `axis === 'right'`  → write `colSpan` only (NEVER `rowSpan`,
+  *     even if rowSpan changed; preserves prose `rowSpan='auto'`).
+  *   - `axis === 'bottom'` → write `rowSpan` only (NEVER `colSpan`).
+  *   - `axis === 'corner'` → write both `colSpan` AND `rowSpan` (only
+  *     for non-prose blocks per ADR-0017 D9 — corner handle hidden
+  *     for prose).
+  *
+  * The "no-op" guard (caller decides whether to dispatch at all) is
+  * the responsibility of the consumer; this helper only computes the
+  * attr-diff. Returns a plain object suitable for spreading into
+  * `{ ...node.attrs, ...buildResizeNextAttrs(...) }`.
+  */
+ export function buildResizeNextAttrs(
+   axis: 'right' | 'bottom' | 'corner',
+   nextColSpan: number,
+   nextRowSpan: number,
+   colChanged: boolean,
+   rowChanged: boolean,
+ ): Record<string, number> {
+   const attrs: Record<string, number> = {};
+   // colSpan: always write on right + corner if changed (NEVER on
+   // bottom — bottom doesn't touch colSpan dimension).
+   if ((axis === 'right' || axis === 'corner') && colChanged) {
+     attrs['colSpan'] = nextColSpan;
+   }
+   // rowSpan: write on bottom + corner if changed (NEVER on right —
+   // right doesn't touch rowSpan dimension; preserves 'auto' on prose).
+   if ((axis === 'bottom' || axis === 'corner') && rowChanged) {
+     attrs['rowSpan'] = nextRowSpan;
+   }
+   return attrs;
+ }
++
++/**
++ * Wave 6 cf-20d R3 F1 fix (2026-05-09) — pure helper that normalizes
++ * the `{col, colSpan}` PAIR atomically when persisted state violates
++ * ADR-0016 D2 grid-position invariants for the current viewport.
++ *
++ * Pre-R3 the pipeline's R2 F2 fix only normalized colSpan (assuming
++ * `col` itself was always valid). Reviewer R3 F1 caught that the
++ * persisted-overflow class also includes `col > totalCols`:
++ *
++ * Example: block saved at desktop with `col=7, colSpan=6` (valid in
++ * 12-col: 7+6-1=12). Reload at tablet (totalCols=6):
++ *   - `col=7 > totalCols=6` (col itself overflows)
++ *   - R2 fix: normalizedColSpan = max(1, 6 - 7 + 1) = max(1, 0) = 1
++ *   - Result: `{col=7, colSpan=1}` — STILL invalid (col=7 > 6) AND
++ *     colSpan=1 violates COL_SNAPS=[2,3,4,6,8,12].
++ *
++ * R3 fix:
++ *   1. Detect overflow: `col > totalCols` OR `col + colSpan - 1 > totalCols`.
++ *   2. Left-clamp col: `clampedCol = min(max(1, startCol), totalCols)`.
++ *      Per cf-20d D10 R3 amendment decision: left-clamp (NOT right-
++ *      clamp) preserves the largest possible colSpan on the new
++ *      viewport — more recoverable visually. The user explicitly
++ *      placed the block somewhere; clamping to the column AT the
++ *      right edge would push it off-screen at narrower viewports.
++ *   3. Compute maxFit at clamped col: `totalCols - clampedCol + 1`.
++ *   4. Pick colSpan: largest `activeColSnaps` member ≤ maxFit; if
++ *      no snap fits (e.g. mobile where activeColSnaps=[1] and
++ *      maxFit=1), fall back to `min(maxFit, 1)` = 1.
++ *
++ * @param startCol         Persisted col (1-based; potentially overflowing).
++ * @param startColSpan     Persisted colSpan (potentially overflowing).
++ * @param totalCols        Current viewport's totalCols (12 / 6 / 1).
++ * @param activeColSnaps   `effectiveColSnaps(viewportCols)` snap set.
++ * @returns                `{col, colSpan}` if persisted state was
++ *                         invalid (caller must inject BOTH attrs into
++ *                         setNodeMarkup); `null` if persisted state is
++ *                         valid (no recovery needed).
++ */
++export function normalizeOverflowPosition(
++  startCol: number,
++  startColSpan: number,
++  totalCols: number,
++  activeColSnaps: readonly number[],
++): { readonly col: number; readonly colSpan: number } | null {
++  const colOverflows = startCol > totalCols;
++  const spanOverflows = startCol + startColSpan - 1 > totalCols;
++  if (!colOverflows && !spanOverflows) return null;
++
++  // Left-clamp col into [1, totalCols] (per F1 dispatch decision —
++  // preserves the largest fitting colSpan on the new viewport).
++  const clampedCol = Math.min(Math.max(1, startCol), totalCols);
++  const maxFit = totalCols - clampedCol + 1; // ≥ 1 because clampedCol ≤ totalCols
++
++  // Pick the LARGEST activeColSnap ≤ maxFit — preserves the widest
++  // valid placement after recovery. If none fits (e.g. activeSnaps
++  // has only values > maxFit which shouldn't happen for the standard
++  // 12/6/1 buckets but defensive), fall back to 1.
++  let normalizedColSpan = 1;
++  for (const snap of activeColSnaps) {
++    if (snap <= maxFit && snap > normalizedColSpan) {
++      normalizedColSpan = snap;
++    }
++  }
++  // Final clamp: never exceed maxFit (defense-in-depth if activeSnaps
++  // somehow returned a value > maxFit despite the loop guard).
++  normalizedColSpan = Math.min(normalizedColSpan, maxFit);
++  // Floor at 1 (paranoia: maxFit ≥ 1 by construction above).
++  normalizedColSpan = Math.max(1, normalizedColSpan);
++
++  return { col: clampedCol, colSpan: normalizedColSpan };
++}
+diff --git a/packages/editor-shell/src/resize/use-resize-pipeline.ts b/packages/editor-shell/src/resize/use-resize-pipeline.ts
+index b818475..70ecc19 100644
+--- a/packages/editor-shell/src/resize/use-resize-pipeline.ts
++++ b/packages/editor-shell/src/resize/use-resize-pipeline.ts
+@@ -1,153 +1,154 @@
+ /**
+  * @skb/editor-shell useResizePipeline — resize lifecycle owner.
+  *
+  * Wave 6 cf-20d (2026-05-09; R1+R2 fixes 2026-05-09) — composes the
+  * existing resize visual primitives (<ColRuler>, <SizeTooltip>,
+  * <RowLadder>) + the pure `resize-snap.ts` math + Tiptap
+  * `setNodeMarkup` into the interactive resize wire. Mirrors the
+  * cf-20c-2 `useDragDropPipeline` shape (snapshot at start, mutate at
+  * commit, NEVER mid-pointermove per the cf-20c-2 R1 reflection rule).
+  *
+  * Lifecycle: pointerdown (snapshot startCol + startColSpan +
+  * startRowSpanAttr|Int + cursor origin + sourceRect + containerWidth)
+  * → window pointermove (snap math drives reactive overlay state;
+  * never mutates Tiptap) → window pointerup (commit-on-release;
+  * setNodeMarkup with axis-aware attr diff via buildResizeNextAttrs;
+  * 2-rAF re-measure; onCommitSuccess callback for dropEpoch reuse) /
+  * esc-cancel / pointercancel (rollback without mutation per
+  * ADR-0017 D8).
+  *
+  * Decisions in CONTRACT.md (Resize wire section): D1 commit-on-
+  * release; D2 gridKind===prose skips bottom+corner; D3 dropEpoch
+  * reuse via onCommitSuccess → setLastDroppedFromExternal; D6 round-
+  * to-nearest snap; D9 viewportCols-derived totalCols+activeColSnaps
+  * (R1 F1); D10 startCol overflow-filter (R1 F2) + UNCONDITIONAL
+  * persisted-overflow normalize (R2 F2); D11 rowSpan='auto'
+  * preservation via buildResizeNextAttrs axis-aware attr write
+  * (R1 F3).
+  */
+ import { useCallback, useEffect, useRef, useState } from 'react';
+ import type { Editor } from '@tiptap/core';
+ import { liveBlockPositions, snapshotBlocks } from '../drag-drop/pipeline-snapshot';
+ import {
+   buildResizeNextAttrs,
++  normalizeOverflowPosition,
+   snapToColSpan,
+   snapToRowSpan,
+ } from './resize-snap';
+ import type { ResizeAxis } from './resize-context';
+ 
+ export interface PipelineResizeState {
+   /** True from pointerdown until commit/cancel/pointercancel. */
+   readonly active: boolean;
+   /** Source block being resized (set on pointerdown). */
+   readonly sourceBlockId: string | null;
+   /** Active resize axis (null when no resize is active). */
+   readonly axis: ResizeAxis | null;
+   /** Cursor position (for <SizeTooltip> following). */
+   readonly cursor: { readonly x: number; readonly y: number } | null;
+   /** Currently-resolved snap colSpan (right + corner axes; else null). */
+   readonly snapColSpan: number | null;
+   /** Currently-resolved snap rowSpan (bottom + corner axes; else null). */
+   readonly snapRowSpan: number | null;
+   /** Bounding rect of the source NodeView at pointerdown. */
+   readonly sourceRect: DOMRectReadOnly | null;
+ }
+ 
+ export interface UseResizePipelineOptions {
+   /** The Tiptap editor instance; null until onCreate fires. */
+   readonly editor: Editor | null;
+   /**
+    * Selector for the grid container element. Defaults to '.skb-grid'.
+    * Used to read containerWidth for the snap math.
+    */
+   readonly gridSelector?: string;
+   /**
+    * Effective columns at the current viewport (12 / 6 / 1). cf-20d
+    * uses this to choose `effectiveColSnaps()` from block-foundation;
+    * caller derives via `useResponsiveCols`.
+    */
+   readonly totalCols: number;
+   /** Snap targets for the right-edge resize (per `effectiveColSnaps`). */
+   readonly activeColSnaps: readonly number[];
+   /**
+    * Grid `--row-h` in CSS pixels. Defaults to 48 per
+    * `DEFAULT_GRID_GEOMETRY.rowH`.
+    */
+   readonly rowH?: number;
+   /** Grid gap in CSS pixels. Defaults to 14. */
+   readonly gap?: number;
+   /**
+    * Invoked on a successful commit (after Tiptap mutation + 2-rAF
+    * re-measure). Consumer wires this to the cf-20c-2 drag pipeline's
+    * `setLastDroppedFromExternal(blockId, rect)` so the success-pulse
+    * fires at the landed size. cf-20c-2 R3 dropEpoch reuse pattern.
+    */
+   readonly onCommitSuccess?: (
+     blockId: string,
+     liveRect: DOMRectReadOnly,
+   ) => void;
+ }
+ 
+ export interface UseResizePipelineReturn {
+   readonly state: PipelineResizeState;
+   /** Bound to <ResizeHandles> via ResizeContext. */
+   readonly onResizeStart: (
+     blockId: string,
+     axis: ResizeAxis,
+     origin: { x: number; y: number },
+   ) => void;
+   /** Cleanup fallback (pointercancel route). */
+   readonly onResizeEnd: (origin: { x: number; y: number }) => void;
+ }
+ 
+ interface ResizeSnapshot {
+   readonly blockId: string;
+   readonly axis: ResizeAxis;
+   /**
+    * Block's `col` (1-based) at pointerdown. R1 F2 fix (2026-05-09):
+    * snapped at start so the snap function can filter candidates to
+    * the non-overflowing subset (`snap <= totalCols - col + 1` per
+    * ADR-0016 D2 invariant).
+    */
+   readonly startCol: number;
+   readonly startColSpan: number;
+   /**
+    * Block's rowSpan attr at pointerdown — preserved as `number |
+    * 'auto'`. R1 F3 fix (2026-05-09): pre-R1 the snapshot coerced
+    * non-numeric rowSpan to `1`, then the right-only commit wrote
+    * `rowSpan: 1` and DESTROYED the `'auto'` attribute (prose blocks
+    * stuck at 1 row). R1 fix: preserve the original; right-only
+    * commit omits rowSpan from setNodeMarkup; bottom + corner
+    * commits write the snapped integer.
+    */
+   readonly startRowSpanAttr: number | 'auto';
+   /**
+    * Resolved integer rowSpan at pointerdown — the value used by the
+    * snap math + as the baseline for the bottom/corner commit. For
+    * `startRowSpanAttr === 'auto'` we derive an integer hint from the
+    * source NodeView's measured height (so the snap math sees a
+    * realistic starting value).
+    */
+   readonly startRowSpanInt: number;
+   readonly origin: { readonly x: number; readonly y: number };
+   readonly containerWidth: number;
+   readonly sourceRect: DOMRectReadOnly;
+ }
+ 
+ const DEFAULT_ROW_H = 48;
+ const DEFAULT_GAP = 14;
+ 
+ export function useResizePipeline(
+   options: UseResizePipelineOptions,
+ ): UseResizePipelineReturn {
+   const {
+     editor,
+     gridSelector = '.skb-grid',
+     totalCols,
+     activeColSnaps,
+     rowH = DEFAULT_ROW_H,
+     gap = DEFAULT_GAP,
+     onCommitSuccess,
+   } = options;
+ 
+   const [active, setActive] = useState(false);
+@@ -222,275 +223,275 @@ export function useResizePipeline(
+           startRowSpanInt = 1;
+         }
+       }
+ 
+       const snapshot: ResizeSnapshot = {
+         blockId,
+         axis: nextAxis,
+         startCol: target.col,
+         startColSpan: target.colSpan,
+         startRowSpanAttr,
+         startRowSpanInt,
+         origin,
+         containerWidth,
+         sourceRect: startRect,
+       };
+       snapshotRef.current = snapshot;
+ 
+       setActive(true);
+       setSourceBlockId(blockId);
+       setAxis(nextAxis);
+       setCursor({ x: origin.x, y: origin.y });
+       setSnapColSpan(target.colSpan);
+       setSnapRowSpan(startRowSpanInt);
+       setSourceRect(startRect);
+     },
+     [editor, gridSelector, gap, rowH],
+   );
+ 
+   const onResizeEnd = useCallback(() => {
+     // Cleanup-only fallback for pointercancel (rare browser-emitted
+     // event). The window-level pointerup handler below is the primary
+     // commit path. If active=true here, treat as cancel (no mutation).
+     if (active) {
+       resetState();
+     }
+   }, [active, resetState]);
+ 
+   // Window-level pointermove / pointerup / pointercancel listeners.
+   // Attached when active=true.
+   useEffect(() => {
+     if (!active) return;
+ 
+     const handlePointerMove = (event: PointerEvent): void => {
+       const snapshot = snapshotRef.current;
+       if (!snapshot) return;
+ 
+       const dx = event.clientX - snapshot.origin.x;
+       const dy = event.clientY - snapshot.origin.y;
+ 
+       setCursor({ x: event.clientX, y: event.clientY });
+ 
+       // Snap math depends on axis. R1 F2 fix: pass startCol so
+       // snapToColSpan can filter overflowing snaps.
+       if (snapshot.axis === 'right' || snapshot.axis === 'corner') {
+         const result = snapToColSpan(
+           dx,
+           snapshot.startColSpan,
+           snapshot.startCol,
+           snapshot.containerWidth,
+           gap,
+           totalCols,
+           activeColSnaps,
+         );
+         setSnapColSpan(result.colSpan);
+       }
+       if (snapshot.axis === 'bottom' || snapshot.axis === 'corner') {
+         const newRowSpan = snapToRowSpan(
+           dy,
+           snapshot.startRowSpanInt,
+           rowH,
+           gap,
+         );
+         setSnapRowSpan(newRowSpan);
+       }
+     };
+ 
+     const handlePointerUp = (event: PointerEvent): void => {
+       const snapshot = snapshotRef.current;
+       if (!snapshot || !editor) {
+         resetState();
+         return;
+       }
+ 
+       const dx = event.clientX - snapshot.origin.x;
+       const dy = event.clientY - snapshot.origin.y;
+ 
+       // Resolve the final snap targets for this commit.
+       // R1 F2 fix: pass startCol to snapToColSpan so the snap-set
+       // filter rejects overflowing snaps before committing.
+       let nextColSpan = snapshot.startColSpan;
+       let nextRowSpan = snapshot.startRowSpanInt;
+       if (snapshot.axis === 'right' || snapshot.axis === 'corner') {
+         nextColSpan = snapToColSpan(
+           dx,
+           snapshot.startColSpan,
+           snapshot.startCol,
+           snapshot.containerWidth,
+           gap,
+           totalCols,
+           activeColSnaps,
+         ).colSpan;
+       }
+       if (snapshot.axis === 'bottom' || snapshot.axis === 'corner') {
+         nextRowSpan = snapToRowSpan(
+           dy,
+           snapshot.startRowSpanInt,
+           rowH,
+           gap,
+         );
+       }
+ 
+       const colChanged = nextColSpan !== snapshot.startColSpan;
+       const rowChanged = nextRowSpan !== snapshot.startRowSpanInt;
+       // R1 F3 fix: only the bottom + corner axes can change rowSpan;
+       // a right-only resize must NEVER write rowSpan (would destroy
+       // 'auto' on prose blocks).
+       const writeRowSpan =
+         rowChanged &&
+         (snapshot.axis === 'bottom' || snapshot.axis === 'corner');
+ 
+-      // R2 F2 fix (2026-05-09) — UNCONDITIONAL persisted-overflow
+-      // defense. Pre-R2 the overflow check ran ONLY when colChanged
+-      // was true (col-mutating axes). Race scenario the reviewer
+-      // identified: user saved a block at desktop with `col=7,
+-      // colSpan=8` (valid in 12-col); reloads at tablet (6-col) →
+-      // `7 + 8 - 1 = 14 > 6` (invalid). User does bottom-only
+-      // resize (axis='bottom', colChanged=false). Pre-R2 the
+-      // setNodeMarkup call wrote the new rowSpan AND preserved the
+-      // INVALID col/colSpan attrs via the spread. R2 fix:
+-      // unconditionally re-check the persisted position; if invalid,
+-      // normalize colSpan to `max(1, totalCols - startCol + 1)` and
+-      // include the normalized colSpan in THIS commit's
+-      // setNodeMarkup transaction (single atomic write — recovery,
+-      // not corruption).
+-      //
+-      // Per cf-20d D10 R2 amendment: normalize (recoverable) over
+-      // cancel (drops the user's intended row resize).
+-      const persistedOverflow =
+-        snapshot.startCol + snapshot.startColSpan - 1 > totalCols;
+-      const normalizedColSpan = persistedOverflow
+-        ? Math.max(1, totalCols - snapshot.startCol + 1)
+-        : null;
++      // R2 F2 + R3 F1: UNCONDITIONAL persisted-overflow defense.
++      // R3 F1 amendment normalizes the {col, colSpan} PAIR atomically
++      // (R2 only handled colSpan; missed col>totalCols case). Pure
++      // helper returns null when persisted state is valid; otherwise
++      // returns the normalized pair (left-clamp col + largest fitting
++      // activeColSnap). See `normalizeOverflowPosition` JSDoc + cf-20d
++      // D10 R3 amendment.
++      const normalizedPosition = normalizeOverflowPosition(
++        snapshot.startCol,
++        snapshot.startColSpan,
++        totalCols,
++        activeColSnaps,
++      );
++      const persistedOverflow = normalizedPosition !== null;
+ 
+       if (!colChanged && !writeRowSpan && !persistedOverflow) {
+         // No-op commit (cursor returned to start position OR
+         // right-only axis with rowSpan unchanged because we won't
+         // write it anyway), AND the persisted state isn't broken.
+         // Reset without mutation; no success-pulse.
+         resetState();
+         return;
+       }
+ 
+       // R1 F2 defense-in-depth: re-validate the POST-snap position
+       // against the grid invariant before dispatching mutation.
+       // Should never fire (snapToColSpan already filtered), but if
+       // it does, treat as cancel.
+       if (
+         colChanged &&
+         snapshot.startCol + nextColSpan - 1 > totalCols
+       ) {
+         resetState();
+         return;
+       }
+ 
+       // Resolve live PM position (snapshot.blockId === pos string).
+       const blocks = snapshotBlocks(editor);
+       const livePositions = liveBlockPositions(editor, blocks);
+       const live = livePositions.get(snapshot.blockId);
+       if (!live) {
+         resetState();
+         return;
+       }
+ 
+       // R1 F3 fix: axis-aware attr write delegated to the pure
+       // `buildResizeNextAttrs` helper. Right-only axis omits rowSpan
+       // entirely (preserves 'auto' on prose); bottom-only omits
+       // colSpan; corner writes both (only reached for non-prose per
+       // ADR-0017 D9).
+       const nextAttrDiff: Record<string, number> = buildResizeNextAttrs(
+         snapshot.axis,
+         nextColSpan,
+         nextRowSpan,
+         colChanged,
+         rowChanged,
+       );
+-      // R2 F2 fix: when persistedOverflow detected AND the axis-
+-      // aware diff didn't already include colSpan (e.g. bottom-only
+-      // axis), force the normalized colSpan into the diff so the
++      // R2 F2 + R3 F1 fix: when persistedOverflow detected, force
++      // the normalized {col, colSpan} pair into the diff so the
+       // single setNodeMarkup transaction recovers the invalid grid
+-      // position atomically with the user's intended row mutation.
++      // position atomically with the user's intended axis mutation.
++      // R3 F1 amendment: write BOTH col AND colSpan (NOT just
++      // colSpan) — pre-R3 the col-overflow case left col=startCol
++      // unchanged producing a still-invalid result. The axis-aware
++      // diff for col-axes (right + corner) already includes a
++      // user-intended colSpan; the normalized override unconditionally
++      // wins on overflow because the user's snap was computed from
++      // the OVERFLOWING startColSpan and would itself overflow.
+       // Console-warn so operators see the recovery in dev tools.
+-      if (normalizedColSpan !== null && !('colSpan' in nextAttrDiff)) {
++      if (normalizedPosition !== null) {
+         // eslint-disable-next-line no-console
+         console.warn(
+-          `[useResizePipeline R2 F2] persisted grid overflow detected at block ${snapshot.blockId} ` +
++          `[useResizePipeline R3 F1] persisted grid overflow detected at block ${snapshot.blockId} ` +
+             `(col=${snapshot.startCol}, colSpan=${snapshot.startColSpan}, totalCols=${totalCols}); ` +
+-            `normalizing colSpan to ${normalizedColSpan} as part of ${snapshot.axis}-axis commit.`,
++            `normalizing to {col=${normalizedPosition.col}, colSpan=${normalizedPosition.colSpan}} ` +
++            `as part of ${snapshot.axis}-axis commit.`,
+         );
+-        nextAttrDiff['colSpan'] = normalizedColSpan;
++        nextAttrDiff['col'] = normalizedPosition.col;
++        nextAttrDiff['colSpan'] = normalizedPosition.colSpan;
+       }
+       editor
+         .chain()
+         .command(({ tr }) => {
+           const node = tr.doc.nodeAt(live.pos);
+           if (!node) return false;
+           const nextAttrs = {
+             ...node.attrs,
+             ...nextAttrDiff,
+           };
+           tr.setNodeMarkup(live.pos, undefined, nextAttrs);
+           return true;
+         })
+         .run();
+ 
+       // Re-measure source NodeView at landed position post-mutation
+       // (mirrors cf-20c-2 R2 F2 + R3 F2 sequence). 2 rAFs to allow
+       // React commit + browser layout pass before the
+       // getBoundingClientRect() returns the new size.
+       const blockId = snapshot.blockId;
+       requestAnimationFrame(() => {
+         requestAnimationFrame(() => {
+           const newBlocks = snapshotBlocks(editor);
+           const newLivePositions = liveBlockPositions(editor, newBlocks);
+           const newLive = newLivePositions.get(blockId);
+           if (!newLive) return;
+           const newDom = editor.view.nodeDOM(newLive.pos);
+           if (newDom instanceof HTMLElement) {
+             const newRect = newDom.getBoundingClientRect();
+             // Reuse cf-20c-2 dropEpoch infrastructure via the
+             // consumer-supplied callback (D3 decision).
+             onCommitSuccess?.(blockId, newRect);
+           }
+         });
+       });
+ 
+       resetState();
+     };
+ 
+     const handlePointerCancel = (): void => {
+       resetState();
+     };
+ 
+     window.addEventListener('pointermove', handlePointerMove);
+     window.addEventListener('pointerup', handlePointerUp);
+     window.addEventListener('pointercancel', handlePointerCancel);
+     return () => {
+       window.removeEventListener('pointermove', handlePointerMove);
+       window.removeEventListener('pointerup', handlePointerUp);
+       window.removeEventListener('pointercancel', handlePointerCancel);
+     };
+   }, [
+     active,
+     editor,
+     totalCols,
+     activeColSnaps,
+     gap,
+     rowH,
+     onCommitSuccess,
+     resetState,
+   ]);
+ 
+   return {
+     state: {
+       active,
+       sourceBlockId,
+       axis,
+       cursor,
+       snapColSpan,
+       snapRowSpan,
+       sourceRect,
+     },
+     onResizeStart,
+     onResizeEnd,
+   };
+ }
+
+exec
+/bin/bash -lc 'git show --unified=120 --format=medium 108c606 -- packages/editor-shell/src/__tests__/resize/normalize-overflow-position.test.ts apps/site/playwright/sample-blocks-resize-handles.spec.ts apps/site/playwright/helpers/resize-pointer-events.ts' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+commit 108c606f52f81fb586d8cf31de32fef70f78906c
+Author: W_YI <W_YI1223@outlook.com>
+Date:   Sat May 9 16:03:16 2026 -0400
+
+    Wave 6 cf-20d R3 — col-AND-colSpan normalize + grep-verified doc sweep
+    
+    F1 (BLOCKING): R2 F2 only normalized colSpan; missed col-overflow case
+    (col=7, colSpan=6 valid at 12-col → invalid at 6-col tablet). NEW
+    normalizeOverflowPosition() pure helper handles BOTH overflow conditions.
+    Left-clamp col first; pick largest activeColSnap ≤ maxFit; fallback to 1
+    (mobile). Pipeline writes BOTH col AND colSpan in same setNodeMarkup.
+    11 NEW vitest cases covering colSpan-only / col-only / both / mobile /
+    exact-edge / clearly-valid / col<1 / empty activeSnaps. NEW Playwright
+    case (col=7 colSpan=6 fixture → asserts 6 / span 1).
+    
+    F2 (doc drift): per cf-20c-2 R3 F3 mechanical-grep rule, ran
+    grep -rnE 'min-width.*1024|min-width.*768|subscribes to.*min-width' →
+    2 live drift sites fixed (CONTRACT.md:637 + EditorShellMount.tsx:148).
+    3 remaining hits all carry explicit "Pre-R2" historical markers
+    (correctly preserved per cf-20c-2 R3 F3 rule).
+    
+    241 vitest passed (was 230 R2); 63 Playwright PASS / 14 SKIP / 0 FAIL
+    (was 62). size-check 426 files all under 500 LOC.
+    
+    3 operational rules landed (R3 reflection):
+    - multi-field invariant test enumeration (each field independently triggers)
+    - defense formula assumption validation (assumptions either upstream-validated or formula-generalized)
+    - post-fix mechanical grep is MANDATORY (3rd time this rule has landed; admitted violation)
+    
+    Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+
+diff --git a/apps/site/playwright/helpers/resize-pointer-events.ts b/apps/site/playwright/helpers/resize-pointer-events.ts
+index 055c6ba..746b561 100644
+--- a/apps/site/playwright/helpers/resize-pointer-events.ts
++++ b/apps/site/playwright/helpers/resize-pointer-events.ts
+@@ -1,155 +1,219 @@
++import { existsSync, unlinkSync, writeFileSync } from 'node:fs';
++
+ import type { Page, Locator } from '@playwright/test';
+ 
+ /**
+  * @apps/site/playwright/helpers — pointer-event boilerplate for the
+  * cf-20d resize wire integration tests.
+  *
+  * Wave 6 cf-20d R2 (2026-05-09) — extraction motivated by the spec
+  * file growing past the 500-line size-check hard limit after R2 F2
+  * test addition. The pointer-event sequence (pointerdown via
+  * locator.dispatchEvent → rAF gap → window pointermove → rAF gap →
+  * window pointerup → 2-rAF gap for re-measure) is verbatim across
+  * all 3 commit-style tests; consolidating here keeps the spec
+  * focused on assertions.
+  *
+  * The helpers DO NOT take a Playwright page over the network bridge
+  * for each line; they batch the pointer events into single
+  * `page.evaluate` calls when possible to keep the cross-process
+  * round-trip count low.
+  */
+ 
+ const POINTER_OPTS = {
+   button: 0,
+   pointerId: 1,
+   pointerType: 'mouse',
+ } as const;
+ 
+ /**
+  * Wait for one animation frame from the page side. Used as the
+  * "React commit barrier" between event dispatches per the cf-20c-2
+  * R1 reflection rule (React state from one dispatch must commit
+  * before the next dispatch's closure-captured reads).
+  */
+ export async function rafBarrier(page: Page): Promise<void> {
+   await page.evaluate(
+     () =>
+       new Promise<void>((resolve) =>
+         requestAnimationFrame(() => resolve()),
+       ),
+   );
+ }
+ 
+ /**
+  * Wait for two animation frames (the pipeline's post-mutation
+  * re-measure budget: React commit + browser layout pass per
+  * cf-20c-2 R2 F2).
+  */
+ export async function doubleRafBarrier(page: Page): Promise<void> {
+   await page.evaluate(
+     () =>
+       new Promise<void>((resolve) =>
+         requestAnimationFrame(() =>
+           requestAnimationFrame(() => resolve()),
+         ),
+       ),
+   );
+ }
+ 
+ /**
+  * Dispatch pointerdown on the handle locator at the given client
+  * coordinates. Uses `locator.dispatchEvent` so the event bubbles
+  * from the actual DOM element (avoids `elementFromPoint` hit-test
+  * fragility under negative-offset positioning that the resize
+  * handles use).
+  */
+ export async function pointerDownOn(
+   handle: Locator,
+   clientX: number,
+   clientY: number,
+ ): Promise<void> {
+   await handle.dispatchEvent('pointerdown', {
+     bubbles: true,
+     cancelable: true,
+     clientX,
+     clientY,
+     ...POINTER_OPTS,
+   });
+ }
+ 
+ /**
+  * Dispatch pointermove on `window` at the given client coordinates.
+  * The cf-20d pipeline's pointermove listener is window-level (added
+  * via useEffect when pipeline.active === true), so the event must
+  * be dispatched on the window object — not on the handle.
+  */
+ export async function windowPointerMove(
+   page: Page,
+   clientX: number,
+   clientY: number,
+ ): Promise<void> {
+   await page.evaluate(
+     ({ x, y, opts }: { x: number; y: number; opts: typeof POINTER_OPTS }) => {
+       window.dispatchEvent(
+         new PointerEvent('pointermove', {
+           bubbles: true,
+           cancelable: true,
+           clientX: x,
+           clientY: y,
+           ...opts,
+         }),
+       );
+     },
+     { x: clientX, y: clientY, opts: POINTER_OPTS },
+   );
+ }
+ 
+ /**
+  * Dispatch pointerup on `window`. Same window-level rationale as
+  * `windowPointerMove`.
+  */
+ export async function windowPointerUp(
+   page: Page,
+   clientX: number,
+   clientY: number,
+ ): Promise<void> {
+   await page.evaluate(
+     ({ x, y, opts }: { x: number; y: number; opts: typeof POINTER_OPTS }) => {
+       window.dispatchEvent(
+         new PointerEvent('pointerup', {
+           bubbles: true,
+           cancelable: true,
+           clientX: x,
+           clientY: y,
+           ...opts,
+         }),
+       );
+     },
+     { x: clientX, y: clientY, opts: POINTER_OPTS },
+   );
+ }
+ 
+ /**
+  * Composed: full resize lifecycle — pointerdown on the handle,
+  * single rAF, pointermove on window, single rAF, pointerup on
+  * window, 2 rAFs, settle wait. Matches the canonical sequence
+  * used by all 3 commit-style cf-20d tests.
+  *
+  * Caller passes the down + target coordinates; the helper handles
+  * the rAF barriers + post-commit settle.
+  */
+ export async function dispatchResizeGesture(
+   page: Page,
+   handle: Locator,
+   downX: number,
+   downY: number,
+   targetX: number,
+   targetY: number,
+ ): Promise<void> {
+   await pointerDownOn(handle, downX, downY);
+   await rafBarrier(page);
+   await windowPointerMove(page, targetX, targetY);
+   await rafBarrier(page);
+   await windowPointerUp(page, targetX, targetY);
+   await doubleRafBarrier(page);
+   await page.waitForTimeout(300);
+ }
++
++/**
++ * Wave 6 cf-20d R2/R3 — fixture installers for persisted-overflow
++ * regression tests. Mutate the sample-blocks MDX file IN-PLACE
++ * (caller is responsible for restoring via byte-snapshot per
++ * cf-20c-2 R3 F1).
++ *
++ * R2 F2 case: `col=4 colSpan=6` overflows colSpan-only at tablet
++ * (col valid, span-end exceeds totalCols).
++ * R3 F1 case: `col=7 colSpan=6` overflows col-only at tablet
++ * (col itself exceeds totalCols).
++ */
++function replaceFirstCalloutGridAttrs(
++  originalMdxBytes: string,
++  newAttrs: { col: number; colSpan: number },
++  mdxPath: string,
++  statePath: string,
++  installerName: string,
++): void {
++  const overflowMdx = originalMdxBytes.replace(
++    /<Callout col=\{1\} colSpan=\{12\} rowSpan=\{1\} variant="note" title="Sampler scope">/,
++    `<Callout col={${newAttrs.col}} colSpan={${newAttrs.colSpan}} rowSpan={1} variant="note" title="Sampler scope">`,
++  );
++  if (overflowMdx === originalMdxBytes) {
++    throw new Error(`${installerName}: replacement pattern not found in fixture`);
++  }
++  writeFileSync(mdxPath, overflowMdx, 'utf8');
++  // Clear sidecar so ApiAdapter loads from MDX (not stale state.json).
++  if (existsSync(statePath)) {
++    unlinkSync(statePath);
++  }
++}
++
++/** R2 F2: install fixture with col=4, colSpan=6 (colSpan-only overflow at tablet). */
++export function installPersistedOverflowFixture(
++  originalMdxBytes: string,
++  mdxPath: string,
++  statePath: string,
++): void {
++  replaceFirstCalloutGridAttrs(
++    originalMdxBytes,
++    { col: 4, colSpan: 6 },
++    mdxPath,
++    statePath,
++    'installPersistedOverflowFixture',
++  );
++}
++
++/** R3 F1: install fixture with col=7, colSpan=6 (col-only overflow at tablet). */
++export function installColOverflowFixture(
++  originalMdxBytes: string,
++  mdxPath: string,
++  statePath: string,
++): void {
++  replaceFirstCalloutGridAttrs(
++    originalMdxBytes,
++    { col: 7, colSpan: 6 },
++    mdxPath,
++    statePath,
++    'installColOverflowFixture',
++  );
++}
+diff --git a/apps/site/playwright/sample-blocks-resize-handles.spec.ts b/apps/site/playwright/sample-blocks-resize-handles.spec.ts
+index 3613b78..87b58e3 100644
+--- a/apps/site/playwright/sample-blocks-resize-handles.spec.ts
++++ b/apps/site/playwright/sample-blocks-resize-handles.spec.ts
+@@ -1,126 +1,130 @@
+ import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+ import { resolve } from 'node:path';
+ 
+ import { expect, test } from '@playwright/test';
+ 
+-import { dispatchResizeGesture } from './helpers/resize-pointer-events';
++import {
++  dispatchResizeGesture,
++  installColOverflowFixture as installColOverflowFixtureHelper,
++  installPersistedOverflowFixture as installPersistedOverflowFixtureHelper,
++} from './helpers/resize-pointer-events';
+ 
+ /**
+  * Wave 6 cf-20d (2026-05-09) — resize-handles UI + commit wire integration spec.
+  *
+  * cf-20d wires the v2 resize affordance per ADR-0017 D9: 3 handles
+  * (right / bottom / corner) per `.skb-block-nodeview` + ColRuler /
+  * SizeTooltip / RowLadder overlays + commit-on-release semantics.
+  *
+  * Byte-snapshot fixture isolation per cf-20c-2 R3 F1 reflection rule:
+  * "tests that touch repository files MUST snapshot bytes pre-mutation;
+  * never use destructive git operations". The right-edge resize commit
+  * test triggers a Tiptap setNodeMarkup → tiptapToMdx → ApiAdapter.save
+  * chain that writes to disk; we snapshot before + restore after. Same
+  * pattern as cf-20c-2 sample-blocks-drag-handle.spec.ts.
+  */
+ const SAMPLE_BLOCKS_MDX = resolve(
+   process.cwd(),
+   '../../content/notes/sample-blocks/index.mdx',
+ );
+ const SAMPLE_BLOCKS_STATE = resolve(
+   process.cwd(),
+   '../../content/notes/sample-blocks/state.json',
+ );
+ 
+ let originalMdxBytes: string | null = null;
+ let originalStateBytes: string | null = null;
+ 
+ test.beforeAll(() => {
+   originalMdxBytes = readFileSync(SAMPLE_BLOCKS_MDX, 'utf8');
+   originalStateBytes = existsSync(SAMPLE_BLOCKS_STATE)
+     ? readFileSync(SAMPLE_BLOCKS_STATE, 'utf8')
+     : null;
+ });
+ 
+ function restoreSampleBlocksFixture(): void {
+   if (originalMdxBytes !== null) {
+     writeFileSync(SAMPLE_BLOCKS_MDX, originalMdxBytes, 'utf8');
+   }
+   if (originalStateBytes !== null) {
+     writeFileSync(SAMPLE_BLOCKS_STATE, originalStateBytes, 'utf8');
+   } else if (existsSync(SAMPLE_BLOCKS_STATE)) {
+     unlinkSync(SAMPLE_BLOCKS_STATE);
+   }
+ }
+ 
+ test.afterAll(() => {
+   restoreSampleBlocksFixture();
+ });
+ 
+ const SCREENSHOT_PATH = resolve(
+   process.cwd(),
+   '../../docs/audits/screenshots/wave-6-cf-20d-resize-handles.png',
+ );
+ 
+ test('sample-blocks edit route — cf-20d resize-handles wire (handle visibility + right-edge commit + drop-pulse reuse)', async ({
+   page,
+ }) => {
+   // cf-20c-2 R2 fixture isolation pattern: restore baseline MDX +
+   // clear state sidecar BEFORE the test runs (the resize-commit
+   // mutation will otherwise persist via ApiAdapter.save → file write).
+   restoreSampleBlocksFixture();
+ 
+   await page.goto('/notes/sample-blocks/edit');
+   const editor = page.locator('.ProseMirror').first();
+   await expect(editor).toBeVisible({ timeout: 15_000 });
+   await expect(editor.locator('.skb-block-nodeview').first()).toBeVisible({
+     timeout: 10_000,
+   });
+ 
+   // (a) Handle visibility — each NodeView wrapper renders 3 handles
+   // (right + bottom + corner). 14 sample-blocks fixtures all non-prose
+   // → 14 right + 14 bottom + 14 corner.
+   const rightHandles = page.locator('.skb-block-nodeview .gblock-handle.right');
+   const bottomHandles = page.locator(
+     '.skb-block-nodeview .gblock-handle.bottom',
+   );
+   const cornerHandles = page.locator(
+     '.skb-block-nodeview .gblock-handle.corner',
+   );
+   await expect(rightHandles).toHaveCount(14);
+   await expect(bottomHandles).toHaveCount(14);
+   await expect(cornerHandles).toHaveCount(14);
+ 
+   // First right handle has the expected ADR-0017 D9 + cf-20d data
+   // attributes + ew-resize cursor per v2-styles.css:271.
+   const firstRight = rightHandles.first();
+   expect(await firstRight.getAttribute('data-skb-resize-axis')).toBe('right');
+   const blockId = await firstRight.getAttribute('data-skb-resize-block-id');
+   expect(blockId).toMatch(/^\d+$/);
+   const cursorComputed = await firstRight.evaluate(
+     (el) => window.getComputedStyle(el).cursor,
+   );
+   expect(cursorComputed).toBe('ew-resize');
+ 
+   // Pre-resize baseline: no resize state in DOM.
+   await expect(page.locator('.skb-block-nodeview--resizing')).toHaveCount(0);
+   await expect(page.locator('[data-skb-resize-col-ruler-anchor]')).toHaveCount(
+     0,
+   );
+   await expect(page.locator('[data-skb-row-ladder]')).toHaveCount(0);
+ 
+   await page.screenshot({ fullPage: false, path: SCREENSHOT_PATH });
+ });
+ 
+ test('cf-20d — right-edge resize commit mutates colSpan + reuses cf-20c-2 dropEpoch infrastructure (ADR-0017 D9 + D11)', async ({
+   page,
+ }) => {
+   restoreSampleBlocksFixture();
+ 
+   await page.goto('/notes/sample-blocks/edit');
+   const editor = page.locator('.ProseMirror').first();
+   await expect(editor).toBeVisible({ timeout: 15_000 });
+   await expect(editor.locator('.skb-block-nodeview').first()).toBeVisible({
+     timeout: 10_000,
+   });
+   await page.waitForTimeout(500);
+ 
+   // Capture pre-resize gridColumn (sample-blocks fixtures are all
+   // colSpan=12 → '1 / span 12').
+   const firstWrapper = page.locator('.skb-block-nodeview').first();
+@@ -193,234 +197,293 @@ test('cf-20d — right-edge resize commit mutates colSpan + reuses cf-20c-2 drop
+   // pristine baseline.
+   restoreSampleBlocksFixture();
+ });
+ 
+ test('cf-20d — resize handles hidden on mobile (≤768px) per ADR-0017 D9 view-only contract', async ({
+   page,
+ }) => {
+   // cf-20d disables resize affordances on mobile preview-mode per
+   // ADR-0017 D9 view-only contract. The CSS rule
+   // `@media (max-width: 768px) { .gblock-handle, .skb-col-ruler,
+   // .skb-row-ladder, .skb-size-tooltip { display: none } }`
+   // hides them from layout AND prevents pointerdown interaction.
+   await page.setViewportSize({ width: 375, height: 812 });
+   await page.goto('/notes/sample-blocks/edit');
+   const editor = page.locator('.ProseMirror').first();
+   await expect(editor).toBeVisible({ timeout: 15_000 });
+   await expect(editor.locator('.skb-block-nodeview').first()).toBeVisible({
+     timeout: 10_000,
+   });
+ 
+   // Right handles still exist in the React tree (NodeView doesn't
+   // conditionally render based on viewport); the CSS hides them.
+   const rightHandles = page.locator('.skb-block-nodeview .gblock-handle.right');
+   await expect(rightHandles).toHaveCount(14);
+   const firstDisplay = await rightHandles.first().evaluate(
+     (el) => window.getComputedStyle(el).display,
+   );
+   expect(firstDisplay).toBe('none');
+ 
+   // Bottom + corner handles also hidden.
+   const bottomHandles = page.locator('.skb-block-nodeview .gblock-handle.bottom');
+   const cornerHandles = page.locator('.skb-block-nodeview .gblock-handle.corner');
+   await expect(bottomHandles).toHaveCount(14);
+   await expect(cornerHandles).toHaveCount(14);
+   expect(
+     await bottomHandles.first().evaluate(
+       (el) => window.getComputedStyle(el).display,
+     ),
+   ).toBe('none');
+   expect(
+     await cornerHandles.first().evaluate(
+       (el) => window.getComputedStyle(el).display,
+     ),
+   ).toBe('none');
+ });
+ 
+ test('cf-20d R1 F1 — tablet (≤1024px, 6-col) right-edge resize uses [2, 3, 6] snaps NOT [2, 3, 4, 6, 8, 12]', async ({
+   page,
+ }) => {
+   // R1 F1 fix lock (2026-05-09): EditorShellMount.tsx now derives
+   // `viewportCols` via `useResponsiveCols`; the resize pipeline
+   // consumes `effectiveColSnaps(viewportCols)` instead of the
+   // pre-R1 hardcoded `effectiveColSnaps(12)`. Tablet viewport
+   // (768 < width ≤ 1024) → 6-col grid → snaps `[2, 3, 6]` per
+   // ADR-0016 D6 + D5.
+   //
+   // Approach: at viewport=900px (tablet range), perform a right-
+   // edge resize from colSpan=12 with a generous-leftward delta
+   // (~600px). The pre-R1 12-col snap set would have allowed
+   // colSpan=8 or 4 as snap targets; the R1 6-col snap set forces
+   // landing at one of [2, 3, 6]. Assert the post-commit gridColumn
+   // matches `1 / span (2|3|6)`.
+   restoreSampleBlocksFixture();
+ 
+   await page.setViewportSize({ width: 900, height: 1024 });
+   await page.goto('/notes/sample-blocks/edit');
+   const editor = page.locator('.ProseMirror').first();
+   await expect(editor).toBeVisible({ timeout: 15_000 });
+   await expect(editor.locator('.skb-block-nodeview').first()).toBeVisible({
+     timeout: 10_000,
+   });
+   await page.waitForTimeout(500);
+ 
+   // Verify 6-col grid is active (.skb-grid emits its --total-cols=6
+   // CSS var via the @media (max-width: 1024px) rule in grid.css).
+   const gridTotalCols = await page
+     .locator('.skb-grid')
+     .first()
+     .evaluate(
+       (el) =>
+         getComputedStyle(el).getPropertyValue('--total-cols').trim(),
+     );
+   expect(gridTotalCols).toBe('6');
+ 
+   const firstWrapper = page.locator('.skb-block-nodeview').first();
+   const wrapperBox = await firstWrapper.boundingBox();
+   if (!wrapperBox) throw new Error('first wrapper has no bounding box');
+   const rightHandle = firstWrapper.locator('.gblock-handle.right').first();
+   const handleBox = await rightHandle.boundingBox();
+   if (!handleBox) throw new Error('right handle has no bounding box');
+ 
+   const downX = handleBox.x + handleBox.width / 2;
+   const downY = handleBox.y + handleBox.height / 2;
+   // Drag well leftward — past several "would-be 12-col snap stops"
+   // — so the snap MUST land at a fitting member of [2, 3, 6] in
+   // the 6-col viewport.
+   const targetX = wrapperBox.x + wrapperBox.width * 0.4;
+   const targetY = downY;
+ 
+   await dispatchResizeGesture(
+     page,
+     rightHandle,
+     downX,
+     downY,
+     targetX,
+     targetY,
