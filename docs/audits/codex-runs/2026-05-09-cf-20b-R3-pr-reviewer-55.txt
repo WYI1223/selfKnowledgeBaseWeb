@@ -1,0 +1,1168 @@
+Reading additional input from stdin...
+OpenAI Codex v0.125.0 (research preview)
+--------
+workdir: /home/weiyi/selfKnowledgeBaseWeb
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: danger-full-access
+reasoning effort: xhigh
+reasoning summaries: none
+session id: 019e0d18-c335-7af3-a9bc-336dd165a321
+--------
+user
+Wave 6 cf-20b R3 — verdict-only verification.
+
+Branch wave-6-cf-20b-grid-layout-substrate. R2 returned FAIL with 2 findings (F1 PR.md drift + F2 structural — read-route .skb-block-static was grandchild not direct grid item). Both fixed in commit 2efa2a3 on top of 0af03a8.
+
+CONSTRAINTS PER RULE 5+6 (orchestrator-reflections):
+- DO NOT re-run pnpm check or full Playwright (ux-ui-lead reported all green)
+- DO NOT re-read ADR-0006 / aux ADRs / orchestrator-reflections
+- READ ONLY: 2efa2a3 commit content (5 source/spec files + 3 docs + 2 screenshot bytes)
+- Verdict in <6 minutes
+
+R2 F1 fix (PR.md drift): flow_a/b/c → flow: (3 renames per cf-20a R1b lesson now landed); 2 prose 'screenshot_archive: (shared/no NEW)' values → real path docs/audits/screenshots/wave-6-cf-20b-sample-blocks-grid-layout.png. Verify both via 'pnpm exec tsx scripts/check-e2e-coverage.ts --base 0af03a8' (expect 3 entries) + 'check-screenshot-archive.ts' (expect 3 paths verified).
+
+R2 F2 fix (structural read-route): apps/site/src/pages/notes/[...slug].astro:30 combined .skb-grid + .skb-prose onto single wrapper so MDX children become real grid items per ADR-0016 v0.2 D11.1. Read-route Playwright spec at apps/site/playwright/sample-blocks-grid-layout.spec.ts now adds 2 NEW structural assertions per kind: (a) parent has display: grid; (b) getBoundingClientRect() width > 90% of grid container width. Verify by reading the spec test names + the .astro wrapper.
+
+ux-ui-lead's gates: pnpm check 41/41 PASS; full apps/site Playwright 53 PASS / 14 SKIP / 0 FAIL (67 specs); check-e2e-coverage PASS (3 entries); check-screenshot-archive PASS (3 paths verified); SSR HTML grep confirms class='skb-grid skb-prose' combined wrapper.
+
+D2 trigger UNCHANGED from R1+R2: Row 1 + 4 + 5 still hit. Stage 4 PRE-COMMIT CLAUDE REVIEW fires.
+
+Static audit only on R2 fixes. ADR-0006 9-point if applicable. Verdict PASS or FAIL with line-anchored remediation. If PASS, on stage 5 you commit per ADR-0006 D8 explicit-file-list staging.
+exec
+/bin/bash -lc "sed -n '1,220p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/63976030/skills/using-superpowers/SKILL.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+---
+name: using-superpowers
+description: Use when starting any conversation - establishes how to find and use skills, requiring Skill tool invocation before ANY response including clarifying questions
+---
+
+<SUBAGENT-STOP>
+If you were dispatched as a subagent to execute a specific task, skip this skill.
+</SUBAGENT-STOP>
+
+<EXTREMELY-IMPORTANT>
+If you think there is even a 1% chance a skill might apply to what you are doing, you ABSOLUTELY MUST invoke the skill.
+
+IF A SKILL APPLIES TO YOUR TASK, YOU DO NOT HAVE A CHOICE. YOU MUST USE IT.
+
+This is not negotiable. This is not optional. You cannot rationalize your way out of this.
+</EXTREMELY-IMPORTANT>
+
+## Instruction Priority
+
+Superpowers skills override default system prompt behavior, but **user instructions always take precedence**:
+
+1. **User's explicit instructions** (CLAUDE.md, GEMINI.md, AGENTS.md, direct requests) — highest priority
+2. **Superpowers skills** — override default system behavior where they conflict
+3. **Default system prompt** — lowest priority
+
+If CLAUDE.md, GEMINI.md, or AGENTS.md says "don't use TDD" and a skill says "always use TDD," follow the user's instructions. The user is in control.
+
+## How to Access Skills
+
+**In Claude Code:** Use the `Skill` tool. When you invoke a skill, its content is loaded and presented to you—follow it directly. Never use the Read tool on skill files.
+
+**In Copilot CLI:** Use the `skill` tool. Skills are auto-discovered from installed plugins. The `skill` tool works the same as Claude Code's `Skill` tool.
+
+**In Gemini CLI:** Skills activate via the `activate_skill` tool. Gemini loads skill metadata at session start and activates the full content on demand.
+
+**In other environments:** Check your platform's documentation for how skills are loaded.
+
+## Platform Adaptation
+
+Skills use Claude Code tool names. Non-CC platforms: see `references/copilot-tools.md` (Copilot CLI), `references/codex-tools.md` (Codex) for tool equivalents. Gemini CLI users get the tool mapping loaded automatically via GEMINI.md.
+
+# Using Skills
+
+## The Rule
+
+**Invoke relevant or requested skills BEFORE any response or action.** Even a 1% chance a skill might apply means that you should invoke the skill to check. If an invoked skill turns out to be wrong for the situation, you don't need to use it.
+
+```dot
+digraph skill_flow {
+    "User message received" [shape=doublecircle];
+    "About to EnterPlanMode?" [shape=doublecircle];
+    "Already brainstormed?" [shape=diamond];
+    "Invoke brainstorming skill" [shape=box];
+    "Might any skill apply?" [shape=diamond];
+    "Invoke Skill tool" [shape=box];
+    "Announce: 'Using [skill] to [purpose]'" [shape=box];
+    "Has checklist?" [shape=diamond];
+    "Create TodoWrite todo per item" [shape=box];
+    "Follow skill exactly" [shape=box];
+    "Respond (including clarifications)" [shape=doublecircle];
+
+    "About to EnterPlanMode?" -> "Already brainstormed?";
+    "Already brainstormed?" -> "Invoke brainstorming skill" [label="no"];
+    "Already brainstormed?" -> "Might any skill apply?" [label="yes"];
+    "Invoke brainstorming skill" -> "Might any skill apply?";
+
+    "User message received" -> "Might any skill apply?";
+    "Might any skill apply?" -> "Invoke Skill tool" [label="yes, even 1%"];
+    "Might any skill apply?" -> "Respond (including clarifications)" [label="definitely not"];
+    "Invoke Skill tool" -> "Announce: 'Using [skill] to [purpose]'";
+    "Announce: 'Using [skill] to [purpose]'" -> "Has checklist?";
+    "Has checklist?" -> "Create TodoWrite todo per item" [label="yes"];
+    "Has checklist?" -> "Follow skill exactly" [label="no"];
+    "Create TodoWrite todo per item" -> "Follow skill exactly";
+}
+```
+
+## Red Flags
+
+These thoughts mean STOP—you're rationalizing:
+
+| Thought | Reality |
+|---------|---------|
+| "This is just a simple question" | Questions are tasks. Check for skills. |
+| "I need more context first" | Skill check comes BEFORE clarifying questions. |
+| "Let me explore the codebase first" | Skills tell you HOW to explore. Check first. |
+| "I can check git/files quickly" | Files lack conversation context. Check for skills. |
+| "Let me gather information first" | Skills tell you HOW to gather information. |
+| "This doesn't need a formal skill" | If a skill exists, use it. |
+| "I remember this skill" | Skills evolve. Read current version. |
+| "This doesn't count as a task" | Action = task. Check for skills. |
+| "The skill is overkill" | Simple things become complex. Use it. |
+| "I'll just do this one thing first" | Check BEFORE doing anything. |
+| "This feels productive" | Undisciplined action wastes time. Skills prevent this. |
+| "I know what that means" | Knowing the concept ≠ using the skill. Invoke it. |
+
+## Skill Priority
+
+When multiple skills could apply, use this order:
+
+1. **Process skills first** (brainstorming, debugging) - these determine HOW to approach the task
+2. **Implementation skills second** (frontend-design, mcp-builder) - these guide execution
+
+"Let's build X" → brainstorming first, then implementation skills.
+"Fix this bug" → debugging first, then domain-specific skills.
+
+## Skill Types
+
+**Rigid** (TDD, debugging): Follow exactly. Don't adapt away discipline.
+
+**Flexible** (patterns): Adapt principles to context.
+
+The skill itself tells you which.
+
+## User Instructions
+
+Instructions say WHAT, not HOW. "Add X" or "Fix Y" doesn't mean skip workflows.
+
+codex
+Using `superpowers:using-superpowers` to follow the required skill workflow. I’ll keep this to the allowed static checks: inspect commit `2efa2a3`, run only the two named verification scripts, and avoid the full gates/ADR rereads.
+exec
+/bin/bash -lc 'git show --stat --name-only --format=fuller 2efa2a3' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+commit 2efa2a38d6730c8cd7fa690908a738ce01bc97cf
+Author:     W_YI <W_YI1223@outlook.com>
+AuthorDate: Sat May 9 10:15:01 2026 -0400
+Commit:     W_YI <W_YI1223@outlook.com>
+CommitDate: Sat May 9 10:15:01 2026 -0400
+
+    Wave 6 cf-20b R2 hotfix — read-route structural grid-item fix + PR.md drift
+    
+    codex-pr-reviewer-55 R2 caught 2 findings.
+    
+    F2 (CRITICAL — STRUCTURAL): pre-R2 read-route DOM was
+    `<div class="skb-grid"><div class="skb-prose"><Content/></div></div>`
+    so MDX-emitted `.skb-block-static` wrappers were GRANDCHILDREN of
+    `.skb-grid`, not real grid items. The cf-20b inline
+    `style="grid-column: 1 / span 12"` was structurally INERT (the
+    browser still REPORTED the value via getComputedStyle because
+    computed style doesn't know about parent context — that's why the
+    cf-20b R0+R1 read-route Playwright assertion FALSE-POSITIVE PASSED).
+    ADR-0016 v0.2 D11.1 amendment claims read-route uses grid placement
+    — pre-R2 this was false.
+    
+    R2 fix path (A): combine `.skb-grid` + `.skb-prose` onto a single
+    wrapper `<div class="skb-grid skb-prose">` so MDX children become
+    direct grid items. Safe because all `.skb-prose` rules in
+    prose.css target descendants only (`.skb-prose p`, `.skb-prose
+    .b-callout`, etc.); no rule targets `.skb-prose` itself, so adding
+    it to the same element as `.skb-grid` creates no rule conflict.
+    
+    Strengthen the read-route Playwright spec with two NEW STRUCTURAL
+    assertions per kind wrapper:
+      (i) parent computed `display === 'grid'` (catches false-positive
+          class — proves grid context)
+      (ii) `getBoundingClientRect()` width > 90% of grid container
+           width (proves the colSpan=12 claim materialises in layout)
+    
+    Update grid-css.test.ts to assert the combined `<div class="skb-grid
+    skb-prose">` presence AND the absence of pre-R2 separate
+    `<div class="skb-prose">` wrapper (regression lock).
+    
+    F1 (PR.md drift):
+      - 3 e2e_smoke entries used `flow_a:` / `flow_b:` / `flow_c:` keys
+        that fail check-e2e-coverage's plain-`flow:` parser. Renamed to
+        plain `- flow:`.
+      - 2 `screenshot_archive:` entries had prose values (parenthetical
+        "shared with..." / "no NEW screenshot...") that fail
+        check-screenshot-archive's path parser. Replaced with the real
+        path `docs/audits/screenshots/wave-6-cf-20b-sample-blocks-grid-layout.png`
+        (the script dedupes by path).
+    
+    Both check-screenshot-archive + check-e2e-coverage now PASS.
+    
+    Sister-doc updates: PR.md gains D10 entry documenting F2 path-(A)
+    structural fix decision; apps/site/CONTRACT.md adds "Read-route
+    wrapper contract (Wave 6 cf-20b R2)" subsection; reflection appended
+    documenting the "computed style ≠ actual layout" bug class +
+    operational rule "all CSS Grid placement Playwright specs MUST
+    include parent display:grid + bounding-rect-width-vs-colSpan
+    dual assertion".
+    
+    Verification:
+    - pnpm check: 41/41 successful
+    - Full Playwright: 53 passed / 14 skipped / 0 failed
+    - check-screenshot-archive.ts: PASS (3 screenshots verified)
+    - check-e2e-coverage.ts: PASS (3 e2e_smoke entries verified)
+    - Lint: 9 pre-existing warnings, 0 errors
+    
+    Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+
+apps/site/CONTRACT.md
+apps/site/playwright/sample-blocks-grid-layout.spec.ts
+apps/site/src/__tests__/grid-css.test.ts
+apps/site/src/pages/notes/[...slug].astro
+docs/audits/screenshots/wave-6-cf-20a-sample-blocks-read.png
+docs/audits/screenshots/wave-6-hotfix-sample-blocks-edit-loads.png
+docs/orchestrator-reflections/2026-05-09-cf-15a-19-retrospective.md
+docs/orchestrator-reflections/README.md
+docs/plans/wave-6-main/wave-6-cf-20b-grid-layout-substrate.md
+
+exec
+/bin/bash -lc 'git show --format= --name-only 2efa2a3' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+apps/site/CONTRACT.md
+apps/site/playwright/sample-blocks-grid-layout.spec.ts
+apps/site/src/__tests__/grid-css.test.ts
+apps/site/src/pages/notes/[...slug].astro
+docs/audits/screenshots/wave-6-cf-20a-sample-blocks-read.png
+docs/audits/screenshots/wave-6-hotfix-sample-blocks-edit-loads.png
+docs/orchestrator-reflections/2026-05-09-cf-15a-19-retrospective.md
+docs/orchestrator-reflections/README.md
+docs/plans/wave-6-main/wave-6-cf-20b-grid-layout-substrate.md
+
+codex
+The commit’s changed-file list is slightly smaller than the prompt described: I see 9 changed paths, not 10, and no literal `PR.md` path in `2efa2a3`. I’m checking whether the drift lives in the wave plan doc under `docs/plans/...` before deciding if that is a blocking mismatch.
+exec
+/bin/bash -lc 'git show --stat --format=short 2efa2a3' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+commit 2efa2a38d6730c8cd7fa690908a738ce01bc97cf
+Author: W_YI <W_YI1223@outlook.com>
+
+    Wave 6 cf-20b R2 hotfix — read-route structural grid-item fix + PR.md drift
+
+ apps/site/CONTRACT.md                              |  25 +++++
+ .../playwright/sample-blocks-grid-layout.spec.ts   |  36 +++++++
+ apps/site/src/__tests__/grid-css.test.ts           |  25 +++--
+ apps/site/src/pages/notes/[...slug].astro          |  27 +++++-
+ .../wave-6-cf-20a-sample-blocks-read.png           | Bin 279551 -> 286156 bytes
+ .../wave-6-hotfix-sample-blocks-edit-loads.png     | Bin 532161 -> 532432 bytes
+ .../2026-05-09-cf-15a-19-retrospective.md          |  12 +++
+ docs/orchestrator-reflections/README.md            |   1 +
+ .../wave-6-cf-20b-grid-layout-substrate.md         | 108 +++++++++++++++++++--
+ 9 files changed, 214 insertions(+), 20 deletions(-)
+
+exec
+/bin/bash -lc 'git show --format= --find-renames --find-copies 2efa2a3 -- apps/site/src/pages/notes/[...slug].astro apps/site/playwright/sample-blocks-grid-layout.spec.ts docs/plans/wave-6-main/wave-6-cf-20b-grid-layout-substrate.md' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+diff --git a/apps/site/playwright/sample-blocks-grid-layout.spec.ts b/apps/site/playwright/sample-blocks-grid-layout.spec.ts
+index a3e313f..c9c97c8 100644
+--- a/apps/site/playwright/sample-blocks-grid-layout.spec.ts
++++ b/apps/site/playwright/sample-blocks-grid-layout.spec.ts
+@@ -194,6 +194,7 @@ test('sample-blocks read route — .skb-block-static carries grid-column derived
+     const grid = document.querySelector('.skb-grid');
+     if (!grid) return { error: 'no .skb-grid on read route' };
+     const gridCs = window.getComputedStyle(grid);
++    const gridRect = grid.getBoundingClientRect();
+ 
+     const wrapperKinds = [
+       'callout',
+@@ -211,11 +212,27 @@ test('sample-blocks read route — .skb-block-static carries grid-column derived
+       );
+       if (!el) return { kind, error: 'wrapper missing' };
+       const cs = window.getComputedStyle(el);
++      const rect = el.getBoundingClientRect();
++      // Wave 6 cf-20b R2 (2026-05-09) — STRUCTURAL grid-item assertion.
++      // Pre-R2 the read-route DOM was `<div class="skb-grid"><div
++      // class="skb-prose"><.skb-block-static.../></div></div>` so
++      // `.skb-block-static` was a GRANDCHILD of `.skb-grid`, not a
++      // direct grid item. Computed `gridColumn` style returned the
++      // inline `1 / span 12` value but it was INERT (no grid context).
++      // codex-pr-reviewer-55 R2 caught this. R2 fix: combine
++      // `.skb-grid skb-prose` onto a single wrapper so MDX children
++      // become direct grid items. This probe verifies STRUCTURALLY:
++      // (i) parent computed `display === 'grid'`; (ii) bounding-rect
++      // width matches the 12-col-span claim (≥90% of grid width).
++      const parent = el.parentElement;
++      const parentDisplay = parent ? window.getComputedStyle(parent).display : null;
+       return {
+         kind,
+         gridColumn: cs.gridColumn,
+         gridRow: cs.gridRow,
+         inlineStyle: el.getAttribute('style') ?? '',
++        parentDisplay,
++        width: rect.width,
+       };
+     });
+ 
+@@ -224,6 +241,7 @@ test('sample-blocks read route — .skb-block-static carries grid-column derived
+         display: gridCs.display,
+         gridAutoFlow: gridCs.gridAutoFlow,
+         gridTemplateColumns: gridCs.gridTemplateColumns,
++        width: gridRect.width,
+       },
+       wrappers,
+     };
+@@ -234,6 +252,7 @@ test('sample-blocks read route — .skb-block-static carries grid-column derived
+   expect(probe.grid.display).toBe('grid');
+   expect(probe.grid.gridAutoFlow).toBe('row');
+   expect(probe.grid.gridTemplateColumns.split(' ')).toHaveLength(12);
++  expect(probe.grid.width).toBeGreaterThan(100);
+ 
+   for (const w of probe.wrappers) {
+     if ('error' in w) throw new Error(`read wrapper ${w.kind}: ${w.error}`);
+@@ -247,6 +266,23 @@ test('sample-blocks read route — .skb-block-static carries grid-column derived
+     ).toMatch(/grid-column:\s*1\s*\/\s*span\s+12/);
+     expect(w.gridColumn).not.toBe('auto');
+     expect(w.gridColumn).toMatch(/(span 12|\/\s*13)/);
++    // Wave 6 cf-20b R2 — STRUCTURAL: parent must be a real grid
++    // container so the inline `gridColumn` actually places the item.
++    // Catches the cf-20b R0+R1 false-positive class where computed
++    // `gridColumn` style was set but the parent was `display: block`
++    // (.skb-prose), making the inline style inert.
++    expect(
++      w.parentDisplay,
++      `read wrapper ${w.kind} must be a real grid item (parent display: grid)`,
++    ).toBe('grid');
++    // Wave 6 cf-20b R2 — STRUCTURAL: bounding-rect width must match
++    // the colSpan=12 claim. Sample-blocks fixtures all use colSpan=12
++    // so the wrapper should occupy ~100% of the grid container width
++    // (≥ 90% with rounding/border slack).
++    expect(
++      w.width,
++      `read wrapper ${w.kind} bounding-rect width ${w.width}px must be ≥ 90% of grid width ${probe.grid.width}px (catches inert grid-column style on non-grid-item)`,
++    ).toBeGreaterThan(probe.grid.width * 0.9);
+   }
+ });
+ 
+diff --git a/apps/site/src/pages/notes/[...slug].astro b/apps/site/src/pages/notes/[...slug].astro
+index 2e3c2aa..ecece37 100644
+--- a/apps/site/src/pages/notes/[...slug].astro
++++ b/apps/site/src/pages/notes/[...slug].astro
+@@ -27,10 +27,29 @@ const componentsMap = componentBlockTag.test(note.body ?? '')
+ <BaseLayout title={note.data.title}>
+   <article>
+     <h1>{note.data.title}</h1>
+-    <div class="skb-grid">
+-      <div class="skb-prose">
+-        <Content components={componentsMap} />
+-      </div>
++    {/*
++      Wave 6 cf-20b R2 (2026-05-09) — combine `.skb-grid` and
++      `.skb-prose` onto a SINGLE wrapper so MDX-emitted children
++      (`.skb-block-static` + prose `<p>` / `<h2>`) become DIRECT
++      children of `.skb-grid` and participate in the 12-col grid
++      layout per ADR-0016 v0.2 D11.1 amendment.
++
++      Pre-cf-20b-R2 the structure was `<div class="skb-grid"><div
++      class="skb-prose"><Content/></div></div>` — `.skb-block-static`
++      ended up as a grandchild of `.skb-grid`, so its inline
++      `style="grid-column: 1 / span 12"` was inert (no grid-item
++      context). codex-pr-reviewer-55 R2 caught this structural bug.
++
++      `.skb-prose` rules are typography selectors (`.skb-prose p`,
++      `.skb-prose .b-callout`, etc.) that apply to descendants only;
++      adding `.skb-prose` to the same element as `.skb-grid` creates
++      no rule conflict with the grid layout. Verified by inspection
++      of `apps/site/src/styles/prose.css` (no rule targets `.skb-prose`
++      itself) and the cf-20b R2 grid-layout Playwright spec which
++      asserts both grid-item-ness AND `getBoundingClientRect()` width.
++    */}
++    <div class="skb-grid skb-prose">
++      <Content components={componentsMap} />
+     </div>
+   </article>
+ </BaseLayout>
+diff --git a/docs/plans/wave-6-main/wave-6-cf-20b-grid-layout-substrate.md b/docs/plans/wave-6-main/wave-6-cf-20b-grid-layout-substrate.md
+index 00183a6..7ec9ab8 100644
+--- a/docs/plans/wave-6-main/wave-6-cf-20b-grid-layout-substrate.md
++++ b/docs/plans/wave-6-main/wave-6-cf-20b-grid-layout-substrate.md
+@@ -246,7 +246,7 @@ the emitted screenshot satisfies D9.5.
+ 
+ ## e2e_smoke
+ 
+-- flow_a: `/notes/sample-blocks/edit` mount loads via the
++- flow: `/notes/sample-blocks/edit` mount loads via the
+     ApiAdapter chain (cf-18 NodeView wiring + cf-19 v0.2 wrapper
+     chrome + cf-20a chrome single source + cf-20b grid placement).
+     The outer `<GridContainer>` is `display: grid` with 12 cols; the
+@@ -269,24 +269,29 @@ the emitted screenshot satisfies D9.5.
+     - intermediate .skb-editor-content has gridColumn=1 / -1
+     - all 8 kind wrappers (.skb-block-nodeview[data-skb-block-kind=…]) have gridColumn ≠ auto, MATCHES /(span 12|\/\s*13)/, width > 90% of editor width
+ 
+-- flow_b: `/notes/sample-blocks` (read route) renders 14
++- flow: `/notes/sample-blocks` (read route) renders 14
+     `.skb-block-static` wrappers (5 light via mdx-adapter + 3 heavy
+     via Astro wrappers + multiple instances per kind from fixture).
+     Each carries inline `grid-column: 1 / span 12; grid-row: span 1`
+     style emitted at SSR time (verifiable via grep on built HTML).
+-    Outer `.skb-grid` is 12-col grid (existing C.2-3 contract).
+-    cf-20b read-route assertion locks the inline-style presence so
+-    future renders that drop the `style.gridColumn` emission fail.
++    The wrapper combines `.skb-grid` + `.skb-prose` on a single
++    element (cf-20b R2 — was 2 nested wrappers pre-R2; combination
++    makes MDX children real grid items per ADR-0016 v0.2 D11.1).
++    cf-20b R2 spec asserts both inline-style presence AND structural
++    grid-item-ness via parent `display: grid` + `getBoundingClientRect()`
++    width matching the colSpan claim.
+   target_url: /notes/sample-blocks
+   playwright_spec: apps/site/playwright/sample-blocks-grid-layout.spec.ts:"sample-blocks read route — .skb-block-static carries grid-column derived from MDX attrs"
+-  screenshot_archive: (shared with flow_a — single fullPage screenshot covers both probes since flow_b extends flow_a's coverage)
++  screenshot_archive: docs/audits/screenshots/wave-6-cf-20b-sample-blocks-grid-layout.png
+   assertions:
+     - first .skb-block-static visible within 15s
+-    - outer .skb-grid: display=grid, gridAutoFlow=row, 12 grid template columns
++    - outer .skb-grid: display=grid, gridAutoFlow=row, 12 grid template columns, width > 100px
+     - all 8 kind wrappers (.skb-block-static[data-skb-block-kind=…]) have inline style attribute matching /grid-column:\s*1\s*\/\s*span\s+12/
+     - all 8 kind wrappers have computed gridColumn ≠ auto, MATCHES /(span 12|\/\s*13)/
++    - **STRUCTURAL (cf-20b R2)**: parent of every wrapper has computed display === 'grid' (catches the cf-20b R0/R1 false-positive class where computed gridColumn was set but parent was display:block, making the inline style inert)
++    - **STRUCTURAL (cf-20b R2)**: bounding-rect width of every wrapper > 90% of grid container width (matches the colSpan=12 claim)
+ 
+-- flow_c (cf-20b R1 hotfix): `/notes/sample-blocks` at viewport
++- flow: `/notes/sample-blocks` at viewport
+     `375×812` (mobile preview path per ADR-0016 D5 + ADR-0017 D9)
+     must collapse every block wrapper to a single column regardless
+     of cf-20b's inline `style="grid-column: 1 / span 12"`. Pre-R1
+@@ -296,9 +301,9 @@ the emitted screenshot satisfies D9.5.
+     mobile-scoped `!important` rules per D9 to beat the inline
+     style + cap heavy-block placeholders + add overflow-x scroll
+     defense-in-depth.
+-  target_url: /notes/sample-blocks (at 375×812 viewport)
++  target_url: /notes/sample-blocks
+   playwright_spec: apps/site/playwright/sample-blocks-grid-layout.spec.ts:"cf-20b R1: mobile (≤768px) viewport — blocks force-fill 1-col regardless of inline grid-column"
+-  screenshot_archive: (no NEW screenshot — flow_a/b screenshot is desktop; the regression-lock test runs at narrower viewport for assertion only)
++  screenshot_archive: docs/audits/screenshots/wave-6-cf-20b-sample-blocks-grid-layout.png
+   assertions:
+     - viewport set to 375×812
+     - first .skb-block-static visible within 15s
+@@ -558,6 +563,89 @@ style; the read-route fallback rule paints full-width. The
+ mdx-bridge throw path; cf-20b's defensive `extractGridPosition`
+ covers the post-parse-defensive editor path.
+ 
++### D10 — Read-route wrapper combines `.skb-grid` + `.skb-prose` on a single element (cf-20b R2 structural fix 2026-05-09)
++
++**Trigger**: codex-pr-reviewer-55 R2 verdict on cf-20b R1. Codex's
++structural finding: pre-R2 `apps/site/src/pages/notes/[...slug].astro`
++emitted nested wrappers `<div class="skb-grid"><div class="skb-prose"><Content/></div></div>`.
++The MDX `<Content components={componentsMap}>` expansion placed
++`.skb-block-static` wrappers as children of the INNER `<div class="skb-prose">`,
++NOT the outer `.skb-grid`. So `.skb-block-static` was a GRANDCHILD
++of `.skb-grid` and **not a real grid item** — the inline
++`style="grid-column: 1 / span 12"` emitted by `mdx-adapter.ts` /
++the 3 heavy `.astro` wrappers was structurally INERT.
++
++The cf-20b R0+R1 read-route Playwright spec only asserted **computed
++`gridColumn`** style, which CAN be `1 / span 12` even when the
++element isn't a grid item (computed style ignores parent context).
++The test FALSE-POSITIVE PASSED while the actual layout was never
++gridded — same `display: contents` selector-vs-layout-tree class as
++cf-20b R0, applied at the wrong tree depth.
++
++ADR-0016 D11.1 amendment claims read-route uses grid placement.
++Pre-R2 this was false. Two fix paths considered:
++
++- **Path (A) STRUCTURAL** — make `.skb-block-static` ACTUALLY a
++  grid item. Combine the wrappers: `<div class="skb-grid skb-prose"><Content/></div>`.
++  Pre-condition: `.skb-prose` is a typography container — every
++  `.skb-prose` rule in `apps/site/src/styles/prose.css` targets a
++  DESCENDANT (`.skb-prose p`, `.skb-prose .b-callout`, etc.); no
++  rule targets `.skb-prose` itself. So adding it to the same
++  element as `.skb-grid` creates no rule conflict; the grid layout
++  applies AND prose typography cascades to children.
++
++- **Path (B) DOCUMENTATION** — amend ADR-0016 D11.1 + the read-route
++  spec to acknowledge the read route doesn't actually grid-place
++  blocks. Inline `grid-column` becomes documentation/forward-compat
++  only.
++
++cf-20b R2 picks **Path (A)** because (a) ADR-0016 D11.1 amendment
++explicitly claims read-route uses grid placement (path B would
++require an ADR back-amendment which is more disruptive than a
++1-line Astro template change); (b) cf-20c-2 drag/cf-20d resize will
++need actual grid-item context on the read-route wrappers anyway
++(future blocks may have `colSpan != 12` even on read route once
++the user can author grid layouts in the editor); (c) the structural
++fix is genuinely tiny — combining two class names on one element.
++
++**Implementation** (1 source file + 1 test file + 1 PR.md decision):
++
++1. `apps/site/src/pages/notes/[...slug].astro` — replace the nested
++   wrappers with a single `<div class="skb-grid skb-prose"><Content components={...}/></div>`.
++   The `<h1>{note.data.title}</h1>` stays OUTSIDE the wrapper (not a
++   grid item; the page heading lives in document flow).
++
++2. `apps/site/src/__tests__/grid-css.test.ts` — replace the
++   "wraps MDX content while keeping the title outside the grid"
++   test with the cf-20b R2 version that asserts the COMBINED
++   wrapper presence (`<div class="skb-grid skb-prose">`) AND
++   asserts the pre-R2 separate `<div class="skb-prose">` wrapper
++   is GONE (regression lock).
++
++3. `apps/site/playwright/sample-blocks-grid-layout.spec.ts` —
++   strengthen the read-route test with TWO new structural assertions
++   per kind wrapper: (i) parent computed `display === 'grid'`
++   (catches the cf-20b R0+R1 false-positive class — proves the
++   wrapper is actually a grid item, not just has gridColumn style);
++   (ii) bounding-rect width > 90% of grid container width (catches
++   inert grid-column style — proves the inline 1/12 span actually
++   materialises in layout).
++
++**Out-of-scope safety**: `.skb-grid` mobile responsive rules
++(cf-20b R1 hotfix `@media (max-width: 768px)`) continue to apply
++unchanged — the combined wrapper is still `.skb-grid`, the
++`!important` overrides still target the same selectors.
++
++**Test gap caught**: cf-20b R0+R1 spec asserted computed CSS only.
++A grid item that's not actually in a grid context still reports
++the inline gridColumn style verbatim (the browser doesn't know to
++"erase" the value when the parent isn't grid). The R2 fix adds
++TWO orthogonal structural assertions: (a) parent.display === 'grid'
++(proves grid context), (b) bounding-rect width matches colSpan
++claim (proves the grid context honors the placement). Either alone
++could pass on a non-grid layout; both together catch every
++real-world variant of the bug class.
++
+ ### D9 — Mobile inline-style override needs `!important` + selector list covering both wrapper depths (cf-20b R1 hotfix 2026-05-09)
+ 
+ **Trigger**: codex-pr-reviewer-55 R1 verdict on cf-20b. Probe at
+
+exec
+/bin/bash -lc 'git rev-parse --abbrev-ref HEAD' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+wave-6-cf-20b-grid-layout-substrate
+
+exec
+/bin/bash -lc 'git rev-parse HEAD && git show -s --format=%P 2efa2a3' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+2efa2a38d6730c8cd7fa690908a738ce01bc97cf
+0af03a8ec8a232177a87484691645cda7c8d7d09
+
+exec
+/bin/bash -lc 'pnpm exec tsx scripts/check-e2e-coverage.ts --base 0af03a8' in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc 'pnpm exec tsx scripts/check-screenshot-archive.ts' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 428ms:
+[check-e2e-coverage] base=0af03a8
+[check-e2e-coverage] files scanned: 9
+[check-e2e-coverage] ui_touch=true
+[check-e2e-coverage] PR.md = docs/plans/wave-6-main/wave-6-cf-20b-grid-layout-substrate.md
+[check-e2e-coverage] entry 1: flow="`/notes/sample-blocks/edit` mount loads via the"
+  OK: spec exists apps/site/playwright/sample-blocks-grid-layout.spec.ts
+[check-e2e-coverage] entry 2: flow="`/notes/sample-blocks` (read route) renders 14"
+  OK: spec exists apps/site/playwright/sample-blocks-grid-layout.spec.ts
+[check-e2e-coverage] entry 3: flow="`/notes/sample-blocks` at viewport"
+  OK: spec exists apps/site/playwright/sample-blocks-grid-layout.spec.ts
+[check-e2e-coverage] PASS (3 e2e_smoke entries verified)
+
+ succeeded in 424ms:
+[check-screenshot-archive] base=origin/main
+[check-screenshot-archive] files scanned: 37
+[check-screenshot-archive] ui_touch=true
+[check-screenshot-archive] PR.md=docs/plans/wave-6-main/wave-6-cf-20b-grid-layout-substrate.md
+[check-screenshot-archive] screenshot_archive entries: 3
+  OK: docs/audits/screenshots/wave-6-cf-20b-sample-blocks-grid-layout.png (85142 bytes)
+  OK: docs/audits/screenshots/wave-6-cf-20b-sample-blocks-grid-layout.png (85142 bytes)
+  OK: docs/audits/screenshots/wave-6-cf-20b-sample-blocks-grid-layout.png (85142 bytes)
+[check-screenshot-archive] PASS (3 screenshots verified ≥ 5120 bytes)
+
+codex
+The two permitted verifier scripts match the expected outputs: coverage found 3 `flow:` entries, and screenshot archive verified 3 paths. I’m doing the last static read of the wrapper and spec assertions at line level now.
+exec
+/bin/bash -lc "nl -ba apps/site/src/pages/notes/[...slug].astro | sed -n '24,58p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+    24	  : {};
+    25	---
+    26	
+    27	<BaseLayout title={note.data.title}>
+    28	  <article>
+    29	    <h1>{note.data.title}</h1>
+    30	    {/*
+    31	      Wave 6 cf-20b R2 (2026-05-09) — combine `.skb-grid` and
+    32	      `.skb-prose` onto a SINGLE wrapper so MDX-emitted children
+    33	      (`.skb-block-static` + prose `<p>` / `<h2>`) become DIRECT
+    34	      children of `.skb-grid` and participate in the 12-col grid
+    35	      layout per ADR-0016 v0.2 D11.1 amendment.
+    36	
+    37	      Pre-cf-20b-R2 the structure was `<div class="skb-grid"><div
+    38	      class="skb-prose"><Content/></div></div>` — `.skb-block-static`
+    39	      ended up as a grandchild of `.skb-grid`, so its inline
+    40	      `style="grid-column: 1 / span 12"` was inert (no grid-item
+    41	      context). codex-pr-reviewer-55 R2 caught this structural bug.
+    42	
+    43	      `.skb-prose` rules are typography selectors (`.skb-prose p`,
+    44	      `.skb-prose .b-callout`, etc.) that apply to descendants only;
+    45	      adding `.skb-prose` to the same element as `.skb-grid` creates
+    46	      no rule conflict with the grid layout. Verified by inspection
+    47	      of `apps/site/src/styles/prose.css` (no rule targets `.skb-prose`
+    48	      itself) and the cf-20b R2 grid-layout Playwright spec which
+    49	      asserts both grid-item-ness AND `getBoundingClientRect()` width.
+    50	    */}
+    51	    <div class="skb-grid skb-prose">
+    52	      <Content components={componentsMap} />
+    53	    </div>
+    54	  </article>
+    55	</BaseLayout>
+
+exec
+/bin/bash -lc "nl -ba apps/site/playwright/sample-blocks-grid-layout.spec.ts | sed -n '186,276p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+   186	  page,
+   187	}) => {
+   188	  await page.goto('/notes/sample-blocks');
+   189	  await expect(page.locator('.skb-block-static').first()).toBeVisible({
+   190	    timeout: 15_000,
+   191	  });
+   192	
+   193	  const probe = await page.evaluate(() => {
+   194	    const grid = document.querySelector('.skb-grid');
+   195	    if (!grid) return { error: 'no .skb-grid on read route' };
+   196	    const gridCs = window.getComputedStyle(grid);
+   197	    const gridRect = grid.getBoundingClientRect();
+   198	
+   199	    const wrapperKinds = [
+   200	      'callout',
+   201	      'componentCode',
+   202	      'image',
+   203	      'math',
+   204	      'pdf',
+   205	      'jupyter',
+   206	      'nn-viz',
+   207	      'agent-flow',
+   208	    ] as const;
+   209	    const wrappers = wrapperKinds.map((kind) => {
+   210	      const el = document.querySelector(
+   211	        `.skb-block-static[data-skb-block-kind="${kind}"]`,
+   212	      );
+   213	      if (!el) return { kind, error: 'wrapper missing' };
+   214	      const cs = window.getComputedStyle(el);
+   215	      const rect = el.getBoundingClientRect();
+   216	      // Wave 6 cf-20b R2 (2026-05-09) — STRUCTURAL grid-item assertion.
+   217	      // Pre-R2 the read-route DOM was `<div class="skb-grid"><div
+   218	      // class="skb-prose"><.skb-block-static.../></div></div>` so
+   219	      // `.skb-block-static` was a GRANDCHILD of `.skb-grid`, not a
+   220	      // direct grid item. Computed `gridColumn` style returned the
+   221	      // inline `1 / span 12` value but it was INERT (no grid context).
+   222	      // codex-pr-reviewer-55 R2 caught this. R2 fix: combine
+   223	      // `.skb-grid skb-prose` onto a single wrapper so MDX children
+   224	      // become direct grid items. This probe verifies STRUCTURALLY:
+   225	      // (i) parent computed `display === 'grid'`; (ii) bounding-rect
+   226	      // width matches the 12-col-span claim (≥90% of grid width).
+   227	      const parent = el.parentElement;
+   228	      const parentDisplay = parent ? window.getComputedStyle(parent).display : null;
+   229	      return {
+   230	        kind,
+   231	        gridColumn: cs.gridColumn,
+   232	        gridRow: cs.gridRow,
+   233	        inlineStyle: el.getAttribute('style') ?? '',
+   234	        parentDisplay,
+   235	        width: rect.width,
+   236	      };
+   237	    });
+   238	
+   239	    return {
+   240	      grid: {
+   241	        display: gridCs.display,
+   242	        gridAutoFlow: gridCs.gridAutoFlow,
+   243	        gridTemplateColumns: gridCs.gridTemplateColumns,
+   244	        width: gridRect.width,
+   245	      },
+   246	      wrappers,
+   247	    };
+   248	  });
+   249	
+   250	  if ('error' in probe) throw new Error(`grid probe failed: ${probe.error}`);
+   251	
+   252	  expect(probe.grid.display).toBe('grid');
+   253	  expect(probe.grid.gridAutoFlow).toBe('row');
+   254	  expect(probe.grid.gridTemplateColumns.split(' ')).toHaveLength(12);
+   255	  expect(probe.grid.width).toBeGreaterThan(100);
+   256	
+   257	  for (const w of probe.wrappers) {
+   258	    if ('error' in w) throw new Error(`read wrapper ${w.kind}: ${w.error}`);
+   259	    // Each wrapper MUST carry an inline grid-column style (NOT the
+   260	    // .skb-grid > *:not([style*="grid-column"]) fallback, because
+   261	    // sample-blocks MDX writes col={1} colSpan={12} explicitly per
+   262	    // ADR-0016 D7).
+   263	    expect(
+   264	      w.inlineStyle,
+   265	      `read wrapper ${w.kind} must have inline style emitted by mdx-adapter or Astro wrapper`,
+   266	    ).toMatch(/grid-column:\s*1\s*\/\s*span\s+12/);
+   267	    expect(w.gridColumn).not.toBe('auto');
+   268	    expect(w.gridColumn).toMatch(/(span 12|\/\s*13)/);
+   269	    // Wave 6 cf-20b R2 — STRUCTURAL: parent must be a real grid
+   270	    // container so the inline `gridColumn` actually places the item.
+   271	    // Catches the cf-20b R0+R1 false-positive class where computed
+   272	    // `gridColumn` style was set but the parent was `display: block`
+   273	    // (.skb-prose), making the inline style inert.
+   274	    expect(
+   275	      w.parentDisplay,
+   276	      `read wrapper ${w.kind} must be a real grid item (parent display: grid)`,
+
+exec
+/bin/bash -lc "nl -ba docs/plans/wave-6-main/wave-6-cf-20b-grid-layout-substrate.md | sed -n '246,318p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+   246	
+   247	## e2e_smoke
+   248	
+   249	- flow: `/notes/sample-blocks/edit` mount loads via the
+   250	    ApiAdapter chain (cf-18 NodeView wiring + cf-19 v0.2 wrapper
+   251	    chrome + cf-20a chrome single source + cf-20b grid placement).
+   252	    The outer `<GridContainer>` is `display: grid` with 12 cols; the
+   253	    intermediate `.skb-editor-content` div spans `grid-column: 1 / -1`;
+   254	    the inner `.ProseMirror` element is itself `display: grid` with
+   255	    12 cols; per-block NodeView wrappers `.skb-block-nodeview` carry
+   256	    inline `grid-column: 1 / span 12; grid-row: span 1` derived from
+   257	    `node.attrs.{col, colSpan, rowSpan}` via `gridPlacementStyle`.
+   258	    Sample-blocks fixtures are all colSpan=12 so visually identical
+   259	    to cf-20a; the substrate is what cf-20c-2 drag will mutate.
+   260	  target_url: /notes/sample-blocks/edit
+   261	  playwright_spec: apps/site/playwright/sample-blocks-grid-layout.spec.ts:"sample-blocks edit route — .ProseMirror is a 12-col grid + per-block grid-column applied (cf-20b D11.1 amendment)"
+   262	  screenshot_archive: docs/audits/screenshots/wave-6-cf-20b-sample-blocks-grid-layout.png
+   263	  assertions:
+   264	    - .ProseMirror visible within 15s
+   265	    - editor textContent length > 50 within 10s
+   266	    - first .skb-block-nodeview visible within 10s
+   267	    - outer .skb-grid: display=grid, gridAutoFlow=row, 12 grid template columns, width > 100px
+   268	    - inner .ProseMirror: display=grid, gridAutoFlow=row, 12 grid template columns each > 10px wide (catches cf-20b R0 zero-width-column bug), width > 100px
+   269	    - intermediate .skb-editor-content has gridColumn=1 / -1
+   270	    - all 8 kind wrappers (.skb-block-nodeview[data-skb-block-kind=…]) have gridColumn ≠ auto, MATCHES /(span 12|\/\s*13)/, width > 90% of editor width
+   271	
+   272	- flow: `/notes/sample-blocks` (read route) renders 14
+   273	    `.skb-block-static` wrappers (5 light via mdx-adapter + 3 heavy
+   274	    via Astro wrappers + multiple instances per kind from fixture).
+   275	    Each carries inline `grid-column: 1 / span 12; grid-row: span 1`
+   276	    style emitted at SSR time (verifiable via grep on built HTML).
+   277	    The wrapper combines `.skb-grid` + `.skb-prose` on a single
+   278	    element (cf-20b R2 — was 2 nested wrappers pre-R2; combination
+   279	    makes MDX children real grid items per ADR-0016 v0.2 D11.1).
+   280	    cf-20b R2 spec asserts both inline-style presence AND structural
+   281	    grid-item-ness via parent `display: grid` + `getBoundingClientRect()`
+   282	    width matching the colSpan claim.
+   283	  target_url: /notes/sample-blocks
+   284	  playwright_spec: apps/site/playwright/sample-blocks-grid-layout.spec.ts:"sample-blocks read route — .skb-block-static carries grid-column derived from MDX attrs"
+   285	  screenshot_archive: docs/audits/screenshots/wave-6-cf-20b-sample-blocks-grid-layout.png
+   286	  assertions:
+   287	    - first .skb-block-static visible within 15s
+   288	    - outer .skb-grid: display=grid, gridAutoFlow=row, 12 grid template columns, width > 100px
+   289	    - all 8 kind wrappers (.skb-block-static[data-skb-block-kind=…]) have inline style attribute matching /grid-column:\s*1\s*\/\s*span\s+12/
+   290	    - all 8 kind wrappers have computed gridColumn ≠ auto, MATCHES /(span 12|\/\s*13)/
+   291	    - **STRUCTURAL (cf-20b R2)**: parent of every wrapper has computed display === 'grid' (catches the cf-20b R0/R1 false-positive class where computed gridColumn was set but parent was display:block, making the inline style inert)
+   292	    - **STRUCTURAL (cf-20b R2)**: bounding-rect width of every wrapper > 90% of grid container width (matches the colSpan=12 claim)
+   293	
+   294	- flow: `/notes/sample-blocks` at viewport
+   295	    `375×812` (mobile preview path per ADR-0016 D5 + ADR-0017 D9)
+   296	    must collapse every block wrapper to a single column regardless
+   297	    of cf-20b's inline `style="grid-column: 1 / span 12"`. Pre-R1
+   298	    the inline style beat the existing media-query rule per CSS
+   299	    specificity, producing a 12× horizontal overflow
+   300	    (`scrollWidth=6450px` when viewport=343px). R1 hotfix adds 4
+   301	    mobile-scoped `!important` rules per D9 to beat the inline
+   302	    style + cap heavy-block placeholders + add overflow-x scroll
+   303	    defense-in-depth.
+   304	  target_url: /notes/sample-blocks
+   305	  playwright_spec: apps/site/playwright/sample-blocks-grid-layout.spec.ts:"cf-20b R1: mobile (≤768px) viewport — blocks force-fill 1-col regardless of inline grid-column"
+   306	  screenshot_archive: docs/audits/screenshots/wave-6-cf-20b-sample-blocks-grid-layout.png
+   307	  assertions:
+   308	    - viewport set to 375×812
+   309	    - first .skb-block-static visible within 15s
+   310	    - all 8 BlockKind wrappers have computed gridColumn === '1 / -1' (NOT '1 / span 12')
+   311	    - document.documentElement.scrollWidth ≤ 393px (viewport + scrollbar slack)
+   312	
+   313	## Why (user feedback)
+   314	
+   315	cf-20b is PR 2 of 9 in the locked cf-20 sequence. User directive
+   316	2026-05-09 (verbatim, dispatched as cf-20a + carried into cf-20b):
+   317	
+   318	> "全部做，不允许 defer，必须保质保量，出现问题会直接让你推翻重写。
+
+exec
+/bin/bash -lc "nl -ba apps/site/src/__tests__/grid-css.test.ts | sed -n '1,220p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	import { readFileSync } from 'node:fs';
+     2	import { dirname, resolve } from 'node:path';
+     3	import { fileURLToPath } from 'node:url';
+     4	import { describe, expect, it } from 'vitest';
+     5	
+     6	const here = dirname(fileURLToPath(import.meta.url));
+     7	
+     8	function readOptionalSource(relativePath: string): string {
+     9	  try {
+    10	    return readFileSync(resolve(here, relativePath), 'utf8');
+    11	  } catch (error) {
+    12	    if ((error as { code?: string }).code === 'ENOENT') return '';
+    13	    throw error;
+    14	  }
+    15	}
+    16	
+    17	function fromMarker(source: string, marker: string): string {
+    18	  const index = source.indexOf(marker);
+    19	  return index < 0 ? '' : source.slice(index);
+    20	}
+    21	
+    22	const gridCss = readOptionalSource('../styles/grid.css');
+    23	const baseLayout = readOptionalSource('../layouts/BaseLayout.astro');
+    24	const notesRoute = readOptionalSource('../pages/notes/[...slug].astro');
+    25	const siteContract = readOptionalSource('../../CONTRACT.md');
+    26	
+    27	describe('grid.css contract', () => {
+    28	  it('declares the desktop grid container with design-tokens-sourced row/gap + scoped --total-cols', () => {
+    29	    const gridStart = gridCss.indexOf('.skb-grid {');
+    30	    expect(gridCss).toContain('.skb-grid {');
+    31	    expect(gridCss).toContain('display: grid');
+    32	    expect(gridCss).toContain('grid-template-columns: repeat(12, minmax(0, 1fr))');
+    33	    expect(gridCss).toContain('grid-auto-rows: minmax(var(--row-h), auto)');
+    34	    expect(gridCss).toContain('gap: var(--gap)');
+    35	    // Stage C.3-1 token unification: --row-h / --gap are now sourced from
+    36	    // @skb/design-tokens :root cascade; grid.css MUST NOT redefine them locally.
+    37	    expect(gridCss).not.toMatch(/--row-h:\s*48px/);
+    38	    expect(gridCss).not.toMatch(/--gap:\s*14px/);
+    39	    // --total-cols is grid.css-local (different per breakpoint); MUST stay scoped.
+    40	    expect(gridCss.indexOf('--total-cols: 12')).toBeGreaterThan(gridStart);
+    41	  });
+    42	
+    43	  it('declares tablet, mobile, and reduced-motion media rules', () => {
+    44	    const tablet = fromMarker(gridCss, '@media (max-width: 1024px)');
+    45	    const mobile = fromMarker(gridCss, '@media (max-width: 768px)');
+    46	    const motion = fromMarker(gridCss, '@media (prefers-reduced-motion: reduce)');
+    47	    expect(gridCss).toMatch(/^@media\s*\(\s*max-width:\s*1024px\s*\)/m);
+    48	    expect(tablet).toContain('grid-template-columns: repeat(6, minmax(0, 1fr))');
+    49	    expect(tablet).toContain('--total-cols: 6');
+    50	    expect(gridCss).toMatch(/^@media\s*\(\s*max-width:\s*768px\s*\)/m);
+    51	    expect(mobile).toContain('grid-template-columns: 1fr');
+    52	    expect(mobile).toContain('.skb-grid > *');
+    53	    expect(mobile).toContain('grid-column: 1');
+    54	    expect(gridCss).toContain('prefers-reduced-motion: reduce');
+    55	    expect(motion).toContain('transition: none');
+    56	  });
+    57	
+    58	  it('uses row auto-flow without dense packing', () => {
+    59	    expect(gridCss).toContain('grid-auto-flow: row');
+    60	    expect(gridCss).not.toContain('grid-auto-flow: dense');
+    61	    expect(gridCss).not.toMatch(/\bdense\b/);
+    62	  });
+    63	
+    64	  it('emits transitional full-width fallback for unpositioned children', () => {
+    65	    // C.2-3 transitional: MDX children without explicit gridColumn span the
+    66	    // full grid width so unstyled prose stays readable. Per-block
+    67	    // `style.gridColumn` overrides via specificity. cf-20b extends this
+    68	    // fallback to the inner `.ProseMirror` grid as well so prose nodes
+    69	    // (`<p>`, `<h2>`, `<ul>`) inside the editor get full-width by default.
+    70	    // Also: grid-auto-rows must use `minmax(var(--row-h), auto)` so content
+    71	    // height drives row height (NOT clamped to 48px).
+    72	    expect(gridCss).toContain('.skb-grid > *:not([style*="grid-column"])');
+    73	    expect(gridCss).toContain('.skb-grid .ProseMirror > *:not([style*="grid-column"])');
+    74	    expect(gridCss).toMatch(/grid-column:\s*1\s*\/\s*-1/);
+    75	    expect(gridCss).toMatch(/grid-auto-rows:\s*minmax\(var\(--row-h\),\s*auto\)/);
+    76	  });
+    77	
+    78	  it('cf-20b: declares the editor-surface two-level grid (ADR-0016 v0.2 D11.1)', () => {
+    79	    // The intermediate `.skb-editor-content` div MUST span `grid-column: 1 / -1`
+    80	    // so the inner `.ProseMirror` element inherits the full outer grid width.
+    81	    expect(gridCss).toContain('.skb-grid > .skb-editor-content');
+    82	    // The inner `.ProseMirror` element MUST be itself a 12-col grid so
+    83	    // per-block NodeView wrappers `.skb-block-nodeview` (Tiptap's direct
+    84	    // children) become grid items at the correct DOM depth.
+    85	    expect(gridCss).toContain('.skb-grid .ProseMirror');
+    86	    // The inner grid uses the same template + flow rules as the outer
+    87	    // (single source of truth on grid model is at the v2 contract +
+    88	    // design-tokens; cf-20b mirrors the outer rule onto the editor).
+    89	    const proseMirrorBlock = gridCss.slice(
+    90	      gridCss.indexOf('.skb-grid .ProseMirror'),
+    91	    );
+    92	    expect(proseMirrorBlock).toContain('display: grid');
+    93	    expect(proseMirrorBlock).toContain('grid-template-columns: repeat(12, minmax(0, 1fr))');
+    94	    expect(proseMirrorBlock).toContain('grid-auto-flow: row');
+    95	    expect(proseMirrorBlock).not.toContain('grid-auto-flow: dense');
+    96	  });
+    97	});
+    98	
+    99	describe('Astro grid integration', () => {
+   100	  it('imports grid.css without removing global.css', () => {
+   101	    expect(baseLayout).toContain("import '../styles/global.css'");
+   102	    expect(baseLayout).toContain("import '../styles/grid.css'");
+   103	  });
+   104	
+   105	  it('wraps MDX content in a combined .skb-grid.skb-prose container so MDX children are direct grid items (cf-20b R2)', () => {
+   106	    // Wave 6 cf-20b R2 (2026-05-09) — pre-R2 the route used two
+   107	    // nested wrappers `<div class="skb-grid"><div class="skb-prose">
+   108	    // <Content/></div></div>` which made `.skb-block-static` a
+   109	    // GRANDCHILD of `.skb-grid` (not a real grid item; inline
+   110	    // `gridColumn` style was inert). codex-pr-reviewer-55 R2 caught
+   111	    // this. R2 fix combines the two wrappers onto a single element
+   112	    // so MDX-emitted children become direct grid items.
+   113	    const wrapperIndex = notesRoute.indexOf('<div class="skb-grid skb-prose">');
+   114	    const contentIndex = notesRoute.indexOf('<Content components={componentsMap} />');
+   115	    expect(
+   116	      wrapperIndex,
+   117	      'notes/[...slug].astro must combine .skb-grid + .skb-prose on a single element so MDX children are real grid items',
+   118	    ).toBeGreaterThanOrEqual(0);
+   119	    expect(contentIndex).toBeGreaterThan(wrapperIndex);
+   120	    expect(notesRoute.indexOf('{note.data.title}')).toBeLessThan(wrapperIndex);
+   121	    // Pre-R2 separate `<div class="skb-prose">` wrapper is gone.
+   122	    expect(
+   123	      notesRoute,
+   124	      'pre-R2 separate `<div class="skb-prose">` wrapper must be removed (combined into `.skb-grid skb-prose` per cf-20b R2)',
+   125	    ).not.toContain('<div class="skb-prose">');
+   126	  });
+   127	});
+   128	
+   129	describe('CONTRACT.md grid section', () => {
+   130	  const gridSection = fromMarker(siteContract, '## Grid layout (Wave 5)');
+   131	
+   132	  it('documents the Wave 5 selector and W5-1 forward-pointer', () => {
+   133	    expect(siteContract).toMatch(/^## Grid layout \(Wave 5\)/m);
+   134	    expect(gridSection).toContain('.skb-grid');
+   135	    expect(gridSection).toContain('W5-1');
+   136	    expect(gridSection).toContain('block-foundation/CONTRACT.md');
+   137	  });
+   138	
+   139	  it('documents the 12/6/1 breakpoints and deferred style emission', () => {
+   140	    expect(gridSection).toContain('1024px');
+   141	    expect(gridSection).toContain('768px');
+   142	    expect(gridSection).toMatch(/\b12\b/);
+   143	    expect(gridSection).toMatch(/\b6\b/);
+   144	    expect(gridSection).toMatch(/\b1\b/);
+   145	    expect(gridSection).toContain('gridColumn');
+   146	    expect(gridSection).toContain('gridRow');
+   147	  });
+   148	});
+
+exec
+/bin/bash -lc "nl -ba apps/site/playwright/sample-blocks-grid-layout.spec.ts | sed -n '274,292p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+   274	    expect(
+   275	      w.parentDisplay,
+   276	      `read wrapper ${w.kind} must be a real grid item (parent display: grid)`,
+   277	    ).toBe('grid');
+   278	    // Wave 6 cf-20b R2 — STRUCTURAL: bounding-rect width must match
+   279	    // the colSpan=12 claim. Sample-blocks fixtures all use colSpan=12
+   280	    // so the wrapper should occupy ~100% of the grid container width
+   281	    // (≥ 90% with rounding/border slack).
+   282	    expect(
+   283	      w.width,
+   284	      `read wrapper ${w.kind} bounding-rect width ${w.width}px must be ≥ 90% of grid width ${probe.grid.width}px (catches inert grid-column style on non-grid-item)`,
+   285	    ).toBeGreaterThan(probe.grid.width * 0.9);
+   286	  }
+   287	});
+   288	
+   289	test('cf-20b R1: mobile (≤768px) viewport — blocks force-fill 1-col regardless of inline grid-column', async ({
+   290	  page,
+   291	}) => {
+   292	  // Wave 6 cf-20b R1 hotfix regression lock — codex-pr-reviewer-55 R1
+
+exec
+/bin/bash -lc "sed -n '1,220p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/63976030/skills/verification-before-completion/SKILL.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+---
+name: verification-before-completion
+description: Use when about to claim work is complete, fixed, or passing, before committing or creating PRs - requires running verification commands and confirming output before making any success claims; evidence before assertions always
+---
+
+# Verification Before Completion
+
+## Overview
+
+Claiming work is complete without verification is dishonesty, not efficiency.
+
+**Core principle:** Evidence before claims, always.
+
+**Violating the letter of this rule is violating the spirit of this rule.**
+
+## The Iron Law
+
+```
+NO COMPLETION CLAIMS WITHOUT FRESH VERIFICATION EVIDENCE
+```
+
+If you haven't run the verification command in this message, you cannot claim it passes.
+
+## The Gate Function
+
+```
+BEFORE claiming any status or expressing satisfaction:
+
+1. IDENTIFY: What command proves this claim?
+2. RUN: Execute the FULL command (fresh, complete)
+3. READ: Full output, check exit code, count failures
+4. VERIFY: Does output confirm the claim?
+   - If NO: State actual status with evidence
+   - If YES: State claim WITH evidence
+5. ONLY THEN: Make the claim
+
+Skip any step = lying, not verifying
+```
+
+## Common Failures
+
+| Claim | Requires | Not Sufficient |
+|-------|----------|----------------|
+| Tests pass | Test command output: 0 failures | Previous run, "should pass" |
+| Linter clean | Linter output: 0 errors | Partial check, extrapolation |
+| Build succeeds | Build command: exit 0 | Linter passing, logs look good |
+| Bug fixed | Test original symptom: passes | Code changed, assumed fixed |
+| Regression test works | Red-green cycle verified | Test passes once |
+| Agent completed | VCS diff shows changes | Agent reports "success" |
+| Requirements met | Line-by-line checklist | Tests passing |
+
+## Red Flags - STOP
+
+- Using "should", "probably", "seems to"
+- Expressing satisfaction before verification ("Great!", "Perfect!", "Done!", etc.)
+- About to commit/push/PR without verification
+- Trusting agent success reports
+- Relying on partial verification
+- Thinking "just this once"
+- Tired and wanting work over
+- **ANY wording implying success without having run verification**
+
+## Rationalization Prevention
+
+| Excuse | Reality |
+|--------|---------|
+| "Should work now" | RUN the verification |
+| "I'm confident" | Confidence ≠ evidence |
+| "Just this once" | No exceptions |
+| "Linter passed" | Linter ≠ compiler |
+| "Agent said success" | Verify independently |
+| "I'm tired" | Exhaustion ≠ excuse |
+| "Partial check is enough" | Partial proves nothing |
+| "Different words so rule doesn't apply" | Spirit over letter |
+
+## Key Patterns
+
+**Tests:**
+```
+✅ [Run test command] [See: 34/34 pass] "All tests pass"
+❌ "Should pass now" / "Looks correct"
+```
+
+**Regression tests (TDD Red-Green):**
+```
+✅ Write → Run (pass) → Revert fix → Run (MUST FAIL) → Restore → Run (pass)
+❌ "I've written a regression test" (without red-green verification)
+```
+
+**Build:**
+```
+✅ [Run build] [See: exit 0] "Build passes"
+❌ "Linter passed" (linter doesn't check compilation)
+```
+
+**Requirements:**
+```
+✅ Re-read plan → Create checklist → Verify each → Report gaps or completion
+❌ "Tests pass, phase complete"
+```
+
+**Agent delegation:**
+```
+✅ Agent reports success → Check VCS diff → Verify changes → Report actual state
+❌ Trust agent report
+```
+
+## Why This Matters
+
+From 24 failure memories:
+- your human partner said "I don't believe you" - trust broken
+- Undefined functions shipped - would crash
+- Missing requirements shipped - incomplete features
+- Time wasted on false completion → redirect → rework
+- Violates: "Honesty is a core value. If you lie, you'll be replaced."
+
+## When To Apply
+
+**ALWAYS before:**
+- ANY variation of success/completion claims
+- ANY expression of satisfaction
+- ANY positive statement about work state
+- Committing, PR creation, task completion
+- Moving to next task
+- Delegating to agents
+
+**Rule applies to:**
+- Exact phrases
+- Paraphrases and synonyms
+- Implications of success
+- ANY communication suggesting completion/correctness
+
+## The Bottom Line
+
+**No shortcuts for verification.**
+
+Run the command. Read the output. THEN claim the result.
+
+This is non-negotiable.
+
+exec
+/bin/bash -lc "nl -ba apps/site/playwright/sample-blocks-grid-layout.spec.ts | sed -n '176,188p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+   176	    expect(w.gridColumn).toMatch(/(span 12|\/\s*13)/);
+   177	    // The wrapper width should be ~12 cells wide (within 1px tolerance
+   178	    // for sub-pixel rounding).
+   179	    expect(w.width).toBeGreaterThan(probe.editor.width * 0.9);
+   180	  }
+   181	
+   182	  await page.screenshot({ fullPage: false, path: SCREENSHOT_PATH });
+   183	});
+   184	
+   185	test('sample-blocks read route — .skb-block-static carries grid-column derived from MDX attrs', async ({
+   186	  page,
+   187	}) => {
+   188	  await page.goto('/notes/sample-blocks');
+
+exec
+/bin/bash -lc 'rg -n "SCREENSHOT_PATH|screenshot" apps/site/playwright/sample-blocks-grid-layout.spec.ts docs/plans/wave-6-main/wave-6-cf-20b-grid-layout-substrate.md' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+apps/site/playwright/sample-blocks-grid-layout.spec.ts:46:const SCREENSHOT_PATH = resolve(
+apps/site/playwright/sample-blocks-grid-layout.spec.ts:48:  '../../docs/audits/screenshots/wave-6-cf-20b-sample-blocks-grid-layout.png',
+apps/site/playwright/sample-blocks-grid-layout.spec.ts:182:  await page.screenshot({ fullPage: false, path: SCREENSHOT_PATH });
+docs/plans/wave-6-main/wave-6-cf-20b-grid-layout-substrate.md:154:    screenshot to `docs/audits/screenshots/wave-6-cf-20b-sample-blocks-grid-layout.png`.
+docs/plans/wave-6-main/wave-6-cf-20b-grid-layout-substrate.md:203:Plus 1 NEW screenshot artifact:
+docs/plans/wave-6-main/wave-6-cf-20b-grid-layout-substrate.md:204:`docs/audits/screenshots/wave-6-cf-20b-sample-blocks-grid-layout.png`
+docs/plans/wave-6-main/wave-6-cf-20b-grid-layout-substrate.md:205:(emitted by the new Playwright spec). The cf-19 hotfix screenshot +
+docs/plans/wave-6-main/wave-6-cf-20b-grid-layout-substrate.md:206:cf-20a read-route screenshot are also re-emitted with cf-20b grid
+docs/plans/wave-6-main/wave-6-cf-20b-grid-layout-substrate.md:245:the emitted screenshot satisfies D9.5.
+docs/plans/wave-6-main/wave-6-cf-20b-grid-layout-substrate.md:262:  screenshot_archive: docs/audits/screenshots/wave-6-cf-20b-sample-blocks-grid-layout.png
+docs/plans/wave-6-main/wave-6-cf-20b-grid-layout-substrate.md:285:  screenshot_archive: docs/audits/screenshots/wave-6-cf-20b-sample-blocks-grid-layout.png
+docs/plans/wave-6-main/wave-6-cf-20b-grid-layout-substrate.md:306:  screenshot_archive: docs/audits/screenshots/wave-6-cf-20b-sample-blocks-grid-layout.png
+
+codex
+PASS. No findings.
+
+Verified only the allowed R2 scope:
+- `check-e2e-coverage --base 0af03a8`: PASS, 3 `flow:` entries.
+- `check-screenshot-archive`: PASS, 3 screenshot paths verified.
+- Read-route wrapper is now a single direct grid container at [apps/site/src/pages/notes/[...slug].astro](/home/weiyi/selfKnowledgeBaseWeb/apps/site/src/pages/notes/[...slug].astro:51).
+- Read-route Playwright spec now locks parent `display: grid` and wrapper width `> 90%` of grid width at [sample-blocks-grid-layout.spec.ts](/home/weiyi/selfKnowledgeBaseWeb/apps/site/playwright/sample-blocks-grid-layout.spec.ts:274).
+- PR/plan drift is fixed: three plain `flow:` entries and all three `screenshot_archive:` values point at the real cf-20b screenshot path.
+
+I did not run `pnpm check`, full Playwright, or reread ADR/orchestrator-reflection material.
+2026-05-09T14:18:26.272897Z ERROR codex_core::session: failed to record rollout items: thread 019e0d18-c335-7af3-a9bc-336dd165a321 not found
+tokens used
+34,059
+PASS. No findings.
+
+Verified only the allowed R2 scope:
+- `check-e2e-coverage --base 0af03a8`: PASS, 3 `flow:` entries.
+- `check-screenshot-archive`: PASS, 3 screenshot paths verified.
+- Read-route wrapper is now a single direct grid container at [apps/site/src/pages/notes/[...slug].astro](/home/weiyi/selfKnowledgeBaseWeb/apps/site/src/pages/notes/[...slug].astro:51).
+- Read-route Playwright spec now locks parent `display: grid` and wrapper width `> 90%` of grid width at [sample-blocks-grid-layout.spec.ts](/home/weiyi/selfKnowledgeBaseWeb/apps/site/playwright/sample-blocks-grid-layout.spec.ts:274).
+- PR/plan drift is fixed: three plain `flow:` entries and all three `screenshot_archive:` values point at the real cf-20b screenshot path.
+
+I did not run `pnpm check`, full Playwright, or reread ADR/orchestrator-reflection material.
