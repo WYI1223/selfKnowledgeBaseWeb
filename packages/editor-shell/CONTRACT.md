@@ -540,6 +540,69 @@ Wave 5 plan v1.1 row C.2-3.5 remains the active downstream constraint for the
 resize layer: modules MUST NOT reference `_gridAttrsExplicit`, the mdx-bridge
 transitional marker removed at the hard-throw flip end-state (`b019a31`).
 
+#### Resize wire (Wave 6 cf-20d 2026-05-09)
+
+Wave 6 cf-20d composes the C.2-6 visual primitives (`ColRuler`, `SizeTooltip`)
+plus a new `RowLadder` per `/mnt/d/download/web/v2-styles.css:359-385` into
+the actual interactive resize wire. Public surface added under
+`packages/editor-shell/src/resize/`:
+
+- `resize-handles.tsx` exports `ResizeHandles({blockId, gridKind?})`. Per-block
+  presentational component that renders 3 `<div class="gblock-handle right|bottom|corner">`
+  on the `.skb-block-nodeview` wrapper per v2-styles.css:256-311. Right handle
+  is always rendered; bottom + corner are gated by `gridKind !== 'prose'` per
+  ADR-0017 D9 (defensive default `gridKind === undefined` → render-all-3 since
+  the 8 sample-blocks BlockUIDefinition entries don't currently set `gridKind`,
+  and they're all non-prose component/render/viz).
+- `use-resize-pipeline.ts` exports `useResizePipeline({editor, totalCols,
+  activeColSnaps, rowH?, gap?, onCommitSuccess?, gridSelector?})`. Lifecycle
+  owner: snapshot at pointerdown → window-level pointermove updates snap state
+  (drives ColRuler + SizeTooltip + RowLadder) → pointerup commits via Tiptap
+  `setNodeMarkup` → 2-rAF re-measure → `onCommitSuccess(blockId, liveRect)`
+  callback for the success-pulse. `setNodeMarkup` is the SOLE mutation path;
+  pointermove NEVER mutates Tiptap state per the cf-20c-2 R1 reflection rule
+  "snapshot at start, mutate at commit, NEVER mid-drag" (extended to resize).
+- `resize-context.tsx` exports `ResizeContext`, `ResizeProvider`,
+  `ResizeContextValue`, `ResizeAxis = 'right' | 'bottom' | 'corner'`. Mirrors
+  cf-20c-2's `DragDropContext` exactly — bridges per-block `<ResizeHandles>` to
+  the lifecycle owner without prop-drilling through the Tiptap NodeView
+  ReactNodeViewRenderer subtree boundary.
+- `row-ladder.tsx` exports `RowLadder({rowCount, activeRow, blockRect, rowH,
+  gap})`. Right-margin ladder visualizing row snap stops per
+  v2-styles.css:359-385. Position: `fixed` anchored to the resizing block's
+  `right` edge + 8px offset.
+- `resize-snap.ts` exports pure helpers `snapToColSpan(cursorDeltaX,
+  startColSpan, containerWidth, gap, totalCols, activeSnaps)` →
+  `{colSpan, rawColSpan}` and `snapToRowSpan(cursorDeltaY, startRowSpan, rowH,
+  gap)` → integer rowSpan ≥ 1. Round-to-nearest-snap per cf-20d D6 (NOT
+  round-up; tie-break rounds UP to honor ADR-0016 D6 Q4 default tiebreak).
+
+`ResizeHandles` is mounted inside `BlockNodeView` so each Tiptap NodeView
+emits the 3 handles. `<ResizeProvider value={...}>` MUST wrap the editor
+surface (typically nested inside cf-20c-2's `<DragDropProvider>`); the
+consumer reads `pipeline.state.{active, axis, cursor, snapColSpan,
+snapRowSpan, sourceRect}` to mount overlays during active resize.
+
+Drop-pulse reuse (cf-20d D3 + cf-20c-2 R3 dropEpoch pattern): the
+`useDragDropPipeline` return now exposes `setLastDroppedFromExternal(blockId,
+rect)` so cf-20d's `onCommitSuccess` callback routes the resize success-pulse
+through the SAME canonical "rapid-action animation isolation" infrastructure
+(atomic clear-then-set + dropEpoch increment for React-key remount). Per
+cf-20c-2 R3 reflection: dropEpoch is generic "action-succeeded pulse", not
+drag-specific.
+
+Commit-on-release semantics (cf-20d D1): per v2-styles.css:172-176
+`.gblock.resizing > .gblock-body { visibility: hidden }`, the source body is
+hidden during pointermove and the actual setNodeMarkup commits at pointerup.
+The `.skb-block-nodeview--resizing` modifier (in `BlockNodeView.css`) applies
+the v2 dashed accent outline + body-hidden treatment. Esc cancel rolls back
+without mutation per ADR-0017 D8.
+
+Mobile (≤768px) view-only path per ADR-0017 D9: ALL resize affordances hidden
+via `@media (max-width: 768px) { .gblock-handle, .skb-col-ruler, .skb-row-ladder,
+.skb-size-tooltip { display: none } }` in `resize-handles.css`. Mirrors the
+cf-20c-2 drag-handle-button.css mobile pattern.
+
 ### Responsive viewport (C.2-9)
 
 C.2-9 adds `responsive-cols.ts` as the editor-shell owner for ADR-0016 D5's

@@ -102,21 +102,15 @@ export interface PipelineDragState {
    */
   readonly lastDroppedRect: DOMRectReadOnly | null;
   /**
-   * Wave 6 cf-20c-2 R3 F2 fix (2026-05-09) — monotonic counter
-   * incremented each time `lastDroppedBlockId` is set on
-   * drag-end-success. Consumers use this as a React `key` prop on the
-   * <DropPulseAtRect> mount so the animation remounts cleanly across
-   * rapid drops (drag → drop → drag → drop within 720ms faster than
-   * the prior pulse animation completes). Without the key, React's
-   * reconciliation reuses the prior <DropPulse> instance and the
-   * 720ms keyframe doesn't restart, producing a half-faded pulse on
-   * the new landed position. With `key={dropEpoch}`, React unmounts
-   * the prior pulse + mounts a fresh one at the new rect.
-   *
-   * Operational rule landed (cf-20c-2 R3 reflection): the dropEpoch
-   * pattern is the canonical "rapid-action animation isolation"
-   * pattern. cf-20d resize will adopt the same pattern for its own
-   * resize-success pulse.
+   * Wave 6 cf-20c-2 R3 F2 — monotonic counter incremented each time
+   * `lastDroppedBlockId` is set on drag-end-success. Consumers use
+   * as a React `key` on <DropPulseAtRect> so the 720ms animation
+   * remounts cleanly across rapid drops within a single window
+   * (without the key, React reuses the instance + the keyframe
+   * doesn't restart → half-faded pulse on the new position).
+   * cf-20c-2 R3 reflection: this is the canonical "rapid-action
+   * animation isolation" pattern. cf-20d resize reuses this field
+   * via `setLastDroppedFromExternal` per cf-20d D3.
    */
   readonly dropEpoch: number;
 }
@@ -149,6 +143,18 @@ export interface UseDragDropPipelineReturn {
    * state for the next drag cycle.
    */
   readonly clearLastDropped: () => void;
+  /**
+   * Wave 6 cf-20d (2026-05-09) — external setter for the success-pulse
+   * fields. cf-20d's resize pipeline calls this via the
+   * `onCommitSuccess` callback so resize commits route through the
+   * SAME dropEpoch infrastructure as drag commits (cf-20c-2 R3
+   * "rapid-action animation isolation" pattern is generic). Per
+   * cf-20d D3 reuse decision.
+   */
+  readonly setLastDroppedFromExternal: (
+    blockId: string,
+    rect: DOMRectReadOnly,
+  ) => void;
 }
 
 const INITIAL_LAYOUT_STATE: LayoutState = {
@@ -455,6 +461,20 @@ export function useDragDropPipeline(
     setLastDroppedRect(null);
   }, []);
 
+  // Wave 6 cf-20d — external setter (resize pipeline routes the
+  // success-pulse here per cf-20d D3 dropEpoch reuse). Atomic
+  // clear-then-set + dropEpoch++ mirrors the internal R3 F2 pattern.
+  const setLastDroppedFromExternal = useCallback(
+    (blockId: string, rect: DOMRectReadOnly) => {
+      setLastDroppedBlockId(null);
+      setLastDroppedRect(null);
+      setLastDroppedBlockId(blockId);
+      setLastDroppedRect(rect);
+      setDropEpoch((prev) => prev + 1);
+    },
+    [],
+  );
+
   return {
     state: {
       active,
@@ -471,5 +491,6 @@ export function useDragDropPipeline(
     onDragStart,
     onDragEnd,
     clearLastDropped,
+    setLastDroppedFromExternal,
   };
 }

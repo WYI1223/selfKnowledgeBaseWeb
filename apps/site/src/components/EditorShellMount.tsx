@@ -1,10 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { BlockRegistry } from '@skb/block-foundation';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { BlockRegistry, effectiveColSnaps } from '@skb/block-foundation';
 import {
   ApiAdapter,
   DragDropProvider,
   DragGhost,
-  DropPulse,
   EditModeBanner,
   EditorShell,
   GridContainer,
@@ -12,6 +11,7 @@ import {
   type NoteState,
   OutlineOverlay,
   Palette,
+  ResizeProvider,
   SaveIndicator,
   SlashMenu,
   Toolbar,
@@ -22,8 +22,10 @@ import {
   type SaveIndicatorStatus,
   useDragDropPipeline,
   useEscCancel,
+  useResizePipeline,
   wireRegistry,
 } from '@skb/editor-shell';
+import { DropPulseAtRect, ResizeOverlays } from './EditorShellOverlays';
 
 export interface EditorShellMountProps {
   slug: string;
@@ -121,6 +123,66 @@ export function EditorShellMount({
       // Esc cancel path is purely keyboard. Trigger a fake dragend so
       // the pipeline cleans up its own state.
       pipeline.onDragEnd({ x: 0, y: 0 });
+    },
+  });
+
+  // Wave 6 cf-20d (2026-05-09) — resize pipeline lifecycle owner.
+  // Mirrors the cf-20c-2 drag pipeline pattern: reactive state drives
+  // <ColRuler> / <SizeTooltip> / <RowLadder> overlay mounts below;
+  // the per-block <ResizeHandles> inside each BlockNodeView body
+  // calls into the pipeline via ResizeProvider. The success-pulse on
+  // commit reuses the cf-20c-2 dropEpoch infrastructure via the
+  // `onCommitSuccess` callback wired to
+  // `pipeline.setLastDroppedFromExternal`.
+  //
+  // totalCols / activeColSnaps default to the desktop 12-col viewport
+  // baseline. cf-20d's mobile path is handled CSS-side via the
+  // resize-handles.css `@media (max-width: 768px) { display: none }`
+  // rule per ADR-0017 D9 — handles render in the React tree but are
+  // visually hidden on mobile, and any pointerdown is moot because
+  // the user can't interact with a display:none element. A
+  // useResponsiveCols-driven dynamic update (12 ↔ 1) is a future
+  // viewport-resize-during-edit polish (cf-20d ships the static-
+  // viewport baseline; the dynamic switch falls into the cf-23
+  // visual-unification pass).
+  const RESIZE_TOTAL_COLS = 12;
+  const resizeColSnaps = useMemo(
+    () => effectiveColSnaps(RESIZE_TOTAL_COLS),
+    [],
+  );
+  const onResizeCommitSuccess = useCallback(
+    (blockId: string, rect: DOMRectReadOnly) => {
+      pipeline.setLastDroppedFromExternal(blockId, rect);
+    },
+    [pipeline],
+  );
+  const resize = useResizePipeline({
+    editor,
+    totalCols: RESIZE_TOTAL_COLS,
+    activeColSnaps: resizeColSnaps,
+    onCommitSuccess: onResizeCommitSuccess,
+  });
+  const resizeContextValue = useMemo(
+    () => ({
+      onResizeStart: resize.onResizeStart,
+      onResizeEnd: resize.onResizeEnd,
+      resizingBlockId: resize.state.sourceBlockId,
+      resizingAxis: resize.state.axis,
+    }),
+    [
+      resize.onResizeStart,
+      resize.onResizeEnd,
+      resize.state.sourceBlockId,
+      resize.state.axis,
+    ],
+  );
+  // Esc cancel during active resize (per ADR-0017 D8). The resize
+  // pipeline's onResizeEnd is the cancel-equivalent (no mutation
+  // when active=true on cleanup path).
+  useEscCancel({
+    dragActive: resize.state.active,
+    onCancel: () => {
+      resize.onResizeEnd({ x: 0, y: 0 });
     },
   });
 
@@ -253,16 +315,18 @@ export function EditorShellMount({
         </div>
       )}
       <DragDropProvider value={dragContextValue}>
-        <GridContainer>
-          <Toolbar editor={editor} />
-          <EditorShell
-            extensions={wire.extensions}
-            onCreate={handleCreate}
-            onChange={handleChange}
-          />
-          <Palette editor={editor} kinds={wire.blockKinds} />
-          <SlashMenu editor={editor} kinds={wire.blockKinds} />
-        </GridContainer>
+        <ResizeProvider value={resizeContextValue}>
+          <GridContainer>
+            <Toolbar editor={editor} />
+            <EditorShell
+              extensions={wire.extensions}
+              onCreate={handleCreate}
+              onChange={handleChange}
+            />
+            <Palette editor={editor} kinds={wire.blockKinds} />
+            <SlashMenu editor={editor} kinds={wire.blockKinds} />
+          </GridContainer>
+        </ResizeProvider>
       </DragDropProvider>
       <SaveIndicator savedAt={savedAt} status={saveStatus} />
 
@@ -288,6 +352,35 @@ export function EditorShellMount({
             />
           )}
         </>
+      )}
+
+      {/*
+        Wave 6 cf-20d (2026-05-09) — resize overlay surface per
+        ADR-0017 D9. Mounts only during active resize gesture.
+        - <ColRuler>    floats above grid showing snap stops; the
+                        snapColSpan from the pipeline drives the
+                        active-stop highlight (right + corner axes).
+        - <SizeTooltip> follows cursor with fraction text (right +
+                        corner axes show colSpan fraction; bottom +
+                        corner axes also show rowSpan integer).
+        - <RowLadder>   floats to the right of the resizing block
+                        with one rung per row; the snapRowSpan drives
+                        the active-rung highlight (bottom + corner
+                        axes only).
+        Each overlay is `position: absolute|fixed; pointer-events: none`
+        so they never intercept the underlying pointermove events the
+        pipeline depends on.
+      */}
+      {resize.state.active && (
+        <ResizeOverlays
+          axis={resize.state.axis}
+          cursor={resize.state.cursor}
+          snapColSpan={resize.state.snapColSpan}
+          snapRowSpan={resize.state.snapRowSpan}
+          sourceRect={resize.state.sourceRect}
+          totalCols={RESIZE_TOTAL_COLS}
+          activeColSnaps={resizeColSnaps}
+        />
       )}
 
       {/*
@@ -333,40 +426,7 @@ export function EditorShellMount({
   );
 }
 
-/**
- * Wave 6 cf-20c-2 R1 F2 helper — render a <DropPulse> at a fixed
- * viewport rect (the landed block's bounding rect re-measured by
- * the pipeline post-mutation). Needed because DropPulse uses
- * `position: absolute; inset: 0` which expects a positioned parent;
- * the simplest way to give it one without mounting inside ProseMirror
- * is a `position: fixed` wrapper at the rect coordinates.
- *
- * Wave 6 cf-20c-2 R2 F2 (2026-05-09) — the rect now comes from
- * `pipeline.state.lastDroppedRect` (post-drop landed position),
- * NOT `pipeline.state.blockRects.get(lastDroppedBlockId)` (pre-drag
- * snapshot). See ADR-0017 D11 line 344.
- */
-function DropPulseAtRect({
-  rect,
-  onAnimationEnd,
-}: {
-  rect: DOMRectReadOnly;
-  onAnimationEnd: () => void;
-}) {
-  return (
-    <div
-      data-skb-drop-pulse-anchor
-      style={{
-        position: 'fixed',
-        left: `${rect.left}px`,
-        top: `${rect.top}px`,
-        width: `${rect.width}px`,
-        height: `${rect.height}px`,
-        pointerEvents: 'none',
-        zIndex: 50,
-      }}
-    >
-      <DropPulse onAnimationEnd={onAnimationEnd} />
-    </div>
-  );
-}
+// Helpers `DropPulseAtRect` + `ResizeOverlays` + `safeFraction`
+// extracted to ./EditorShellOverlays.tsx at cf-20d (size-check 500-line
+// hard limit). They are imported above and consumed in the JSX
+// returned by EditorShellMount.
