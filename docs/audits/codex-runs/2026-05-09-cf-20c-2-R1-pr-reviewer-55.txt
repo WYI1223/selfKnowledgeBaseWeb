@@ -1,0 +1,2000 @@
+Reading additional input from stdin...
+OpenAI Codex v0.125.0 (research preview)
+--------
+workdir: /home/weiyi/selfKnowledgeBaseWeb
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: danger-full-access
+reasoning effort: xhigh
+reasoning summaries: none
+session id: 019e0d5f-d03e-7802-87a5-4861c9a90bbd
+--------
+user
+Wave 6 cf-20c-2 R1. Branch wave-6-cf-20c-2-drag-handle-wire @ commit 3001f8c (off main 0b2cdd1). PR.md self at docs/plans/wave-6-main/wave-6-cf-20c-2-drag-handle-wire.md.
+
+CONSTRAINTS PER RULES 5+6:
+- DO NOT preemptively re-run pnpm check or full Playwright (orchestrator + ux-ui-lead pre-verified: pnpm check 41/41 PASS; full apps/site Playwright 55 PASS / 14 SKIP / 0 FAIL; editor-shell 185 tests PASS; targeted Playwright 9/9 PASS)
+- DO NOT re-read ADR-0006 / orchestrator-reflections / aux ADRs
+- READ: PR.md + 4 NEW source files (drag-handle-button.tsx + drag-context.tsx + use-drag-drop-pipeline.ts + drag-handle-button.css) + 5 MODIFIED source files + ADR-0017 D1+D6+D9+D11+D12
+- Re-run a specific gate ONLY if specific suspicion of regression
+
+Why cf-20c-2 exists: cf-20c-1 shipped applyDropMode pure algebra. cf-20c-2 wires it to actual interactive drag — drag-handle button in BlockNodeView gutter + HTML5 DnD lifecycle (Q7 spike confirmed PM doesn't intercept) + outline-overlay/drag-ghost mounts during drag + applyDropMode call at drop + ProseMirror command translation back to node attrs. Per ADR-0017 D1 6 modes; ADR-0016 D11+D12 single-source-of-truth lifecycle.
+
+Q7 spike result: HTML5 native DnD WORKS inside ProseMirror NodeView with contenteditable=false gutter. Verified via throwaway Playwright spec dispatching synthetic DragEvent on a button[draggable=true] inside .skb-block-nodeview__gutter. PM doesn't have its own dragstart handler. cf-20c-2 ships HTML5 DnD; saved ~150 LOC pointer-events fallback. Spike file deleted post-verdict per protocol.
+
+Scope (44 files):
+NEW source (4): drag-handle-button.tsx (89 LOC, button per BlockNodeView gutter); drag-context.tsx (57 LOC, React context for editor + handlers); use-drag-drop-pipeline.ts (400 LOC pipeline composing applyDropMode + edge-rects + tiebreak + outline-overlay + drag-ghost + esc-cancel + ProseMirror commands); drag-handle-button.css (81 LOC v2 .gblock-gutter button styles per v2-styles.css:230-249)
+
+MODIFY source (5): BlockNodeView.tsx (renders DragHandleButton); editor-shell index.ts barrel; package.json exports map +1; EditorShellMount.tsx pipeline wire + DragDropProvider + overlay/ghost mounts (standalone DragHandle removed); global.css drag-handle-button.css import
+
+NEW tests (2): drag-handle-button.test.tsx (127 LOC, 6 vitest cases); sample-blocks-drag-handle.spec.ts (120 LOC, 2 Playwright integration tests for real-mouse drag)
+MODIFY tests (1): c4-3-drag-handle.spec.ts re-targeted to sample-blocks/edit
+Docs (4): editor-shell CONTRACT.md (Drag/Drop layer additions + DragHandle deprecation note); apps/site CONTRACT.md (Drag/drop wire bullet); PR.md self (~750 LOC); reflection log appended; reflection README index
+
+24 auto-emitted screenshots (1 NEW + 23 re-emitted with cf-20c-2 drag handles visible in gutter)
+
+D2 trigger: Row 1 (CONTRACT.md updates: editor-shell + apps/site), Row 5 (cross-package: editor-shell helpers consumed by apps/site EditorShellMount). Stage 4 PRE-COMMIT CLAUDE REVIEW therefore fires.
+
+ux-ui-lead's gates per pre-dispatch run: pnpm check 41/41; full apps/site Playwright 55 PASS / 14 SKIP / 0 FAIL; editor-shell 185 tests; size-check 415 files under 500; lint 0 errors / 9 pre-existing warnings; check-screenshot-archive PASS (2 screenshots verified); check-e2e-coverage PASS (2 e2e_smoke entries; both flow: keys correct per cf-20a R1b lesson).
+
+Run static ADR-0006 9-point audit + 9th-class hunt focused on:
+- Q7 spike result accuracy (HTML5 DnD vs PM collision; verified by ux-ui-lead pre-dispatch)
+- applyDropMode integration correctness (pipeline calls applyDropMode at drop with correct args; reducer dispatches drag-end-success with mutation; ProseMirror command translation from snapshot back to node.attrs)
+- ADR-0016 D11+D12 single-source-of-truth lifecycle (no live-preview mid-drag mutation; baseline stays untouched until terminal drop)
+- New CSS rules in drag-handle-button.css align with v2-styles.css:230-249 .gblock-gutter button
+- Sister-doc accuracy (editor-shell + apps/site CONTRACT)
+
+Verdict PASS or FAIL with line-anchored remediation. If PASS, on stage 5 you commit per ADR-0006 D8 explicit-file-list staging.
+codex
+I’ll use `superpowers:using-superpowers` first because this session’s skill rules require it, then I’ll stay inside the files you listed and do a static review only. I’ll avoid broad gates unless the code gives a specific reason.
+exec
+/bin/bash -lc "sed -n '1,220p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/63976030/skills/using-superpowers/SKILL.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+---
+name: using-superpowers
+description: Use when starting any conversation - establishes how to find and use skills, requiring Skill tool invocation before ANY response including clarifying questions
+---
+
+<SUBAGENT-STOP>
+If you were dispatched as a subagent to execute a specific task, skip this skill.
+</SUBAGENT-STOP>
+
+<EXTREMELY-IMPORTANT>
+If you think there is even a 1% chance a skill might apply to what you are doing, you ABSOLUTELY MUST invoke the skill.
+
+IF A SKILL APPLIES TO YOUR TASK, YOU DO NOT HAVE A CHOICE. YOU MUST USE IT.
+
+This is not negotiable. This is not optional. You cannot rationalize your way out of this.
+</EXTREMELY-IMPORTANT>
+
+## Instruction Priority
+
+Superpowers skills override default system prompt behavior, but **user instructions always take precedence**:
+
+1. **User's explicit instructions** (CLAUDE.md, GEMINI.md, AGENTS.md, direct requests) — highest priority
+2. **Superpowers skills** — override default system behavior where they conflict
+3. **Default system prompt** — lowest priority
+
+If CLAUDE.md, GEMINI.md, or AGENTS.md says "don't use TDD" and a skill says "always use TDD," follow the user's instructions. The user is in control.
+
+## How to Access Skills
+
+**In Claude Code:** Use the `Skill` tool. When you invoke a skill, its content is loaded and presented to you—follow it directly. Never use the Read tool on skill files.
+
+**In Copilot CLI:** Use the `skill` tool. Skills are auto-discovered from installed plugins. The `skill` tool works the same as Claude Code's `Skill` tool.
+
+**In Gemini CLI:** Skills activate via the `activate_skill` tool. Gemini loads skill metadata at session start and activates the full content on demand.
+
+**In other environments:** Check your platform's documentation for how skills are loaded.
+
+## Platform Adaptation
+
+Skills use Claude Code tool names. Non-CC platforms: see `references/copilot-tools.md` (Copilot CLI), `references/codex-tools.md` (Codex) for tool equivalents. Gemini CLI users get the tool mapping loaded automatically via GEMINI.md.
+
+# Using Skills
+
+## The Rule
+
+**Invoke relevant or requested skills BEFORE any response or action.** Even a 1% chance a skill might apply means that you should invoke the skill to check. If an invoked skill turns out to be wrong for the situation, you don't need to use it.
+
+```dot
+digraph skill_flow {
+    "User message received" [shape=doublecircle];
+    "About to EnterPlanMode?" [shape=doublecircle];
+    "Already brainstormed?" [shape=diamond];
+    "Invoke brainstorming skill" [shape=box];
+    "Might any skill apply?" [shape=diamond];
+    "Invoke Skill tool" [shape=box];
+    "Announce: 'Using [skill] to [purpose]'" [shape=box];
+    "Has checklist?" [shape=diamond];
+    "Create TodoWrite todo per item" [shape=box];
+    "Follow skill exactly" [shape=box];
+    "Respond (including clarifications)" [shape=doublecircle];
+
+    "About to EnterPlanMode?" -> "Already brainstormed?";
+    "Already brainstormed?" -> "Invoke brainstorming skill" [label="no"];
+    "Already brainstormed?" -> "Might any skill apply?" [label="yes"];
+    "Invoke brainstorming skill" -> "Might any skill apply?";
+
+    "User message received" -> "Might any skill apply?";
+    "Might any skill apply?" -> "Invoke Skill tool" [label="yes, even 1%"];
+    "Might any skill apply?" -> "Respond (including clarifications)" [label="definitely not"];
+    "Invoke Skill tool" -> "Announce: 'Using [skill] to [purpose]'";
+    "Announce: 'Using [skill] to [purpose]'" -> "Has checklist?";
+    "Has checklist?" -> "Create TodoWrite todo per item" [label="yes"];
+    "Has checklist?" -> "Follow skill exactly" [label="no"];
+    "Create TodoWrite todo per item" -> "Follow skill exactly";
+}
+```
+
+## Red Flags
+
+These thoughts mean STOP—you're rationalizing:
+
+| Thought | Reality |
+|---------|---------|
+| "This is just a simple question" | Questions are tasks. Check for skills. |
+| "I need more context first" | Skill check comes BEFORE clarifying questions. |
+| "Let me explore the codebase first" | Skills tell you HOW to explore. Check first. |
+| "I can check git/files quickly" | Files lack conversation context. Check for skills. |
+| "Let me gather information first" | Skills tell you HOW to gather information. |
+| "This doesn't need a formal skill" | If a skill exists, use it. |
+| "I remember this skill" | Skills evolve. Read current version. |
+| "This doesn't count as a task" | Action = task. Check for skills. |
+| "The skill is overkill" | Simple things become complex. Use it. |
+| "I'll just do this one thing first" | Check BEFORE doing anything. |
+| "This feels productive" | Undisciplined action wastes time. Skills prevent this. |
+| "I know what that means" | Knowing the concept ≠ using the skill. Invoke it. |
+
+## Skill Priority
+
+When multiple skills could apply, use this order:
+
+1. **Process skills first** (brainstorming, debugging) - these determine HOW to approach the task
+2. **Implementation skills second** (frontend-design, mcp-builder) - these guide execution
+
+"Let's build X" → brainstorming first, then implementation skills.
+"Fix this bug" → debugging first, then domain-specific skills.
+
+## Skill Types
+
+**Rigid** (TDD, debugging): Follow exactly. Don't adapt away discipline.
+
+**Flexible** (patterns): Adapt principles to context.
+
+The skill itself tells you which.
+
+## User Instructions
+
+Instructions say WHAT, not HOW. "Add X" or "Fix Y" doesn't mean skip workflows.
+
+codex
+Using `superpowers:using-superpowers` to satisfy the session workflow. I’m going to inventory the exact changed files and then read only the requested PR, source, tests/contracts, and ADR-0017 sections needed for the audit.
+exec
+/bin/bash -lc 'git diff --name-status 0b2cdd1...HEAD' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+M	apps/site/CONTRACT.md
+A	apps/site/playwright/sample-blocks-drag-handle.spec.ts
+M	apps/site/playwright/visual-smoke-baseline/wave-5-c2-baseline-edit-route.png
+M	apps/site/playwright/visual-smoke-baseline/wave-5-c2-baseline-sample-blocks-astro.png
+M	apps/site/playwright/visual-smoke-baseline/wave-5-c2-baseline-sample-blocks-notes.png
+M	apps/site/src/__tests__/e2e/c4-3-drag-handle.spec.ts
+M	apps/site/src/components/EditorShellMount.tsx
+M	apps/site/src/styles/global.css
+M	docs/audits/screenshots/wave-5-c2-7-heavy-grid-dims.png
+M	docs/audits/screenshots/wave-5-c2-8-drag-modules-mount.png
+M	docs/audits/screenshots/wave-5-c2-9-responsive-fsm-mount.png
+M	docs/audits/screenshots/wave-5-c3-1-tokens-fonts.png
+M	docs/audits/screenshots/wave-5-c3-2-block-hues.png
+M	docs/audits/screenshots/wave-5-c3-3-prose.png
+M	docs/audits/screenshots/wave-5-c3-4-light-block-cal.png
+M	docs/audits/screenshots/wave-5-c3-5-baseline-diff.png
+M	docs/audits/screenshots/wave-5-c4-1-note-save-adapter.png
+M	docs/audits/screenshots/wave-5-c4-2-block-registry.png
+M	docs/audits/screenshots/wave-5-c4-3-banner.png
+M	docs/audits/screenshots/wave-5-c4-3-drag-handle.png
+M	docs/audits/screenshots/wave-5-c4-3-palette.png
+M	docs/audits/screenshots/wave-5-c4-3-save-indicator.png
+M	docs/audits/screenshots/wave-5-c4-3-slash-menu.png
+M	docs/audits/screenshots/wave-5-c4-3-toolbar.png
+M	docs/audits/screenshots/wave-5-c4-4-save-roundtrip.png
+M	docs/audits/screenshots/wave-5-c4-5-edit-flow-e2e.png
+M	docs/audits/screenshots/wave-6-cf-20a-sample-blocks-read.png
+M	docs/audits/screenshots/wave-6-cf-20b-sample-blocks-grid-layout.png
+A	docs/audits/screenshots/wave-6-cf-20c-2-drag-handle-wire.png
+M	docs/audits/screenshots/wave-6-hotfix-sample-blocks-edit-loads.png
+M	docs/audits/screenshots/wave-6-stage-b-3-read-route.png
+M	docs/audits/screenshots/wave-6-stage-b-4-edit-mount-wire.png
+M	docs/orchestrator-reflections/2026-05-09-cf-15a-19-retrospective.md
+M	docs/orchestrator-reflections/README.md
+A	docs/plans/wave-6-main/wave-6-cf-20c-2-drag-handle-wire.md
+M	packages/editor-shell/CONTRACT.md
+M	packages/editor-shell/package.json
+M	packages/editor-shell/src/BlockNodeView.tsx
+A	packages/editor-shell/src/__tests__/drag-drop/drag-handle-button.test.tsx
+A	packages/editor-shell/src/drag-drop/drag-context.tsx
+A	packages/editor-shell/src/drag-drop/drag-handle-button.css
+A	packages/editor-shell/src/drag-drop/drag-handle-button.tsx
+A	packages/editor-shell/src/drag-drop/use-drag-drop-pipeline.ts
+M	packages/editor-shell/src/index.ts
+
+exec
+/bin/bash -lc 'git status -sb' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+## wave-6-cf-20c-2-drag-handle-wire
+?? content/notes/sample-blocks/state.json
+
+exec
+/bin/bash -lc 'git rev-parse --abbrev-ref HEAD && git rev-parse HEAD && git merge-base HEAD main' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+wave-6-cf-20c-2-drag-handle-wire
+3001f8cef78b79cba6b2c8078a5955e8dec6061e
+0b2cdd12dfb2273a3dcd68ad0e2ccf1856b33e96
+
+exec
+/bin/bash -lc "rg --files | rg '("'^|/)(drag-handle-button'"\\.tsx|drag-context\\.tsx|use-drag-drop-pipeline\\.ts|drag-handle-button\\.css|BlockNodeView\\.tsx|EditorShellMount\\.tsx|CONTRACT\\.md|wave-6-cf-20c-2-drag-handle-wire\\.md|ADR-0017|c4-3-drag-handle\\.spec\\.ts|sample-blocks-drag-handle\\.spec\\.ts|drag-handle-button\\.test\\.tsx|global\\.css|package\\.json|index\\.ts)"'$'"'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+package.json
+packages/editor-shell/src/index.ts
+scripts/__tests__/fixtures/new-block/initial/packages/block-callout/ui-default/index.ts
+scripts/__tests__/fixtures/new-block/initial/packages/block-callout/package.json
+packages/editor-shell/src/BlockNodeView.tsx
+apps/site/package.json
+apps/site/CONTRACT.md
+packages/editor-toolbar/src/index.ts
+packages/kernel-adapter/CONTRACT.md
+packages/block-agent-flow/src/index.ts
+packages/kernel-registry/src/index.ts
+packages/editor-toolbar/src/ui-default/index.ts
+packages/kernel-adapter/src/index.ts
+packages/kernel-registry/package.json
+packages/kernel-registry/CONTRACT.md
+packages/block-agent-flow/src/ui-default/index.ts
+apps/site/playwright/sample-blocks-drag-handle.spec.ts
+packages/block-nn-viz/src/index.ts
+packages/kernel-adapter/package.json
+apps/api/app/CONTRACT.md
+packages/editor-toolbar/src/core/index.ts
+packages/block-agent-flow/src/core/index.ts
+packages/block-nn-viz/package.json
+packages/block-nn-viz/CONTRACT.md
+apps/api/app/llm/CONTRACT.md
+apps/api/app/ws/CONTRACT.md
+packages/block-agent-flow/package.json
+apps/site/src/styles/global.css
+packages/block-agent-flow/CONTRACT.md
+packages/block-nn-viz/src/ui-default/index.ts
+packages/mdx-bridge/CONTRACT.md
+packages/mdx-bridge/package.json
+packages/block-foundation/CONTRACT.md
+packages/block-nn-viz/src/core/index.ts
+packages/block-foundation/package.json
+packages/block-foundation/src/index.ts
+packages/editor-toolbar/package.json
+packages/editor-toolbar/CONTRACT.md
+packages/heavy-block-boundary/package.json
+packages/heavy-block-boundary/CONTRACT.md
+packages/heavy-block-boundary/src/index.ts
+packages/agent-tools/CONTRACT.md
+packages/mdx-bridge/src/index.ts
+packages/editor-shell/src/__tests__/drag-drop/drag-handle-button.test.tsx
+packages/block-callout/src/index.ts
+packages/block-math/src/index.ts
+packages/block-image/src/index.ts
+packages/block-callout/src/ui-default/index.ts
+packages/editor-shell/src/drag-drop/drag-context.tsx
+packages/editor-shell/src/drag-drop/drag-handle-button.css
+packages/editor-shell/src/drag-drop/drag-handle-button.tsx
+packages/editor-shell/src/drag-drop/use-drag-drop-pipeline.ts
+packages/block-image/src/ui-default/index.ts
+packages/block-math/src/ui-default/index.ts
+packages/kernel-pyodide/src/index.ts
+packages/block-callout/src/core/index.ts
+packages/agent-tools/package.json
+packages/editor-shell/package.json
+packages/editor-shell/CONTRACT.md
+packages/agent-tools/src/index.ts
+packages/block-math/CONTRACT.md
+packages/editor-slash-menu/src/index.ts
+packages/block-pdf/src/index.ts
+packages/block-jupyter/src/index.ts
+packages/editor-slash-menu/src/ui-default/index.ts
+packages/block-jupyter/src/ui-default/index.ts
+docs/plans/wave-6-main/wave-6-cf-20c-2-drag-handle-wire.md
+packages/block-image/src/core/index.ts
+packages/kernel-pyodide/package.json
+packages/kernel-pyodide/CONTRACT.md
+packages/block-math/src/core/index.ts
+packages/block-code/src/index.ts
+packages/block-pdf/src/ui-default/index.ts
+packages/block-code/src/ui-default/index.ts
+packages/editor-slash-menu/src/core/index.ts
+packages/block-pdf/src/core/index.ts
+packages/block-image/package.json
+packages/block-image/CONTRACT.md
+packages/block-code/src/core/index.ts
+packages/editor-drag-handle/CONTRACT.md
+packages/editor-drag-handle/package.json
+packages/editor-slash-menu/package.json
+packages/editor-slash-menu/CONTRACT.md
+packages/block-pdf/package.json
+packages/block-pdf/CONTRACT.md
+packages/block-code/package.json
+packages/block-code/CONTRACT.md
+packages/block-jupyter/package.json
+packages/block-jupyter/CONTRACT.md
+packages/editor-drag-handle/src/index.ts
+packages/design-tokens/CONTRACT.md
+packages/editor-drag-handle/src/ui-default/index.ts
+packages/design-tokens/src/index.ts
+packages/editor-drag-handle/src/core/index.ts
+packages/design-tokens/package.json
+packages/editor-commands/package.json
+packages/editor-commands/CONTRACT.md
+packages/block-callout/CONTRACT.md
+packages/editor-commands/src/index.ts
+packages/content-types/src/index.ts
+packages/block-math/package.json
+packages/block-callout/package.json
+packages/content-types/CONTRACT.md
+packages/content-types/package.json
+packages/block-jupyter/src/core/index.ts
+apps/site/src/components/EditorShellMount.tsx
+apps/site/src/__tests__/e2e/c4-3-drag-handle.spec.ts
+
+codex
+The branch is at `3001f8c` with no tracked working-tree changes; there is one untracked `content/notes/sample-blocks/state.json`, which I’ll treat as unrelated unless the audit shows otherwise. I’m now reading the implementation and contract files with line numbers so any finding can be anchored precisely.
+exec
+/bin/bash -lc "rg --files docs | rg 'ADR-0017|adr-0017|0017'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+docs/decisions/ADR-0017-drag-drop-ux.md
+docs/plans/wave-5-main/Pre-A3-adr-0017-drag-drop-ux.md
+
+exec
+/bin/bash -lc 'nl -ba packages/editor-shell/src/drag-drop/drag-handle-button.tsx' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	/**
+     2	 * @skb/editor-shell drag-handle button — per-block drag handle rendered
+     3	 * inside `.skb-block-nodeview__gutter` (gutter shell shipped in cf-19).
+     4	 *
+     5	 * Wave 6 cf-20c-2 (2026-05-09) — fills the cf-19 gutter shell with a
+     6	 * functional drag-handle button per the v2 contract at
+     7	 * `/mnt/d/download/web/v2-styles.css:241-249` (`.gblock-gutter button`
+     8	 * 22×22 with `border + cursor: grab`). The button uses HTML5 native DnD
+     9	 * (Q7 spike result: native DnD survives ProseMirror inside
+    10	 * `contenteditable=false` gutter; verified at PLAN time). The drag
+    11	 * handlers are sourced from `useDragDropPipeline()` via React context
+    12	 * (`DragDropContext`) so the button stays presentational and the
+    13	 * lifecycle owner is the editor mount.
+    14	 *
+    15	 * The button:
+    16	 *   - emits `data-skb-drag-handle` (preserved from C.4-3 spec contract;
+    17	 *     the per-block handle now owns this attribute, replacing the
+    18	 *     standalone floating `<DragHandle />` component).
+    19	 *   - sets `aria-label="Drag block"` + `cursor: grab` for accessibility
+    20	 *     baseline (cf-22 keyboard a11y will add arrow-key + Enter/Esc
+    21	 *     keymap; cf-20c-2 ships pointer-only per Q7).
+    22	 *   - dispatches `dragstart` -> `pipeline.onDragStart(blockId)` so the
+    23	 *     pipeline can snapshot the grid + mount ghost + outline overlay.
+    24	 *   - calls `event.dataTransfer.setData('application/x-skb-block-id', blockId)`
+    25	 *     and `event.dataTransfer.effectAllowed = 'move'` so the browser
+    26	 *     accepts our DnD lifecycle. The mime is private to skb editor
+    27	 *     (avoids "text/plain" pollution that other handlers might pick up).
+    28	 *   - calls `event.stopPropagation()` so Tiptap's own NodeSelection
+    29	 *     dragstart logic doesn't compete (Q7 spike confirmed PM doesn't
+    30	 *     intercept by default, but an explicit stop is defense-in-depth).
+    31	 */
+    32	import { createElement, useContext, type DragEvent, type ReactElement } from 'react';
+    33	import { DragDropContext } from './drag-context';
+    34	
+    35	export const DRAG_HANDLE_MIME = 'application/x-skb-block-id';
+    36	
+    37	export interface DragHandleButtonProps {
+    38	  /** Stable block identifier sourced from ProseMirror node `pos` (per cf-20c-2 D2). */
+    39	  readonly blockId: string;
+    40	  /** Optional label override; defaults to "Drag block" for screen readers. */
+    41	  readonly label?: string;
+    42	}
+    43	
+    44	export function DragHandleButton(props: DragHandleButtonProps): ReactElement {
+    45	  const { blockId, label = 'Drag block' } = props;
+    46	  const ctx = useContext(DragDropContext);
+    47	
+    48	  const handleDragStart = (event: DragEvent<HTMLButtonElement>): void => {
+    49	    // Stop ProseMirror from interpreting this as a NodeSelection drag.
+    50	    event.stopPropagation();
+    51	    if (event.dataTransfer) {
+    52	      try {
+    53	        event.dataTransfer.setData(DRAG_HANDLE_MIME, blockId);
+    54	        event.dataTransfer.effectAllowed = 'move';
+    55	      } catch {
+    56	        // dataTransfer.setData throws in some test environments; fall
+    57	        // through — the pipeline still gets the dragstart callback.
+    58	      }
+    59	    }
+    60	    ctx?.onDragStart(blockId, { x: event.clientX, y: event.clientY });
+    61	  };
+    62	
+    63	  const handleDragEnd = (event: DragEvent<HTMLButtonElement>): void => {
+    64	    event.stopPropagation();
+    65	    // dragEnd fires AFTER the drop event. The pipeline listens for drop
+    66	    // on the grid container and dispatches `drag-end-success` from
+    67	    // there; this handler exists to clean up the ghost / outline if
+    68	    // drop fired on a non-grid target (browser delivered dragEnd
+    69	    // without a corresponding drop, e.g. user released over the
+    70	    // browser chrome).
+    71	    ctx?.onDragEnd({ x: event.clientX, y: event.clientY });
+    72	  };
+    73	
+    74	  return createElement(
+    75	    'button',
+    76	    {
+    77	      type: 'button',
+    78	      className: 'skb-block-nodeview__drag-handle',
+    79	      'aria-label': label,
+    80	      'data-skb-drag-handle': blockId,
+    81	      draggable: true,
+    82	      onDragStart: handleDragStart,
+    83	      onDragEnd: handleDragEnd,
+    84	    },
+    85	    // v2 contract glyph: '⋮⋮' (vertical-ellipsis pair) as a textual
+    86	    // grab affordance. SVG upgrade is cf-23+ (visual unification).
+    87	    '⋮⋮',
+    88	  );
+    89	}
+
+exec
+/bin/bash -lc "nl -ba docs/plans/wave-6-main/wave-6-cf-20c-2-drag-handle-wire.md | sed -n '1,260p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	# Wave 6 cf-20c-2 — Drag-handle UI + DnD wire (per-block button + HTML5 native DnD + lifecycle pipeline)
+     2	
+     3	> Wave 6 carry-forward — composes ALL the existing drag/drop
+     4	> primitives (`drag-drop/{edge-rects,tiebreak,outline-overlay,
+     5	> drag-ghost,drop-pulse,esc-cancel,layout-reducer,apply-drop-mode}`)
+     6	> into actual interactive drag. Per-block `<DragHandleButton>` inside
+     7	> each `.skb-block-nodeview__gutter` (cf-19 shell), HTML5 native DnD
+     8	> per Q7 spike result (verified pre-implementation), `useDragDropPipeline()`
+     9	> orchestrating snapshot → edge-rects → tiebreak → applyDropMode →
+    10	> Tiptap `setNodeMarkup`. Sample-blocks fixtures verified end-to-end
+    11	> (handle visible + dragstart mounts overlay + ghost + Esc cancels;
+    12	> mobile drag handles hidden per ADR-0017 D9 view-only path).
+    13	
+    14	## title
+    15	
+    16	NEW `packages/editor-shell/src/drag-drop/drag-handle-button.tsx` (per-block
+    17	HTML5 DnD button with `data-skb-drag-handle="<blockId>"` + `aria-label`
+    18	+ stopPropagation against ProseMirror NodeSelection drag);
+    19	NEW `packages/editor-shell/src/drag-drop/drag-context.tsx` (React
+    20	context bridging button → pipeline);
+    21	NEW `packages/editor-shell/src/drag-drop/use-drag-drop-pipeline.ts`
+    22	(lifecycle owner hook composing snapshot + edge-rects + tiebreak +
+    23	applyDropMode + layoutReducer + Tiptap setNodeMarkup);
+    24	NEW `packages/editor-shell/src/drag-drop/drag-handle-button.css` (v2
+    25	contract per `/mnt/d/download/web/v2-styles.css:241-254`).
+    26	MODIFY `packages/editor-shell/src/BlockNodeView.tsx` to render the
+    27	per-block button inside the cf-19 gutter shell; sources `blockId =
+    28	String(getPos())` per cf-20c-2 D2 path A.
+    29	MODIFY `packages/editor-shell/src/index.ts` to barrel-export the new
+    30	public surface.
+    31	MODIFY `packages/editor-shell/package.json` exports map to add the
+    32	side-effect CSS export.
+    33	MODIFY `apps/site/src/components/EditorShellMount.tsx` to wire
+    34	`useDragDropPipeline()`, mount `<DragDropProvider>`, render
+    35	`<OutlineOverlay>` + `<DragGhost>` during active drag, wire
+    36	`useEscCancel`, REMOVE the obsolete cf-19 standalone `<DragHandle />`.
+    37	MODIFY `apps/site/src/styles/global.css` to import the new
+    38	`drag-handle-button.css`.
+    39	MODIFY `apps/site/src/__tests__/e2e/c4-3-drag-handle.spec.ts` to
+    40	target the per-block handles on `/notes/sample-blocks/edit` (was
+    41	asserting the standalone DragHandle on a prose-only route which has
+    42	no handles post cf-20c-2).
+    43	NEW `packages/editor-shell/src/__tests__/drag-drop/drag-handle-button.test.tsx`
+    44	(6 vitest tests covering button rendering + context dispatch + degraded
+    45	mode).
+    46	NEW `apps/site/playwright/sample-blocks-drag-handle.spec.ts` (2
+    47	integration tests: desktop drag lifecycle + mobile-hidden lock).
+    48	Update `packages/editor-shell/CONTRACT.md` Drag/Drop layer section
+    49	+ deprecate the cf-19 standalone `<DragHandle />` documentation.
+    50	Update `apps/site/CONTRACT.md` Edit route section with the cf-20c-2
+    51	drag/drop wire description.
+    52	Q7 spike result + cf-20c-2 D-decisions documented in this PR.md
+    53	Decisions section.
+    54	
+    55	## files
+    56	
+    57	12 source files (~970 LOC net add; mostly NEW pipeline + tests):
+    58	
+    59	1. `packages/editor-shell/src/drag-drop/drag-handle-button.tsx` —
+    60	   **NEW** (~85 LOC). Presentational per-block button. Uses HTML5
+    61	   native DnD via `draggable=true` + `onDragStart` / `onDragEnd`
+    62	   handlers. Sets `dataTransfer.setData(DRAG_HANDLE_MIME, blockId)`
+    63	   and `effectAllowed = 'move'`. Calls `event.stopPropagation()` to
+    64	   prevent ProseMirror NodeSelection drag from competing. Sources
+    65	   drag-start / drag-end callbacks from `DragDropContext` (consumer
+    66	   `EditorShellMount.tsx` provides via `<DragDropProvider>`).
+    67	   Glyph: text `⋮⋮` (vertical-ellipsis pair) per v2 contract.
+    68	
+    69	2. `packages/editor-shell/src/drag-drop/drag-context.tsx` — **NEW**
+    70	   (~60 LOC). React context + provider bridging the per-block button
+    71	   to the lifecycle owner. Default value `null` = degraded mode
+    72	   (button renders, callbacks no-op; useful for tests + standalone
+    73	   NodeView mounts). Exports `DragDropContext`, `DragDropProvider`,
+    74	   `DragDropContextValue`, `DragDropProviderProps`,
+    75	   `DragHandleStartOrigin`, `DragHandleEndOrigin`.
+    76	
+    77	3. `packages/editor-shell/src/drag-drop/use-drag-drop-pipeline.ts`
+    78	   — **NEW** (~250 LOC). The integration owner. On drag-start:
+    79	   `snapshotBlocks(editor)` walks the doc; `measureBlockRects` gets
+    80	   DOM rects; `computeEdgeRects` builds 4-edge geometries; dispatches
+    81	   `layoutReducer({type: 'drag-start', sourceBlockId})`. On drag-over
+    82	   (window-level listener attached when `active=true`):
+    83	   `findMatches(x, y, edgeRects, blockRects)` + `tiebreak(matches,
+    84	   velocity)` to resolve `EdgeMatch | null`. On drop: `applyDropMode`
+    85	   computes the new snapshot; iterates over diff blocks and dispatches
+    86	   Tiptap `setNodeMarkup` per changed node; dispatches `drag-end-success`
+    87	   to layoutReducer with the BlockGridPosition[] (id-stripped). On
+    88	   error / no match / drag-end without drop: rolls back via mode-none
+    89	   or cancel.
+    90	
+    91	4. `packages/editor-shell/src/drag-drop/drag-handle-button.css` —
+    92	   **NEW** (~70 LOC). v2 contract styles per `/mnt/d/download/web/v2-styles.css:241-254`:
+    93	   22×22, 1px solid border, surface bg, text-2 color, border-radius 4px,
+    94	   `cursor: grab` / `:active grabbing`, mono font 12px, `display:
+    95	   grid; place-items: center`. `pointer-events: auto` overrides cf-19
+    96	   gutter's `pointer-events: none`. Hover → panel bg + text + border-strong.
+    97	   `:focus-visible` accent ring. `@media (max-width: 768px) { display:
+    98	   none }` per ADR-0017 D9 mobile view-only path.
+    99	
+   100	5. `packages/editor-shell/src/BlockNodeView.tsx` — **MODIFY** (~25
+   101	   LOC delta). Imports `DragHandleButton` from `./drag-drop/drag-handle-button`.
+   102	   Adds `blockIdFromProps(props)` helper that returns
+   103	   `String(props.getPos())` per cf-20c-2 D2 path A (ProseMirror node
+   104	   `pos` as stable string ID within a single drag transaction). Renders
+   105	   `<DragHandleButton blockId={blockId}>` inside both the registered
+   106	   and unregistered fallback gutter shells, alongside the cf-19 chip.
+   107	   Skip rendering when blockId is empty (NodeView not yet mounted).
+   108	
+   109	6. `packages/editor-shell/src/index.ts` — **MODIFY** (+18 LOC). Adds
+   110	   barrel exports for `DragHandleButton`, `DRAG_HANDLE_MIME`,
+   111	   `DragDropContext`, `DragDropProvider`, `useDragDropPipeline` +
+   112	   types.
+   113	
+   114	7. `packages/editor-shell/package.json` — **MODIFY** (+1 LOC). Adds
+   115	   `"./drag-handle-button.css": "./src/drag-drop/drag-handle-button.css"`
+   116	   exports map entry so apps/site can `@import '@skb/editor-shell/drag-handle-button.css'`.
+   117	
+   118	8. `apps/site/src/components/EditorShellMount.tsx` — **MODIFY** (~50
+   119	   LOC delta). Imports `DragDropProvider`, `DragGhost`, `OutlineOverlay`,
+   120	   `useDragDropPipeline`, `useEscCancel` from `@skb/editor-shell`;
+   121	   removes obsolete `DragHandle` import + its render. Calls
+   122	   `useDragDropPipeline({editor})`, memoizes the `dragContextValue`,
+   123	   wraps `<GridContainer>` in `<DragDropProvider value={dragContextValue}>`.
+   124	   Calls `useEscCancel({dragActive: pipeline.state.active, onCancel:
+   125	   () => pipeline.onDragEnd({x:0,y:0})})`. After the mount JSX
+   126	   renders `<OutlineOverlay>` + `<DragGhost>` conditionally on
+   127	   `pipeline.state.active`.
+   128	
+   129	9. `apps/site/src/styles/global.css` — **MODIFY** (+7 LOC). Adds
+   130	   `@import '@skb/editor-shell/drag-handle-button.css'` after the
+   131	   existing cf-20a + cf-19 imports.
+   132	
+   133	10. `apps/site/src/__tests__/e2e/c4-3-drag-handle.spec.ts` — **MODIFY**
+   134	    (~95 LOC delta). Repurposed for per-block handles: targets
+   135	    `/notes/sample-blocks/edit` instead of `/notes/sample-mdx-note/edit`
+   136	    (the latter is prose-only, has no NodeViews, and therefore no
+   137	    per-block handles). Asserts `data-skb-drag-handle="<pos>"` matches
+   138	    `^\d+$`, `aria-label="Drag block"`, `draggable=true`. Dispatches
+   139	    `dragstart` and asserts `.skb-grid-outline-base` mounts (count=1
+   140	    rather than visible because the base is a 0×0 placeholder). Cleans
+   141	    up with `dragend`. Pre-cf-20c-2 spec was the standalone
+   142	    DragHandle assertion which is removed from `EditorShellMount.tsx`.
+   143	
+   144	11. `packages/editor-shell/src/__tests__/drag-drop/drag-handle-button.test.tsx`
+   145	    — **NEW** (~110 LOC, 6 tests). Covers button rendering
+   146	    (data-skb-drag-handle + aria-label + draggable + custom label),
+   147	    context dispatch (dragstart calls onDragStart with blockId +
+   148	    cursor origin shape; dragend calls onDragEnd with origin),
+   149	    degraded mode (no provider → button still renders + callbacks
+   150	    no-op without throwing), DRAG_HANDLE_MIME constant equality. Uses
+   151	    `expect.objectContaining` / `toHaveProperty` for cursor origin
+   152	    because happy-dom's `fireEvent.dragStart` doesn't propagate
+   153	    `clientX` / `clientY` from the EventInit dict (real browsers do;
+   154	    integration spec covers the cursor-position path).
+   155	
+   156	12. `apps/site/playwright/sample-blocks-drag-handle.spec.ts` — **NEW**
+   157	    (~120 LOC, 2 tests). Integration regression-lock at
+   158	    `/notes/sample-blocks/edit`:
+   159	    - **Desktop test**: 14 per-block handles present (one per
+   160	      NodeView wrapper); first handle has `data-skb-drag-handle`
+   161	      matching `^\d+$`, `aria-label="Drag block"`, `draggable=true`.
+   162	      Pre-drag baseline: no `.skb-grid-outline-base`, no `.drag-ghost`.
+   163	      Dispatch `dragstart` → outline base + ghost mount (proves
+   164	      pipeline.onDragStart fired via context AND
+   165	      EditorShellMount's active-render branch took effect).
+   166	      `.drag-ghost.ghost-markdown` confirms the ADR-0017 D10
+   167	      kind-className (cf-20c-2 hardcodes `kind="markdown"`; future
+   168	      PR will source from BlockKind). Esc keypress → outline + ghost
+   169	      unmount (cancel rollback per ADR-0017 D8).
+   170	    - **Mobile test** (375×812 viewport): handles still rendered in
+   171	      DOM (count=14) but each computed `display === 'none'` per the
+   172	      cf-20c-2 mobile view-only `@media (max-width: 768px)` rule;
+   173	      regression-lock per cf-20b R1 reflection's mandatory
+   174	      mobile-viewport spec rule.
+   175	
+   176	13. `packages/editor-shell/CONTRACT.md` — **MODIFY** (~30 LOC delta).
+   177	    Adds cf-20c-2 entries to the Drag/Drop layer section
+   178	    documenting `DragHandleButton` / `DragDropContext` /
+   179	    `useDragDropPipeline` public surface. Marks the cf-19 standalone
+   180	    `<DragHandle />` as DEPRECATED (still in barrel for backward-compat
+   181	    consumers; future cleanup PR will remove).
+   182	
+   183	14. `apps/site/CONTRACT.md` — **MODIFY** (~22 LOC delta). Adds a
+   184	    "Drag/drop wire (Wave 6 cf-20c-2)" bullet to the Edit route
+   185	    section describing the pipeline mount + context provider +
+   186	    overlay/ghost render + Esc cancel + per-block button + standalone
+   187	    DragHandle removal.
+   188	
+   189	15. `docs/plans/wave-6-main/wave-6-cf-20c-2-drag-handle-wire.md` —
+   190	    **NEW** (PR.md self; this file).
+   191	
+   192	Plus 1 NEW screenshot artifact:
+   193	`docs/audits/screenshots/wave-6-cf-20c-2-drag-handle-wire.png` emitted
+   194	by the new Playwright spec. cf-19/cf-20a/cf-20b screenshots are
+   195	re-emitted with cf-20c-2 drag handles visible in the gutter.
+   196	
+   197	## D2 trigger judgment
+   198	
+   199	- **Row 1 (CONTRACT.md change in N packages)** — HIT: 2 CONTRACT.md
+   200	  files modified (`@skb/editor-shell` + `apps/site`).
+   201	- **Row 2 (NEW deps)** — N/A (no new deps).
+   202	- **Row 4 (NEW ADR or amendment)** — N/A (consumes ADR-0017 D-list
+   203	  already-ratified contracts: D1 drop modes via cf-20c-1 algebra,
+   204	  D6 tiebreak, D8 Esc, D9 mobile view-only path, D10 ghost kinds,
+   205	  D11 drop-pulse, D12 epoch reducer; no new ADR needed).
+   206	- **Row 5 (cross-package: ≥ 3 packages)** — HIT: `@skb/editor-shell`
+   207	  + `apps/site` + the cf-20c-1 `applyDropMode` algebra (consumed via
+   208	  the editor-shell barrel, which is itself a cross-package consumer
+   209	  of `@skb/block-foundation` for `BlockGridPosition`).
+   210	
+   211	Per CLAUDE.md `## Review workflow` + ADR-0011 D1 stage 4 +
+   212	2026-05-09 retrospective rule "ux-ui-lead is dispatched at PLAN", **PRE-COMMIT
+   213	CLAUDE REVIEW (stage 4) fires** on Row 1 + Row 5. ux-ui-lead authored
+   214	this PLAN end-to-end. Stage 3 codex-pr-reviewer-55 review still
+   215	required.
+   216	
+   217	## ui_touch
+   218	
+   219	`true` — `packages/editor-shell/src/**` matches the ADR-0011 D9.1
+   220	path pattern (NEW `drag-handle-button.tsx` + `drag-context.tsx` +
+   221	`use-drag-drop-pipeline.ts` + `drag-handle-button.css`; MODIFY
+   222	`BlockNodeView.tsx`); `apps/site/src/**` matches as well
+   223	(`components/EditorShellMount.tsx`, `styles/global.css`, the
+   224	modified c4-3 spec, the new sample-blocks-drag-handle spec).
+   225	
+   226	The new `sample-blocks-drag-handle.spec.ts` (2 tests; desktop drag
+   227	lifecycle + mobile-hidden) satisfies the D9.2 e2e_smoke obligation;
+   228	the emitted screenshot satisfies D9.5.
+   229	
+   230	## e2e_smoke
+   231	
+   232	- flow: `/notes/sample-blocks/edit` mount loads via the
+   233	    ApiAdapter chain (cf-18 NodeView + cf-19 chrome + cf-20a single
+   234	    source + cf-20b grid + cf-20c-1 algebra + cf-20c-2 wire). Each
+   235	    of 14 NodeView wrappers renders one
+   236	    `.skb-block-nodeview__drag-handle` button inside its
+   237	    `.skb-block-nodeview__gutter` (cf-19 shell). Buttons carry
+   238	    `data-skb-drag-handle="<pos>"` (the ProseMirror node `pos` per
+   239	    cf-20c-2 D2 path A), `aria-label="Drag block"`, `draggable=true`.
+   240	    Pre-drag: no overlay, no ghost. Dispatching `dragstart` mounts
+   241	    `.skb-grid-outline-base` (overlay base layer) + `.drag-ghost.ghost-markdown`
+   242	    (cursor follower); Esc cancels and both unmount. Mobile (≤768px)
+   243	    has handles in DOM but `display: none` per ADR-0017 D9.
+   244	  target_url: /notes/sample-blocks/edit
+   245	  playwright_spec: apps/site/playwright/sample-blocks-drag-handle.spec.ts:"sample-blocks edit route — cf-20c-2 drag-handle wire (button + outline + ghost lifecycle)"
+   246	  screenshot_archive: docs/audits/screenshots/wave-6-cf-20c-2-drag-handle-wire.png
+   247	  assertions:
+   248	    - .ProseMirror visible within 15s
+   249	    - first .skb-block-nodeview visible within 10s
+   250	    - exactly 14 .skb-block-nodeview__drag-handle buttons rendered
+   251	    - first handle has data-skb-drag-handle matching /^\d+$/ AND value > 0 (cf-20c-2 D2 path A — ProseMirror node pos as block id)
+   252	    - first handle has aria-label="Drag block" + draggable="true" (a11y baseline)
+   253	    - pre-drag baseline: 0 .skb-grid-outline-base, 0 .drag-ghost
+   254	    - dispatchEvent('dragstart') → 1 .skb-grid-outline-base + 1 .drag-ghost.ghost-markdown mounted (proves pipeline.onDragStart fired via DragDropContext + EditorShellMount active-render branch)
+   255	    - Esc keypress → 0 .skb-grid-outline-base + 0 .drag-ghost (cancel rollback per ADR-0017 D8)
+   256	    - post-cancel: handles still present (count=14), editor not torn down
+   257	
+   258	- flow: `/notes/sample-blocks/edit` at viewport 375×812 — drag
+   259	    handles are rendered in DOM (count=14) but each computed
+   260	    `display === 'none'` per the cf-20c-2 mobile view-only CSS
+
+exec
+/bin/bash -lc 'nl -ba packages/editor-shell/src/drag-drop/drag-context.tsx' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	/**
+     2	 * @skb/editor-shell DragDropContext — React context bridging the
+     3	 * presentational drag-handle button (per-block, inside NodeView gutter)
+     4	 * to the lifecycle owner (`useDragDropPipeline()` mounted at the editor
+     5	 * mount level).
+     6	 *
+     7	 * Wave 6 cf-20c-2 (2026-05-09) — context plumbs the drag-start /
+     8	 * drag-end callbacks across the React tree without prop-drilling. The
+     9	 * NodeView wrapper renders inside Tiptap's `ReactNodeViewRenderer`
+    10	 * which mounts in a separate React subtree (Tiptap creates new React
+    11	 * roots for each NodeView), so prop drilling through `BlockNodeView`
+    12	 * factory args isn't an option — context is the canonical bridge.
+    13	 *
+    14	 * Why context (vs imperative `editor.commands.dragStart()`):
+    15	 *   - Per ADR-0016 D11 mutation discipline: grid attrs are passive
+    16	 *     data on NodeView; mutations flow through the layoutReducer
+    17	 *     (per ADR-0016 D12). The context interface mirrors this — only
+    18	 *     drag-start / drag-end notifications, no direct attr writes.
+    19	 *   - The pipeline owner (`EditorShellMount.tsx`) holds the
+    20	 *     `layoutReducer` state + the OutlineOverlay/DragGhost mounts;
+    21	 *     callbacks dispatch to the reducer.
+    22	 */
+    23	import { createContext, type ReactNode } from 'react';
+    24	
+    25	export interface DragHandleStartOrigin {
+    26	  readonly x: number;
+    27	  readonly y: number;
+    28	}
+    29	
+    30	export interface DragHandleEndOrigin {
+    31	  readonly x: number;
+    32	  readonly y: number;
+    33	}
+    34	
+    35	export interface DragDropContextValue {
+    36	  /** Called from the per-block drag-handle button's dragstart handler. */
+    37	  readonly onDragStart: (blockId: string, origin: DragHandleStartOrigin) => void;
+    38	  /** Called from the per-block drag-handle button's dragend handler. */
+    39	  readonly onDragEnd: (origin: DragHandleEndOrigin) => void;
+    40	}
+    41	
+    42	/**
+    43	 * Default `null` value (Provider absence). Consumers should treat null
+    44	 * as "no pipeline mounted" — drag handles render but clicks are no-ops
+    45	 * (degraded mode for tests / stand-alone NodeView mounts).
+    46	 */
+    47	export const DragDropContext = createContext<DragDropContextValue | null>(null);
+    48	
+    49	export interface DragDropProviderProps {
+    50	  readonly value: DragDropContextValue;
+    51	  readonly children?: ReactNode;
+    52	}
+    53	
+    54	export function DragDropProvider(props: DragDropProviderProps) {
+    55	  const { value, children } = props;
+    56	  return <DragDropContext.Provider value={value}>{children}</DragDropContext.Provider>;
+    57	}
+
+exec
+/bin/bash -lc "nl -ba packages/editor-shell/src/drag-drop/use-drag-drop-pipeline.ts | sed -n '1,260p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	/**
+     2	 * @skb/editor-shell useDragDropPipeline — drag/drop lifecycle owner.
+     3	 *
+     4	 * Wave 6 cf-20c-2 (2026-05-09) — composes the existing primitives
+     5	 * (snapshot, edge-rects, tiebreak, applyDropMode, layoutReducer,
+     6	 * outline-overlay, drag-ghost, drop-pulse, esc-cancel) into the actual
+     7	 * interactive drag-handle wire. The hook is the single mutation
+     8	 * pipeline per ADR-0016 D12 + ADR-0017 D12 (epoch single-source).
+     9	 *
+    10	 * Lifecycle (per ADR-0017 D-list):
+    11	 *   drag-start (per-block handle dragstart)
+    12	 *     ↓
+    13	 *     snapshotBlocks(editor) → IdentifiedBlock[] (block.id = ProseMirror node `pos` as string per cf-20c-2 D2)
+    14	 *     measureBlockRects() → Map<id, DOMRectReadOnly>
+    15	 *     computeEdgeRects(blocks) → EdgeRect[]
+    16	 *     dispatch({type: 'drag-start', sourceBlockId})
+    17	 *     mount DragGhost following cursor; mount OutlineOverlay
+    18	 *
+    19	 *   drag-over (window-level)
+    20	 *     ↓
+    21	 *     findMatches(cursor.x, cursor.y, edgeRects, blockRects) → EdgeMatch[]
+    22	 *     tiebreak(matches, velocity) → activeMatch | null
+    23	 *     setActiveMatch (drives OutlineOverlay accent rendering)
+    24	 *
+    25	 *   drop (window-level)
+    26	 *     ↓
+    27	 *     if activeMatch == null: dispatch({type: 'drag-end-mode-none'}) (rollback)
+    28	 *     else: applyDropMode({baseline, mode, sourceBlockId, hostBlockId, ...}) → snapshot
+    29	 *     for each block in snapshot whose attrs differ from current PM node attrs:
+    30	 *       editor.chain().focus().setNodeSelection(pos).updateAttributes(name, {col,row,colSpan,rowSpan}).run()
+    31	 *     dispatch({type: 'drag-end-success', mutation: snapshot})
+    32	 *     mount DropPulse on the landed block (720ms; per ADR-0017 D11)
+    33	 *
+    34	 *   esc-cancel (window keydown)
+    35	 *     ↓
+    36	 *     dispatch({type: 'drag-end-cancel'}) (rollback to S0; per ADR-0017 D8)
+    37	 *
+    38	 *   dragend with no drop (e.g. user released over browser chrome)
+    39	 *     ↓
+    40	 *     same as esc-cancel: rollback
+    41	 *
+    42	 * Block-id sourcing (cf-20c-2 D2 decision): we use ProseMirror node `pos`
+    43	 * (stable within a single doc transaction) as the block ID. Snapshot
+    44	 * captures (pos, kind, col, row, colSpan, rowSpan) at drag-start; the
+    45	 * pipeline never re-reads the doc during drag-over (would invalidate
+    46	 * pos under a transaction). At drop, we walk the doc again to map
+    47	 * snapshot positions → live positions before dispatching attr updates.
+    48	 *
+    49	 * NOT shipped at cf-20c-2 (scheduled work; explicit per
+    50	 * 2026-05-09 retrospective Rule 3):
+    51	 *   - cf-20c-2 implements `empty` mode shape but the empty grid hit-
+    52	 *     test is deferred to cf-20c-3 (no current empty-grid surface to
+    53	 *     drop into; sample-blocks fixtures all use full-width blocks).
+    54	 *     Pipeline emits `drag-end-mode-none` when `tiebreak` returns null.
+    55	 *   - Touch device support (cf-22 a11y or separate cf-25)
+    56	 *   - Resize handles (cf-20d) — separate gutter affordance
+    57	 *   - Kebab menu (cf-20e) — separate gutter affordance
+    58	 */
+    59	import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
+    60	import type { Editor } from '@tiptap/core';
+    61	import { applyDropMode, type GridSnapshotIdentified, type IdentifiedBlock } from './apply-drop-mode';
+    62	import { computeEdgeRects, type BlockLayout, type EdgeRect } from './edge-rects';
+    63	import { findMatches, tiebreak, type EdgeMatch } from './tiebreak';
+    64	import { layoutReducer, type LayoutState } from './layout-reducer';
+    65	
+    66	const VELOCITY_WINDOW_MS = 16;
+    67	
+    68	export interface PipelineDragState {
+    69	  /** True from drag-start until drag-end (success / cancel / mode-none). */
+    70	  readonly active: boolean;
+    71	  /** Per-block id → bounding rect snapshot taken at drag-start. */
+    72	  readonly blockRects: Map<string, DOMRectReadOnly>;
+    73	  /** Pre-computed 4-edge rects per block (snapshotted at drag-start). */
+    74	  readonly edgeRects: readonly EdgeRect[];
+    75	  /** Currently-resolved drop target (from `tiebreak`). null = no match. */
+    76	  readonly activeMatch: EdgeMatch | null;
+    77	  /** Cursor position (for DragGhost following). */
+    78	  readonly cursor: { readonly x: number; readonly y: number } | null;
+    79	  /** Source block being dragged (set at drag-start). */
+    80	  readonly sourceBlockId: string | null;
+    81	  /** Block ID that received the most recent drop (for DropPulse). */
+    82	  readonly lastDroppedBlockId: string | null;
+    83	}
+    84	
+    85	export interface UseDragDropPipelineOptions {
+    86	  /** The Tiptap editor instance; null until onCreate fires. */
+    87	  readonly editor: Editor | null;
+    88	  /**
+    89	   * Selector for the grid container element that holds the .ProseMirror.
+    90	   * Defaults to '.skb-grid'. The pipeline attaches dragover / drop
+    91	   * listeners here.
+    92	   */
+    93	  readonly gridSelector?: string;
+    94	}
+    95	
+    96	export interface UseDragDropPipelineReturn {
+    97	  /** Reactive drag state for OutlineOverlay / DragGhost / DropPulse mounts. */
+    98	  readonly state: PipelineDragState;
+    99	  /** Layout state (epoch + baseline + snapshot). Externalised for tests. */
+   100	  readonly layoutState: LayoutState;
+   101	  /** Bound to the per-block drag-handle button via DragDropContext. */
+   102	  readonly onDragStart: (blockId: string, origin: { x: number; y: number }) => void;
+   103	  /** Bound to the per-block drag-handle button's dragend (cleanup fallback). */
+   104	  readonly onDragEnd: (origin: { x: number; y: number }) => void;
+   105	}
+   106	
+   107	interface SerializedBlock extends IdentifiedBlock {
+   108	  readonly pmPos: number;
+   109	  readonly nodeName: string;
+   110	}
+   111	
+   112	const INITIAL_LAYOUT_STATE: LayoutState = {
+   113	  epoch: 0,
+   114	  snapshot: null,
+   115	  baseline: { blocks: [] },
+   116	};
+   117	
+   118	/**
+   119	 * Walk the editor doc and return one IdentifiedBlock per `.skb-block-nodeview`
+   120	 * NodeView. Block id = ProseMirror node `pos` as string. Used at
+   121	 * drag-start to populate the snapshot; never re-called during
+   122	 * drag-over (snapshot semantics per ADR-0017 D6 lift mode).
+   123	 */
+   124	function snapshotBlocks(editor: Editor): SerializedBlock[] {
+   125	  const blocks: SerializedBlock[] = [];
+   126	  editor.state.doc.descendants((node, pos) => {
+   127	    const isBlockNode = node.type.spec['group']?.toString().includes('block') ?? false;
+   128	    if (!isBlockNode || !node.attrs) return undefined;
+   129	    // Filter to NodeView blocks only (skip prose paragraphs etc.).
+   130	    const colAttr: unknown = node.attrs['col'];
+   131	    if (typeof colAttr !== 'number') return undefined;
+   132	    const rowAttr: unknown = node.attrs['row'];
+   133	    blocks.push({
+   134	      id: String(pos),
+   135	      pmPos: pos,
+   136	      nodeName: node.type.name,
+   137	      col: colAttr,
+   138	      ...(typeof rowAttr === 'number' && { row: rowAttr }),
+   139	      colSpan: node.attrs['colSpan'] as number,
+   140	      rowSpan: (node.attrs['rowSpan'] as number | 'auto') ?? 1,
+   141	    });
+   142	    return false; // Don't descend into block nodes.
+   143	  });
+   144	  return blocks;
+   145	}
+   146	
+   147	/**
+   148	 * Measure DOM bounding rects for every snapshot block. Selector pattern
+   149	 * `.skb-block-nodeview` is the editor-mount path (cf-19); we look up
+   150	 * the wrapper for each snapshot block by walking the editor's DOM.
+   151	 */
+   152	function measureBlockRects(
+   153	  editor: Editor,
+   154	  blocks: readonly SerializedBlock[],
+   155	): Map<string, DOMRectReadOnly> {
+   156	  const rects = new Map<string, DOMRectReadOnly>();
+   157	  const editorEl = editor.view.dom;
+   158	  for (const block of blocks) {
+   159	    const node = editor.view.nodeDOM(block.pmPos);
+   160	    const el = node instanceof HTMLElement ? node : null;
+   161	    if (el) {
+   162	      rects.set(block.id, el.getBoundingClientRect());
+   163	    } else {
+   164	      // Fallback: scan for matching kind under editor DOM root.
+   165	      const fallback = editorEl.querySelector(
+   166	        `.skb-block-nodeview[data-skb-block-kind="${block.nodeName}"]`,
+   167	      );
+   168	      if (fallback instanceof HTMLElement) {
+   169	        rects.set(block.id, fallback.getBoundingClientRect());
+   170	      }
+   171	    }
+   172	  }
+   173	  return rects;
+   174	}
+   175	
+   176	/**
+   177	 * Translate snapshot id → live pmPos at drop-time. The snapshot id IS
+   178	 * the pmPos string at drag-start; positions may shift if an external
+   179	 * transaction mutated the doc during drag (rare but possible). We
+   180	 * walk the live doc and match by (nodeName + original pmPos) as a
+   181	 * best-effort; if a block can't be located, skip its attr update.
+   182	 */
+   183	function liveBlockPositions(
+   184	  editor: Editor,
+   185	  snapshot: readonly SerializedBlock[],
+   186	): Map<string, { pos: number; nodeName: string }> {
+   187	  const map = new Map<string, { pos: number; nodeName: string }>();
+   188	  const liveBlocks: Array<{ pos: number; nodeName: string }> = [];
+   189	  editor.state.doc.descendants((node, pos) => {
+   190	    if (typeof node.attrs?.['col'] !== 'number') return undefined;
+   191	    liveBlocks.push({ pos, nodeName: node.type.name });
+   192	    return false;
+   193	  });
+   194	  // Same-order match (sample-blocks fixtures all colSpan=12; block
+   195	  // count is stable during a single drag transaction). Future
+   196	  // cf-20c-3+ cross-doc-mutation case adds a stable id field per
+   197	  // ADR-0016 D2 amendment.
+   198	  for (let i = 0; i < snapshot.length && i < liveBlocks.length; i++) {
+   199	    const snapBlock = snapshot[i];
+   200	    const liveBlock = liveBlocks[i];
+   201	    if (snapBlock && liveBlock && snapBlock.nodeName === liveBlock.nodeName) {
+   202	      map.set(snapBlock.id, { pos: liveBlock.pos, nodeName: liveBlock.nodeName });
+   203	    }
+   204	  }
+   205	  return map;
+   206	}
+   207	
+   208	export function useDragDropPipeline(
+   209	  options: UseDragDropPipelineOptions,
+   210	): UseDragDropPipelineReturn {
+   211	  const { editor, gridSelector = '.skb-grid' } = options;
+   212	
+   213	  const [layoutState, dispatchLayout] = useReducer(layoutReducer, INITIAL_LAYOUT_STATE);
+   214	  const [active, setActive] = useState(false);
+   215	  const [activeMatch, setActiveMatch] = useState<EdgeMatch | null>(null);
+   216	  const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
+   217	  const [sourceBlockId, setSourceBlockId] = useState<string | null>(null);
+   218	  const [lastDroppedBlockId, setLastDroppedBlockId] = useState<string | null>(null);
+   219	
+   220	  // Snapshot refs (preserved across renders; not state because
+   221	  // changing them shouldn't trigger re-render).
+   222	  const snapshotRef = useRef<readonly SerializedBlock[]>([]);
+   223	  const blockRectsRef = useRef<Map<string, DOMRectReadOnly>>(new Map());
+   224	  const edgeRectsRef = useRef<readonly EdgeRect[]>([]);
+   225	  const lastCursorRef = useRef<{ x: number; y: number; t: number } | null>(null);
+   226	
+   227	  const onDragStart = useCallback(
+   228	    (blockId: string, origin: { x: number; y: number }) => {
+   229	      if (!editor) return;
+   230	      const blocks = snapshotBlocks(editor);
+   231	      const rects = measureBlockRects(editor, blocks);
+   232	      const layouts: BlockLayout[] = blocks
+   233	        .map((b) => {
+   234	          const rect = rects.get(b.id);
+   235	          return rect ? { blockId: b.id, rect } : null;
+   236	        })
+   237	        .filter((x): x is BlockLayout => x !== null);
+   238	      const edges = computeEdgeRects(layouts);
+   239	
+   240	      snapshotRef.current = blocks;
+   241	      blockRectsRef.current = rects;
+   242	      edgeRectsRef.current = edges;
+   243	      lastCursorRef.current = { x: origin.x, y: origin.y, t: performance.now() };
+   244	
+   245	      dispatchLayout({ type: 'drag-start', sourceBlockId: blockId });
+   246	      setSourceBlockId(blockId);
+   247	      setCursor({ x: origin.x, y: origin.y });
+   248	      setActive(true);
+   249	      setActiveMatch(null);
+   250	    },
+   251	    [editor],
+   252	  );
+   253	
+   254	  const onDragEnd = useCallback(() => {
+   255	    // Fallback cleanup if drop event didn't fire on the grid (e.g. user
+   256	    // released over browser chrome). Treat as cancel.
+   257	    if (active) {
+   258	      dispatchLayout({ type: 'drag-end-cancel' });
+   259	      setActive(false);
+   260	      setActiveMatch(null);
+
+exec
+/bin/bash -lc 'nl -ba packages/editor-shell/src/drag-drop/drag-handle-button.css' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	/*
+     2	 * @skb/editor-shell drag-handle button styles per v2 contract.
+     3	 *
+     4	 * Wave 6 cf-20c-2 (2026-05-09) — implements `.gblock-gutter button`
+     5	 * styling from /mnt/d/download/web/v2-styles.css:241-254. The
+     6	 * `.skb-block-nodeview__drag-handle` button sits inside the
+     7	 * `.skb-block-nodeview__gutter` shell shipped in cf-19, alongside the
+     8	 * existing `.skb-block-nodeview__kind-chip`.
+     9	 *
+    10	 * v2 contract:
+    11	 *   width 22px, height 22px
+    12	 *   1px solid border (var(--border))
+    13	 *   surface bg (var(--surface))
+    14	 *   text-2 color (var(--text-2))
+    15	 *   border-radius 4px
+    16	 *   cursor: grab; :active cursor: grabbing
+    17	 *   font-size 12px, display grid place-items center
+    18	 *   :hover → panel bg + text color + border-strong
+    19	 *
+    20	 * Pointer-events override: cf-19 set the gutter to `pointer-events: none`
+    21	 * (so the mouse passes through to the underlying block content). The
+    22	 * drag-handle button MUST opt back in to pointer-events for the dragstart
+    23	 * to fire — `pointer-events: auto` on the button itself.
+    24	 *
+    25	 * Visibility: gutter opacity is 0.45 baseline + 1 on
+    26	 * hover/focus-within/selected (cf-19 contract). The drag-handle button
+    27	 * inherits this opacity via the gutter — no separate visibility logic
+    28	 * needed. The `:active` cursor change still fires on a
+    29	 * partially-transparent button.
+    30	 */
+    31	
+    32	.skb-block-nodeview__drag-handle {
+    33	  /* Opt back into pointer events (cf-19 gutter is pointer-events: none). */
+    34	  pointer-events: auto;
+    35	
+    36	  /* v2-styles.css:241-254 button geometry */
+    37	  width: 22px;
+    38	  height: 22px;
+    39	  padding: 0;
+    40	  border: 1px solid var(--border, oklch(92% 0.005 80));
+    41	  background: var(--surface, #ffffff);
+    42	  color: var(--text-2, oklch(45% 0.01 80));
+    43	  border-radius: 4px;
+    44	  cursor: grab;
+    45	  font-family: var(--mono, ui-monospace, monospace);
+    46	  font-size: 12px;
+    47	  line-height: 1;
+    48	  display: grid;
+    49	  place-items: center;
+    50	  /* Per v2 contract: button is part of the gutter row; sits beside the
+    51	   * kind chip with the gutter's existing `gap: 2px`. */
+    52	  flex-shrink: 0;
+    53	}
+    54	
+    55	.skb-block-nodeview__drag-handle:hover {
+    56	  background: var(--panel, oklch(98% 0.004 80));
+    57	  color: var(--text, oklch(22% 0.01 80));
+    58	  border-color: var(--border-strong, oklch(86% 0.006 80));
+    59	}
+    60	
+    61	.skb-block-nodeview__drag-handle:active {
+    62	  cursor: grabbing;
+    63	}
+    64	
+    65	.skb-block-nodeview__drag-handle:focus-visible {
+    66	  outline: 2px solid var(--accent, oklch(58% 0.16 35));
+    67	  outline-offset: 1px;
+    68	}
+    69	
+    70	/*
+    71	 * Mobile (≤768px) view-only path per ADR-0017 D9 + cf-20b R1 mobile
+    72	 * preview-mode contract: drag handles are hidden on mobile because
+    73	 * touch DnD isn't supported at cf-20c-2 (Q4 deferred to cf-22 a11y or
+    74	 * separate cf-25 per orchestrator decision). Hiding via display: none
+    75	 * removes them from the tab order too — pure preview mode on mobile.
+    76	 */
+    77	@media (max-width: 768px) {
+    78	  .skb-block-nodeview__drag-handle {
+    79	    display: none;
+    80	  }
+    81	}
+
+exec
+/bin/bash -lc 'nl -ba packages/editor-shell/src/BlockNodeView.tsx' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	import type { ComponentType } from 'react';
+     2	import { NodeViewWrapper, type ReactNodeViewProps } from '@tiptap/react';
+     3	import type { BlockRegistry, BlockViewProps } from '@skb/block-foundation';
+     4	import type { ZodTypeAny } from 'zod';
+     5	import { extractGridPosition, gridPlacementStyle } from './grid-style';
+     6	import { DragHandleButton } from './drag-drop/drag-handle-button';
+     7	
+     8	/**
+     9	 * Wave 6 carry-forward #18 (2026-05-08) — bridge from a Tiptap NodeView to
+    10	 * a block's registered `EditorView` React component.
+    11	 *
+    12	 * Wave 6 carry-forward #19 v0.2 (2026-05-09) — wraps the inner block in
+    13	 * the v2 `.gblock` card chrome (per /mnt/d/download/web/v2-styles.css:157
+    14	 * `.gblock` + `.gblock-body` + `.gblock-gutter` model). The wrapper now
+    15	 * emits three structural elements:
+    16	 *   1. outer `<NodeViewWrapper class="skb-block-nodeview">` carries
+    17	 *      `data-skb-block-kind` (cf-18 contract; downstream Tiptap inspectors
+    18	 *      and the cf-19 stripe selector both rely on it).
+    19	 *   2. NEW gutter shell `<div class="skb-block-nodeview__gutter">` —
+    20	 *      placeholder that cf-20c-2 fills with a per-block drag-handle
+    21	 *      button alongside the cf-19 kind chip.
+    22	 *   3. inner non-editable host `<div class="skb-block-nodeview__body"
+    23	 *      data-skb-block-host>` carries the registered EditorView. The
+    24	 *      body class is the analog of v2's `.gblock-body` padding shell.
+    25	 *
+    26	 * Wave 6 cf-20b (2026-05-09) — grid placement. The NodeView wrapper now
+    27	 * applies `style.gridColumn` / `style.gridRow` derived from
+    28	 * `node.attrs.{col, row?, colSpan, rowSpan}` per ADR-0016 D2 + v0.2
+    29	 * D11.1 amendment (editor-surface grid lock). The shared
+    30	 * `block-chrome.css` rule treats both `.skb-block-nodeview` (editor) and
+    31	 * `.skb-block-static` (read route) as grid items; the outer
+    32	 * `.skb-grid .ProseMirror { display: grid }` rule turns the editor
+    33	 * element itself into a 12-col grid so NodeView wrappers land at the
+    34	 * correct DOM depth. When `node.attrs` is missing required grid fields
+    35	 * (test mounts without the cf-19 grid-attr defaults), the wrapper falls
+    36	 * back to no inline style and the parent CSS
+    37	 * `.skb-grid .ProseMirror > *:not([style*="grid-column"])` rule paints
+    38	 * full-width (`grid-column: 1 / -1`).
+    39	 *
+    40	 * Wave 6 cf-20c-2 (2026-05-09) — per-block drag-handle button. Renders
+    41	 * a `<DragHandleButton blockId={String(getPos())}>` inside the gutter
+    42	 * shell. The blockId is sourced from ProseMirror node `pos` per
+    43	 * cf-20c-2 D2 (path A: pos as stable ID within a single drag
+    44	 * transaction; path B with stable UUID attrs deferred to a future
+    45	 * schema-mod PR per cf-20c-2 D2 rationale). The button uses HTML5
+    46	 * native DnD (Q7 spike result: native DnD survives ProseMirror inside
+    47	 * `contenteditable=false` gutter; verified pre-implementation).
+    48	 * Drag-start callbacks flow via `DragDropContext` to
+    49	 * `useDragDropPipeline()` mounted at the editor mount level.
+    50	 *
+    51	 * Lookup chain (identity mapping unchanged from cf-18):
+    52	 *   1. `node.type.name` is the Tiptap node name registered by
+    53	 *      `createBlockExtension` (one per `BlockAffordanceKind`).
+    54	 *   2. The Tiptap node name === the block's `coreName` for all 8 blocks.
+    55	 *   3. `registry.getUI(node.type.name)` returns the first registered UI
+    56	 *      whose `EditorView` we then mount with `props = node.attrs`.
+    57	 */
+    58	export interface BlockNodeViewFactoryProps {
+    59	  readonly registry?: BlockRegistry;
+    60	}
+    61	
+    62	/**
+    63	 * Friendly chip label for the gutter chip. Kebab kinds (`nn-viz`,
+    64	 * `agent-flow`) keep their hyphen; camelCase `componentCode` collapses
+    65	 * to `code` because the user-facing slash-menu / palette label is
+    66	 * `Code` (cf-15b rename was internal-only for ProseMirror namespace
+    67	 * isolation; visual identity stays "code").
+    68	 */
+    69	function chipLabel(kind: string): string {
+    70	  if (kind === 'componentCode') return 'code';
+    71	  return kind;
+    72	}
+    73	
+    74	/**
+    75	 * Source the block ID for cf-20c-2 drag-handle wiring. Per cf-20c-2 D2
+    76	 * (Path A): use ProseMirror node `pos` as a stable string identifier
+    77	 * within a single drag transaction. The pipeline snapshots positions
+    78	 * at drag-start; pos values are stable until a doc transaction
+    79	 * mutates structure (none happen during a drag because Tiptap suspends
+    80	 * input handling on focused dragstart).
+    81	 *
+    82	 * `getPos` is a function provided by Tiptap; null/undefined means the
+    83	 * NodeView is not yet mounted (pre-render). Returning empty string in
+    84	 * that case means the DragHandleButton renders but its onClick is
+    85	 * inert until the next render — degraded but not broken.
+    86	 */
+    87	function blockIdFromProps(props: ReactNodeViewProps): string {
+    88	  const getPos = props.getPos;
+    89	  if (typeof getPos !== 'function') return '';
+    90	  const pos = getPos();
+    91	  return typeof pos === 'number' ? String(pos) : '';
+    92	}
+    93	
+    94	export function makeBlockNodeView({
+    95	  registry,
+    96	}: BlockNodeViewFactoryProps): ComponentType<ReactNodeViewProps> {
+    97	  return function BlockNodeView(props: ReactNodeViewProps) {
+    98	    const nodeName = props.node.type.name;
+    99	    const ui = registry ? registry.getUI(nodeName) : undefined;
+   100	    const editorProps = (props.node.attrs ?? {}) as Record<string, unknown>;
+   101	    const gridPos = extractGridPosition(editorProps);
+   102	    const wrapperStyle = gridPos ? gridPlacementStyle(gridPos) : undefined;
+   103	    const blockId = blockIdFromProps(props);
+   104	
+   105	    if (!ui) {
+   106	      return (
+   107	        <NodeViewWrapper
+   108	          className="skb-block-nodeview skb-block-nodeview--unregistered"
+   109	          data-skb-block-kind={nodeName}
+   110	          style={wrapperStyle}
+   111	        >
+   112	          <div className="skb-block-nodeview__gutter" contentEditable={false}>
+   113	            {blockId && <DragHandleButton blockId={blockId} />}
+   114	            <span className="skb-block-nodeview__kind-chip" data-skb-block-kind={nodeName}>
+   115	              {chipLabel(nodeName)}
+   116	            </span>
+   117	          </div>
+   118	          <div className="skb-block-nodeview__fallback" contentEditable={false}>
+   119	            Unregistered block <code>{nodeName}</code>
+   120	          </div>
+   121	        </NodeViewWrapper>
+   122	      );
+   123	    }
+   124	    const EditorView: ComponentType<BlockViewProps<ZodTypeAny>> = ui.EditorView;
+   125	    return (
+   126	      <NodeViewWrapper
+   127	        className="skb-block-nodeview"
+   128	        data-skb-block-kind={nodeName}
+   129	        style={wrapperStyle}
+   130	      >
+   131	        <div className="skb-block-nodeview__gutter" contentEditable={false}>
+   132	          {blockId && <DragHandleButton blockId={blockId} />}
+   133	          <span className="skb-block-nodeview__kind-chip" data-skb-block-kind={nodeName}>
+   134	            {chipLabel(nodeName)}
+   135	          </span>
+   136	        </div>
+   137	        <div
+   138	          className="skb-block-nodeview__body"
+   139	          contentEditable={false}
+   140	          data-skb-block-host={nodeName}
+   141	        >
+   142	          <EditorView props={editorProps} />
+   143	        </div>
+   144	      </NodeViewWrapper>
+   145	    );
+   146	  };
+   147	}
+
+exec
+/bin/bash -lc "nl -ba docs/plans/wave-6-main/wave-6-cf-20c-2-drag-handle-wire.md | sed -n '261,620p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+   261	    `@media (max-width: 768px) .skb-block-nodeview__drag-handle { display: none }`.
+   262	    Locks the ADR-0017 D9 mobile preview-mode contract: drag/resize
+   263	    UX disabled on mobile; only Tiptap content-edit remains. cf-22
+   264	    keyboard a11y will add explicit keyboard equivalents; cf-25 (or
+   265	    cf-22 stretch) will add touch UX if/when scoped.
+   266	  target_url: /notes/sample-blocks/edit (at 375×812 viewport)
+   267	  playwright_spec: apps/site/playwright/sample-blocks-drag-handle.spec.ts:"cf-20c-2 — drag handles are hidden on mobile (≤768px) per cf-20b R1 view-only path"
+   268	  screenshot_archive: docs/audits/screenshots/wave-6-cf-20c-2-drag-handle-wire.png
+   269	  assertions:
+   270	    - viewport set to 375×812
+   271	    - 14 .skb-block-nodeview__drag-handle in DOM (React tree unchanged on mobile; CSS hides them)
+   272	    - first handle's computed display === 'none'
+   273	
+   274	## Why (user feedback)
+   275	
+   276	cf-20c-2 is PR 4 of 9 in the locked cf-20 sequence. User directive
+   277	2026-05-09 (verbatim, dispatched as cf-20a + carried into cf-20b /
+   278	cf-20c-1 / cf-20c-2):
+   279	
+   280	> "全部做，不允许 defer，必须保质保量，出现问题会直接让你推翻重写。
+   281	>  ... 全部对齐 v2."
+   282	
+   283	cf-20c-2 closes the "drag" half of the user-mandated v2 alignment.
+   284	Pre-cf-20c-2 the editor surface had the cf-19 gutter shell + the
+   285	cf-20c-1 algebra + all the drag/drop primitives (`drag-ghost`,
+   286	`drop-pulse`, `outline-overlay`, `esc-cancel`, `tiebreak`,
+   287	`edge-rects`, `layout-reducer`) shipped at Wave 5 Stage C.2 — but
+   288	NONE of them were actually wired into the editor lifecycle. cf-20c-2
+   289	is the integration: per-block button → HTML5 native DnD → pipeline
+   290	hook → algebra → Tiptap commands → overlay/ghost render. v2 design
+   291	contract for the per-block drag handle inside the gutter is
+   292	`/mnt/d/download/web/v2-styles.css:241-254`; cf-20c-2 implements it
+   293	verbatim.
+   294	
+   295	## Design source
+   296	
+   297	- `/mnt/d/download/web/v2-styles.css:230-254` — gutter + button
+   298	  contract (.gblock-gutter + .gblock-gutter button); 22×22 button
+   299	  size; surface bg + 1px border + radius 4px; cursor grab/grabbing.
+   300	  cf-20c-2 `.skb-block-nodeview__drag-handle` consumes verbatim.
+   301	- ADR-0017 D1 — 6 drop modes (split-left/right/top/bottom + empty +
+   302	  none). cf-20c-1 algebra; cf-20c-2 wire dispatches into it.
+   303	- ADR-0017 D6 — tiebreak formula (signed distance + Math.abs primary
+   304	  + velocity-direction + spatial fallback + blockId stable). cf-20c-2
+   305	  pipeline calls `tiebreak(matches, velocity)` per spec.
+   306	- ADR-0017 D8 + Q8 — Esc cancel priority during active drag. cf-20c-2
+   307	  wires `useEscCancel({dragActive: pipeline.state.active})`.
+   308	- ADR-0017 D9 — Mobile 1-col path view-only. cf-20c-2 hides drag
+   309	  handles via `@media (max-width: 768px) { display: none }` AND
+   310	  inherits the cf-20b R1 mobile inline-style override (no actual
+   311	  drag origin on mobile because handles are hidden).
+   312	- ADR-0017 D10 — Drag ghost per-kind coloring. cf-20c-2 mounts
+   313	  `<DragGhost kind="markdown" mode="move">` (hardcoded kind for
+   314	  cf-20c-2; future PR sources kind from BlockKind via
+   315	  block-foundation gridKind mapping).
+   316	- ADR-0017 D11 — Drop-pulse 720ms on drag-end-success. cf-20c-2
+   317	  pipeline fires the pulse via `pipeline.state.lastDroppedBlockId`
+   318	  state; mount of `<DropPulse>` deferred to cf-20d (resize handles
+   319	  also need it; centralizing in cf-20d keeps the JSX shorter).
+   320	- ADR-0017 D12 — Epoch single-source mutation. cf-20c-2 dispatches
+   321	  `layoutReducer({type: 'drag-end-success', mutation})` on every
+   322	  successful drop; epoch increments by 1 per cf-20c-1 + ADR-0016
+   323	  D12 contract.
+   324	- ADR-0016 D11 — Tiptap inside / grid outside. cf-20c-2 honors:
+   325	  the pipeline reads `node.attrs.{col,row,colSpan,rowSpan}` AT DRAG-
+   326	  START SNAPSHOT then mutates via `setNodeMarkup` AT DROP — never
+   327	  mid-drag. The drag overlay is a separate React subtree mounted
+   328	  outside the Tiptap content tree.
+   329	
+   330	## Decisions
+   331	
+   332	### D1 — HTML5 native DnD (Q7 spike result: works inside ProseMirror NodeView contenteditable=false gutter)
+   333	
+   334	**Trigger**: Q7 open question from the cf-20 scoping report —
+   335	"verify HTML5 native DnD works inside ProseMirror NodeView with
+   336	`contenteditable=false` host element. If blocked: pivot to pointer
+   337	events."
+   338	
+   339	**Q7 spike method**: throwaway Playwright spec (`__cf20c2-q7-spike.spec.ts`,
+   340	deleted post-verdict) injected a `<button draggable=true>` into the
+   341	`.skb-block-nodeview__gutter` of the live `/notes/sample-blocks/edit`
+   342	route, registered dragstart/dragover/drop listeners, dispatched
+   343	synthetic `DragEvent` instances, and inspected the events that fired.
+   344	
+   345	**Q7 result**: HTML5 DnD works. Spike output:
+   346	```
+   347	{
+   348	  "events": [
+   349	    { "kind": "button:dragstart", "defaultPrevented": false, "dataTransfer": "" },
+   350	    { "kind": "pm:dragover", "target": "tiptap ProseMirror", "defaultPrevented": true, "dataTransfer": "q7-spike-payload" },
+   351	    { "kind": "pm:drop", "target": "tiptap ProseMirror ProseMirror-focused", "defaultPrevented": true, "dataTransfer": "q7-spike-payload" }
+   352	  ],
+   353	  "dragoverFireCount": 1,
+   354	  "pmHasOwnDragstart": false
+   355	}
+   356	```
+   357	
+   358	The dragstart fired on the button; `dataTransfer.setData()` succeeded;
+   359	dragover and drop received our payload (`q7-spike-payload`) on the
+   360	`.ProseMirror` target. ProseMirror did NOT cancel the drag (no
+   361	`pmHasOwnDragstart` interception). The `defaultPrevented: true` on
+   362	dragover and drop is from OUR handler calling `preventDefault()` (required
+   363	so the browser accepts drop on the editor).
+   364	
+   365	**Decision**: cf-20c-2 ships HTML5 native DnD. Saves ~150 LOC of
+   366	pointer-events scaffolding (manual ghost following cursor, manual
+   367	hit-test on mousemove, etc.) and the native API integrates cleanly
+   368	with the existing `drag-ghost` / `drop-pulse` / `outline-overlay`
+   369	primitives.
+   370	
+   371	**Defense-in-depth**: the button calls `event.stopPropagation()` on
+   372	both dragstart and dragend. Q7 spike showed PM doesn't intercept by
+   373	default, but a future Tiptap upgrade or an extension that adds a
+   374	NodeSelection drag handler could compete. The stopPropagation
+   375	explicitly walls cf-20c-2's lifecycle from PM's.
+   376	
+   377	### D2 — Block ID sourcing: ProseMirror node `pos` (Path A) NOT stable UUID attrs (Path B)
+   378	
+   379	**Open question** from cf-20 scoping report — block-id sourcing for
+   380	the algebra layer. Two paths:
+   381	
+   382	- **Path A**: use ProseMirror node `pos` as a string. `pos` is
+   383	  stable WITHIN a single doc transaction; the pipeline snapshots
+   384	  positions at drag-start and only re-walks the doc at drop.
+   385	  Tiptap suspends input handling during a focused drag, so pos
+   386	  values won't shift unless an external transaction interleaves —
+   387	  which doesn't happen in the cf-20c-2 single-user single-session
+   388	  scope (per ADR-0016 D12 explicit assumption).
+   389	- **Path B**: add a stable UUID `id` attr to every block schema, generate
+   390	  at NodeView mount, persist through MDX serialize / parse. Requires:
+   391	  (i) Zod schema additions in 8 block packages, (ii) mdx-bridge
+   392	  serialize/parse round-trip, (iii) migration of existing notes
+   393	  (or hash-based defaults), (iv) sister-doc updates across 11+ files.
+   394	
+   395	**Decision**: Path A. Three reasons:
+   396	1. cf-20c-2 is the integration PR; adding a schema change here
+   397	   would mix two layers of risk (drag wire + persistent ID
+   398	   migration) in one PR. Per the orchestrator's "ship the wire
+   399	   then iterate" framing.
+   400	2. Path A satisfies ADR-0016 D12's single-user single-session
+   401	   assumption — stable IDs are only required for collaborative /
+   402	   multi-session scenarios that are explicit Phase 2+ scope.
+   403	3. Future cf-20c-3+ that introduces palette → grid drag (new block
+   404	   insertion) will naturally need a stable client-generated UUID
+   405	   anyway (the new block has no pre-existing pos); Path B can land
+   406	   then with a clean rationale.
+   407	
+   408	Trade-off accepted: a doc transaction WHILE a drag is active
+   409	(extremely rare; would require an extension or async data-load
+   410	trigger to dispatch a transaction during user drag) could
+   411	invalidate `pos` mappings and the pipeline's `liveBlockPositions()`
+   412	fallback (same-order match by nodeName) would mis-route attr
+   413	updates. Documented in `use-drag-drop-pipeline.ts` JSDoc.
+   414	
+   415	### D3 — React Context bridges per-block button → editor mount pipeline (NOT prop-drilling through factory args)
+   416	
+   417	`BlockNodeView` is rendered inside Tiptap's `ReactNodeViewRenderer`
+   418	which mounts each NodeView in a SEPARATE React subtree (Tiptap
+   419	creates new React roots for each NodeView; props flow only via the
+   420	Tiptap node attrs). Prop-drilling drag callbacks through
+   421	`makeBlockNodeView({registry, onDragStart, onDragEnd, ...})`
+   422	factory args was rejected because:
+   423	- The factory is invoked once per block kind at `wireRegistry`
+   424	  call time (NOT per-block); callbacks would have to be stable
+   425	  across all 8 block-kind instances.
+   426	- The pipeline is mounted at `EditorShellMount.tsx` which lives
+   427	  in apps/site, while `wireRegistry` lives in editor-shell — the
+   428	  factory args boundary would force apps/site to construct the
+   429	  registry, which would require duplicating the editor-shell
+   430	  registration glue at apps/site.
+   431	- React context is the canonical bridge for "presentational
+   432	  child callbacks routing to a distant lifecycle owner".
+   433	
+   434	cf-20c-2 introduces `DragDropContext` + `DragDropProvider`. The
+   435	provider is mounted at `EditorShellMount.tsx` wrapping
+   436	`<GridContainer>`; the per-block button consumes via `useContext(DragDropContext)`.
+   437	Default `null` value = degraded mode (button renders, callbacks
+   438	no-op without throwing) — covers test mounts that don't provide
+   439	the pipeline.
+   440	
+   441	### D4 — Ghost kind hardcoded to `'markdown'` at cf-20c-2 (BlockKind sourcing deferred to follow-up PR)
+   442	
+   443	`<DragGhost kind="markdown" mode="move">` is mounted with a
+   444	hardcoded kind because:
+   445	- cf-20c-2's pipeline tracks `sourceBlockId` (a string) but not
+   446	  the source's BlockKind. To source the kind, the pipeline would
+   447	  need to look up the snapshot block by id at active-render time
+   448	  AND map the kind name to a `GhostKind` (`'canvas' | 'runnable'
+   449	  | 'image' | 'markdown'`).
+   450	- The ghost's role is purely visual (cursor follower); the kind
+   451	  affects color but not behavior. `markdown` (neutral gray per
+   452	  ADR-0017 D10) is a safe default.
+   453	- cf-20d (resize) will need the same kind lookup for resize
+   454	  handles AND introduces a `BlockKindForGhost` mapping in
+   455	  `block-foundation`; deferring to cf-20d centralizes the
+   456	  kind-mapping logic.
+   457	
+   458	Future PR: source `kind = blockKindToGhostKind(snapshot[sourceBlockId].kind)`
+   459	once the mapping helper lands.
+   460	
+   461	### D5 — `useDragDropPipeline` owns its own internal `layoutReducer` state (NOT shared with note-save-adapter)
+   462	
+   463	The hook calls `useReducer(layoutReducer, INITIAL_LAYOUT_STATE)` to
+   464	manage `epoch + snapshot + baseline`. This state lives entirely
+   465	within the hook; it does NOT participate in the cf-20c-1+ algebra's
+   466	external `baseline: GridSnapshotIdentified` parameter (which is
+   467	computed fresh from the snapshot at drag-start).
+   468	
+   469	Rationale: at cf-20c-2 the `layoutState` is forward-compat scaffolding
+   470	— the cf-20c-1 algebra is pure (input → output), the
+   471	`setNodeMarkup` calls are the actual persistent mutations (Tiptap's
+   472	own undo/redo handles them), and the layoutReducer's epoch is unused
+   473	downstream. cf-20d (resize) will dispatch `drag-end-success` with
+   474	its own `mutation` parameter; cf-20e (kebab-menu undo) might need
+   475	the epoch for "undo last drag" semantics. cf-20c-2 surfaces
+   476	`layoutState` in the hook return so future consumers can read it
+   477	without re-architecting.
+   478	
+   479	### D6 — Pipeline rolls back via `drag-end-mode-none` when no edge match at drop (vs accept "empty" mode default)
+   480	
+   481	When `tiebreak()` returns null (cursor not on any edge rect at drop
+   482	moment), the pipeline dispatches `drag-end-mode-none` per ADR-0017
+   483	D1 line 53 ("cursor on host non-edge"). The cf-20c-1 algebra
+   484	supports `mode='empty'` for grid-empty-area drops, but cf-20c-2
+   485	doesn't compute `emptyTarget` because:
+   486	- Sample-blocks fixtures are all `colSpan=12` so there's no
+   487	  visible empty grid surface to drop into during the cf-20c-2 demo.
+   488	- `empty` mode requires computing `(col, row)` from cursor position
+   489	  via grid math; that's a non-trivial layer that warrants its own
+   490	  PR (cf-20c-3 candidate; not in current 9-PR sequence — out of
+   491	  cf-20c-2 scope per orchestrator's "drag handle UI + DnD wire"
+   492	  framing).
+   493	
+   494	cf-20c-2 ships drag-between-existing-blocks only. `mode-none`
+   495	rollback is the safe fallback.
+   496	
+   497	### D7 — c4-3 spec re-targeted to `/notes/sample-blocks/edit` (was `/notes/sample-mdx-note/edit`)
+   498	
+   499	The pre-cf-20c-2 c4-3 spec asserted the standalone DragHandle on a
+   500	prose-only route. Post-cf-20c-2 the standalone DragHandle is removed
+   501	and the per-block handles only exist where there are NodeViews
+   502	(component blocks). Pure prose routes have ZERO per-block handles —
+   503	which is correct (prose paragraphs don't get drag handles per the
+   504	v2 contract; only component blocks do).
+   505	
+   506	The c4-3 spec is updated to target sample-blocks/edit (where 14
+   507	NodeViews exist) and assert per-block handle structure + dragstart
+   508	overlay mount. Pre-cf-20c-2 assertions on the standalone DragHandle
+   509	are removed entirely (no replacement; the standalone is deprecated).
+   510	
+   511	## Acceptance
+   512	
+   513	```bash
+   514	# AC-1: ADR-0011 D9 ui_touch detects on the right files
+   515	pnpm exec tsx scripts/check-ui-touch.ts \
+   516	  --files packages/editor-shell/src/drag-drop/drag-handle-button.tsx \
+   517	          packages/editor-shell/src/drag-drop/drag-context.tsx \
+   518	          packages/editor-shell/src/drag-drop/use-drag-drop-pipeline.ts \
+   519	          packages/editor-shell/src/BlockNodeView.tsx \
+   520	          apps/site/src/components/EditorShellMount.tsx \
+   521	          apps/site/src/styles/global.css 2>&1 | tail -3
+   522	# Expected: ui_touch=true
+   523	```
+   524	
+   525	```bash
+   526	# AC-2: editor-shell + apps/site test suites green
+   527	pnpm --filter @skb/editor-shell test 2>&1 | grep -E 'Tests'
+   528	# Expected: 185 passed (152 cf-20b + 27 cf-20c-1 algebra + 6 cf-20c-2 button)
+   529	pnpm --filter @skb/site test 2>&1 | grep -E 'Tests'
+   530	# Expected: 78 passed | 1 skipped (carried from cf-20b R2)
+   531	```
+   532	
+   533	```bash
+   534	# AC-3: targeted Playwright passes (drag-handle integration + carried specs)
+   535	pnpm --filter @skb/site exec playwright test \
+   536	  playwright/sample-blocks-drag-handle.spec.ts \
+   537	  playwright/sample-blocks-edit-loads.spec.ts \
+   538	  playwright/sample-blocks-read.spec.ts \
+   539	  playwright/sample-blocks-grid-layout.spec.ts \
+   540	  src/__tests__/e2e/c4-3-drag-handle.spec.ts \
+   541	  --reporter=line --workers=1 2>&1 | tail -3
+   542	# Expected: 9 passed (2 new cf-20c-2 + 1 edit-loads + 1 read + 3 grid-layout + 1 updated c4-3 + 1 cf-20b R1 mobile)
+   543	```
+   544	
+   545	```bash
+   546	# AC-4: full apps/site Playwright suite passes
+   547	pnpm --filter @skb/site exec playwright test --reporter=line --workers=1 2>&1 | tail -3
+   548	# Expected: 55 passed | 14 skipped | 0 failed (was 53 in cf-20b R2; +2 new cf-20c-2 specs)
+   549	```
+   550	
+   551	```bash
+   552	# AC-5: pnpm check exit 0
+   553	pnpm check
+   554	# Expected: all 41 tasks successful; 0 lint errors
+   555	```
+   556	
+   557	```bash
+   558	# AC-6: cf-20c-2 source surface lands at the expected paths
+   559	test -f packages/editor-shell/src/drag-drop/drag-handle-button.tsx && echo OK
+   560	test -f packages/editor-shell/src/drag-drop/drag-context.tsx && echo OK
+   561	test -f packages/editor-shell/src/drag-drop/use-drag-drop-pipeline.ts && echo OK
+   562	test -f packages/editor-shell/src/drag-drop/drag-handle-button.css && echo OK
+   563	# Expected: 4× "OK"
+   564	```
+   565	
+   566	```bash
+   567	# AC-7: barrel exports the new public surface
+   568	grep -cE 'DragHandleButton|DragDropProvider|useDragDropPipeline' packages/editor-shell/src/index.ts
+   569	# Expected: ≥ 4 (DragHandleButton + DragDropContext + DragDropProvider + useDragDropPipeline)
+   570	```
+   571	
+   572	```bash
+   573	# AC-8: standalone <DragHandle /> import removed from EditorShellMount.tsx
+   574	grep -cE '\bDragHandle\b' apps/site/src/components/EditorShellMount.tsx
+   575	# Expected: 0 (DragHandle no longer imported or rendered; replaced by per-block buttons via DragDropProvider)
+   576	```
+   577	
+   578	```bash
+   579	# AC-9: per-block drag-handle button renders inside .skb-block-nodeview__gutter
+   580	grep -cE 'DragHandleButton blockId' packages/editor-shell/src/BlockNodeView.tsx
+   581	# Expected: 3 (2 JSX usages — unregistered fallback + registered UI path —
+   582	#            plus 1 reference in the file's JSDoc cf-20c-2 cross-reference)
+   583	```
+   584	
+   585	```bash
+   586	# AC-10: cf-20a chrome single source still holds (cf-20a regression lock preserved)
+   587	grep -lE 'border-top: 2px solid var\(--accent-' \
+   588	  $(find packages apps -name '*.css' -not -path '*/node_modules/*' -not -path '*/dist/*')
+   589	# Expected: exactly packages/editor-shell/src/block-chrome.css (cf-20a invariant preserved)
+   590	```
+   591	
+   592	```bash
+   593	# AC-11: cf-20b R1 mobile inline-style override still locked (3 !important declarations in grid.css)
+   594	grep -cE '!important;' apps/site/src/styles/grid.css
+   595	# Expected: 3 (cf-20b R1 invariant preserved)
+   596	```
+   597	
+   598	```bash
+   599	# AC-12: HTML5 native DnD MIME constant exported (cf-20c-2 D1 Q7 verdict)
+   600	grep -E 'DRAG_HANDLE_MIME = .application/x-skb-block-id.' packages/editor-shell/src/drag-drop/drag-handle-button.tsx
+   601	# Expected: 1 match (the private MIME so other DnD handlers don't pick up our payload)
+   602	```
+   603	
+   604	## Reflection landing
+   605	
+   606	This PR appends one entry to
+   607	`docs/orchestrator-reflections/2026-05-09-cf-15a-19-retrospective.md`
+   608	per the 2026-05-09 retrospective process rule. The entry documents
+   609	the Q7 spike methodology + result (HTML5 native DnD works inside
+   610	contenteditable=false gutter — saved ~150 LOC of pointer-events
+   611	fallback), the React context bridge pattern for "presentational
+   612	child → distant lifecycle owner" (now an operational pattern for
+   613	cf-20d/cf-20e/cf-22), and the happy-dom DnD synthetic event
+   614	limitation (`fireEvent.dragStart` doesn't propagate clientX/Y; tests
+   615	must use property-presence assertions OR move the cursor-position
+   616	check to a Playwright integration spec).
+   617	
+   618	## Out-of-scope
+   619	
+   620	(none — per the 2026-05-09 retrospective Rule 3 "Defer requires
+
+exec
+/bin/bash -lc "nl -ba packages/editor-shell/src/drag-drop/use-drag-drop-pipeline.ts | sed -n '261,520p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+   261	      setCursor(null);
+   262	      setSourceBlockId(null);
+   263	    }
+   264	  }, [active]);
+   265	
+   266	  // Window-level dragover / drop listeners. Attached when active=true.
+   267	  useEffect(() => {
+   268	    if (!active) return;
+   269	
+   270	    const handleDragOver = (event: DragEvent): void => {
+   271	      event.preventDefault(); // Required so drop fires on the same target.
+   272	      const x = event.clientX;
+   273	      const y = event.clientY;
+   274	      const last = lastCursorRef.current;
+   275	      const now = performance.now();
+   276	      const velocity =
+   277	        last && now - last.t < VELOCITY_WINDOW_MS * 4
+   278	          ? { vx: (x - last.x) / Math.max(1, now - last.t), vy: (y - last.y) / Math.max(1, now - last.t) }
+   279	          : { vx: 0, vy: 0 };
+   280	      lastCursorRef.current = { x, y, t: now };
+   281	      setCursor({ x, y });
+   282	      const matches = findMatches(x, y, [...edgeRectsRef.current], blockRectsRef.current);
+   283	      const winner = tiebreak(matches, velocity);
+   284	      setActiveMatch(winner);
+   285	    };
+   286	
+   287	    const handleDrop = (event: DragEvent): void => {
+   288	      event.preventDefault();
+   289	      const winner = activeMatch;
+   290	      if (!editor || !winner || !sourceBlockId) {
+   291	        dispatchLayout({ type: 'drag-end-mode-none' });
+   292	        setActive(false);
+   293	        setActiveMatch(null);
+   294	        setCursor(null);
+   295	        setSourceBlockId(null);
+   296	        return;
+   297	      }
+   298	
+   299	      // Apply algebra
+   300	      const baselineSnap: GridSnapshotIdentified = {
+   301	        blocks: snapshotRef.current.map((b) => ({
+   302	          id: b.id,
+   303	          col: b.col,
+   304	          ...(b.row !== undefined && { row: b.row }),
+   305	          colSpan: b.colSpan,
+   306	          rowSpan: b.rowSpan,
+   307	        })),
+   308	      };
+   309	      let mutation: GridSnapshotIdentified;
+   310	      try {
+   311	        mutation = applyDropMode({
+   312	          baseline: baselineSnap,
+   313	          mode: winner.mode,
+   314	          sourceBlockId,
+   315	          hostBlockId: winner.blockId,
+   316	        });
+   317	      } catch {
+   318	        // Algebra precondition failed (e.g. invalid colSpan halve).
+   319	        // Roll back via mode-none semantics.
+   320	        dispatchLayout({ type: 'drag-end-mode-none' });
+   321	        setActive(false);
+   322	        setActiveMatch(null);
+   323	        setCursor(null);
+   324	        setSourceBlockId(null);
+   325	        return;
+   326	      }
+   327	
+   328	      // Translate snapshot mutation → Tiptap attr updates
+   329	      const livePositions = liveBlockPositions(editor, snapshotRef.current);
+   330	      const chain = editor.chain();
+   331	      let didMutate = false;
+   332	      for (const mutated of mutation.blocks) {
+   333	        const original = baselineSnap.blocks.find((b) => b.id === mutated.id);
+   334	        if (!original) continue;
+   335	        const sameCol = original.col === mutated.col;
+   336	        const sameRow = (original.row ?? null) === (mutated.row ?? null);
+   337	        const sameColSpan = original.colSpan === mutated.colSpan;
+   338	        const sameRowSpan = original.rowSpan === mutated.rowSpan;
+   339	        if (sameCol && sameRow && sameColSpan && sameRowSpan) continue;
+   340	        const live = livePositions.get(mutated.id);
+   341	        if (!live) continue;
+   342	        chain.command(({ tr }) => {
+   343	          const node = tr.doc.nodeAt(live.pos);
+   344	          if (!node) return false;
+   345	          const nextAttrs = {
+   346	            ...node.attrs,
+   347	            col: mutated.col,
+   348	            colSpan: mutated.colSpan,
+   349	            rowSpan: mutated.rowSpan,
+   350	            ...(mutated.row !== undefined && { row: mutated.row }),
+   351	          };
+   352	          tr.setNodeMarkup(live.pos, undefined, nextAttrs);
+   353	          return true;
+   354	        });
+   355	        didMutate = true;
+   356	      }
+   357	      if (didMutate) chain.run();
+   358	
+   359	      // Adapter from IdentifiedBlock back to BlockGridPosition (drop the id).
+   360	      const reducerSnapshot = {
+   361	        blocks: mutation.blocks.map((b) => ({
+   362	          col: b.col,
+   363	          ...(b.row !== undefined && { row: b.row }),
+   364	          colSpan: b.colSpan,
+   365	          rowSpan: b.rowSpan,
+   366	        })),
+   367	      };
+   368	      dispatchLayout({ type: 'drag-end-success', mutation: reducerSnapshot });
+   369	      setLastDroppedBlockId(sourceBlockId);
+   370	      setActive(false);
+   371	      setActiveMatch(null);
+   372	      setCursor(null);
+   373	      setSourceBlockId(null);
+   374	    };
+   375	
+   376	    const grid = document.querySelector(gridSelector);
+   377	    if (!grid) return;
+   378	    grid.addEventListener('dragover', handleDragOver as EventListener);
+   379	    grid.addEventListener('drop', handleDrop as EventListener);
+   380	    return () => {
+   381	      grid.removeEventListener('dragover', handleDragOver as EventListener);
+   382	      grid.removeEventListener('drop', handleDrop as EventListener);
+   383	    };
+   384	  }, [active, editor, gridSelector, activeMatch, sourceBlockId]);
+   385	
+   386	  return {
+   387	    state: {
+   388	      active,
+   389	      blockRects: blockRectsRef.current,
+   390	      edgeRects: edgeRectsRef.current,
+   391	      activeMatch,
+   392	      cursor,
+   393	      sourceBlockId,
+   394	      lastDroppedBlockId,
+   395	    },
+   396	    layoutState,
+   397	    onDragStart,
+   398	    onDragEnd,
+   399	  };
+   400	}
+
+exec
+/bin/bash -lc 'nl -ba packages/editor-shell/src/index.ts' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	export { EditorShell } from './EditorShell';
+     2	export type { EditorShellProps } from './EditorShell';
+     3	export { Palette } from './palette';
+     4	export type { PaletteProps } from './palette';
+     5	export { SlashMenu } from './slash-menu';
+     6	export type { SlashMenuProps } from './slash-menu';
+     7	export { DragHandle } from './drag-handle';
+     8	export type { DragHandleProps } from './drag-handle';
+     9	export { Toolbar } from './toolbar';
+    10	export type { ToolbarProps } from './toolbar';
+    11	export { EditModeBanner } from './edit-mode-banner';
+    12	export type { EditModeBannerProps } from './edit-mode-banner';
+    13	export { SaveIndicator } from './save-indicator';
+    14	export type { SaveIndicatorProps, SaveIndicatorStatus } from './save-indicator';
+    15	export {
+    16	  BLOCK_KIND_OPTIONS,
+    17	  insertBlockKind,
+    18	  wireRegistry,
+    19	} from './registry-wire';
+    20	export type {
+    21	  BlockAffordanceKind,
+    22	  BlockKindOption,
+    23	  RegistryWire,
+    24	  RegistryWireOptions,
+    25	} from './registry-wire';
+    26	export { registerBlocks } from './registerBlocks';
+    27	export { registerKernels } from './registerKernels';
+    28	export { saveToMdx, loadFromMdx } from './saveLoad';
+    29	export type { SaveLoadOptions } from './saveLoad';
+    30	export { makeBlockNodeView } from './BlockNodeView';
+    31	export type { BlockNodeViewFactoryProps } from './BlockNodeView';
+    32	export type { NoteSaveAdapter, NoteState, ReadonlyJSONValue } from './save-adapter';
+    33	export { ApiAdapter, LocalStorageAdapter } from './save-adapter';
+    34	export { proseExtensions } from '@skb/block-foundation';
+    35	export { GridContainer } from './grid-container';
+    36	export type { GridContainerProps } from './grid-container';
+    37	export {
+    38	  extractGridPosition,
+    39	  gridPlacementStyle,
+    40	  gridPlacementStyleAttr,
+    41	} from './grid-style';
+    42	export type { GridPlacementInput, GridPlacementOptions } from './grid-style';
+    43	export { useAutoRowSpan } from './use-auto-row-span';
+    44	export { useResponsiveCols, RESPONSIVE_BREAKPOINTS } from './responsive-cols';
+    45	export type { UseResponsiveColsOptions, ViewportCols } from './responsive-cols';
+    46	export { EDGE_W, GAP, computeEdgeRects } from './drag-drop/edge-rects';
+    47	export type { EdgeRect, BlockLayout } from './drag-drop/edge-rects';
+    48	export { tiebreak, findMatches } from './drag-drop/tiebreak';
+    49	export type { EdgeMatch, DragVelocity } from './drag-drop/tiebreak';
+    50	export { OutlineOverlay } from './drag-drop/outline-overlay';
+    51	export type { OutlineOverlayProps } from './drag-drop/outline-overlay';
+    52	export { DropPulse, dropPulseClassName } from './drag-drop/drop-pulse';
+    53	export type { DropPulseProps } from './drag-drop/drop-pulse';
+    54	export { DragGhost } from './drag-drop/drag-ghost';
+    55	export type { DragGhostProps, GhostKind } from './drag-drop/drag-ghost';
+    56	export { useEscCancel } from './drag-drop/esc-cancel';
+    57	export type { EscCancelOptions } from './drag-drop/esc-cancel';
+    58	export { layoutReducer } from './drag-drop/layout-reducer';
+    59	export type { GridSnapshot, LayoutAction, LayoutState } from './drag-drop/layout-reducer';
+    60	export { applyDropMode } from './drag-drop/apply-drop-mode';
+    61	export type {
+    62	  ApplyDropModeInput,
+    63	  DropMode,
+    64	  GridSnapshotIdentified,
+    65	  IdentifiedBlock,
+    66	} from './drag-drop/apply-drop-mode';
+    67	export { DragHandleButton, DRAG_HANDLE_MIME } from './drag-drop/drag-handle-button';
+    68	export type { DragHandleButtonProps } from './drag-drop/drag-handle-button';
+    69	export { DragDropContext, DragDropProvider } from './drag-drop/drag-context';
+    70	export type {
+    71	  DragDropContextValue,
+    72	  DragDropProviderProps,
+    73	  DragHandleStartOrigin,
+    74	  DragHandleEndOrigin,
+    75	} from './drag-drop/drag-context';
+    76	export { useDragDropPipeline } from './drag-drop/use-drag-drop-pipeline';
+    77	export type {
+    78	  PipelineDragState,
+    79	  UseDragDropPipelineOptions,
+    80	  UseDragDropPipelineReturn,
+    81	} from './drag-drop/use-drag-drop-pipeline';
+    82	export { ColRuler } from './resize/col-ruler';
+    83	export type { ColRulerProps } from './resize/col-ruler';
+    84	export { SizeTooltip, colSpanToFraction } from './resize/size-tooltip';
+    85	export type { SizeTooltipProps } from './resize/size-tooltip';
+
+exec
+/bin/bash -lc 'nl -ba packages/editor-shell/package.json' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	{
+     2	  "name": "@skb/editor-shell",
+     3	  "version": "0.0.0",
+     4	  "private": true,
+     5	  "type": "module",
+     6	  "main": "./src/index.ts",
+     7	  "exports": {
+     8	    ".": "./src/index.ts",
+     9	    "./BlockNodeView.css": "./src/BlockNodeView.css",
+    10	    "./block-chrome.css": "./src/block-chrome.css",
+    11	    "./drag-handle-button.css": "./src/drag-drop/drag-handle-button.css",
+    12	    "./src/*": "./src/*"
+    13	  },
+    14	  "scripts": {
+    15	    "build": "tsc -b",
+    16	    "lint": "eslint .",
+    17	    "typecheck": "tsc --noEmit",
+    18	    "test": "vitest run"
+    19	  },
+    20	  "dependencies": {
+    21	    "@skb/block-agent-flow": "workspace:*",
+    22	    "@skb/block-callout": "workspace:*",
+    23	    "@skb/block-code": "workspace:*",
+    24	    "@skb/block-foundation": "workspace:*",
+    25	    "@skb/block-image": "workspace:*",
+    26	    "@skb/block-jupyter": "workspace:*",
+    27	    "@skb/block-math": "workspace:*",
+    28	    "@skb/block-nn-viz": "workspace:*",
+    29	    "@skb/block-pdf": "workspace:*",
+    30	    "@skb/kernel-adapter": "workspace:*",
+    31	    "@skb/kernel-pyodide": "workspace:*",
+    32	    "@skb/kernel-registry": "workspace:*",
+    33	    "@skb/mdx-bridge": "workspace:*",
+    34	    "@tiptap/extension-link": "^2.10.0",
+    35	    "@tiptap/starter-kit": "^2.10.0"
+    36	  },
+    37	  "peerDependencies": {
+    38	    "@tiptap/core": "^2.6.0",
+    39	    "@tiptap/react": "^2.6.0",
+    40	    "react": "^18.3.0 || ^19.0.0"
+    41	  },
+    42	  "devDependencies": {
+    43	    "@testing-library/react": "^16.0.0",
+    44	    "@tiptap/core": "^2.6.0",
+    45	    "@tiptap/react": "^2.6.0",
+    46	    "@types/react": "^18.3.0",
+    47	    "@types/react-dom": "^18.3.0",
+    48	    "happy-dom": "^15.0.0",
+    49	    "react": "^18.3.0",
+    50	    "react-dom": "^18.3.0",
+    51	    "typescript": "~5.6.0",
+    52	    "vitest": "^4.1.5"
+    53	  }
+    54	}
+
+exec
+/bin/bash -lc "nl -ba apps/site/src/components/EditorShellMount.tsx | sed -n '1,280p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	import { useEffect, useMemo, useRef, useState } from 'react';
+     2	import { BlockRegistry } from '@skb/block-foundation';
+     3	import {
+     4	  ApiAdapter,
+     5	  DragDropProvider,
+     6	  DragGhost,
+     7	  EditModeBanner,
+     8	  EditorShell,
+     9	  GridContainer,
+    10	  LocalStorageAdapter,
+    11	  type NoteState,
+    12	  OutlineOverlay,
+    13	  Palette,
+    14	  SaveIndicator,
+    15	  SlashMenu,
+    16	  Toolbar,
+    17	  loadFromMdx,
+    18	  registerBlocks,
+    19	  saveToMdx,
+    20	  type EditorShellProps,
+    21	  type SaveIndicatorStatus,
+    22	  useDragDropPipeline,
+    23	  useEscCancel,
+    24	  wireRegistry,
+    25	} from '@skb/editor-shell';
+    26	
+    27	export interface EditorShellMountProps {
+    28	  slug: string;
+    29	  initialMdx?: string;
+    30	  editMode?: boolean;
+    31	}
+    32	
+    33	type EditorInstance = Parameters<NonNullable<EditorShellProps['onCreate']>>[0];
+    34	
+    35	/**
+    36	 * Wave 6 Stage B.4 adapter selection per ADR-0018 v0.6 D13:
+    37	 *   load: ApiAdapter primary; on throw OR null result → LocalStorageAdapter fallback
+    38	 *   save: ApiAdapter primary; on { ok: false } → LocalStorageAdapter backup write
+    39	 *
+    40	 * The primary path makes the server file at content/notes/<slug>/index.mdx
+    41	 * the source of truth (closes the user-reported "/notes/<slug> and
+    42	 * /notes/<slug>/edit don't sync" gap). LocalStorageAdapter is retained for
+    43	 * offline degraded-mode editing — load() returns null when the API is
+    44	 * unreachable; save() falls through to localStorage so unsaved edits are not
+    45	 * lost across a network blip.
+    46	 */
+    47	async function loadWithFallback(
+    48	  primary: ApiAdapter,
+    49	  fallback: LocalStorageAdapter,
+    50	): Promise<NoteState | null> {
+    51	  try {
+    52	    const apiState = await primary.load();
+    53	    if (apiState !== null) return apiState;
+    54	  } catch {
+    55	    // network / 5xx — fall through to LocalStorageAdapter
+    56	  }
+    57	  try {
+    58	    return await fallback.load();
+    59	  } catch {
+    60	    return null;
+    61	  }
+    62	}
+    63	
+    64	async function saveWithBackup(
+    65	  primary: ApiAdapter,
+    66	  fallback: LocalStorageAdapter,
+    67	  state: NoteState,
+    68	): Promise<{ ok: boolean; error?: string }> {
+    69	  const apiResult = await primary.save(state);
+    70	  if (apiResult.ok) return apiResult;
+    71	  // ApiAdapter failed → write to LocalStorageAdapter as backup so the
