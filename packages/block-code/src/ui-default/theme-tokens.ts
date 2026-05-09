@@ -25,7 +25,11 @@ import type { ColorTokenName } from '@skb/design-tokens';
  * `theme-tokens.test.ts` covers-CSS invariant fails loudly on drift.
  */
 export const CODE_THEME_TOKENS = {
-  border: 'border',
+  // Wave 6 cf-20a (2026-05-09): `border` removed because the card chrome
+  // (border / radius / per-kind 2px stripe) was hand off to
+  // `@skb/editor-shell/src/block-chrome.css` and `code.css` no longer
+  // consumes `var(--color-border)`. The remaining 5 tokens still drive
+  // the inner `<pre>` syntax-theme + caption + outline-on-focus.
   surface1: 'surface1',
   surface2: 'surface2',
   fg: 'fg',

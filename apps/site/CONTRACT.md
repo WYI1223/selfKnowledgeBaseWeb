@@ -182,11 +182,21 @@
   `Code`, `Image`, `Math`, `Pdf`, `Jupyter`, `NnViz`, and `AgentFlow`.
   Values for the 5 light keys (`Callout` / `Code` / `Image` / `Math` /
   `Pdf`) wrap the corresponding block package `*RenderView` exports via
-  the `makeMdxAdapter` from `./lib/mdx-adapter.ts`. Values for the 3
-  heavy keys (`Jupyter` / `NnViz` / `AgentFlow`) reference Astro
-  wrappers under `./components/{Kind}.astro` per ADR-0014 v0.3 D10
-  (production hydration boundary) — the wrappers render React islands
-  with `client:load` directives. In Wave 5 (ADR-0014 v0.4 amendment)
+  the `makeMdxAdapter(RenderView, kind)` from `./lib/mdx-adapter.ts`.
+  The `kind` arg is the BlockKind literal (`callout`, `componentCode`,
+  `image`, `math`, `pdf`); the adapter wraps the inner component in
+  `<div class="skb-block-static" data-skb-block-kind="<kind>">` so the
+  static read route gets the v2 `.gblock` chrome (border / radius /
+  hover / per-kind 2px stripe) from the shared
+  `@skb/editor-shell/src/block-chrome.css` module — single source of
+  truth with the editor-mount path's `.skb-block-nodeview` wrapper
+  (Wave 6 cf-20a 2026-05-09). Values for the 3 heavy keys (`Jupyter` /
+  `NnViz` / `AgentFlow`) reference Astro wrappers under
+  `./components/{Kind}.astro` per ADR-0014 v0.3 D10 (production
+  hydration boundary) — the wrappers render React islands with
+  `client:load` directives wrapped in their own
+  `<div class="skb-block-static" data-skb-block-kind="<kebab-kind>">`
+  shell so the heavy-block read path also resolves the same chrome. In Wave 5 (ADR-0014 v0.4 amendment)
   those islands render the `plugin-placeholder` tier — a static React
   shell satisfying the SSR + hydration boundary contract without
   dynamic-importing real runtimes. The `plugin-real-runtime` tier

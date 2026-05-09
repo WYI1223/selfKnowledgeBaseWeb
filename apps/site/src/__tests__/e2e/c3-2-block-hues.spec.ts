@@ -12,30 +12,43 @@ type BlockHueTarget = {
   expectedToken: string;
 };
 
+// Wave 6 cf-20a (2026-05-09) — chrome single-source migration. The
+// per-kind 2px top stripe was hand off from each block's inner CSS rule
+// (`[data-callout-variant]`, `[data-code-language]`, `[data-image-loading]`,
+// `[data-block='math'][data-display='true']`, `[data-block='pdf']`) to
+// the shared `.skb-block-static[data-skb-block-kind="<kind>"]` wrapper
+// emitted by `apps/site/src/lib/mdx-adapter.ts`'s
+// `makeMdxAdapter(RenderView, kind)`. The wrapper paints the stripe via
+// `@skb/editor-shell/src/block-chrome.css` (single source 横跨 the
+// editor `.skb-block-nodeview` AND the read-route `.skb-block-static`).
+//
+// This C.3-2 hue lock test now probes the wrapper, not the inner. The
+// kind literals match BlockKind canonical names: callout / componentCode
+// / image / math / pdf.
 const blockHueTargets: BlockHueTarget[] = [
   {
     name: 'callout',
-    selector: '[data-callout-variant]',
+    selector: '.skb-block-static[data-skb-block-kind="callout"]',
     expectedToken: '--accent-runnable',
   },
   {
     name: 'code',
-    selector: '[data-code-language]',
+    selector: '.skb-block-static[data-skb-block-kind="componentCode"]',
     expectedToken: '--accent-runnable',
   },
   {
     name: 'image',
-    selector: '[data-image-loading]',
+    selector: '.skb-block-static[data-skb-block-kind="image"]',
     expectedToken: '--accent-image',
   },
   {
     name: 'math',
-    selector: '[data-block="math"][data-display="true"]',
+    selector: '.skb-block-static[data-skb-block-kind="math"]',
     expectedToken: '--accent-math',
   },
   {
     name: 'pdf',
-    selector: '[data-block="pdf"]',
+    selector: '.skb-block-static[data-skb-block-kind="pdf"]',
     expectedToken: '--accent-pdf',
   },
 ] as const;

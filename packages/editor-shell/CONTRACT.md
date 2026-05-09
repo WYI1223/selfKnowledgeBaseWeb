@@ -522,17 +522,41 @@ unregistered NodeView fallback wrapper additionally carries the
 `makeBlockNodeView` factory is exported from the package barrel for
 downstream NodeView smoke tests.
 
-### BlockNodeView wrapper styles (Wave 6 cf-19 v0.2 + R2; 2026-05-09)
+### BlockNodeView wrapper styles (Wave 6 cf-19 v0.2 + R2; 2026-05-09; cf-20a chrome split 2026-05-09)
 
-`@skb/editor-shell/BlockNodeView.css` is a side-effect stylesheet that
-brings the v2 `.gblock` card chrome onto the editor surface (per the
-v2 reference design at /mnt/d/download/web/v2-styles.css:154-249, plus
-the v2-design-granularity "Block 容器（.gblock）状态" table). Consumers
-(apps/site `global.css` is the canonical example) MUST import it once
-at app boot:
+`@skb/editor-shell` ships TWO side-effect stylesheets that together bring
+the v2 `.gblock` card chrome onto every block surface (per the v2
+reference design at /mnt/d/download/web/v2-styles.css:154-249, plus the
+v2-design-granularity "Block 容器（.gblock）状态" table):
+
+- **`@skb/editor-shell/block-chrome.css`** — Wave 6 cf-20a single source
+  of card geometry + per-kind 2px top stripe. Two structural classes
+  consume the rules: `.skb-block-nodeview` (editor mount) and
+  `.skb-block-static` (apps/site read route via the
+  `makeMdxAdapter(RenderView, kind)` adapter + the 3 heavy block Astro
+  wrappers). Both classes carry `data-skb-block-kind="<kind>"` and
+  resolve the same per-kind hue token. Pre-cf-20a the chrome lived in
+  TWO places (the editor wrapper rule AND each block's inner CSS); the
+  inner stripes were zeroed under `.skb-block-nodeview` via a
+  nested-suppression rule. cf-20a deletes the inner stripes and the
+  suppression rule, routing all 8 inner blocks through this shared
+  module so a single edit fans out to both routes.
+- **`@skb/editor-shell/BlockNodeView.css`** — editor-mount-only
+  affordances layered on top: ProseMirror selected-node accent ring,
+  focus-within border bridge, per-kind chip tint redefinitions
+  (editor-local CSS variables), gutter shell + kind chip layout, body
+  padding (offsets the absolutely-positioned gutter chip), unregistered
+  fallback placeholder. The first line of this file is
+  `@import './block-chrome.css'` so the editor wrapper inherits the
+  chrome via either a direct global.css import OR transitively through
+  BlockNodeView.css.
+
+Consumers (apps/site `global.css` is the canonical example) MUST import
+both at app boot:
 
 ```css
-@import '@skb/editor-shell/BlockNodeView.css';
+@import '@skb/editor-shell/block-chrome.css';   /* shared chrome */
+@import '@skb/editor-shell/BlockNodeView.css';  /* editor-only affordances */
 ```
 
 DOM contract emitted by `BlockNodeView.tsx` (cf-19 v0.2):
@@ -604,33 +628,26 @@ documented as an out-of-scope cf-21+ candidate in the cf-19 PR.md.
 | `--skb-block-nodeview--chip-border` | gutter chip border tint | yes |
 | `--skb-block-nodeview--chip-text` | gutter chip text color | yes |
 
-#### Per-block stripe coexistence + nested-suppression rule (R2 P3 fix)
+#### Per-block stripe single source (Wave 6 cf-20a 2026-05-09)
 
-Each block package's `ui-default/<kind>.css` keeps its own
-`border-top: 2px solid var(--accent-X)` rule so the static read-route
-(`/notes/<slug>` Astro page) renders the stripe directly on the inner
-component when the NodeView wrapper is absent.
+The 8 block packages' `ui-default/<kind>.css` files NO LONGER ship
+their own `border-top: 2px solid var(--accent-X)` rule. The chrome
+authority is `@skb/editor-shell/src/block-chrome.css`, which selects on
+both `.skb-block-nodeview[data-skb-block-kind="<kind>"]` (editor wrapper
+emitted by `BlockNodeView.tsx`) AND `.skb-block-static[data-skb-block-kind="<kind>"]`
+(read-route wrapper emitted by `apps/site/src/lib/mdx-adapter.ts`'s
+`makeMdxAdapter(RenderView, kind)` plus the 3 heavy block Astro
+wrappers `apps/site/src/components/{Jupyter,NnViz,AgentFlow}.astro`).
 
-To prevent a visible double 2px stripe on the editor-mount path (where
-both the wrapper rule AND the nested inner rule would otherwise paint),
-`BlockNodeView.css` ships an explicit nested-suppression block:
+Because the inner-component stripe rules are gone, the cf-19 R2 P3
+nested-suppression block in `BlockNodeView.css` is also gone — there's
+nothing to suppress. The wrapper is the single source of stripe truth
+on BOTH routes; sister block packages keep their layout-only inner
+rules (flex / grid / padding / variant tints / surface bg) without
+duplicating chrome geometry.
 
-```css
-.skb-block-nodeview [data-callout-variant],
-.skb-block-nodeview [data-code-language],
-.skb-block-nodeview [data-image-loading],
-.skb-block-nodeview [data-block='math'],
-.skb-block-nodeview [data-block='pdf'],
-.skb-block-nodeview [data-block='jupyter'],
-.skb-block-nodeview [data-block='nn-viz'],
-.skb-block-nodeview [data-block='agent-flow'] {
-  border-top: 0;
-}
-```
-
-Result: the wrapper is the single source of stripe truth on the
-editor path; the inner stripe still renders on the static read-route
-(no `.skb-block-nodeview` ancestor present there).
+Sister block CONTRACT.md files document the cf-20a chrome handover
+under their respective "Public surface" sections.
 
 `EditorShellProps.extensions` is now the sanctioned composition hook
 for consumer-owned Tiptap extensions layered after the built-in

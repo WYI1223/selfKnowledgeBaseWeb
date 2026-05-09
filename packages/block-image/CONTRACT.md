@@ -18,7 +18,7 @@
   - `ImageEditorView(props)` / `ImageRenderView(props)` — 同步的图像语义渲染层
   - `ImageBody(props)` — 输出 `<figure><img ...><figcaption>{alt}</figcaption></figure>`，固定 `loading="lazy"`
   - `IMAGE_THEME_TOKENS` — `Readonly<Record<string, ColorTokenName>>` 设计令牌消费清单（typed import from `@skb/design-tokens`，see Wave 3 PR #2 + ADR-0010 D3 #7a F3 闭环）
-- `./ui-default/image.css` — 样式入口（design-token 变量约束；运行时颜色消费走 CSS variable `var(--color-*)`，TS 端 `IMAGE_THEME_TOKENS` 是 typed mirror）
+- `./ui-default/image.css` — image-specific 视觉规则（grid layout + caption + figure max-width；design-token 变量约束；运行时颜色消费走 CSS variable `var(--color-*)`，TS 端 `IMAGE_THEME_TOKENS` 是 typed mirror）。**Wave 6 cf-20a (2026-05-09) chrome handover**: card chrome (border / radius / hover lift / per-kind 2px top stripe via `var(--accent-image)`) 已 hand off 到 `@skb/editor-shell/src/block-chrome.css` (single source 横跨 `.skb-block-nodeview` + `.skb-block-static`; 两 wrapper 都 carry `data-skb-block-kind="image"`)。本文件 pre-cf-20a 的 `border-top` 已删除
 
 `propsSchema` 形状（见 `src/core/core-definition.ts`）:
 

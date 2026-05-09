@@ -4,62 +4,54 @@
  * Wave 6 cf-19 v0.2 + R2 (2026-05-09) — restructured from v0.1 minimal
  * outline-only to the full v2 `.gblock` card treatment per
  * /mnt/d/download/web/v2-styles.css:154-249 and the v2-design-granularity
- * "Block 容器（.gblock）状态" table. The wrapper is now the canonical
- * editor-surface block boundary; per-kind 2px top stripe lives here on
- * the wrapper (flush with the card top edge) and the inner-component
- * stripe is suppressed when nested under .skb-block-nodeview so only
- * one stripe renders on the editor path.
+ * "Block 容器（.gblock）状态" table.
  *
- * R2 honesty audit (codex-pr-reviewer-55 R1 P2 + P3; R3 F2 follow-up):
- *   - Token authority: 18 distinct @skb/design-tokens CSS variables are
- *     consumed by this file. Source-of-truth verification command:
- *       grep -oE 'var\(--[a-z0-9-]+' packages/editor-shell/src/BlockNodeView.css | sort -u
- *     Two groups:
- *       (a) 7 ADR-0018 D3 per-kind hue tokens for the wrapper top
- *           stripe — `--accent-runnable` (used by callout AND
- *           componentCode per cf-19 D2; only 7 unique stripe colors
- *           across 8 kinds), `--accent-image`, `--accent-math`,
- *           `--accent-pdf`, `--accent-jupyter`, `--accent-nn-viz`,
- *           `--accent-agent-flow`.
- *       (b) 11 chrome / typography tokens — `--surface`, `--border`,
- *           `--border-strong`, `--accent` (selected + focus-within
- *           border-color), `--shadow-sm` (hover lift), `--panel` (chip
- *           default bg fallback before per-kind redefinition), `--text-2`
- *           (chip default text fallback), `--text-3` (unregistered
- *           fallback body text), `--mono` (chip + fallback body
- *           typography), `--duration-fast` + `--ease-base` (transition).
- *     NOT consumed by this file (negative-space lock so future drift
- *     against this comment is detectable): `--radius`, `--bg`,
- *     `--accent-soft` (only inline-default fallback inside the
- *     editor-local --skb-block-nodeview--accent-soft declaration —
- *     not a direct consumption), `--accent-canvas` (kind-canvas is not
- *     mounted on the editor surface). `--accent-callout` is intentionally
- *     unused because it is NOT a real token in design-tokens; callout
- *     consumes `--accent-runnable` per ADR-0018 D3 hue grouping.
- *   - Editor-local CSS variables (4 total, scoped to .skb-block-nodeview
- *     itself, NOT promoted to global :root): `--skb-block-nodeview--accent-soft`
- *     (1 shared, the selected outer-ring color); `--skb-block-nodeview--chip-bg`,
- *     `--skb-block-nodeview--chip-border`, `--skb-block-nodeview--chip-text`
- *     (3 redefined per kind for the gutter chip tint). Rationale: editor-
- *     decoration-only; promoting to global tokens would add 4 base + up
- *     to 24 per-kind variants for limited cross-package reuse. Promotion
- *     to design-tokens is documented as an out-of-scope cf-21+ candidate
- *     in the cf-19 PR.md.
- *   - Stripe coexistence (P3 closure): the wrapper carries the visible
- *     stripe; inner block CSS rules (border-top: 2px solid var(--accent-X)
- *     on the [data-block=...] / [data-callout-variant] / [data-code-language] /
- *     [data-image-loading] selectors) are zeroed via descendant selectors
- *     below when nested inside .skb-block-nodeview. Static read-route
- *     /notes/<slug> renders inner blocks without the wrapper, so the
- *     inner stripe still shows there.
+ * Wave 6 cf-20a (2026-05-09) — chrome split.  The card geometry +
+ * per-kind 2px stripe now live in `block-chrome.css` (single source of
+ * truth shared with the static read-route `.skb-block-static` wrapper);
+ * this file owns ONLY editor-mount-specific affordances:
+ *   - selected-node accent ring (`ProseMirror-selectednode`)
+ *   - focus-within soft accent border bridge
+ *   - per-kind chip tint redefinitions (editor-local CSS variables)
+ *   - gutter shell + kind chip layout
+ *   - body padding (offsets the absolutely-positioned gutter chip)
+ *   - unregistered fallback placeholder
+ *
+ * Pre-cf-20a the inner-component stripe rules in each block's
+ * `ui-default/<kind>.css` were left in place and zeroed via a
+ * `.skb-block-nodeview <inner-selector> { border-top: 0 }` nested
+ * suppression block — coexistence rather than single-source. cf-20a
+ * deletes those inner stripes and the suppression block. Both edit and
+ * read routes now resolve the stripe through `block-chrome.css`.
+ *
+ * Token authority:
+ *   - Card chrome + per-kind stripe → `block-chrome.css` (shared)
+ *   - Selected/focus accent + chip tints + gutter + body padding → here
+ *
+ * Tokens consumed by this file alone (verify via:
+ *   grep -oE 'var\(--[a-z0-9-]+' packages/editor-shell/src/BlockNodeView.css | sort -u
+ * ):
+ *   --accent (selected + focus-within border-color), --panel + --text-2
+ *   (chip default fallback), --text-3 (unregistered fallback body text),
+ *   --mono (chip + fallback typography), --border-strong (unregistered
+ *   fallback dashed outline).
+ *
+ * Editor-local CSS variables (4 total, scoped to .skb-block-nodeview
+ * itself, NOT promoted to global :root): `--skb-block-nodeview--accent-soft`
+ * (1 shared, the selected outer-ring color); `--skb-block-nodeview--chip-bg`,
+ * `--skb-block-nodeview--chip-border`, `--skb-block-nodeview--chip-text`
+ * (3 redefined per kind for the gutter chip tint). Promotion to
+ * design-tokens is documented as an out-of-scope cf-21+ candidate.
  *
  * DOM contract (BlockNodeView.tsx):
- *   .skb-block-nodeview                    ← v2 .gblock card
+ *   .skb-block-nodeview                    ← v2 .gblock card (chrome via block-chrome.css)
  *     .skb-block-nodeview__gutter          ← v2 .gblock-gutter shell (cf-20 button drop-in)
  *       .skb-block-nodeview__kind-chip     ← visible kind label
  *     .skb-block-nodeview__body            ← v2 .gblock-body padding shell
  *       <inner block component />          ← CalloutBody / CodeBody / etc.
  */
+
+@import './block-chrome.css';
 
 .skb-block-nodeview {
   /* Editor-local scoped CSS variables (R2 P2 honesty fix). Each
@@ -70,25 +62,6 @@
   --skb-block-nodeview--chip-bg: var(--panel, oklch(98% 0.004 80));
   --skb-block-nodeview--chip-border: var(--border, oklch(92% 0.005 80));
   --skb-block-nodeview--chip-text: var(--text-2, oklch(45% 0.01 80));
-
-  position: relative;
-  background: var(--surface, #ffffff);
-  border: 1px solid var(--border, oklch(92% 0.005 80));
-  border-radius: 7px;
-  margin-block: 8px;
-
-  /* Stable geometry across hover/selected/focus state toggles: shadow
-   * starts at 0 (transparent) so the box doesn't jump when shadow
-   * lights up. Border color toggles within the existing 1px width. */
-  box-shadow: 0 0 0 0 transparent;
-  transition:
-    box-shadow var(--duration-fast, 120ms) var(--ease-base, ease),
-    border-color var(--duration-fast, 120ms) var(--ease-base, ease);
-}
-
-.skb-block-nodeview:hover {
-  border-color: var(--border-strong, oklch(86% 0.006 80));
-  box-shadow: var(--shadow-sm, 0 1px 2px rgba(20, 15, 10, 0.05));
 }
 
 /* ProseMirror sets `.ProseMirror-selectednode` on the wrapper when
@@ -103,59 +76,6 @@
  * specificity-wise so explicit selection always wins. */
 .skb-block-nodeview:focus-within:not(.ProseMirror-selectednode) {
   border-color: var(--accent, oklch(58% 0.16 35));
-}
-
-/* === Per-kind 2px top stripe ====================================== */
-/* Authority: ADR-0018 D3 hue table. Each kind maps to a hue group
- * (canvas / runnable / image) per granularity v0.3.4 § "Block kind
- * 编码（视觉识别）". 5 lock-extended kinds (math/pdf/jupyter/nn-viz/
- * agent-flow) consume the per-kind tokens locked at Pre-A4. Callout +
- * componentCode intentionally share the runnable hue (7 unique
- * stripe colors across 8 kinds). */
-.skb-block-nodeview[data-skb-block-kind='callout'] {
-  border-top: 2px solid var(--accent-runnable, oklch(50% 0.12 145));
-}
-.skb-block-nodeview[data-skb-block-kind='componentCode'] {
-  border-top: 2px solid var(--accent-runnable, oklch(50% 0.12 145));
-}
-.skb-block-nodeview[data-skb-block-kind='image'] {
-  border-top: 2px solid var(--accent-image, oklch(60% 0.10 60));
-}
-.skb-block-nodeview[data-skb-block-kind='math'] {
-  border-top: 2px solid var(--accent-math, oklch(50% 0.16 280));
-}
-.skb-block-nodeview[data-skb-block-kind='pdf'] {
-  border-top: 2px solid var(--accent-pdf, oklch(55% 0.16 0));
-}
-.skb-block-nodeview[data-skb-block-kind='jupyter'] {
-  border-top: 2px solid var(--accent-jupyter, oklch(65% 0.14 90));
-}
-.skb-block-nodeview[data-skb-block-kind='nn-viz'] {
-  border-top: 2px solid var(--accent-nn-viz, oklch(50% 0.18 325));
-}
-.skb-block-nodeview[data-skb-block-kind='agent-flow'] {
-  border-top: 2px solid var(--accent-agent-flow, oklch(55% 0.13 180));
-}
-
-/* === Inner-component stripe suppression (R2 P3 fix) ================ */
-/* Each block package's ui-default/<kind>.css ships its own
- * `border-top: 2px solid var(--accent-X)` rule for the static
- * read-route (/notes/<slug>). When the inner component renders nested
- * inside our .skb-block-nodeview wrapper (the editor-mount path),
- * both stripes would render at different DOM depths, producing a
- * visible double 2px (4px) hue band. Zero the inner stripe in the
- * nested context so the wrapper is the single source of stripe truth
- * on the editor path; the static read-route is unaffected because
- * those pages do not emit a .skb-block-nodeview ancestor. */
-.skb-block-nodeview [data-callout-variant],
-.skb-block-nodeview [data-code-language],
-.skb-block-nodeview [data-image-loading],
-.skb-block-nodeview [data-block='math'],
-.skb-block-nodeview [data-block='pdf'],
-.skb-block-nodeview [data-block='jupyter'],
-.skb-block-nodeview [data-block='nn-viz'],
-.skb-block-nodeview [data-block='agent-flow'] {
-  border-top: 0;
 }
 
 /* === Per-kind chip tint redefinitions ============================== */

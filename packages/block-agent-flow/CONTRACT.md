@@ -31,8 +31,7 @@ React Flow-backed agent topology visualization（Wave 2 Track E3）。第三个
   - `heavyBoundaryDimensions: HeavyBlockDimensions` (per [ADR-0014 D5](../../docs/decisions/ADR-0014-heavy-block-boundary.md)) — initial values: width 600, height 400 (CSS px). Re-exported by `./ui-default`; consumed by `apps/site` via the SSR-safe `./ui-default/heavy-boundary-dimensions` subpath and `HeavyBlockBoundary` to size the SSR skeleton; zero layout shift on hydration.
 - `./ui-default/AgentFlow.astro` — SSR Astro 组件，调 `computeFlowLayout` → SVG
   snapshot（不内嵌 geometry/validation），hydrate 后由 React island 接管
-- `./ui-default/agent-flow.css` — 视觉规则单一来源（design-token-bound，error/fg/muted/accent
-  色 走 `var(--color-*)`）
+- `./ui-default/agent-flow.css` — agent-flow-specific 视觉规则（toolbar / status / canvas / svg / nodes / edges / per-node-type strokes；design-token-bound，error/fg/muted/accent 色 走 `var(--color-*)`）。**Wave 6 cf-20a (2026-05-09) chrome handover**: card chrome (border / radius / hover lift / per-kind 2px top stripe via `var(--accent-agent-flow)`) 已 hand off 到 `@skb/editor-shell/src/block-chrome.css` (single source 横跨 `.skb-block-nodeview` + `.skb-block-static`; 后者由 `apps/site/src/components/AgentFlow.astro` wrap 在 island 外, 两 wrapper 都 carry `data-skb-block-kind="agent-flow"`)。本文件 pre-cf-20a 的 `border / border-top / border-radius` 已删除
 
 ### Consumer 使用方式
 
