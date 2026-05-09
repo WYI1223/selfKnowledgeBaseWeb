@@ -6,6 +6,16 @@
  * from `@skb/design-tokens` :root (per ADR-0018 D1 layout tokens);
  * this file no longer redefines those values locally to enforce
  * single-source-of-truth grid geometry.
+ *
+ * Wave 6 cf-20b (2026-05-09) — editor-surface grid lock per ADR-0016 v0.2
+ * D11.1 amendment. The `.ProseMirror` editor element (Tiptap's render
+ * target inside `<EditorContent>`) now ALSO becomes a 12-col grid so
+ * the per-block NodeView wrappers `.skb-block-nodeview` (which sit
+ * 3 levels deep under `<GridContainer>` → EditorContent's `<div>` →
+ * `.ProseMirror`) can apply `style.gridColumn` and visually land in the
+ * 12-col grid. The outer `.skb-grid` rule below stays for the read
+ * route (where blocks are direct grid children via `<Content>` MDX
+ * expansion). v2-styles.css:137-147 is the contract source for both.
  */
 .skb-grid {
   --total-cols: 12;
@@ -18,13 +28,69 @@
 }
 
 /*
- * Wave 5 C.2-3 transitional fallback: until per-block grid attrs land
- * (C.2-4 editor-shell + C.2-1 mdx-bridge backfill flip), MDX children
- * without an explicit gridColumn style span the full grid width so
- * existing notes content remains readable. Per-block `style.gridColumn`
- * emission in C.2-4 overrides this fallback selector via specificity.
+ * Wave 6 cf-20b — editor-surface grid pass-through. When `.skb-grid`
+ * wraps `<EditorContent>` (which renders `<div class="skb-editor-content">
+ * <div class="ProseMirror">...</div></div>`), the children of `.ProseMirror`
+ * are the actual block + prose nodes that need to participate in the
+ * grid. Strategy: let `.skb-editor-content` span the full outer grid
+ * width (so it inherits 100% width as a grid item), then make
+ * `.ProseMirror` ITSELF a 12-col grid so its children become grid items
+ * at the right level. The outer `.skb-grid` rule above still applies to
+ * the read route (where blocks are direct children via
+ * `<Content components>`).
+ *
+ * Per ADR-0016 v0.2 D11.1 amendment: prose interleave is full — `<p>`,
+ * `<h1>`, `<h2>` etc. inside `.ProseMirror` are also gridded with the
+ * full-width fallback (`grid-column: 1 / -1` via the
+ * `:not([style*="grid-column"])` rule below). NodeView wrappers with
+ * explicit `style.gridColumn` (cf-20b BlockNodeView.tsx emission)
+ * resolve to their per-block placement.
+ *
+ * Earlier cf-20b draft used `display: contents` on `.skb-editor-content`
+ * to flatten the hierarchy. Discarded because CSS selectors operate on
+ * the DOM tree (NOT the layout tree); `.skb-grid > *:not([style*="grid-column"])`
+ * doesn't match `.ProseMirror` when the intermediate `.skb-editor-content`
+ * is `display: contents`. Two-level grid (outer `.skb-grid` + inner
+ * `.ProseMirror` grid) avoids the issue entirely; `.skb-editor-content`
+ * stays a normal grid item taking full width.
  */
-.skb-grid > *:not([style*="grid-column"]) {
+.skb-grid > .skb-editor-content {
+  /* Span the full outer grid so the inner `.ProseMirror` element gets
+   * the full container width to compute its own 1fr columns from. */
+  grid-column: 1 / -1;
+}
+
+.skb-grid .ProseMirror {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  grid-auto-rows: minmax(var(--row-h), auto);
+  gap: var(--gap);
+  grid-auto-flow: row;
+  /* Tiptap defaults give `.ProseMirror` `white-space: pre-wrap` for
+   * inline editing; that interacts poorly with grid item layout (forces
+   * the child to be ws-normal). Restore `white-space: normal` at the
+   * grid root so children inherit predictable wrapping. Inline marks
+   * (em / strong / code) still flow inline within their grid-item
+   * container. */
+  white-space: normal;
+}
+
+/*
+ * Wave 5 C.2-3 transitional fallback: MDX children without an explicit
+ * gridColumn style span the full grid width so prose stays readable.
+ * Per-block `style.gridColumn` emission (cf-20a `.skb-block-static` for
+ * read route + cf-20b `.skb-block-nodeview` for edit route) overrides
+ * via specificity. Selector list now covers both grid scopes (the
+ * outer `.skb-grid` direct children AND the inner `.ProseMirror` direct
+ * children, since both elements are `display: grid`).
+ *
+ * Wave 6 cf-20b: prose interleave per ADR-0016 v0.2 D11.1. Prose nodes
+ * (`<p>`, `<h1>`, `<h2>`, `<ul>`, etc.) without grid attrs are
+ * full-width by default — author can resize via cf-20d once the resize
+ * handles ship.
+ */
+.skb-grid > *:not([style*="grid-column"]),
+.skb-grid .ProseMirror > *:not([style*="grid-column"]) {
   grid-column: 1 / -1;
 }
 
@@ -43,8 +109,114 @@
     grid-template-columns: 1fr;
   }
 
-  .skb-grid > * {
-    grid-column: 1;
+  /*
+   * Wave 6 cf-20b R1 hotfix (2026-05-09) — mobile override MUST beat
+   * the cf-20b-emitted inline `style="grid-column: ${col} / span ${colSpan}"`
+   * on `.skb-block-static` (read route 5 light blocks via mdx-adapter +
+   * 3 heavy via Astro wrappers) AND `.skb-block-nodeview` (editor
+   * route via BlockNodeView.tsx). Without `!important`, inline style
+   * wins per CSS specificity, so blocks like `colSpan=12` retain their
+   * 12-cell width even though the mobile breakpoint switched the grid
+   * to a single 1fr column — producing 12× horizontal overflow
+   * (verified at 375×812: scrollWidth=6450px when viewport=343px;
+   * codex-pr-reviewer-55 R1 caught this).
+   *
+   * `!important` is intentional here, NOT an anti-pattern: the cf-20b
+   * inline emission is a desktop placement contract (per ADR-0016
+   * v0.2 D11.1 amendment); mobile responsive override per ADR-0016 D5
+   * + apps/site/CONTRACT.md "≤768px → 1 col" requires beating that
+   * inline-style intent in a single, scoped media query.
+   *
+   * R1 followup (during fix-write): the initial `.skb-grid > *,
+   * .skb-grid .ProseMirror > *` selector list missed the read-route
+   * case because `.skb-block-static` is nested INSIDE `.skb-prose`
+   * (the `notes/[...slug].astro` template wraps `<Content>` in
+   * `<div class="skb-prose">`), so it's NOT a direct child of
+   * `.skb-grid`. The corrected selector list explicitly targets BOTH
+   * structural wrapper classes by name (`.skb-block-static` for read,
+   * `.skb-block-nodeview` for editor) regardless of their depth in
+   * the DOM tree. Outer-grid direct-child rule kept for any future
+   * non-block top-level grid item that needs the same mobile flatten.
+   */
+  .skb-grid > *,
+  .skb-grid .ProseMirror > *,
+  .skb-grid .skb-block-static,
+  .skb-grid .skb-block-nodeview {
+    grid-column: 1 / -1 !important;
+  }
+
+  /*
+   * Wave 6 cf-20b R1 hotfix part 2 — `min-width: 0` on grid items.
+   *
+   * Even with `grid-column: 1 / -1` forcing block wrappers to the
+   * single mobile column, CSS Grid's default `min-width: auto` on
+   * grid items resolves to each item's `min-content` width, which
+   * = the largest unbreakable child. The sample-blocks fixture
+   * contains `<pre class="skb-code-pre">` Python code (6392px wide
+   * unbreakable text), `<svg>` NN-Viz topology (6400px), and
+   * `<iframe>` PDF viewers (6424px) — any one of these pushes the
+   * grid track to its content's intrinsic min-content, ballooning the
+   * 1fr column to ~6.4k px and bypassing the viewport-width
+   * constraint.
+   *
+   * `min-width: 0` (with `!important` for the same reason as above)
+   * tells grid items to shrink below their content min-content. The
+   * inner code block's own `overflow-x: auto` (from
+   * `block-code/ui-default/code.css`) then handles the long-line
+   * scroll within the now-343px-wide card, so users see a horizontally-
+   * scrollable code box INSIDE the block instead of the entire page
+   * scrolling horizontally.
+   *
+   * Selector list mirrors the grid-column rule above (covers `.skb-prose`
+   * via `.skb-grid > *` AND the explicit block wrappers).
+   */
+  .skb-grid > *,
+  .skb-grid .ProseMirror > *,
+  .skb-grid .skb-block-static,
+  .skb-grid .skb-block-nodeview {
+    min-width: 0 !important;
+  }
+
+  /*
+   * Wave 6 cf-20b R1 hotfix part 3 — heavy-block placeholder cap.
+   *
+   * `@skb/heavy-block-boundary` SSR-emits `<div class="heavy-block-skeleton"
+   * style="width:600px;min-height:400px">` (per ADR-0014 D5
+   * heavyBoundaryDimensions); 600px exceeds the 343px mobile viewport
+   * by ~257px and bypasses our wrapper's `min-width: 0` because the
+   * inline `width:600px` is on the inner element, not the wrapper.
+   * Cap it at the parent width on mobile so the heavy-block placeholder
+   * fits inside the now-collapsed `.skb-block-static`/`.skb-block-nodeview`
+   * card. `max-width: 100%` is sufficient because the parent is now
+   * track-width (343px); the cap is mobile-only so desktop SSR
+   * fallback dims (per ADR-0014 W4-1 zero-layout-shift) are unaffected.
+   * Wave 5 ADR-0014 v0.5 amendment will dynamically derive heavy
+   * dimensions from grid colSpan/rowSpan (W5-1 invariant) post
+   * hydration; cf-20b R1 mobile cap is a forward-compat layer that
+   * coexists with that future amendment.
+   */
+  .skb-grid .heavy-block-skeleton {
+    max-width: 100% !important;
+  }
+
+  /*
+   * Wave 6 cf-20b R1 hotfix part 4 — block content overflow scroll.
+   *
+   * After parts 1-3, the block wrapper itself fits the viewport, but
+   * inner content (long `<pre>` code, NN-Viz svg with intrinsic 6400px
+   * viewBox, agent-flow svg topology, etc.) can still extend past the
+   * wrapper's right edge if the inner CSS doesn't already clip/scroll.
+   * Force overflow-x scroll on the wrapper as a defense-in-depth so the
+   * page itself never scrolls horizontally on mobile (the cf-19 mobile
+   * preview-mode contract per ADR-0017 D9). Block-level inner CSS rules
+   * with their own scroll behavior (block-code's `.skb-code-pre
+   * { overflow-x: auto }`, block-pdf's iframe min-height, agent-flow's
+   * `.skb-agent-flow-canvas { overflow: hidden }`) continue to apply
+   * within the wrapper bounds.
+   */
+  .skb-grid .skb-block-static,
+  .skb-grid .skb-block-nodeview {
+    overflow-x: auto;
   }
 }
 

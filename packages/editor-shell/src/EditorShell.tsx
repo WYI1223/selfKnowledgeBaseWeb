@@ -66,5 +66,17 @@ export function EditorShell(props: EditorShellProps) {
     ...(onCreate && { onCreate: ({ editor }) => onCreate(editor) }),
   });
 
-  return <EditorContent editor={editor} className={className} />;
+  // Wave 6 cf-20b (2026-05-09) — always apply `skb-editor-content` to
+  // the Tiptap host div so the apps/site grid CSS rule
+  // `.skb-grid > .skb-editor-content { display: contents }` can flatten
+  // this layer out of the grid hierarchy. The inner `.ProseMirror`
+  // element then becomes a direct grid item under `.skb-grid`, and per
+  // ADR-0016 v0.2 D11.1 amendment the editor element is itself a
+  // 12-col grid so block NodeView wrappers land at the correct depth.
+  // Consumer-supplied `className` is concatenated AFTER the base class
+  // so consumers can still add styling without removing `skb-editor-content`.
+  const hostClassName = className
+    ? `skb-editor-content ${className}`
+    : 'skb-editor-content';
+  return <EditorContent editor={editor} className={hostClassName} />;
 }

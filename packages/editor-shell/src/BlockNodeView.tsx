@@ -2,6 +2,7 @@ import type { ComponentType } from 'react';
 import { NodeViewWrapper, type ReactNodeViewProps } from '@tiptap/react';
 import type { BlockRegistry, BlockViewProps } from '@skb/block-foundation';
 import type { ZodTypeAny } from 'zod';
+import { extractGridPosition, gridPlacementStyle } from './grid-style';
 
 /**
  * Wave 6 carry-forward #18 (2026-05-08) — bridge from a Tiptap NodeView to
@@ -21,6 +22,20 @@ import type { ZodTypeAny } from 'zod';
  *   3. inner non-editable host `<div class="skb-block-nodeview__body"
  *      data-skb-block-host>` carries the registered EditorView. The
  *      body class is the analog of v2's `.gblock-body` padding shell.
+ *
+ * Wave 6 cf-20b (2026-05-09) — grid placement. The NodeView wrapper now
+ * applies `style.gridColumn` / `style.gridRow` derived from
+ * `node.attrs.{col, row?, colSpan, rowSpan}` per ADR-0016 D2 + v0.2
+ * D11.1 amendment (editor-surface grid lock). The shared
+ * `block-chrome.css` rule treats both `.skb-block-nodeview` (editor) and
+ * `.skb-block-static` (read route) as grid items; the outer
+ * `.skb-grid .ProseMirror { display: grid }` rule turns the editor
+ * element itself into a 12-col grid so NodeView wrappers land at the
+ * correct DOM depth. When `node.attrs` is missing required grid fields
+ * (test mounts without the cf-19 grid-attr defaults), the wrapper falls
+ * back to no inline style and the parent CSS
+ * `.skb-grid .ProseMirror > *:not([style*="grid-column"])` rule paints
+ * full-width (`grid-column: 1 / -1`).
  *
  * Lookup chain (identity mapping unchanged from cf-18):
  *   1. `node.type.name` is the Tiptap node name registered by
@@ -51,11 +66,16 @@ export function makeBlockNodeView({
   return function BlockNodeView(props: ReactNodeViewProps) {
     const nodeName = props.node.type.name;
     const ui = registry ? registry.getUI(nodeName) : undefined;
+    const editorProps = (props.node.attrs ?? {}) as Record<string, unknown>;
+    const gridPos = extractGridPosition(editorProps);
+    const wrapperStyle = gridPos ? gridPlacementStyle(gridPos) : undefined;
+
     if (!ui) {
       return (
         <NodeViewWrapper
           className="skb-block-nodeview skb-block-nodeview--unregistered"
           data-skb-block-kind={nodeName}
+          style={wrapperStyle}
         >
           <div className="skb-block-nodeview__gutter" contentEditable={false}>
             <span className="skb-block-nodeview__kind-chip" data-skb-block-kind={nodeName}>
@@ -69,9 +89,12 @@ export function makeBlockNodeView({
       );
     }
     const EditorView: ComponentType<BlockViewProps<ZodTypeAny>> = ui.EditorView;
-    const editorProps = (props.node.attrs ?? {}) as Record<string, unknown>;
     return (
-      <NodeViewWrapper className="skb-block-nodeview" data-skb-block-kind={nodeName}>
+      <NodeViewWrapper
+        className="skb-block-nodeview"
+        data-skb-block-kind={nodeName}
+        style={wrapperStyle}
+      >
         <div className="skb-block-nodeview__gutter" contentEditable={false}>
           <span className="skb-block-nodeview__kind-chip" data-skb-block-kind={nodeName}>
             {chipLabel(nodeName)}

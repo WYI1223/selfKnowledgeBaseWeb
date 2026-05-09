@@ -79,6 +79,31 @@
 - Selector contract: `apps/site/src/styles/grid.css` is the single authority
   for the SSR-phase `.skb-grid` container CSS. Notes routes must wrap rendered
   block content in `.skb-grid`; they must not hand-roll page-local grid styles.
+- **Read-route wrapper contract (Wave 6 cf-20b R2 2026-05-09 structural fix)**:
+  `apps/site/src/pages/notes/[...slug].astro` MUST emit a single combined
+  wrapper `<div class="skb-grid skb-prose">` around `<Content components={...}/>`
+  so MDX-emitted children (`.skb-block-static` from the 5-light-block adapter
+  + 3 heavy `.astro` wrappers, plus prose `<p>` / `<h2>` / `<ul>`) become
+  DIRECT grid items. Pre-R2 the route used two nested wrappers
+  `<div class="skb-grid"><div class="skb-prose"><Content/></div></div>` —
+  `.skb-block-static` was a GRANDCHILD of `.skb-grid` and the inline
+  `style="grid-column: 1 / span 12"` emitted by the cf-20b adapters was
+  structurally INERT (no grid-item context). codex-pr-reviewer-55 R2
+  caught this. The combined wrapper safe because `apps/site/src/styles/prose.css`
+  rules all target descendants (`.skb-prose p`, `.skb-prose .b-callout`,
+  etc.); no rule targets `.skb-prose` itself, so adding it to the same
+  element as `.skb-grid` creates no rule conflict. Regression-lock: the
+  `apps/site/src/__tests__/grid-css.test.ts` "wraps MDX content" test
+  asserts BOTH the combined `<div class="skb-grid skb-prose">` presence
+  AND the absence of the pre-R2 separate `<div class="skb-prose">` wrapper.
+  The `apps/site/playwright/sample-blocks-grid-layout.spec.ts` read-route
+  spec adds two structural assertions per kind wrapper: (i) parent
+  `display === 'grid'` (proves grid context), (ii) `getBoundingClientRect()`
+  width > 90% of grid container width (proves the colSpan=12 claim
+  materialises in layout). Computed-style-only assertions are insufficient
+  because the browser reports the inline `gridColumn` value verbatim even
+  when the parent is `display: block` (the cf-20b R0+R1 false-positive
+  class).
 - Responsive breakpoints mirror ADR-0016 D5:
 
   | Viewport | Columns | Rendering semantics |
@@ -91,19 +116,83 @@
   direct children render with `grid-column: 1`. This is a rendering-only
   preview path: `rowSpan='auto'` is derived for layout, but persisted
   `rowSpan` values are unchanged per ADR-0016 D5.
-- C.2-3 is container-only. Per-block `gridColumn` and `gridRow` style emission
-  is deferred to C.2-4 editor-shell grid container work or a future
-  componentsMap-wrapper PR; apps/site must not add that style chain in this PR.
-- Transitional fallback (Wave 5 C.2-3 → C.2-4): MDX children inside `.skb-grid`
-  without an inline `style` attribute matching `grid-column` get `grid-column: 1 / -1`
-  via `.skb-grid > *:not([style*="grid-column"])` so unstyled prose remains
-  full-width readable until per-block grid emission lands. `grid-auto-rows`
-  uses `minmax(var(--row-h), auto)` so content height drives row height
-  rather than clamping to 48px.
+- **Mobile inline-style override (Wave 6 cf-20b R1 hotfix 2026-05-09)**:
+  cf-20b emits inline `style="grid-column: ${col} / span ${colSpan}"` on
+  every `.skb-block-static` (read route) and `.skb-block-nodeview` (edit
+  route) wrapper to lock per-block desktop placement. Inline style beats
+  media-query CSS per CSS specificity, so the existing
+  `@media (max-width: 768px) .skb-grid > * { grid-column: 1 }` rule
+  did NOT collapse blocks to 1-col on mobile — codex-pr-reviewer-55 R1
+  caught a 12× horizontal overflow at 375×812 viewport (scrollWidth=6450px).
+  The hotfix adds 4 mobile-scoped rules with `!important` (intentional
+  and documented; the mobile-preview contract per ADR-0016 D5 +
+  ADR-0017 D9 mobile view-only path requires beating the cf-20b desktop
+  placement intent in a single, scoped media query):
+  1. `grid-column: 1 / -1 !important` on `.skb-grid > *`,
+     `.skb-grid .ProseMirror > *`, `.skb-grid .skb-block-static`,
+     `.skb-grid .skb-block-nodeview` — collapses every block wrapper to
+     1-col regardless of inline style. Selector list covers BOTH read
+     route (`.skb-block-static` is nested in `.skb-prose`, NOT a direct
+     child of `.skb-grid`) AND edit route
+     (`.skb-block-nodeview` nested in `.ProseMirror`).
+  2. `min-width: 0 !important` on the same selector list — CSS Grid's
+     default `min-width: auto` resolves to each item's `min-content`
+     (the largest unbreakable child). The sample-blocks fixture
+     contains `<pre>` Python code (6392px wide unbreakable text),
+     `<svg>` NN-Viz topology (6400px), and `<iframe>` PDF viewers
+     (6424px) — any one pushes the 1fr grid track to 6.4k px and
+     bypasses the viewport-width constraint. `min-width: 0` lets grid
+     items shrink below content min-content; the inner block CSS
+     (`.skb-code-pre { overflow-x: auto }` etc.) handles the long-line
+     scroll within the now-collapsed card.
+  3. `max-width: 100% !important` on `.skb-grid .heavy-block-skeleton` —
+     `@skb/heavy-block-boundary` SSR-emits `style="width:600px;min-height:400px"`
+     on the inner skeleton (per ADR-0014 D5 heavyBoundaryDimensions);
+     600px exceeds 343px mobile viewport. Cap at parent width on
+     mobile only; desktop SSR fallback dims (per ADR-0014 W4-1 zero-
+     layout-shift) are unaffected.
+  4. `overflow-x: auto` on `.skb-grid .skb-block-static`,
+     `.skb-grid .skb-block-nodeview` — defense-in-depth so even if a
+     future inner element extends past the wrapper's right edge, the
+     overflow stays contained within the wrapper rather than scrolling
+     the page itself.
+
+  Regression lock spec:
+  `apps/site/playwright/sample-blocks-grid-layout.spec.ts:"cf-20b R1: mobile (≤768px) viewport"`
+  asserts computed `grid-column === '1 / -1'` on every BlockKind wrapper +
+  `document.documentElement.scrollWidth ≤ 393px` (viewport + scrollbar slack).
+- Per-block `gridColumn` / `gridRow` style emission landed at Wave 6 cf-20b
+  (2026-05-09). Light-block read route: `apps/site/src/lib/mdx-adapter.ts`
+  consumes `extractGridPosition` + `gridPlacementStyle` from
+  `@skb/editor-shell/src/grid-style.ts` and applies inline style to the
+  `.skb-block-static` wrapper. Heavy-block read route: the 3 Astro wrappers
+  (`apps/site/src/components/{Jupyter,NnViz,AgentFlow}.astro`) consume
+  `gridPlacementStyleAttr` for inline `style="..."` strings. Edit route:
+  `BlockNodeView.tsx` reads `node.attrs.{col, colSpan, rowSpan}` and applies
+  `gridPlacementStyle` to the `.skb-block-nodeview` wrapper.
+- Transitional fallback (Wave 5 C.2-3 → cf-20b cleanup): MDX children inside
+  `.skb-grid` without an inline `style` attribute matching `grid-column` get
+  `grid-column: 1 / -1` via `.skb-grid > *:not([style*="grid-column"])` so
+  unstyled prose remains full-width readable. cf-20b extends this fallback
+  to the inner `.ProseMirror` grid as well so prose nodes (`<p>`, `<h2>`,
+  `<ul>`) inside the editor become full-width grid items by default.
+  `grid-auto-rows` uses `minmax(var(--row-h), auto)` so content height drives
+  row height rather than clamping to 48px.
+- **Editor-route two-level grid lock (Wave 6 cf-20b; ADR-0016 v0.2 D11.1
+  amendment)**: when `.skb-grid` wraps Tiptap's `<EditorContent>`, the
+  intermediate `.skb-editor-content` div spans `grid-column: 1 / -1` so the
+  inner `.ProseMirror` element inherits the full container width. The
+  `.ProseMirror` element is **itself** styled `display: grid;
+  grid-template-columns: repeat(12, ...)` so per-block NodeView wrappers
+  (`.skb-block-nodeview`, which sit at depth 3 under `.skb-grid`) become
+  grid items at the correct level. This is the editor-mount equivalent of
+  the read-route Astro `<Content>` flat-children layout. v2 contract
+  source: `/mnt/d/download/web/v2-styles.css:137-147`.
 - Architectural pointers: ADR-0016 D8 defines the Astro renderer `.skb-grid`
   wrapper, D9 defines the SSR vs hydration phase split, D11 keeps Tiptap inside
-  blocks while the grid stays outside, and ADR-0017 D11 is the downstream visual
-  feedback scope referenced by the grid architecture.
+  blocks while the grid stays outside, ADR-0016 v0.2 D11.1 amendment locks
+  the editor-surface two-level grid (cf-20b 2026-05-09), and ADR-0017 D11 is
+  the downstream visual feedback scope referenced by the grid architecture.
 
 ## Edit route (Wave 5)
 

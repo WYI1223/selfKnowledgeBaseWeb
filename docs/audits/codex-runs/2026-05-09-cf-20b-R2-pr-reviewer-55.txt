@@ -1,0 +1,2000 @@
+Reading additional input from stdin...
+OpenAI Codex v0.125.0 (research preview)
+--------
+workdir: /home/weiyi/selfKnowledgeBaseWeb
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: danger-full-access
+reasoning effort: xhigh
+reasoning summaries: none
+session id: 019e0d06-8906-7db3-85ce-5f6aa2cd0d45
+--------
+user
+Wave 6 cf-20b R2. R1 returned FAIL with 1 mobile inline-style override regression; ux-ui-lead fixed in commit 0af03a8 (on top of 5fae755). Branch wave-6-cf-20b-grid-layout-substrate.
+
+CONSTRAINTS PER RULE 5 + RULE 6:
+- DO NOT preemptively re-run pnpm check or full Playwright (orchestrator + ux-ui-lead already verified locally per ux-ui-lead's R1 fix report)
+- DO NOT re-read ADR-0006 / orchestrator-reflections / aux ADRs
+- DO read 0af03a8 commit content + ADR-0016 v0.2 D11.1 / apps/site/CONTRACT.md mobile section
+- Re-run a specific gate ONLY if specific suspicion of new regression
+
+R1 finding (mobile read route horizontal overflow due to inline grid-column overriding @media rule) — RESOLVED in 0af03a8:
+- apps/site/src/styles/grid.css: added @media (max-width: 768px) { .skb-grid > *, .skb-grid .ProseMirror > * { grid-column: 1 / -1 !important; } }
+- apps/site/playwright/sample-blocks-grid-layout.spec.ts: NEW mobile-viewport assertion (375x812 viewport, asserts grid-column='1 / -1' + scrollWidth ≤ 393)
+- apps/site/CONTRACT.md: documented mobile contract + !important rationale
+- PR.md updated with new D-entry explaining mobile override + !important justification
+- Reflection log appended (Rule 7 landed: inline grid-column on responsive-grid wrapper requires mobile-viewport regression test)
+
+ux-ui-lead's reported gates after R1 fix: pnpm check 41/41 PASS; targeted Playwright 4/4 PASS (sample-blocks-grid-layout 2 + 2 carry-fwd); full apps/site Playwright per the cf-20a baseline + cf-20b 2 NEW specs.
+
+D2 trigger UNCHANGED from R1: Row 1 + 4 + 5 still hit. Stage 4 PRE-COMMIT CLAUDE REVIEW fires.
+
+Run static ADR-0006 9-point audit + 9th-class hunt verifying R1 mobile-override finding closed AND no NEW regressions introduced. Verdict PASS or FAIL with line-anchored remediation. If PASS, on stage 5 you commit per ADR-0006 D8 explicit-file-list staging.
+codex
+I’ll use the superpowers workflow guardrails first, then keep this as a static review unless the diff gives a concrete reason to run a targeted gate.
+exec
+/bin/bash -lc "sed -n '1,220p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/63976030/skills/using-superpowers/SKILL.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+---
+name: using-superpowers
+description: Use when starting any conversation - establishes how to find and use skills, requiring Skill tool invocation before ANY response including clarifying questions
+---
+
+<SUBAGENT-STOP>
+If you were dispatched as a subagent to execute a specific task, skip this skill.
+</SUBAGENT-STOP>
+
+<EXTREMELY-IMPORTANT>
+If you think there is even a 1% chance a skill might apply to what you are doing, you ABSOLUTELY MUST invoke the skill.
+
+IF A SKILL APPLIES TO YOUR TASK, YOU DO NOT HAVE A CHOICE. YOU MUST USE IT.
+
+This is not negotiable. This is not optional. You cannot rationalize your way out of this.
+</EXTREMELY-IMPORTANT>
+
+## Instruction Priority
+
+Superpowers skills override default system prompt behavior, but **user instructions always take precedence**:
+
+1. **User's explicit instructions** (CLAUDE.md, GEMINI.md, AGENTS.md, direct requests) — highest priority
+2. **Superpowers skills** — override default system behavior where they conflict
+3. **Default system prompt** — lowest priority
+
+If CLAUDE.md, GEMINI.md, or AGENTS.md says "don't use TDD" and a skill says "always use TDD," follow the user's instructions. The user is in control.
+
+## How to Access Skills
+
+**In Claude Code:** Use the `Skill` tool. When you invoke a skill, its content is loaded and presented to you—follow it directly. Never use the Read tool on skill files.
+
+**In Copilot CLI:** Use the `skill` tool. Skills are auto-discovered from installed plugins. The `skill` tool works the same as Claude Code's `Skill` tool.
+
+**In Gemini CLI:** Skills activate via the `activate_skill` tool. Gemini loads skill metadata at session start and activates the full content on demand.
+
+**In other environments:** Check your platform's documentation for how skills are loaded.
+
+## Platform Adaptation
+
+Skills use Claude Code tool names. Non-CC platforms: see `references/copilot-tools.md` (Copilot CLI), `references/codex-tools.md` (Codex) for tool equivalents. Gemini CLI users get the tool mapping loaded automatically via GEMINI.md.
+
+# Using Skills
+
+## The Rule
+
+**Invoke relevant or requested skills BEFORE any response or action.** Even a 1% chance a skill might apply means that you should invoke the skill to check. If an invoked skill turns out to be wrong for the situation, you don't need to use it.
+
+```dot
+digraph skill_flow {
+    "User message received" [shape=doublecircle];
+    "About to EnterPlanMode?" [shape=doublecircle];
+    "Already brainstormed?" [shape=diamond];
+    "Invoke brainstorming skill" [shape=box];
+    "Might any skill apply?" [shape=diamond];
+    "Invoke Skill tool" [shape=box];
+    "Announce: 'Using [skill] to [purpose]'" [shape=box];
+    "Has checklist?" [shape=diamond];
+    "Create TodoWrite todo per item" [shape=box];
+    "Follow skill exactly" [shape=box];
+    "Respond (including clarifications)" [shape=doublecircle];
+
+    "About to EnterPlanMode?" -> "Already brainstormed?";
+    "Already brainstormed?" -> "Invoke brainstorming skill" [label="no"];
+    "Already brainstormed?" -> "Might any skill apply?" [label="yes"];
+    "Invoke brainstorming skill" -> "Might any skill apply?";
+
+    "User message received" -> "Might any skill apply?";
+    "Might any skill apply?" -> "Invoke Skill tool" [label="yes, even 1%"];
+    "Might any skill apply?" -> "Respond (including clarifications)" [label="definitely not"];
+    "Invoke Skill tool" -> "Announce: 'Using [skill] to [purpose]'";
+    "Announce: 'Using [skill] to [purpose]'" -> "Has checklist?";
+    "Has checklist?" -> "Create TodoWrite todo per item" [label="yes"];
+    "Has checklist?" -> "Follow skill exactly" [label="no"];
+    "Create TodoWrite todo per item" -> "Follow skill exactly";
+}
+```
+
+## Red Flags
+
+These thoughts mean STOP—you're rationalizing:
+
+| Thought | Reality |
+|---------|---------|
+| "This is just a simple question" | Questions are tasks. Check for skills. |
+| "I need more context first" | Skill check comes BEFORE clarifying questions. |
+| "Let me explore the codebase first" | Skills tell you HOW to explore. Check first. |
+| "I can check git/files quickly" | Files lack conversation context. Check for skills. |
+| "Let me gather information first" | Skills tell you HOW to gather information. |
+| "This doesn't need a formal skill" | If a skill exists, use it. |
+| "I remember this skill" | Skills evolve. Read current version. |
+| "This doesn't count as a task" | Action = task. Check for skills. |
+| "The skill is overkill" | Simple things become complex. Use it. |
+| "I'll just do this one thing first" | Check BEFORE doing anything. |
+| "This feels productive" | Undisciplined action wastes time. Skills prevent this. |
+| "I know what that means" | Knowing the concept ≠ using the skill. Invoke it. |
+
+## Skill Priority
+
+When multiple skills could apply, use this order:
+
+1. **Process skills first** (brainstorming, debugging) - these determine HOW to approach the task
+2. **Implementation skills second** (frontend-design, mcp-builder) - these guide execution
+
+"Let's build X" → brainstorming first, then implementation skills.
+"Fix this bug" → debugging first, then domain-specific skills.
+
+## Skill Types
+
+**Rigid** (TDD, debugging): Follow exactly. Don't adapt away discipline.
+
+**Flexible** (patterns): Adapt principles to context.
+
+The skill itself tells you which.
+
+## User Instructions
+
+Instructions say WHAT, not HOW. "Add X" or "Fix Y" doesn't mean skip workflows.
+
+codex
+Using `superpowers:using-superpowers` for required workflow setup. I’m also loading the review/verification skills that map to “R1 finding resolved, audit before commit.”
+exec
+/bin/bash -lc "sed -n '1,240p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/63976030/skills/receiving-code-review/SKILL.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+---
+name: receiving-code-review
+description: Use when receiving code review feedback, before implementing suggestions, especially if feedback seems unclear or technically questionable - requires technical rigor and verification, not performative agreement or blind implementation
+---
+
+# Code Review Reception
+
+## Overview
+
+Code review requires technical evaluation, not emotional performance.
+
+**Core principle:** Verify before implementing. Ask before assuming. Technical correctness over social comfort.
+
+## The Response Pattern
+
+```
+WHEN receiving code review feedback:
+
+1. READ: Complete feedback without reacting
+2. UNDERSTAND: Restate requirement in own words (or ask)
+3. VERIFY: Check against codebase reality
+4. EVALUATE: Technically sound for THIS codebase?
+5. RESPOND: Technical acknowledgment or reasoned pushback
+6. IMPLEMENT: One item at a time, test each
+```
+
+## Forbidden Responses
+
+**NEVER:**
+- "You're absolutely right!" (explicit CLAUDE.md violation)
+- "Great point!" / "Excellent feedback!" (performative)
+- "Let me implement that now" (before verification)
+
+**INSTEAD:**
+- Restate the technical requirement
+- Ask clarifying questions
+- Push back with technical reasoning if wrong
+- Just start working (actions > words)
+
+## Handling Unclear Feedback
+
+```
+IF any item is unclear:
+  STOP - do not implement anything yet
+  ASK for clarification on unclear items
+
+WHY: Items may be related. Partial understanding = wrong implementation.
+```
+
+**Example:**
+```
+your human partner: "Fix 1-6"
+You understand 1,2,3,6. Unclear on 4,5.
+
+❌ WRONG: Implement 1,2,3,6 now, ask about 4,5 later
+✅ RIGHT: "I understand items 1,2,3,6. Need clarification on 4 and 5 before proceeding."
+```
+
+## Source-Specific Handling
+
+### From your human partner
+- **Trusted** - implement after understanding
+- **Still ask** if scope unclear
+- **No performative agreement**
+- **Skip to action** or technical acknowledgment
+
+### From External Reviewers
+```
+BEFORE implementing:
+  1. Check: Technically correct for THIS codebase?
+  2. Check: Breaks existing functionality?
+  3. Check: Reason for current implementation?
+  4. Check: Works on all platforms/versions?
+  5. Check: Does reviewer understand full context?
+
+IF suggestion seems wrong:
+  Push back with technical reasoning
+
+IF can't easily verify:
+  Say so: "I can't verify this without [X]. Should I [investigate/ask/proceed]?"
+
+IF conflicts with your human partner's prior decisions:
+  Stop and discuss with your human partner first
+```
+
+**your human partner's rule:** "External feedback - be skeptical, but check carefully"
+
+## YAGNI Check for "Professional" Features
+
+```
+IF reviewer suggests "implementing properly":
+  grep codebase for actual usage
+
+  IF unused: "This endpoint isn't called. Remove it (YAGNI)?"
+  IF used: Then implement properly
+```
+
+**your human partner's rule:** "You and reviewer both report to me. If we don't need this feature, don't add it."
+
+## Implementation Order
+
+```
+FOR multi-item feedback:
+  1. Clarify anything unclear FIRST
+  2. Then implement in this order:
+     - Blocking issues (breaks, security)
+     - Simple fixes (typos, imports)
+     - Complex fixes (refactoring, logic)
+  3. Test each fix individually
+  4. Verify no regressions
+```
+
+## When To Push Back
+
+Push back when:
+- Suggestion breaks existing functionality
+- Reviewer lacks full context
+- Violates YAGNI (unused feature)
+- Technically incorrect for this stack
+- Legacy/compatibility reasons exist
+- Conflicts with your human partner's architectural decisions
+
+**How to push back:**
+- Use technical reasoning, not defensiveness
+- Ask specific questions
+- Reference working tests/code
+- Involve your human partner if architectural
+
+**Signal if uncomfortable pushing back out loud:** "Strange things are afoot at the Circle K"
+
+## Acknowledging Correct Feedback
+
+When feedback IS correct:
+```
+✅ "Fixed. [Brief description of what changed]"
+✅ "Good catch - [specific issue]. Fixed in [location]."
+✅ [Just fix it and show in the code]
+
+❌ "You're absolutely right!"
+❌ "Great point!"
+❌ "Thanks for catching that!"
+❌ "Thanks for [anything]"
+❌ ANY gratitude expression
+```
+
+**Why no thanks:** Actions speak. Just fix it. The code itself shows you heard the feedback.
+
+**If you catch yourself about to write "Thanks":** DELETE IT. State the fix instead.
+
+## Gracefully Correcting Your Pushback
+
+If you pushed back and were wrong:
+```
+✅ "You were right - I checked [X] and it does [Y]. Implementing now."
+✅ "Verified this and you're correct. My initial understanding was wrong because [reason]. Fixing."
+
+❌ Long apology
+❌ Defending why you pushed back
+❌ Over-explaining
+```
+
+State the correction factually and move on.
+
+## Common Mistakes
+
+| Mistake | Fix |
+|---------|-----|
+| Performative agreement | State requirement or just act |
+| Blind implementation | Verify against codebase first |
+| Batch without testing | One at a time, test each |
+| Assuming reviewer is right | Check if breaks things |
+| Avoiding pushback | Technical correctness > comfort |
+| Partial implementation | Clarify all items first |
+| Can't verify, proceed anyway | State limitation, ask for direction |
+
+## Real Examples
+
+**Performative Agreement (Bad):**
+```
+Reviewer: "Remove legacy code"
+❌ "You're absolutely right! Let me remove that..."
+```
+
+**Technical Verification (Good):**
+```
+Reviewer: "Remove legacy code"
+✅ "Checking... build target is 10.15+, this API needs 13+. Need legacy for backward compat. Current impl has wrong bundle ID - fix it or drop pre-13 support?"
+```
+
+**YAGNI (Good):**
+```
+Reviewer: "Implement proper metrics tracking with database, date filters, CSV export"
+✅ "Grepped codebase - nothing calls this endpoint. Remove it (YAGNI)? Or is there usage I'm missing?"
+```
+
+**Unclear Item (Good):**
+```
+your human partner: "Fix items 1-6"
+You understand 1,2,3,6. Unclear on 4,5.
+✅ "Understand 1,2,3,6. Need clarification on 4 and 5 before implementing."
+```
+
+## GitHub Thread Replies
+
+When replying to inline review comments on GitHub, reply in the comment thread (`gh api repos/{owner}/{repo}/pulls/{pr}/comments/{id}/replies`), not as a top-level PR comment.
+
+## The Bottom Line
+
+**External feedback = suggestions to evaluate, not orders to follow.**
+
+Verify. Question. Then implement.
+
+No performative agreement. Technical rigor always.
+
+exec
+/bin/bash -lc "sed -n '1,260p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/63976030/skills/verification-before-completion/SKILL.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+---
+name: verification-before-completion
+description: Use when about to claim work is complete, fixed, or passing, before committing or creating PRs - requires running verification commands and confirming output before making any success claims; evidence before assertions always
+---
+
+# Verification Before Completion
+
+## Overview
+
+Claiming work is complete without verification is dishonesty, not efficiency.
+
+**Core principle:** Evidence before claims, always.
+
+**Violating the letter of this rule is violating the spirit of this rule.**
+
+## The Iron Law
+
+```
+NO COMPLETION CLAIMS WITHOUT FRESH VERIFICATION EVIDENCE
+```
+
+If you haven't run the verification command in this message, you cannot claim it passes.
+
+## The Gate Function
+
+```
+BEFORE claiming any status or expressing satisfaction:
+
+1. IDENTIFY: What command proves this claim?
+2. RUN: Execute the FULL command (fresh, complete)
+3. READ: Full output, check exit code, count failures
+4. VERIFY: Does output confirm the claim?
+   - If NO: State actual status with evidence
+   - If YES: State claim WITH evidence
+5. ONLY THEN: Make the claim
+
+Skip any step = lying, not verifying
+```
+
+## Common Failures
+
+| Claim | Requires | Not Sufficient |
+|-------|----------|----------------|
+| Tests pass | Test command output: 0 failures | Previous run, "should pass" |
+| Linter clean | Linter output: 0 errors | Partial check, extrapolation |
+| Build succeeds | Build command: exit 0 | Linter passing, logs look good |
+| Bug fixed | Test original symptom: passes | Code changed, assumed fixed |
+| Regression test works | Red-green cycle verified | Test passes once |
+| Agent completed | VCS diff shows changes | Agent reports "success" |
+| Requirements met | Line-by-line checklist | Tests passing |
+
+## Red Flags - STOP
+
+- Using "should", "probably", "seems to"
+- Expressing satisfaction before verification ("Great!", "Perfect!", "Done!", etc.)
+- About to commit/push/PR without verification
+- Trusting agent success reports
+- Relying on partial verification
+- Thinking "just this once"
+- Tired and wanting work over
+- **ANY wording implying success without having run verification**
+
+## Rationalization Prevention
+
+| Excuse | Reality |
+|--------|---------|
+| "Should work now" | RUN the verification |
+| "I'm confident" | Confidence ≠ evidence |
+| "Just this once" | No exceptions |
+| "Linter passed" | Linter ≠ compiler |
+| "Agent said success" | Verify independently |
+| "I'm tired" | Exhaustion ≠ excuse |
+| "Partial check is enough" | Partial proves nothing |
+| "Different words so rule doesn't apply" | Spirit over letter |
+
+## Key Patterns
+
+**Tests:**
+```
+✅ [Run test command] [See: 34/34 pass] "All tests pass"
+❌ "Should pass now" / "Looks correct"
+```
+
+**Regression tests (TDD Red-Green):**
+```
+✅ Write → Run (pass) → Revert fix → Run (MUST FAIL) → Restore → Run (pass)
+❌ "I've written a regression test" (without red-green verification)
+```
+
+**Build:**
+```
+✅ [Run build] [See: exit 0] "Build passes"
+❌ "Linter passed" (linter doesn't check compilation)
+```
+
+**Requirements:**
+```
+✅ Re-read plan → Create checklist → Verify each → Report gaps or completion
+❌ "Tests pass, phase complete"
+```
+
+**Agent delegation:**
+```
+✅ Agent reports success → Check VCS diff → Verify changes → Report actual state
+❌ Trust agent report
+```
+
+## Why This Matters
+
+From 24 failure memories:
+- your human partner said "I don't believe you" - trust broken
+- Undefined functions shipped - would crash
+- Missing requirements shipped - incomplete features
+- Time wasted on false completion → redirect → rework
+- Violates: "Honesty is a core value. If you lie, you'll be replaced."
+
+## When To Apply
+
+**ALWAYS before:**
+- ANY variation of success/completion claims
+- ANY expression of satisfaction
+- ANY positive statement about work state
+- Committing, PR creation, task completion
+- Moving to next task
+- Delegating to agents
+
+**Rule applies to:**
+- Exact phrases
+- Paraphrases and synonyms
+- Implications of success
+- ANY communication suggesting completion/correctness
+
+## The Bottom Line
+
+**No shortcuts for verification.**
+
+Run the command. Read the output. THEN claim the result.
+
+This is non-negotiable.
+
+codex
+I’m going to inspect the exact fix commit, the current worktree, and only the contract sections the handoff names. I’ll keep the ADR-0006 checklist as a static audit artifact without opening ADR-0006 itself.
+exec
+/bin/bash -lc 'git status --short --branch' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+## wave-6-cf-20b-grid-layout-substrate...origin/wave-6-cf-20b-grid-layout-substrate
+?? content/notes/sample-blocks/state.json
+
+exec
+/bin/bash -lc 'git show --stat --oneline --decorate --no-renames 0af03a8' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+0af03a8 (HEAD -> wave-6-cf-20b-grid-layout-substrate, origin/wave-6-cf-20b-grid-layout-substrate) Wave 6 cf-20b R1 hotfix — mobile inline-style override (4-layer CSS fix)
+ apps/site/CONTRACT.md                              |  45 ++++++
+ .../playwright/sample-blocks-grid-layout.spec.ts   |  79 +++++++++++
+ apps/site/src/styles/grid.css                      | 110 ++++++++++++++-
+ .../wave-5-c2-9-responsive-fsm-mount.png           | Bin 91359 -> 91366 bytes
+ .../audits/screenshots/wave-5-c4-3-drag-handle.png | Bin 40006 -> 39991 bytes
+ .../screenshots/wave-5-c4-3-save-indicator.png     | Bin 38285 -> 38248 bytes
+ .../screenshots/wave-5-c4-4-save-roundtrip.png     | Bin 41458 -> 41411 bytes
+ .../screenshots/wave-5-c4-5-edit-flow-e2e.png      | Bin 42369 -> 42322 bytes
+ .../wave-6-stage-b-4-edit-mount-wire.png           | Bin 43297 -> 47938 bytes
+ .../2026-05-09-cf-15a-19-retrospective.md          |  18 +++
+ docs/orchestrator-reflections/README.md            |   1 +
+ .../wave-6-cf-20b-grid-layout-substrate.md         | 157 ++++++++++++++++++++-
+ 12 files changed, 401 insertions(+), 9 deletions(-)
+
+exec
+/bin/bash -lc 'git show --no-ext-diff --unified=80 --no-renames --format=fuller 0af03a8' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+commit 0af03a8ec8a232177a87484691645cda7c8d7d09
+Author:     W_YI <W_YI1223@outlook.com>
+AuthorDate: Sat May 9 09:55:25 2026 -0400
+Commit:     W_YI <W_YI1223@outlook.com>
+CommitDate: Sat May 9 09:55:25 2026 -0400
+
+    Wave 6 cf-20b R1 hotfix — mobile inline-style override (4-layer CSS fix)
+    
+    codex-pr-reviewer-55 R1 caught a 12× horizontal overflow at viewport
+    375×812 on /notes/sample-blocks (scrollWidth=6450px when viewport=343px)
+    because cf-20b's inline `style="grid-column: 1 / span 12"` on
+    .skb-block-static / .skb-block-nodeview wrappers beat the existing
+    @media (max-width: 768px) .skb-grid > * { grid-column: 1 } rule per
+    CSS specificity (inline always wins). 4-layer fix inside the existing
+    mobile media block, all `!important` (intentional + documented per D9):
+    
+    1. `grid-column: 1 / -1 !important` on selector list covering BOTH
+       `.skb-grid > *` (direct grid children) AND `.skb-block-static` /
+       `.skb-block-nodeview` by name (read-route .skb-block-static is
+       nested in .skb-prose, NOT a direct grid child)
+    2. `min-width: 0 !important` on the same selector list — Grid's
+       default `min-width: auto` resolves to min-content; sample-blocks
+       <pre> Python code (6392px), NN-Viz <svg> (6400px), PDF <iframe>
+       (6424px) blew up the 1fr track to 6.4k px without this
+    3. `max-width: 100% !important` on `.heavy-block-skeleton` — heavy-
+       block-boundary SSR-emits style="width:600px" which exceeds 343px
+       viewport and bypasses the wrapper's min-width: 0
+    4. `overflow-x: auto` on the wrapper classes for defense-in-depth
+    
+    Regression-lock spec at apps/site/playwright/sample-blocks-grid-layout.spec.ts
+    asserts computed `grid-column === '1 / -1'` on every BlockKind wrapper
+    + document.scrollWidth ≤ 393px (viewport + 18px scrollbar slack).
+    
+    Sister-doc updates: apps/site/CONTRACT.md "Mobile inline-style override"
+    subsection documents the !important rationale + the 4 parts; cf-20b
+    PR.md gets new D9 decision entry. Reflection appended to
+    docs/orchestrator-reflections/2026-05-09-cf-15a-19-retrospective.md
+    landing the CSS-specificity layered-cause checklist + the mandatory
+    mobile-viewport regression test rule for any inline-grid-style PR.
+    
+    Verification:
+    - pnpm check: 41/41 successful
+    - Full Playwright: 53 passed / 14 skipped / 0 failed (was 52; +1 new
+      cf-20b R1 mobile regression-lock test)
+    - Lint: 9 pre-existing warnings, 0 errors
+    - AC-12: 3 !important declarations in grid.css (grid-column +
+      min-width + max-width); overflow-x doesn't need !important
+    
+    Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+
+diff --git a/apps/site/CONTRACT.md b/apps/site/CONTRACT.md
+index d7acdf8..85c7d25 100644
+--- a/apps/site/CONTRACT.md
++++ b/apps/site/CONTRACT.md
+@@ -14,160 +14,205 @@
+ 
+ - Stack: PageFind 1.5.0+ through `astro-pagefind` 1.8.6+. `astro.config.mjs`
+   registers the adapter so `astro build` emits `dist/pagefind/` after static
+   HTML generation. ADR-0012 prose was aligned to the current `dist/pagefind/`
+   path (without the historical `_` prefix) at v0.1.1 amendment 2026-05-03
+   (Wave 4 Stage B B1a); the semantic contract (post-build hook + build
+   artifact) is unchanged.
+ - UI surface: `src/components/SearchBox.astro` renders the SSR-safe
+   `<div id="search">` mount point and lazy browser script that constructs
+   `@pagefind/default-ui` with `resetStyles: false`. The dedicated `/search`
+   route embeds that component through `BaseLayout`, and the global header links
+   to `/search`.
+ - Word-level result filter: `apps/site/src/lib/word-level-match.ts` exposes
+   `isWordLevelMatch(query, content, locale?)`; `SearchBox.astro` wires it via
+   `@pagefind/default-ui` `processTerm` + `processResult` callbacks plus a
+   `MutationObserver` that applies `[data-skb-word-level-mismatch="true"]` to
+   substring-only-match list item ancestors (CSS `display: none`) and patches the
+   `.pagefind-ui__message` count display. This restores the ADR-0012 v0.1.1
+   criterion 4 paired discriminator at runtime; PagefindUI's index-time
+   tokenization is unchanged.
+ - A11y guarantee: search input labeling, keyboard result navigation, and result
+   ARIA semantics come from `@pagefind/default-ui` defaults. apps/site may wrap
+   the surface, but it must not replace those defaults with a custom UI unless a
+   follow-up contract update preserves equivalent keyboard and screen-reader
+   behavior. The B1b word-level wrapper is post-render result filtering only
+   (DOM `data-*` attribute + CSS `display: none`); it does not replace any
+   `@pagefind/default-ui` ARIA, keyboard, or screen-reader behavior. Hidden
+   mismatched results are removed from the visible result count via
+   `.pagefind-ui__message` text replacement so screen readers do not announce
+   stale totals.
+ - `/search` render-safety: `astro build` must emit the `/search` HTML before
+   `dist/pagefind/` exists. The page contains only the static mount point plus a
+   client-side script and stylesheet reference; the browser loads PageFind's
+   runtime and index after first paint. This satisfies ADR-0012 out-of-scope
+   #C4(a) for D3 without introducing SSR or blocking static generation.
+ - Bundle-size budget: PageFind runtime + initial search-route index chunks must
+   stay <= 120 kB gzip at first paint. D2 has no `/search` route yet, so D3 must
+   re-measure the user-facing route after UI integration.
+ - Index-size budget: the complete `dist/pagefind/` directory must stay <= 30 kB
+   uncompressed for the current 2-note corpus and <= 300 kB uncompressed at the
+   100-note projection. Projection formula:
+   `ceil(current_dist_pagefind_bytes / current_note_count * 100)`.
+ - Measurement commands:
+ 
+   ```bash
+   pnpm --filter=@skb/site build
+   test -f apps/site/dist/pagefind/pagefind-entry.json
+   du -sb apps/site/dist/pagefind
+   ```
+ 
+ - Current D2 measurement (sample-blocks + sample-mdx-note + index = 3 indexed
+   pages): `dist/pagefind/` ~= 200 kB uncompressed (Pagefind runtime + UI
+   bundles + 3 note fragments). The index is small relative to pagefind's
+   runtime/UI assets; corpus growth dominates fragment bytes only.
+ - Cache-bust mechanism: PageFind emits content-hash chunk filenames, including
+   fragment files under `dist/pagefind/fragment/`. Rebuilding after note content
+   changes produces new chunk names/bytes, so CDN or proxy stale-cache reuse of an
+   old index is avoided without client-side reindexing.
+ 
+ ## Grid layout (Wave 5)
+ 
+ - W5-1 source of truth: `packages/block-foundation/CONTRACT.md` owns the grid
+   dimension invariant for `BlockGridPosition`, `COL_SNAPS`,
+   `proseGridDefaults`, and the grid geometry helpers. apps/site is a consumer
+   and must not redefine those data-model rules.
+ - Selector contract: `apps/site/src/styles/grid.css` is the single authority
+   for the SSR-phase `.skb-grid` container CSS. Notes routes must wrap rendered
+   block content in `.skb-grid`; they must not hand-roll page-local grid styles.
+ - Responsive breakpoints mirror ADR-0016 D5:
+ 
+   | Viewport | Columns | Rendering semantics |
+   | --- | ---: | --- |
+   | `>= 1024px` desktop | 12 | Full `COL_SNAPS` ladder applies. |
+   | `768px-1024px` tablet | 6 | Effective snaps reduce to 2 / 3 / 6. |
+   | `< 768px` mobile | 1 | Blocks stack in one column. |
+ 
+ - Mobile override: `.skb-grid` switches to `grid-template-columns: 1fr`, and
+   direct children render with `grid-column: 1`. This is a rendering-only
+   preview path: `rowSpan='auto'` is derived for layout, but persisted
+   `rowSpan` values are unchanged per ADR-0016 D5.
++- **Mobile inline-style override (Wave 6 cf-20b R1 hotfix 2026-05-09)**:
++  cf-20b emits inline `style="grid-column: ${col} / span ${colSpan}"` on
++  every `.skb-block-static` (read route) and `.skb-block-nodeview` (edit
++  route) wrapper to lock per-block desktop placement. Inline style beats
++  media-query CSS per CSS specificity, so the existing
++  `@media (max-width: 768px) .skb-grid > * { grid-column: 1 }` rule
++  did NOT collapse blocks to 1-col on mobile — codex-pr-reviewer-55 R1
++  caught a 12× horizontal overflow at 375×812 viewport (scrollWidth=6450px).
++  The hotfix adds 4 mobile-scoped rules with `!important` (intentional
++  and documented; the mobile-preview contract per ADR-0016 D5 +
++  ADR-0017 D9 mobile view-only path requires beating the cf-20b desktop
++  placement intent in a single, scoped media query):
++  1. `grid-column: 1 / -1 !important` on `.skb-grid > *`,
++     `.skb-grid .ProseMirror > *`, `.skb-grid .skb-block-static`,
++     `.skb-grid .skb-block-nodeview` — collapses every block wrapper to
++     1-col regardless of inline style. Selector list covers BOTH read
++     route (`.skb-block-static` is nested in `.skb-prose`, NOT a direct
++     child of `.skb-grid`) AND edit route
++     (`.skb-block-nodeview` nested in `.ProseMirror`).
++  2. `min-width: 0 !important` on the same selector list — CSS Grid's
++     default `min-width: auto` resolves to each item's `min-content`
++     (the largest unbreakable child). The sample-blocks fixture
++     contains `<pre>` Python code (6392px wide unbreakable text),
++     `<svg>` NN-Viz topology (6400px), and `<iframe>` PDF viewers
++     (6424px) — any one pushes the 1fr grid track to 6.4k px and
++     bypasses the viewport-width constraint. `min-width: 0` lets grid
++     items shrink below content min-content; the inner block CSS
++     (`.skb-code-pre { overflow-x: auto }` etc.) handles the long-line
++     scroll within the now-collapsed card.
++  3. `max-width: 100% !important` on `.skb-grid .heavy-block-skeleton` —
++     `@skb/heavy-block-boundary` SSR-emits `style="width:600px;min-height:400px"`
++     on the inner skeleton (per ADR-0014 D5 heavyBoundaryDimensions);
++     600px exceeds 343px mobile viewport. Cap at parent width on
++     mobile only; desktop SSR fallback dims (per ADR-0014 W4-1 zero-
++     layout-shift) are unaffected.
++  4. `overflow-x: auto` on `.skb-grid .skb-block-static`,
++     `.skb-grid .skb-block-nodeview` — defense-in-depth so even if a
++     future inner element extends past the wrapper's right edge, the
++     overflow stays contained within the wrapper rather than scrolling
++     the page itself.
++
++  Regression lock spec:
++  `apps/site/playwright/sample-blocks-grid-layout.spec.ts:"cf-20b R1: mobile (≤768px) viewport"`
++  asserts computed `grid-column === '1 / -1'` on every BlockKind wrapper +
++  `document.documentElement.scrollWidth ≤ 393px` (viewport + scrollbar slack).
+ - Per-block `gridColumn` / `gridRow` style emission landed at Wave 6 cf-20b
+   (2026-05-09). Light-block read route: `apps/site/src/lib/mdx-adapter.ts`
+   consumes `extractGridPosition` + `gridPlacementStyle` from
+   `@skb/editor-shell/src/grid-style.ts` and applies inline style to the
+   `.skb-block-static` wrapper. Heavy-block read route: the 3 Astro wrappers
+   (`apps/site/src/components/{Jupyter,NnViz,AgentFlow}.astro`) consume
+   `gridPlacementStyleAttr` for inline `style="..."` strings. Edit route:
+   `BlockNodeView.tsx` reads `node.attrs.{col, colSpan, rowSpan}` and applies
+   `gridPlacementStyle` to the `.skb-block-nodeview` wrapper.
+ - Transitional fallback (Wave 5 C.2-3 → cf-20b cleanup): MDX children inside
+   `.skb-grid` without an inline `style` attribute matching `grid-column` get
+   `grid-column: 1 / -1` via `.skb-grid > *:not([style*="grid-column"])` so
+   unstyled prose remains full-width readable. cf-20b extends this fallback
+   to the inner `.ProseMirror` grid as well so prose nodes (`<p>`, `<h2>`,
+   `<ul>`) inside the editor become full-width grid items by default.
+   `grid-auto-rows` uses `minmax(var(--row-h), auto)` so content height drives
+   row height rather than clamping to 48px.
+ - **Editor-route two-level grid lock (Wave 6 cf-20b; ADR-0016 v0.2 D11.1
+   amendment)**: when `.skb-grid` wraps Tiptap's `<EditorContent>`, the
+   intermediate `.skb-editor-content` div spans `grid-column: 1 / -1` so the
+   inner `.ProseMirror` element inherits the full container width. The
+   `.ProseMirror` element is **itself** styled `display: grid;
+   grid-template-columns: repeat(12, ...)` so per-block NodeView wrappers
+   (`.skb-block-nodeview`, which sit at depth 3 under `.skb-grid`) become
+   grid items at the correct level. This is the editor-mount equivalent of
+   the read-route Astro `<Content>` flat-children layout. v2 contract
+   source: `/mnt/d/download/web/v2-styles.css:137-147`.
+ - Architectural pointers: ADR-0016 D8 defines the Astro renderer `.skb-grid`
+   wrapper, D9 defines the SSR vs hydration phase split, D11 keeps Tiptap inside
+   blocks while the grid stays outside, ADR-0016 v0.2 D11.1 amendment locks
+   the editor-surface two-level grid (cf-20b 2026-05-09), and ADR-0017 D11 is
+   the downstream visual feedback scope referenced by the grid architecture.
+ 
+ ## Edit route (Wave 5)
+ 
+ - Route surface: `/notes/{slug}/edit` renders the C.4-prelude editor mount for
+   each non-draft note slug. It coexists with the read-only `/notes/{slug}`
+   catch-all route at `src/pages/notes/[...slug].astro`; the edit route lives at
+   `src/pages/notes/[...slug]/edit.astro` so nested slugs render canonical
+   unescaped paths.
+ - Mount component: `src/pages/notes/[...slug]/edit.astro` imports
+   `src/components/EditorShellMount.astro`, which mounts
+   `EditorShellMount.tsx` as a React island with `client:only="react"`. This
+   avoids SSR for the Tiptap-dependent editor surface and passes the note body as
+   `initialMdx` for first-visit edits before localStorage has a saved state.
+ - Persistence (Wave 6 Stage B.4 update per ADR-0018 v0.6 D13): the island
+   uses **`ApiAdapter` primary + `LocalStorageAdapter` fallback** from the
+   `@skb/editor-shell` save-adapter public surface.
+   - **load**: `ApiAdapter.load()` issued first against
+     `/api/notes/{slug}`. On `null` (HTTP 404 — no saved state) OR a thrown
+     non-2xx, the mount falls through to `LocalStorageAdapter.load()`. If
+     both return `null` the editor seeds from `initialMdx`.
+   - **save**: `ApiAdapter.save()` POSTs the `NoteState` to
+     `/api/notes/{slug}` after the 800ms debounce. On
+     `{ ok: false, error }` the mount additionally writes to
+     `LocalStorageAdapter` as a backup so the user's edit survives a
+     network blip — the user-visible save indicator still reflects the
+     primary failure (`status: 'error'`). On `{ ok: true }` only the
+     server file is written.
+   - The localStorage key prefix is `skb-note:{slug}`, distinct from the
+     design-tokens `skb-theme` key.
+   - Closing the user-reported "/notes/<slug> and /notes/<slug>/edit don't
+     sync" gap: with the server file as primary source of truth, a save
+     via the edit route writes back to `content/notes/<slug>/index.mdx`
+     + sibling `state.json`, and the next visit to the read route renders
+     the persisted MDX body.
+ - See sister-doc:
+   [packages/editor-shell/CONTRACT.md § NoteSaveAdapter (Wave 5; contract hardened at C.4-1)](../../packages/editor-shell/CONTRACT.md).
+ - Block registry: C.4-2 verified that `EditorShellMount.tsx` constructs a
+   route-local `BlockRegistry` and calls `registerBlocks` from
+   `@skb/editor-shell`, whose helper registers all 8 Wave 2 block definitions
+   (5 light blocks plus the 3 heavy plugin-placeholder blocks). The 3 heavy
+   blocks render the ADR-0014 v0.4 plugin-placeholder tier, so the MVP edit
+   mount may register them without loading real heavy runtimes.
+ - Kernel registry boundary: C.4-2 verifies the route consumes the
+   `@skb/editor-shell` MVP registry surface after C.4-prelude. The upstream
+   `registerKernels` helper remains the `KernelRegistry` wire point; the edit
+   route does not eagerly start a kernel or add a route-local execution surface
+   until a user insertion/execution affordance exists.
+ - Save trigger: the island uses an 800ms `setTimeout` debounce around
+diff --git a/apps/site/playwright/sample-blocks-grid-layout.spec.ts b/apps/site/playwright/sample-blocks-grid-layout.spec.ts
+index 813dd89..a3e313f 100644
+--- a/apps/site/playwright/sample-blocks-grid-layout.spec.ts
++++ b/apps/site/playwright/sample-blocks-grid-layout.spec.ts
+@@ -172,80 +172,159 @@ test('sample-blocks edit route — .ProseMirror is a 12-col grid + per-block gri
+     //   `1 / 13` (computed end-line for col=1 + colSpan=12)
+     //   `auto / auto` would mean the inline style didn't apply (FAIL)
+     expect(w.gridColumn).not.toBe('auto');
+     expect(w.gridColumn).not.toBe('auto / auto');
+     expect(w.gridColumn).toMatch(/(span 12|\/\s*13)/);
+     // The wrapper width should be ~12 cells wide (within 1px tolerance
+     // for sub-pixel rounding).
+     expect(w.width).toBeGreaterThan(probe.editor.width * 0.9);
+   }
+ 
+   await page.screenshot({ fullPage: false, path: SCREENSHOT_PATH });
+ });
+ 
+ test('sample-blocks read route — .skb-block-static carries grid-column derived from MDX attrs', async ({
+   page,
+ }) => {
+   await page.goto('/notes/sample-blocks');
+   await expect(page.locator('.skb-block-static').first()).toBeVisible({
+     timeout: 15_000,
+   });
+ 
+   const probe = await page.evaluate(() => {
+     const grid = document.querySelector('.skb-grid');
+     if (!grid) return { error: 'no .skb-grid on read route' };
+     const gridCs = window.getComputedStyle(grid);
+ 
+     const wrapperKinds = [
+       'callout',
+       'componentCode',
+       'image',
+       'math',
+       'pdf',
+       'jupyter',
+       'nn-viz',
+       'agent-flow',
+     ] as const;
+     const wrappers = wrapperKinds.map((kind) => {
+       const el = document.querySelector(
+         `.skb-block-static[data-skb-block-kind="${kind}"]`,
+       );
+       if (!el) return { kind, error: 'wrapper missing' };
+       const cs = window.getComputedStyle(el);
+       return {
+         kind,
+         gridColumn: cs.gridColumn,
+         gridRow: cs.gridRow,
+         inlineStyle: el.getAttribute('style') ?? '',
+       };
+     });
+ 
+     return {
+       grid: {
+         display: gridCs.display,
+         gridAutoFlow: gridCs.gridAutoFlow,
+         gridTemplateColumns: gridCs.gridTemplateColumns,
+       },
+       wrappers,
+     };
+   });
+ 
+   if ('error' in probe) throw new Error(`grid probe failed: ${probe.error}`);
+ 
+   expect(probe.grid.display).toBe('grid');
+   expect(probe.grid.gridAutoFlow).toBe('row');
+   expect(probe.grid.gridTemplateColumns.split(' ')).toHaveLength(12);
+ 
+   for (const w of probe.wrappers) {
+     if ('error' in w) throw new Error(`read wrapper ${w.kind}: ${w.error}`);
+     // Each wrapper MUST carry an inline grid-column style (NOT the
+     // .skb-grid > *:not([style*="grid-column"]) fallback, because
+     // sample-blocks MDX writes col={1} colSpan={12} explicitly per
+     // ADR-0016 D7).
+     expect(
+       w.inlineStyle,
+       `read wrapper ${w.kind} must have inline style emitted by mdx-adapter or Astro wrapper`,
+     ).toMatch(/grid-column:\s*1\s*\/\s*span\s+12/);
+     expect(w.gridColumn).not.toBe('auto');
+     expect(w.gridColumn).toMatch(/(span 12|\/\s*13)/);
+   }
+ });
++
++test('cf-20b R1: mobile (≤768px) viewport — blocks force-fill 1-col regardless of inline grid-column', async ({
++  page,
++}) => {
++  // Wave 6 cf-20b R1 hotfix regression lock — codex-pr-reviewer-55 R1
++  // probe at 375×812 caught that cf-20b's inline `style="grid-column:
++  // 1 / span 12"` on `.skb-block-static` (and `.skb-block-nodeview`)
++  // beats the existing `@media (max-width: 768px) .skb-grid > *
++  // { grid-column: 1 }` rule per CSS specificity (inline wins). Result:
++  // mobile viewport overflows horizontally (scrollWidth=6450px when
++  // viewport=343px) because every wrapper still claims 12 cells of
++  // width even though the grid switched to 1fr.
++  //
++  // Fix: `.skb-grid > *, .skb-grid .ProseMirror > * { grid-column:
++  // 1 / -1 !important }` inside the same media query. `!important` is
++  // intentional + documented (apps/site/CONTRACT.md "≤768px → 1 col"
++  // contract requires beating the desktop inline placement). This
++  // spec locks the contract so a future renderer that introduces a
++  // higher-specificity inline style or a new wrapper variant cannot
++  // silently regress mobile layout.
++  //
++  // Read route is the canonical surface for this test (same fixture
++  // sample-blocks; 14 .skb-block-static wrappers all carry inline
++  // grid-column from mdx-adapter / Astro wrappers).
++
++  await page.setViewportSize({ width: 375, height: 812 });
++  await page.goto('/notes/sample-blocks');
++
++  await expect(page.locator('.skb-block-static').first()).toBeVisible({
++    timeout: 15_000,
++  });
++
++  // (a) Computed grid-column on every read-route wrapper must be the
++  //     mobile override `1 / -1`, NOT the inline-emitted `1 / span 12`.
++  //     Sample one wrapper per kind to cover the full BlockKind union.
++  const computed = await page.evaluate(() => {
++    const wrapperKinds = [
++      'callout',
++      'componentCode',
++      'image',
++      'math',
++      'pdf',
++      'jupyter',
++      'nn-viz',
++      'agent-flow',
++    ] as const;
++    return wrapperKinds.map((kind) => {
++      const el = document.querySelector(
++        `.skb-block-static[data-skb-block-kind="${kind}"]`,
++      );
++      if (!el) return { kind, error: 'wrapper missing' };
++      return { kind, gridColumn: window.getComputedStyle(el).gridColumn };
++    });
++  });
++
++  for (const entry of computed) {
++    if ('error' in entry) {
++      throw new Error(`mobile probe ${entry.kind}: ${entry.error}`);
++    }
++    // Computed `grid-column: 1 / -1` resolves to `1 / -1` in Chromium.
++    // The pre-fix value was `1 / span 12` (inline-style override leak).
++    expect(
++      entry.gridColumn,
++      `kind ${entry.kind} must collapse to 1-col on mobile (got ${entry.gridColumn}); cf-20b R1 inline-style override regression`,
++    ).toBe('1 / -1');
++  }
++
++  // (b) Document scrollWidth must NOT exceed the viewport (with a
++  //     small tolerance for browser scrollbar overhead). Pre-fix:
++  //     scrollWidth ≈ 6450px (12× overflow). Post-fix: scrollWidth ≤
++  //     ~393px (= 375 + scrollbar slack).
++  const scrollWidth = await page.evaluate(
++    () => document.documentElement.scrollWidth,
++  );
++  expect(
++    scrollWidth,
++    `document scrollWidth ${scrollWidth}px must NOT exceed viewport+scrollbar (~393px); cf-20b R1 horizontal overflow regression`,
++  ).toBeLessThanOrEqual(393);
++});
+diff --git a/apps/site/src/styles/grid.css b/apps/site/src/styles/grid.css
+index 93ab713..c784b96 100644
+--- a/apps/site/src/styles/grid.css
++++ b/apps/site/src/styles/grid.css
+@@ -32,90 +32,196 @@
+  * wraps `<EditorContent>` (which renders `<div class="skb-editor-content">
+  * <div class="ProseMirror">...</div></div>`), the children of `.ProseMirror`
+  * are the actual block + prose nodes that need to participate in the
+  * grid. Strategy: let `.skb-editor-content` span the full outer grid
+  * width (so it inherits 100% width as a grid item), then make
+  * `.ProseMirror` ITSELF a 12-col grid so its children become grid items
+  * at the right level. The outer `.skb-grid` rule above still applies to
+  * the read route (where blocks are direct children via
+  * `<Content components>`).
+  *
+  * Per ADR-0016 v0.2 D11.1 amendment: prose interleave is full — `<p>`,
+  * `<h1>`, `<h2>` etc. inside `.ProseMirror` are also gridded with the
+  * full-width fallback (`grid-column: 1 / -1` via the
+  * `:not([style*="grid-column"])` rule below). NodeView wrappers with
+  * explicit `style.gridColumn` (cf-20b BlockNodeView.tsx emission)
+  * resolve to their per-block placement.
+  *
+  * Earlier cf-20b draft used `display: contents` on `.skb-editor-content`
+  * to flatten the hierarchy. Discarded because CSS selectors operate on
+  * the DOM tree (NOT the layout tree); `.skb-grid > *:not([style*="grid-column"])`
+  * doesn't match `.ProseMirror` when the intermediate `.skb-editor-content`
+  * is `display: contents`. Two-level grid (outer `.skb-grid` + inner
+  * `.ProseMirror` grid) avoids the issue entirely; `.skb-editor-content`
+  * stays a normal grid item taking full width.
+  */
+ .skb-grid > .skb-editor-content {
+   /* Span the full outer grid so the inner `.ProseMirror` element gets
+    * the full container width to compute its own 1fr columns from. */
+   grid-column: 1 / -1;
+ }
+ 
+ .skb-grid .ProseMirror {
+   display: grid;
+   grid-template-columns: repeat(12, minmax(0, 1fr));
+   grid-auto-rows: minmax(var(--row-h), auto);
+   gap: var(--gap);
+   grid-auto-flow: row;
+   /* Tiptap defaults give `.ProseMirror` `white-space: pre-wrap` for
+    * inline editing; that interacts poorly with grid item layout (forces
+    * the child to be ws-normal). Restore `white-space: normal` at the
+    * grid root so children inherit predictable wrapping. Inline marks
+    * (em / strong / code) still flow inline within their grid-item
+    * container. */
+   white-space: normal;
+ }
+ 
+ /*
+  * Wave 5 C.2-3 transitional fallback: MDX children without an explicit
+  * gridColumn style span the full grid width so prose stays readable.
+  * Per-block `style.gridColumn` emission (cf-20a `.skb-block-static` for
+  * read route + cf-20b `.skb-block-nodeview` for edit route) overrides
+  * via specificity. Selector list now covers both grid scopes (the
+  * outer `.skb-grid` direct children AND the inner `.ProseMirror` direct
+  * children, since both elements are `display: grid`).
+  *
+  * Wave 6 cf-20b: prose interleave per ADR-0016 v0.2 D11.1. Prose nodes
+  * (`<p>`, `<h1>`, `<h2>`, `<ul>`, etc.) without grid attrs are
+  * full-width by default — author can resize via cf-20d once the resize
+  * handles ship.
+  */
+ .skb-grid > *:not([style*="grid-column"]),
+ .skb-grid .ProseMirror > *:not([style*="grid-column"]) {
+   grid-column: 1 / -1;
+ }
+ 
+ @media (max-width: 1024px) {
+   .skb-grid {
+     --total-cols: 6;
+ 
+     grid-template-columns: repeat(6, minmax(0, 1fr));
+   }
+ }
+ 
+ @media (max-width: 768px) {
+   .skb-grid {
+     --total-cols: 1;
+ 
+     grid-template-columns: 1fr;
+   }
+ 
+-  .skb-grid > * {
+-    grid-column: 1;
++  /*
++   * Wave 6 cf-20b R1 hotfix (2026-05-09) — mobile override MUST beat
++   * the cf-20b-emitted inline `style="grid-column: ${col} / span ${colSpan}"`
++   * on `.skb-block-static` (read route 5 light blocks via mdx-adapter +
++   * 3 heavy via Astro wrappers) AND `.skb-block-nodeview` (editor
++   * route via BlockNodeView.tsx). Without `!important`, inline style
++   * wins per CSS specificity, so blocks like `colSpan=12` retain their
++   * 12-cell width even though the mobile breakpoint switched the grid
++   * to a single 1fr column — producing 12× horizontal overflow
++   * (verified at 375×812: scrollWidth=6450px when viewport=343px;
++   * codex-pr-reviewer-55 R1 caught this).
++   *
++   * `!important` is intentional here, NOT an anti-pattern: the cf-20b
++   * inline emission is a desktop placement contract (per ADR-0016
++   * v0.2 D11.1 amendment); mobile responsive override per ADR-0016 D5
++   * + apps/site/CONTRACT.md "≤768px → 1 col" requires beating that
++   * inline-style intent in a single, scoped media query.
++   *
++   * R1 followup (during fix-write): the initial `.skb-grid > *,
++   * .skb-grid .ProseMirror > *` selector list missed the read-route
++   * case because `.skb-block-static` is nested INSIDE `.skb-prose`
++   * (the `notes/[...slug].astro` template wraps `<Content>` in
++   * `<div class="skb-prose">`), so it's NOT a direct child of
++   * `.skb-grid`. The corrected selector list explicitly targets BOTH
++   * structural wrapper classes by name (`.skb-block-static` for read,
++   * `.skb-block-nodeview` for editor) regardless of their depth in
++   * the DOM tree. Outer-grid direct-child rule kept for any future
++   * non-block top-level grid item that needs the same mobile flatten.
++   */
++  .skb-grid > *,
++  .skb-grid .ProseMirror > *,
++  .skb-grid .skb-block-static,
++  .skb-grid .skb-block-nodeview {
++    grid-column: 1 / -1 !important;
++  }
++
++  /*
++   * Wave 6 cf-20b R1 hotfix part 2 — `min-width: 0` on grid items.
++   *
++   * Even with `grid-column: 1 / -1` forcing block wrappers to the
++   * single mobile column, CSS Grid's default `min-width: auto` on
++   * grid items resolves to each item's `min-content` width, which
++   * = the largest unbreakable child. The sample-blocks fixture
++   * contains `<pre class="skb-code-pre">` Python code (6392px wide
++   * unbreakable text), `<svg>` NN-Viz topology (6400px), and
++   * `<iframe>` PDF viewers (6424px) — any one of these pushes the
++   * grid track to its content's intrinsic min-content, ballooning the
++   * 1fr column to ~6.4k px and bypassing the viewport-width
++   * constraint.
++   *
++   * `min-width: 0` (with `!important` for the same reason as above)
++   * tells grid items to shrink below their content min-content. The
++   * inner code block's own `overflow-x: auto` (from
++   * `block-code/ui-default/code.css`) then handles the long-line
++   * scroll within the now-343px-wide card, so users see a horizontally-
++   * scrollable code box INSIDE the block instead of the entire page
++   * scrolling horizontally.
++   *
++   * Selector list mirrors the grid-column rule above (covers `.skb-prose`
++   * via `.skb-grid > *` AND the explicit block wrappers).
++   */
++  .skb-grid > *,
++  .skb-grid .ProseMirror > *,
++  .skb-grid .skb-block-static,
++  .skb-grid .skb-block-nodeview {
++    min-width: 0 !important;
++  }
++
++  /*
++   * Wave 6 cf-20b R1 hotfix part 3 — heavy-block placeholder cap.
++   *
++   * `@skb/heavy-block-boundary` SSR-emits `<div class="heavy-block-skeleton"
++   * style="width:600px;min-height:400px">` (per ADR-0014 D5
++   * heavyBoundaryDimensions); 600px exceeds the 343px mobile viewport
++   * by ~257px and bypasses our wrapper's `min-width: 0` because the
++   * inline `width:600px` is on the inner element, not the wrapper.
++   * Cap it at the parent width on mobile so the heavy-block placeholder
++   * fits inside the now-collapsed `.skb-block-static`/`.skb-block-nodeview`
++   * card. `max-width: 100%` is sufficient because the parent is now
++   * track-width (343px); the cap is mobile-only so desktop SSR
++   * fallback dims (per ADR-0014 W4-1 zero-layout-shift) are unaffected.
++   * Wave 5 ADR-0014 v0.5 amendment will dynamically derive heavy
++   * dimensions from grid colSpan/rowSpan (W5-1 invariant) post
++   * hydration; cf-20b R1 mobile cap is a forward-compat layer that
++   * coexists with that future amendment.
++   */
++  .skb-grid .heavy-block-skeleton {
++    max-width: 100% !important;
++  }
++
++  /*
++   * Wave 6 cf-20b R1 hotfix part 4 — block content overflow scroll.
++   *
++   * After parts 1-3, the block wrapper itself fits the viewport, but
++   * inner content (long `<pre>` code, NN-Viz svg with intrinsic 6400px
++   * viewBox, agent-flow svg topology, etc.) can still extend past the
++   * wrapper's right edge if the inner CSS doesn't already clip/scroll.
++   * Force overflow-x scroll on the wrapper as a defense-in-depth so the
++   * page itself never scrolls horizontally on mobile (the cf-19 mobile
++   * preview-mode contract per ADR-0017 D9). Block-level inner CSS rules
++   * with their own scroll behavior (block-code's `.skb-code-pre
++   * { overflow-x: auto }`, block-pdf's iframe min-height, agent-flow's
++   * `.skb-agent-flow-canvas { overflow: hidden }`) continue to apply
++   * within the wrapper bounds.
++   */
++  .skb-grid .skb-block-static,
++  .skb-grid .skb-block-nodeview {
++    overflow-x: auto;
+   }
+ }
+ 
+ @media (prefers-reduced-motion: reduce) {
+   .skb-grid {
+     transition: none;
+   }
+ }
+diff --git a/docs/audits/screenshots/wave-5-c2-9-responsive-fsm-mount.png b/docs/audits/screenshots/wave-5-c2-9-responsive-fsm-mount.png
+index c8949a2..105c1e0 100644
+Binary files a/docs/audits/screenshots/wave-5-c2-9-responsive-fsm-mount.png and b/docs/audits/screenshots/wave-5-c2-9-responsive-fsm-mount.png differ
+diff --git a/docs/audits/screenshots/wave-5-c4-3-drag-handle.png b/docs/audits/screenshots/wave-5-c4-3-drag-handle.png
+index c6e816c..ecac151 100644
+Binary files a/docs/audits/screenshots/wave-5-c4-3-drag-handle.png and b/docs/audits/screenshots/wave-5-c4-3-drag-handle.png differ
+diff --git a/docs/audits/screenshots/wave-5-c4-3-save-indicator.png b/docs/audits/screenshots/wave-5-c4-3-save-indicator.png
+index 8ce88e6..6fb19eb 100644
+Binary files a/docs/audits/screenshots/wave-5-c4-3-save-indicator.png and b/docs/audits/screenshots/wave-5-c4-3-save-indicator.png differ
+diff --git a/docs/audits/screenshots/wave-5-c4-4-save-roundtrip.png b/docs/audits/screenshots/wave-5-c4-4-save-roundtrip.png
+index debe38e..65bf8bc 100644
+Binary files a/docs/audits/screenshots/wave-5-c4-4-save-roundtrip.png and b/docs/audits/screenshots/wave-5-c4-4-save-roundtrip.png differ
+diff --git a/docs/audits/screenshots/wave-5-c4-5-edit-flow-e2e.png b/docs/audits/screenshots/wave-5-c4-5-edit-flow-e2e.png
+index ded7bd3..953afda 100644
+Binary files a/docs/audits/screenshots/wave-5-c4-5-edit-flow-e2e.png and b/docs/audits/screenshots/wave-5-c4-5-edit-flow-e2e.png differ
+diff --git a/docs/audits/screenshots/wave-6-stage-b-4-edit-mount-wire.png b/docs/audits/screenshots/wave-6-stage-b-4-edit-mount-wire.png
+index e6b328a..86154b2 100644
+Binary files a/docs/audits/screenshots/wave-6-stage-b-4-edit-mount-wire.png and b/docs/audits/screenshots/wave-6-stage-b-4-edit-mount-wire.png differ
+diff --git a/docs/orchestrator-reflections/2026-05-09-cf-15a-19-retrospective.md b/docs/orchestrator-reflections/2026-05-09-cf-15a-19-retrospective.md
+index bb763ca..5f6a113 100644
+--- a/docs/orchestrator-reflections/2026-05-09-cf-15a-19-retrospective.md
++++ b/docs/orchestrator-reflections/2026-05-09-cf-15a-19-retrospective.md
+@@ -27,103 +27,121 @@ Consequence: every PLAN I wrote was based on partial design-intent understanding
+ Consequence: cf-18 visual decisions (DOM structure, class names, placeholder text) were made by the wrong actor. cf-19 became a rework rather than a fresh design.
+ 
+ ### Gap 3 — TDD degraded at the integration layer
+ 
+ Data-layer PRs (cf-15a~cf-17) had real Zod / parse / round-trip tests with full corpus coverage. Integration-layer PRs (cf-18 NodeView wiring, cf-19 visual identity) had **only** Playwright smoke + 132 pre-existing editor-shell vitest tests, **none of which exercised the integration surface**.
+ 
+ The reason was not "TDD discipline broke" — the reason was **the integration layer (NodeView ↔ Tiptap commands ↔ apply-drop-mode ↔ layout-reducer) was never written**. Tests can't be written for code that doesn't exist. I missed this gap because:
+ - The primitives (`drag-drop/edge-rects.ts` etc.) shipped from Wave 5 Stage C.2 looked complete
+ - Synthetic Playwright fixtures (`grid-drag-drop.spec.ts`) exercised the primitives in isolation, giving false coverage signal
+ - `BlockNodeView`'s gutter shell looked "ready for cf-20 to drop drag handle in" — implying the wiring was the only remaining work, when actually the entire mutation-computation layer was missing too
+ 
+ ### Gap 4 — "defer to cf-XX" became a closing strategy
+ 
+ cf-18 PR.md, cf-19 PR.md both ended with multi-item "Out of scope (deferred)" sections. These were not user-approved scope decisions — they were orchestrator rationalizations of incomplete work.
+ 
+ User explicitly rejected this pattern: "全部做，不允许 defer".
+ 
+ ## What I'd do differently (operational rules, effective immediately)
+ 
+ ### Rule 1 — Read the design-contract source before PLAN, not after REVIEW
+ 
+ For any PR with `ui_touch=true` per ADR-0011 D9.1 the orchestrator MUST cite specific lines from the relevant `/mnt/d/download/web/v2-*.{css,md,jsx}` files in the PR.md "Decisions" section, demonstrating the orchestrator read them. PLAN-stage codex-pr-reviewer-55 dispatch will reject PR.md without these citations starting cf-19.1.
+ 
+ ### Rule 2 — `ux-ui-lead` is dispatched at PLAN, not at REVIEW
+ 
+ For any UI/UX PR (`ui_touch=true`), the orchestrator's first action after recognizing the PR shape is to spawn `ux-ui-lead`. The orchestrator does NOT hand-roll visual decisions then ask `ux-ui-lead` to fix-up.
+ 
+ ### Rule 3 — "Defer" requires explicit user approval, not orchestrator's
+ 
+ PR.md "Out of scope" section may only contain items the user has explicitly told me to defer (with a quote). Items I (orchestrator) think should be deferred get surfaced as a decision question to the user BEFORE PLAN locks. No silent deferral.
+ 
+ ### Rule 4 — Integration layers must be enumerated, not assumed
+ 
+ When dispatching cf-N+1 that "wires" cf-N's primitives, the orchestrator MUST list every integration layer (data ↔ primitive ↔ command ↔ UI) and verify each one exists. "Primitives shipped" is not equivalent to "integration done". Library code shipping with synthetic-fixture coverage is not equivalent to integration with the real surface.
+ 
+ ## Process change for cf-20 onward
+ 
+ The 10-PR cf-20 sequence (cf-19.1 lint + cf-20a stripe-cleanup + cf-20b grid + cf-20c-1 drop-algebra + cf-20c-2 drop-UI + cf-20d resize + cf-20e kebab + cf-22 keyboard a11y + cf-23 read-mode unification + cf-24 sidebar) will run with:
+ 
+ 1. ux-ui-lead dispatched at PLAN for every UI/UX PR (cf-20a, cf-20b, cf-20c-2, cf-20d, cf-20e, cf-22, cf-23, cf-24)
+ 2. orchestrator self-dispatched only for cf-19.1 (lint), cf-20c-1 (pure algebra + vitest, no UI)
+ 3. PR.md must cite v2-styles.css + v2-design-granularity.md line numbers
+ 4. Every PR ends with one orchestrator reflection entry appended to this log
+ 5. No "Out of scope" deferral without prior user approval quote
+ 6. R-round failures self-diagnosed before re-dispatch (orchestrator doesn't ask codex to catch the same doc-drift class twice)
+ 
+ ## What I learned
+ 
+ The biggest lesson is that **orchestration is a separate discipline from execution**. Picking the right subagent at the right time, reading the right authority docs at the right time, and challenging "defer" rationalizations as they appear — none of these are visible in the diff, so they don't show up in code review. The user has to surface them, which means I cost them debugging cycles instead of preventing the failure class. Rules 1-4 above are my attempt to make that work happen automatically without user intervention.
+ 
+ A second lesson: **cf-19's 4-R-round drift loop was a symptom, not a cause**. Each round caught a different doc-precision issue, but the root cause was that I let cf-19 land at v0.1 (conservative scope) and only escalated to v0.2 (v2-faithful) after user pushback. If ux-ui-lead had been in the loop from cf-18 PLAN, the v0.2 visual would have been the v0.1 plan, and 3+ R-rounds would have been avoided.
+ 
+ ## ux-ui-lead reflection — cf-20a stripe-cleanup single source (2026-05-09)
+ 
+ **What I did**: Extracted the v2 `.gblock` chrome from `BlockNodeView.css` into a new shared `@skb/editor-shell/src/block-chrome.css` module whose paired selectors (`.skb-block-nodeview, .skb-block-static`) paint identical chrome on both editor and read routes. Modified `apps/site/src/lib/mdx-adapter.ts` to take a `kind` parameter and wrap each light block in `<div class="skb-block-static" data-skb-block-kind="<kind>">`; wrapped the 3 heavy block Astro islands the same way. Deleted 8 inner-component `border-top: 2px solid var(--accent-X)` rules. Deleted the cf-19 R2 P3 nested-suppression block. Updated 11 CONTRACT.md files for ADR-0006 #6 sister-doc compliance. New read-route Playwright spec; updated `c3-2-block-hues.spec.ts` selectors from inner-element to wrapper. Full pnpm check + 64 Playwright specs all green.
+ 
+ **What surprised me / what I missed**: The `block-code` `theme-tokens.test.ts` invariant ("manifest key-set is byte-equal to `var(--color-*)` refs from code.css") caught my removal of `border` from the manifest path on the FIRST test run. I had to add a one-line fix to drop `border: 'border'` from `CODE_THEME_TOKENS`. This is a working drift detector that I might NOT have re-discovered if I'd only run typecheck — the test only fires when CSS and manifest disagree. Lesson: **invariant tests in sister packages catch cross-package drift even when the change feels purely local**. The `c3-2-block-hues` spec also failed on the first full-suite run because its selectors targeted the pre-cf-20a inner elements; I updated to wrapper selectors per the user "全部对齐 v2" + "no degradation" directive (the alternative would have been to leave the inner stripes for back-compat = degradation).
+ 
+ **What I'd do differently**: Run `pnpm -r --filter "./packages/block-*" test` AFTER any block-package source edit, BEFORE moving to the next file. I batched 8 file edits then ran tests once — the failure was easy to fix but cost me one extra test cycle. For Wave 6 cf-20b+ I'll run targeted tests per-file to catch drift earlier. Also: I considered keeping `c3-2`'s inner-element selectors for "back-compat" but that would have reintroduced coexistence (which was exactly what cf-19 R2 P3 was working around). The user's directive "出现问题会直接让你推翻重写" maps directly to "no back-compat for the wrong-shape DOM"; updating tests to track new authority is the correct way.
+ 
+ **Operational rule landed**: **Invariant-test triangle: every CSS edit must run (a) typecheck, (b) the package's vitest suite, (c) the cross-package adjacent suites that reference the changed selectors.** The `theme-tokens.test.ts` family is the canonical example — drop a `var(--color-*)` reference, must drop the manifest entry, must run the test. This rule applies to any cf-20 PR that edits ui-default CSS.
+ 
+ **Bonus surprise**: The Astro build verifies `.skb-block-static` placement at SSR time — `grep -oE 'class="skb-block-static[^"]*" data-skb-block-kind="[a-zA-Z-]+"' apps/site/dist/notes/sample-blocks/index.html | sort | uniq -c` returned 14 wrappers across 8 distinct kinds (matches the cf-19 fixture count). This makes SSR-rendered HTML grep a useful smoke test alongside Playwright. For cf-20b grid switch I should do the same SSR HTML grep on `style="grid-column: ..."` to verify Astro builds the per-block grid attrs correctly.
+ 
+ ## ux-ui-lead reflection — cf-20b grid-layout substrate (2026-05-09)
+ 
+ **What I did**: Promoted the editor surface to a 12-col CSS Grid per `/mnt/d/download/web/v2-styles.css:137-147` by extending the existing `.skb-grid` (outer container) with a NEW inner-grid rule on `.ProseMirror` itself (two-level grid: outer + inner both 12 cols). Wrote `packages/editor-shell/src/grid-style.ts` (single-source `BlockGridPosition → CSSProperties` formula consumed by 3 paths: editor `BlockNodeView.tsx` + read-route `mdx-adapter.ts` + 3 heavy block Astro wrappers). Applied per-block `style.gridColumn` / `style.gridRow` to all wrapper classes. Shipped ADR-0016 v0.2 D11.1 amendment locking the editor-surface two-level grid + the prose-interleave decision (full per `proseGridDefaults`) + the arrow-key visual-vs-source-order limitation note. Added 2 NEW Playwright specs covering edit + read routes; 20 NEW vitest cases for grid-style.ts. Full pnpm check + 52 Playwright (52 passed / 14 skipped / 0 failed) all green.
+ 
+ **What surprised me / what I missed**: The first attempt used `display: contents` on the intermediate `.skb-editor-content` div to flatten the DOM hierarchy so block NodeViews would bubble up to be `.skb-grid` direct children. **CSS selectors operate on the DOM tree, NOT the layout tree.** So the `.skb-grid > *:not([style*="grid-column"])` fallback rule did NOT match the `.ProseMirror` element (its actual DOM parent was still `.skb-editor-content`, even though layout-wise it was a direct grid child). Result: `.ProseMirror` had NO `grid-column` → got `grid-column: auto` → resolved to the smallest grid track (1 cell wide) → and INSIDE it I had set `display: grid; grid-template-columns: repeat(12, ...)` which divided that 48px width into 12 zero-width columns. Caught via a probe printing `gridTemplateColumns: "0px 0px ... 0px"`. The selector tree and the layout tree diverge under `display: contents`; I should have known this. Symptom: "image not visible" Playwright fail; root cause: cell-width = 0.
+ 
+ **What I'd do differently**: Run a "compute grid metrics" probe (template columns, column widths) BEFORE running the full Playwright suite, so I catch grid-collapse bugs by inspecting numbers directly instead of by symptom (image not visible). Took ~15 minutes to trace the symptom back to the actual cause. For cf-20c+ I'll write a probe spec (or a debug-only test fixture) that prints computed `grid-template-columns` on `.ProseMirror` whenever cf-20b-style grid changes ship. Cheap insurance.
+ 
+ **Operational rule landed**: **Never use `display: contents` to bypass DOM structure for CSS-selector matching purposes.** The selector tree (`>` direct child) and layout tree (parent for grid items) diverge under `display: contents`, producing the 12-zero-width-column bug class. If you need a layer to "disappear" from layout but keep selector matching intact: instead, give the layer a `grid-column: 1 / -1` and let it be a normal grid item. This is the cf-20b D1 decision and the default pattern for any future Tiptap-wrapper / Astro-wrapper between `.skb-grid` and the actual block content.
+ 
+ **Bonus surprise 1**: `--row-h` and `--gap` tokens were ALREADY in `packages/design-tokens/src/tokens.css:79-80` (Q8 answer = no add needed, no sister-doc updates). Saved a vitest cycle. **Always grep design-tokens at PLAN time before assuming a token doesn't exist**, especially after Wave 5 Stage C.3-1's "token unification" sweep which pulled common tokens into design-tokens for consumption parity.
+ 
+ **Bonus surprise 2 (Astro SSR + barrel imports)**: First attempt to import `gridPlacementStyle` from the editor-shell barrel (`@skb/editor-shell`) into Astro components broke `astro build` with `require is not defined in ES module scope` from `block-nn-viz_qpJ3sHf9.mjs:7346` (TF.js Node platform adapter). The barrel transitively pulls block packages → kernel-registry → mdx-bridge → react-flow → @tensorflow/tfjs, fine for the React-side editor mount but catastrophic for Astro SSR. Solved by deep-subpath import `@skb/editor-shell/src/grid-style.ts` (the `.ts` extension is required for module resolution; matches the cf-19 R2 pattern used by `apps/site/playwright/grid-{drag-drop,perf}.spec.ts`). **Operational rule**: any editor-shell helper that crosses the React/Astro boundary (Astro file consumes it) MUST be imported via deep subpath, NOT the barrel. Code on the React side may use either form; the barrel re-export covers DRY for editor-side consumers.
+ 
+ **Bonus surprise 3 (cf-20a SSR-grep pattern paid off)**: cf-20a's reflection noted "for cf-20b grid switch I should do the same SSR HTML grep on `style="grid-column: ..."`". I followed through during cf-20b: `grep -oE 'class="skb-block-static" data-skb-block-kind="[a-zA-Z-]+" style="[^"]*grid-column[^"]*"' apps/site/dist/notes/sample-blocks/index.html | wc -l` returned 14 — all 8 kinds (5 light from React's mdx-adapter + 3 heavy from Astro wrappers, with multiple instances per kind summing to 14). React serializes `style="grid-column:1 / span 12;grid-row:span 1"` (no spaces); Astro serializes `style="grid-column: 1 / span 12; grid-row: span 1;"` (with spaces). Both forms work because CSS doesn't care about whitespace. **The reflection-driven smoke pattern compounds**: each PR adds a small grep verification, the next PR inherits + extends them. Adding to my standard "after-build smoke" checklist.
+ 
++## ux-ui-lead reflection — cf-20b R1 hotfix (mobile inline-style override) (2026-05-09)
++
++**What I did**: Applied the codex-pr-reviewer-55 R1 verdict's recommended fix — added `grid-column: 1 / -1 !important` inside `@media (max-width: 768px)` in `apps/site/src/styles/grid.css` to beat cf-20b's inline `style="grid-column: 1 / span 12"` on `.skb-block-static`/`.skb-block-nodeview` per CSS specificity. During implementation discovered 3 additional sub-bugs the codex probe didn't isolate: (a) the read-route DOM nests `.skb-block-static` INSIDE `.skb-prose` (NOT a direct grid child), so my initial `.skb-grid > *` selector missed them; fixed by extending to `.skb-grid .skb-block-static` (descendant selector). (b) Even with `grid-column: 1 / -1`, CSS Grid's default `min-width: auto` resolves to `min-content` which equals the longest unbreakable child's width — `<pre>` Python code (6392px), NN-Viz `<svg>` (6400px), and PDF `<iframe>` (6424px) blew up the 1fr track to 6.4k px. Fixed with `min-width: 0 !important` on the same selector list. (c) Heavy-block placeholders SSR-emit `style="width:600px;..."` which exceeds 343px viewport; fixed with `max-width: 100% !important` on `.heavy-block-skeleton`. Plus part 4: `overflow-x: auto` on the wrapper as defense-in-depth. Wrote a focused regression-lock test asserting computed `grid-column === '1 / -1'` on every BlockKind wrapper + `scrollWidth ≤ 393px`. All 53 Playwright + pnpm check green.
++
++**What surprised me / what I missed**: I treated the codex verdict as "single fix, simple change" because the recommended remediation looked clean (3-line CSS). When the regression test failed on the first run with `gridColumn: 1 / span 12` instead of `1 / -1`, I assumed dev-server caching and rebuilt. When that didn't help, I had to actually probe the DOM tree — and discovered **the wrapper isn't a direct child of `.skb-grid`**, breaking the `>` direct-child selector. The codex probe asserted the wrapper width (6434px) but didn't print the wrapper's parent chain, so the "wrapper is direct grid child" assumption was implicit and wrong. Then once that was fixed, the second-order bug emerged — `min-content` of unbreakable children pushed the track. Then a third-order bug — heavy-block placeholders ignore parent width via inline `style="width:600px"`. Each layer required another probe. The fix that landed is 4 rules (12 LOC) where the codex recommendation was 1 rule (3 LOC). **Codex's recommended fix was directionally correct but structurally incomplete** — fine for catching the symptom; not enough to fully resolve the layered cause.
++
++**What I'd do differently**: When applying ANY codex recommendation that involves CSS specificity, run a post-fix probe that explicitly inspects the DOM tree (parent chain of the asserted-on element) BEFORE running the test, to confirm the selector match. If I'd run the parent-chain probe immediately after writing the first `.skb-grid > *` rule, I'd have seen `.skb-block-static` parent = `.skb-prose` and chosen the correct selector form on the first attempt. Saved iteration: ~3 cycles. Also: **anytime I add `!important` to fix specificity, I should immediately ask "what other inline styles or higher-specificity rules might still bypass this?"** The 3 sub-bugs (selector depth, min-width auto, heavy-block inline width) all map to that question — I just didn't ask it until the test failed at each layer.
++
++**Operational rule landed**: **CSS fix layered-cause checklist** — for any responsive override that depends on `!important`:
++1. Verify the selector matches at the actual DOM depth (check parent chain via probe)
++2. Check that grid items have `min-width: 0` (if `min-content > viewport-width` is possible)
++3. Check that descendant elements with inline `width:` / `height:` don't bypass the cap (look for SSR-emitted dimensions on heavy elements like skeleton placeholders)
++4. Add `overflow-x: auto` as defense-in-depth on the wrapper
++
++This 4-step checklist applies to any future cf-20c+ PR that adds inline styles for desktop placement and needs mobile override. Documented in cf-20b PR.md D9.
++
++**Bonus surprise (test gap caught by codex, NOT by my pre-dispatch tests)**: My cf-20b R0 spec `sample-blocks-grid-layout.spec.ts` tested edit + read routes at the default 1280×720 desktop viewport but DID NOT test mobile viewport. Mobile-overflow regressions were entirely invisible to my own tests. **Operational rule**: when emitting inline `grid-column` (or any responsive-sensitive style) on a wrapper that participates in a media-query-controlled grid, MUST add an explicit mobile-viewport regression test in the same PR. The cost is 30-50 LOC of test; the prevented future R-round costs ~100x that. Adding to ux-ui-lead's standard pre-dispatch checklist for any UI/UX PR with inline grid styles.
++
+ ## Update 1 (same day) — cf-19.1 dropped, ux-ui-lead's lint claim was wrong
+ 
+ Created `wave-6-cf-19.1-lint-fix-forward` branch to fix the "pre-existing main lint error in `grid-drag-drop.fixtures.ts:26` (`EdgeMode` redundant-type-constituents)" that ux-ui-lead's cf-20 scoping report flagged as a blocker. Ran `pnpm lint` workspace-wide on a clean main checkout: **0 errors, 9 warnings** (all pre-existing console / file-too-long, not blocking). The error ux-ui-lead reported either does not exist on current main, was fixed before this session, or was a stale artifact from an older lint config.
+ 
+ Branch dropped without commit. Reflection lesson: **don't trust subagent-reported "pre-existing" issues without re-verifying on a fresh checkout** — subagents may carry stale state from earlier sessions / their own working tree contamination. Operational rule landed: orchestrator MUST re-verify pre-existing-error claims before scheduling a fix-forward PR. Adding to my agent dispatch protocol.
+ 
+ ## Update 2 — cf-20a R1 codex timeout (2026-05-09)
+ 
+ **What happened**: First codex-pr-reviewer-55 R1 dispatch on cf-20a hit the 10-min `timeout 600` mid-`pnpm check` (after Playwright's 64-test full visual suite already PASSED with 50/14/0). No verdict was issued; output truncated at 9522 lines. Codex re-emitted 4 screenshot PNGs as verification artifacts that I restored (non-determinism noise, not cf-20a-relevant).
+ 
+ **What surprised me**: Codex's R1 audit on a 33-file PR runs the full pnpm check + full Playwright suite even when both were green pre-dispatch. The reviewer is following ADR-0006 #9 ("If PR.md `ui_touch: true`, MUST run `pnpm --filter @skb/site test:visual` and verify PASS"), but that combined with size-check + typecheck + tests + build hits the 10-min ceiling.
+ 
+ **What I'd do differently**: For PRs with ≥30 files OR a NEW shared-CSS module, dispatch codex with an explicit "skip pnpm check, evidence already submitted" instruction OR raise `timeout` to 900 seconds. I re-dispatched cf-20a R1 at 540s timeout (cushion against 600s gates) with explicit "skip gates, audit only" framing. Watching whether this works.
+ 
+ **Operational rule landed**: Rule 5 — When dispatching codex-pr-reviewer-55 R1 on a PR with ≥30 files OR a NEW shared module, use `timeout 540` and explicitly tell codex which gates have already been verified by the orchestrator's own pre-dispatch run. Codex is allowed to re-run if it has a specific reason, but should not re-run preemptively.
+ 
+ ## Update 3 — cf-20a R2 also timed out reading aux docs (2026-05-09)
+ 
+ **What happened**: cf-20a R2 (PR.md-only fixes) hit timeout after spending most of its 540s budget reading auxiliary docs (ADR-0006 / orchestrator-reflections / past codex-runs archive). The R2 prompt did NOT explicitly forbid aux reading; codex took its standard "load full audit context" path. Verdict never issued. R3 dispatched with explicit "no aux reading, verdict only" hard constraint + 300s timeout.
+ 
+ **Lesson**: Codex-pr-reviewer-55's default behavior is exhaustive doc loading. For tight follow-up reviews of doc-only fixes, the orchestrator must explicitly say "skip aux reading" — even though the fixes are 2 lines, codex spends most of the budget on context loading.
+ 
+ **Operational rule landed**: Rule 6 — For follow-up codex reviews on doc-only fixes (e.g. PR.md text drift), dispatch with explicit constraint list: (a) DO NOT re-read ADR-0006/0011/aux ADRs, (b) DO NOT re-run pnpm check/Playwright, (c) issue verdict in &lt;5 minutes. Use timeout 300. This applies to any FAIL→fix→re-review cycle where the change set is doc-only.
+diff --git a/docs/orchestrator-reflections/README.md b/docs/orchestrator-reflections/README.md
+index 0531cf2..99ddb89 100644
+--- a/docs/orchestrator-reflections/README.md
++++ b/docs/orchestrator-reflections/README.md
+@@ -1,28 +1,29 @@
+ # Orchestrator reflection log
+ 
+ > Self-audit by the Claude orchestrator. User reviews periodically.
+ > One entry per significant orchestration decision / failure / learning.
+ > Append-only. Never edit past entries; follow up with a new entry instead.
+ 
+ ## Cadence
+ 
+ - **Per PR**: append a 1-paragraph "what surprised me" + "what I'd do differently" at the end of each PR cycle (right after merge, before moving to the next PR).
+ - **Per gate failure**: when a codex R-round returns FAIL, append the diagnosis (was the cause: doc drift / scope mis-judgment / missed dependency / TDD gap / supervision gap?) so patterns become visible.
+ - **Per user pushback**: when user explicitly corrects orchestration (not code), top-of-file note + a permanent entry.
+ 
+ ## Format
+ 
+ ```markdown
+ ## YYYY-MM-DD — <PR id or topic> — <one-line headline>
+ 
+ **What I did**: <1-2 sentences>
+ **What surprised me / what I missed**: <root cause, not symptom>
+ **What I'd do differently**: <concrete change to my orchestration rules>
+ **Operational rule landed**: <if any new rule for future PRs, state it crisply>
+ ```
+ 
+ ## Index
+ 
+ - [2026-05-09 — cf-15a~cf-19 retrospective + cf-20 reset](2026-05-09-cf-15a-19-retrospective.md) — user-triggered honest audit; 4 systemic gaps identified
+   - **ux-ui-lead reflection cf-20a (2026-05-09)** — chrome single-source migration; theme-tokens invariant caught drift; c3-2 spec updated to track new authority instead of degrading
+   - **ux-ui-lead reflection cf-20b (2026-05-09)** — grid-layout substrate; `display: contents` selector-vs-layout-tree bug + recovery; deep-subpath import rule for Astro SSR; grid-style single-source helper across 3 consumers
++  - **ux-ui-lead reflection cf-20b R1 hotfix (2026-05-09)** — mobile inline-style override; codex caught 12× horizontal overflow regression; 4-layer CSS fix (selector depth + min-width auto + heavy-skeleton inline width + overflow defense-in-depth); landed CSS-specificity layered-cause checklist + mandatory mobile-viewport regression test rule for any inline-grid-style PR
+diff --git a/docs/plans/wave-6-main/wave-6-cf-20b-grid-layout-substrate.md b/docs/plans/wave-6-main/wave-6-cf-20b-grid-layout-substrate.md
+index 292f643..00183a6 100644
+--- a/docs/plans/wave-6-main/wave-6-cf-20b-grid-layout-substrate.md
++++ b/docs/plans/wave-6-main/wave-6-cf-20b-grid-layout-substrate.md
+@@ -13,336 +13,375 @@
+ 
+ ## title
+ 
+ Add a NEW `packages/editor-shell/src/grid-style.ts` module exporting
+ `gridPlacementStyle(pos) → CSSProperties` + `gridPlacementStyleAttr(pos) → string`
+ (Astro inline-style serializer) + `extractGridPosition(attrs) → GridPlacementInput | null`
+ (defensive coercion). Modify `apps/site/src/styles/grid.css` to add
+ the editor-surface two-level grid rules per ADR-0016 v0.2 D11.1
+ amendment: `.skb-grid > .skb-editor-content { grid-column: 1 / -1 }`
+ and `.skb-grid .ProseMirror { display: grid; grid-template-columns:
+ repeat(12, minmax(0, 1fr)); grid-auto-rows: minmax(var(--row-h), auto);
+ gap: var(--gap); grid-auto-flow: row; white-space: normal }`. Modify
+ `packages/editor-shell/src/EditorShell.tsx` to ALWAYS apply the
+ `skb-editor-content` className to `<EditorContent>` so the grid CSS
+ rule can target it. Modify `packages/editor-shell/src/BlockNodeView.tsx`
+ to read `node.attrs.{col, row?, colSpan, rowSpan}` and apply
+ `gridPlacementStyle()` to the `.skb-block-nodeview` wrapper. Modify
+ `apps/site/src/lib/mdx-adapter.ts` to extract grid position from MDX
+ flat props and apply `gridPlacementStyle()` to the `.skb-block-static`
+ wrapper (5 light blocks). Modify the 3 heavy block Astro wrappers
+ (`apps/site/src/components/{Jupyter,NnViz,AgentFlow}.astro`) to apply
+ `gridPlacementStyleAttr()` to the `.skb-block-static` shell (the
+ deep-subpath import `@skb/editor-shell/src/grid-style.ts` AVOIDS
+ pulling the editor-shell barrel into Astro SSR — barrel pulls
+ React/Tiptap/TF.js transitively and breaks `astro build`). Add
+ ADR-0016 v0.2 D11.1 amendment section locking the editor-surface
+ two-level grid model + the prose-interleave decision (full per
+ `proseGridDefaults`) + the arrow-key visual-vs-source-order
+ limitation note. Update `packages/editor-shell/CONTRACT.md` and
+ `apps/site/CONTRACT.md` with the new public surface + grid model.
+ Update `apps/site/src/__tests__/grid-css.test.ts` with assertions
+ locking the cf-20b CSS rules. Add NEW
+ `packages/editor-shell/src/__tests__/grid-style.test.ts` (20 vitest
+ tests covering the formula). Add NEW
+ `apps/site/playwright/sample-blocks-grid-layout.spec.ts` (2 tests
+ locking edit + read route grid placement). `--row-h` and `--gap`
+ tokens already in `packages/design-tokens/src/tokens.css:79-80` (no
+ add needed; verified during PLAN per Q8).
+ 
+ ## files
+ 
+ 13 source files (~470 LOC; mostly NEW grid-style module + grid.css
+ extension + test specs):
+ 
+ 1. `packages/editor-shell/src/grid-style.ts` — **NEW** (~115 LOC).
+    Single source of the `BlockGridPosition → CSSProperties` formula
+    per ADR-0016 D2. Exports: `GridPlacementInput`, `GridPlacementOptions`,
+    `gridPlacementStyle`, `gridPlacementStyleAttr`, `extractGridPosition`.
+    Three consumers (BlockNodeView.tsx editor + mdx-adapter.ts
+    light-block read + 3 heavy-block .astro wrappers) all import from
+    here so the formula stays byte-equal across paths.
+ 
+ 2. `packages/editor-shell/src/__tests__/grid-style.test.ts` — **NEW**
+    (~145 LOC, 20 tests). Covers the formula for the canonical
+    full-width fixture, explicit row + colSpan combos, `rowSpan='auto'`
+    substitution with default and caller-provided `autoRowSpan`,
+    defensive `extractGridPosition` validation (missing fields, invalid
+    col, invalid rowSpan, ignored extra props), and cross-consumer
+    parity (`gridPlacementStyleAttr` byte-equal to
+    `gridPlacementStyle` JSX-spread form).
+ 
+ 3. `packages/editor-shell/src/index.ts` — **MODIFY** (+5 LOC).
+    Adds barrel exports for the 3 helper functions + 2 type interfaces.
+ 
+ 4. `packages/editor-shell/src/EditorShell.tsx` — **MODIFY** (~10 LOC).
+    `<EditorContent>` always gets `className="skb-editor-content"`
+    (concat with consumer className when supplied). Required so the
+    apps/site grid CSS rule `.skb-grid > .skb-editor-content` can
+    target it.
+ 
+ 5. `packages/editor-shell/src/BlockNodeView.tsx` — **MODIFY** (~25
+    LOC). Imports `extractGridPosition` + `gridPlacementStyle` from
+    the local `./grid-style` module. Both the registered-UI path AND
+    the unregistered-fallback path now apply `style={wrapperStyle}` to
+    the `<NodeViewWrapper>`. When `node.attrs` is missing required grid
+    fields (test mounts without grid-attr defaults), wrapperStyle is
+    undefined and the parent CSS fallback
+    `.skb-grid .ProseMirror > *:not([style*="grid-column"])` paints
+    full-width.
+ 
+-6. `apps/site/src/styles/grid.css` — **MODIFY** (~70 LOC delta;
+-   was 56 LOC, now 90 LOC). Adds the cf-20b editor-surface grid rules:
++6. `apps/site/src/styles/grid.css` — **MODIFY** (~70 LOC delta in
++   cf-20b R0; +40 LOC in cf-20b R1 hotfix; was 56 LOC at R0 baseline,
++   now ~155 LOC). cf-20b R0 adds the editor-surface grid rules:
+    `.skb-grid > .skb-editor-content { grid-column: 1 / -1 }` (so the
+    intermediate Tiptap host div spans the outer grid full-width and
+    the inner `.ProseMirror` element inherits container width) and
+    `.skb-grid .ProseMirror { display: grid; ... }` (the inner 12-col
+    grid). Extends the existing `:not([style*="grid-column"])`
+    fallback selector list to also cover `.skb-grid .ProseMirror > *`
+    so prose nodes inside the editor (`<p>`, `<h2>`, `<ul>`) without
+-   explicit grid placement render full-width by default.
++   explicit grid placement render full-width by default. **R1 hotfix
++   (per D9)**: extends the `@media (max-width: 768px)` block with
++   4 mobile-scoped rules: `grid-column: 1 / -1 !important` +
++   `min-width: 0 !important` on `.skb-grid > *, .skb-grid .ProseMirror > *,
++   .skb-grid .skb-block-static, .skb-grid .skb-block-nodeview` (selector
++   list covers BOTH wrapper depths since `.skb-block-static` is nested
++   in `.skb-prose`, NOT a direct grid child); `max-width: 100% !important`
++   on `.skb-grid .heavy-block-skeleton`; `overflow-x: auto` on the
++   wrapper classes for defense-in-depth. `!important` is intentional
++   per D9 — beats cf-20b inline `style="grid-column: ..."` which
++   would otherwise leak desktop placement into mobile viewport
++   producing 12× horizontal overflow.
+ 
+ 7. `apps/site/src/lib/mdx-adapter.ts` — **MODIFY** (~20 LOC delta).
+    Imports `extractGridPosition` + `gridPlacementStyle` from the
+    deep-subpath `@skb/editor-shell/src/grid-style.ts` (NOT the
+    barrel, because the barrel pulls React/Tiptap/TF.js transitively
+    and breaks `astro build` SSR with `require is not defined in ES
+    module scope`). The wrapper now applies `style={wrapperStyle}` to
+    the `.skb-block-static` div when `extractGridPosition` returns a
+    valid position; the `.skb-grid > *:not([style*="grid-column"])`
+    read-route fallback handles the null path.
+ 
+ 8. `apps/site/src/components/Jupyter.astro` — **MODIFY** (~10 LOC).
+    Imports `extractGridPosition` + `gridPlacementStyleAttr` from the
+    deep-subpath `@skb/editor-shell/src/grid-style.ts`. Applies the
+    computed `style={styleAttr}` to the existing `.skb-block-static`
+    shell.
+ 
+ 9. `apps/site/src/components/NnViz.astro` — **MODIFY** (~10 LOC).
+    Same pattern with `data-skb-block-kind="nn-viz"`.
+ 
+ 10. `apps/site/src/components/AgentFlow.astro` — **MODIFY** (~10 LOC).
+     Same pattern with `data-skb-block-kind="agent-flow"`.
+ 
+ 11. `apps/site/src/__tests__/grid-css.test.ts` — **MODIFY** (~25
+     LOC). Adds assertions locking the cf-20b `.skb-grid > .skb-editor-content`
+     + `.skb-grid .ProseMirror` rules + the extended fallback selector
+     + the inner-grid `display: grid + grid-template-columns: repeat(12, ...)
+     + grid-auto-flow: row` block. Also asserts the inner grid does
+     NOT use `grid-auto-flow: dense` (per ADR-0016 D1 contract).
+ 
+ 12. `apps/site/playwright/sample-blocks-grid-layout.spec.ts` —
+-    **NEW** (~225 LOC, 2 tests). Edit-route test verifies all 3
++    **NEW in cf-20b R0** (~225 LOC, 2 tests). Edit-route test verifies all 3
+     layers: outer `.skb-grid` is 12-col grid; inner `.ProseMirror`
+     is 12-col grid with each cell > 10px wide (catches the cf-20b R0
+     `display: contents` bug where Chrome computed 12 zero-width
+     columns); each `.skb-block-nodeview[data-skb-block-kind="<kind>"]`
+     has explicit `gridColumn` (NOT `auto`). Read-route test asserts
+     `.skb-block-static` carries inline `grid-column: 1 / span 12`
+     style emitted by the mdx-adapter / Astro wrappers. Emits
+     screenshot to `docs/audits/screenshots/wave-6-cf-20b-sample-blocks-grid-layout.png`.
++    **R1 hotfix +1 test (~50 LOC delta; total now ~275 LOC, 3 tests)**:
++    `cf-20b R1: mobile (≤768px) viewport — blocks force-fill 1-col
++    regardless of inline grid-column` resizes viewport to 375×812,
++    asserts (a) computed `grid-column === '1 / -1'` on every BlockKind
++    wrapper (catches inline-style override leak per D9), (b)
++    `document.documentElement.scrollWidth ≤ 393px` (catches horizontal
++    overflow with 18px scrollbar slack). Locks the immediate symptom
++    AND the underlying CSS specificity contract.
+ 
+ 13. `docs/decisions/ADR-0016-grid-data-model.md` — **MODIFY** (~115
+     LOC delta). Adds the v0.2 D11.1 amendment section after D11
+     documenting: the trigger (D8 covers Astro static-render only;
+     D11 covers prose-data-flow only; editor-mount path was a silent
+     gap), the two-level grid decision (outer `.skb-grid` + inner
+     `.ProseMirror`), the per-block placement formula, the
+     `gridPlacementStyle` / `gridPlacementStyleAttr` /
+     `extractGridPosition` shared-helper authority table (3 consumers,
+     1 source), the prose-interleave decision (full per
+     `proseGridDefaults`), the arrow-key visual-vs-source-order
+     limitation, the out-of-Tiptap mutation discipline reaffirmation,
+     the SSR-vs-hydration phase note (cf-20b emits final placement at
+     SSR; no fallback dims needed), and the sister-doc sync list. The
+     ADR header `状态` field is updated to record the v0.2 amendment.
+ 
+ 14. `packages/editor-shell/CONTRACT.md` — **MODIFY** (~85 LOC delta).
+     Updates the existing "Grid layout (Wave 5)" section's
+     `GridContainer` description to note the cf-20b editor-mount usage
+     (no longer "deferred"). Adds two NEW subsections at the end of
+     that section: "Editor-surface grid lock (Wave 6 cf-20b; ADR-0016
+     v0.2 D11.1 amendment)" documenting the two-level grid + the
+     arrow-key limitation; "Grid placement helpers (Wave 6 cf-20b;
+     shared single source)" documenting the new `gridPlacementStyle`
+     / `gridPlacementStyleAttr` / `extractGridPosition` public surface
+     + the deep-subpath import requirement for Astro SSR.
+ 
+ 15. `apps/site/CONTRACT.md` — **MODIFY** (~25 LOC delta). Updates
+     the "Grid layout (Wave 5)" bullet list: replaces the C.2-3
+     "container-only / deferred to C.2-4" bullet with the cf-20b
+     landing description; extends the transitional fallback bullet
+     to mention `.skb-grid .ProseMirror > *` covers prose-inside-editor;
+     adds a NEW "Editor-route two-level grid lock" bullet documenting
+     the `.skb-grid > .skb-editor-content` + `.skb-grid .ProseMirror`
+     cf-20b rules; adds the ADR-0016 v0.2 D11.1 amendment forward
+     pointer to the architectural-pointers list.
+ 
+ 16. `docs/plans/wave-6-main/wave-6-cf-20b-grid-layout-substrate.md`
+     — **NEW** (PR.md self; this file).
+ 
+ Plus 1 NEW screenshot artifact:
+ `docs/audits/screenshots/wave-6-cf-20b-sample-blocks-grid-layout.png`
+ (emitted by the new Playwright spec). The cf-19 hotfix screenshot +
+ cf-20a read-route screenshot are also re-emitted with cf-20b grid
+ placement applied (same byte deltas as cf-20a's full visual run).
+ 
+ ## D2 trigger judgment
+ 
+ - **Row 1 (CONTRACT.md change in N packages)** — HIT: 2 CONTRACT.md
+   files modified (`@skb/editor-shell` + `apps/site`).
+ - **Row 2 (NEW deps)** — N/A (no new deps).
+ - **Row 4 (NEW ADR or amendment)** — HIT: ADR-0016 v0.2 D11.1
+   amendment shipped IN this PR (atomic with implementation per
+   user directive "no defer / no degradation"). The amendment lives
+   inline in `ADR-0016-grid-data-model.md` rather than as a separate
+   ADR-0019 because cf-20b is purely an editor-surface implementation
+   of D11's existing "Tiptap inside / grid outside" layering — D11.1
+   fills the silent gap between D8 (Astro static render) and D11
+   (prose mutation discipline) without rewriting either.
+ - **Row 5 (cross-package: ≥ 3 packages)** — HIT: 3 packages touched
+   (`@skb/editor-shell` + `apps/site` + design-tokens via verified
+   consumption — no design-tokens source modification, but
+   cross-package consumption of `--row-h` / `--gap` is locked).
+ 
+ Per CLAUDE.md `## Review workflow` + ADR-0011 D1 stage 4 + the
+ 2026-05-09 retrospective rule "ux-ui-lead is dispatched at PLAN, not
+ REVIEW", **PRE-COMMIT CLAUDE REVIEW (stage 4) fires** on Row 1 + Row
+ 4 + Row 5 (any of these triggers stage 4 alone). ux-ui-lead authored
+ this PLAN end-to-end. Stage 3 codex-pr-reviewer-55 review still
+ required.
+ 
+ ## ui_touch
+ 
+ `true` — `packages/editor-shell/src/**` matches the ADR-0011 D9.1
+ path pattern (NEW `grid-style.ts` + MODIFY `BlockNodeView.tsx` +
+ MODIFY `EditorShell.tsx`); `apps/site/src/**` matches as well
+ (`styles/grid.css`, `lib/mdx-adapter.ts`, the 3 `components/*.astro`,
+ the modified grid-css test, and the new Playwright spec).
+ 
+ The new `sample-blocks-grid-layout.spec.ts` spec (which BOTH probes
+ the edit route via `.ProseMirror` grid + the read route via
+ `.skb-block-static` grid) satisfies the D9.2 e2e_smoke obligation;
+ the emitted screenshot satisfies D9.5.
+ 
+ ## e2e_smoke
+ 
+ - flow_a: `/notes/sample-blocks/edit` mount loads via the
+     ApiAdapter chain (cf-18 NodeView wiring + cf-19 v0.2 wrapper
+     chrome + cf-20a chrome single source + cf-20b grid placement).
+     The outer `<GridContainer>` is `display: grid` with 12 cols; the
+     intermediate `.skb-editor-content` div spans `grid-column: 1 / -1`;
+     the inner `.ProseMirror` element is itself `display: grid` with
+     12 cols; per-block NodeView wrappers `.skb-block-nodeview` carry
+     inline `grid-column: 1 / span 12; grid-row: span 1` derived from
+     `node.attrs.{col, colSpan, rowSpan}` via `gridPlacementStyle`.
+     Sample-blocks fixtures are all colSpan=12 so visually identical
+     to cf-20a; the substrate is what cf-20c-2 drag will mutate.
+   target_url: /notes/sample-blocks/edit
+   playwright_spec: apps/site/playwright/sample-blocks-grid-layout.spec.ts:"sample-blocks edit route — .ProseMirror is a 12-col grid + per-block grid-column applied (cf-20b D11.1 amendment)"
+   screenshot_archive: docs/audits/screenshots/wave-6-cf-20b-sample-blocks-grid-layout.png
+   assertions:
+     - .ProseMirror visible within 15s
+     - editor textContent length > 50 within 10s
+     - first .skb-block-nodeview visible within 10s
+     - outer .skb-grid: display=grid, gridAutoFlow=row, 12 grid template columns, width > 100px
+     - inner .ProseMirror: display=grid, gridAutoFlow=row, 12 grid template columns each > 10px wide (catches cf-20b R0 zero-width-column bug), width > 100px
+     - intermediate .skb-editor-content has gridColumn=1 / -1
+     - all 8 kind wrappers (.skb-block-nodeview[data-skb-block-kind=…]) have gridColumn ≠ auto, MATCHES /(span 12|\/\s*13)/, width > 90% of editor width
+ 
+ - flow_b: `/notes/sample-blocks` (read route) renders 14
+     `.skb-block-static` wrappers (5 light via mdx-adapter + 3 heavy
+     via Astro wrappers + multiple instances per kind from fixture).
+     Each carries inline `grid-column: 1 / span 12; grid-row: span 1`
+     style emitted at SSR time (verifiable via grep on built HTML).
+     Outer `.skb-grid` is 12-col grid (existing C.2-3 contract).
+     cf-20b read-route assertion locks the inline-style presence so
+     future renders that drop the `style.gridColumn` emission fail.
+   target_url: /notes/sample-blocks
+   playwright_spec: apps/site/playwright/sample-blocks-grid-layout.spec.ts:"sample-blocks read route — .skb-block-static carries grid-column derived from MDX attrs"
+   screenshot_archive: (shared with flow_a — single fullPage screenshot covers both probes since flow_b extends flow_a's coverage)
+   assertions:
+     - first .skb-block-static visible within 15s
+     - outer .skb-grid: display=grid, gridAutoFlow=row, 12 grid template columns
+     - all 8 kind wrappers (.skb-block-static[data-skb-block-kind=…]) have inline style attribute matching /grid-column:\s*1\s*\/\s*span\s+12/
+     - all 8 kind wrappers have computed gridColumn ≠ auto, MATCHES /(span 12|\/\s*13)/
+ 
++- flow_c (cf-20b R1 hotfix): `/notes/sample-blocks` at viewport
++    `375×812` (mobile preview path per ADR-0016 D5 + ADR-0017 D9)
++    must collapse every block wrapper to a single column regardless
++    of cf-20b's inline `style="grid-column: 1 / span 12"`. Pre-R1
++    the inline style beat the existing media-query rule per CSS
++    specificity, producing a 12× horizontal overflow
++    (`scrollWidth=6450px` when viewport=343px). R1 hotfix adds 4
++    mobile-scoped `!important` rules per D9 to beat the inline
++    style + cap heavy-block placeholders + add overflow-x scroll
++    defense-in-depth.
++  target_url: /notes/sample-blocks (at 375×812 viewport)
++  playwright_spec: apps/site/playwright/sample-blocks-grid-layout.spec.ts:"cf-20b R1: mobile (≤768px) viewport — blocks force-fill 1-col regardless of inline grid-column"
++  screenshot_archive: (no NEW screenshot — flow_a/b screenshot is desktop; the regression-lock test runs at narrower viewport for assertion only)
++  assertions:
++    - viewport set to 375×812
++    - first .skb-block-static visible within 15s
++    - all 8 BlockKind wrappers have computed gridColumn === '1 / -1' (NOT '1 / span 12')
++    - document.documentElement.scrollWidth ≤ 393px (viewport + scrollbar slack)
++
+ ## Why (user feedback)
+ 
+ cf-20b is PR 2 of 9 in the locked cf-20 sequence. User directive
+ 2026-05-09 (verbatim, dispatched as cf-20a + carried into cf-20b):
+ 
+ > "全部做，不允许 defer，必须保质保量，出现问题会直接让你推翻重写。
+ >  ... 全部对齐 v2."
+ 
+ cf-20a closed the chrome single-source half (border / radius / per-kind
+ stripe). cf-20b closes the layout substrate half: the 12-col grid that
+ the v2 design contract specifies in `/mnt/d/download/web/v2-styles.css:137-147`
+ (`.doc { display: grid; grid-template-columns: repeat(12, ...); ...;
+ grid-auto-flow: row; gap: var(--gap) }`). Pre-cf-20b the editor surface
+ had `.skb-grid` wrapping `<EditorContent>` but the actual block
+ NodeViews sat at depth 3 (under `.skb-grid` → `.skb-editor-content` →
+ `.ProseMirror` → blocks) so the outer grid layout never reached them.
+ cf-20b extends the grid one level deeper (the `.ProseMirror` element
+ itself becomes a 12-col grid) so block placement reaches the right DOM
+ depth. Sample-blocks fixtures all use `colSpan=12` so this is visually
+ a no-op today; the value is the substrate that cf-20c-2 drag and
+ cf-20d resize will MUTATE.
+ 
+ ## Design source
+ 
+ - `/mnt/d/download/web/v2-styles.css:137-147` — canonical
+   `.doc { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr));
+   grid-auto-rows: var(--row-h); grid-auto-flow: row; gap: var(--gap);
+   position: relative }` block. cf-20b applies this contract verbatim
+   to BOTH the outer `.skb-grid` (existing) AND the inner `.ProseMirror`
+   (NEW per D11.1 amendment).
+ - `/mnt/d/download/web/v2-styles.css:21-22` — `--row-h: 48px;
+   --gap: 14px` token definitions. Already in
+   `packages/design-tokens/src/tokens.css:79-80` per ADR-0018 D1
+   layout-tokens lock; verified present at PLAN time per Q8 (no add
+   needed).
+ - `/mnt/d/download/web/v2-styles.css:157-170` — `.gblock { position:
+   relative; ...; transition: ..., grid-column 180ms ..., grid-row
+   180ms ... }` block. The `grid-column` / `grid-row` transition
+   callout is forward-compat for cf-20c-2 drag (cf-20b ships the
+   static placement only; transitions land when drag-end commits new
+   positions).
+ - `/mnt/d/download/web/v2-design-granularity.md:137-146` "Grid 流动
+   ：row 不 dense（保留空格）" — gatekeeper-canonical decision that
+   `grid-auto-flow: row` (NOT `dense`) is hard-locked because "不要替
+   用户排版" (don't auto-arrange the user's layout). cf-20b's inner
+   `.ProseMirror` rule consumes `grid-auto-flow: row` exactly per
+   this contract; the new `grid-css.test.ts` assertion explicitly
+   rejects `grid-auto-flow: dense` to lock the rule against drift.
+ - `/mnt/d/download/web/v2-design-granularity.md:148-156` "响应式" —
+   desktop 12 / tablet 6 / mobile 1. cf-20b adds the editor-surface
+   grid; mobile 1-col responsive switch is already covered by the
+   existing `@media (max-width: 768px)` rule in `grid.css` and ALSO
+   applies to the cf-20b inner `.ProseMirror` grid via the cascading
+   `--total-cols: 1` + `grid-template-columns: 1fr` override + the
+   extended `:not([style*="grid-column"])` fallback. cf-20b doesn't
+   add new responsive breakpoints — it inherits the existing ones.
+ - ADR-0016 D2 — `BlockGridPosition` shape `{col, row?, colSpan,
+   rowSpan: number | 'auto'}`. cf-20b's `gridPlacementStyle` formula
+   consumes this shape verbatim per the D2 CSS application block.
+ - ADR-0016 D8 — Astro renderer grid layout (read route). cf-20b
+   fills in the missing per-block style emission (D8 says "每个 block
+   渲染加 `style={{ gridColumn, gridRow }}` 由 D2 公式生成" but the
+   pre-cf-20b apps/site adapters didn't actually do this). cf-20b's
+   `mdx-adapter.ts` + 3 Astro wrappers + helpers in `grid-style.ts`
+   ship the emission.
+ - ADR-0016 D10 — `proseGridDefaults` const. cf-20b's prose-interleave
+   decision (Q4 answer) consumes this: prose nodes inside `.ProseMirror`
+   get the `defaultColSpan: 12` full-width fallback via the
+   `:not([style*="grid-column"])` rule.
+ - ADR-0016 D11 — Tiptap inside / grid outside layering. cf-20b's
+   D11.1 amendment EXTENDS D11 (not replaces): mutation discipline
+   unchanged ("grid attrs are passive data on NodeView wrappers";
+   cf-20b reads attrs at render time but never writes back through
+   the NodeView attr API).
+ - ADR-0017 D9 — `.skb-grid--mobile` mobile 1-col view-only path.
+   cf-20b's editor-surface grid inherits this via the existing
+   responsive media query in `grid.css`; cf-20b doesn't extend or
+   modify the mobile path.
+ 
+ ## Decisions
+@@ -442,244 +481,348 @@ PR will introduce side-by-side blocks and may need a new spec
+ covering the navigation contract.)
+ 
+ ### D5 — `--row-h` / `--gap` already in design-tokens (Q8 answer); NO add needed
+ 
+ Pre-PLAN expectation per the orchestrator's brief: "grep `--row-h`
+ and `--gap` in `packages/design-tokens/src/tokens.css`. If missing,
+ ADD with values `--row-h: 48px` and `--gap: 14px`". Grep at PLAN
+ time confirmed both tokens present at lines 79-80 of `tokens.css`
+ (per ADR-0018 D1 layout-tokens lock from Wave 5 Stage C.3-1).
+ cf-20b doesn't touch design-tokens.
+ 
+ ### D6 — Deep-subpath import for Astro SSR consumers (NOT the editor-shell barrel)
+ 
+ The 5-light-block adapter (`apps/site/src/lib/mdx-adapter.ts`) and
+ the 3 heavy-block Astro wrappers (`apps/site/src/components/{Jupyter,
+ NnViz,AgentFlow}.astro`) all need `extractGridPosition` and the
+ grid-style helpers. Two import paths possible:
+ 
+ - **Option (a)**: import from the barrel: `import { extractGridPosition }
+   from '@skb/editor-shell'`. **Discarded**: the barrel transitively
+   loads block packages, kernel-registry, mdx-bridge, react-flow,
+   @tensorflow/tfjs etc. — fine for the React-side editor mount, but
+   catastrophic for Astro SSR which doesn't provide CommonJS
+   fallbacks. `astro build` fails with `require is not defined in
+   ES module scope` from the TF.js Node platform adapter at
+   `block-nn-viz_*.mjs:7346`.
+ - **Option (b)**: deep-subpath: `import { extractGridPosition }
+   from '@skb/editor-shell/src/grid-style.ts'`. The `.ts` extension
+   is required for TypeScript module resolution in the Astro context
+   per the `editor-shell/package.json` exports `./src/*` glob (which
+   supports `.ts` filename resolution); the editor-shell barrel still
+   re-exports the same helpers for the React-side editor consumer
+   (which DOES include the editor-shell barrel anyway).
+ 
+ Picked (b). The deep subpath pattern is already established in the
+ codebase: `apps/site/playwright/grid-{drag-drop,perf}.spec.ts` and
+ `grid-drag-drop.fixtures.ts` use the same `@skb/editor-shell/src/<X>.ts`
+ form for similar reasons (per cf-19 R2 lesson). The trade-off is
+ that future renames inside `editor-shell/src/` need to update both
+ the barrel re-export AND the deep-subpath consumers in apps/site.
+ The lock test for this drift is the apps/site `pnpm typecheck`
+ failing on the missing module; covered by `pnpm check` in CI.
+ 
+ ### D7 — `gridPlacementStyle` returns React `CSSProperties`; NEW `gridPlacementStyleAttr` returns Astro inline string
+ 
+ Two consumers each:
+ 
+ - React-side (`BlockNodeView.tsx`, `mdx-adapter.ts`) wants
+   `CSSProperties` to spread into JSX `style={...}`.
+ - Astro-side (`Jupyter.astro` etc.) wants an inline string for
+   `<div style={...}>` (Astro's prop serialization for the `style`
+   attribute requires either an object — for which Astro emits
+   `style="key1:val1;key2:val2"` — OR a string passed through verbatim).
+ 
+ Both forms are exported and call the same internal formula. The
+ new vitest case "gridPlacementStyleAttr is byte-equal to the
+ JSX-spread form" locks the byte-equality so the two forms can never
+ drift.
+ 
+ ### D8 — `extractGridPosition` is defensive: returns null on missing/invalid required fields
+ 
+ mdx-bridge per ADR-0016 D7 hard-throws on missing col/colSpan in
+ non-prose blocks (Wave 5 plan v1.1 row C.2-3.5 R14 amendment).
+ However, cf-20b's `BlockNodeView.tsx` runs in many contexts beyond
+ mdx-bridge-validated input — test mounts, blocks inserted via the
+ slash menu BEFORE the C.2-9 grid-attr defaults backfill, third-party
+ extensions, etc. The defensive `extractGridPosition(attrs) → null`
+ return path lets the wrapper render correctly (no crash, no broken
+ NodeView) when grid attrs are missing; the parent CSS fallback
+ `.skb-grid .ProseMirror > *:not([style*="grid-column"])` paints
+ full-width.
+ 
+ The parallel design choice in `mdx-adapter.ts` is the same: when
+ `rest` (the flat MDX prop spread) lacks col/colSpan/rowSpan, the
+ wrapper still emits the `.skb-block-static` class but no inline
+ style; the read-route fallback rule paints full-width. The
+ `grid-defensive.test.ts` cases in mdx-bridge already cover the
+ mdx-bridge throw path; cf-20b's defensive `extractGridPosition`
+ covers the post-parse-defensive editor path.
+ 
++### D9 — Mobile inline-style override needs `!important` + selector list covering both wrapper depths (cf-20b R1 hotfix 2026-05-09)
++
++**Trigger**: codex-pr-reviewer-55 R1 verdict on cf-20b. Probe at
++viewport 375×812 caught `document.documentElement.scrollWidth=6450px`
++(12× horizontal overflow) on `/notes/sample-blocks` because:
++
++1. cf-20b emits inline `style="grid-column: 1 / span 12; grid-row: span 1"`
++   on every `.skb-block-static` (read route via mdx-adapter + 3 heavy
++   Astro wrappers) and `.skb-block-nodeview` (edit route via
++   `BlockNodeView.tsx`) wrapper to lock per-block desktop placement
++   (this is the cf-20b D1 + D7 contract — single-source
++   `gridPlacementStyle` formula across 3 consumers).
++2. The pre-existing `@media (max-width: 768px) .skb-grid > * { grid-column: 1 }`
++   rule could NOT beat the cf-20b inline style per CSS specificity
++   (inline always wins over selector match). So `colSpan=12` blocks
++   retained their 12-cell width even though the grid switched to `1fr`.
++3. Result: `1fr` track stretched to fit content (bypassing the
++   intent of mobile collapse), grid container reported
++   `grid-template-columns: "6434px"`, and 14 sample-blocks fixtures
++   all stacked at 6434px = horizontal overflow.
++
++**The fix has 4 parts** (all inside the existing `@media (max-width: 768px)`
++block in `apps/site/src/styles/grid.css`; ~40 LOC total):
++
++**Part 1: `grid-column: 1 / -1 !important`** on selector list
++`.skb-grid > *, .skb-grid .ProseMirror > *, .skb-grid .skb-block-static, .skb-grid .skb-block-nodeview`.
++The selector list includes BOTH structural wrapper classes by name
++(NOT just direct children) because the read-route DOM nests
++`.skb-block-static` INSIDE `.skb-prose` (the `notes/[...slug].astro`
++template wraps `<Content>` in `<div class="skb-prose">`), so it's
++NOT a direct grid child. Initial fix attempt with only `.skb-grid > *`
++missed this case; my own probe + the regression test caught it
++during R1 implementation.
++
++**Part 2: `min-width: 0 !important`** on the same selector list.
++Even with `grid-column: 1 / -1`, CSS Grid's default `min-width: auto`
++resolves to each item's `min-content` (the largest unbreakable
++child). Sample-blocks contains `<pre class="skb-code-pre">` Python
++code (6392px wide unbreakable text per its own intrinsic min-content),
++`<svg class="skb-agent-flow-svg">` topology (6400px viewBox), and
++PDF `<iframe>` (6424px). Any one of these pushed the 1fr grid track
++to ~6.4k px, bypassing the 1fr-to-viewport-width constraint.
++`min-width: 0` lets grid items shrink below their content
++min-content; the inner block CSS (`.skb-code-pre { overflow-x: auto }`
++etc.) handles long-line scroll within the now-collapsed card.
++
++**Part 3: `max-width: 100% !important`** on `.skb-grid .heavy-block-skeleton`.
++The `@skb/heavy-block-boundary` package SSR-emits
++`<div class="heavy-block-skeleton" style="width:600px;min-height:400px">`
++(per ADR-0014 D5 heavyBoundaryDimensions). 600px exceeds the 343px
++mobile viewport by ~257px. The inline `width:600px` is on the inner
++element, not the wrapper, so it bypasses our wrapper's `min-width: 0`.
++Cap at parent width on mobile only; desktop SSR fallback dims (per
++ADR-0014 W4-1 zero-layout-shift) are unaffected. Wave 5 ADR-0014
++v0.5 amendment will dynamically derive heavy dimensions from grid
++colSpan/rowSpan post-hydration; this mobile cap is forward-compat.
++
++**Part 4: `overflow-x: auto`** on `.skb-grid .skb-block-static, .skb-grid .skb-block-nodeview`.
++Defense-in-depth so even if a future inner element extends past the
++wrapper's right edge (e.g., new heavy block kind, syntax-highlighted
++long line that lacks its own `overflow-x: auto`), the overflow stays
++contained within the wrapper rather than scrolling the page itself.
++Block-level inner CSS (`.skb-code-pre { overflow-x: auto }`,
++`.skb-agent-flow-canvas { overflow: hidden }`) continues to apply
++within the wrapper bounds.
++
++**Why `!important` is documented + intentional, NOT an anti-pattern**:
++cf-20b's inline-style emission is the desktop placement contract per
++ADR-0016 v0.2 D11.1 amendment. Without the inline style, the grid
++couldn't actually place blocks at their `{col, colSpan}` positions.
++The mobile override per ADR-0016 D5 + ADR-0017 D9 mobile view-only
++path REQUIRES beating that desktop placement intent in a single,
++scoped media query — there's no alternative selector specificity
++that beats inline style without `!important`. Documented in
++`apps/site/CONTRACT.md` "Mobile inline-style override" subsection so
++future readers understand WHY this is the only `!important` use in
++the apps/site CSS.
++
++**Regression lock**:
++`apps/site/playwright/sample-blocks-grid-layout.spec.ts:"cf-20b R1: mobile (≤768px) viewport"`
++(~50 LOC, 1 test). Asserts (a) computed `grid-column === '1 / -1'`
++on every BlockKind wrapper at viewport 375×812 (catches "inline-style
++override leak"), (b) `document.documentElement.scrollWidth ≤ 393px`
++(catches horizontal overflow with 18px scrollbar slack). Locks both
++the immediate symptom AND the underlying CSS specificity contract.
++
+ ## Acceptance
+ 
+ ```bash
+ # AC-1: ADR-0011 D9 ui_touch detects on the right files
+ pnpm exec tsx scripts/check-ui-touch.ts \
+   --files packages/editor-shell/src/grid-style.ts \
+           packages/editor-shell/src/BlockNodeView.tsx \
+           packages/editor-shell/src/EditorShell.tsx \
+           apps/site/src/styles/grid.css \
+           apps/site/src/lib/mdx-adapter.ts \
+           apps/site/src/components/Jupyter.astro 2>&1 | tail -3
+ # Expected: ui_touch=true
+ ```
+ 
+ ```bash
+ # AC-2: `--row-h` / `--gap` design tokens still present at design-tokens
+ # (Q8 verified at PLAN time; this AC locks the pre-existing state so a
+ # future tokens.css edit that drops them gets caught here)
+ grep -cE '^\s*--row-h:\s*48px;' packages/design-tokens/src/tokens.css
+ # Expected: 1
+ grep -cE '^\s*--gap:\s*14px;' packages/design-tokens/src/tokens.css
+ # Expected: 1
+ ```
+ 
+ ```bash
+ # AC-3: editor-surface two-level grid CSS rules present
+ grep -E '^\.skb-grid > \.skb-editor-content \{' apps/site/src/styles/grid.css | wc -l
+ # Expected: 1
+ grep -E '^\.skb-grid \.ProseMirror \{' apps/site/src/styles/grid.css | wc -l
+ # Expected: 1
+ # The inner .ProseMirror grid uses the same template + flow rules
+ # as the outer .skb-grid (single-source-of-truth on grid model).
+ grep -A 6 '^\.skb-grid \.ProseMirror \{' apps/site/src/styles/grid.css | grep -cE 'grid-template-columns: repeat\(12, minmax\(0, 1fr\)\)'
+ # Expected: 1
+ grep -A 6 '^\.skb-grid \.ProseMirror \{' apps/site/src/styles/grid.css | grep -cE 'grid-auto-flow: row'
+ # Expected: 1
+ ```
+ 
+ ```bash
+ # AC-4: extended fallback selector covers prose-inside-editor
+ grep -cE '\.skb-grid \.ProseMirror > \*:not\(\[style\*="grid-column"\]\)' apps/site/src/styles/grid.css
+ # Expected: 1
+ ```
+ 
+ ```bash
+ # AC-5: SSR-emitted HTML carries grid placement on all 8 .skb-block-static
+ # wrappers (confirms the mdx-adapter + Astro wrappers route attrs through
+ # gridPlacementStyle / gridPlacementStyleAttr correctly)
+ pnpm --filter @skb/site build 2>&1 | tail -3
+ # Expected: build succeeds
+ grep -oE 'class="skb-block-static" data-skb-block-kind="[a-zA-Z-]+" style="[^"]*grid-column[^"]*"' apps/site/dist/notes/sample-blocks/index.html | wc -l
+ # Expected: ≥ 11 (at least the 11 light-block + 3 heavy-block wrappers; React's serialization may differ from Astro's by whitespace)
+ ```
+ 
+ ```bash
+ # AC-6: editor-shell + apps/site test suites green (152 + 78 with
+ # new grid-style.test.ts + grid-css.test.ts cf-20b assertions)
+ pnpm --filter @skb/editor-shell test 2>&1 | grep -E 'Tests'
+ # Expected: 152 passed
+ pnpm --filter @skb/site test 2>&1 | grep -E 'Tests'
+ # Expected: 78 passed | 1 skipped
+ ```
+ 
+ ```bash
+-# AC-7: targeted Playwright passes (edit + read grid layout specs)
++# AC-7: targeted Playwright passes (edit + read grid layout specs +
++# cf-20b R1 mobile regression lock)
+ pnpm --filter @skb/site exec playwright test \
+   playwright/sample-blocks-grid-layout.spec.ts \
+   playwright/sample-blocks-edit-loads.spec.ts \
+   playwright/sample-blocks-read.spec.ts \
+   --reporter=line --workers=1 2>&1 | tail -3
+-# Expected: 4 passed (2 new + 2 carried)
++# Expected: 5 passed (3 in sample-blocks-grid-layout: edit + read + cf-20b R1 mobile; +2 carried specs)
+ ```
+ 
+ ```bash
+ # AC-8: full apps/site Playwright suite passes (visual baseline diff < 5%)
+ pnpm --filter @skb/site exec playwright test --reporter=line --workers=1 2>&1 | tail -3
+-# Expected: 52 passed | 14 skipped | 0 failed (was 50 in cf-20a; +2 new specs)
++# Expected: 53 passed | 14 skipped | 0 failed (was 50 in cf-20a; +3 new specs in cf-20b: edit + read + R1 mobile)
+ ```
+ 
+ ```bash
+ # AC-9: pnpm check exit 0
+ pnpm check
+ # Expected: all 41 tasks successful
+ ```
+ 
+ ```bash
+ # AC-10: chrome stripe single source still holds (cf-20a regression lock)
+ grep -lE 'border-top: 2px solid var\(--accent-' \
+   $(find packages apps -name '*.css' -not -path '*/node_modules/*' -not -path '*/dist/*')
+ # Expected: exactly packages/editor-shell/src/block-chrome.css (cf-20a invariant preserved)
+ ```
+ 
+ ```bash

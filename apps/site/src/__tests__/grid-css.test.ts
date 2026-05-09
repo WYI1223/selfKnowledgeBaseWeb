@@ -63,13 +63,36 @@ describe('grid.css contract', () => {
 
   it('emits transitional full-width fallback for unpositioned children', () => {
     // C.2-3 transitional: MDX children without explicit gridColumn span the
-    // full grid width so unstyled prose stays readable until C.2-4 lands
-    // per-block grid attrs. Per-block `style.gridColumn` overrides via
-    // specificity. Also: grid-auto-rows must use `minmax(var(--row-h), auto)`
-    // so content height drives row height (NOT clamped to 48px).
+    // full grid width so unstyled prose stays readable. Per-block
+    // `style.gridColumn` overrides via specificity. cf-20b extends this
+    // fallback to the inner `.ProseMirror` grid as well so prose nodes
+    // (`<p>`, `<h2>`, `<ul>`) inside the editor get full-width by default.
+    // Also: grid-auto-rows must use `minmax(var(--row-h), auto)` so content
+    // height drives row height (NOT clamped to 48px).
     expect(gridCss).toContain('.skb-grid > *:not([style*="grid-column"])');
+    expect(gridCss).toContain('.skb-grid .ProseMirror > *:not([style*="grid-column"])');
     expect(gridCss).toMatch(/grid-column:\s*1\s*\/\s*-1/);
     expect(gridCss).toMatch(/grid-auto-rows:\s*minmax\(var\(--row-h\),\s*auto\)/);
+  });
+
+  it('cf-20b: declares the editor-surface two-level grid (ADR-0016 v0.2 D11.1)', () => {
+    // The intermediate `.skb-editor-content` div MUST span `grid-column: 1 / -1`
+    // so the inner `.ProseMirror` element inherits the full outer grid width.
+    expect(gridCss).toContain('.skb-grid > .skb-editor-content');
+    // The inner `.ProseMirror` element MUST be itself a 12-col grid so
+    // per-block NodeView wrappers `.skb-block-nodeview` (Tiptap's direct
+    // children) become grid items at the correct DOM depth.
+    expect(gridCss).toContain('.skb-grid .ProseMirror');
+    // The inner grid uses the same template + flow rules as the outer
+    // (single source of truth on grid model is at the v2 contract +
+    // design-tokens; cf-20b mirrors the outer rule onto the editor).
+    const proseMirrorBlock = gridCss.slice(
+      gridCss.indexOf('.skb-grid .ProseMirror'),
+    );
+    expect(proseMirrorBlock).toContain('display: grid');
+    expect(proseMirrorBlock).toContain('grid-template-columns: repeat(12, minmax(0, 1fr))');
+    expect(proseMirrorBlock).toContain('grid-auto-flow: row');
+    expect(proseMirrorBlock).not.toContain('grid-auto-flow: dense');
   });
 });
 
@@ -79,14 +102,27 @@ describe('Astro grid integration', () => {
     expect(baseLayout).toContain("import '../styles/grid.css'");
   });
 
-  it('wraps MDX content while keeping the title outside the grid', () => {
-    const wrapperIndex = notesRoute.indexOf('<div class="skb-grid">');
-    const proseIndex = notesRoute.indexOf('<div class="skb-prose">');
+  it('wraps MDX content in a combined .skb-grid.skb-prose container so MDX children are direct grid items (cf-20b R2)', () => {
+    // Wave 6 cf-20b R2 (2026-05-09) — pre-R2 the route used two
+    // nested wrappers `<div class="skb-grid"><div class="skb-prose">
+    // <Content/></div></div>` which made `.skb-block-static` a
+    // GRANDCHILD of `.skb-grid` (not a real grid item; inline
+    // `gridColumn` style was inert). codex-pr-reviewer-55 R2 caught
+    // this. R2 fix combines the two wrappers onto a single element
+    // so MDX-emitted children become direct grid items.
+    const wrapperIndex = notesRoute.indexOf('<div class="skb-grid skb-prose">');
     const contentIndex = notesRoute.indexOf('<Content components={componentsMap} />');
-    expect(wrapperIndex).toBeGreaterThanOrEqual(0);
-    expect(proseIndex).toBeGreaterThan(wrapperIndex);
-    expect(contentIndex).toBeGreaterThan(proseIndex);
+    expect(
+      wrapperIndex,
+      'notes/[...slug].astro must combine .skb-grid + .skb-prose on a single element so MDX children are real grid items',
+    ).toBeGreaterThanOrEqual(0);
+    expect(contentIndex).toBeGreaterThan(wrapperIndex);
     expect(notesRoute.indexOf('{note.data.title}')).toBeLessThan(wrapperIndex);
+    // Pre-R2 separate `<div class="skb-prose">` wrapper is gone.
+    expect(
+      notesRoute,
+      'pre-R2 separate `<div class="skb-prose">` wrapper must be removed (combined into `.skb-grid skb-prose` per cf-20b R2)',
+    ).not.toContain('<div class="skb-prose">');
   });
 });
 

@@ -178,11 +178,11 @@ export function GridContainer(props: GridContainerProps): JSX.Element;
 
 `GridContainer` emits a passive `div` with the required `skb-grid` class and
 forwards arbitrary React children. It does not walk the Tiptap document, mutate
-NodeView attrs, or inject per-block `style.gridColumn` / `style.gridRow`;
-those mutation and placement paths remain deferred to the later Wave 5 editor
-grid PRs. When `viewportCols` is supplied, it emits
-`data-skb-viewport-cols` and adds `.skb-grid--mobile` for `viewportCols === 1`
-per ADR-0016 D5 and ADR-0017 D9. Minimal usage:
+NodeView attrs (cf-20b reads attrs at render time but does NOT write back; per
+ADR-0016 D11 grid attrs are passive data on NodeView wrappers). When
+`viewportCols` is supplied, it emits `data-skb-viewport-cols` and adds
+`.skb-grid--mobile` for `viewportCols === 1` per ADR-0016 D5 and ADR-0017 D9.
+Minimal usage:
 
 ```tsx
 <GridContainer>
@@ -191,9 +191,93 @@ per ADR-0016 D5 and ADR-0017 D9. Minimal usage:
 ```
 
 The `.skb-grid` selector authority is `apps/site/src/styles/grid.css` (C.2-3
-PR squash `2586328`). The editor-shell consumer at the mount site MUST import
-that stylesheet, mirroring the SSR phase emission per ADR-0016 D9 phase
-strategy.
+PR squash `2586328`; cf-20b 2026-05-09 amendment adds the
+`.skb-grid > .skb-editor-content` + `.skb-grid .ProseMirror` two-level
+grid rules for the editor-mount path per ADR-0016 v0.2 D11.1 amendment).
+The editor-shell consumer at the mount site MUST import that stylesheet,
+mirroring the SSR phase emission per ADR-0016 D9 phase strategy.
+
+### Editor-surface grid lock (Wave 6 cf-20b; ADR-0016 v0.2 D11.1 amendment)
+
+cf-20b promotes the editor-surface to a 12-col CSS Grid per the v2 contract
+at `/mnt/d/download/web/v2-styles.css:137-147`. Two-level grid:
+
+1. Outer `.skb-grid` (the `<GridContainer>` wrapper) is a 12-col grid (C.2-3
+   contract unchanged).
+2. Inner `.ProseMirror` (Tiptap's render target) is **also** a 12-col grid
+   (cf-20b NEW). The intermediate `.skb-editor-content` div spans
+   `grid-column: 1 / -1` so the inner grid inherits the full container
+   width. NodeView wrappers `.skb-block-nodeview` (Tiptap's direct
+   children inside `.ProseMirror`) become grid items and read their
+   placement from `node.attrs.{col, row?, colSpan, rowSpan}` per
+   ADR-0016 D2.
+
+`EditorShell` always applies `skb-editor-content` to the `<EditorContent>`
+host element so the apps/site grid CSS rule
+(`.skb-grid > .skb-editor-content { grid-column: 1 / -1 }`) can target it.
+Consumer-supplied `className` is concatenated AFTER the base class.
+
+Per ADR-0016 v0.2 D11.1 amendment, the limitation: ProseMirror's arrow-key
+navigation goes to the next document-order node, NOT the visually-above
+side-by-side block when two `colSpan ≤ 6` siblings sit in different visual
+columns. Document this for end users + future cf-22 keyboard a11y PR; cf-20b
+does NOT add a custom keymap.
+
+### Grid placement helpers (Wave 6 cf-20b; shared single source)
+
+The `BlockGridPosition → CSSProperties` mapping is now a single helper
+exported from both the editor-shell barrel `@skb/editor-shell` AND the deep
+subpath `@skb/editor-shell/src/grid-style.ts` (the deep subpath is required
+for Astro SSR consumers — `apps/site/src/components/{Jupyter,NnViz,AgentFlow}.astro`
++ `apps/site/src/lib/mdx-adapter.ts` — to avoid pulling the editor-shell
+React/Tiptap dependency tree into the SSR bundle, which would break
+`astro build` with `require is not defined in ES module scope` from
+transitively-loaded `@tensorflow/tfjs`).
+
+Public surface (added at cf-20b):
+
+```ts
+export interface GridPlacementInput {
+  readonly col: number;
+  readonly row?: number;
+  readonly colSpan: number;
+  readonly rowSpan: number | 'auto';
+}
+
+export interface GridPlacementOptions {
+  /** When rowSpan is 'auto', the integer to substitute. Defaults to 1. */
+  readonly autoRowSpan?: number;
+}
+
+/** React CSSProperties consumer (BlockNodeView.tsx + mdx-adapter.ts). */
+export function gridPlacementStyle(
+  pos: GridPlacementInput,
+  options?: GridPlacementOptions,
+): CSSProperties;
+
+/** Astro inline-style-string consumer (3 heavy block .astro wrappers). */
+export function gridPlacementStyleAttr(
+  pos: GridPlacementInput,
+  options?: GridPlacementOptions,
+): string;
+
+/** Defensive coercion from arbitrary attrs / props record. */
+export function extractGridPosition(
+  attrs: Record<string, unknown> | undefined,
+): GridPlacementInput | null;
+```
+
+Formula (per ADR-0016 D2 CSS application block):
+- `gridColumn = ${col} / span ${colSpan}`
+- `gridRow = row !== undefined ? ${row} / span ${effectiveRowSpan} : span ${effectiveRowSpan}`
+- `effectiveRowSpan = rowSpan === 'auto' ? autoHint : rowSpan` (autoHint
+  defaults to 1 until `useAutoRowSpan` integration in cf-20c+).
+
+Three consumers, one source — the formula MUST stay byte-equal across
+`BlockNodeView.tsx` (editor), `mdx-adapter.ts` (light-block read), and the
+3 heavy `.astro` wrappers (read). Drift detection is via the shared module
+import; any future renderer adding a 4th consumer SHOULD import
+`gridPlacementStyle` rather than re-deriving the formula.
 
 `useAutoRowSpan` public surface:
 
