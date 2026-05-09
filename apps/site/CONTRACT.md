@@ -79,6 +79,31 @@
 - Selector contract: `apps/site/src/styles/grid.css` is the single authority
   for the SSR-phase `.skb-grid` container CSS. Notes routes must wrap rendered
   block content in `.skb-grid`; they must not hand-roll page-local grid styles.
+- **Read-route wrapper contract (Wave 6 cf-20b R2 2026-05-09 structural fix)**:
+  `apps/site/src/pages/notes/[...slug].astro` MUST emit a single combined
+  wrapper `<div class="skb-grid skb-prose">` around `<Content components={...}/>`
+  so MDX-emitted children (`.skb-block-static` from the 5-light-block adapter
+  + 3 heavy `.astro` wrappers, plus prose `<p>` / `<h2>` / `<ul>`) become
+  DIRECT grid items. Pre-R2 the route used two nested wrappers
+  `<div class="skb-grid"><div class="skb-prose"><Content/></div></div>` —
+  `.skb-block-static` was a GRANDCHILD of `.skb-grid` and the inline
+  `style="grid-column: 1 / span 12"` emitted by the cf-20b adapters was
+  structurally INERT (no grid-item context). codex-pr-reviewer-55 R2
+  caught this. The combined wrapper safe because `apps/site/src/styles/prose.css`
+  rules all target descendants (`.skb-prose p`, `.skb-prose .b-callout`,
+  etc.); no rule targets `.skb-prose` itself, so adding it to the same
+  element as `.skb-grid` creates no rule conflict. Regression-lock: the
+  `apps/site/src/__tests__/grid-css.test.ts` "wraps MDX content" test
+  asserts BOTH the combined `<div class="skb-grid skb-prose">` presence
+  AND the absence of the pre-R2 separate `<div class="skb-prose">` wrapper.
+  The `apps/site/playwright/sample-blocks-grid-layout.spec.ts` read-route
+  spec adds two structural assertions per kind wrapper: (i) parent
+  `display === 'grid'` (proves grid context), (ii) `getBoundingClientRect()`
+  width > 90% of grid container width (proves the colSpan=12 claim
+  materialises in layout). Computed-style-only assertions are insufficient
+  because the browser reports the inline `gridColumn` value verbatim even
+  when the parent is `display: block` (the cf-20b R0+R1 false-positive
+  class).
 - Responsive breakpoints mirror ADR-0016 D5:
 
   | Viewport | Columns | Rendering semantics |

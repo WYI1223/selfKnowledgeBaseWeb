@@ -102,14 +102,27 @@ describe('Astro grid integration', () => {
     expect(baseLayout).toContain("import '../styles/grid.css'");
   });
 
-  it('wraps MDX content while keeping the title outside the grid', () => {
-    const wrapperIndex = notesRoute.indexOf('<div class="skb-grid">');
-    const proseIndex = notesRoute.indexOf('<div class="skb-prose">');
+  it('wraps MDX content in a combined .skb-grid.skb-prose container so MDX children are direct grid items (cf-20b R2)', () => {
+    // Wave 6 cf-20b R2 (2026-05-09) — pre-R2 the route used two
+    // nested wrappers `<div class="skb-grid"><div class="skb-prose">
+    // <Content/></div></div>` which made `.skb-block-static` a
+    // GRANDCHILD of `.skb-grid` (not a real grid item; inline
+    // `gridColumn` style was inert). codex-pr-reviewer-55 R2 caught
+    // this. R2 fix combines the two wrappers onto a single element
+    // so MDX-emitted children become direct grid items.
+    const wrapperIndex = notesRoute.indexOf('<div class="skb-grid skb-prose">');
     const contentIndex = notesRoute.indexOf('<Content components={componentsMap} />');
-    expect(wrapperIndex).toBeGreaterThanOrEqual(0);
-    expect(proseIndex).toBeGreaterThan(wrapperIndex);
-    expect(contentIndex).toBeGreaterThan(proseIndex);
+    expect(
+      wrapperIndex,
+      'notes/[...slug].astro must combine .skb-grid + .skb-prose on a single element so MDX children are real grid items',
+    ).toBeGreaterThanOrEqual(0);
+    expect(contentIndex).toBeGreaterThan(wrapperIndex);
     expect(notesRoute.indexOf('{note.data.title}')).toBeLessThan(wrapperIndex);
+    // Pre-R2 separate `<div class="skb-prose">` wrapper is gone.
+    expect(
+      notesRoute,
+      'pre-R2 separate `<div class="skb-prose">` wrapper must be removed (combined into `.skb-grid skb-prose` per cf-20b R2)',
+    ).not.toContain('<div class="skb-prose">');
   });
 });
 

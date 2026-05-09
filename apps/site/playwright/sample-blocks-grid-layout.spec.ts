@@ -194,6 +194,7 @@ test('sample-blocks read route — .skb-block-static carries grid-column derived
     const grid = document.querySelector('.skb-grid');
     if (!grid) return { error: 'no .skb-grid on read route' };
     const gridCs = window.getComputedStyle(grid);
+    const gridRect = grid.getBoundingClientRect();
 
     const wrapperKinds = [
       'callout',
@@ -211,11 +212,27 @@ test('sample-blocks read route — .skb-block-static carries grid-column derived
       );
       if (!el) return { kind, error: 'wrapper missing' };
       const cs = window.getComputedStyle(el);
+      const rect = el.getBoundingClientRect();
+      // Wave 6 cf-20b R2 (2026-05-09) — STRUCTURAL grid-item assertion.
+      // Pre-R2 the read-route DOM was `<div class="skb-grid"><div
+      // class="skb-prose"><.skb-block-static.../></div></div>` so
+      // `.skb-block-static` was a GRANDCHILD of `.skb-grid`, not a
+      // direct grid item. Computed `gridColumn` style returned the
+      // inline `1 / span 12` value but it was INERT (no grid context).
+      // codex-pr-reviewer-55 R2 caught this. R2 fix: combine
+      // `.skb-grid skb-prose` onto a single wrapper so MDX children
+      // become direct grid items. This probe verifies STRUCTURALLY:
+      // (i) parent computed `display === 'grid'`; (ii) bounding-rect
+      // width matches the 12-col-span claim (≥90% of grid width).
+      const parent = el.parentElement;
+      const parentDisplay = parent ? window.getComputedStyle(parent).display : null;
       return {
         kind,
         gridColumn: cs.gridColumn,
         gridRow: cs.gridRow,
         inlineStyle: el.getAttribute('style') ?? '',
+        parentDisplay,
+        width: rect.width,
       };
     });
 
@@ -224,6 +241,7 @@ test('sample-blocks read route — .skb-block-static carries grid-column derived
         display: gridCs.display,
         gridAutoFlow: gridCs.gridAutoFlow,
         gridTemplateColumns: gridCs.gridTemplateColumns,
+        width: gridRect.width,
       },
       wrappers,
     };
@@ -234,6 +252,7 @@ test('sample-blocks read route — .skb-block-static carries grid-column derived
   expect(probe.grid.display).toBe('grid');
   expect(probe.grid.gridAutoFlow).toBe('row');
   expect(probe.grid.gridTemplateColumns.split(' ')).toHaveLength(12);
+  expect(probe.grid.width).toBeGreaterThan(100);
 
   for (const w of probe.wrappers) {
     if ('error' in w) throw new Error(`read wrapper ${w.kind}: ${w.error}`);
@@ -247,6 +266,23 @@ test('sample-blocks read route — .skb-block-static carries grid-column derived
     ).toMatch(/grid-column:\s*1\s*\/\s*span\s+12/);
     expect(w.gridColumn).not.toBe('auto');
     expect(w.gridColumn).toMatch(/(span 12|\/\s*13)/);
+    // Wave 6 cf-20b R2 — STRUCTURAL: parent must be a real grid
+    // container so the inline `gridColumn` actually places the item.
+    // Catches the cf-20b R0+R1 false-positive class where computed
+    // `gridColumn` style was set but the parent was `display: block`
+    // (.skb-prose), making the inline style inert.
+    expect(
+      w.parentDisplay,
+      `read wrapper ${w.kind} must be a real grid item (parent display: grid)`,
+    ).toBe('grid');
+    // Wave 6 cf-20b R2 — STRUCTURAL: bounding-rect width must match
+    // the colSpan=12 claim. Sample-blocks fixtures all use colSpan=12
+    // so the wrapper should occupy ~100% of the grid container width
+    // (≥ 90% with rounding/border slack).
+    expect(
+      w.width,
+      `read wrapper ${w.kind} bounding-rect width ${w.width}px must be ≥ 90% of grid width ${probe.grid.width}px (catches inert grid-column style on non-grid-item)`,
+    ).toBeGreaterThan(probe.grid.width * 0.9);
   }
 });
 

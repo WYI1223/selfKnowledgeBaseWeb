@@ -246,7 +246,7 @@ the emitted screenshot satisfies D9.5.
 
 ## e2e_smoke
 
-- flow_a: `/notes/sample-blocks/edit` mount loads via the
+- flow: `/notes/sample-blocks/edit` mount loads via the
     ApiAdapter chain (cf-18 NodeView wiring + cf-19 v0.2 wrapper
     chrome + cf-20a chrome single source + cf-20b grid placement).
     The outer `<GridContainer>` is `display: grid` with 12 cols; the
@@ -269,24 +269,29 @@ the emitted screenshot satisfies D9.5.
     - intermediate .skb-editor-content has gridColumn=1 / -1
     - all 8 kind wrappers (.skb-block-nodeview[data-skb-block-kind=…]) have gridColumn ≠ auto, MATCHES /(span 12|\/\s*13)/, width > 90% of editor width
 
-- flow_b: `/notes/sample-blocks` (read route) renders 14
+- flow: `/notes/sample-blocks` (read route) renders 14
     `.skb-block-static` wrappers (5 light via mdx-adapter + 3 heavy
     via Astro wrappers + multiple instances per kind from fixture).
     Each carries inline `grid-column: 1 / span 12; grid-row: span 1`
     style emitted at SSR time (verifiable via grep on built HTML).
-    Outer `.skb-grid` is 12-col grid (existing C.2-3 contract).
-    cf-20b read-route assertion locks the inline-style presence so
-    future renders that drop the `style.gridColumn` emission fail.
+    The wrapper combines `.skb-grid` + `.skb-prose` on a single
+    element (cf-20b R2 — was 2 nested wrappers pre-R2; combination
+    makes MDX children real grid items per ADR-0016 v0.2 D11.1).
+    cf-20b R2 spec asserts both inline-style presence AND structural
+    grid-item-ness via parent `display: grid` + `getBoundingClientRect()`
+    width matching the colSpan claim.
   target_url: /notes/sample-blocks
   playwright_spec: apps/site/playwright/sample-blocks-grid-layout.spec.ts:"sample-blocks read route — .skb-block-static carries grid-column derived from MDX attrs"
-  screenshot_archive: (shared with flow_a — single fullPage screenshot covers both probes since flow_b extends flow_a's coverage)
+  screenshot_archive: docs/audits/screenshots/wave-6-cf-20b-sample-blocks-grid-layout.png
   assertions:
     - first .skb-block-static visible within 15s
-    - outer .skb-grid: display=grid, gridAutoFlow=row, 12 grid template columns
+    - outer .skb-grid: display=grid, gridAutoFlow=row, 12 grid template columns, width > 100px
     - all 8 kind wrappers (.skb-block-static[data-skb-block-kind=…]) have inline style attribute matching /grid-column:\s*1\s*\/\s*span\s+12/
     - all 8 kind wrappers have computed gridColumn ≠ auto, MATCHES /(span 12|\/\s*13)/
+    - **STRUCTURAL (cf-20b R2)**: parent of every wrapper has computed display === 'grid' (catches the cf-20b R0/R1 false-positive class where computed gridColumn was set but parent was display:block, making the inline style inert)
+    - **STRUCTURAL (cf-20b R2)**: bounding-rect width of every wrapper > 90% of grid container width (matches the colSpan=12 claim)
 
-- flow_c (cf-20b R1 hotfix): `/notes/sample-blocks` at viewport
+- flow: `/notes/sample-blocks` at viewport
     `375×812` (mobile preview path per ADR-0016 D5 + ADR-0017 D9)
     must collapse every block wrapper to a single column regardless
     of cf-20b's inline `style="grid-column: 1 / span 12"`. Pre-R1
@@ -296,9 +301,9 @@ the emitted screenshot satisfies D9.5.
     mobile-scoped `!important` rules per D9 to beat the inline
     style + cap heavy-block placeholders + add overflow-x scroll
     defense-in-depth.
-  target_url: /notes/sample-blocks (at 375×812 viewport)
+  target_url: /notes/sample-blocks
   playwright_spec: apps/site/playwright/sample-blocks-grid-layout.spec.ts:"cf-20b R1: mobile (≤768px) viewport — blocks force-fill 1-col regardless of inline grid-column"
-  screenshot_archive: (no NEW screenshot — flow_a/b screenshot is desktop; the regression-lock test runs at narrower viewport for assertion only)
+  screenshot_archive: docs/audits/screenshots/wave-6-cf-20b-sample-blocks-grid-layout.png
   assertions:
     - viewport set to 375×812
     - first .skb-block-static visible within 15s
@@ -557,6 +562,89 @@ style; the read-route fallback rule paints full-width. The
 `grid-defensive.test.ts` cases in mdx-bridge already cover the
 mdx-bridge throw path; cf-20b's defensive `extractGridPosition`
 covers the post-parse-defensive editor path.
+
+### D10 — Read-route wrapper combines `.skb-grid` + `.skb-prose` on a single element (cf-20b R2 structural fix 2026-05-09)
+
+**Trigger**: codex-pr-reviewer-55 R2 verdict on cf-20b R1. Codex's
+structural finding: pre-R2 `apps/site/src/pages/notes/[...slug].astro`
+emitted nested wrappers `<div class="skb-grid"><div class="skb-prose"><Content/></div></div>`.
+The MDX `<Content components={componentsMap}>` expansion placed
+`.skb-block-static` wrappers as children of the INNER `<div class="skb-prose">`,
+NOT the outer `.skb-grid`. So `.skb-block-static` was a GRANDCHILD
+of `.skb-grid` and **not a real grid item** — the inline
+`style="grid-column: 1 / span 12"` emitted by `mdx-adapter.ts` /
+the 3 heavy `.astro` wrappers was structurally INERT.
+
+The cf-20b R0+R1 read-route Playwright spec only asserted **computed
+`gridColumn`** style, which CAN be `1 / span 12` even when the
+element isn't a grid item (computed style ignores parent context).
+The test FALSE-POSITIVE PASSED while the actual layout was never
+gridded — same `display: contents` selector-vs-layout-tree class as
+cf-20b R0, applied at the wrong tree depth.
+
+ADR-0016 D11.1 amendment claims read-route uses grid placement.
+Pre-R2 this was false. Two fix paths considered:
+
+- **Path (A) STRUCTURAL** — make `.skb-block-static` ACTUALLY a
+  grid item. Combine the wrappers: `<div class="skb-grid skb-prose"><Content/></div>`.
+  Pre-condition: `.skb-prose` is a typography container — every
+  `.skb-prose` rule in `apps/site/src/styles/prose.css` targets a
+  DESCENDANT (`.skb-prose p`, `.skb-prose .b-callout`, etc.); no
+  rule targets `.skb-prose` itself. So adding it to the same
+  element as `.skb-grid` creates no rule conflict; the grid layout
+  applies AND prose typography cascades to children.
+
+- **Path (B) DOCUMENTATION** — amend ADR-0016 D11.1 + the read-route
+  spec to acknowledge the read route doesn't actually grid-place
+  blocks. Inline `grid-column` becomes documentation/forward-compat
+  only.
+
+cf-20b R2 picks **Path (A)** because (a) ADR-0016 D11.1 amendment
+explicitly claims read-route uses grid placement (path B would
+require an ADR back-amendment which is more disruptive than a
+1-line Astro template change); (b) cf-20c-2 drag/cf-20d resize will
+need actual grid-item context on the read-route wrappers anyway
+(future blocks may have `colSpan != 12` even on read route once
+the user can author grid layouts in the editor); (c) the structural
+fix is genuinely tiny — combining two class names on one element.
+
+**Implementation** (1 source file + 1 test file + 1 PR.md decision):
+
+1. `apps/site/src/pages/notes/[...slug].astro` — replace the nested
+   wrappers with a single `<div class="skb-grid skb-prose"><Content components={...}/></div>`.
+   The `<h1>{note.data.title}</h1>` stays OUTSIDE the wrapper (not a
+   grid item; the page heading lives in document flow).
+
+2. `apps/site/src/__tests__/grid-css.test.ts` — replace the
+   "wraps MDX content while keeping the title outside the grid"
+   test with the cf-20b R2 version that asserts the COMBINED
+   wrapper presence (`<div class="skb-grid skb-prose">`) AND
+   asserts the pre-R2 separate `<div class="skb-prose">` wrapper
+   is GONE (regression lock).
+
+3. `apps/site/playwright/sample-blocks-grid-layout.spec.ts` —
+   strengthen the read-route test with TWO new structural assertions
+   per kind wrapper: (i) parent computed `display === 'grid'`
+   (catches the cf-20b R0+R1 false-positive class — proves the
+   wrapper is actually a grid item, not just has gridColumn style);
+   (ii) bounding-rect width > 90% of grid container width (catches
+   inert grid-column style — proves the inline 1/12 span actually
+   materialises in layout).
+
+**Out-of-scope safety**: `.skb-grid` mobile responsive rules
+(cf-20b R1 hotfix `@media (max-width: 768px)`) continue to apply
+unchanged — the combined wrapper is still `.skb-grid`, the
+`!important` overrides still target the same selectors.
+
+**Test gap caught**: cf-20b R0+R1 spec asserted computed CSS only.
+A grid item that's not actually in a grid context still reports
+the inline gridColumn style verbatim (the browser doesn't know to
+"erase" the value when the parent isn't grid). The R2 fix adds
+TWO orthogonal structural assertions: (a) parent.display === 'grid'
+(proves grid context), (b) bounding-rect width matches colSpan
+claim (proves the grid context honors the placement). Either alone
+could pass on a non-grid layout; both together catch every
+real-world variant of the bug class.
 
 ### D9 — Mobile inline-style override needs `!important` + selector list covering both wrapper depths (cf-20b R1 hotfix 2026-05-09)
 
