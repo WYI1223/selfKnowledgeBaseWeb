@@ -1,0 +1,2000 @@
+Reading additional input from stdin...
+OpenAI Codex v0.125.0 (research preview)
+--------
+workdir: /home/weiyi/selfKnowledgeBaseWeb
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: danger-full-access
+reasoning effort: xhigh
+reasoning summaries: none
+session id: 019e0db8-47c3-7980-be03-a84e0551b856
+--------
+user
+Wave 6 cf-20c-2 R4 — verdict-only verification (R3 doc-and-spec fixes).
+
+Branch wave-6-cf-20c-2-drag-handle-wire @ commit c80da74 on top of 740f726 + 0870d6e + 3001f8c. R3 returned FAIL with 3 findings; ux-ui-lead fixed all 3 in c80da74.
+
+CONSTRAINTS PER RULES 5+6:
+- DO NOT preemptively re-run pnpm check or full Playwright (orchestrator + ux-ui-lead pre-verified: pnpm check 41/41 PASS, full Playwright 57 PASS / 14 SKIP / 0 FAIL, editor-shell 186 tests, size-check 416 files all under 500 LOC)
+- DO NOT re-read ADR-0006 / orchestrator-reflections / aux ADR archive
+- READ: c80da74 commit content (5 source + 3 doc files + auto screenshots) + targeted line citations
+- Verdict in <5 min
+
+R3 F1 (HIGH — destructive git checkout safety bug): RESOLVED. apps/site/playwright/sample-blocks-drag-handle.spec.ts replaced execSync('git checkout -- ...') afterAll with byte-snapshot model — beforeAll readFileSync original bytes; afterAll writeFileSync restore (deletes state.json if it didn't exist pre-test). Verified: zero execSync/git checkout in spec.
+
+R3 F2 (MEDIUM — race condition): RESOLVED. Pipeline drop-success block (a) clears lastDroppedBlockId + lastDroppedRect to null AT START of handler (BEFORE 2-rAF re-measure); (b) sets BOTH atomically with dropEpoch + 1 increment when rect arrives. NEW state.dropEpoch monotonic counter. EditorShellMount.tsx passes key={pipeline.state.dropEpoch} on <DropPulseAtRect> so React unmounts + remounts across rapid drops. editor-shell CONTRACT.md documents dropEpoch as canonical 'rapid-action animation isolation' pattern.
+
+R3 F3 (MEDIUM — incomplete R2 doc-drift sweep): RESOLVED. ux-ui-lead ran the mechanical grep R2 reflection's rule landed but R2 violated. Found 4 stale current-behavior claims; updated all 4 (CONTRACT.md:407 + pipeline:99 + EditorShellMount:301 + spec:165). Historical-context citations of the rejected R1 model correctly LEFT alone.
+
+ux-ui-lead's verification: pnpm check 41/41; full Playwright 57 PASS / 14 SKIP / 0 FAIL; editor-shell 186; F1 grep verified zero execSync/git checkout in spec; F2 grep verified dropEpoch wired in 4 sites; F3 grep verified zero remaining stale-current-behavior claims (intentional historical context preserved).
+
+18 files in c80da74: 5 source + 3 doc + 10 auto-emitted screenshots.
+
+D2 trigger UNCHANGED: Row 1 + 5. Stage 4 PRE-COMMIT CLAUDE REVIEW fires.
+
+Static spot-check the 3 R3 fixes. Verdict PASS or FAIL with line-anchored remediation. If PASS, on stage 5 you commit per ADR-0006 D8 explicit-file-list staging.
+codex
+I’ll use the Superpowers startup guidance plus the review workflow, then do a static commit-focused pass only: no full checks, no ADR re-read, no web.
+exec
+/bin/bash -lc "sed -n '1,220p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/63976030/skills/receiving-code-review/SKILL.md" in /home/weiyi/selfKnowledgeBaseWeb
+exec
+/bin/bash -lc "sed -n '1,220p' /home/weiyi/.codex/plugins/cache/openai-curated/superpowers/63976030/skills/using-superpowers/SKILL.md" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+---
+name: receiving-code-review
+description: Use when receiving code review feedback, before implementing suggestions, especially if feedback seems unclear or technically questionable - requires technical rigor and verification, not performative agreement or blind implementation
+---
+
+# Code Review Reception
+
+## Overview
+
+Code review requires technical evaluation, not emotional performance.
+
+**Core principle:** Verify before implementing. Ask before assuming. Technical correctness over social comfort.
+
+## The Response Pattern
+
+```
+WHEN receiving code review feedback:
+
+1. READ: Complete feedback without reacting
+2. UNDERSTAND: Restate requirement in own words (or ask)
+3. VERIFY: Check against codebase reality
+4. EVALUATE: Technically sound for THIS codebase?
+5. RESPOND: Technical acknowledgment or reasoned pushback
+6. IMPLEMENT: One item at a time, test each
+```
+
+## Forbidden Responses
+
+**NEVER:**
+- "You're absolutely right!" (explicit CLAUDE.md violation)
+- "Great point!" / "Excellent feedback!" (performative)
+- "Let me implement that now" (before verification)
+
+**INSTEAD:**
+- Restate the technical requirement
+- Ask clarifying questions
+- Push back with technical reasoning if wrong
+- Just start working (actions > words)
+
+## Handling Unclear Feedback
+
+```
+IF any item is unclear:
+  STOP - do not implement anything yet
+  ASK for clarification on unclear items
+
+WHY: Items may be related. Partial understanding = wrong implementation.
+```
+
+**Example:**
+```
+your human partner: "Fix 1-6"
+You understand 1,2,3,6. Unclear on 4,5.
+
+❌ WRONG: Implement 1,2,3,6 now, ask about 4,5 later
+✅ RIGHT: "I understand items 1,2,3,6. Need clarification on 4 and 5 before proceeding."
+```
+
+## Source-Specific Handling
+
+### From your human partner
+- **Trusted** - implement after understanding
+- **Still ask** if scope unclear
+- **No performative agreement**
+- **Skip to action** or technical acknowledgment
+
+### From External Reviewers
+```
+BEFORE implementing:
+  1. Check: Technically correct for THIS codebase?
+  2. Check: Breaks existing functionality?
+  3. Check: Reason for current implementation?
+  4. Check: Works on all platforms/versions?
+  5. Check: Does reviewer understand full context?
+
+IF suggestion seems wrong:
+  Push back with technical reasoning
+
+IF can't easily verify:
+  Say so: "I can't verify this without [X]. Should I [investigate/ask/proceed]?"
+
+IF conflicts with your human partner's prior decisions:
+  Stop and discuss with your human partner first
+```
+
+**your human partner's rule:** "External feedback - be skeptical, but check carefully"
+
+## YAGNI Check for "Professional" Features
+
+```
+IF reviewer suggests "implementing properly":
+  grep codebase for actual usage
+
+  IF unused: "This endpoint isn't called. Remove it (YAGNI)?"
+  IF used: Then implement properly
+```
+
+**your human partner's rule:** "You and reviewer both report to me. If we don't need this feature, don't add it."
+
+## Implementation Order
+
+```
+FOR multi-item feedback:
+  1. Clarify anything unclear FIRST
+  2. Then implement in this order:
+     - Blocking issues (breaks, security)
+     - Simple fixes (typos, imports)
+     - Complex fixes (refactoring, logic)
+  3. Test each fix individually
+  4. Verify no regressions
+```
+
+## When To Push Back
+
+Push back when:
+- Suggestion breaks existing functionality
+- Reviewer lacks full context
+- Violates YAGNI (unused feature)
+- Technically incorrect for this stack
+- Legacy/compatibility reasons exist
+- Conflicts with your human partner's architectural decisions
+
+**How to push back:**
+- Use technical reasoning, not defensiveness
+- Ask specific questions
+- Reference working tests/code
+- Involve your human partner if architectural
+
+**Signal if uncomfortable pushing back out loud:** "Strange things are afoot at the Circle K"
+
+## Acknowledging Correct Feedback
+
+When feedback IS correct:
+```
+✅ "Fixed. [Brief description of what changed]"
+✅ "Good catch - [specific issue]. Fixed in [location]."
+✅ [Just fix it and show in the code]
+
+❌ "You're absolutely right!"
+❌ "Great point!"
+❌ "Thanks for catching that!"
+❌ "Thanks for [anything]"
+❌ ANY gratitude expression
+```
+
+**Why no thanks:** Actions speak. Just fix it. The code itself shows you heard the feedback.
+
+**If you catch yourself about to write "Thanks":** DELETE IT. State the fix instead.
+
+## Gracefully Correcting Your Pushback
+
+If you pushed back and were wrong:
+```
+✅ "You were right - I checked [X] and it does [Y]. Implementing now."
+✅ "Verified this and you're correct. My initial understanding was wrong because [reason]. Fixing."
+
+❌ Long apology
+❌ Defending why you pushed back
+❌ Over-explaining
+```
+
+State the correction factually and move on.
+
+## Common Mistakes
+
+| Mistake | Fix |
+|---------|-----|
+| Performative agreement | State requirement or just act |
+| Blind implementation | Verify against codebase first |
+| Batch without testing | One at a time, test each |
+| Assuming reviewer is right | Check if breaks things |
+| Avoiding pushback | Technical correctness > comfort |
+| Partial implementation | Clarify all items first |
+| Can't verify, proceed anyway | State limitation, ask for direction |
+
+## Real Examples
+
+**Performative Agreement (Bad):**
+```
+Reviewer: "Remove legacy code"
+❌ "You're absolutely right! Let me remove that..."
+```
+
+**Technical Verification (Good):**
+```
+Reviewer: "Remove legacy code"
+✅ "Checking... build target is 10.15+, this API needs 13+. Need legacy for backward compat. Current impl has wrong bundle ID - fix it or drop pre-13 support?"
+```
+
+**YAGNI (Good):**
+```
+Reviewer: "Implement proper metrics tracking with database, date filters, CSV export"
+✅ "Grepped codebase - nothing calls this endpoint. Remove it (YAGNI)? Or is there usage I'm missing?"
+```
+
+**Unclear Item (Good):**
+```
+your human partner: "Fix items 1-6"
+You understand 1,2,3,6. Unclear on 4,5.
+✅ "Understand 1,2,3,6. Need clarification on 4 and 5 before implementing."
+```
+
+## GitHub Thread Replies
+
+When replying to inline review comments on GitHub, reply in the comment thread (`gh api repos/{owner}/{repo}/pulls/{pr}/comments/{id}/replies`), not as a top-level PR comment.
+
+## The Bottom Line
+
+**External feedback = suggestions to evaluate, not orders to follow.**
+
+Verify. Question. Then implement.
+
+No performative agreement. Technical rigor always.
+
+ succeeded in 0ms:
+---
+name: using-superpowers
+description: Use when starting any conversation - establishes how to find and use skills, requiring Skill tool invocation before ANY response including clarifying questions
+---
+
+<SUBAGENT-STOP>
+If you were dispatched as a subagent to execute a specific task, skip this skill.
+</SUBAGENT-STOP>
+
+<EXTREMELY-IMPORTANT>
+If you think there is even a 1% chance a skill might apply to what you are doing, you ABSOLUTELY MUST invoke the skill.
+
+IF A SKILL APPLIES TO YOUR TASK, YOU DO NOT HAVE A CHOICE. YOU MUST USE IT.
+
+This is not negotiable. This is not optional. You cannot rationalize your way out of this.
+</EXTREMELY-IMPORTANT>
+
+## Instruction Priority
+
+Superpowers skills override default system prompt behavior, but **user instructions always take precedence**:
+
+1. **User's explicit instructions** (CLAUDE.md, GEMINI.md, AGENTS.md, direct requests) — highest priority
+2. **Superpowers skills** — override default system behavior where they conflict
+3. **Default system prompt** — lowest priority
+
+If CLAUDE.md, GEMINI.md, or AGENTS.md says "don't use TDD" and a skill says "always use TDD," follow the user's instructions. The user is in control.
+
+## How to Access Skills
+
+**In Claude Code:** Use the `Skill` tool. When you invoke a skill, its content is loaded and presented to you—follow it directly. Never use the Read tool on skill files.
+
+**In Copilot CLI:** Use the `skill` tool. Skills are auto-discovered from installed plugins. The `skill` tool works the same as Claude Code's `Skill` tool.
+
+**In Gemini CLI:** Skills activate via the `activate_skill` tool. Gemini loads skill metadata at session start and activates the full content on demand.
+
+**In other environments:** Check your platform's documentation for how skills are loaded.
+
+## Platform Adaptation
+
+Skills use Claude Code tool names. Non-CC platforms: see `references/copilot-tools.md` (Copilot CLI), `references/codex-tools.md` (Codex) for tool equivalents. Gemini CLI users get the tool mapping loaded automatically via GEMINI.md.
+
+# Using Skills
+
+## The Rule
+
+**Invoke relevant or requested skills BEFORE any response or action.** Even a 1% chance a skill might apply means that you should invoke the skill to check. If an invoked skill turns out to be wrong for the situation, you don't need to use it.
+
+```dot
+digraph skill_flow {
+    "User message received" [shape=doublecircle];
+    "About to EnterPlanMode?" [shape=doublecircle];
+    "Already brainstormed?" [shape=diamond];
+    "Invoke brainstorming skill" [shape=box];
+    "Might any skill apply?" [shape=diamond];
+    "Invoke Skill tool" [shape=box];
+    "Announce: 'Using [skill] to [purpose]'" [shape=box];
+    "Has checklist?" [shape=diamond];
+    "Create TodoWrite todo per item" [shape=box];
+    "Follow skill exactly" [shape=box];
+    "Respond (including clarifications)" [shape=doublecircle];
+
+    "About to EnterPlanMode?" -> "Already brainstormed?";
+    "Already brainstormed?" -> "Invoke brainstorming skill" [label="no"];
+    "Already brainstormed?" -> "Might any skill apply?" [label="yes"];
+    "Invoke brainstorming skill" -> "Might any skill apply?";
+
+    "User message received" -> "Might any skill apply?";
+    "Might any skill apply?" -> "Invoke Skill tool" [label="yes, even 1%"];
+    "Might any skill apply?" -> "Respond (including clarifications)" [label="definitely not"];
+    "Invoke Skill tool" -> "Announce: 'Using [skill] to [purpose]'";
+    "Announce: 'Using [skill] to [purpose]'" -> "Has checklist?";
+    "Has checklist?" -> "Create TodoWrite todo per item" [label="yes"];
+    "Has checklist?" -> "Follow skill exactly" [label="no"];
+    "Create TodoWrite todo per item" -> "Follow skill exactly";
+}
+```
+
+## Red Flags
+
+These thoughts mean STOP—you're rationalizing:
+
+| Thought | Reality |
+|---------|---------|
+| "This is just a simple question" | Questions are tasks. Check for skills. |
+| "I need more context first" | Skill check comes BEFORE clarifying questions. |
+| "Let me explore the codebase first" | Skills tell you HOW to explore. Check first. |
+| "I can check git/files quickly" | Files lack conversation context. Check for skills. |
+| "Let me gather information first" | Skills tell you HOW to gather information. |
+| "This doesn't need a formal skill" | If a skill exists, use it. |
+| "I remember this skill" | Skills evolve. Read current version. |
+| "This doesn't count as a task" | Action = task. Check for skills. |
+| "The skill is overkill" | Simple things become complex. Use it. |
+| "I'll just do this one thing first" | Check BEFORE doing anything. |
+| "This feels productive" | Undisciplined action wastes time. Skills prevent this. |
+| "I know what that means" | Knowing the concept ≠ using the skill. Invoke it. |
+
+## Skill Priority
+
+When multiple skills could apply, use this order:
+
+1. **Process skills first** (brainstorming, debugging) - these determine HOW to approach the task
+2. **Implementation skills second** (frontend-design, mcp-builder) - these guide execution
+
+"Let's build X" → brainstorming first, then implementation skills.
+"Fix this bug" → debugging first, then domain-specific skills.
+
+## Skill Types
+
+**Rigid** (TDD, debugging): Follow exactly. Don't adapt away discipline.
+
+**Flexible** (patterns): Adapt principles to context.
+
+The skill itself tells you which.
+
+## User Instructions
+
+Instructions say WHAT, not HOW. "Add X" or "Fix Y" doesn't mean skip workflows.
+
+codex
+I’m checking only the commit delta and the three claimed fix surfaces. I’ll keep this to static reads and targeted grep so the prior verification runs remain authoritative.
+exec
+/bin/bash -lc 'git status --short' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+exec
+/bin/bash -lc 'git rev-parse HEAD && git log --oneline -5' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+c80da74ac71be24dc5ee94da4150291a4dc61a49
+c80da74 Wave 6 cf-20c-2 R3 hotfix — 3 findings (destructive git checkout safety bug + race condition + incomplete doc-drift sweep)
+740f726 Wave 6 cf-20c-2 R2 hotfix — 4 findings (source-lift visibility-vs-opacity + DropPulse landed-rect + strict assertion + doc drift)
+0870d6e Wave 6 cf-20c-2 R1 hotfix — 4 findings (source-lift + DropPulse mount + velocity unit + terminal-drop spec)
+3001f8c Wave 6 cf-20c-2 — drag-handle UI + DnD wire (per-block button + HTML5 native DnD lifecycle)
+0b2cdd1 Wave 6 cf-20c-1 — applyDropMode algebra (pure mutation function for ADR-0017 D1 drop modes) (#112)
+
+exec
+/bin/bash -lc 'git show --name-status --stat --summary c80da74' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+commit c80da74ac71be24dc5ee94da4150291a4dc61a49
+Author: W_YI <W_YI1223@outlook.com>
+Date:   Sat May 9 13:09:03 2026 -0400
+
+    Wave 6 cf-20c-2 R3 hotfix — 3 findings (destructive git checkout safety bug + race condition + incomplete doc-drift sweep)
+    
+    codex-pr-reviewer-55 R3 caught 3 findings: 1 High (real safety bug
+    in test code) + 1 Medium (real race condition on rapid drops) + 1
+    Medium (incomplete R2 F4 doc-drift sweep — R2 fixed 2 sites; R3
+    found 4 more on same drift class).
+    
+    F1 (HIGH — destructive git checkout in test code): R2's
+    `restoreSampleBlocksFixture` shelled out to `execSync('git checkout
+    -- ${SAMPLE_BLOCKS_MDX}')` in afterAll. Running the spec silently
+    discarded uncommitted edits to the fixture file — anyone mid-edit on
+    content/notes/sample-blocks/index.mdx lost their work. R3 fix:
+      - test.beforeAll() snapshots the EXACT bytes via readFileSync
+        (committed OR uncommitted)
+      - test.afterAll() restores via writeFileSync (deletes state.json
+        if it didn't exist pre-test)
+      - works whether or not the user has uncommitted edits
+      - never touches git
+    
+    F2 (MEDIUM — race condition on rapid drops): R2 set new
+    `lastDroppedBlockId = newId` immediately while previous
+    `lastDroppedRect` was still live (the new measurement happens 2 rAFs
+    later). For drag → drop → drag → drop sequences within 720ms (faster
+    than DropPulse animation completes), there was a brief frame where
+    the new pulse rendered at the OLD rect.
+    
+    R3 fix:
+      - Pipeline drop-success block clears BOTH lastDroppedBlockId +
+        lastDroppedRect to null AT START (BEFORE 2-rAF re-measure)
+      - Sets BOTH atomically together with `dropEpoch + 1` increment when
+        rect arrives (React 18+ automatic batching ensures single render
+        pass)
+      - NEW state.dropEpoch: number monotonic counter
+      - EditorShellMount.tsx passes key={pipeline.state.dropEpoch} on
+        <DropPulseAtRect> so React unmounts + remounts the animation
+        cleanly across rapid drops; keyframe restarts each drop
+      - editor-shell CONTRACT.md documents dropEpoch as the canonical
+        "rapid-action animation isolation" pattern (cf-20d resize will
+        adopt it)
+    
+    F3 (MEDIUM — incomplete R2 doc-drift sweep): R2 fixed 2 sites then
+    declared done; R3 grep found 4 more on the same drift class. R2
+    reflection had landed "doc-drift sweeps require grep verification"
+    rule — R3 violated it by relying on memory instead of running the
+    grep. R3 fix:
+      - use-drag-drop-pipeline.ts:100 + :179-180: "one rAF" → "2 rAFs";
+        "(opacity 0.28 + grayscale via ...)" → "visibility: hidden +
+        pointer-events: none per ADR-0017 D6 line 247"
+      - BlockNodeView.tsx:99-100: same opacity/grayscale claim → ADR-0017
+        D6 line 247 verbatim
+      - drag-context.tsx:44: same opacity/grayscale claim → R2 F1 fix
+        citation
+      - editor-shell/CONTRACT.md:407: same opacity/grayscale claim →
+        visibility:hidden + line-anchor citation
+      - sample-blocks-drag-handle.spec.ts:165-166: test comment "CSS
+        sets opacity 0.28..." → R2 F1 fix description
+    
+    Historical-context comments (BlockNodeView.css:209-210 explicit
+    "R1 SHIPPED" callout, PR.md historical narrative, reflection text)
+    correctly cite the rejected R1 model and were LEFT alone — these
+    are intentional historical citations, not stale current-behavior
+    claims.
+    
+    Sister-doc updates: editor-shell CONTRACT.md adds dropEpoch pattern
+    documentation as the canonical "rapid-action animation isolation"
+    pattern. apps/site CONTRACT.md and PR.md unchanged for R3 (the F1
+    spec change is internal test infrastructure; not consumer-facing
+    contract).
+    
+    Reflection appended documenting the rule-violation pattern (R2
+    landed "doc-drift sweeps require grep verification" rule then I
+    violated it in R2 by relying on memory). Operational rules landed:
+      1. Tests that touch repository files MUST snapshot bytes; NEVER
+         use git operations (`git checkout`, `git restore`, etc.)
+      2. Doc-drift sweeps require mechanical grep verification (treat
+         zero matches as closure criterion); memory is unreliable
+      3. dropEpoch React-key pattern for rapid-action animation isolation
+      4. Cumulative R-round count signals R0 plan completeness (cf-20c-2
+         R0+R1+R2+R3 = 4 R-rounds)
+    
+    Verification:
+      - 186 editor-shell vitest pass (carried; +0)
+      - 78 apps/site vitest pass | 1 skipped (carried)
+      - 57 Playwright pass | 14 skipped | 0 failed (carried)
+      - 41/41 pnpm check successful
+      - 9 pre-existing lint warnings, 0 errors
+      - size-check: all 416 source files under 500 LOC
+        (use-drag-drop-pipeline.ts 475; pipeline-snapshot.ts 116)
+      - cf-20a chrome single-source preserved
+      - cf-20b R1 mobile inline-style override preserved
+      - F1 verification: zero `execSync` / `git checkout` in spec
+      - F2 verification: dropEpoch wired in pipeline state + key prop
+      - F3 verification: zero remaining stale current-behavior claims
+        (only historical-context citations remain)
+    
+    Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+
+M	apps/site/playwright/sample-blocks-drag-handle.spec.ts
+M	apps/site/src/components/EditorShellMount.tsx
+M	docs/audits/screenshots/wave-5-c2-8-drag-modules-mount.png
+M	docs/audits/screenshots/wave-5-c2-9-responsive-fsm-mount.png
+M	docs/audits/screenshots/wave-5-c4-1-note-save-adapter.png
+M	docs/audits/screenshots/wave-5-c4-2-block-registry.png
+M	docs/audits/screenshots/wave-5-c4-3-drag-handle.png
+M	docs/audits/screenshots/wave-5-c4-3-save-indicator.png
+M	docs/audits/screenshots/wave-5-c4-4-save-roundtrip.png
+M	docs/audits/screenshots/wave-5-c4-5-edit-flow-e2e.png
+M	docs/audits/screenshots/wave-6-cf-20b-sample-blocks-grid-layout.png
+M	docs/audits/screenshots/wave-6-hotfix-sample-blocks-edit-loads.png
+M	docs/orchestrator-reflections/2026-05-09-cf-15a-19-retrospective.md
+M	docs/orchestrator-reflections/README.md
+M	packages/editor-shell/CONTRACT.md
+M	packages/editor-shell/src/BlockNodeView.tsx
+M	packages/editor-shell/src/drag-drop/drag-context.tsx
+M	packages/editor-shell/src/drag-drop/use-drag-drop-pipeline.ts
+
+exec
+/bin/bash -lc 'git show --format=fuller --no-ext-diff --find-renames --find-copies --stat c80da74' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+commit c80da74ac71be24dc5ee94da4150291a4dc61a49
+Author:     W_YI <W_YI1223@outlook.com>
+AuthorDate: Sat May 9 13:09:03 2026 -0400
+Commit:     W_YI <W_YI1223@outlook.com>
+CommitDate: Sat May 9 13:09:03 2026 -0400
+
+    Wave 6 cf-20c-2 R3 hotfix — 3 findings (destructive git checkout safety bug + race condition + incomplete doc-drift sweep)
+    
+    codex-pr-reviewer-55 R3 caught 3 findings: 1 High (real safety bug
+    in test code) + 1 Medium (real race condition on rapid drops) + 1
+    Medium (incomplete R2 F4 doc-drift sweep — R2 fixed 2 sites; R3
+    found 4 more on same drift class).
+    
+    F1 (HIGH — destructive git checkout in test code): R2's
+    `restoreSampleBlocksFixture` shelled out to `execSync('git checkout
+    -- ${SAMPLE_BLOCKS_MDX}')` in afterAll. Running the spec silently
+    discarded uncommitted edits to the fixture file — anyone mid-edit on
+    content/notes/sample-blocks/index.mdx lost their work. R3 fix:
+      - test.beforeAll() snapshots the EXACT bytes via readFileSync
+        (committed OR uncommitted)
+      - test.afterAll() restores via writeFileSync (deletes state.json
+        if it didn't exist pre-test)
+      - works whether or not the user has uncommitted edits
+      - never touches git
+    
+    F2 (MEDIUM — race condition on rapid drops): R2 set new
+    `lastDroppedBlockId = newId` immediately while previous
+    `lastDroppedRect` was still live (the new measurement happens 2 rAFs
+    later). For drag → drop → drag → drop sequences within 720ms (faster
+    than DropPulse animation completes), there was a brief frame where
+    the new pulse rendered at the OLD rect.
+    
+    R3 fix:
+      - Pipeline drop-success block clears BOTH lastDroppedBlockId +
+        lastDroppedRect to null AT START (BEFORE 2-rAF re-measure)
+      - Sets BOTH atomically together with `dropEpoch + 1` increment when
+        rect arrives (React 18+ automatic batching ensures single render
+        pass)
+      - NEW state.dropEpoch: number monotonic counter
+      - EditorShellMount.tsx passes key={pipeline.state.dropEpoch} on
+        <DropPulseAtRect> so React unmounts + remounts the animation
+        cleanly across rapid drops; keyframe restarts each drop
+      - editor-shell CONTRACT.md documents dropEpoch as the canonical
+        "rapid-action animation isolation" pattern (cf-20d resize will
+        adopt it)
+    
+    F3 (MEDIUM — incomplete R2 doc-drift sweep): R2 fixed 2 sites then
+    declared done; R3 grep found 4 more on the same drift class. R2
+    reflection had landed "doc-drift sweeps require grep verification"
+    rule — R3 violated it by relying on memory instead of running the
+    grep. R3 fix:
+      - use-drag-drop-pipeline.ts:100 + :179-180: "one rAF" → "2 rAFs";
+        "(opacity 0.28 + grayscale via ...)" → "visibility: hidden +
+        pointer-events: none per ADR-0017 D6 line 247"
+      - BlockNodeView.tsx:99-100: same opacity/grayscale claim → ADR-0017
+        D6 line 247 verbatim
+      - drag-context.tsx:44: same opacity/grayscale claim → R2 F1 fix
+        citation
+      - editor-shell/CONTRACT.md:407: same opacity/grayscale claim →
+        visibility:hidden + line-anchor citation
+      - sample-blocks-drag-handle.spec.ts:165-166: test comment "CSS
+        sets opacity 0.28..." → R2 F1 fix description
+    
+    Historical-context comments (BlockNodeView.css:209-210 explicit
+    "R1 SHIPPED" callout, PR.md historical narrative, reflection text)
+    correctly cite the rejected R1 model and were LEFT alone — these
+    are intentional historical citations, not stale current-behavior
+    claims.
+    
+    Sister-doc updates: editor-shell CONTRACT.md adds dropEpoch pattern
+    documentation as the canonical "rapid-action animation isolation"
+    pattern. apps/site CONTRACT.md and PR.md unchanged for R3 (the F1
+    spec change is internal test infrastructure; not consumer-facing
+    contract).
+    
+    Reflection appended documenting the rule-violation pattern (R2
+    landed "doc-drift sweeps require grep verification" rule then I
+    violated it in R2 by relying on memory). Operational rules landed:
+      1. Tests that touch repository files MUST snapshot bytes; NEVER
+         use git operations (`git checkout`, `git restore`, etc.)
+      2. Doc-drift sweeps require mechanical grep verification (treat
+         zero matches as closure criterion); memory is unreliable
+      3. dropEpoch React-key pattern for rapid-action animation isolation
+      4. Cumulative R-round count signals R0 plan completeness (cf-20c-2
+         R0+R1+R2+R3 = 4 R-rounds)
+    
+    Verification:
+      - 186 editor-shell vitest pass (carried; +0)
+      - 78 apps/site vitest pass | 1 skipped (carried)
+      - 57 Playwright pass | 14 skipped | 0 failed (carried)
+      - 41/41 pnpm check successful
+      - 9 pre-existing lint warnings, 0 errors
+      - size-check: all 416 source files under 500 LOC
+        (use-drag-drop-pipeline.ts 475; pipeline-snapshot.ts 116)
+      - cf-20a chrome single-source preserved
+      - cf-20b R1 mobile inline-style override preserved
+      - F1 verification: zero `execSync` / `git checkout` in spec
+      - F2 verification: dropEpoch wired in pipeline state + key prop
+      - F3 verification: zero remaining stale current-behavior claims
+        (only historical-context citations remain)
+    
+    Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+
+ .../playwright/sample-blocks-drag-handle.spec.ts   |  89 ++++++++++++---------
+ apps/site/src/components/EditorShellMount.tsx      |  31 +++++--
+ .../screenshots/wave-5-c2-8-drag-modules-mount.png | Bin 92310 -> 92432 bytes
+ .../wave-5-c2-9-responsive-fsm-mount.png           | Bin 93290 -> 93352 bytes
+ .../screenshots/wave-5-c4-1-note-save-adapter.png  | Bin 83923 -> 83980 bytes
+ .../screenshots/wave-5-c4-2-block-registry.png     | Bin 83923 -> 83980 bytes
+ .../audits/screenshots/wave-5-c4-3-drag-handle.png | Bin 83923 -> 83980 bytes
+ .../screenshots/wave-5-c4-3-save-indicator.png     | Bin 40223 -> 40180 bytes
+ .../screenshots/wave-5-c4-4-save-roundtrip.png     | Bin 39710 -> 39655 bytes
+ .../screenshots/wave-5-c4-5-edit-flow-e2e.png      | Bin 40757 -> 40705 bytes
+ .../wave-6-cf-20b-sample-blocks-grid-layout.png    | Bin 83923 -> 83980 bytes
+ .../wave-6-hotfix-sample-blocks-edit-loads.png     | Bin 530283 -> 530334 bytes
+ .../2026-05-09-cf-15a-19-retrospective.md          |  28 +++++++
+ docs/orchestrator-reflections/README.md            |   1 +
+ packages/editor-shell/CONTRACT.md                  |  36 +++++++--
+ packages/editor-shell/src/BlockNodeView.tsx        |  15 ++--
+ .../editor-shell/src/drag-drop/drag-context.tsx    |  13 ++-
+ .../src/drag-drop/use-drag-drop-pipeline.ts        |  76 +++++++++++++++---
+ 18 files changed, 220 insertions(+), 69 deletions(-)
+
+codex
+HEAD is `c80da74`, matching the requested hotfix commit. The working tree is clean, and the commit delta is exactly the named 18-file set: 5 source files, 3 markdown docs, and 10 PNG screenshot updates.
+exec
+/bin/bash -lc 'git show --no-ext-diff --find-renames --patch -- apps/site/playwright/sample-blocks-drag-handle.spec.ts' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+commit c80da74ac71be24dc5ee94da4150291a4dc61a49
+Author: W_YI <W_YI1223@outlook.com>
+Date:   Sat May 9 13:09:03 2026 -0400
+
+    Wave 6 cf-20c-2 R3 hotfix — 3 findings (destructive git checkout safety bug + race condition + incomplete doc-drift sweep)
+    
+    codex-pr-reviewer-55 R3 caught 3 findings: 1 High (real safety bug
+    in test code) + 1 Medium (real race condition on rapid drops) + 1
+    Medium (incomplete R2 F4 doc-drift sweep — R2 fixed 2 sites; R3
+    found 4 more on same drift class).
+    
+    F1 (HIGH — destructive git checkout in test code): R2's
+    `restoreSampleBlocksFixture` shelled out to `execSync('git checkout
+    -- ${SAMPLE_BLOCKS_MDX}')` in afterAll. Running the spec silently
+    discarded uncommitted edits to the fixture file — anyone mid-edit on
+    content/notes/sample-blocks/index.mdx lost their work. R3 fix:
+      - test.beforeAll() snapshots the EXACT bytes via readFileSync
+        (committed OR uncommitted)
+      - test.afterAll() restores via writeFileSync (deletes state.json
+        if it didn't exist pre-test)
+      - works whether or not the user has uncommitted edits
+      - never touches git
+    
+    F2 (MEDIUM — race condition on rapid drops): R2 set new
+    `lastDroppedBlockId = newId` immediately while previous
+    `lastDroppedRect` was still live (the new measurement happens 2 rAFs
+    later). For drag → drop → drag → drop sequences within 720ms (faster
+    than DropPulse animation completes), there was a brief frame where
+    the new pulse rendered at the OLD rect.
+    
+    R3 fix:
+      - Pipeline drop-success block clears BOTH lastDroppedBlockId +
+        lastDroppedRect to null AT START (BEFORE 2-rAF re-measure)
+      - Sets BOTH atomically together with `dropEpoch + 1` increment when
+        rect arrives (React 18+ automatic batching ensures single render
+        pass)
+      - NEW state.dropEpoch: number monotonic counter
+      - EditorShellMount.tsx passes key={pipeline.state.dropEpoch} on
+        <DropPulseAtRect> so React unmounts + remounts the animation
+        cleanly across rapid drops; keyframe restarts each drop
+      - editor-shell CONTRACT.md documents dropEpoch as the canonical
+        "rapid-action animation isolation" pattern (cf-20d resize will
+        adopt it)
+    
+    F3 (MEDIUM — incomplete R2 doc-drift sweep): R2 fixed 2 sites then
+    declared done; R3 grep found 4 more on the same drift class. R2
+    reflection had landed "doc-drift sweeps require grep verification"
+    rule — R3 violated it by relying on memory instead of running the
+    grep. R3 fix:
+      - use-drag-drop-pipeline.ts:100 + :179-180: "one rAF" → "2 rAFs";
+        "(opacity 0.28 + grayscale via ...)" → "visibility: hidden +
+        pointer-events: none per ADR-0017 D6 line 247"
+      - BlockNodeView.tsx:99-100: same opacity/grayscale claim → ADR-0017
+        D6 line 247 verbatim
+      - drag-context.tsx:44: same opacity/grayscale claim → R2 F1 fix
+        citation
+      - editor-shell/CONTRACT.md:407: same opacity/grayscale claim →
+        visibility:hidden + line-anchor citation
+      - sample-blocks-drag-handle.spec.ts:165-166: test comment "CSS
+        sets opacity 0.28..." → R2 F1 fix description
+    
+    Historical-context comments (BlockNodeView.css:209-210 explicit
+    "R1 SHIPPED" callout, PR.md historical narrative, reflection text)
+    correctly cite the rejected R1 model and were LEFT alone — these
+    are intentional historical citations, not stale current-behavior
+    claims.
+    
+    Sister-doc updates: editor-shell CONTRACT.md adds dropEpoch pattern
+    documentation as the canonical "rapid-action animation isolation"
+    pattern. apps/site CONTRACT.md and PR.md unchanged for R3 (the F1
+    spec change is internal test infrastructure; not consumer-facing
+    contract).
+    
+    Reflection appended documenting the rule-violation pattern (R2
+    landed "doc-drift sweeps require grep verification" rule then I
+    violated it in R2 by relying on memory). Operational rules landed:
+      1. Tests that touch repository files MUST snapshot bytes; NEVER
+         use git operations (`git checkout`, `git restore`, etc.)
+      2. Doc-drift sweeps require mechanical grep verification (treat
+         zero matches as closure criterion); memory is unreliable
+      3. dropEpoch React-key pattern for rapid-action animation isolation
+      4. Cumulative R-round count signals R0 plan completeness (cf-20c-2
+         R0+R1+R2+R3 = 4 R-rounds)
+    
+    Verification:
+      - 186 editor-shell vitest pass (carried; +0)
+      - 78 apps/site vitest pass | 1 skipped (carried)
+      - 57 Playwright pass | 14 skipped | 0 failed (carried)
+      - 41/41 pnpm check successful
+      - 9 pre-existing lint warnings, 0 errors
+      - size-check: all 416 source files under 500 LOC
+        (use-drag-drop-pipeline.ts 475; pipeline-snapshot.ts 116)
+      - cf-20a chrome single-source preserved
+      - cf-20b R1 mobile inline-style override preserved
+      - F1 verification: zero `execSync` / `git checkout` in spec
+      - F2 verification: dropEpoch wired in pipeline state + key prop
+      - F3 verification: zero remaining stale current-behavior claims
+        (only historical-context citations remain)
+    
+    Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+
+diff --git a/apps/site/playwright/sample-blocks-drag-handle.spec.ts b/apps/site/playwright/sample-blocks-drag-handle.spec.ts
+index f0b8cf7..bfa04c6 100644
+--- a/apps/site/playwright/sample-blocks-drag-handle.spec.ts
++++ b/apps/site/playwright/sample-blocks-drag-handle.spec.ts
+@@ -1,22 +1,30 @@
+-import { execSync } from 'node:child_process';
+-import { existsSync, unlinkSync } from 'node:fs';
++import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+ import { resolve } from 'node:path';
+ 
+ import { expect, test } from '@playwright/test';
+ 
+ /**
+- * Wave 6 cf-20c-2 R2 fixture-isolation hook (2026-05-09).
++ * Wave 6 cf-20c-2 R3 F1 fix (2026-05-09) — byte-snapshot fixture
++ * isolation (replaces R2's destructive `git checkout` model).
+  *
+  * Pre-R2 the F4 terminal-drop test mutated `content/notes/sample-blocks/index.mdx`
+  * via the cf-20c-2 wire's setNodeMarkup → tiptapToMdx → ApiAdapter.save
+- * → file write chain. Subsequent test runs saw the post-mutation
+- * baseline and the strict `7 / span 6` assertion failed because the
+- * algebra computed against the mutated `4 / span 3` source baseline.
++ * → file write chain. R2 added `test.afterAll(restoreSampleBlocksFixture)`
++ * which shelled out to `git checkout -- <path>`. codex-pr-reviewer-55
++ * R3 F1 caught this as a real safety bug: running the spec
++ * **silently discards uncommitted edits** to the fixture file —
++ * anyone mid-edit on `sample-blocks/index.mdx` loses their work.
+  *
+- * Reset before terminal-drop tests:
+- *   - `git checkout` the MDX file to restore baseline
+- *   - delete the `state.json` sidecar so ApiAdapter.load() returns null
+- *     (forces seed from the freshly-restored MDX file's body)
++ * R3 fix (per reviewer's recommendation): snapshot the EXACT bytes
++ * the file had at `beforeAll` time, restore those bytes at
++ * `afterAll`. Works whether or not the user has uncommitted edits;
++ * doesn't touch git.
++ *
++ * Operational rule landed (cf-20c-2 R3 reflection): tests that touch
++ * repository files MUST snapshot bytes pre-mutation; never use
++ * destructive git operations (`git checkout`, `git restore`,
++ * `git reset --hard`) in test code. Adding to the standard
++ * pre-dispatch checklist for any spec that triggers fs writes.
+  */
+ const SAMPLE_BLOCKS_MDX = resolve(
+   process.cwd(),
+@@ -27,34 +35,38 @@ const SAMPLE_BLOCKS_STATE = resolve(
+   '../../content/notes/sample-blocks/state.json',
+ );
+ 
++let originalMdxBytes: string | null = null;
++let originalStateBytes: string | null = null;
++
++test.beforeAll(() => {
++  // Snapshot the fixture's EXACT bytes (whatever the user has on
++  // disk — committed or not). Restore-after-test uses these snapshots
++  // so the test's mutation is invisible to anyone watching the file.
++  originalMdxBytes = readFileSync(SAMPLE_BLOCKS_MDX, 'utf8');
++  originalStateBytes = existsSync(SAMPLE_BLOCKS_STATE)
++    ? readFileSync(SAMPLE_BLOCKS_STATE, 'utf8')
++    : null;
++});
++
++/**
++ * Restore the snapshotted fixture bytes. Called both per-test (the F4
++ * terminal-drop test triggers the mutation; the test calls this BEFORE
++ * starting so prior runs in the same Playwright session don't leave
++ * a mutated baseline that breaks the strict `1 / span 12` initial
++ * assertion) AND in afterAll (cross-spec isolation: other spec files
++ * see clean fixture).
++ */
+ function restoreSampleBlocksFixture(): void {
+-  // Reset the MDX file to the git-tracked baseline. Use `git checkout --`
+-  // which is idempotent + safe even when the file is unmodified.
+-  try {
+-    execSync(`git checkout -- ${JSON.stringify(SAMPLE_BLOCKS_MDX)}`, {
+-      cwd: resolve(process.cwd(), '../..'),
+-      stdio: 'pipe',
+-    });
+-  } catch {
+-    // git not available OR file not tracked; ignore (test will fail
+-    // downstream if the MDX is genuinely missing).
++  if (originalMdxBytes !== null) {
++    writeFileSync(SAMPLE_BLOCKS_MDX, originalMdxBytes, 'utf8');
+   }
+-  // Delete the state.json sidecar so the API adapter doesn't replay
+-  // a prior-run mutated state.
+-  if (existsSync(SAMPLE_BLOCKS_STATE)) {
++  if (originalStateBytes !== null) {
++    writeFileSync(SAMPLE_BLOCKS_STATE, originalStateBytes, 'utf8');
++  } else if (existsSync(SAMPLE_BLOCKS_STATE)) {
+     unlinkSync(SAMPLE_BLOCKS_STATE);
+   }
+ }
+ 
+-/**
+- * Wave 6 cf-20c-2 R2 cross-spec isolation. The F4 test mutates the
+- * sample-blocks MDX file via ApiAdapter.save → file write at the
+- * server endpoint (`/api/notes/sample-blocks`). Without afterAll
+- * cleanup, OTHER spec files (`sample-blocks-grid-layout.spec.ts`
+- * etc.) inherit the mutated baseline and fail their `colSpan=12`
+- * assertions. afterAll restores the file system to the git baseline
+- * so cross-spec test order is irrelevant.
+- */
+ test.afterAll(() => {
+   restoreSampleBlocksFixture();
+ });
+@@ -158,19 +170,24 @@ test('sample-blocks edit route — cf-20c-2 drag-handle wire (button + outline +
+ test('cf-20c-2 R1 F1 — source-lift visual: dragstart applies .skb-block-nodeview--dragging-self to source NodeView only (ADR-0017 D6)', async ({
+   page,
+ }) => {
+-  // Wave 6 cf-20c-2 R1 F1 lock — codex-pr-reviewer-55 R1 F1 caught
++  // Wave 6 cf-20c-2 R2 F1 lock — codex-pr-reviewer-55 R1 F1 caught
+   // that ADR-0017 D6 source-lift was missing. The pipeline now
+   // exposes `sourceBlockId` via DragDropContext; BlockNodeView reads
+   // it and applies `.skb-block-nodeview--dragging-self` modifier
+-  // class when its own block id matches. CSS sets opacity 0.28 +
+-  // grayscale 0.4 + dashed outline + pointer-events: none.
++  // class when its own block id matches. CSS sets `visibility:
++  // hidden + pointer-events: none` per ADR-0017 D6 line 247 verbatim
++  // (R2 F1 fix; replaces R1's v2-demo opacity/grayscale model that
++  // D6 line 255 explicitly rejects).
+   //
+   // Three structural assertions:
+   //  (a) Pre-drag: NO `.skb-block-nodeview--dragging-self` anywhere
+   //      (steady-state baseline).
+   //  (b) Post-dragstart: EXACTLY 1 `.skb-block-nodeview--dragging-self`
+   //      AND it's the wrapper whose drag-handle was clicked (proves
+-  //      sourceBlockId routing through context is correct).
++  //      sourceBlockId routing through context is correct), AND
++  //      computed `visibility === 'hidden'` + `pointer-events === 'none'`
++  //      (proves the CSS rule from ADR-0017 D6 line 247 is the one
++  //      applied — catches future regressions to opacity-based fades).
+   //  (c) Post-cancel: 0 `.skb-block-nodeview--dragging-self` again
+   //      (proves sourceBlockId resets to null on terminal action).
+   //
+
+exec
+/bin/bash -lc 'git show --no-ext-diff --find-renames --patch -- packages/editor-shell/src/drag-drop/use-drag-drop-pipeline.ts' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+commit c80da74ac71be24dc5ee94da4150291a4dc61a49
+Author: W_YI <W_YI1223@outlook.com>
+Date:   Sat May 9 13:09:03 2026 -0400
+
+    Wave 6 cf-20c-2 R3 hotfix — 3 findings (destructive git checkout safety bug + race condition + incomplete doc-drift sweep)
+    
+    codex-pr-reviewer-55 R3 caught 3 findings: 1 High (real safety bug
+    in test code) + 1 Medium (real race condition on rapid drops) + 1
+    Medium (incomplete R2 F4 doc-drift sweep — R2 fixed 2 sites; R3
+    found 4 more on same drift class).
+    
+    F1 (HIGH — destructive git checkout in test code): R2's
+    `restoreSampleBlocksFixture` shelled out to `execSync('git checkout
+    -- ${SAMPLE_BLOCKS_MDX}')` in afterAll. Running the spec silently
+    discarded uncommitted edits to the fixture file — anyone mid-edit on
+    content/notes/sample-blocks/index.mdx lost their work. R3 fix:
+      - test.beforeAll() snapshots the EXACT bytes via readFileSync
+        (committed OR uncommitted)
+      - test.afterAll() restores via writeFileSync (deletes state.json
+        if it didn't exist pre-test)
+      - works whether or not the user has uncommitted edits
+      - never touches git
+    
+    F2 (MEDIUM — race condition on rapid drops): R2 set new
+    `lastDroppedBlockId = newId` immediately while previous
+    `lastDroppedRect` was still live (the new measurement happens 2 rAFs
+    later). For drag → drop → drag → drop sequences within 720ms (faster
+    than DropPulse animation completes), there was a brief frame where
+    the new pulse rendered at the OLD rect.
+    
+    R3 fix:
+      - Pipeline drop-success block clears BOTH lastDroppedBlockId +
+        lastDroppedRect to null AT START (BEFORE 2-rAF re-measure)
+      - Sets BOTH atomically together with `dropEpoch + 1` increment when
+        rect arrives (React 18+ automatic batching ensures single render
+        pass)
+      - NEW state.dropEpoch: number monotonic counter
+      - EditorShellMount.tsx passes key={pipeline.state.dropEpoch} on
+        <DropPulseAtRect> so React unmounts + remounts the animation
+        cleanly across rapid drops; keyframe restarts each drop
+      - editor-shell CONTRACT.md documents dropEpoch as the canonical
+        "rapid-action animation isolation" pattern (cf-20d resize will
+        adopt it)
+    
+    F3 (MEDIUM — incomplete R2 doc-drift sweep): R2 fixed 2 sites then
+    declared done; R3 grep found 4 more on the same drift class. R2
+    reflection had landed "doc-drift sweeps require grep verification"
+    rule — R3 violated it by relying on memory instead of running the
+    grep. R3 fix:
+      - use-drag-drop-pipeline.ts:100 + :179-180: "one rAF" → "2 rAFs";
+        "(opacity 0.28 + grayscale via ...)" → "visibility: hidden +
+        pointer-events: none per ADR-0017 D6 line 247"
+      - BlockNodeView.tsx:99-100: same opacity/grayscale claim → ADR-0017
+        D6 line 247 verbatim
+      - drag-context.tsx:44: same opacity/grayscale claim → R2 F1 fix
+        citation
+      - editor-shell/CONTRACT.md:407: same opacity/grayscale claim →
+        visibility:hidden + line-anchor citation
+      - sample-blocks-drag-handle.spec.ts:165-166: test comment "CSS
+        sets opacity 0.28..." → R2 F1 fix description
+    
+    Historical-context comments (BlockNodeView.css:209-210 explicit
+    "R1 SHIPPED" callout, PR.md historical narrative, reflection text)
+    correctly cite the rejected R1 model and were LEFT alone — these
+    are intentional historical citations, not stale current-behavior
+    claims.
+    
+    Sister-doc updates: editor-shell CONTRACT.md adds dropEpoch pattern
+    documentation as the canonical "rapid-action animation isolation"
+    pattern. apps/site CONTRACT.md and PR.md unchanged for R3 (the F1
+    spec change is internal test infrastructure; not consumer-facing
+    contract).
+    
+    Reflection appended documenting the rule-violation pattern (R2
+    landed "doc-drift sweeps require grep verification" rule then I
+    violated it in R2 by relying on memory). Operational rules landed:
+      1. Tests that touch repository files MUST snapshot bytes; NEVER
+         use git operations (`git checkout`, `git restore`, etc.)
+      2. Doc-drift sweeps require mechanical grep verification (treat
+         zero matches as closure criterion); memory is unreliable
+      3. dropEpoch React-key pattern for rapid-action animation isolation
+      4. Cumulative R-round count signals R0 plan completeness (cf-20c-2
+         R0+R1+R2+R3 = 4 R-rounds)
+    
+    Verification:
+      - 186 editor-shell vitest pass (carried; +0)
+      - 78 apps/site vitest pass | 1 skipped (carried)
+      - 57 Playwright pass | 14 skipped | 0 failed (carried)
+      - 41/41 pnpm check successful
+      - 9 pre-existing lint warnings, 0 errors
+      - size-check: all 416 source files under 500 LOC
+        (use-drag-drop-pipeline.ts 475; pipeline-snapshot.ts 116)
+      - cf-20a chrome single-source preserved
+      - cf-20b R1 mobile inline-style override preserved
+      - F1 verification: zero `execSync` / `git checkout` in spec
+      - F2 verification: dropEpoch wired in pipeline state + key prop
+      - F3 verification: zero remaining stale current-behavior claims
+        (only historical-context citations remain)
+    
+    Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+
+diff --git a/packages/editor-shell/src/drag-drop/use-drag-drop-pipeline.ts b/packages/editor-shell/src/drag-drop/use-drag-drop-pipeline.ts
+index 61aad50..a4eac72 100644
+--- a/packages/editor-shell/src/drag-drop/use-drag-drop-pipeline.ts
++++ b/packages/editor-shell/src/drag-drop/use-drag-drop-pipeline.ts
+@@ -97,10 +97,28 @@ export interface PipelineDragState {
+    * SNAPSHOT rect (source's pre-drag position) which is wrong per
+    * D11. R2 pipeline re-measures the source NodeView via
+    * `editor.view.nodeDOM(livePos).getBoundingClientRect()` AFTER
+-   * the Tiptap setNodeMarkup batch commits + one rAF for layout
+-   * settle. null when no recent drop.
++   * the Tiptap setNodeMarkup batch commits + 2 rAFs for React
++   * commit + browser layout settle. null when no recent drop.
+    */
+   readonly lastDroppedRect: DOMRectReadOnly | null;
++  /**
++   * Wave 6 cf-20c-2 R3 F2 fix (2026-05-09) — monotonic counter
++   * incremented each time `lastDroppedBlockId` is set on
++   * drag-end-success. Consumers use this as a React `key` prop on the
++   * <DropPulseAtRect> mount so the animation remounts cleanly across
++   * rapid drops (drag → drop → drag → drop within 720ms faster than
++   * the prior pulse animation completes). Without the key, React's
++   * reconciliation reuses the prior <DropPulse> instance and the
++   * 720ms keyframe doesn't restart, producing a half-faded pulse on
++   * the new landed position. With `key={dropEpoch}`, React unmounts
++   * the prior pulse + mounts a fresh one at the new rect.
++   *
++   * Operational rule landed (cf-20c-2 R3 reflection): the dropEpoch
++   * pattern is the canonical "rapid-action animation isolation"
++   * pattern. cf-20d resize will adopt the same pattern for its own
++   * resize-success pulse.
++   */
++  readonly dropEpoch: number;
+ }
+ 
+ export interface UseDragDropPipelineOptions {
+@@ -153,9 +171,14 @@ export function useDragDropPipeline(
+   // Wave 6 cf-20c-2 R2 F2 — landed-position rect for DropPulse
+   // anchoring per ADR-0017 D11 line 344. Set post-drop by re-
+   // measuring the source NodeView at its NEW grid position; null
+-  // until a successful drop AND the rAF after Tiptap setNodeMarkup
++  // until a successful drop AND the 2 rAFs after Tiptap setNodeMarkup
+   // commits.
+   const [lastDroppedRect, setLastDroppedRect] = useState<DOMRectReadOnly | null>(null);
++  // Wave 6 cf-20c-2 R3 F2 — monotonic drop epoch for React key-based
++  // animation remount across rapid drops. Increments each time
++  // lastDroppedBlockId transitions from null → blockId. See PipelineDragState
++  // JSDoc above for the full rationale.
++  const [dropEpoch, setDropEpoch] = useState(0);
+ 
+   // Snapshot refs (preserved across renders; not state because
+   // changing them shouldn't trigger re-render).
+@@ -176,10 +199,15 @@ export function useDragDropPipeline(
+       // onto themselves at the lifted position — meaningless mode).
+       // Pre-R1 edges included the source; tiebreak still produced a
+       // hit when the cursor returned to the source position. The
+-      // source-lift visual on the source NodeView (opacity 0.28 +
+-      // grayscale via .skb-block-nodeview--dragging-self CSS class) is
+-      // applied separately via DragDropContext.sourceBlockId →
+-      // BlockNodeView CSS class binding.
++      // source-lift visual on the source NodeView
++      // (`visibility: hidden + pointer-events: none` per ADR-0017 D6
++      // line 247 verbatim, applied via the
++      // `.skb-block-nodeview--dragging-self` CSS class — see
++      // `BlockNodeView.css` for the rule + cf-20c-2 R2 F1 fix
++      // rationale that replaced R1's v2-demo opacity/grayscale model
++      // which D6 line 255 explicitly rejects) is applied separately
++      // via DragDropContext.sourceBlockId → BlockNodeView CSS class
++      // binding.
+       const layouts: BlockLayout[] = blocks
+         .filter((b) => b.id !== blockId)
+         .map((b) => {
+@@ -335,7 +363,27 @@ export function useDragDropPipeline(
+         })),
+       };
+       dispatchLayout({ type: 'drag-end-success', mutation: reducerSnapshot });
+-      setLastDroppedBlockId(sourceBlockId);
++      // Wave 6 cf-20c-2 R3 F2 fix (2026-05-09) — atomic clear of
++      // prior drop state BEFORE the new measurement starts. Pre-R3
++      // the pipeline set the new lastDroppedBlockId immediately while
++      // the prior lastDroppedRect was still live (the new measurement
++      // happens 2 rAFs later). For rapid drops within 720ms (faster
++      // than DropPulse animation completes), there was a brief frame
++      // where the new pulse rendered at the OLD rect — visual
++      // misalignment.
++      //
++      // R3 fix sequence:
++      //   1. Clear both fields atomically (setLastDroppedBlockId(null)
++      //      + setLastDroppedRect(null)) so any pulse rendered between
++      //      now and the 2-rAF measure doesn't have stale state to
++      //      anchor at. Plus increment dropEpoch so the consumer's
++      //      <DropPulseAtRect key={dropEpoch}> remounts cleanly.
++      //   2. Wait 2 rAFs (React commit + browser layout per R2 F2).
++      //   3. Set both fields atomically with the new blockId AND the
++      //      freshly-measured rect — single state update batches the
++      //      re-render so consumer never sees blockId-without-rect.
++      setLastDroppedBlockId(null);
++      setLastDroppedRect(null);
+       // Wave 6 cf-20c-2 R2 F2 fix — re-measure the source NodeView at
+       // its NEW grid position and store the rect so the consumer's
+       // <DropPulseAtRect> mounts at the LANDED position per ADR-0017
+@@ -350,9 +398,9 @@ export function useDragDropPipeline(
+       // TWO rAFs:
+       //   - rAF 1: React commit cycle (NodeView re-renders with new attrs)
+       //   - rAF 2: browser layout pass post-DOM-mutation
+-      // One rAF is insufficient (verified empirically: cf-20c-2 R2
+-      // probe with single rAF measured the pre-drop full-width rect,
+-      // not the post-drop half-width landed rect). Two rAFs is the
++      // Single rAF is insufficient (verified empirically at cf-20c-2 R2:
++      // probe with one rAF measured the pre-drop full-width rect, not
++      // the post-drop half-width landed rect). Two rAFs is the
+       // standard "wait for next paint" idiom in browser DnD code.
+       if (didMutate) {
+         requestAnimationFrame(() => {
+@@ -365,7 +413,12 @@ export function useDragDropPipeline(
+             if (!newSourceLive) return;
+             const dom = editor.view.nodeDOM(newSourceLive.pos);
+             if (dom instanceof HTMLElement) {
++              // R3 F2: set blockId + rect together; React batches
++              // these into a single render pass within the same
++              // synchronous block (React 18+ automatic batching).
++              setLastDroppedBlockId(sourceBlockId);
+               setLastDroppedRect(dom.getBoundingClientRect());
++              setDropEpoch((prev) => prev + 1);
+             }
+           });
+         });
+@@ -412,6 +465,7 @@ export function useDragDropPipeline(
+       sourceBlockId,
+       lastDroppedBlockId,
+       lastDroppedRect,
++      dropEpoch,
+     },
+     layoutState,
+     onDragStart,
+
+exec
+/bin/bash -lc 'git show --no-ext-diff --find-renames --patch -- apps/site/src/components/EditorShellMount.tsx' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+commit c80da74ac71be24dc5ee94da4150291a4dc61a49
+Author: W_YI <W_YI1223@outlook.com>
+Date:   Sat May 9 13:09:03 2026 -0400
+
+    Wave 6 cf-20c-2 R3 hotfix — 3 findings (destructive git checkout safety bug + race condition + incomplete doc-drift sweep)
+    
+    codex-pr-reviewer-55 R3 caught 3 findings: 1 High (real safety bug
+    in test code) + 1 Medium (real race condition on rapid drops) + 1
+    Medium (incomplete R2 F4 doc-drift sweep — R2 fixed 2 sites; R3
+    found 4 more on same drift class).
+    
+    F1 (HIGH — destructive git checkout in test code): R2's
+    `restoreSampleBlocksFixture` shelled out to `execSync('git checkout
+    -- ${SAMPLE_BLOCKS_MDX}')` in afterAll. Running the spec silently
+    discarded uncommitted edits to the fixture file — anyone mid-edit on
+    content/notes/sample-blocks/index.mdx lost their work. R3 fix:
+      - test.beforeAll() snapshots the EXACT bytes via readFileSync
+        (committed OR uncommitted)
+      - test.afterAll() restores via writeFileSync (deletes state.json
+        if it didn't exist pre-test)
+      - works whether or not the user has uncommitted edits
+      - never touches git
+    
+    F2 (MEDIUM — race condition on rapid drops): R2 set new
+    `lastDroppedBlockId = newId` immediately while previous
+    `lastDroppedRect` was still live (the new measurement happens 2 rAFs
+    later). For drag → drop → drag → drop sequences within 720ms (faster
+    than DropPulse animation completes), there was a brief frame where
+    the new pulse rendered at the OLD rect.
+    
+    R3 fix:
+      - Pipeline drop-success block clears BOTH lastDroppedBlockId +
+        lastDroppedRect to null AT START (BEFORE 2-rAF re-measure)
+      - Sets BOTH atomically together with `dropEpoch + 1` increment when
+        rect arrives (React 18+ automatic batching ensures single render
+        pass)
+      - NEW state.dropEpoch: number monotonic counter
+      - EditorShellMount.tsx passes key={pipeline.state.dropEpoch} on
+        <DropPulseAtRect> so React unmounts + remounts the animation
+        cleanly across rapid drops; keyframe restarts each drop
+      - editor-shell CONTRACT.md documents dropEpoch as the canonical
+        "rapid-action animation isolation" pattern (cf-20d resize will
+        adopt it)
+    
+    F3 (MEDIUM — incomplete R2 doc-drift sweep): R2 fixed 2 sites then
+    declared done; R3 grep found 4 more on the same drift class. R2
+    reflection had landed "doc-drift sweeps require grep verification"
+    rule — R3 violated it by relying on memory instead of running the
+    grep. R3 fix:
+      - use-drag-drop-pipeline.ts:100 + :179-180: "one rAF" → "2 rAFs";
+        "(opacity 0.28 + grayscale via ...)" → "visibility: hidden +
+        pointer-events: none per ADR-0017 D6 line 247"
+      - BlockNodeView.tsx:99-100: same opacity/grayscale claim → ADR-0017
+        D6 line 247 verbatim
+      - drag-context.tsx:44: same opacity/grayscale claim → R2 F1 fix
+        citation
+      - editor-shell/CONTRACT.md:407: same opacity/grayscale claim →
+        visibility:hidden + line-anchor citation
+      - sample-blocks-drag-handle.spec.ts:165-166: test comment "CSS
+        sets opacity 0.28..." → R2 F1 fix description
+    
+    Historical-context comments (BlockNodeView.css:209-210 explicit
+    "R1 SHIPPED" callout, PR.md historical narrative, reflection text)
+    correctly cite the rejected R1 model and were LEFT alone — these
+    are intentional historical citations, not stale current-behavior
+    claims.
+    
+    Sister-doc updates: editor-shell CONTRACT.md adds dropEpoch pattern
+    documentation as the canonical "rapid-action animation isolation"
+    pattern. apps/site CONTRACT.md and PR.md unchanged for R3 (the F1
+    spec change is internal test infrastructure; not consumer-facing
+    contract).
+    
+    Reflection appended documenting the rule-violation pattern (R2
+    landed "doc-drift sweeps require grep verification" rule then I
+    violated it in R2 by relying on memory). Operational rules landed:
+      1. Tests that touch repository files MUST snapshot bytes; NEVER
+         use git operations (`git checkout`, `git restore`, etc.)
+      2. Doc-drift sweeps require mechanical grep verification (treat
+         zero matches as closure criterion); memory is unreliable
+      3. dropEpoch React-key pattern for rapid-action animation isolation
+      4. Cumulative R-round count signals R0 plan completeness (cf-20c-2
+         R0+R1+R2+R3 = 4 R-rounds)
+    
+    Verification:
+      - 186 editor-shell vitest pass (carried; +0)
+      - 78 apps/site vitest pass | 1 skipped (carried)
+      - 57 Playwright pass | 14 skipped | 0 failed (carried)
+      - 41/41 pnpm check successful
+      - 9 pre-existing lint warnings, 0 errors
+      - size-check: all 416 source files under 500 LOC
+        (use-drag-drop-pipeline.ts 475; pipeline-snapshot.ts 116)
+      - cf-20a chrome single-source preserved
+      - cf-20b R1 mobile inline-style override preserved
+      - F1 verification: zero `execSync` / `git checkout` in spec
+      - F2 verification: dropEpoch wired in pipeline state + key prop
+      - F3 verification: zero remaining stale current-behavior claims
+        (only historical-context citations remain)
+    
+    Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+
+diff --git a/apps/site/src/components/EditorShellMount.tsx b/apps/site/src/components/EditorShellMount.tsx
+index 123d667..036310a 100644
+--- a/apps/site/src/components/EditorShellMount.tsx
++++ b/apps/site/src/components/EditorShellMount.tsx
+@@ -298,18 +298,33 @@ export function EditorShellMount({
+         codex-pr-reviewer-55 R2 F2 caught as a real D11 violation. R2
+         fix: pipeline re-measures the source NodeView at its NEW grid
+         position via `editor.view.nodeDOM(livePos).getBoundingClientRect()`
+-        AFTER Tiptap setNodeMarkup commits + 1 rAF for layout settle,
+-        and exposes the result as `state.lastDroppedRect`. The
+-        consumer renders `<DropPulseAtRect>` only when both
+-        `lastDroppedBlockId !== null` AND `lastDroppedRect !== null`
+-        — the rect dependency means the mount appears one frame after
+-        the BlockId is set (the rAF gap during which the new rect is
+-        being measured). Pulse animates 720ms then onAnimationEnd
+-        fires clearLastDropped() resetting both BlockId + rect.
++        AFTER Tiptap setNodeMarkup commits + 2 rAFs (React commit
++        cycle + browser layout pass), and exposes the result as
++        `state.lastDroppedRect`. The consumer renders <DropPulseAtRect>
++        only when both `lastDroppedBlockId !== null` AND
++        `lastDroppedRect !== null` — the rect dependency means the
++        mount appears 2 frames after the dragend (the rAF window during
++        which the new rect is being measured). Pulse animates 720ms
++        then onAnimationEnd fires clearLastDropped() resetting both
++        BlockId + rect.
++
++        Wave 6 cf-20c-2 R3 F2 fix (2026-05-09) — `key={dropEpoch}`
++        forces React to unmount + remount the <DropPulseAtRect> (and
++        therefore the underlying <DropPulse>) across rapid drops.
++        Pre-R3 React's reconciliation reused the prior <DropPulse>
++        instance when a new drop happened within the 720ms animation
++        window; the keyframe didn't restart, producing a half-faded
++        pulse on the new landed position. With key={dropEpoch}, each
++        successful drop produces a fresh element and a fresh keyframe.
++        See use-drag-drop-pipeline.ts PipelineDragState.dropEpoch
++        JSDoc for the canonical "rapid-action animation isolation"
++        pattern (cf-20d resize will adopt this for its own
++        success-pulse mount).
+       */}
+       {pipeline.state.lastDroppedBlockId !== null &&
+         pipeline.state.lastDroppedRect !== null && (
+           <DropPulseAtRect
++            key={pipeline.state.dropEpoch}
+             rect={pipeline.state.lastDroppedRect}
+             onAnimationEnd={pipeline.clearLastDropped}
+           />
+
+exec
+/bin/bash -lc 'git show --no-ext-diff --find-renames --patch -- packages/editor-shell/src/BlockNodeView.tsx packages/editor-shell/src/drag-drop/drag-context.tsx packages/editor-shell/CONTRACT.md docs/orchestrator-reflections/2026-05-09-cf-15a-19-retrospective.md docs/orchestrator-reflections/README.md' in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+commit c80da74ac71be24dc5ee94da4150291a4dc61a49
+Author: W_YI <W_YI1223@outlook.com>
+Date:   Sat May 9 13:09:03 2026 -0400
+
+    Wave 6 cf-20c-2 R3 hotfix — 3 findings (destructive git checkout safety bug + race condition + incomplete doc-drift sweep)
+    
+    codex-pr-reviewer-55 R3 caught 3 findings: 1 High (real safety bug
+    in test code) + 1 Medium (real race condition on rapid drops) + 1
+    Medium (incomplete R2 F4 doc-drift sweep — R2 fixed 2 sites; R3
+    found 4 more on same drift class).
+    
+    F1 (HIGH — destructive git checkout in test code): R2's
+    `restoreSampleBlocksFixture` shelled out to `execSync('git checkout
+    -- ${SAMPLE_BLOCKS_MDX}')` in afterAll. Running the spec silently
+    discarded uncommitted edits to the fixture file — anyone mid-edit on
+    content/notes/sample-blocks/index.mdx lost their work. R3 fix:
+      - test.beforeAll() snapshots the EXACT bytes via readFileSync
+        (committed OR uncommitted)
+      - test.afterAll() restores via writeFileSync (deletes state.json
+        if it didn't exist pre-test)
+      - works whether or not the user has uncommitted edits
+      - never touches git
+    
+    F2 (MEDIUM — race condition on rapid drops): R2 set new
+    `lastDroppedBlockId = newId` immediately while previous
+    `lastDroppedRect` was still live (the new measurement happens 2 rAFs
+    later). For drag → drop → drag → drop sequences within 720ms (faster
+    than DropPulse animation completes), there was a brief frame where
+    the new pulse rendered at the OLD rect.
+    
+    R3 fix:
+      - Pipeline drop-success block clears BOTH lastDroppedBlockId +
+        lastDroppedRect to null AT START (BEFORE 2-rAF re-measure)
+      - Sets BOTH atomically together with `dropEpoch + 1` increment when
+        rect arrives (React 18+ automatic batching ensures single render
+        pass)
+      - NEW state.dropEpoch: number monotonic counter
+      - EditorShellMount.tsx passes key={pipeline.state.dropEpoch} on
+        <DropPulseAtRect> so React unmounts + remounts the animation
+        cleanly across rapid drops; keyframe restarts each drop
+      - editor-shell CONTRACT.md documents dropEpoch as the canonical
+        "rapid-action animation isolation" pattern (cf-20d resize will
+        adopt it)
+    
+    F3 (MEDIUM — incomplete R2 doc-drift sweep): R2 fixed 2 sites then
+    declared done; R3 grep found 4 more on the same drift class. R2
+    reflection had landed "doc-drift sweeps require grep verification"
+    rule — R3 violated it by relying on memory instead of running the
+    grep. R3 fix:
+      - use-drag-drop-pipeline.ts:100 + :179-180: "one rAF" → "2 rAFs";
+        "(opacity 0.28 + grayscale via ...)" → "visibility: hidden +
+        pointer-events: none per ADR-0017 D6 line 247"
+      - BlockNodeView.tsx:99-100: same opacity/grayscale claim → ADR-0017
+        D6 line 247 verbatim
+      - drag-context.tsx:44: same opacity/grayscale claim → R2 F1 fix
+        citation
+      - editor-shell/CONTRACT.md:407: same opacity/grayscale claim →
+        visibility:hidden + line-anchor citation
+      - sample-blocks-drag-handle.spec.ts:165-166: test comment "CSS
+        sets opacity 0.28..." → R2 F1 fix description
+    
+    Historical-context comments (BlockNodeView.css:209-210 explicit
+    "R1 SHIPPED" callout, PR.md historical narrative, reflection text)
+    correctly cite the rejected R1 model and were LEFT alone — these
+    are intentional historical citations, not stale current-behavior
+    claims.
+    
+    Sister-doc updates: editor-shell CONTRACT.md adds dropEpoch pattern
+    documentation as the canonical "rapid-action animation isolation"
+    pattern. apps/site CONTRACT.md and PR.md unchanged for R3 (the F1
+    spec change is internal test infrastructure; not consumer-facing
+    contract).
+    
+    Reflection appended documenting the rule-violation pattern (R2
+    landed "doc-drift sweeps require grep verification" rule then I
+    violated it in R2 by relying on memory). Operational rules landed:
+      1. Tests that touch repository files MUST snapshot bytes; NEVER
+         use git operations (`git checkout`, `git restore`, etc.)
+      2. Doc-drift sweeps require mechanical grep verification (treat
+         zero matches as closure criterion); memory is unreliable
+      3. dropEpoch React-key pattern for rapid-action animation isolation
+      4. Cumulative R-round count signals R0 plan completeness (cf-20c-2
+         R0+R1+R2+R3 = 4 R-rounds)
+    
+    Verification:
+      - 186 editor-shell vitest pass (carried; +0)
+      - 78 apps/site vitest pass | 1 skipped (carried)
+      - 57 Playwright pass | 14 skipped | 0 failed (carried)
+      - 41/41 pnpm check successful
+      - 9 pre-existing lint warnings, 0 errors
+      - size-check: all 416 source files under 500 LOC
+        (use-drag-drop-pipeline.ts 475; pipeline-snapshot.ts 116)
+      - cf-20a chrome single-source preserved
+      - cf-20b R1 mobile inline-style override preserved
+      - F1 verification: zero `execSync` / `git checkout` in spec
+      - F2 verification: dropEpoch wired in pipeline state + key prop
+      - F3 verification: zero remaining stale current-behavior claims
+        (only historical-context citations remain)
+    
+    Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+
+diff --git a/docs/orchestrator-reflections/2026-05-09-cf-15a-19-retrospective.md b/docs/orchestrator-reflections/2026-05-09-cf-15a-19-retrospective.md
+index 505dd88..2d59eb8 100644
+--- a/docs/orchestrator-reflections/2026-05-09-cf-15a-19-retrospective.md
++++ b/docs/orchestrator-reflections/2026-05-09-cf-15a-19-retrospective.md
+@@ -195,6 +195,34 @@ For acknowledged gaps in PR.md: if I'm about to ship something I know is wrong,
+ 
+ **Bonus surprise (size-check 500 hard limit hit)**: After adding lastDroppedRect handling + 2-rAF post-mutation re-measure, `use-drag-drop-pipeline.ts` reached 508 LOC (8 over 500 hard limit). Extracted snapshot helpers (snapshotBlocks, measureBlockRects, liveBlockPositions, SerializedBlock) into `pipeline-snapshot.ts` — clean split, no API surface change. Lesson: when a feature file approaches 480 LOC, proactively extract sibling modules during the same PR rather than waiting for size-check to fail. Adding to ux-ui-lead's pre-commit checklist.
+ 
++## ux-ui-lead reflection — cf-20c-2 R3 hotfix (3 findings: destructive git checkout safety bug + race condition + incomplete doc-drift sweep) (2026-05-09)
++
++**What I did**: Applied all 3 codex-pr-reviewer-55 R3 findings.
++F1 (HIGH safety bug): replaced R2's destructive `execSync('git checkout -- ${SAMPLE_BLOCKS_MDX}')` in `sample-blocks-drag-handle.spec.ts` afterAll with byte-snapshot model — `test.beforeAll(() => readFileSync(...))` captures the EXACT bytes (committed OR uncommitted), `test.afterAll(() => writeFileSync(originalBytes))` restores them. Anyone mid-edit on the fixture is now safe; the test never touches git.
++F2 (MEDIUM race condition): pipeline drop-success block now (a) clears `lastDroppedBlockId` + `lastDroppedRect` to null AT THE START (BEFORE the 2-rAF re-measure), (b) sets both fields atomically together with `dropEpoch + 1` increment when the rect arrives. New `state.dropEpoch: number` field added to PipelineDragState. EditorShellMount.tsx passes `key={pipeline.state.dropEpoch}` on `<DropPulseAtRect>` so React unmounts + remounts the animation cleanly across rapid drops (drag → drop → drag → drop within 720ms). Documented the dropEpoch pattern in editor-shell CONTRACT.md as the canonical "rapid-action animation isolation" pattern; cf-20d resize will adopt it.
++F3 (MEDIUM doc drift): grep `'opacity 0.28|grayscale|one rAF|single rAF'` across the workspace identified 4 stale current-behavior claims (use-drag-drop-pipeline.ts:100 + :179-180, BlockNodeView.tsx:99-100, drag-context.tsx:44, editor-shell/CONTRACT.md:407, sample-blocks-drag-handle.spec.ts:165-166). All updated to current visibility:hidden + 2-rAF behavior. Historical-context comments (BlockNodeView.css:209-210 "R1 SHIPPED", PR.md `:527`, reflection text) explicitly cite the rejected R1 model and were correctly LEFT alone.
++All 186 + 78 + 57 Playwright pass; 41/41 pnpm check; 0 lint errors; 416 source files all under 500 LOC.
++
++**What surprised me / what I missed**: F1 is the most embarrassing R-round finding so far. I shelled out to `git checkout` in test code WITHOUT considering that running the test discards uncommitted edits. I'd just used the helper's existence to fix R2's cross-spec pollution; never thought about user safety. The reviewer caught it immediately. **Lesson**: any time test code touches the file system, ask "what if a user is mid-edit on this file?". The answer must be "their work survives". `git checkout` / `git restore` / `git reset --hard` ALWAYS fail this safety check; byte snapshots ALWAYS pass it. There's no scenario where git operations in test code are the right answer over `readFileSync`/`writeFileSync`.
++
++F2 race condition: I didn't think about the 720ms window for rapid drops at all. Once the test passed for a single drop I moved on. The reviewer's catch is the kind of subtle multi-action bug that wouldn't show up in a static integration test — it needs a multi-drop replay. Operational rule landed: any animation-driven UI state needs a "rapid double-trigger" mental model, even if the spec only exercises a single trigger. The dropEpoch React-key pattern is now documented; cf-20d will use it.
++
++F3 doc-drift: R2 fixed 2 doc sites; R3 found 4 more on the same drift class. **The R2 reflection landed "doc-drift sweeps require grep verification, not memory" but I didn't actually run the grep at R2 — I fixed the 2 sites the reviewer cited and called it done.** R3 confirms my own R2 rule. Mechanical grep is the only reliable closure criterion for doc-drift sweeps; "I think I got them all" is never enough.
++
++**What I'd do differently**: Run `grep -nE 'old_term1|old_term2|...' <scope>` BEFORE declaring any doc-drift sweep complete. Treat zero matches as the closure criterion. The grep cost is tiny (~1 sec); the prevented R-round cost is ~1 hour. Apply this rule to cf-20d resize PR for any "rename X to Y" or "replace pattern P with Q" sweep.
++
++For F1: pre-stage every test that touches fs through a one-question safety filter — "does this work for users with uncommitted edits?". If the answer is no, byte-snapshot is the only correct pattern. Never `git checkout` in test code.
++
++**Operational rules landed (cf-20c-2 R3 reflection)**:
++
++1. **Tests that touch repository files MUST snapshot bytes, not use git operations** — `git checkout`/`git restore` in test code is destructive to user's working tree. `readFileSync` snapshot pre-mutation + `writeFileSync` restore post-mutation is the bulletproof pattern. Adding to operational rules: any spec that triggers fs writes MUST register `beforeAll(snapshot)` + `afterAll(restore)`.
++
++2. **Doc-drift sweeps require grep verification, not memory** — R2 fixed 2 sites then declared done; R3 found 4 more on the same drift class. Use mechanical `grep -nE 'pattern1|pattern2|pattern3'` across the workspace and treat zero matches as the closure criterion. "I think I got them all" is never enough — even when the prior round explicitly landed the same rule (which R2 did, then R3 violated by not actually running the grep).
++
++3. **Race conditions in stateful animations need an epoch key** — `<Component key={epoch} />` forces React to remount across rapid actions. The `dropEpoch` pattern in cf-20c-2 R3 is the canonical "rapid-action animation isolation" pattern; cf-20d resize will adopt it. Plus: state transitions that span rAF boundaries MUST clear-then-set atomically (clear at start, batch the set at end) to prevent stale values from leaking into intermediate render frames.
++
++**Bonus surprise (cumulative R-round count)**: cf-20c-2 has now had R0 + R1 + R2 + R3 — 4 codex review rounds. Each found real issues (not doc-drift only); the cumulative R-round count is itself a signal that the original R0 plan didn't enumerate enough integration constraints. The cumulative pattern across cf-20a (1 R-round) + cf-20b (R0+R1+R2 = 3) + cf-20c-2 (R0+R1+R2+R3 = 4) suggests R-round count grows with PR complexity (drag/drop > grid > chrome). Honest scope estimate for cf-20d (resize): expect 3-4 R-rounds, plan for them in the orchestrator's wave timeline.
++
+ ## Update 1 (same day) — cf-19.1 dropped, ux-ui-lead's lint claim was wrong
+ 
+ Created `wave-6-cf-19.1-lint-fix-forward` branch to fix the "pre-existing main lint error in `grid-drag-drop.fixtures.ts:26` (`EdgeMode` redundant-type-constituents)" that ux-ui-lead's cf-20 scoping report flagged as a blocker. Ran `pnpm lint` workspace-wide on a clean main checkout: **0 errors, 9 warnings** (all pre-existing console / file-too-long, not blocking). The error ux-ui-lead reported either does not exist on current main, was fixed before this session, or was a stale artifact from an older lint config.
+diff --git a/docs/orchestrator-reflections/README.md b/docs/orchestrator-reflections/README.md
+index 352d9d2..bf5b866 100644
+--- a/docs/orchestrator-reflections/README.md
++++ b/docs/orchestrator-reflections/README.md
+@@ -31,3 +31,4 @@
+   - **ux-ui-lead reflection cf-20c-2 (2026-05-09)** — drag-handle UI + DnD wire; Q7 spike confirmed HTML5 native DnD works inside ProseMirror NodeView contenteditable=false (saved ~150 LOC of pointer-events fallback); React context bridge pattern for "presentational child → distant lifecycle owner"; landed "snapshot at start, mutate at drop, NEVER mid-drag" pattern + happy-dom DnD synthetic event property-presence rule + spike-before-implement rule for any open-question PR
+   - **ux-ui-lead reflection cf-20c-2 R1 hotfix (2026-05-09)** — 4-finding fix (source-lift + DropPulse mount + velocity unit + terminal-drop spec); landed ADR-derived-feature artifact-checklist rule (list ALL D-decision required artifacts before coding) + CONTRACT.md/JSDoc honesty rule (write doc claims AFTER wire verified) + Playwright React-state-driven event-chain rAF timing rule for any chained-event integration test
+   - **ux-ui-lead reflection cf-20c-2 R2 hotfix (2026-05-09)** — 4-finding fix (source-lift visibility-vs-opacity + DropPulse landed-rect + strict assertion + doc drift); landed "ADR > dispatch brief > intuition" rule (when implementing a D-decision, read the ADR text verbatim; the dispatch brief is shorthand) + "never ship code that contradicts PR.md text" rule + cross-spec test fixture isolation rule (any test that writes to fs MUST register afterAll restoration) + proactive 480-LOC sibling extraction rule
++  - **ux-ui-lead reflection cf-20c-2 R3 hotfix (2026-05-09)** — 3-finding fix (destructive `git checkout` safety bug in test code + race condition on rapid drops + incomplete R2 doc-drift sweep); landed "tests that touch repository files MUST snapshot bytes, NEVER use git operations" rule (snapshotBytes is bulletproof; git operations destroy uncommitted user work) + "doc-drift sweeps require mechanical grep verification" rule (R2 violated this same rule R3 catches) + dropEpoch React-key pattern for rapid-action animation isolation (cf-20d resize will reuse) + cumulative-R-round-count signal (cf-20c-2 R0+R1+R2+R3=4 R-rounds suggests R0 plan didn't enumerate enough integration constraints; complexity → R-round count correlation)
+diff --git a/packages/editor-shell/CONTRACT.md b/packages/editor-shell/CONTRACT.md
+index 3491693..22e4f2b 100644
+--- a/packages/editor-shell/CONTRACT.md
++++ b/packages/editor-shell/CONTRACT.md
+@@ -401,13 +401,15 @@ C.2-5 and C.2-8 add the editor-side drag/drop UX primitives under
+   drag-handle button to the lifecycle owner (`useDragDropPipeline()` mounted
+   at `EditorShellMount.tsx`). Provider value: `{ onDragStart(blockId, origin),
+   onDragEnd(origin), sourceBlockId }`. The `sourceBlockId` field
+-  (Wave 6 cf-20c-2 R1 F1 fix 2026-05-09) exposes the currently-lifted
++  (Wave 6 cf-20c-2 R2 F1 fix 2026-05-09) exposes the currently-lifted
+   drag source so `BlockNodeView.tsx` can apply the
+   `.skb-block-nodeview--dragging-self` modifier class for the ADR-0017
+-  D6 source-lift visual (opacity 0.28 + grayscale 0.4 per
+-  `/mnt/d/download/web/v2-styles.css:218-226`); null = no active drag
+-  (steady state). Default context value null = degraded mode (button
+-  renders, drag callbacks no-op, no lift).
++  D6 line 247 source-lift visual (`visibility: hidden +
++  pointer-events: none + transition: none` — preserves grid layout
++  space while hiding the visual; replaces R1's v2-demo opacity +
++  grayscale model that ADR-0017 D6 line 255 explicitly rejects); null
++  = no active drag (steady state). Default context value null =
++  degraded mode (button renders, drag callbacks no-op, no lift).
+ - `useDragDropPipeline({editor, gridSelector?})` (Wave 6 cf-20c-2) — drag/drop
+   lifecycle owner hook. Composes the existing primitives (snapshot,
+   edge-rects, tiebreak, `applyDropMode`, layoutReducer, OutlineOverlay,
+@@ -450,6 +452,30 @@ C.2-5 and C.2-8 add the editor-side drag/drop UX primitives under
+   位置 + outline fade-out 完成"). Pre-R2 the consumer used the
+   snapshotted rect (pre-drag full-width source position) which
+   produced a pulse at the wrong location.
++- **Rapid-action animation isolation pattern (cf-20c-2 R3 F2 fix
++  2026-05-09)** — `useDragDropPipeline` exposes a monotonic
++  `state.dropEpoch: number` counter incremented each successful drop.
++  Consumers MUST pass `key={pipeline.state.dropEpoch}` on the
++  `<DropPulseAtRect>` (or any animation component driven by
++  `lastDroppedBlockId` / `lastDroppedRect`) so React unmounts +
++  remounts the animation cleanly across rapid drops. Pre-R3 a drag →
++  drop → drag → drop sequence within 720ms (faster than the prior
++  pulse animation) produced a stale half-faded pulse at the new
++  landed position because React's reconciliation reused the prior
++  `<DropPulse>` instance and the keyframe didn't restart. The
++  `dropEpoch` key is the canonical "rapid-action animation isolation"
++  pattern; cf-20d resize will adopt it for its own success-pulse
++  mount.
++
++  Atomic state transitions (cf-20c-2 R3 F2): the pipeline ALSO clears
++  `lastDroppedBlockId` + `lastDroppedRect` to null AT THE START of
++  the drop handler (BEFORE the 2-rAF re-measure scheduling), then
++  sets both fields atomically together with the new `dropEpoch + 1`
++  value when the rect measurement completes. Consumers should NEVER
++  see a state where `lastDroppedBlockId !== null && lastDroppedRect
++  === null` — the conditional render `lastDroppedBlockId !== null &&
++  lastDroppedRect !== null` is defense-in-depth against any future
++  pipeline bug that breaks the atomic invariant.
+ 
+ Drag/drop edge-width is coupled to grid `--gap` via `EDGE_W = 2 * GAP`.
+ `EDGE_W = 28` and `GAP = 14` ensure the 14px gap between adjacent blocks is
+diff --git a/packages/editor-shell/src/BlockNodeView.tsx b/packages/editor-shell/src/BlockNodeView.tsx
+index 9c7ae7e..f0daf33 100644
+--- a/packages/editor-shell/src/BlockNodeView.tsx
++++ b/packages/editor-shell/src/BlockNodeView.tsx
+@@ -93,11 +93,16 @@ function blockIdFromProps(props: ReactNodeViewProps): string {
+ }
+ 
+ /**
+- * Wave 6 cf-20c-2 R1 F1 — compose className from base + draggingSelf
+- * + unregistered modifiers. Per ADR-0017 D6 source-lift, the source
+- * NodeView gets `.skb-block-nodeview--dragging-self` during active
+- * drag (CSS rule in BlockNodeView.css applies opacity 0.28 +
+- * grayscale 0.4 per `/mnt/d/download/web/v2-styles.css:218-226`).
++ * Wave 6 cf-20c-2 R2 F1 — compose className from base + draggingSelf
++ * + unregistered modifiers. Per ADR-0017 D6 line 247 source-lift, the
++ * source NodeView gets `.skb-block-nodeview--dragging-self` during
++ * active drag (CSS rule in BlockNodeView.css applies
++ * `visibility: hidden + pointer-events: none + transition: none`,
++ * which preserves grid layout space while hiding the visual; the
++ * earlier R1 v2-demo opacity/grayscale model was rejected by
++ * codex-pr-reviewer-55 R2 F1 per ADR-0017 D6 line 255 explicit
++ * rejection — see BlockNodeView.css source-lift rule comment for
++ * the visibility-vs-display-none rationale).
+  */
+ function nodeViewClassName(isDraggingSelf: boolean, isUnregistered: boolean): string {
+   const parts = ['skb-block-nodeview'];
+diff --git a/packages/editor-shell/src/drag-drop/drag-context.tsx b/packages/editor-shell/src/drag-drop/drag-context.tsx
+index ddd0660..932ec0a 100644
+--- a/packages/editor-shell/src/drag-drop/drag-context.tsx
++++ b/packages/editor-shell/src/drag-drop/drag-context.tsx
+@@ -38,11 +38,16 @@ export interface DragDropContextValue {
+   /** Called from the per-block drag-handle button's dragend handler. */
+   readonly onDragEnd: (origin: DragHandleEndOrigin) => void;
+   /**
+-   * Wave 6 cf-20c-2 R1 F1 — currently-lifted source block ID.
++   * Wave 6 cf-20c-2 R2 F1 — currently-lifted source block ID.
+    *
+-   * Per ADR-0017 D6 source-lift: during an active drag, the source
+-   * NodeView visually "lifts" (opacity 0.28, grayscale 0.4 per
+-   * `/mnt/d/download/web/v2-styles.css:218-226 .gblock.dragging-self`).
++   * Per ADR-0017 D6 line 247 verbatim source-lift: during an active
++   * drag, the source NodeView visually "lifts" via
++   * `visibility: hidden + pointer-events: none` (preserves grid layout
++   * space, hides the visual). cf-20c-2 R1 originally implemented the
++   * v2-demo opacity/grayscale model; codex-pr-reviewer-55 R2 F1 caught
++   * that as a real D6 violation per D6 line 255 explicit rejection of
++   * the gray-half-transparent placeholder behavior. R2 fix in
++   * `BlockNodeView.css .skb-block-nodeview--dragging-self`.
+    * `BlockNodeView.tsx` reads this field via `useContext(DragDropContext)`
+    * and applies the `.skb-block-nodeview--dragging-self` modifier class
+    * when its own block id matches. Null = no active drag (steady state).
+
+codex
+The F1 and F2 patches match the intended model in the diff: byte snapshots replace git reset behavior, and the pulse state now clears before scheduling the two-frame measurement. I’m pulling exact current line numbers plus targeted grep results now.
+exec
+/bin/bash -lc "nl -ba apps/site/playwright/sample-blocks-drag-handle.spec.ts | sed -n '1,80p;160,210p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+     1	import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+     2	import { resolve } from 'node:path';
+     3	
+     4	import { expect, test } from '@playwright/test';
+     5	
+     6	/**
+     7	 * Wave 6 cf-20c-2 R3 F1 fix (2026-05-09) — byte-snapshot fixture
+     8	 * isolation (replaces R2's destructive `git checkout` model).
+     9	 *
+    10	 * Pre-R2 the F4 terminal-drop test mutated `content/notes/sample-blocks/index.mdx`
+    11	 * via the cf-20c-2 wire's setNodeMarkup → tiptapToMdx → ApiAdapter.save
+    12	 * → file write chain. R2 added `test.afterAll(restoreSampleBlocksFixture)`
+    13	 * which shelled out to `git checkout -- <path>`. codex-pr-reviewer-55
+    14	 * R3 F1 caught this as a real safety bug: running the spec
+    15	 * **silently discards uncommitted edits** to the fixture file —
+    16	 * anyone mid-edit on `sample-blocks/index.mdx` loses their work.
+    17	 *
+    18	 * R3 fix (per reviewer's recommendation): snapshot the EXACT bytes
+    19	 * the file had at `beforeAll` time, restore those bytes at
+    20	 * `afterAll`. Works whether or not the user has uncommitted edits;
+    21	 * doesn't touch git.
+    22	 *
+    23	 * Operational rule landed (cf-20c-2 R3 reflection): tests that touch
+    24	 * repository files MUST snapshot bytes pre-mutation; never use
+    25	 * destructive git operations (`git checkout`, `git restore`,
+    26	 * `git reset --hard`) in test code. Adding to the standard
+    27	 * pre-dispatch checklist for any spec that triggers fs writes.
+    28	 */
+    29	const SAMPLE_BLOCKS_MDX = resolve(
+    30	  process.cwd(),
+    31	  '../../content/notes/sample-blocks/index.mdx',
+    32	);
+    33	const SAMPLE_BLOCKS_STATE = resolve(
+    34	  process.cwd(),
+    35	  '../../content/notes/sample-blocks/state.json',
+    36	);
+    37	
+    38	let originalMdxBytes: string | null = null;
+    39	let originalStateBytes: string | null = null;
+    40	
+    41	test.beforeAll(() => {
+    42	  // Snapshot the fixture's EXACT bytes (whatever the user has on
+    43	  // disk — committed or not). Restore-after-test uses these snapshots
+    44	  // so the test's mutation is invisible to anyone watching the file.
+    45	  originalMdxBytes = readFileSync(SAMPLE_BLOCKS_MDX, 'utf8');
+    46	  originalStateBytes = existsSync(SAMPLE_BLOCKS_STATE)
+    47	    ? readFileSync(SAMPLE_BLOCKS_STATE, 'utf8')
+    48	    : null;
+    49	});
+    50	
+    51	/**
+    52	 * Restore the snapshotted fixture bytes. Called both per-test (the F4
+    53	 * terminal-drop test triggers the mutation; the test calls this BEFORE
+    54	 * starting so prior runs in the same Playwright session don't leave
+    55	 * a mutated baseline that breaks the strict `1 / span 12` initial
+    56	 * assertion) AND in afterAll (cross-spec isolation: other spec files
+    57	 * see clean fixture).
+    58	 */
+    59	function restoreSampleBlocksFixture(): void {
+    60	  if (originalMdxBytes !== null) {
+    61	    writeFileSync(SAMPLE_BLOCKS_MDX, originalMdxBytes, 'utf8');
+    62	  }
+    63	  if (originalStateBytes !== null) {
+    64	    writeFileSync(SAMPLE_BLOCKS_STATE, originalStateBytes, 'utf8');
+    65	  } else if (existsSync(SAMPLE_BLOCKS_STATE)) {
+    66	    unlinkSync(SAMPLE_BLOCKS_STATE);
+    67	  }
+    68	}
+    69	
+    70	test.afterAll(() => {
+    71	  restoreSampleBlocksFixture();
+    72	});
+    73	
+    74	/**
+    75	 * Wave 6 cf-20c-2 (2026-05-09) — drag-handle UI + DnD wire integration
+    76	 * spec.
+    77	 *
+    78	 * cf-20c-1 shipped `applyDropMode` as a pure mutation algebra.
+    79	 * cf-20c-2 wires that algebra into the editor surface: per-block
+    80	 * `<DragHandleButton>` inside `.skb-block-nodeview__gutter`, HTML5
+   160	  });
+   161	  await expect(page.locator('.drag-ghost')).toHaveCount(0);
+   162	
+   163	  // Post-cancel: handles still present (cancel doesn't tear down the
+   164	  // editor; the drag is cleanly aborted).
+   165	  await expect(handles).toHaveCount(14);
+   166	
+   167	  await page.screenshot({ fullPage: false, path: SCREENSHOT_PATH });
+   168	});
+   169	
+   170	test('cf-20c-2 R1 F1 — source-lift visual: dragstart applies .skb-block-nodeview--dragging-self to source NodeView only (ADR-0017 D6)', async ({
+   171	  page,
+   172	}) => {
+   173	  // Wave 6 cf-20c-2 R2 F1 lock — codex-pr-reviewer-55 R1 F1 caught
+   174	  // that ADR-0017 D6 source-lift was missing. The pipeline now
+   175	  // exposes `sourceBlockId` via DragDropContext; BlockNodeView reads
+   176	  // it and applies `.skb-block-nodeview--dragging-self` modifier
+   177	  // class when its own block id matches. CSS sets `visibility:
+   178	  // hidden + pointer-events: none` per ADR-0017 D6 line 247 verbatim
+   179	  // (R2 F1 fix; replaces R1's v2-demo opacity/grayscale model that
+   180	  // D6 line 255 explicitly rejects).
+   181	  //
+   182	  // Three structural assertions:
+   183	  //  (a) Pre-drag: NO `.skb-block-nodeview--dragging-self` anywhere
+   184	  //      (steady-state baseline).
+   185	  //  (b) Post-dragstart: EXACTLY 1 `.skb-block-nodeview--dragging-self`
+   186	  //      AND it's the wrapper whose drag-handle was clicked (proves
+   187	  //      sourceBlockId routing through context is correct), AND
+   188	  //      computed `visibility === 'hidden'` + `pointer-events === 'none'`
+   189	  //      (proves the CSS rule from ADR-0017 D6 line 247 is the one
+   190	  //      applied — catches future regressions to opacity-based fades).
+   191	  //  (c) Post-cancel: 0 `.skb-block-nodeview--dragging-self` again
+   192	  //      (proves sourceBlockId resets to null on terminal action).
+   193	  //
+   194	  // Edge-rect exclusion of source (the other half of D6 source-lift)
+   195	  // is unit-tested via the pipeline's `onDragStart` filter; not
+   196	  // re-asserted here because Playwright would have to introspect the
+   197	  // pipeline's internal `edgeRects` ref which isn't observable from
+   198	  // DOM.
+   199	  await page.goto('/notes/sample-blocks/edit');
+   200	  const editor = page.locator('.ProseMirror').first();
+   201	  await expect(editor).toBeVisible({ timeout: 15_000 });
+   202	  await expect(editor.locator('.skb-block-nodeview').first()).toBeVisible({
+   203	    timeout: 10_000,
+   204	  });
+   205	
+   206	  // (a) Pre-drag: no source-lift class anywhere
+   207	  await expect(page.locator('.skb-block-nodeview--dragging-self')).toHaveCount(0);
+   208	
+   209	  // (b) Dispatch dragstart on the FIRST handle, expect exactly 1 source-lift
+   210	  const firstHandle = page
+
+exec
+/bin/bash -lc "nl -ba packages/editor-shell/src/drag-drop/use-drag-drop-pipeline.ts | sed -n '90,120p;165,215p;355,425p;455,475p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+    90	  readonly lastDroppedBlockId: string | null;
+    91	  /**
+    92	   * Wave 6 cf-20c-2 R2 F2 fix (2026-05-09) — bounding rect of the
+    93	   * source NodeView at its POST-DROP landed grid position. ADR-0017
+    94	   * D11 line 344: "drop 落定瞬间 (源块进入新 grid 位置 + outline
+    95	   * fade-out 完成)" — the pulse fires AT the new position. Pre-R2
+    96	   * the consumer (EditorShellMount.tsx) anchored the pulse at the
+    97	   * SNAPSHOT rect (source's pre-drag position) which is wrong per
+    98	   * D11. R2 pipeline re-measures the source NodeView via
+    99	   * `editor.view.nodeDOM(livePos).getBoundingClientRect()` AFTER
+   100	   * the Tiptap setNodeMarkup batch commits + 2 rAFs for React
+   101	   * commit + browser layout settle. null when no recent drop.
+   102	   */
+   103	  readonly lastDroppedRect: DOMRectReadOnly | null;
+   104	  /**
+   105	   * Wave 6 cf-20c-2 R3 F2 fix (2026-05-09) — monotonic counter
+   106	   * incremented each time `lastDroppedBlockId` is set on
+   107	   * drag-end-success. Consumers use this as a React `key` prop on the
+   108	   * <DropPulseAtRect> mount so the animation remounts cleanly across
+   109	   * rapid drops (drag → drop → drag → drop within 720ms faster than
+   110	   * the prior pulse animation completes). Without the key, React's
+   111	   * reconciliation reuses the prior <DropPulse> instance and the
+   112	   * 720ms keyframe doesn't restart, producing a half-faded pulse on
+   113	   * the new landed position. With `key={dropEpoch}`, React unmounts
+   114	   * the prior pulse + mounts a fresh one at the new rect.
+   115	   *
+   116	   * Operational rule landed (cf-20c-2 R3 reflection): the dropEpoch
+   117	   * pattern is the canonical "rapid-action animation isolation"
+   118	   * pattern. cf-20d resize will adopt the same pattern for its own
+   119	   * resize-success pulse.
+   120	   */
+   165	  const [layoutState, dispatchLayout] = useReducer(layoutReducer, INITIAL_LAYOUT_STATE);
+   166	  const [active, setActive] = useState(false);
+   167	  const [activeMatch, setActiveMatch] = useState<EdgeMatch | null>(null);
+   168	  const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
+   169	  const [sourceBlockId, setSourceBlockId] = useState<string | null>(null);
+   170	  const [lastDroppedBlockId, setLastDroppedBlockId] = useState<string | null>(null);
+   171	  // Wave 6 cf-20c-2 R2 F2 — landed-position rect for DropPulse
+   172	  // anchoring per ADR-0017 D11 line 344. Set post-drop by re-
+   173	  // measuring the source NodeView at its NEW grid position; null
+   174	  // until a successful drop AND the 2 rAFs after Tiptap setNodeMarkup
+   175	  // commits.
+   176	  const [lastDroppedRect, setLastDroppedRect] = useState<DOMRectReadOnly | null>(null);
+   177	  // Wave 6 cf-20c-2 R3 F2 — monotonic drop epoch for React key-based
+   178	  // animation remount across rapid drops. Increments each time
+   179	  // lastDroppedBlockId transitions from null → blockId. See PipelineDragState
+   180	  // JSDoc above for the full rationale.
+   181	  const [dropEpoch, setDropEpoch] = useState(0);
+   182	
+   183	  // Snapshot refs (preserved across renders; not state because
+   184	  // changing them shouldn't trigger re-render).
+   185	  const snapshotRef = useRef<readonly SerializedBlock[]>([]);
+   186	  const blockRectsRef = useRef<Map<string, DOMRectReadOnly>>(new Map());
+   187	  const edgeRectsRef = useRef<readonly EdgeRect[]>([]);
+   188	  const lastCursorRef = useRef<{ x: number; y: number; t: number } | null>(null);
+   189	
+   190	  const onDragStart = useCallback(
+   191	    (blockId: string, origin: { x: number; y: number }) => {
+   192	      if (!editor) return;
+   193	      const blocks = snapshotBlocks(editor);
+   194	      const rects = measureBlockRects(editor, blocks);
+   195	      // Wave 6 cf-20c-2 R1 F1 fix (2026-05-09) — ADR-0017 D6 source-
+   196	      // lift compliance. Edge-rects MUST be computed from the
+   197	      // baseline-WITHOUT-source so the drop hit-test never matches
+   198	      // the source block's own edges (which would let the user drop
+   199	      // onto themselves at the lifted position — meaningless mode).
+   200	      // Pre-R1 edges included the source; tiebreak still produced a
+   201	      // hit when the cursor returned to the source position. The
+   202	      // source-lift visual on the source NodeView
+   203	      // (`visibility: hidden + pointer-events: none` per ADR-0017 D6
+   204	      // line 247 verbatim, applied via the
+   205	      // `.skb-block-nodeview--dragging-self` CSS class — see
+   206	      // `BlockNodeView.css` for the rule + cf-20c-2 R2 F1 fix
+   207	      // rationale that replaced R1's v2-demo opacity/grayscale model
+   208	      // which D6 line 255 explicitly rejects) is applied separately
+   209	      // via DragDropContext.sourceBlockId → BlockNodeView CSS class
+   210	      // binding.
+   211	      const layouts: BlockLayout[] = blocks
+   212	        .filter((b) => b.id !== blockId)
+   213	        .map((b) => {
+   214	          const rect = rects.get(b.id);
+   215	          return rect ? { blockId: b.id, rect } : null;
+   355	
+   356	      // Adapter from IdentifiedBlock back to BlockGridPosition (drop the id).
+   357	      const reducerSnapshot = {
+   358	        blocks: mutation.blocks.map((b) => ({
+   359	          col: b.col,
+   360	          ...(b.row !== undefined && { row: b.row }),
+   361	          colSpan: b.colSpan,
+   362	          rowSpan: b.rowSpan,
+   363	        })),
+   364	      };
+   365	      dispatchLayout({ type: 'drag-end-success', mutation: reducerSnapshot });
+   366	      // Wave 6 cf-20c-2 R3 F2 fix (2026-05-09) — atomic clear of
+   367	      // prior drop state BEFORE the new measurement starts. Pre-R3
+   368	      // the pipeline set the new lastDroppedBlockId immediately while
+   369	      // the prior lastDroppedRect was still live (the new measurement
+   370	      // happens 2 rAFs later). For rapid drops within 720ms (faster
+   371	      // than DropPulse animation completes), there was a brief frame
+   372	      // where the new pulse rendered at the OLD rect — visual
+   373	      // misalignment.
+   374	      //
+   375	      // R3 fix sequence:
+   376	      //   1. Clear both fields atomically (setLastDroppedBlockId(null)
+   377	      //      + setLastDroppedRect(null)) so any pulse rendered between
+   378	      //      now and the 2-rAF measure doesn't have stale state to
+   379	      //      anchor at. Plus increment dropEpoch so the consumer's
+   380	      //      <DropPulseAtRect key={dropEpoch}> remounts cleanly.
+   381	      //   2. Wait 2 rAFs (React commit + browser layout per R2 F2).
+   382	      //   3. Set both fields atomically with the new blockId AND the
+   383	      //      freshly-measured rect — single state update batches the
+   384	      //      re-render so consumer never sees blockId-without-rect.
+   385	      setLastDroppedBlockId(null);
+   386	      setLastDroppedRect(null);
+   387	      // Wave 6 cf-20c-2 R2 F2 fix — re-measure the source NodeView at
+   388	      // its NEW grid position and store the rect so the consumer's
+   389	      // <DropPulseAtRect> mounts at the LANDED position per ADR-0017
+   390	      // D11 line 344. Pre-R2 the consumer used the snapshotted rect
+   391	      // (source's pre-drag position) — wrong per D11.
+   392	      //
+   393	      // Timing: setNodeMarkup synchronously advances the Tiptap
+   394	      // transaction; React schedules a re-render with the new
+   395	      // gridColumn inline style; the browser then runs layout to
+   396	      // resolve the new grid placement; only THEN does
+   397	      // getBoundingClientRect() return the landed rect. We need
+   398	      // TWO rAFs:
+   399	      //   - rAF 1: React commit cycle (NodeView re-renders with new attrs)
+   400	      //   - rAF 2: browser layout pass post-DOM-mutation
+   401	      // Single rAF is insufficient (verified empirically at cf-20c-2 R2:
+   402	      // probe with one rAF measured the pre-drop full-width rect, not
+   403	      // the post-drop half-width landed rect). Two rAFs is the
+   404	      // standard "wait for next paint" idiom in browser DnD code.
+   405	      if (didMutate) {
+   406	        requestAnimationFrame(() => {
+   407	          requestAnimationFrame(() => {
+   408	            // Tiptap's setNodeMarkup may have shifted live positions
+   409	            // (split-* modes can re-order siblings). Re-walk the doc
+   410	            // post-commit to find the source's current pos.
+   411	            const newLivePositions = liveBlockPositions(editor, snapshotRef.current);
+   412	            const newSourceLive = newLivePositions.get(sourceBlockId);
+   413	            if (!newSourceLive) return;
+   414	            const dom = editor.view.nodeDOM(newSourceLive.pos);
+   415	            if (dom instanceof HTMLElement) {
+   416	              // R3 F2: set blockId + rect together; React batches
+   417	              // these into a single render pass within the same
+   418	              // synchronous block (React 18+ automatic batching).
+   419	              setLastDroppedBlockId(sourceBlockId);
+   420	              setLastDroppedRect(dom.getBoundingClientRect());
+   421	              setDropEpoch((prev) => prev + 1);
+   422	            }
+   423	          });
+   424	        });
+   425	      }
+   455	    setLastDroppedRect(null);
+   456	  }, []);
+   457	
+   458	  return {
+   459	    state: {
+   460	      active,
+   461	      blockRects: blockRectsRef.current,
+   462	      edgeRects: edgeRectsRef.current,
+   463	      activeMatch,
+   464	      cursor,
+   465	      sourceBlockId,
+   466	      lastDroppedBlockId,
+   467	      lastDroppedRect,
+   468	      dropEpoch,
+   469	    },
+   470	    layoutState,
+   471	    onDragStart,
+   472	    onDragEnd,
+   473	    clearLastDropped,
+   474	  };
+   475	}
+
+exec
+/bin/bash -lc "nl -ba apps/site/src/components/EditorShellMount.tsx | sed -n '292,340p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+   292	
+   293	      {/*
+   294	        Wave 6 cf-20c-2 R2 F2 fix (2026-05-09) — DropPulse mount at
+   295	        LANDED rect per ADR-0017 D11 line 344 ("源块进入新 grid 位置"
+   296	        — pulse fires AT the new position). cf-20c-2 R1 anchored the
+   297	        pulse at the SNAPSHOT rect (source's pre-drag position) which
+   298	        codex-pr-reviewer-55 R2 F2 caught as a real D11 violation. R2
+   299	        fix: pipeline re-measures the source NodeView at its NEW grid
+   300	        position via `editor.view.nodeDOM(livePos).getBoundingClientRect()`
+   301	        AFTER Tiptap setNodeMarkup commits + 2 rAFs (React commit
+   302	        cycle + browser layout pass), and exposes the result as
+   303	        `state.lastDroppedRect`. The consumer renders <DropPulseAtRect>
+   304	        only when both `lastDroppedBlockId !== null` AND
+   305	        `lastDroppedRect !== null` — the rect dependency means the
+   306	        mount appears 2 frames after the dragend (the rAF window during
+   307	        which the new rect is being measured). Pulse animates 720ms
+   308	        then onAnimationEnd fires clearLastDropped() resetting both
+   309	        BlockId + rect.
+   310	
+   311	        Wave 6 cf-20c-2 R3 F2 fix (2026-05-09) — `key={dropEpoch}`
+   312	        forces React to unmount + remount the <DropPulseAtRect> (and
+   313	        therefore the underlying <DropPulse>) across rapid drops.
+   314	        Pre-R3 React's reconciliation reused the prior <DropPulse>
+   315	        instance when a new drop happened within the 720ms animation
+   316	        window; the keyframe didn't restart, producing a half-faded
+   317	        pulse on the new landed position. With key={dropEpoch}, each
+   318	        successful drop produces a fresh element and a fresh keyframe.
+   319	        See use-drag-drop-pipeline.ts PipelineDragState.dropEpoch
+   320	        JSDoc for the canonical "rapid-action animation isolation"
+   321	        pattern (cf-20d resize will adopt this for its own
+   322	        success-pulse mount).
+   323	      */}
+   324	      {pipeline.state.lastDroppedBlockId !== null &&
+   325	        pipeline.state.lastDroppedRect !== null && (
+   326	          <DropPulseAtRect
+   327	            key={pipeline.state.dropEpoch}
+   328	            rect={pipeline.state.lastDroppedRect}
+   329	            onAnimationEnd={pipeline.clearLastDropped}
+   330	          />
+   331	        )}
+   332	    </>
+   333	  );
+   334	}
+   335	
+   336	/**
+   337	 * Wave 6 cf-20c-2 R1 F2 helper — render a <DropPulse> at a fixed
+   338	 * viewport rect (the landed block's bounding rect re-measured by
+   339	 * the pipeline post-mutation). Needed because DropPulse uses
+   340	 * `position: absolute; inset: 0` which expects a positioned parent;
+
+exec
+/bin/bash -lc "nl -ba packages/editor-shell/CONTRACT.md | sed -n '401,480p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+   401	  drag-handle button to the lifecycle owner (`useDragDropPipeline()` mounted
+   402	  at `EditorShellMount.tsx`). Provider value: `{ onDragStart(blockId, origin),
+   403	  onDragEnd(origin), sourceBlockId }`. The `sourceBlockId` field
+   404	  (Wave 6 cf-20c-2 R2 F1 fix 2026-05-09) exposes the currently-lifted
+   405	  drag source so `BlockNodeView.tsx` can apply the
+   406	  `.skb-block-nodeview--dragging-self` modifier class for the ADR-0017
+   407	  D6 line 247 source-lift visual (`visibility: hidden +
+   408	  pointer-events: none + transition: none` — preserves grid layout
+   409	  space while hiding the visual; replaces R1's v2-demo opacity +
+   410	  grayscale model that ADR-0017 D6 line 255 explicitly rejects); null
+   411	  = no active drag (steady state). Default context value null =
+   412	  degraded mode (button renders, drag callbacks no-op, no lift).
+   413	- `useDragDropPipeline({editor, gridSelector?})` (Wave 6 cf-20c-2) — drag/drop
+   414	  lifecycle owner hook. Composes the existing primitives (snapshot,
+   415	  edge-rects, tiebreak, `applyDropMode`, layoutReducer, OutlineOverlay,
+   416	  DragGhost, DropPulse, useEscCancel) into the actual interactive drag.
+   417	  Returns `{state, layoutState, onDragStart, onDragEnd, clearLastDropped}`.
+   418	  The `state.active` / `state.activeMatch` / `state.cursor` /
+   419	  `state.lastDroppedBlockId` fields drive `<OutlineOverlay>` +
+   420	  `<DragGhost>` + `<DropPulse>` mounts at the consumer layer.
+   421	  `clearLastDropped()` (Wave 6 cf-20c-2 R1 F2 fix 2026-05-09) is wired
+   422	  to `<DropPulse onAnimationEnd={clearLastDropped} />` at the consumer
+   423	  layer so the pulse unmounts after its 720ms keyframe; `lastDroppedBlockId`
+   424	  resets to null preparing for the next drag cycle. Block ID source per
+   425	  cf-20c-2 D2: ProseMirror node `pos` as string (Path A; UUID-based
+   426	  stable IDs deferred to a future schema-mod PR). ADR-0017 D6
+   427	  source-lift (cf-20c-2 R2 F1 fix; replaces R1's v2-demo
+   428	  opacity/grayscale model that ADR-0017 D6 line 255 explicitly
+   429	  rejects): `onDragStart` filters the source out of the snapshot
+   430	  layouts BEFORE computing edge-rects (so the lifted source can never
+   431	  self-match in tiebreak), AND the source NodeView wrapper applies
+   432	  `.skb-block-nodeview--dragging-self` modifier (`visibility: hidden +
+   433	  pointer-events: none` per ADR-0017 D6 line 247 verbatim). Velocity
+   434	  unit per ADR-0017 D3: pipeline multiplies raw `delta px / delta ms`
+   435	  by `VELOCITY_WINDOW_MS = 16` so `tiebreak()` reads `vx`/`vy` in the
+   436	  contracted `px/frame at 60fps` unit (cf-20c-2 R1 F3 fix). Threshold
+   437	  math: `tiebreak()` direction filter fires when `speed > 0.5 px/frame`;
+   438	  at 60fps (16.67ms/frame) that's `~30 px/sec` minimum velocity to
+   439	  trigger the direction-aware tiebreak. Pre-R1 the pipeline passed
+   440	  raw `px/ms` (1 px/ms = 60000 px/sec at 60fps); the threshold check
+   441	  required `raw_vx > 0.5 px/ms = 30000 px/sec` to fire — virtually
+   442	  never reached by real cursor drags (typical drag 200-2000 px/sec).
+   443	  R1 fix landed the unit alignment so the `> 0.5 px/frame` threshold
+   444	  fires for any drag faster than ~30 px/sec (the intended threshold
+   445	  per ADR-0017 D3). DropPulse landed-rect (cf-20c-2 R2 F2 fix;
+   446	  replaces R1's pre-drag snapshot rect model): pipeline re-measures
+   447	  the source NodeView via `editor.view.nodeDOM(livePos).getBoundingClientRect()`
+   448	  AFTER Tiptap setNodeMarkup commits + 2 rAFs (React commit cycle +
+   449	  browser layout pass), and exposes the result as
+   450	  `state.lastDroppedRect` so the consumer's `<DropPulseAtRect>` mounts
+   451	  at the LANDED position per ADR-0017 D11 line 344 ("源块进入新 grid
+   452	  位置 + outline fade-out 完成"). Pre-R2 the consumer used the
+   453	  snapshotted rect (pre-drag full-width source position) which
+   454	  produced a pulse at the wrong location.
+   455	- **Rapid-action animation isolation pattern (cf-20c-2 R3 F2 fix
+   456	  2026-05-09)** — `useDragDropPipeline` exposes a monotonic
+   457	  `state.dropEpoch: number` counter incremented each successful drop.
+   458	  Consumers MUST pass `key={pipeline.state.dropEpoch}` on the
+   459	  `<DropPulseAtRect>` (or any animation component driven by
+   460	  `lastDroppedBlockId` / `lastDroppedRect`) so React unmounts +
+   461	  remounts the animation cleanly across rapid drops. Pre-R3 a drag →
+   462	  drop → drag → drop sequence within 720ms (faster than the prior
+   463	  pulse animation) produced a stale half-faded pulse at the new
+   464	  landed position because React's reconciliation reused the prior
+   465	  `<DropPulse>` instance and the keyframe didn't restart. The
+   466	  `dropEpoch` key is the canonical "rapid-action animation isolation"
+   467	  pattern; cf-20d resize will adopt it for its own success-pulse
+   468	  mount.
+   469	
+   470	  Atomic state transitions (cf-20c-2 R3 F2): the pipeline ALSO clears
+   471	  `lastDroppedBlockId` + `lastDroppedRect` to null AT THE START of
+   472	  the drop handler (BEFORE the 2-rAF re-measure scheduling), then
+   473	  sets both fields atomically together with the new `dropEpoch + 1`
+   474	  value when the rect measurement completes. Consumers should NEVER
+   475	  see a state where `lastDroppedBlockId !== null && lastDroppedRect
+   476	  === null` — the conditional render `lastDroppedBlockId !== null &&
+   477	  lastDroppedRect !== null` is defense-in-depth against any future
+   478	  pipeline bug that breaks the atomic invariant.
+   479	
+   480	Drag/drop edge-width is coupled to grid `--gap` via `EDGE_W = 2 * GAP`.
+
+exec
+/bin/bash -lc "nl -ba packages/editor-shell/src/BlockNodeView.tsx | sed -n '90,112p'; nl -ba packages/editor-shell/src/drag-drop/drag-context.tsx | sed -n '38,58p'" in /home/weiyi/selfKnowledgeBaseWeb
+ succeeded in 0ms:
+    90	  if (typeof getPos !== 'function') return '';
+    91	  const pos = getPos();
+    92	  return typeof pos === 'number' ? String(pos) : '';
+    93	}
+    94	
+    95	/**
+    96	 * Wave 6 cf-20c-2 R2 F1 — compose className from base + draggingSelf
+    97	 * + unregistered modifiers. Per ADR-0017 D6 line 247 source-lift, the
+    98	 * source NodeView gets `.skb-block-nodeview--dragging-self` during
+    99	 * active drag (CSS rule in BlockNodeView.css applies
+   100	 * `visibility: hidden + pointer-events: none + transition: none`,
+   101	 * which preserves grid layout space while hiding the visual; the
+   102	 * earlier R1 v2-demo opacity/grayscale model was rejected by

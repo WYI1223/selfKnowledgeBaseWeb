@@ -195,3 +195,45 @@
   font-family: var(--mono, ui-monospace, monospace);
   font-size: 13px;
 }
+
+/* === Source-lift visual (Wave 6 cf-20c-2 R2 F1; ADR-0017 D6) ======== */
+/* Per ADR-0017 D6 line 247 verbatim: source `display: none` OR
+ * `visibility: hidden + pointer-events: none`. The ADR EXPLICITLY
+ * REJECTS the v2-demo gray-half-transparent placeholder model
+ * (D6 line 255: "v0.3 user 共识 改为 lift 模式: 源块完全消失") for
+ * three reasons:
+ *   1. 占位灰块视觉混乱 (用户分不清 "原位" vs "新位")
+ *   2. 落点 distance 计算需 ignore 源块 edge rect 否则源块自命中
+ *   3. lift 模式语义更清晰: drag = 拿走 + 放; 不是 拿+占位+放
+ *
+ * cf-20c-2 R1 SHIPPED the v2-demo gray model (opacity 0.28 +
+ * grayscale + dashed outline) — codex-pr-reviewer-55 R2 F1 caught
+ * this as a real D6 spec violation. R2 fix: replace with
+ * `visibility: hidden + pointer-events: none` per D6's second
+ * alternative.
+ *
+ * Why `visibility: hidden` over `display: none` (D6 lists both as
+ * equivalent): `display: none` collapses the grid cell, shifting
+ * downstream blocks during drag — visually unstable + breaks the
+ * "snapshot at drag-start" model that the pipeline depends on (the
+ * snapshotted blockRects are at pre-drag positions; if the lifted
+ * source's cell collapses, downstream blocks visually shift but the
+ * snapshotted edge-rects still target their pre-drag positions,
+ * producing tiebreak hits at empty visual space). `visibility:
+ * hidden` preserves layout space while hiding the visual.
+ *
+ * The pipeline (`use-drag-drop-pipeline.ts`) sets
+ * `state.sourceBlockId` on drag-start; DragDropContext exposes it;
+ * BlockNodeView.tsx applies this modifier class when the NodeView's
+ * own block id matches. The class is removed on drag-end-success /
+ * drag-end-cancel / drag-end-mode-none (any terminal action that
+ * resets sourceBlockId to null). */
+.skb-block-nodeview--dragging-self {
+  visibility: hidden;
+  pointer-events: none;
+  /* Disable transitions during lift so the visual change is
+   * instantaneous (the user sees "I picked it up" in the same frame
+   * as dragstart). The cf-19 baseline transition on box-shadow +
+   * border-color stays for the steady-state hover/select toggles. */
+  transition: none;
+}

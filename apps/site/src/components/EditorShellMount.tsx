@@ -1,13 +1,16 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { BlockRegistry } from '@skb/block-foundation';
 import {
   ApiAdapter,
-  DragHandle,
+  DragDropProvider,
+  DragGhost,
+  DropPulse,
   EditModeBanner,
   EditorShell,
   GridContainer,
   LocalStorageAdapter,
   type NoteState,
+  OutlineOverlay,
   Palette,
   SaveIndicator,
   SlashMenu,
@@ -17,6 +20,8 @@ import {
   saveToMdx,
   type EditorShellProps,
   type SaveIndicatorStatus,
+  useDragDropPipeline,
+  useEscCancel,
   wireRegistry,
 } from '@skb/editor-shell';
 
@@ -88,6 +93,36 @@ export function EditorShellMount({
   const [saveStatus, setSaveStatus] = useState<SaveIndicatorStatus>('idle');
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+
+  // Wave 6 cf-20c-2 (2026-05-09) — drag/drop pipeline lifecycle owner.
+  // Snapshots blocks at drag-start, computes edge-rects + tiebreak on
+  // drag-over, applies applyDropMode + dispatches Tiptap setNodeMarkup
+  // on drop. The pipeline state drives <OutlineOverlay> + <DragGhost>
+  // mounts below; the per-block <DragHandleButton> inside each
+  // BlockNodeView gutter calls into the pipeline via DragDropProvider.
+  // R1 F1: dragContextValue now also exposes `sourceBlockId` so the
+  // per-block BlockNodeView can apply the .skb-block-nodeview--dragging-self
+  // CSS modifier (ADR-0017 D6 source-lift visual).
+  const pipeline = useDragDropPipeline({ editor });
+  const dragContextValue = useMemo(
+    () => ({
+      onDragStart: pipeline.onDragStart,
+      onDragEnd: pipeline.onDragEnd,
+      sourceBlockId: pipeline.state.sourceBlockId,
+    }),
+    [pipeline.onDragStart, pipeline.onDragEnd, pipeline.state.sourceBlockId],
+  );
+  // Esc cancel during active drag (per ADR-0017 D8).
+  useEscCancel({
+    dragActive: pipeline.state.active,
+    onCancel: () => {
+      // The pipeline already dispatches drag-end-cancel through its
+      // own dragend handler when the user releases over chrome; the
+      // Esc cancel path is purely keyboard. Trigger a fake dragend so
+      // the pipeline cleans up its own state.
+      pipeline.onDragEnd({ x: 0, y: 0 });
+    },
+  });
 
   if (apiAdapterRef.current === null || apiAdapterRef.current.slug !== slug) {
     apiAdapterRef.current = new ApiAdapter(slug);
@@ -217,18 +252,121 @@ export function EditorShellMount({
           </span>
         </div>
       )}
-      <GridContainer>
-        <DragHandle />
-        <Toolbar editor={editor} />
-        <EditorShell
-          extensions={wire.extensions}
-          onCreate={handleCreate}
-          onChange={handleChange}
-        />
-        <Palette editor={editor} kinds={wire.blockKinds} />
-        <SlashMenu editor={editor} kinds={wire.blockKinds} />
-      </GridContainer>
+      <DragDropProvider value={dragContextValue}>
+        <GridContainer>
+          <Toolbar editor={editor} />
+          <EditorShell
+            extensions={wire.extensions}
+            onCreate={handleCreate}
+            onChange={handleChange}
+          />
+          <Palette editor={editor} kinds={wire.blockKinds} />
+          <SlashMenu editor={editor} kinds={wire.blockKinds} />
+        </GridContainer>
+      </DragDropProvider>
       <SaveIndicator savedAt={savedAt} status={saveStatus} />
+
+      {/*
+        Wave 6 cf-20c-2 — drag overlay surface.
+        OutlineOverlay renders the active-edge dashed accent during drag.
+        DragGhost follows the cursor with per-kind coloring.
+        Both are pointer-events: none so they never intercept the
+        underlying drop event.
+      */}
+      {pipeline.state.active && (
+        <>
+          <OutlineOverlay
+            activeMatch={pipeline.state.activeMatch}
+            blockRects={pipeline.state.blockRects}
+          />
+          {pipeline.state.cursor && (
+            <DragGhost
+              cursorX={pipeline.state.cursor.x}
+              cursorY={pipeline.state.cursor.y}
+              kind="markdown"
+              mode="move"
+            />
+          )}
+        </>
+      )}
+
+      {/*
+        Wave 6 cf-20c-2 R2 F2 fix (2026-05-09) — DropPulse mount at
+        LANDED rect per ADR-0017 D11 line 344 ("源块进入新 grid 位置"
+        — pulse fires AT the new position). cf-20c-2 R1 anchored the
+        pulse at the SNAPSHOT rect (source's pre-drag position) which
+        codex-pr-reviewer-55 R2 F2 caught as a real D11 violation. R2
+        fix: pipeline re-measures the source NodeView at its NEW grid
+        position via `editor.view.nodeDOM(livePos).getBoundingClientRect()`
+        AFTER Tiptap setNodeMarkup commits + 2 rAFs (React commit
+        cycle + browser layout pass), and exposes the result as
+        `state.lastDroppedRect`. The consumer renders <DropPulseAtRect>
+        only when both `lastDroppedBlockId !== null` AND
+        `lastDroppedRect !== null` — the rect dependency means the
+        mount appears 2 frames after the dragend (the rAF window during
+        which the new rect is being measured). Pulse animates 720ms
+        then onAnimationEnd fires clearLastDropped() resetting both
+        BlockId + rect.
+
+        Wave 6 cf-20c-2 R3 F2 fix (2026-05-09) — `key={dropEpoch}`
+        forces React to unmount + remount the <DropPulseAtRect> (and
+        therefore the underlying <DropPulse>) across rapid drops.
+        Pre-R3 React's reconciliation reused the prior <DropPulse>
+        instance when a new drop happened within the 720ms animation
+        window; the keyframe didn't restart, producing a half-faded
+        pulse on the new landed position. With key={dropEpoch}, each
+        successful drop produces a fresh element and a fresh keyframe.
+        See use-drag-drop-pipeline.ts PipelineDragState.dropEpoch
+        JSDoc for the canonical "rapid-action animation isolation"
+        pattern (cf-20d resize will adopt this for its own
+        success-pulse mount).
+      */}
+      {pipeline.state.lastDroppedBlockId !== null &&
+        pipeline.state.lastDroppedRect !== null && (
+          <DropPulseAtRect
+            key={pipeline.state.dropEpoch}
+            rect={pipeline.state.lastDroppedRect}
+            onAnimationEnd={pipeline.clearLastDropped}
+          />
+        )}
     </>
+  );
+}
+
+/**
+ * Wave 6 cf-20c-2 R1 F2 helper — render a <DropPulse> at a fixed
+ * viewport rect (the landed block's bounding rect re-measured by
+ * the pipeline post-mutation). Needed because DropPulse uses
+ * `position: absolute; inset: 0` which expects a positioned parent;
+ * the simplest way to give it one without mounting inside ProseMirror
+ * is a `position: fixed` wrapper at the rect coordinates.
+ *
+ * Wave 6 cf-20c-2 R2 F2 (2026-05-09) — the rect now comes from
+ * `pipeline.state.lastDroppedRect` (post-drop landed position),
+ * NOT `pipeline.state.blockRects.get(lastDroppedBlockId)` (pre-drag
+ * snapshot). See ADR-0017 D11 line 344.
+ */
+function DropPulseAtRect({
+  rect,
+  onAnimationEnd,
+}: {
+  rect: DOMRectReadOnly;
+  onAnimationEnd: () => void;
+}) {
+  return (
+    <div
+      data-skb-drop-pulse-anchor
+      style={{
+        position: 'fixed',
+        left: `${rect.left}px`,
+        top: `${rect.top}px`,
+        width: `${rect.width}px`,
+        height: `${rect.height}px`,
+        pointerEvents: 'none',
+        zIndex: 50,
+      }}
+    >
+      <DropPulse onAnimationEnd={onAnimationEnd} />
+    </div>
   );
 }

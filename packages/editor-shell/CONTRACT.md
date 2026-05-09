@@ -385,6 +385,97 @@ C.2-5 and C.2-8 add the editor-side drag/drop UX primitives under
   `BlockGridPosition` with stable `id` from ProseMirror node IDs at the
   consumer layer; `BlockGridPosition` itself is unchanged in
   `@skb/block-foundation`).
+- `DragHandleButton` / `DragHandleButtonProps` / `DRAG_HANDLE_MIME` (Wave 6
+  cf-20c-2, 2026-05-09) — per-block drag-handle button rendered inside
+  `.skb-block-nodeview__gutter` (cf-19 shell). Uses HTML5 native DnD per
+  Q7 spike result (verified pre-implementation: native DnD survives
+  ProseMirror inside `contenteditable=false` gutter without needing
+  pointer-events fallback). Dispatches drag-start / drag-end via
+  `DragDropContext`; `DRAG_HANDLE_MIME = 'application/x-skb-block-id'`
+  is the private dataTransfer MIME type so other DnD handlers don't
+  pick up our payload. The button emits `data-skb-drag-handle="<blockId>"`
+  (replaces the cf-19 standalone floating `<DragHandle />` which is
+  removed from `EditorShellMount.tsx`).
+- `DragDropContext` / `DragDropProvider` / `DragDropContextValue`
+  (Wave 6 cf-20c-2) — React context bridging the per-block presentational
+  drag-handle button to the lifecycle owner (`useDragDropPipeline()` mounted
+  at `EditorShellMount.tsx`). Provider value: `{ onDragStart(blockId, origin),
+  onDragEnd(origin), sourceBlockId }`. The `sourceBlockId` field
+  (Wave 6 cf-20c-2 R2 F1 fix 2026-05-09) exposes the currently-lifted
+  drag source so `BlockNodeView.tsx` can apply the
+  `.skb-block-nodeview--dragging-self` modifier class for the ADR-0017
+  D6 line 247 source-lift visual (`visibility: hidden +
+  pointer-events: none + transition: none` — preserves grid layout
+  space while hiding the visual; replaces R1's v2-demo opacity +
+  grayscale model that ADR-0017 D6 line 255 explicitly rejects); null
+  = no active drag (steady state). Default context value null =
+  degraded mode (button renders, drag callbacks no-op, no lift).
+- `useDragDropPipeline({editor, gridSelector?})` (Wave 6 cf-20c-2) — drag/drop
+  lifecycle owner hook. Composes the existing primitives (snapshot,
+  edge-rects, tiebreak, `applyDropMode`, layoutReducer, OutlineOverlay,
+  DragGhost, DropPulse, useEscCancel) into the actual interactive drag.
+  Returns `{state, layoutState, onDragStart, onDragEnd, clearLastDropped}`.
+  The `state.active` / `state.activeMatch` / `state.cursor` /
+  `state.lastDroppedBlockId` fields drive `<OutlineOverlay>` +
+  `<DragGhost>` + `<DropPulse>` mounts at the consumer layer.
+  `clearLastDropped()` (Wave 6 cf-20c-2 R1 F2 fix 2026-05-09) is wired
+  to `<DropPulse onAnimationEnd={clearLastDropped} />` at the consumer
+  layer so the pulse unmounts after its 720ms keyframe; `lastDroppedBlockId`
+  resets to null preparing for the next drag cycle. Block ID source per
+  cf-20c-2 D2: ProseMirror node `pos` as string (Path A; UUID-based
+  stable IDs deferred to a future schema-mod PR). ADR-0017 D6
+  source-lift (cf-20c-2 R2 F1 fix; replaces R1's v2-demo
+  opacity/grayscale model that ADR-0017 D6 line 255 explicitly
+  rejects): `onDragStart` filters the source out of the snapshot
+  layouts BEFORE computing edge-rects (so the lifted source can never
+  self-match in tiebreak), AND the source NodeView wrapper applies
+  `.skb-block-nodeview--dragging-self` modifier (`visibility: hidden +
+  pointer-events: none` per ADR-0017 D6 line 247 verbatim). Velocity
+  unit per ADR-0017 D3: pipeline multiplies raw `delta px / delta ms`
+  by `VELOCITY_WINDOW_MS = 16` so `tiebreak()` reads `vx`/`vy` in the
+  contracted `px/frame at 60fps` unit (cf-20c-2 R1 F3 fix). Threshold
+  math: `tiebreak()` direction filter fires when `speed > 0.5 px/frame`;
+  at 60fps (16.67ms/frame) that's `~30 px/sec` minimum velocity to
+  trigger the direction-aware tiebreak. Pre-R1 the pipeline passed
+  raw `px/ms` (1 px/ms = 60000 px/sec at 60fps); the threshold check
+  required `raw_vx > 0.5 px/ms = 30000 px/sec` to fire — virtually
+  never reached by real cursor drags (typical drag 200-2000 px/sec).
+  R1 fix landed the unit alignment so the `> 0.5 px/frame` threshold
+  fires for any drag faster than ~30 px/sec (the intended threshold
+  per ADR-0017 D3). DropPulse landed-rect (cf-20c-2 R2 F2 fix;
+  replaces R1's pre-drag snapshot rect model): pipeline re-measures
+  the source NodeView via `editor.view.nodeDOM(livePos).getBoundingClientRect()`
+  AFTER Tiptap setNodeMarkup commits + 2 rAFs (React commit cycle +
+  browser layout pass), and exposes the result as
+  `state.lastDroppedRect` so the consumer's `<DropPulseAtRect>` mounts
+  at the LANDED position per ADR-0017 D11 line 344 ("源块进入新 grid
+  位置 + outline fade-out 完成"). Pre-R2 the consumer used the
+  snapshotted rect (pre-drag full-width source position) which
+  produced a pulse at the wrong location.
+- **Rapid-action animation isolation pattern (cf-20c-2 R3 F2 fix
+  2026-05-09)** — `useDragDropPipeline` exposes a monotonic
+  `state.dropEpoch: number` counter incremented each successful drop.
+  Consumers MUST pass `key={pipeline.state.dropEpoch}` on the
+  `<DropPulseAtRect>` (or any animation component driven by
+  `lastDroppedBlockId` / `lastDroppedRect`) so React unmounts +
+  remounts the animation cleanly across rapid drops. Pre-R3 a drag →
+  drop → drag → drop sequence within 720ms (faster than the prior
+  pulse animation) produced a stale half-faded pulse at the new
+  landed position because React's reconciliation reused the prior
+  `<DropPulse>` instance and the keyframe didn't restart. The
+  `dropEpoch` key is the canonical "rapid-action animation isolation"
+  pattern; cf-20d resize will adopt it for its own success-pulse
+  mount.
+
+  Atomic state transitions (cf-20c-2 R3 F2): the pipeline ALSO clears
+  `lastDroppedBlockId` + `lastDroppedRect` to null AT THE START of
+  the drop handler (BEFORE the 2-rAF re-measure scheduling), then
+  sets both fields atomically together with the new `dropEpoch + 1`
+  value when the rect measurement completes. Consumers should NEVER
+  see a state where `lastDroppedBlockId !== null && lastDroppedRect
+  === null` — the conditional render `lastDroppedBlockId !== null &&
+  lastDroppedRect !== null` is defense-in-depth against any future
+  pipeline bug that breaks the atomic invariant.
 
 Drag/drop edge-width is coupled to grid `--gap` via `EDGE_W = 2 * GAP`.
 `EDGE_W = 28` and `GAP = 14` ensure the 14px gap between adjacent blocks is
@@ -579,9 +670,16 @@ components and types:
 - `SlashMenu` / `SlashMenuProps`: listens on the editor DOM for `/`
   at line start, supports arrow-key navigation, and inserts the
   selected block on Enter or click.
-- `DragHandle` / `DragHandleProps`: emits a draggable per-block handle
-  (`data-skb-drag-handle`) and shows the C.2-8 `DropPulse` preview
-  after drag completion.
+- `DragHandle` / `DragHandleProps`: **DEPRECATED at Wave 6 cf-20c-2
+  (2026-05-09)** — was the C.4-3 standalone floating drag-handle stub
+  used pre-cf-20c-2 (single button rendered outside any block; clicking
+  it flipped a synthetic `[data-skb-drop-preview]` flag). cf-20c-2
+  replaced it with PER-BLOCK drag handles (`DragHandleButton`) inside
+  each `.skb-block-nodeview__gutter` shell, wired to
+  `useDragDropPipeline()` for real HTML5 native DnD lifecycle. The
+  `DragHandle` export remains in the barrel for backward-compat
+  consumers (none in-tree post cf-20c-2; `EditorShellMount.tsx` no
+  longer renders it). Removal scheduled for a future cleanup PR.
 - `Toolbar` / `ToolbarProps`: renders Bold / Italic controls while a
   non-empty Tiptap text selection exists, and delegates to
   `editor.chain().focus().toggleBold()/toggleItalic().run()`.

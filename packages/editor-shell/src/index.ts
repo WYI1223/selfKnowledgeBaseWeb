@@ -64,6 +64,21 @@ export type {
   GridSnapshotIdentified,
   IdentifiedBlock,
 } from './drag-drop/apply-drop-mode';
+export { DragHandleButton, DRAG_HANDLE_MIME } from './drag-drop/drag-handle-button';
+export type { DragHandleButtonProps } from './drag-drop/drag-handle-button';
+export { DragDropContext, DragDropProvider } from './drag-drop/drag-context';
+export type {
+  DragDropContextValue,
+  DragDropProviderProps,
+  DragHandleStartOrigin,
+  DragHandleEndOrigin,
+} from './drag-drop/drag-context';
+export { useDragDropPipeline } from './drag-drop/use-drag-drop-pipeline';
+export type {
+  PipelineDragState,
+  UseDragDropPipelineOptions,
+  UseDragDropPipelineReturn,
+} from './drag-drop/use-drag-drop-pipeline';
 export { ColRuler } from './resize/col-ruler';
 export type { ColRulerProps } from './resize/col-ruler';
 export { SizeTooltip, colSpanToFraction } from './resize/size-tooltip';
