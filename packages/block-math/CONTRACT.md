@@ -19,7 +19,7 @@ hand-craft（不走 codex-block-generator），block-pdf (D2) 同 owner 独立 h
   - `renderMath(expression, display) → string` — KaTeX HTML 字符串生成器（**single authority** for editor + SSR + NodeView，定义在 `src/ui-default/render-math.ts`）
   - `MATH_TOKENS: MathTokens` — design-token name witnesses（`@skb/design-tokens` 类型绑定）
 - `./ui-default/Math.astro` — apps/site SSR consumer 直接 import 的 Astro 组件（亦走 `renderMath` authority）
-- `./ui-default/math.css` — 视觉规则单一来源（design-token-bound，error/fg color 走 `var(--color-*)`）
+- `./ui-default/math.css` — math-specific 视觉规则（display math block layout + inline math `--canvas-soft` tint + KaTeX error escalation；design-token-bound，error/fg color 走 `var(--color-*)`）。**Wave 6 cf-20a (2026-05-09) chrome handover**: card chrome (border / radius / hover / per-kind 2px top stripe via `var(--accent-math)`) 已 hand off 到 `@skb/editor-shell/src/block-chrome.css` (single source 横跨 `.skb-block-nodeview` + `.skb-block-static`; 两 wrapper 都 carry `data-skb-block-kind="math"`)。本文件 pre-cf-20a display math 上的 `border-top` 已删除；inline math 的 `--canvas-soft` 背景 tint 保留（inline math 不进 `.skb-block-static` wrapper, MDX flow 内 inline 元素不被 adapter 包）
 
 ### Consumer 使用方式
 

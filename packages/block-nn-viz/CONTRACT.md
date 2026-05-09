@@ -34,8 +34,7 @@ viz-block consumer 模式（lifecycle + abort + error triage），E3 (block-agen
   - `heavyBoundaryDimensions: HeavyBlockDimensions` (per [ADR-0014 D5](../../docs/decisions/ADR-0014-heavy-block-boundary.md)) — initial values: width 500, height 400 (CSS px). Re-exported by `./ui-default`; consumed by `apps/site` via the SSR-safe `./ui-default/heavy-boundary-dimensions` subpath and `HeavyBlockBoundary` to size the SSR skeleton; zero layout shift on hydration.
 - `./ui-default/NnViz.astro` — apps/site SSR consumer 直接 import 的 Astro 组件
   （静态拓扑 SVG 占位：仅渲染 `computeTopology(layers)` 的输出，model 在客户端 hydration 后加载）
-- `./ui-default/nn-viz.css` — 视觉规则单一来源（design-token-bound，error/fg/muted/accent
-  color 走 `var(--color-*)`）
+- `./ui-default/nn-viz.css` — nn-viz-specific 视觉规则（status / topology svg / layers / edges / labels / slider controls；design-token-bound，error/fg/muted/accent color 走 `var(--color-*)`）。**Wave 6 cf-20a (2026-05-09) chrome handover**: card chrome (border / radius / hover lift / per-kind 2px top stripe via `var(--accent-nn-viz)`) 已 hand off 到 `@skb/editor-shell/src/block-chrome.css` (single source 横跨 `.skb-block-nodeview` + `.skb-block-static`; 后者由 `apps/site/src/components/NnViz.astro` wrap 在 island 外, 两 wrapper 都 carry `data-skb-block-kind="nn-viz"`)。本文件 pre-cf-20a 的 `border / border-top / border-radius` 已删除
 
 ### Consumer 使用方式
 

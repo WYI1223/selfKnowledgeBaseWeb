@@ -134,12 +134,25 @@ test('sample-blocks edit route loads non-empty content (mdxFlowExpression no lon
   // catches "all kinds share fallback color" / "wrong kind→hue mapping"
   // regressions.
   //
+  // Wave 6 carry-forward #20a (2026-05-09) — chrome single-source
+  // migration. The card border + per-kind 2px top stripe now resolve
+  // through `@skb/editor-shell/src/block-chrome.css` (shared with the
+  // read-route `.skb-block-static` wrapper). Pre-cf-20a both the
+  // wrapper rule AND each block's inner CSS painted a stripe; cf-19 R2
+  // P3 added a `.skb-block-nodeview <inner> { border-top: 0 }` nested
+  // suppression. cf-20a deletes BOTH the inner stripe rules and the
+  // suppression block. The assertions below remain valid because
+  // block-chrome.css is now the only stripe authority — wrapper and
+  // wrapped both resolve through one rule.
+  //
   // Four assertion families:
   //
   //  (a) Per-kind 2px top stripe lives on the .skb-block-nodeview
   //      wrapper (cf-19 v0.2 D2 — moved from inner component CSS so
-  //      the stripe sits flush with the card top edge). Width≥2 +
-  //      style solid + color non-transparent FOR ALL 8 KINDS.
+  //      the stripe sits flush with the card top edge; cf-20a keeps
+  //      this on the wrapper, just sourced from the shared
+  //      block-chrome.css). Width≥2 + style solid + color
+  //      non-transparent FOR ALL 8 KINDS.
   //
   //  (b) (R2 P4) stripe colors are distinct across kinds: 7 unique
   //      computed colors (callout + componentCode intentionally share

@@ -20,10 +20,11 @@
   - `VARIANT_TOKENS` — `Record<Variant, { label, accentToken: ColorTokenName }>` 共享视觉元数据
   - `VARIANT_ICONS` — `Record<Variant, ComponentType>`，4 个手画 SVG（无 emoji，per ui-ux-pro-max `no-emoji-icons` rule）
   - 类型: `Variant` (`'note' | 'tip' | 'warning' | 'danger'`)
-- `./ui-default/callout.css` — 视觉规则单一来源
+- `./ui-default/callout.css` — callout-specific 视觉规则（layout / variant tints / accent bar / focus ring）
   - 选择器契约: 所有变体规则锁定在 `[data-callout-variant="…"]` 上（CalloutBody 总是 emit）
   - 颜色完全来自 `@skb/design-tokens` CSS 变量（`var(--color-X)` 形式），不允许硬编码 hex / rgb 字面值
   - 消费方 (`apps/site` / `editor-shell`) 必须在启动时 import 一次：`import '@skb/block-callout/ui-default/callout.css';`
+  - **Wave 6 cf-20a (2026-05-09) chrome handover**: card chrome (border / radius / hover lift / per-kind 2px top stripe via `var(--accent-runnable)`) 已 hand off 到 `@skb/editor-shell/src/block-chrome.css` (single source 横跨 `.skb-block-nodeview` 编辑器路径与 `.skb-block-static` apps/site 静态读路径; 两 wrapper 都 carry `data-skb-block-kind="callout"`); 本文件保留 callout-specific layout 不重复 chrome geometry，pre-cf-20a 在此处的 `border / border-top / border-radius / box-shadow` 三行已删除
 
 `propsSchema` 形状（见 `src/core/core-definition.ts`）：
 
@@ -56,10 +57,7 @@ block-callout 特定不变量：
   渲染，DOM tree / class 名 / `data-callout-variant` / `role` / `aria-label`
   完全一致；唯一差异是 `content` 缺省时 EditorView 显示 `.skb-callout-empty` 占位、
   RenderView 直接渲染空 children。任何分歧都触发 `ui-default.test.tsx` byte-equiv 用例 fail
-- **CSS = single visual authority**: 视觉规则只在 `ui-default/callout.css`，
-  React 组件不带 inline `style`（happy-dom 测试拒绝 `rgb(var())` 字面值，所以
-  variant 颜色只能走 CSS data-attribute 选择器路径）；任何变体颜色变更都改 callout.css
-  + design-tokens 任一处即可，不必 touch React 树
+- **CSS = single visual authority**: 视觉规则按职责拆 — variant tints / layout / accent bar / focus ring 只在 `ui-default/callout.css`，card chrome (border / radius / hover / per-kind 2px stripe) 在 `@skb/editor-shell/src/block-chrome.css` (cf-20a 2026-05-09 handover; 单源横跨 `.skb-block-nodeview` 编辑器与 `.skb-block-static` 读路径)；React 组件不带 inline `style`（happy-dom 测试拒绝 `rgb(var())` 字面值，所以 variant 颜色只能走 CSS data-attribute 选择器路径）；任何 variant 颜色变更改 callout.css + design-tokens 任一处即可，chrome 变更改 block-chrome.css 一处即可，不必 touch React 树
 - **No emoji in icons**: `VARIANT_ICONS` 全部为 hand-traced SVG (24×24 stroke 1.75)，
   per ui-ux-pro-max `no-emoji-icons` rule + spec §3.5
 - **Headless 自给**: `core/` 不 import 任何 React / Tiptap UI 模块；仅依赖

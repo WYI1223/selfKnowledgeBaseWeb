@@ -22,7 +22,7 @@ dead-dep policy + Astro SSR 不可执行 react-pdf 的 worker 双重约束）。
   - `renderPdf(src, page, searchable) → PdfRenderDescriptor` — single-source 渲染描述器（**single authority** for Pdf.tsx + Pdf.astro，定义在 `src/ui-default/render-pdf.ts`）
   - `PDF_TOKENS: PdfTokens` — design-token name witnesses（`@skb/design-tokens` 类型绑定）
 - `./ui-default/Pdf.astro` — apps/site SSR consumer 直接 import 的 Astro 组件（亦走 `renderPdf` authority）
-- `./ui-default/pdf.css` — 视觉规则单一来源（design-token-bound，border / bg / error 走 `var(--color-*)`）
+- `./ui-default/pdf.css` — pdf-specific 视觉规则（iframe 容器 surface bg + iframe min-height 70vh + searchable error fallback；design-token-bound，bg / error 走 `var(--color-*)`）。**Wave 6 cf-20a (2026-05-09) chrome handover**: card chrome (border / radius / hover lift / per-kind 2px top stripe via `var(--accent-pdf)`) 已 hand off 到 `@skb/editor-shell/src/block-chrome.css` (single source 横跨 `.skb-block-nodeview` + `.skb-block-static`; 两 wrapper 都 carry `data-skb-block-kind="pdf"`)。本文件 pre-cf-20a 的 `border / border-top / border-radius` 已删除
 
 ### Consumer 使用方式
 
