@@ -90,8 +90,9 @@ extension + test specs):
    `.skb-grid .ProseMirror > *:not([style*="grid-column"])` paints
    full-width.
 
-6. `apps/site/src/styles/grid.css` — **MODIFY** (~70 LOC delta;
-   was 56 LOC, now 90 LOC). Adds the cf-20b editor-surface grid rules:
+6. `apps/site/src/styles/grid.css` — **MODIFY** (~70 LOC delta in
+   cf-20b R0; +40 LOC in cf-20b R1 hotfix; was 56 LOC at R0 baseline,
+   now ~155 LOC). cf-20b R0 adds the editor-surface grid rules:
    `.skb-grid > .skb-editor-content { grid-column: 1 / -1 }` (so the
    intermediate Tiptap host div spans the outer grid full-width and
    the inner `.ProseMirror` element inherits container width) and
@@ -99,7 +100,18 @@ extension + test specs):
    grid). Extends the existing `:not([style*="grid-column"])`
    fallback selector list to also cover `.skb-grid .ProseMirror > *`
    so prose nodes inside the editor (`<p>`, `<h2>`, `<ul>`) without
-   explicit grid placement render full-width by default.
+   explicit grid placement render full-width by default. **R1 hotfix
+   (per D9)**: extends the `@media (max-width: 768px)` block with
+   4 mobile-scoped rules: `grid-column: 1 / -1 !important` +
+   `min-width: 0 !important` on `.skb-grid > *, .skb-grid .ProseMirror > *,
+   .skb-grid .skb-block-static, .skb-grid .skb-block-nodeview` (selector
+   list covers BOTH wrapper depths since `.skb-block-static` is nested
+   in `.skb-prose`, NOT a direct grid child); `max-width: 100% !important`
+   on `.skb-grid .heavy-block-skeleton`; `overflow-x: auto` on the
+   wrapper classes for defense-in-depth. `!important` is intentional
+   per D9 — beats cf-20b inline `style="grid-column: ..."` which
+   would otherwise leak desktop placement into mobile viewport
+   producing 12× horizontal overflow.
 
 7. `apps/site/src/lib/mdx-adapter.ts` — **MODIFY** (~20 LOC delta).
    Imports `extractGridPosition` + `gridPlacementStyle` from the
@@ -131,7 +143,7 @@ extension + test specs):
     NOT use `grid-auto-flow: dense` (per ADR-0016 D1 contract).
 
 12. `apps/site/playwright/sample-blocks-grid-layout.spec.ts` —
-    **NEW** (~225 LOC, 2 tests). Edit-route test verifies all 3
+    **NEW in cf-20b R0** (~225 LOC, 2 tests). Edit-route test verifies all 3
     layers: outer `.skb-grid` is 12-col grid; inner `.ProseMirror`
     is 12-col grid with each cell > 10px wide (catches the cf-20b R0
     `display: contents` bug where Chrome computed 12 zero-width
@@ -140,6 +152,14 @@ extension + test specs):
     `.skb-block-static` carries inline `grid-column: 1 / span 12`
     style emitted by the mdx-adapter / Astro wrappers. Emits
     screenshot to `docs/audits/screenshots/wave-6-cf-20b-sample-blocks-grid-layout.png`.
+    **R1 hotfix +1 test (~50 LOC delta; total now ~275 LOC, 3 tests)**:
+    `cf-20b R1: mobile (≤768px) viewport — blocks force-fill 1-col
+    regardless of inline grid-column` resizes viewport to 375×812,
+    asserts (a) computed `grid-column === '1 / -1'` on every BlockKind
+    wrapper (catches inline-style override leak per D9), (b)
+    `document.documentElement.scrollWidth ≤ 393px` (catches horizontal
+    overflow with 18px scrollbar slack). Locks the immediate symptom
+    AND the underlying CSS specificity contract.
 
 13. `docs/decisions/ADR-0016-grid-data-model.md` — **MODIFY** (~115
     LOC delta). Adds the v0.2 D11.1 amendment section after D11
@@ -265,6 +285,25 @@ the emitted screenshot satisfies D9.5.
     - outer .skb-grid: display=grid, gridAutoFlow=row, 12 grid template columns
     - all 8 kind wrappers (.skb-block-static[data-skb-block-kind=…]) have inline style attribute matching /grid-column:\s*1\s*\/\s*span\s+12/
     - all 8 kind wrappers have computed gridColumn ≠ auto, MATCHES /(span 12|\/\s*13)/
+
+- flow_c (cf-20b R1 hotfix): `/notes/sample-blocks` at viewport
+    `375×812` (mobile preview path per ADR-0016 D5 + ADR-0017 D9)
+    must collapse every block wrapper to a single column regardless
+    of cf-20b's inline `style="grid-column: 1 / span 12"`. Pre-R1
+    the inline style beat the existing media-query rule per CSS
+    specificity, producing a 12× horizontal overflow
+    (`scrollWidth=6450px` when viewport=343px). R1 hotfix adds 4
+    mobile-scoped `!important` rules per D9 to beat the inline
+    style + cap heavy-block placeholders + add overflow-x scroll
+    defense-in-depth.
+  target_url: /notes/sample-blocks (at 375×812 viewport)
+  playwright_spec: apps/site/playwright/sample-blocks-grid-layout.spec.ts:"cf-20b R1: mobile (≤768px) viewport — blocks force-fill 1-col regardless of inline grid-column"
+  screenshot_archive: (no NEW screenshot — flow_a/b screenshot is desktop; the regression-lock test runs at narrower viewport for assertion only)
+  assertions:
+    - viewport set to 375×812
+    - first .skb-block-static visible within 15s
+    - all 8 BlockKind wrappers have computed gridColumn === '1 / -1' (NOT '1 / span 12')
+    - document.documentElement.scrollWidth ≤ 393px (viewport + scrollbar slack)
 
 ## Why (user feedback)
 
@@ -519,6 +558,92 @@ style; the read-route fallback rule paints full-width. The
 mdx-bridge throw path; cf-20b's defensive `extractGridPosition`
 covers the post-parse-defensive editor path.
 
+### D9 — Mobile inline-style override needs `!important` + selector list covering both wrapper depths (cf-20b R1 hotfix 2026-05-09)
+
+**Trigger**: codex-pr-reviewer-55 R1 verdict on cf-20b. Probe at
+viewport 375×812 caught `document.documentElement.scrollWidth=6450px`
+(12× horizontal overflow) on `/notes/sample-blocks` because:
+
+1. cf-20b emits inline `style="grid-column: 1 / span 12; grid-row: span 1"`
+   on every `.skb-block-static` (read route via mdx-adapter + 3 heavy
+   Astro wrappers) and `.skb-block-nodeview` (edit route via
+   `BlockNodeView.tsx`) wrapper to lock per-block desktop placement
+   (this is the cf-20b D1 + D7 contract — single-source
+   `gridPlacementStyle` formula across 3 consumers).
+2. The pre-existing `@media (max-width: 768px) .skb-grid > * { grid-column: 1 }`
+   rule could NOT beat the cf-20b inline style per CSS specificity
+   (inline always wins over selector match). So `colSpan=12` blocks
+   retained their 12-cell width even though the grid switched to `1fr`.
+3. Result: `1fr` track stretched to fit content (bypassing the
+   intent of mobile collapse), grid container reported
+   `grid-template-columns: "6434px"`, and 14 sample-blocks fixtures
+   all stacked at 6434px = horizontal overflow.
+
+**The fix has 4 parts** (all inside the existing `@media (max-width: 768px)`
+block in `apps/site/src/styles/grid.css`; ~40 LOC total):
+
+**Part 1: `grid-column: 1 / -1 !important`** on selector list
+`.skb-grid > *, .skb-grid .ProseMirror > *, .skb-grid .skb-block-static, .skb-grid .skb-block-nodeview`.
+The selector list includes BOTH structural wrapper classes by name
+(NOT just direct children) because the read-route DOM nests
+`.skb-block-static` INSIDE `.skb-prose` (the `notes/[...slug].astro`
+template wraps `<Content>` in `<div class="skb-prose">`), so it's
+NOT a direct grid child. Initial fix attempt with only `.skb-grid > *`
+missed this case; my own probe + the regression test caught it
+during R1 implementation.
+
+**Part 2: `min-width: 0 !important`** on the same selector list.
+Even with `grid-column: 1 / -1`, CSS Grid's default `min-width: auto`
+resolves to each item's `min-content` (the largest unbreakable
+child). Sample-blocks contains `<pre class="skb-code-pre">` Python
+code (6392px wide unbreakable text per its own intrinsic min-content),
+`<svg class="skb-agent-flow-svg">` topology (6400px viewBox), and
+PDF `<iframe>` (6424px). Any one of these pushed the 1fr grid track
+to ~6.4k px, bypassing the 1fr-to-viewport-width constraint.
+`min-width: 0` lets grid items shrink below their content
+min-content; the inner block CSS (`.skb-code-pre { overflow-x: auto }`
+etc.) handles long-line scroll within the now-collapsed card.
+
+**Part 3: `max-width: 100% !important`** on `.skb-grid .heavy-block-skeleton`.
+The `@skb/heavy-block-boundary` package SSR-emits
+`<div class="heavy-block-skeleton" style="width:600px;min-height:400px">`
+(per ADR-0014 D5 heavyBoundaryDimensions). 600px exceeds the 343px
+mobile viewport by ~257px. The inline `width:600px` is on the inner
+element, not the wrapper, so it bypasses our wrapper's `min-width: 0`.
+Cap at parent width on mobile only; desktop SSR fallback dims (per
+ADR-0014 W4-1 zero-layout-shift) are unaffected. Wave 5 ADR-0014
+v0.5 amendment will dynamically derive heavy dimensions from grid
+colSpan/rowSpan post-hydration; this mobile cap is forward-compat.
+
+**Part 4: `overflow-x: auto`** on `.skb-grid .skb-block-static, .skb-grid .skb-block-nodeview`.
+Defense-in-depth so even if a future inner element extends past the
+wrapper's right edge (e.g., new heavy block kind, syntax-highlighted
+long line that lacks its own `overflow-x: auto`), the overflow stays
+contained within the wrapper rather than scrolling the page itself.
+Block-level inner CSS (`.skb-code-pre { overflow-x: auto }`,
+`.skb-agent-flow-canvas { overflow: hidden }`) continues to apply
+within the wrapper bounds.
+
+**Why `!important` is documented + intentional, NOT an anti-pattern**:
+cf-20b's inline-style emission is the desktop placement contract per
+ADR-0016 v0.2 D11.1 amendment. Without the inline style, the grid
+couldn't actually place blocks at their `{col, colSpan}` positions.
+The mobile override per ADR-0016 D5 + ADR-0017 D9 mobile view-only
+path REQUIRES beating that desktop placement intent in a single,
+scoped media query — there's no alternative selector specificity
+that beats inline style without `!important`. Documented in
+`apps/site/CONTRACT.md` "Mobile inline-style override" subsection so
+future readers understand WHY this is the only `!important` use in
+the apps/site CSS.
+
+**Regression lock**:
+`apps/site/playwright/sample-blocks-grid-layout.spec.ts:"cf-20b R1: mobile (≤768px) viewport"`
+(~50 LOC, 1 test). Asserts (a) computed `grid-column === '1 / -1'`
+on every BlockKind wrapper at viewport 375×812 (catches "inline-style
+override leak"), (b) `document.documentElement.scrollWidth ≤ 393px`
+(catches horizontal overflow with 18px scrollbar slack). Locks both
+the immediate symptom AND the underlying CSS specificity contract.
+
 ## Acceptance
 
 ```bash
@@ -583,19 +708,20 @@ pnpm --filter @skb/site test 2>&1 | grep -E 'Tests'
 ```
 
 ```bash
-# AC-7: targeted Playwright passes (edit + read grid layout specs)
+# AC-7: targeted Playwright passes (edit + read grid layout specs +
+# cf-20b R1 mobile regression lock)
 pnpm --filter @skb/site exec playwright test \
   playwright/sample-blocks-grid-layout.spec.ts \
   playwright/sample-blocks-edit-loads.spec.ts \
   playwright/sample-blocks-read.spec.ts \
   --reporter=line --workers=1 2>&1 | tail -3
-# Expected: 4 passed (2 new + 2 carried)
+# Expected: 5 passed (3 in sample-blocks-grid-layout: edit + read + cf-20b R1 mobile; +2 carried specs)
 ```
 
 ```bash
 # AC-8: full apps/site Playwright suite passes (visual baseline diff < 5%)
 pnpm --filter @skb/site exec playwright test --reporter=line --workers=1 2>&1 | tail -3
-# Expected: 52 passed | 14 skipped | 0 failed (was 50 in cf-20a; +2 new specs)
+# Expected: 53 passed | 14 skipped | 0 failed (was 50 in cf-20a; +3 new specs in cf-20b: edit + read + R1 mobile)
 ```
 
 ```bash
@@ -617,6 +743,23 @@ grep -cE '^### D11\.1 — Editor-surface grid lock' docs/decisions/ADR-0016-grid
 # Expected: 1
 grep -cE 'v0\.2 cf-20b D11\.1 amendment 2026-05-09' docs/decisions/ADR-0016-grid-data-model.md
 # Expected: 1
+```
+
+```bash
+# AC-12 (cf-20b R1 hotfix lock): mobile (≤768px) viewport collapses
+# every block wrapper to 1-col regardless of cf-20b inline grid-column;
+# document scrollWidth fits viewport (no horizontal overflow). The
+# fix uses 4 mobile-scoped !important rules per D9 — one of the only
+# !important uses in apps/site CSS, deliberate + documented.
+pnpm --filter @skb/site exec playwright test \
+  playwright/sample-blocks-grid-layout.spec.ts \
+  -g "cf-20b R1: mobile" \
+  --reporter=line --workers=1 2>&1 | tail -3
+# Expected: 1 passed
+grep -cE '!important;' apps/site/src/styles/grid.css
+# Expected: 3 (grid-column + min-width + max-width — all declarations
+#            end with `!important;`; overflow-x doesn't need !important
+#            because no inline overflow-x style competes for it)
 ```
 
 ## Reflection landing

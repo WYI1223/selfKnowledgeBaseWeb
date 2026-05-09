@@ -91,6 +91,51 @@
   direct children render with `grid-column: 1`. This is a rendering-only
   preview path: `rowSpan='auto'` is derived for layout, but persisted
   `rowSpan` values are unchanged per ADR-0016 D5.
+- **Mobile inline-style override (Wave 6 cf-20b R1 hotfix 2026-05-09)**:
+  cf-20b emits inline `style="grid-column: ${col} / span ${colSpan}"` on
+  every `.skb-block-static` (read route) and `.skb-block-nodeview` (edit
+  route) wrapper to lock per-block desktop placement. Inline style beats
+  media-query CSS per CSS specificity, so the existing
+  `@media (max-width: 768px) .skb-grid > * { grid-column: 1 }` rule
+  did NOT collapse blocks to 1-col on mobile — codex-pr-reviewer-55 R1
+  caught a 12× horizontal overflow at 375×812 viewport (scrollWidth=6450px).
+  The hotfix adds 4 mobile-scoped rules with `!important` (intentional
+  and documented; the mobile-preview contract per ADR-0016 D5 +
+  ADR-0017 D9 mobile view-only path requires beating the cf-20b desktop
+  placement intent in a single, scoped media query):
+  1. `grid-column: 1 / -1 !important` on `.skb-grid > *`,
+     `.skb-grid .ProseMirror > *`, `.skb-grid .skb-block-static`,
+     `.skb-grid .skb-block-nodeview` — collapses every block wrapper to
+     1-col regardless of inline style. Selector list covers BOTH read
+     route (`.skb-block-static` is nested in `.skb-prose`, NOT a direct
+     child of `.skb-grid`) AND edit route
+     (`.skb-block-nodeview` nested in `.ProseMirror`).
+  2. `min-width: 0 !important` on the same selector list — CSS Grid's
+     default `min-width: auto` resolves to each item's `min-content`
+     (the largest unbreakable child). The sample-blocks fixture
+     contains `<pre>` Python code (6392px wide unbreakable text),
+     `<svg>` NN-Viz topology (6400px), and `<iframe>` PDF viewers
+     (6424px) — any one pushes the 1fr grid track to 6.4k px and
+     bypasses the viewport-width constraint. `min-width: 0` lets grid
+     items shrink below content min-content; the inner block CSS
+     (`.skb-code-pre { overflow-x: auto }` etc.) handles the long-line
+     scroll within the now-collapsed card.
+  3. `max-width: 100% !important` on `.skb-grid .heavy-block-skeleton` —
+     `@skb/heavy-block-boundary` SSR-emits `style="width:600px;min-height:400px"`
+     on the inner skeleton (per ADR-0014 D5 heavyBoundaryDimensions);
+     600px exceeds 343px mobile viewport. Cap at parent width on
+     mobile only; desktop SSR fallback dims (per ADR-0014 W4-1 zero-
+     layout-shift) are unaffected.
+  4. `overflow-x: auto` on `.skb-grid .skb-block-static`,
+     `.skb-grid .skb-block-nodeview` — defense-in-depth so even if a
+     future inner element extends past the wrapper's right edge, the
+     overflow stays contained within the wrapper rather than scrolling
+     the page itself.
+
+  Regression lock spec:
+  `apps/site/playwright/sample-blocks-grid-layout.spec.ts:"cf-20b R1: mobile (≤768px) viewport"`
+  asserts computed `grid-column === '1 / -1'` on every BlockKind wrapper +
+  `document.documentElement.scrollWidth ≤ 393px` (viewport + scrollbar slack).
 - Per-block `gridColumn` / `gridRow` style emission landed at Wave 6 cf-20b
   (2026-05-09). Light-block read route: `apps/site/src/lib/mdx-adapter.ts`
   consumes `extractGridPosition` + `gridPlacementStyle` from

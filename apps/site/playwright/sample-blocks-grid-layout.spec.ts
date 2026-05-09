@@ -249,3 +249,82 @@ test('sample-blocks read route — .skb-block-static carries grid-column derived
     expect(w.gridColumn).toMatch(/(span 12|\/\s*13)/);
   }
 });
+
+test('cf-20b R1: mobile (≤768px) viewport — blocks force-fill 1-col regardless of inline grid-column', async ({
+  page,
+}) => {
+  // Wave 6 cf-20b R1 hotfix regression lock — codex-pr-reviewer-55 R1
+  // probe at 375×812 caught that cf-20b's inline `style="grid-column:
+  // 1 / span 12"` on `.skb-block-static` (and `.skb-block-nodeview`)
+  // beats the existing `@media (max-width: 768px) .skb-grid > *
+  // { grid-column: 1 }` rule per CSS specificity (inline wins). Result:
+  // mobile viewport overflows horizontally (scrollWidth=6450px when
+  // viewport=343px) because every wrapper still claims 12 cells of
+  // width even though the grid switched to 1fr.
+  //
+  // Fix: `.skb-grid > *, .skb-grid .ProseMirror > * { grid-column:
+  // 1 / -1 !important }` inside the same media query. `!important` is
+  // intentional + documented (apps/site/CONTRACT.md "≤768px → 1 col"
+  // contract requires beating the desktop inline placement). This
+  // spec locks the contract so a future renderer that introduces a
+  // higher-specificity inline style or a new wrapper variant cannot
+  // silently regress mobile layout.
+  //
+  // Read route is the canonical surface for this test (same fixture
+  // sample-blocks; 14 .skb-block-static wrappers all carry inline
+  // grid-column from mdx-adapter / Astro wrappers).
+
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto('/notes/sample-blocks');
+
+  await expect(page.locator('.skb-block-static').first()).toBeVisible({
+    timeout: 15_000,
+  });
+
+  // (a) Computed grid-column on every read-route wrapper must be the
+  //     mobile override `1 / -1`, NOT the inline-emitted `1 / span 12`.
+  //     Sample one wrapper per kind to cover the full BlockKind union.
+  const computed = await page.evaluate(() => {
+    const wrapperKinds = [
+      'callout',
+      'componentCode',
+      'image',
+      'math',
+      'pdf',
+      'jupyter',
+      'nn-viz',
+      'agent-flow',
+    ] as const;
+    return wrapperKinds.map((kind) => {
+      const el = document.querySelector(
+        `.skb-block-static[data-skb-block-kind="${kind}"]`,
+      );
+      if (!el) return { kind, error: 'wrapper missing' };
+      return { kind, gridColumn: window.getComputedStyle(el).gridColumn };
+    });
+  });
+
+  for (const entry of computed) {
+    if ('error' in entry) {
+      throw new Error(`mobile probe ${entry.kind}: ${entry.error}`);
+    }
+    // Computed `grid-column: 1 / -1` resolves to `1 / -1` in Chromium.
+    // The pre-fix value was `1 / span 12` (inline-style override leak).
+    expect(
+      entry.gridColumn,
+      `kind ${entry.kind} must collapse to 1-col on mobile (got ${entry.gridColumn}); cf-20b R1 inline-style override regression`,
+    ).toBe('1 / -1');
+  }
+
+  // (b) Document scrollWidth must NOT exceed the viewport (with a
+  //     small tolerance for browser scrollbar overhead). Pre-fix:
+  //     scrollWidth ≈ 6450px (12× overflow). Post-fix: scrollWidth ≤
+  //     ~393px (= 375 + scrollbar slack).
+  const scrollWidth = await page.evaluate(
+    () => document.documentElement.scrollWidth,
+  );
+  expect(
+    scrollWidth,
+    `document scrollWidth ${scrollWidth}px must NOT exceed viewport+scrollbar (~393px); cf-20b R1 horizontal overflow regression`,
+  ).toBeLessThanOrEqual(393);
+});

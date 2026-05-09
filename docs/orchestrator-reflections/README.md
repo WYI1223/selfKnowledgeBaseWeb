@@ -26,3 +26,4 @@
 - [2026-05-09 — cf-15a~cf-19 retrospective + cf-20 reset](2026-05-09-cf-15a-19-retrospective.md) — user-triggered honest audit; 4 systemic gaps identified
   - **ux-ui-lead reflection cf-20a (2026-05-09)** — chrome single-source migration; theme-tokens invariant caught drift; c3-2 spec updated to track new authority instead of degrading
   - **ux-ui-lead reflection cf-20b (2026-05-09)** — grid-layout substrate; `display: contents` selector-vs-layout-tree bug + recovery; deep-subpath import rule for Astro SSR; grid-style single-source helper across 3 consumers
+  - **ux-ui-lead reflection cf-20b R1 hotfix (2026-05-09)** — mobile inline-style override; codex caught 12× horizontal overflow regression; 4-layer CSS fix (selector depth + min-width auto + heavy-skeleton inline width + overflow defense-in-depth); landed CSS-specificity layered-cause checklist + mandatory mobile-viewport regression test rule for any inline-grid-style PR

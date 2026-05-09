@@ -109,8 +109,114 @@
     grid-template-columns: 1fr;
   }
 
-  .skb-grid > * {
-    grid-column: 1;
+  /*
+   * Wave 6 cf-20b R1 hotfix (2026-05-09) — mobile override MUST beat
+   * the cf-20b-emitted inline `style="grid-column: ${col} / span ${colSpan}"`
+   * on `.skb-block-static` (read route 5 light blocks via mdx-adapter +
+   * 3 heavy via Astro wrappers) AND `.skb-block-nodeview` (editor
+   * route via BlockNodeView.tsx). Without `!important`, inline style
+   * wins per CSS specificity, so blocks like `colSpan=12` retain their
+   * 12-cell width even though the mobile breakpoint switched the grid
+   * to a single 1fr column — producing 12× horizontal overflow
+   * (verified at 375×812: scrollWidth=6450px when viewport=343px;
+   * codex-pr-reviewer-55 R1 caught this).
+   *
+   * `!important` is intentional here, NOT an anti-pattern: the cf-20b
+   * inline emission is a desktop placement contract (per ADR-0016
+   * v0.2 D11.1 amendment); mobile responsive override per ADR-0016 D5
+   * + apps/site/CONTRACT.md "≤768px → 1 col" requires beating that
+   * inline-style intent in a single, scoped media query.
+   *
+   * R1 followup (during fix-write): the initial `.skb-grid > *,
+   * .skb-grid .ProseMirror > *` selector list missed the read-route
+   * case because `.skb-block-static` is nested INSIDE `.skb-prose`
+   * (the `notes/[...slug].astro` template wraps `<Content>` in
+   * `<div class="skb-prose">`), so it's NOT a direct child of
+   * `.skb-grid`. The corrected selector list explicitly targets BOTH
+   * structural wrapper classes by name (`.skb-block-static` for read,
+   * `.skb-block-nodeview` for editor) regardless of their depth in
+   * the DOM tree. Outer-grid direct-child rule kept for any future
+   * non-block top-level grid item that needs the same mobile flatten.
+   */
+  .skb-grid > *,
+  .skb-grid .ProseMirror > *,
+  .skb-grid .skb-block-static,
+  .skb-grid .skb-block-nodeview {
+    grid-column: 1 / -1 !important;
+  }
+
+  /*
+   * Wave 6 cf-20b R1 hotfix part 2 — `min-width: 0` on grid items.
+   *
+   * Even with `grid-column: 1 / -1` forcing block wrappers to the
+   * single mobile column, CSS Grid's default `min-width: auto` on
+   * grid items resolves to each item's `min-content` width, which
+   * = the largest unbreakable child. The sample-blocks fixture
+   * contains `<pre class="skb-code-pre">` Python code (6392px wide
+   * unbreakable text), `<svg>` NN-Viz topology (6400px), and
+   * `<iframe>` PDF viewers (6424px) — any one of these pushes the
+   * grid track to its content's intrinsic min-content, ballooning the
+   * 1fr column to ~6.4k px and bypassing the viewport-width
+   * constraint.
+   *
+   * `min-width: 0` (with `!important` for the same reason as above)
+   * tells grid items to shrink below their content min-content. The
+   * inner code block's own `overflow-x: auto` (from
+   * `block-code/ui-default/code.css`) then handles the long-line
+   * scroll within the now-343px-wide card, so users see a horizontally-
+   * scrollable code box INSIDE the block instead of the entire page
+   * scrolling horizontally.
+   *
+   * Selector list mirrors the grid-column rule above (covers `.skb-prose`
+   * via `.skb-grid > *` AND the explicit block wrappers).
+   */
+  .skb-grid > *,
+  .skb-grid .ProseMirror > *,
+  .skb-grid .skb-block-static,
+  .skb-grid .skb-block-nodeview {
+    min-width: 0 !important;
+  }
+
+  /*
+   * Wave 6 cf-20b R1 hotfix part 3 — heavy-block placeholder cap.
+   *
+   * `@skb/heavy-block-boundary` SSR-emits `<div class="heavy-block-skeleton"
+   * style="width:600px;min-height:400px">` (per ADR-0014 D5
+   * heavyBoundaryDimensions); 600px exceeds the 343px mobile viewport
+   * by ~257px and bypasses our wrapper's `min-width: 0` because the
+   * inline `width:600px` is on the inner element, not the wrapper.
+   * Cap it at the parent width on mobile so the heavy-block placeholder
+   * fits inside the now-collapsed `.skb-block-static`/`.skb-block-nodeview`
+   * card. `max-width: 100%` is sufficient because the parent is now
+   * track-width (343px); the cap is mobile-only so desktop SSR
+   * fallback dims (per ADR-0014 W4-1 zero-layout-shift) are unaffected.
+   * Wave 5 ADR-0014 v0.5 amendment will dynamically derive heavy
+   * dimensions from grid colSpan/rowSpan (W5-1 invariant) post
+   * hydration; cf-20b R1 mobile cap is a forward-compat layer that
+   * coexists with that future amendment.
+   */
+  .skb-grid .heavy-block-skeleton {
+    max-width: 100% !important;
+  }
+
+  /*
+   * Wave 6 cf-20b R1 hotfix part 4 — block content overflow scroll.
+   *
+   * After parts 1-3, the block wrapper itself fits the viewport, but
+   * inner content (long `<pre>` code, NN-Viz svg with intrinsic 6400px
+   * viewBox, agent-flow svg topology, etc.) can still extend past the
+   * wrapper's right edge if the inner CSS doesn't already clip/scroll.
+   * Force overflow-x scroll on the wrapper as a defense-in-depth so the
+   * page itself never scrolls horizontally on mobile (the cf-19 mobile
+   * preview-mode contract per ADR-0017 D9). Block-level inner CSS rules
+   * with their own scroll behavior (block-code's `.skb-code-pre
+   * { overflow-x: auto }`, block-pdf's iframe min-height, agent-flow's
+   * `.skb-agent-flow-canvas { overflow: hidden }`) continue to apply
+   * within the wrapper bounds.
+   */
+  .skb-grid .skb-block-static,
+  .skb-grid .skb-block-nodeview {
+    overflow-x: auto;
   }
 }
 
