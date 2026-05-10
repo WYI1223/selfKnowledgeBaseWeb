@@ -731,6 +731,158 @@ React island hydration is non-deterministic for read-route DOM mutation;
 prefer server-side state propagation OR `<script is:inline>` synchronous
 script when client-side bridge truly needed").
 
+## v0.7 Amendment (Wave 6 cf-23 — read-route page-shell visual unification)
+
+> **Status**: amended 2026-05-10 post Wave 6 cf-22 (keyboard a11y).
+> Wave 6 cf-23 trigger: 用户验收 cf-22 后再次确认 "把 edit 和正常
+> 模式风格统一一下" + "其他的全部对齐 v2"。 cf-20a 已闭合 block
+> chrome 单源；cf-23 闭合 page-shell layer (BaseLayout main 元素 容器
+> 宽度 + Tailwind `prose` typography 与 v2 token 冲突)。
+>
+> v0.6 amendment 关心 save-path / data persistence；v0.7 amendment
+> 关心 read-route visual contract — 两块互不影响，independent
+> amendments to the same v2 visual ADR. v0.7 D9 namespace 与 v0.6 D9
+> 区分通过版本前缀 (mirrors v0.6 prefix convention)。
+
+### v0.7 D9 — Read-route page-shell visual contract (BaseLayout `wide` opt-in + drop Tailwind `prose` for /notes/* + 4-viewport width-parity lock)
+
+**Trigger**: cf-23 PLAN session 视觉 probe 发现 BaseLayout
+main 元素 全程 `class="prose mx-auto max-w-3xl py-12 px-4"` 锁
+768px 宽度且 Tailwind Typography preset 的 `font-size: 16px` /
+`prose p { font-size: 18px }` 覆盖 v2 token (`--font-size-body: 15px`
+/ `--font-size-b-p: 14.5px`)。 v2 reference (`/mnt/d/download/web/v2-styles.css:122-127`)
+`.doc-wrap` 是 `max-width: 1180px; padding: 40px 48px 200px`。
+edit 与 read 共同 mismatch v2，user 述 "全部对齐 v2" = 两 route
+共同对齐。
+
+#### Decision
+
+(1) `apps/site/src/layouts/BaseLayout.astro` 加 optional prop
+    `wide?: boolean = false`：
+    - `wide` truthy 时：main 元素 className =
+      `mx-auto py-10 px-4 lg:px-12 notes-doc-wrap`，inline
+      `style="max-width: 1180px"`
+    - `wide` falsy（默认）时：保留现有 `prose mx-auto max-w-3xl
+      py-12 px-4`（非 notes route 不动）
+
+(2) BOTH `apps/site/src/pages/notes/[...slug].astro`（read）AND
+    `apps/site/src/pages/notes/[...slug]/edit.astro`（edit）传
+    `wide`，作为对称 opt-in。后续 cf-NN 若需 widen `/`、`/search`
+    可同样 opt in；本 amendment 不动其他 route。
+
+(3) Tailwind `prose` className 在 `wide` 路径被 dropped。 理由：
+    Tailwind `@tailwindcss/typography` preset 的 `font-size: 1.125rem`
+    （18px）on `prose p` 直接覆盖 `apps/site/src/styles/prose.css`
+    的 `.skb-prose p { font-size: var(--font-size-b-p) }` (14.5px) 通过
+    `:where()` 高 specificity 注入。 cleaner 单源 = 在 v2-aligned
+    route 上 opt out，让 v2 token 直接 cascade 到 main 元素、
+    `p` 段落、`h2` 等。
+
+(4) Container 宽度 4-viewport lock (cf-23 D10)。 main 元素的
+    `getBoundingClientRect().width` 测的是 OUTER box (padding 在 box
+    内部)，所以：
+    - 1280 viewport: inline `style="max-width: 1180px"` cap 把 box
+      固定在 1180px；`mx-auto` 把多余 100px 平分两边作 50px margin。
+    - viewport ≤ 1180px (1024 / 768 / 375): box 填满 viewport，
+      `px-4` (16px*2) / `lg:px-12` (48px*2) padding 推进 inner
+      content；main 元素 外宽 = viewport。
+
+| Viewport | main outer width | inner content width |
+| --- | --- | --- |
+| 1280 | 1180px (max-width cap) | 1180 - 96 (lg:px-12*2) = 1084 |
+| 1024 | 1024px (no cap) | 1024 - 96 (lg:px-12*2) = 928 |
+| 768 | 768px (no cap) | 768 - 32 (px-4*2) = 736 |
+| 375 | 375px (no cap) | 375 - 32 (px-4*2) = 343 |
+
+cf-23 R0 F2 lock tightening: BOTH outer AND inner widths are
+asserted at every viewport (pre-R0 only outer was locked; a
+regression that changes `lg:px-12` → `lg:px-8` would silently
+shrink inner without changing outer). Inner is measured as
+`main.clientWidth - paddingLeft - paddingRight` to capture the
+content-box width regardless of box-sizing.
+
+`apps/site/playwright/notes-route-width-parity.spec.ts` 在 cf-23
+EXECUTE TDD-write 阶段测出 outer width values 后写入 spec lock
+(±4px tolerance band 吸收 scrollbar 子像素差异)。
+
+(5) 28px `h1` heading 保持，**不**降级到 v2 `.doc-title` 13px
+    gray。 理由：SKB 是 knowledge-base，real `h1` heading 是
+    document-outline semantics 的认证锚点 (a11y heading hierarchy +
+    screen-reader nav + page-title cross-ref)；v2 reference 是
+    designer-mock editor，doc title 是 incidental UI label。
+    SKB read route 优先可读性 + outline 语义。 本 amendment 显式
+    ratify 此 divergence。
+
+(6) Outer chrome (`header` + `nav` + theme toggle) 不动。
+    理由：v2 reference 不规定 read-only outer shell; v2 `.app` shell
+    (left palette + top bar + scroller) 是 EDITOR-mode chrome only。
+    cf-23 仅闭合 inner doc-wrap 层；outer chrome 等 cf-24+ 决议。
+
+#### 范围边界 (explicit out-of-scope per orchestrator approval)
+
+- `/`（home index）+ `/search` route 不 opt in `wide`：保留
+  `prose max-w-3xl`。 D2.b widening-all-routes 选项被 explicit
+  reject，避免连带破坏无关 route layout。
+- v2-style left-rail palette + top-bar editor chrome：cf-24+ 范围。
+- v2-style `.doc-title` 13px gray label：保留 28px `h1` heading
+  （上述 decision (5)）。
+- Dark-mode 视觉重新审计：本 amendment 仅 verify no visible
+  regression，不修 `tokens-dark.css`。 v2 reference 当前是 light-only。
+- Touch / mobile drag：仍 out-of-scope per ADR-0017 D9；cf-23 D8
+  spec assertion 在 4 viewport 包括 375 验证 read route 不 leak
+  edit affordances（`[data-skb-drag-handle]` 等 9 selector 全 0）。
+
+#### Consequence
+
+- Positive: edit + read 两 route 容器宽度 + typography 同时对齐 v2。
+  Tailwind prose 与 v2 token 之间 specificity 战争终结（仅 v2
+  token cascade）。 cf-23 D8 + D10 spec 锁未来 regression。
+- Positive: BaseLayout `wide` prop 是单一 opt-in 锚点；future
+  cf-NN 若 widen 其他 route 仅一处 prop pass，不复制 className。
+- Positive: 28px `h1` heading divergence 显式 ratify =
+  knowledge-base semantics 优先，明确不是 oversight。
+- Negative: BaseLayout 增加一个 prop 增加少量 cognitive load
+  for future BaseLayout consumers; mitigation = TypeScript prop
+  type + `apps/site/CONTRACT.md` § "Layout shell" + ADR-0018
+  v0.7 D9 cross-ref；不 hidden。
+- Negative: Tailwind `prose` 在 wide 路径 silently drop 可能让
+  consumer 困惑 "为什么我加 `prose` class 没生效"；mitigation =
+  prop name `wide` + `notes-doc-wrap` className 是显式信号；
+  drop 不是 silent，是 wide 路径 className 整体替换。
+- Neutral: 4-viewport 锁的 widths 是 absolute target；未来若
+  Tailwind config padding scale 改 (`px-12` 重定义) lock 会 fail，
+  这是 intentional regression net (orchestrator plan-challenger
+  D10 refinement 明确要求 lock 绝对值非仅 delta)。
+
+#### Sister-doc updates (per ADR-0006 #6)
+
+- `apps/site/CONTRACT.md`: NEW "Layout shell" 段，记录 BaseLayout
+  `wide?: boolean` prop + 4-viewport doc-wrap measurement table +
+  cross-ref ADR-0018 v0.7 D9。
+- `apps/site/playwright/sample-blocks-read.spec.ts`: extended +
+  cf-23 typography-token assertion 注释。
+- `apps/site/playwright/sample-blocks-read-no-edit-affordances.spec.ts`:
+  NEW spec — D8 zero-affordance lock 的认证 cite。
+- `apps/site/playwright/notes-route-width-parity.spec.ts`: NEW spec
+  — D10 width-parity 4-viewport lock 的认证 cite。
+
+#### 不修内容（reviewer cross-ref）
+
+- `packages/editor-shell/src/block-chrome.css`: 不动 — cf-20a 单源
+  layer 在本 amendment 之前已 align。
+- `apps/site/src/styles/prose.css`: 不动 — `.skb-prose p` 已 consume
+  `--font-size-b-p`；本 amendment drop `prose` class 让 cascade 不被
+  shadow，`.skb-prose` 规则继续 fire。
+- `packages/design-tokens/src/tokens.css`: 不动 — 所有需要的 token
+  (--font-size-body / --font-size-b-p / --font-size-h1 / --line-height-*
+  / --font-weight-* / --letter-spacing-h1 / --sans / --mono) 已 v0.6
+  state 完整存在。
+- `apps/site/src/styles/grid.css`: 不动 — cf-20b 4-breakpoint
+  grid responsive layout（≤1024 → 6col, ≤768 → 1col + !important
+  flatten + `min-width: 0` + heavy-block cap + overflow-x scroll）
+  在更宽 doc-wrap 内继续触发，因为 `useResponsiveCols` + grid.css
+  media query 都 read viewport-width 不 container-width。
+
 ## Acceptance criteria (AC list)
 
 `@skb/design-tokens` + `apps/site` + 5 light block packages + visual smoke playwright + (Stage C.4) `@skb/editor-shell` save-adapter 必满足:
@@ -846,3 +998,4 @@ dispatch: `codex exec --yolo --profile plan-challenger ...` (Pre-A4 ADR-0018 des
 - [design-tokens CONTRACT.md](../../packages/design-tokens/CONTRACT.md) — existing public surface; Stage C.3 实施 PR 同步 OKLCH switchover + 8 kind hue + `--accent-success` 新增
 - granularity doc v0.3.4 (`/mnt/d/download/web/v2-design-granularity.md`) — gatekeeper-side scratch; § "v2 视觉契约要素 (认证源 = v2-styles.css)" + § "v2 编辑器 UX 要素" body 是此 ADR D1-D7 source intent (per Wave 5 plan v0.2 D5 ADR 编号映射表 NEW reframe v2 forward; granularity 原 Phase 2+ L1 visual scope)
 - v2-styles.css (`/mnt/d/download/web/v2-styles.css` 25 KB; 全文 token + prose customization + typography + shadow authority) — v2 视觉 token 认证源 + Stage C.3 实施 PR byte-equivalence baseline
+- [Wave 6 cf-23 PR.md](../plans/wave-6-main/wave-6-cf-23-read-mode-unification.md) — implements v0.7 D9 (BaseLayout `wide` opt-in + 4-viewport width-parity lock + D8 zero-affordance lock + typography-token verification)

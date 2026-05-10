@@ -163,5 +163,88 @@ test('sample-blocks read route shares v2 .gblock chrome via .skb-block-static (c
     consoleErrors.filter((m) => /skb-block-static|block-chrome/.test(m)),
   ).toEqual([]);
 
+  // Wave 6 cf-23 (2026-05-10) — typography-token assertion. Confirms
+  // the BaseLayout `wide` opt-in successfully dropped the Tailwind
+  // `prose` class on the /notes/* route so the v2 typography tokens
+  // (`--font-size-body 15px`, `--font-size-b-p 14.5px`,
+  // `--font-size-h2 20px`) cascade into <main> without being shadowed
+  // by Tailwind Typography preset rules. If this assertion fails the
+  // most likely cause is that BaseLayout regressed (lost the `wide`
+  // prop branch) or one of the notes routes stopped passing `wide`,
+  // which would re-enable `class="prose"` on <main> and force `<p>`
+  // back to 18px (Tailwind's `prose-base p` default) instead of 14.5px.
+  //
+  // Probes a real prose <p> emitted directly inside `.skb-grid` (the
+  // sample-blocks fixture has prose paragraphs interleaved with
+  // component blocks per ADR-0016 v0.2 D11.1 prose-interleave). Falls
+  // back to the first <h2> (also tokened to 20px via global.css) if no
+  // standalone <p> exists so the assertion stays robust if a future
+  // fixture rewrite removes prose paragraphs.
+  const typographyProbe = await page.evaluate(() => {
+    const main = document.querySelector('main');
+    if (!main) return { mainClass: null, mainFontSize: null, proseFontSize: null };
+    const proseP = main.querySelector('.skb-grid > p, .skb-grid p.b-p, .skb-grid > article p');
+    const fallbackH2 = main.querySelector('.skb-grid > h2');
+    const target = proseP ?? fallbackH2;
+    return {
+      mainClass: main.className,
+      mainHasProseClass: main.classList.contains('prose'),
+      mainHasMaxW3xl: main.classList.contains('max-w-3xl'),
+      mainHasNotesDocWrap: main.classList.contains('notes-doc-wrap'),
+      mainStyleMaxWidth: main.style.maxWidth,
+      mainFontSize: parseFloat(getComputedStyle(main).fontSize),
+      proseTagName: target?.tagName ?? null,
+      proseFontSize: target ? parseFloat(getComputedStyle(target).fontSize) : null,
+    };
+  });
+
+  // Wide opt-in must be active: notes-doc-wrap class present, prose
+  // class dropped, max-w-3xl dropped, inline max-width: 1180px set.
+  expect(
+    typographyProbe.mainHasNotesDocWrap,
+    `<main> must carry .notes-doc-wrap (cf-23 wide opt-in active); className=${typographyProbe.mainClass}`,
+  ).toBe(true);
+  expect(
+    typographyProbe.mainHasProseClass,
+    `<main> must NOT carry Tailwind .prose on the wide path; className=${typographyProbe.mainClass}`,
+  ).toBe(false);
+  expect(
+    typographyProbe.mainHasMaxW3xl,
+    `<main> must NOT carry .max-w-3xl on the wide path; className=${typographyProbe.mainClass}`,
+  ).toBe(false);
+  expect(typographyProbe.mainStyleMaxWidth).toBe('1180px');
+
+  // <main> font-size resolves to 15px (--font-size-body) NOT 16px
+  // (Tailwind prose-base default). 1px tolerance for sub-pixel math.
+  expect(
+    typographyProbe.mainFontSize,
+    `<main> font-size must resolve to ~15px (--font-size-body); got ${typographyProbe.mainFontSize}`,
+  ).toBeGreaterThanOrEqual(14);
+  expect(typographyProbe.mainFontSize).toBeLessThanOrEqual(16);
+
+  // Prose <p> or fallback <h2> font-size resolves to v2 token NOT
+  // Tailwind prose-base default. <p>.b-p → --font-size-b-p 14.5px;
+  // bare <p> in skb-prose → also 14.5px per prose.css line 1-6;
+  // <h2> → --font-size-h2 20px per global.css. Tailwind prose-base
+  // would force <p> to 18px and <h2> to 24px — both outside our
+  // tolerance bands.
+  if (typographyProbe.proseTagName === 'P') {
+    expect(
+      typographyProbe.proseFontSize,
+      `prose <p> font-size must resolve to ~14.5px (--font-size-b-p); got ${typographyProbe.proseFontSize}`,
+    ).toBeGreaterThanOrEqual(13.5);
+    expect(typographyProbe.proseFontSize).toBeLessThanOrEqual(15.5);
+  } else if (typographyProbe.proseTagName === 'H2') {
+    expect(
+      typographyProbe.proseFontSize,
+      `prose <h2> font-size must resolve to ~20px (--font-size-h2); got ${typographyProbe.proseFontSize}`,
+    ).toBeGreaterThanOrEqual(19);
+    expect(typographyProbe.proseFontSize).toBeLessThanOrEqual(21);
+  } else {
+    throw new Error(
+      'cf-23 typography probe: no <p> or <h2> found inside .skb-grid for token verification',
+    );
+  }
+
   await page.screenshot({ fullPage: true, path: SCREENSHOT_PATH });
 });
