@@ -387,6 +387,66 @@
   Change-kind (data-skb-block-kind mutates from `callout` to
   `componentCode` + grid attrs preserved at `1 / span 12`) + mobile-hidden
   lock at 375×812. Uses byte-snapshot fixture isolation per cf-20c-2 R3 F1.
+- **Keyboard a11y wire (Wave 6 cf-22 2026-05-09; ADR-0017 D13 amendment;
+  R1 amendment 2026-05-10)**:
+  `EditorShellMount.tsx` is now (post-R1) a 39-LOC outer wrapper that
+  mounts `<LiveAnnouncer/>` ONCE; `EditorShellMountInner.tsx` (NEW R1)
+  holds the lifecycle wiring and calls `useAnnounce()` from inside the
+  provider scope (canonical React-context outer/inner split). The inner
+  mount builds 6 `useCallback` factories — `onAnnounceDragMove` /
+  `onAnnounceDragCommit` / `onAnnounceDragCancel` /
+  `onAnnounceResizeChange` / `onAnnounceResizeCancel` /
+  `onAnnounceKebab` (typed `KebabAnnounceFn` exported from
+  `EditorShellKebabActions.ts`) — wrapping the format helpers from
+  `@skb/editor-shell/a11y/announce-format`. They wire into:
+  `useDragDropPipeline({onAnnounceMove, onAnnounceCommit, onAnnounceCancel, totalCols})`,
+  `useResizePipeline({onAnnounceChange, onAnnounceCancel})`, and
+  `makeKebabDelete/Duplicate/ChangeKind(editor, ..., onAnnounceKebab)`.
+  Pre-R1 the announcer existed but no caller invoked it (silent WCAG
+  4.1.3 violation; R1 F1 fix). The mount also wires
+  `onDragStartKeyboard` (drag pipeline) +
+  `onResizeStartKeyboard` (resize pipeline) into the existing context
+  values so the per-block handles can enter keyboard mode via
+  Enter/Space. `useEscCancel` `dragActive` arg reads
+  `pipeline.state.active || pipeline.state.keyboardActive` (and same for
+  resize) so Esc cancels EITHER mode + restores focus per WCAG 2.4.3.
+  Tab/Shift+Tab in active keyboard-mode = sync commit/cancel without
+  preventDefault so browser advances focus naturally (R1 F3 fix). R2
+  F3: ALSO threads a `markEscDeactivationReason: ('tab-commit' |
+  'tab-cancel') => void` callback into both keyboard pipelines via
+  ref-based indirection (the `useEscCancel` hook's return handle is
+  captured AFTER pipeline construction; a stable callback closures
+  over the ref). On Tab keydown the keyboard pipelines mark the
+  reason BEFORE the state flip; `useEscCancel` then SKIPS focus
+  restoration on `tab-commit`/`tab-cancel` reasons so the browser's
+  Tab focus-advance is preserved (pre-R2 the hook restored focus on
+  EVERY `keyboardActive: true → false` flip, undoing the advance —
+  R1 Playwright lock missed it because it asserted commit + overlay
+  cleanup but NOT focus position).
+  Drag keyboard-mode tracks `{col, row}` grid-coords directly via
+  `keyboardGridStep`/`keyboardGridRowStep` and writes
+  `setNodeMarkup({col, row?})` directly (NOT via pointer-mode
+  `applyDropMode`/`commitDropAtMatch`; R1 F2 fix).
+  OutlineOverlay + DragGhost + ResizeOverlays render guards extended to
+  the OR predicate. Per cf-22 D7, keyboard-commit reuses cf-20c-2 R3
+  dropEpoch via `setLastDroppedFromExternal` (4th action joining drag-
+  pointer + resize-pointer + kebab-duplicate). Mobile (≤768px) keyboard
+  handles inherit the existing `display: none` rules from cf-20c-2 +
+  cf-20d + cf-20e CSS — no new mobile rules added.
+  Regression-lock spec:
+  `apps/site/playwright/sample-blocks-keyboard-a11y.spec.ts` covers
+  LiveAnnouncer mount + WCAG 4.1.3 attributes; resize handles converted
+  to <button> + AT-reachable + correct aria-labels + wrapper aria-hidden
+  removed; drag-handle Enter starts keyboard-mode + OutlineOverlay
+  mounts (DragGhost does NOT mount post-R1 because no pixel cursor in
+  keyboard mode); resize-handle Enter starts keyboard-mode + ColRuler
+  mount; kebab menu auto-focus first item + ArrowDown/Up cycle + Esc
+  closes + focus return to button (WCAG 2.4.3); kebab Change-kind sub-
+  menu ArrowRight/Left navigation; mobile-hidden lock at 375×812
+  viewport. Plus 3 R1-locking tests: F1 LiveAnnouncer textContent
+  updates within 200ms; F2 keyboard-drag ArrowRight + Enter commits to
+  col=2 EXACTLY (grid-coord, NOT pixel-derived); F3 Tab in keyboard-
+  drag commits + resets keyboardActive + focus advances.
 - Block registry: C.4-2 verified that `EditorShellMount.tsx` constructs a
   route-local `BlockRegistry` and calls `registerBlocks` from
   `@skb/editor-shell`, whose helper registers all 8 Wave 2 block definitions

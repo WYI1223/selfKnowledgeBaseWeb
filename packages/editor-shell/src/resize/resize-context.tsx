@@ -45,6 +45,19 @@ export interface ResizeContextValue {
   /** Called as a cleanup fallback from the handle's pointercancel. */
   readonly onResizeEnd: (origin: ResizeEndOrigin) => void;
   /**
+   * Wave 6 cf-22 (2026-05-09) — keyboard-mode resize entry. Called
+   * from the resize-handle's `onKeyDown` (Enter/Space). The pipeline
+   * snapshots the block + sets a virtual snap state at the block's
+   * CURRENT colSpan/rowSpan + flips `state.keyboardActive = true`.
+   * Window-level Arrow listeners adjust colSpan via
+   * `keyboardSnapStep` (right/corner) or rowSpan via
+   * `keyboardRowStep` (bottom/corner). Per cf-22 D3.
+   */
+  readonly onResizeStartKeyboard?: (
+    blockId: string,
+    axis: ResizeAxis,
+  ) => void;
+  /**
    * Currently-resizing source block ID, or null when no resize is
    * active. The per-block `BlockNodeView` reads this to apply the
    * `.skb-block-nodeview--resizing` modifier class (the v2

@@ -34,6 +34,9 @@ import {
 } from 'react';
 import { KebabContext } from './kebab-context';
 import { KebabMenu } from './kebab-menu';
+// Wave 6 cf-22 — focus snap-and-restore (WCAG 2.4.3); on menu close
+// focus returns to the kebab button per cf-22 D5 / D8.
+import { useFocusReturn } from '../a11y/use-focus-return';
 
 export interface KebabButtonProps {
   /** Stable block identifier (mirrors cf-20c-2 drag-handle pattern). */
@@ -47,6 +50,17 @@ export function KebabButton(props: KebabButtonProps): ReactElement {
   const ctx = useContext(KebabContext);
   const [open, setOpen] = useState(false);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
+  // cf-22 — ref to the kebab <button> so menu close can return
+  // focus per cf-22 D5 / D8 / WCAG 2.4.3.
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
+
+  // cf-22 — focus return on close. The hook snapshots
+  // document.activeElement when `open` transitions false→true and
+  // restores when true→false. We pass `restoreEl = buttonRef.current`
+  // explicitly so focus always lands on the kebab button (not on
+  // whatever was focused BEFORE the menu opened — which might be
+  // the editor surface for a Tab+Enter keyboard user).
+  useFocusReturn({ active: open, restoreEl: buttonRef.current });
 
   const closeMenu = useCallback(() => {
     setOpen(false);
@@ -116,6 +130,7 @@ export function KebabButton(props: KebabButtonProps): ReactElement {
     createElement(
       'button',
       {
+        ref: buttonRef,
         type: 'button',
         className: 'skb-block-nodeview__kebab',
         'aria-label': label,

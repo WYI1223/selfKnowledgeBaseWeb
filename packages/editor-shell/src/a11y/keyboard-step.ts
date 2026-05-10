@@ -1,0 +1,147 @@
+/**
+ * @skb/editor-shell keyboard-step — pure arrow-key delta math.
+ *
+ * Wave 6 cf-22 (2026-05-09) — pure helpers consumed by the cf-22
+ * keyboard-mode lifecycle in `use-drag-drop-pipeline.ts` +
+ * `use-resize-pipeline.ts`. No React, no DOM — fully unit-testable
+ * from vitest.
+ *
+ * Per cf-22 D2 decision (snap-step for resize, 1-cell for drag):
+ *   - Resize Arrow ±1 = next valid `effectiveColSnaps` member
+ *     (NOT 1 col which would land on invalid spans like colSpan=5).
+ *   - Drag Arrow ±1 = next grid cell (the smallest grid unit; col
+ *     index is 1-based int).
+ *   - Resize bottom/corner Arrow ±1 = next integer rowSpan (≥ 1).
+ */
+
+/**
+ * Compute the next valid colSpan for a keyboard-resize arrow press.
+ *
+ * @param currentColSpan The block's current colSpan (must already be
+ *                       a valid snap; callers source from
+ *                       `node.attrs.colSpan` or the pipeline's
+ *                       snapshot).
+ * @param direction      'left' (shrink) or 'right' (grow).
+ * @param activeColSnaps The valid snap set for the current viewport
+ *                       (per `effectiveColSnaps(viewportCols)` from
+ *                       block-foundation). Caller may pass a filtered
+ *                       subset (e.g. cf-20d R1 F2 overflow-filtered)
+ *                       — this helper just consumes the snap set
+ *                       it's given.
+ * @returns              The next snap immediately smaller (`left`)
+ *                       or larger (`right`) than `currentColSpan`.
+ *                       If the current colSpan is already at the
+ *                       boundary (smallest snap for `left`, largest
+ *                       for `right`), returns the unchanged value
+ *                       (clamp-at-boundary semantics — keyboard
+ *                       arrow doesn't wrap around).
+ */
+export function keyboardSnapStep(
+  currentColSpan: number,
+  direction: 'left' | 'right',
+  activeColSnaps: readonly number[],
+): number {
+  if (activeColSnaps.length === 0) return currentColSpan;
+
+  // Sort defensively in case caller's snap set isn't ordered.
+  const sortedSnaps = [...activeColSnaps].sort((a, b) => a - b);
+
+  if (direction === 'right') {
+    // Find smallest snap STRICTLY greater than currentColSpan.
+    for (const snap of sortedSnaps) {
+      if (snap > currentColSpan) return snap;
+    }
+    // No larger snap exists → clamp at largest.
+    return sortedSnaps[sortedSnaps.length - 1] ?? currentColSpan;
+  }
+
+  // direction === 'left': find largest snap STRICTLY smaller.
+  let bestLeft = sortedSnaps[0];
+  for (const snap of sortedSnaps) {
+    if (snap >= currentColSpan) break;
+    bestLeft = snap;
+  }
+  return bestLeft ?? currentColSpan;
+}
+
+/**
+ * Compute the next valid col for a keyboard-drag arrow press.
+ *
+ * @param currentCol  Block's current col (1-based int).
+ * @param direction   'left' or 'right' for ±1 col movement.
+ * @param totalCols   Grid totalCols (12 desktop / 6 tablet / 1 mobile
+ *                    per ADR-0016 D5).
+ * @param colSpan     Block's colSpan (used for the right-clamp:
+ *                    the new col + colSpan - 1 MUST NOT exceed
+ *                    totalCols; equivalently new col ≤ totalCols -
+ *                    colSpan + 1).
+ * @returns           The next col (clamped at [1, totalCols -
+ *                    colSpan + 1]). At the boundary, returns the
+ *                    unchanged value.
+ */
+export function keyboardGridStep(
+  currentCol: number,
+  direction: 'left' | 'right',
+  totalCols: number,
+  colSpan: number,
+): number {
+  const maxCol = Math.max(1, totalCols - colSpan + 1);
+  if (direction === 'right') {
+    return Math.min(maxCol, currentCol + 1);
+  }
+  // direction === 'left'
+  return Math.max(1, currentCol - 1);
+}
+
+/**
+ * Wave 6 cf-22 R1 F2 fix (2026-05-09) — vertical companion to
+ * `keyboardGridStep` for the keyboard-drag row dimension. Per
+ * ADR-0017 D13 + R1 F2 dispatch ("track keyboard drag as grid
+ * coordinates not pixel cursor"), drag row dimension is also
+ * 1-row-per-arrow movement (NOT a snap set; row is sparsely
+ * populated by content). Up/down moves the source's `row` attr
+ * by ±1, clamped at row >= 1.
+ *
+ * Pre-R1 the keyboard-drag-mode synthesized a pixel cursor +
+ * reused the pointer-mode tiebreak logic which was viewport-
+ * dependent (60px pixel-step missed cells in tablet 6-col layout
+ * where each cell ≈ 120px wide). R1 F2 fix: arrow keys move
+ * grid coordinates directly via `keyboardGridStep` (col) +
+ * `keyboardGridRowStep` (row); commit writes `{col, row}`
+ * directly via setNodeMarkup (NOT via tiebreak/applyDropMode
+ * which is pointer-edge-zone semantics).
+ *
+ * The grid model has no upper row bound (rows are content-driven;
+ * a block can be at row=1 on a doc with 50 blocks above it).
+ * Caller decides ceiling if any.
+ */
+export function keyboardGridRowStep(
+  currentRow: number,
+  direction: 'up' | 'down',
+): number {
+  if (direction === 'down') {
+    return currentRow + 1;
+  }
+  // direction === 'up'
+  return Math.max(1, currentRow - 1);
+}
+
+/**
+ * Compute the next valid rowSpan for a keyboard-resize bottom/corner
+ * arrow press. RowSpan is an integer ≥ 1 (no snap set; ADR-0016 D6
+ * Q4 only constrains colSpan to COL_SNAPS).
+ *
+ * @param currentRowSpan The block's current integer rowSpan.
+ * @param direction      'up' (shrink) or 'down' (grow).
+ * @returns              currentRowSpan ± 1, clamped at ≥ 1.
+ */
+export function keyboardRowStep(
+  currentRowSpan: number,
+  direction: 'up' | 'down',
+): number {
+  if (direction === 'down') {
+    return currentRowSpan + 1;
+  }
+  // direction === 'up'
+  return Math.max(1, currentRowSpan - 1);
+}

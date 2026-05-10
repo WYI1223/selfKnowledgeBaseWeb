@@ -7,23 +7,31 @@
  * fires the corresponding KebabContext callback then closes the
  * menu via the `onClose` prop.
  *
- * Visual layout per cf-20e D2 (no React Portal; `position: absolute`
- * relative to the kebab button wrapper). The menu container has
- * `position: absolute; top: calc(100% + 4px); left: 0` so it
- * anchors below the button. `z-index: 10` lifts it above adjacent
- * blocks; the `.skb-grid .ProseMirror` editor surface has no
- * `overflow: hidden` so the menu is not clipped.
+ * Wave 6 cf-22 (2026-05-09) — keyboard navigation per WCAG 2.1.1 +
+ * 2.4.3 + 2.4.7 + cf-22 D8 (auto-focus first item on open). Per
+ * cf-22 D5: focus return to kebab button is handled by the
+ * KebabButton wrapper post-close. The menu owns:
+ *   - Auto-focus first item on mount.
+ *   - ArrowDown/ArrowUp: cycle focus through items.
+ *   - ArrowRight on "Change kind…": expand sub-menu + focus first
+ *     sub-item.
+ *   - ArrowLeft from sub-item: collapse sub-menu + return focus to
+ *     "Change kind…".
+ *   - Enter activates focused item (default browser behavior on
+ *     <button>; we just rely on it).
+ *   - Esc closes (handled by KebabButton wrapper).
  *
- * Sub-menu (change-kind): renders inline (NOT a separate floating
- * layer) — when the user clicks "Change kind…", a sub-list expands
- * BELOW the item with the 8 kind options. Click on a kind option
- * fires `onChangeKind` then closes the menu. This keeps the
- * implementation simple (no hover-delay / sub-menu positioning
- * math); cf-22 may amend with a true cascading sub-menu if needed.
+ * Visual layout per cf-20e D2 (no React Portal; `position: absolute`
+ * relative to the kebab button wrapper).
  */
 import {
   createElement,
+  forwardRef,
+  useCallback,
+  useEffect,
+  useRef,
   useState,
+  type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type ReactElement,
 } from 'react';
@@ -54,58 +62,153 @@ function stopPropagation(event: ReactMouseEvent<HTMLElement>): void {
 interface MenuItemProps {
   readonly label: string;
   readonly onClick: () => void;
+  readonly onKeyDown?: (event: ReactKeyboardEvent<HTMLButtonElement>) => void;
   readonly danger?: boolean;
   readonly ariaLabel?: string;
   readonly dataAttr?: string;
 }
 
-function MenuItem(props: MenuItemProps): ReactElement {
-  const { label, onClick, danger, ariaLabel, dataAttr } = props;
-  return createElement(
-    'button',
-    {
-      type: 'button',
-      className:
-        'skb-kebab-menu__item' +
-        (danger ? ' skb-kebab-menu__item--danger' : ''),
-      'aria-label': ariaLabel ?? label,
-      'data-skb-kebab-action': dataAttr,
-      onClick: (event: ReactMouseEvent<HTMLButtonElement>) => {
-        // Stop the document mousedown listener from racing the
-        // action; consumers expect onClick → action → onClose, not
-        // close-then-no-op.
-        event.stopPropagation();
-        onClick();
+const MenuItem = forwardRef<HTMLButtonElement, MenuItemProps>(
+  function MenuItem(props, ref): ReactElement {
+    const { label, onClick, onKeyDown, danger, ariaLabel, dataAttr } = props;
+    return createElement(
+      'button',
+      {
+        ref,
+        type: 'button',
+        role: 'menuitem',
+        className:
+          'skb-kebab-menu__item' +
+          (danger ? ' skb-kebab-menu__item--danger' : ''),
+        'aria-label': ariaLabel ?? label,
+        'data-skb-kebab-action': dataAttr,
+        onClick: (event: ReactMouseEvent<HTMLButtonElement>) => {
+          // Stop the document mousedown listener from racing the
+          // action; consumers expect onClick → action → onClose, not
+          // close-then-no-op.
+          event.stopPropagation();
+          onClick();
+        },
+        onKeyDown,
       },
-    },
-    label,
-  );
-}
+      label,
+    );
+  },
+);
 
 export function KebabMenu(props: KebabMenuProps): ReactElement {
   const { blockId, kinds, onDelete, onDuplicate, onChangeKind, onClose } =
     props;
   const [changeKindOpen, setChangeKindOpen] = useState(false);
+  // cf-22 — refs for programmatic focus management.
+  const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const subItemRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const changeKindIndex = 2; // Index of "Change kind…" in the top-level menu.
 
-  const handleDelete = () => {
+  // cf-22 D8: auto-focus first item on mount. Defer via setTimeout(0)
+  // to wait for React commit + browser paint (otherwise the focus
+  // may race the menu's own mount cycle).
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      itemRefs.current[0]?.focus();
+    }, 0);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // cf-22 — when sub-menu opens, auto-focus its first item.
+  useEffect(() => {
+    if (!changeKindOpen) return;
+    const timer = setTimeout(() => {
+      subItemRefs.current[0]?.focus();
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [changeKindOpen]);
+
+  const handleDelete = useCallback(() => {
     onDelete(blockId);
     onClose();
-  };
+  }, [blockId, onDelete, onClose]);
 
-  const handleDuplicate = () => {
+  const handleDuplicate = useCallback(() => {
     onDuplicate(blockId);
     onClose();
-  };
+  }, [blockId, onDuplicate, onClose]);
 
-  const handleChangeKindClick = () => {
-    // Open inline sub-menu rather than firing a top-level action.
+  const handleChangeKindClick = useCallback(() => {
     setChangeKindOpen((prev) => !prev);
-  };
+  }, []);
 
-  const handleChangeKindPick = (newKind: BlockAffordanceKind) => {
-    onChangeKind(blockId, newKind);
-    onClose();
-  };
+  const handleChangeKindPick = useCallback(
+    (newKind: BlockAffordanceKind) => {
+      onChangeKind(blockId, newKind);
+      onClose();
+    },
+    [blockId, onChangeKind, onClose],
+  );
+
+  // cf-22 — top-level menu keyboard nav (ArrowDown/Up cycle; ArrowRight
+  // expands sub-menu when on "Change kind…").
+  const handleTopLevelKeyDown = useCallback(
+    (currentIndex: number) =>
+      (event: ReactKeyboardEvent<HTMLButtonElement>): void => {
+        if (event.key === 'ArrowDown') {
+          event.preventDefault();
+          const next = (currentIndex + 1) % itemRefs.current.length;
+          itemRefs.current[next]?.focus();
+          return;
+        }
+        if (event.key === 'ArrowUp') {
+          event.preventDefault();
+          const prev =
+            (currentIndex - 1 + itemRefs.current.length) %
+            itemRefs.current.length;
+          itemRefs.current[prev]?.focus();
+          return;
+        }
+        if (
+          event.key === 'ArrowRight' &&
+          currentIndex === changeKindIndex
+        ) {
+          // Expand the change-kind sub-menu (auto-focus first sub-
+          // item via the dedicated useEffect above).
+          event.preventDefault();
+          if (!changeKindOpen) setChangeKindOpen(true);
+          else subItemRefs.current[0]?.focus();
+          return;
+        }
+      },
+    [changeKindOpen],
+  );
+
+  // cf-22 — sub-menu keyboard nav (ArrowDown/Up cycle within sub;
+  // ArrowLeft collapses + returns focus to parent "Change kind…").
+  const handleSubMenuKeyDown = useCallback(
+    (subIndex: number) =>
+      (event: ReactKeyboardEvent<HTMLButtonElement>): void => {
+        if (event.key === 'ArrowDown') {
+          event.preventDefault();
+          const next = (subIndex + 1) % subItemRefs.current.length;
+          subItemRefs.current[next]?.focus();
+          return;
+        }
+        if (event.key === 'ArrowUp') {
+          event.preventDefault();
+          const prev =
+            (subIndex - 1 + subItemRefs.current.length) %
+            subItemRefs.current.length;
+          subItemRefs.current[prev]?.focus();
+          return;
+        }
+        if (event.key === 'ArrowLeft') {
+          event.preventDefault();
+          setChangeKindOpen(false);
+          // Return focus to the "Change kind…" parent.
+          itemRefs.current[changeKindIndex]?.focus();
+          return;
+        }
+      },
+    [],
+  );
 
   return (
     <div
@@ -116,19 +219,31 @@ export function KebabMenu(props: KebabMenuProps): ReactElement {
       onMouseDown={stopPropagation}
     >
       <MenuItem
+        ref={(el) => {
+          itemRefs.current[0] = el;
+        }}
         label="Delete"
         onClick={handleDelete}
+        onKeyDown={handleTopLevelKeyDown(0)}
         danger
         dataAttr="delete"
       />
       <MenuItem
+        ref={(el) => {
+          itemRefs.current[1] = el;
+        }}
         label="Duplicate"
         onClick={handleDuplicate}
+        onKeyDown={handleTopLevelKeyDown(1)}
         dataAttr="duplicate"
       />
       <MenuItem
+        ref={(el) => {
+          itemRefs.current[2] = el;
+        }}
         label="Change kind…"
         onClick={handleChangeKindClick}
+        onKeyDown={handleTopLevelKeyDown(2)}
         dataAttr="change-kind-toggle"
       />
       {changeKindOpen && (
@@ -137,11 +252,15 @@ export function KebabMenu(props: KebabMenuProps): ReactElement {
           role="menu"
           data-skb-kebab-submenu="change-kind"
         >
-          {kinds.map((option) => (
+          {kinds.map((option, idx) => (
             <MenuItem
               key={option.kind}
+              ref={(el) => {
+                subItemRefs.current[idx] = el;
+              }}
               label={option.label}
               onClick={() => handleChangeKindPick(option.kind)}
+              onKeyDown={handleSubMenuKeyDown(idx)}
               dataAttr={`change-kind-${option.kind}`}
             />
           ))}

@@ -118,3 +118,27 @@ export type {
   KebabProviderProps,
 } from './kebab/kebab-context';
 export { buildChangeKindAttrs } from './kebab/change-kind-attrs';
+// Wave 6 cf-22 (2026-05-09) — keyboard a11y public surface (LiveAnnouncer
+// + focus-return hook + keyboard-step pure helpers + announce-format
+// formatters per WCAG 2.1.1 + 2.4.3 + 4.1.3).
+export { LiveAnnouncer, useAnnounce } from './a11y/live-announcer';
+export type {
+  LiveAnnouncerContextValue,
+  LiveAnnouncerProps,
+} from './a11y/live-announcer';
+export { useFocusReturn } from './a11y/use-focus-return';
+export type { UseFocusReturnOptions } from './a11y/use-focus-return';
+export {
+  keyboardGridRowStep,
+  keyboardGridStep,
+  keyboardRowStep,
+  keyboardSnapStep,
+} from './a11y/keyboard-step';
+export {
+  formatDragCancel,
+  formatDragCommit,
+  formatDragMove,
+  formatKebabAction,
+  formatResizeCancel,
+  formatResizeChange,
+} from './a11y/announce-format';

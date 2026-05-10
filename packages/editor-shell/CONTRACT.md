@@ -697,6 +697,105 @@ Mobile (≤768px) view-only path per ADR-0017 D9: kebab + menu hidden via
 `kebab-menu.css`. Mirrors the cf-20c-2 drag-handle + cf-20d resize-handles
 mobile patterns.
 
+#### Keyboard a11y wire (Wave 6 cf-22 2026-05-09; ADR-0017 D13 amendment)
+
+Wave 6 cf-22 adds keyboard-mode parity for all 3 cf-20 per-block affordances
+(drag / resize / kebab) per WCAG 2.1.1 + 2.4.3 + 2.4.7 + 4.1.3. Public
+surface added under `packages/editor-shell/src/a11y/`:
+
+- `live-announcer.tsx` exports `<LiveAnnouncer/>` component + `useAnnounce()`
+  hook. Single shared `aria-live="polite" aria-atomic="true"` region rendered
+  ONCE at the editor mount level (per cf-22 D6). 100ms throttle on updates
+  so rapid arrow-key spam doesn't flood AT.
+- `use-focus-return.ts` exports `useFocusReturn({active, restoreEl?})`.
+  Generalizes the focus snap-and-restore pattern from `useEscCancel` per
+  WCAG 2.4.3. Snapshots `document.activeElement` on `active: false → true`;
+  restores via `.focus()` on `active: true → false` (deferred via
+  `setTimeout(0)` to wait for React commit).
+- `keyboard-step.ts` exports pure helpers `keyboardSnapStep(currentColSpan,
+  direction, activeColSnaps)` (resize ±1 snap-step per cf-22 D2),
+  `keyboardGridStep(currentCol, direction, totalCols, colSpan)` (drag ±1
+  cell with right-clamp at `totalCols - colSpan + 1`), and
+  `keyboardRowStep(currentRowSpan, direction)` (integer ±1 clamped ≥ 1).
+- `announce-format.ts` exports `formatDragMove` / `formatDragCommit` /
+  `formatDragCancel` / `formatResizeChange` / `formatResizeCancel` /
+  `formatKebabAction` — pure WCAG 4.1.3 message formatters (English
+  baseline; localization is future cf-30+).
+
+Pipeline extensions:
+
+- `DragDropContextValue` adds optional `onDragStartKeyboard?(blockId)` for
+  Enter/Space-on-handle to enter keyboard-drag mode. The drag pipeline's
+  `useDragDropPipeline` return adds `state.keyboardActive: boolean` +
+  `onDragStartKeyboard` method. The keyboard-drag lifecycle (Arrow synthesizes
+  cursor moves through edge-rect/tiebreak; Enter commits via
+  `commitDropAtMatch`) is extracted to `drag-drop/keyboard-drag-mode.ts`
+  (size-check forced split; the keyboard mode is logically separate per
+  cf-22 D3).
+- `commit-drop.ts` exports `commitDropAtMatch(editor, activeMatch,
+  sourceBlockId, snapshot)` — extracted from the inline pointerup handler
+  so pointer-drop and keyboard-Enter share the SAME mutation path.
+- `ResizeContextValue` adds optional `onResizeStartKeyboard?(blockId, axis)`.
+  The resize pipeline's `useResizePipeline` return adds
+  `state.keyboardActive: boolean` + `onResizeStartKeyboard`. Keyboard-
+  resize lifecycle extracted to `resize/keyboard-resize-mode.ts` with the
+  `startKeyboardResize` snapshot helper + the `useKeyboardResizeMode` hook
+  (Arrow keys snap-step via `keyboardSnapStep`/`keyboardRowStep`; Enter
+  commits via SAME `setNodeMarkup` + `buildResizeNextAttrs` path as pointer
+  pointerup).
+
+Component extensions:
+
+- `DragHandleButton` adds `onKeyDown` for Enter/Space → calls
+  `ctx.onDragStartKeyboard(blockId)` then preventDefault.
+- `ResizeHandles` converted from `<div>` to `<button>` (per cf-22 D4 —
+  keyboard-focusable + AT-reachable). Wrapper `aria-hidden` REMOVED (cf-20d
+  had it set; was silently breaking AT discoverability since cf-20d
+  shipped). Each handle gets `aria-label` ("Resize block width" / "Resize
+  block height" / "Resize block width and height").
+- `KebabMenu` adds full keyboard nav: auto-focus first item on open per
+  cf-22 D8; ArrowDown/ArrowUp cycle focus through items; ArrowRight on
+  "Change kind…" expands sub-menu + auto-focuses first sub-item;
+  ArrowLeft from sub-item collapses + restores focus to "Change kind…"
+  parent. Refs array tracks each item's button DOM node.
+- `KebabButton` consumes `useFocusReturn({active: open, restoreEl:
+  buttonRef.current})` so menu close (Esc OR action commit OR click-outside)
+  returns focus to the kebab button per cf-22 D5.
+
+Per cf-22 D7: keyboard-commit reuses the cf-20c-2 R3 dropEpoch
+infrastructure (the canonical "rapid-action animation isolation" pattern;
+cf-22 keyboard-commit is the 4th action joining drag-pointer-commit +
+resize-pointer-commit + kebab-duplicate).
+
+Per cf-22 D9 / D10 (mobile): no new mobile @media rules. Keyboard handles
+are the SAME DOM elements as pointer handles; the mobile `display: none`
+rules from cf-20c-2 / cf-20d / cf-20e CSS apply equally. The
+`<LiveAnnouncer/>` is sr-only (NOT mobile-gated; AT works on mobile).
+
+##### R1 amendment (2026-05-10 codex-pr-reviewer-55 round 1; F1+F2+F3)
+
+R1 strengthens the keyboard contract per the ADR-0017 D13 amendment 2026-05-10 update:
+
+- **F2 (HIGH; grid-coord parity)**: `keyboard-drag-mode.ts` rewritten to track grid coordinates `{col, row}` directly (NOT a synthesized pixel cursor). NEW exported helper `keyboardGridRowStep(currentRow, direction)` for vertical movement (returns row ±1 clamped to ≥ 1). NEW exported interface `KeyboardDragSnapshot` carrying `{blockId, startCol, startRow, colSpan, rowSpan, hasRowAttr}` captured at `onDragStartKeyboard`. Pipeline state `keyboardCol` + `keyboardRow` initialized from `sourceBlock.{col, row}`; arrow handlers mutate via `keyboardGridStep`/`keyboardGridRowStep`; commit writes `setNodeMarkup({col: keyboardCol, ...(hasRowAttr ? {row: keyboardRow} : {})})` directly via Tiptap tr (NOT through `applyDropMode`/`commitDropAtMatch`). `commit-drop.ts` is now pointer-path-only.
+- **F1 (HIGH; announcer wiring)**: `useDragDropPipeline` now accepts optional `totalCols?: number` (default 12) + `onAnnounceMove?(blockKind, col, totalCols)` + `onAnnounceCommit?(blockKind, col)` + `onAnnounceCancel?()` callbacks. `useResizePipeline` accepts `onAnnounceChange?(axis, colSpan, rowSpan, fraction)` + `onAnnounceCancel?()`. Each pipeline invokes the callbacks at the appropriate mutation-success / cancel sites (after `setNodeMarkup` for commits; in `onDragEnd` / `onResizeEnd` for cancels). Consumer (apps/site `EditorShellMountInner.tsx`) wraps the format helpers in `useCallback` factories + passes them in. `LiveAnnouncer` now actually consumed (was silent pre-R1 — exists but no caller).
+- **F3 (MEDIUM; Tab as exit path)**: keyboard-drag-mode + keyboard-resize-mode `keydown` handlers now treat Tab = sync `commit()`, Shift+Tab = sync `cancel()`. NO `preventDefault` so the browser advances focus naturally per WCAG 2.4.3. This cleans up `keyboardActive` state without leaving stale active-mode flags.
+
+Operational rule landed (cf-22 R1 reflection rule #19): scaffolding (helpers / hooks / components) MUST have a verified consumer in the same PR. Exporting + unit-testing the helper is NOT the contract; the consumer wiring is.
+
+##### R2 amendment (2026-05-10 codex-pr-reviewer-55 round 2; F3 reopened)
+
+R1 F3 fix was 80% complete — Tab keydown synchronously fires commit/cancel + flips `keyboardActive: true → false` without preventDefault, BUT the sibling `useEscCancel` hook ALSO consumes `keyboardActive` and its useEffect snapshots `document.activeElement` on `false → true` then refocuses on `true → false` regardless of reason, undoing the browser's natural Tab focus advance. The R1 Playwright lock asserted commit + overlay cleanup but NOT focus position — passed by accident.
+
+R2 fix introduces an explicit reason flag:
+
+- NEW exported type `EscDeactivationReason = 'esc-cancel' | 'commit' | 'pointer-up' | 'tab-commit' | 'tab-cancel'` from `drag-drop/esc-cancel.ts`.
+- NEW exported interface `EscCancelHandle { markDeactivationReason(reason: EscDeactivationReason): void }` returned from `useEscCancel(...)`.
+- The hook's deactivation `useEffect` checks the reason; for `'tab-commit'` / `'tab-cancel'` it SKIPS focus restoration so the browser's natural Tab focus-advance is preserved. Reason is one-shot — reset to `'esc-cancel'` (the hook's default + primary purpose) after each deactivation cycle. Esc keydown sets reason to `'esc-cancel'` explicitly before dispatching the cancel.
+- Drag pipeline (`useDragDropPipeline`) and resize pipeline (`useResizePipeline`) accept new optional `markEscDeactivationReason: (reason: 'tab-commit' | 'tab-cancel') => void` option, threaded into `useKeyboardDragMode` + `useKeyboardResizeMode` Tab handlers. They invoke the callback BEFORE the state flip on Tab keydown.
+- Consumer (`EditorShellMountInner.tsx`) uses ref-based indirection — `useEscCancel`'s return handle is captured AFTER pipeline construction, populated into a ref, then a stable callback closures over the ref to feed the pipeline's `markEscDeactivationReason` option.
+
+Operational rule landed (cf-22 R2 reflection rule #23): when a feature toggles a state flag (`active` → `inactive`), audit ALL hooks that consume that flag for unintended side effects on the new flip path. The reason for the flip matters; do NOT assume sibling hooks treat all flips identically.
+
 ### Responsive viewport (C.2-9)
 
 C.2-9 adds `responsive-cols.ts` as the editor-shell owner for ADR-0016 D5's

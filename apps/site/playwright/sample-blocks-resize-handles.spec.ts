@@ -1,8 +1,15 @@
-import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { expect, test } from '@playwright/test';
 
+import {
+  AUTOSAVE_SETTLE_MS,
+  getSampleBlocksOriginalMdxBytes,
+  restoreSampleBlocksFixture,
+  SAMPLE_BLOCKS_MDX_PATH,
+  SAMPLE_BLOCKS_STATE_PATH,
+  snapshotSampleBlocksFixture,
+} from './fixtures/sample-blocks-fixture';
 import {
   dispatchResizeGesture,
   installColOverflowFixture as installColOverflowFixtureHelper,
@@ -16,46 +23,16 @@ import {
  * (right / bottom / corner) per `.skb-block-nodeview` + ColRuler /
  * SizeTooltip / RowLadder overlays + commit-on-release semantics.
  *
- * Byte-snapshot fixture isolation per cf-20c-2 R3 F1 reflection rule:
- * "tests that touch repository files MUST snapshot bytes pre-mutation;
- * never use destructive git operations". The right-edge resize commit
- * test triggers a Tiptap setNodeMarkup → tiptapToMdx → ApiAdapter.save
- * chain that writes to disk; we snapshot before + restore after. Same
- * pattern as cf-20c-2 sample-blocks-drag-handle.spec.ts.
+ * Byte-snapshot fixture isolation per cf-20c-2 R3 F1 reflection rule
+ * lives in `./fixtures/sample-blocks-fixture.ts`. cf-22 follow-up
+ * (2026-05-10) extracted the per-spec inline copies + added
+ * `beforeEach` + `AUTOSAVE_SETTLE_MS` waits so the editor's 800 ms
+ * debounced autosave can't race past the trailing restore.
  */
-const SAMPLE_BLOCKS_MDX = resolve(
-  process.cwd(),
-  '../../content/notes/sample-blocks/index.mdx',
-);
-const SAMPLE_BLOCKS_STATE = resolve(
-  process.cwd(),
-  '../../content/notes/sample-blocks/state.json',
-);
 
-let originalMdxBytes: string | null = null;
-let originalStateBytes: string | null = null;
-
-test.beforeAll(() => {
-  originalMdxBytes = readFileSync(SAMPLE_BLOCKS_MDX, 'utf8');
-  originalStateBytes = existsSync(SAMPLE_BLOCKS_STATE)
-    ? readFileSync(SAMPLE_BLOCKS_STATE, 'utf8')
-    : null;
-});
-
-function restoreSampleBlocksFixture(): void {
-  if (originalMdxBytes !== null) {
-    writeFileSync(SAMPLE_BLOCKS_MDX, originalMdxBytes, 'utf8');
-  }
-  if (originalStateBytes !== null) {
-    writeFileSync(SAMPLE_BLOCKS_STATE, originalStateBytes, 'utf8');
-  } else if (existsSync(SAMPLE_BLOCKS_STATE)) {
-    unlinkSync(SAMPLE_BLOCKS_STATE);
-  }
-}
-
-test.afterAll(() => {
-  restoreSampleBlocksFixture();
-});
+test.beforeAll(snapshotSampleBlocksFixture);
+test.beforeEach(restoreSampleBlocksFixture);
+test.afterAll(restoreSampleBlocksFixture);
 
 const SCREENSHOT_PATH = resolve(
   process.cwd(),
@@ -65,10 +42,7 @@ const SCREENSHOT_PATH = resolve(
 test('sample-blocks edit route — cf-20d resize-handles wire (handle visibility + right-edge commit + drop-pulse reuse)', async ({
   page,
 }) => {
-  // cf-20c-2 R2 fixture isolation pattern: restore baseline MDX +
-  // clear state sidecar BEFORE the test runs (the resize-commit
-  // mutation will otherwise persist via ApiAdapter.save → file write).
-  restoreSampleBlocksFixture();
+  // cf-22 follow-up: per-test restore now handled by `beforeEach`.
 
   await page.goto('/notes/sample-blocks/edit');
   const editor = page.locator('.ProseMirror').first();
@@ -115,7 +89,7 @@ test('sample-blocks edit route — cf-20d resize-handles wire (handle visibility
 test('cf-20d — right-edge resize commit mutates colSpan + reuses cf-20c-2 dropEpoch infrastructure (ADR-0017 D9 + D11)', async ({
   page,
 }) => {
-  restoreSampleBlocksFixture();
+  // cf-22 follow-up: per-test restore now handled by `beforeEach`.
 
   await page.goto('/notes/sample-blocks/edit');
   const editor = page.locator('.ProseMirror').first();
@@ -165,6 +139,18 @@ test('cf-20d — right-edge resize commit mutates colSpan + reuses cf-20c-2 drop
     targetY,
   );
 
+  // cf-22 follow-up 2026-05-10 — assert pulse-anchor mount FIRST,
+  // BEFORE the colSpan assertions, so we catch the anchor inside its
+  // 720 ms animation window. Pre-followup ordering (col asserts → 50 ms
+  // wait → count) raced unmount on slow runs (300 ms gesture-settle +
+  // ~200 ms col asserts = 500 ms; pulse mounted at ~50 ms post-pointerup
+  // would unmount at ~770 ms; depending on jitter the count snapshot
+  // landed before mount OR after unmount).
+  await expect(
+    page.locator('[data-skb-drop-pulse-anchor]').first(),
+    'cf-20d D3: resize commit MUST mount [data-skb-drop-pulse-anchor] via the SAME cf-20c-2 dropEpoch infrastructure (consumer-side onCommitSuccess → pipeline.setLastDroppedFromExternal)',
+  ).toBeAttached({ timeout: 1_500 });
+
   // (a) ColSpan mutated — wrapper's gridColumn no longer '1 / span 12'.
   const colAfter = await firstWrapper.evaluate(
     (el) => (el as HTMLElement).style.gridColumn,
@@ -178,23 +164,13 @@ test('cf-20d — right-edge resize commit mutates colSpan + reuses cf-20c-2 drop
     'cf-20d D1: right-edge resize commit MUST snap colSpan to one of [2, 3, 4, 6, 8] (smaller than starting 12) per ADR-0016 D6 round-to-nearest-snap',
   ).toMatch(/^1 \/ span (2|3|4|6|8)$/);
 
-  // (b) DropPulse anchor mounted via cf-20c-2 dropEpoch reuse (cf-20d
-  // D3 — onCommitSuccess routes through setLastDroppedFromExternal).
-  await page.waitForTimeout(50);
-  const pulseAnchorCount = await page
-    .locator('[data-skb-drop-pulse-anchor]')
-    .count();
-  expect(
-    pulseAnchorCount,
-    'cf-20d D3: resize commit MUST mount [data-skb-drop-pulse-anchor] via the SAME cf-20c-2 dropEpoch infrastructure (consumer-side onCommitSuccess → pipeline.setLastDroppedFromExternal)',
-  ).toBeGreaterThanOrEqual(1);
-
   // (c) Post-commit: no .skb-block-nodeview--resizing remains.
   await expect(page.locator('.skb-block-nodeview--resizing')).toHaveCount(0);
 
-  // Restore fixture — the test's mutation persisted to disk via
-  // ApiAdapter.save → file write; restore so other specs see the
-  // pristine baseline.
+  // cf-22 follow-up — let the editor's 800 ms debounced autosave fire +
+  // settle to disk BEFORE restore so the in-flight POST can't race past
+  // cleanup. See helper for budget math.
+  await page.waitForTimeout(AUTOSAVE_SETTLE_MS);
   restoreSampleBlocksFixture();
 });
 
@@ -256,7 +232,7 @@ test('cf-20d R1 F1 — tablet (≤1024px, 6-col) right-edge resize uses [2, 3, 6
   // colSpan=8 or 4 as snap targets; the R1 6-col snap set forces
   // landing at one of [2, 3, 6]. Assert the post-commit gridColumn
   // matches `1 / span (2|3|6)`.
-  restoreSampleBlocksFixture();
+  // cf-22 follow-up: per-test restore now handled by `beforeEach`.
 
   await page.setViewportSize({ width: 900, height: 1024 });
   await page.goto('/notes/sample-blocks/edit');
@@ -311,6 +287,8 @@ test('cf-20d R1 F1 — tablet (≤1024px, 6-col) right-edge resize uses [2, 3, 6
     'cf-20d R1 F1: tablet (6-col) right-edge resize MUST snap colSpan to one of [2, 3, 6] per ADR-0016 D6 effectiveColSnaps(6); pre-R1 hardcoded 12-col snaps would have allowed 4 or 8 here',
   ).toMatch(/^1 \/ span (2|3|6)$/);
 
+  // cf-22 follow-up — settle autosave before restore (see helper).
+  await page.waitForTimeout(AUTOSAVE_SETTLE_MS);
   restoreSampleBlocksFixture();
 });
 
@@ -318,11 +296,10 @@ test('cf-20d R1 F1 — tablet (≤1024px, 6-col) right-edge resize uses [2, 3, 6
 // colSpan=6 at tablet 6-col). See cf-20d D10 R2 amendment + helper
 // `installPersistedOverflowFixtureHelper` for the full rationale.
 function installPersistedOverflowFixture(): void {
-  if (originalMdxBytes === null) throw new Error('originalMdxBytes not snapshotted');
   installPersistedOverflowFixtureHelper(
-    originalMdxBytes,
-    SAMPLE_BLOCKS_MDX,
-    SAMPLE_BLOCKS_STATE,
+    getSampleBlocksOriginalMdxBytes(),
+    SAMPLE_BLOCKS_MDX_PATH,
+    SAMPLE_BLOCKS_STATE_PATH,
   );
 }
 
@@ -400,6 +377,8 @@ test('cf-20d R2 F2 — bottom-only resize on persisted-overflow block normalizes
     'cf-20d R2 F2: bottom-only resize on persisted-overflow block MUST normalize colSpan to (totalCols - col + 1) = (6 - 4 + 1) = 3 in the SAME setNodeMarkup transaction. Pre-R2 the bottom-only axis preserved the invalid colSpan=6 through the spread merge.',
   ).toBe('4 / span 3');
 
+  // cf-22 follow-up — settle autosave before restore (see helper).
+  await page.waitForTimeout(AUTOSAVE_SETTLE_MS);
   restoreSampleBlocksFixture();
 });
 
@@ -408,11 +387,10 @@ test('cf-20d R2 F2 — bottom-only resize on persisted-overflow block normalizes
 // cf-20d D10 R3 amendment + helper `installColOverflowFixtureHelper`
 // for the full rationale.
 function installColOverflowFixture(): void {
-  if (originalMdxBytes === null) throw new Error('originalMdxBytes not snapshotted');
   installColOverflowFixtureHelper(
-    originalMdxBytes,
-    SAMPLE_BLOCKS_MDX,
-    SAMPLE_BLOCKS_STATE,
+    getSampleBlocksOriginalMdxBytes(),
+    SAMPLE_BLOCKS_MDX_PATH,
+    SAMPLE_BLOCKS_STATE_PATH,
   );
 }
 
@@ -485,5 +463,7 @@ test('cf-20d R3 F1 — bottom-only resize on col-overflow block normalizes BOTH 
     'cf-20d R3 F1: bottom-only resize on col-overflow block MUST normalize BOTH col (left-clamp 7→6) AND colSpan (no fitting snap → 1) in the SAME setNodeMarkup transaction. Pre-R3 R2 only normalized colSpan, leaving col=7 untouched (still invalid).',
   ).toBe('6 / span 1');
 
+  // cf-22 follow-up — settle autosave before restore (see helper).
+  await page.waitForTimeout(AUTOSAVE_SETTLE_MS);
   restoreSampleBlocksFixture();
 });

@@ -38,6 +38,18 @@ export interface DragDropContextValue {
   /** Called from the per-block drag-handle button's dragend handler. */
   readonly onDragEnd: (origin: DragHandleEndOrigin) => void;
   /**
+   * Wave 6 cf-22 (2026-05-09) — keyboard-mode drag start. Called
+   * from the drag-handle button's `onKeyDown` handler when user
+   * presses Enter/Space. The pipeline snapshots the block + sets a
+   * virtual cursor at the source's center + sets
+   * `state.keyboardActive = true` (separate from the pointer-mode
+   * `state.active` per cf-22 D3 separate-modes decision). Optional
+   * (the cf-20c-2 baseline DragDropContextValue did NOT have this
+   * field; cf-22 adds it as optional so older consumers don't break
+   * + tests can omit it).
+   */
+  readonly onDragStartKeyboard?: (blockId: string) => void;
+  /**
    * Wave 6 cf-20c-2 R2 F1 — currently-lifted source block ID.
    *
    * Per ADR-0017 D6 line 247 verbatim source-lift: during an active

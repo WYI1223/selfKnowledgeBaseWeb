@@ -29,7 +29,13 @@
  *     dragstart logic doesn't compete (Q7 spike confirmed PM doesn't
  *     intercept by default, but an explicit stop is defense-in-depth).
  */
-import { createElement, useContext, type DragEvent, type ReactElement } from 'react';
+import {
+  createElement,
+  useContext,
+  type DragEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type ReactElement,
+} from 'react';
 import { DragDropContext } from './drag-context';
 
 export const DRAG_HANDLE_MIME = 'application/x-skb-block-id';
@@ -71,6 +77,25 @@ export function DragHandleButton(props: DragHandleButtonProps): ReactElement {
     ctx?.onDragEnd({ x: event.clientX, y: event.clientY });
   };
 
+  // Wave 6 cf-22 (2026-05-09) — keyboard-mode drag entry per WCAG
+  // 2.1.1. Enter/Space invokes ctx.onDragStartKeyboard(blockId) (NEW
+  // context method); the pipeline snapshots the block + sets a
+  // virtual cursor + flips state.keyboardActive = true. Window-level
+  // Arrow listeners take over from there. Per cf-22 D3, the pointer
+  // path (HTML5 native DnD) is SEPARATE — keyboard mode doesn't
+  // interfere with the existing dragstart/dragend handlers above.
+  // preventDefault stops the button's default click-on-Space behavior
+  // (which would re-dispatch click → fire dragstart in some browsers).
+  const handleKeyDown = (
+    event: ReactKeyboardEvent<HTMLButtonElement>,
+  ): void => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    if (!ctx?.onDragStartKeyboard) return;
+    event.preventDefault();
+    event.stopPropagation();
+    ctx.onDragStartKeyboard(blockId);
+  };
+
   return createElement(
     'button',
     {
@@ -81,6 +106,7 @@ export function DragHandleButton(props: DragHandleButtonProps): ReactElement {
       draggable: true,
       onDragStart: handleDragStart,
       onDragEnd: handleDragEnd,
+      onKeyDown: handleKeyDown,
     },
     // v2 contract glyph: '⋮⋮' (vertical-ellipsis pair) as a textual
     // grab affordance. SVG upgrade is cf-23+ (visual unification).

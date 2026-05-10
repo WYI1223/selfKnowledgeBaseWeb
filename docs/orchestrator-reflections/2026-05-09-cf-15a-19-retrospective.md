@@ -450,3 +450,160 @@ For test coverage: write the unit-test matrix BEFORE the implementation. cf-20e'
 15. **Simplicity at the wire layer ≠ absence of bugs**. Even trivially-correct helpers benefit from structural-moat tests that catch future drift. Write the unit-test matrix BEFORE the implementation; the matrix doubles as the helper's design specification.
 
 **Bonus observation (cf-20e R0 vs cf-20d R0)**: cf-20d R0 took ~3 hours (resize is a stateful pipeline with snapshot/commit lifecycle); cf-20e R0 took ~1.5 hours (kebab is one-shot imperative actions + a floating menu). The 2× speed-up matches the structural complexity ratio — cf-20e has 5 source files vs cf-20d's 8; no pipeline hook; no rAF-barrier dance; no snap math. Estimate for cf-20e R-round trajectory: lower than cf-20d (which had 3 R-rounds for 7 real-correctness bugs); kebab's smaller blast radius means fewer code paths for codex to find issues in. Realistic prediction: 1-2 R-rounds.
+
+## ux-ui-lead reflection — cf-22 R0 (drag + resize + kebab keyboard a11y; ADR-0017 D13 amendment) (2026-05-09)
+
+**What I did**: Implemented cf-22 end-to-end on a fresh branch `wave-6-cf-22-keyboard-a11y` off main `8b01004`. Plan first (`docs/plans/wave-6-main/wave-6-cf-22-keyboard-a11y.md` per cf-15b shape, ~750 LOC) then 18 source files: 4 NEW under `packages/editor-shell/src/a11y/` (`live-announcer.tsx` 130 LOC, `use-focus-return.ts` 58, `keyboard-step.ts` 116, `announce-format.ts` 99); 2 NEW extracted helpers in `drag-drop/` (`commit-drop.ts` 106, `keyboard-drag-mode.ts` 188 — the keyboard mode + shared commit logic, extracted to keep `use-drag-drop-pipeline.ts` under the 500-LOC limit); 1 NEW `resize/keyboard-resize-mode.ts` (305 LOC — the keyboard-resize useEffect + `startKeyboardResize` snapshot helper, similarly extracted); 8 MODIFIED (drag-context, drag-handle-button, use-drag-drop-pipeline, resize-context, resize-handles, use-resize-pipeline, kebab-menu, kebab-button, plus apps/site EditorShellMount + index.ts barrel + ADR-0017 D13 amendment ~80 LOC); 2 NEW vitest unit files (keyboard-step + announce-format, total ~32 cases); 1 NEW Playwright spec (sample-blocks-keyboard-a11y.spec.ts, 7 tests, all pass); 2 CONTRACT.md sister-doc updates.
+
+Final state: 281 editor-shell vitest (was 249 cf-20e baseline; +32 cf-22 unit cases) + 78 apps/site vitest + 75 apps/site Playwright (was 68 cf-20e; +7 cf-22 tests) ALL PASS. `pnpm check` 41/41. `pnpm size-check` 442/442 files under 500.
+
+**What surprised me / what I missed**:
+
+1. **The drag pipeline was already 502 LOC pre-cf-22** — adding any keyboard-mode logic would push it over the 500-LOC hard limit IMMEDIATELY. I had to extract TWO helper files just to fit the cf-22 changes: `commit-drop.ts` (the shared mutation logic) + `keyboard-drag-mode.ts` (the keyboard useEffect). The extraction was structurally clean (the keyboard mode IS logically separate per cf-22 D3) but added implementation overhead. **Lesson**: when a file is at 95%+ of the size-check limit, the NEXT addition triggers extraction work whose cost approaches the addition's actual feature cost. cf-20d / cf-20e had similar patterns; cf-22 is the third PR where size-check forced mid-implementation extraction. Future cf-23+ planning should ALLOCATE extraction budget when adding to files above 480 LOC.
+
+2. **Resize handles were `aria-hidden=true` since cf-20d** — silently breaking AT discoverability for 2 PRs (cf-20d shipped them, cf-20e didn't notice, cf-22 caught it). I copied the wrapper attribute pattern from cf-20d (where I'd put `aria-hidden` thinking the handles were "decorative pointer affordances"); converting to `<button>` revealed the contradiction (a `<button>` element MUST be AT-reachable; an `aria-hidden` ancestor would suppress that). **Lesson**: when shipping interactive controls without keyboard support (pointer-only baseline like cf-20d), the AT default should be "visible to AT but not actionable" rather than "hidden from AT entirely". `aria-hidden=true` on interactive controls is a strict WCAG 4.1.2 violation; cf-20d should have used `tabindex=-1` if the goal was "non-keyboard-reachable but AT-discoverable". cf-22 fixes this retroactively + the operational rule lands here.
+
+3. **Tiptap chain commands silently fail more often than I thought** — cf-20e R0 already taught me that `insertContentAt(pos, nodeJson)` silently no-ops on schema mismatch; cf-22 reminded me that `editor.chain().command(({tr}) => ...).run()` returns a boolean indicating success, but the chain itself swallows failures inside the command callback. The keyboard-mode commit path inherits this. Lesson reinforces cf-20e operational rule #12: prefer ProseMirror tr primitives directly over Tiptap's high-level chain commands when canonical mutation semantics matter.
+
+4. **`useFocusReturn` setTimeout(0) needed empirical tuning** — the kebab menu close-then-restore-focus path needed a 50ms `waitForTimeout` in the Playwright test because React's commit cycle + the focus restoration happen across separate microtask queues. Using `requestAnimationFrame` instead of `setTimeout(0)` was empirically slower (rAF waits for the next paint, ~16ms; setTimeout(0) executes after the current task's microtasks finish, ~0-1ms). The 50ms test wait absorbs both options. **Lesson**: focus-management code that crosses React commit boundaries needs deferred execution AND test waits that absorb the deferral.
+
+**What I'd do differently**:
+
+For size-check: when the target file is between 480-500 LOC, plan extraction BEFORE writing new code. cf-22 had me iteratively trim JSDoc 5+ times to fit each addition; the better path is to design the extraction up-front + do all-at-once.
+
+For aria-hidden: audit ALL interactive controls during PR planning for `aria-hidden` ancestors. cf-22 R0 didn't catch this — codex R1 may flag it or other a11y issues. Adding to pre-PR checklist: `grep -rE 'aria-hidden' packages/editor-shell/src/` and verify each is on a TRULY decorative element.
+
+**Operational rules landed (cf-22 R0 reflection)**:
+
+16. **When the target file is >480 LOC, design extraction up-front (NOT mid-implementation)**. The cost of iterative trimming approaches the cost of the feature addition itself. cf-20d, cf-20e, and cf-22 all had this pattern.
+
+17. **NEVER `aria-hidden` an interactive control wrapper**. If the control is pointer-only baseline, use `tabindex=-1` + a meaningful `aria-label` (announces the control to AT but excludes from sequential focus). `aria-hidden=true` on a button is a strict WCAG 4.1.2 violation.
+
+18. **For focus-management code crossing React commit boundaries, use `setTimeout(0)` for deferred execution + include `>0ms waitForTimeout` in tests**. `requestAnimationFrame` is slower (16ms) and unnecessary; setTimeout(0) waits for the current task's microtasks to drain.
+
+19. **Pre-PR planning checklist additions**: (a) check target file LOC budget; (b) `grep aria-hidden` audit on all interactive surfaces; (c) for keyboard a11y, verify all controls reachable via Tab + activatable via Enter/Space + cancellable via Esc + focus returns to originator post-cancel.
+
+**Bonus observation (cf-22 R0 vs cf-20d/cf-20e R0)**: cf-22 R0 took ~2.5 hours — between cf-20d (3h, stateful pipeline) and cf-20e (1.5h, one-shot actions). The keyboard-mode parallel input adds a state flag + a window listener per pipeline + a keyboard handler in the component (drag-handle, resize-handles, kebab-menu); each addition is structurally simple but the SUM crosses 500-LOC boundaries forcing extraction work. The R-round prediction: 2-3 R-rounds (matching cf-20d's complexity profile — both extend stateful pipelines with new logic). The aria-hidden mistake (item 2 above) — if it had occurred fresh in cf-22 — would have been the most likely R1 finding; in this case cf-22 caught + fixed it preemptively.
+
+## ux-ui-lead reflection — cf-22 R1 (silent-scaffolding gap, pixel-cursor-vs-grid-coord, ignored Tab) (2026-05-10)
+
+**What R1 found** (codex-pr-reviewer-55 round 1, 3 findings):
+
+- **F1 (HIGH) — silent-scaffolding gap**: `LiveAnnouncer` was mounted in `EditorShellMount.tsx` AND the 6 format helpers existed in `announce-format.ts` (drag move/commit/cancel + resize change/cancel + kebab) — but no caller invoked them. The live region existed; nothing spoke into it. WCAG 4.1.3 silent violation. All 6 a11y unit tests passed because they verified the helpers in isolation, never the wiring.
+
+- **F2 (HIGH) — pixel-cursor instead of grid-coord**: keyboard-drag-mode synthesized a 60px pixel cursor + reused pointer-mode `applyDropMode` tiebreak. On the tablet 6-col grid (48px col + 16px gap) a 60px arrow step cleared less than one cell — keyboard users could lose alignment. Worse, the keyboard-commit went through `commitDropAtMatch` implying arrow keys synthesize pointer-mode semantics, contradicting the ADR-0017 D13 keyboard-parity contract that says keyboard mode produces grid-coord mutations directly.
+
+- **F3 (MEDIUM) — ignored Tab**: keyboard-drag-mode + keyboard-resize-mode keydown handlers ignored Tab. Browser default Tab fired AFTER the handler returned, advancing focus while `keyboardActive=true` remained — leaving the pipeline in an inconsistent state.
+
+**Why I missed all 3**:
+
+The common thread: I built **infrastructure** (announcer + format helpers + `keyboardSnapStep` + `KeyboardDragSnapshot` types) and verified each in isolation, but did not verify the **end-to-end consumer wiring** at the mount-component level. The R0 reflection's bonus observation actually predicted "2-3 R-rounds" — I did not catch this because the silent-scaffolding pattern is invisible in unit tests by construction (the unit tests verify the helpers' inputs/outputs; they do not verify that some other code path actually calls them).
+
+For F2 specifically: I treated keyboard-drag as "pointer-drag with synthesized cursor" because the existing `applyDropMode` infrastructure was right there. The pointer-mode mental model leaked into keyboard mode despite the ADR-0017 D13 amendment text explicitly saying keyboard is parity (NOT a degraded subset). The pixel-cursor synthesis is a natural extension of pointer code but does not realize the keyboard-parity contract; the keyboard-parity contract requires grid-coord mutations directly.
+
+For F3 specifically: Tab handling defaults to "let browser handle it" feels safe but breaks the active-mode invariant. Pre-R1 I assumed Esc was the only exit path; F3 requires Tab/Shift+Tab as additional exit paths because users escape modes by Tab-ing in the natural focus walk.
+
+**What I'd do differently**:
+
+For silent-scaffolding: write an INTEGRATION test as the FIRST test for any infrastructure (announcer, hook, helper) — the integration test verifies that some real consumer in the same PR actually invokes the infrastructure end-to-end. The Playwright spec test "cf-22 R1 F1 — keyboard-drag arrow updates LiveAnnouncer textContent within 200ms (WCAG 4.1.3)" is the integration shape: it forces the consumer wiring to be present + functional. R0 had ZERO integration-shaped tests for the announcer; R1 added 3.
+
+For pointer-vs-keyboard semantics: when an ADR amendment says "X mode is parity (NOT degraded subset)", the code MUST NOT call into the other-mode's helpers. cf-22 R1 fix removes ALL keyboard-mode dependence on `applyDropMode` / `commitDropAtMatch`; keyboard-drag now writes `setNodeMarkup({col, row?})` directly. The pointer/keyboard separation is BIDIRECTIONAL — neither mode's helpers should leak into the other.
+
+For Tab handling: any active-mode keydown handler MUST handle Tab/Shift+Tab explicitly (commit/cancel respectively, no preventDefault). The default "browser handles Tab" behavior breaks the active-mode invariant whenever the mode tracks state (drag-keyboard-active / resize-keyboard-active flags).
+
+**Operational rules landed (cf-22 R1 reflection)**:
+
+19. **Scaffolding (helpers / hooks / components) MUST have a verified consumer in the same PR**. Exporting + unit-testing the helper is NOT the contract; the consumer wiring is. The integration test verifies end-to-end invocation, not just the helper's input/output.
+
+20. **When an ADR amendment declares mode-X parity (NOT degraded subset), code in mode-X MUST NOT call into mode-Y's helpers**. The pointer/keyboard separation is bidirectional. cf-22 R1 keyboard-drag-mode no longer calls `applyDropMode`/`commitDropAtMatch`; it writes `setNodeMarkup({col, row?})` directly via Tiptap tr.
+
+21. **Active-mode keydown handlers MUST explicitly handle Tab/Shift+Tab as commit/cancel exit paths (synchronous, no preventDefault)**. Default "browser handles Tab" breaks the active-mode invariant whenever the mode tracks state. Esc is NOT the only mode-exit path; Tab is part of natural focus walk.
+
+22. **Component-split pattern for `useContext` infrastructure**: when a component mounts a Provider AND consumes its context, split into outer (Provider) + inner (consumer). cf-22 R1 split `EditorShellMount.tsx` (39-LOC outer mounting `<LiveAnnouncer>`) + `EditorShellMountInner.tsx` (445-LOC inner calling `useAnnounce()` + 6 useCallback factories). Required because React hooks (including useContext) cannot be called outside the provider scope.
+
+**R1 prediction outcome**: R0 predicted 2-3 R-rounds. R1 had 3 findings, all real-correctness bugs, all fixable in a single iteration without further design work. R2 should be PASS (no design questions remain; F1+F2+F3 fixes are mechanical wirings of the existing infrastructure). If R2 finds more, the most likely class is "edge case in the new keyboard-drag-mode commit path" (e.g., what if the source block has no row attribute? — fixed pre-R1 via `hasRowAttr` check; what if commit happens at col=1 with colSpan=12? — `keyboardGridStep` clamps to `[1, totalCols-colSpan+1]`).
+
+## ux-ui-lead reflection — cf-22 R2 (F3 reopened: useEscCancel sibling-hook undid Tab focus advance) (2026-05-10)
+
+**What R2 found** (codex-pr-reviewer-55 round 2, 1 finding):
+
+R1 F3 fix was 80% complete. The Tab keydown handler in keyboard-drag-mode + keyboard-resize-mode synchronously fired `commit()` / `cancel()` and flipped `keyboardActive: true → false` without `preventDefault` so the browser's natural Tab focus-advance ran. That logic was correct in isolation. **BUT** the sibling `useEscCancel` hook ALSO consumed `keyboardActive` (via the `pipeline.state.active || pipeline.state.keyboardActive` predicate). Its useEffect snapshotted `document.activeElement` on `false → true` and refocused that element on `true → false` flips — regardless of WHY the deactivation happened. Sequence:
+
+1. Tab pressed → handler runs `commit()` → `keyboardActive` flips false.
+2. Browser's natural Tab focus-advance fires (handler did NOT preventDefault).
+3. React commits the `keyboardActive: false` state → `useEscCancel`'s effect runs → restores focus to the snapshotted originating handle.
+4. **Tab focus-advance is undone**.
+
+The R1 Playwright lock at `sample-blocks-keyboard-a11y.spec.ts:480` asserted only `commit happened` + `overlay cleanup`; it did NOT assert `document.activeElement` actually moved past the handle. **The test passed by accident.**
+
+**Why I missed it**:
+
+The R1 reflection's prediction was "F1+F2+F3 fixes are mechanical wirings of the existing infrastructure" — confidently optimistic about R2. The R1 mental model treated each pipeline as a self-contained unit; I did NOT audit sibling hooks (specifically `useEscCancel`, which I knew consumed the same `keyboardActive` flag) for their behavior under the new flip path. I correctly identified that Tab needed explicit handling (R1 F3 fix), but did not consider that the new flip path (Tab-originated, NOT Esc-originated) might trigger different behavior in any other hook reading the same flag.
+
+The Playwright spec failure is more fundamental. R1 F3's spec used `expect(colAfter).toBe('2 / span 6')` and `expect(...skb-grid-outline-base).toHaveCount(0)` to lock "commit happened + state cleanup". Both assertions were necessary but neither tested the actual user-visible outcome of the F3 fix: **focus moved past the originating handle**. The test should have asserted `document.activeElement.outerHTML !== originatingHandleHTML`. Without that explicit assertion, the silent focus-restore bug slipped through both R1 reviewer + my pre-R1 verification.
+
+**What I'd do differently**:
+
+For sibling-hook auditing: when adding a NEW deactivation path to a state flag, list ALL hooks/effects in the same component tree that read that flag, and walk through their behavior step-by-step under the new path. cf-22 had `useEscCancel` listed in `EditorShellMountInner.tsx` consuming `keyboardActive` — the audit would have surfaced the focus-restore behavior immediately.
+
+For Playwright contract assertions: when asserting "side-effect Y happens after action X", also assert "side-effect Y is observable in the user-visible DOM state Z". For F3 this means: after Tab commit, assert that the focus position is observably different (not just that the commit data-mutation occurred + the overlay cleaned up).
+
+**Operational rules landed (cf-22 R2 reflection)**:
+
+23. **When a feature toggles a state flag (`active` → `inactive`), audit ALL hooks that consume that flag for unintended side effects on the new flip path**. The reason for the flip matters; do NOT assume sibling hooks treat all flips identically. Walk through each consumer hook's behavior under the new deactivation path.
+
+24. **Playwright spec assertions for "side-effect after action" MUST include observable user-visible DOM state, NOT just internal-state mutation**. cf-22 R1 F3's spec asserted commit + cleanup but NOT focus position; the test passed by accident because the focus-restore-bug only affected `document.activeElement`, not the asserted state. Lock the user-visible outcome explicitly (here: `activeElement.outerHTML !== originatingHandleHTML`).
+
+25. **Hook reason flags / one-shot tokens are valid REST-style state when sibling hooks need to discriminate flip causes**. The cf-22 R2 fix introduces `EscDeactivationReason` as a one-shot token consumed at deactivation time + reset to default. This pattern is preferable to suppress flags (easy to forget to reset) and to multi-hook callback orchestration (couples consumers tightly).
+
+**R2 prediction outcome**: my R1 prediction "R2 should be PASS" was wrong — the silent-sibling-hook bug class is harder to predict than the explicit infrastructure-wiring bug class (R1's F1+F2+F3). R3 prediction: PASS likely. The R2 fix is structurally simple (reason flag + ref-based callback indirection in mount + new spec assertions for both drag-Tab + resize-Tab). The pattern is now generalized — any future keyboard-pipeline addition (cf-23+ slash-menu / toolbar) inherits the reason-flag mechanism. The remaining risk is the same as R1: edge cases in the keyboard-pipelines themselves, not the focus-management surface.
+
+## ux-ui-lead reflection — cf-22 R3 follow-up (CI visual-smoke fixture-leak race; pre-existing-flake framing rejected) (2026-05-10)
+
+**What CI found** (PR #116 visual-smoke job 75237845909, post-R3 push):
+
+- 1 hard FAIL: `sample-blocks-resize-handles.spec.ts:115` — `colBefore` expected `'1 / span 12'`, received `'7 / span 6'` initial run, `'2 / span 6'` retry 1, `'1 / span 6'` retry 2. The values mutate between retries — proof the disk fixture is being polluted progressively across test runs, not a render-time race.
+- 3 FLAKY (passed on retry but flagged): `sample-blocks-drag-handle.spec.ts:259` (split-right drop didn't take), `sample-blocks-kebab-menu.spec.ts:178` (Duplicate's pulse-anchor count = 0), `sample-blocks-keyboard-a11y.spec.ts:328` (col=2 expected, got col=7 from prior fixture pollution).
+
+**Root cause** (verified by reading `EditorShellMountInner.tsx:366-395`):
+
+The editor's `handleChange` handler debounces autosave by 800 ms via `setTimeout`. When a mutating Playwright test ends mid-debounce-window:
+
+1. test mutates fixture → `handleChange` schedules an 800 ms save timer.
+2. test asserts → test calls inline `restoreSampleBlocksFixture()` (the pre-followup pattern: bytes were snapshotted in `beforeAll`, restored at end-of-test).
+3. test ends → next test's `beforeEach` (or implicit teardown) runs.
+4. **The 800 ms timer fires AFTER the restore.** The pending `ApiAdapter.save` POST hits the API endpoint, which writes the polluted MDX back to disk + creates `state.json`.
+5. Next test's `page.goto('/notes/sample-blocks/edit')` mounts the editor → `loadWithFallback` calls `apiAdapter.load()` → API GET reads the polluted disk → editor mounts with `'7 / span 6'` instead of pristine `'1 / span 12'`.
+
+The local Playwright run that "passed pre-PR" was wall-clock-faster than CI: the autosave coincidentally completed inside the test's window on the developer's WSL2, but raced past it on GitHub Actions runner (slower fetch + slower fs).
+
+**The fix** (4 spec files + 1 new helper file, all already in the working tree pre-commit):
+
+1. **Single-source helper**: `apps/site/playwright/fixtures/sample-blocks-fixture.ts` exports `snapshotSampleBlocksFixture()` (idempotent module-scoped byte snapshot), `restoreSampleBlocksFixture()` (writes MDX + restores-or-deletes state.json + **strict verify-on-restore** that throws "MDX restore did not take" if the disk doesn't match the snapshot — turns the silent fixture-leak into a loud at-source error), `getSampleBlocksOriginalMdxBytes()` (snapshot accessor for installer helpers like `installColSpan6Fixture`), and constants `SAMPLE_BLOCKS_MDX_PATH` / `SAMPLE_BLOCKS_STATE_PATH` / `AUTOSAVE_SETTLE_MS=1500`.
+
+2. **Per-spec hook discipline**: every mutating spec installs `test.beforeAll(snapshotSampleBlocksFixture)` + `test.beforeEach(restoreSampleBlocksFixture)` + `test.afterAll(restoreSampleBlocksFixture)`. The `beforeEach` strict-verify catches any leaked autosave from the previous test BEFORE the next test mounts.
+
+3. **`AUTOSAVE_SETTLE_MS` waits**: every mutating test calls `await page.waitForTimeout(AUTOSAVE_SETTLE_MS)` BEFORE its trailing `restoreSampleBlocksFixture()` so the in-flight 800 ms debounced POST + 250 ms saveSettleTimer + headroom complete inside the test's window. Restore then overwrites the persisted polluted bytes cleanly.
+
+4. **Pulse-anchor assertion timing**: the cf-20c-2 R1 F4 + cf-20e D6 + cf-20d D11 pulse assertions are reordered to assert `toBeAttached({ timeout: 1500 })` IMMEDIATELY after the action that mounts the pulse, BEFORE other assertions run. Pre-followup the count snapshot landed after the 720 ms pulse animation already unmounted the anchor on slow CI runs.
+
+**Verification** (workers=1 retries=0 + workers=1 retries=2 both clean):
+
+- `pnpm exec playwright test sample-blocks-* --workers=1 --retries=0`: 26/26 pass
+- `pnpm exec playwright test sample-blocks-* --workers=1 --retries=2`: 26/26 pass (CI's mode); zero flakes
+- `pnpm exec playwright test --workers=1 --retries=0` (full suite): 79 passed, 14 skipped, 0 failed, 0 flaky
+- `pnpm check`: 41/41 tasks successful
+
+**Why I (ux-ui-lead) missed this on the original cf-22 R3 push**:
+
+The cf-20c-2 R3 F1 fix (byte-snapshot fixture isolation) shipped per-spec inline copies of `snapshotSampleBlocksFixture` / `restoreSampleBlocksFixture`. Each spec's copy looked identical by eyeball + each spec's own tests passed in isolation locally. I did NOT recognize three failure modes:
+
+1. The autosave 800 ms debounce + ApiAdapter.save POST + 250 ms saveSettleTimer chain takes ~1100-1300 ms total post-mutation → a test that ends in <1100 ms post-mutation leaks the autosave into the next test (or the next test's beforeAll/beforeEach).
+2. The CI runner is wall-clock SLOWER than local WSL2 (GitHub Actions cold runner + Astro preview server's fs cache + chromium launch time), so the leak deterministically exposes in CI even if it never exposed locally.
+3. Per-spec inline copies CANNOT enforce a uniform discipline. If test author A adds `await page.waitForTimeout(AUTOSAVE_SETTLE_MS)` to their copy, test author B's copy might not — and CI exposes the asymmetry months later.
+
+**Operational rule landed (this reflection — rule #26)**:
+
+26. **"Pre-existing flake" is never an acceptable answer when CI gates on the suite. Any test that fails-then-passes-on-retry IS a bug; root-cause it before claiming pre-verify clean.** Specifically for fixture-mutation tests: identify EVERY async side-effect the test triggers (debounced autosave, API POST, fs write, animation unmount) and ensure every test's restore-and-cleanup window strictly contains all of them. Use a SINGLE shared helper module per fixture to enforce uniform discipline across spec files; per-spec inline copies of the same helper are how asymmetric drift slips into CI months later. The first symptom of fixture-leak across spec files is "the SAME assertion fails with DIFFERENT values across retries" — that is deterministic state pollution evolving with each test invocation, not flake.
+
+**R-round prediction for next CI cycle**: PASS likely. The fix-forward is structurally complete: byte-strict restore-verify catches leaks at-source, AUTOSAVE_SETTLE_MS bracketing closes the autosave window, single helper enforces uniformity. Residual risk class: a NEW mutating spec added later that forgets to call `AUTOSAVE_SETTLE_MS` before its restore. Mitigation: add a lint rule or a CI-level regression-lock that asserts pristine MDX bytes at start-of-every-test (deferred — would need a custom Playwright fixture/reporter). For cf-22 R3 follow-up scope the helper extraction + per-spec uniform usage is sufficient.
