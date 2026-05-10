@@ -787,7 +787,7 @@ pnpm --filter @skb/site exec playwright test \
   playwright/sample-blocks-drag-handle.spec.ts \
   playwright/sample-blocks-edit-loads.spec.ts \
   --reporter=line --workers=1 2>&1 | tail -3
-# Expected: 24 passed (11 cf-22 incl. 4 R1+R2 tests + 5 cf-20e + 4 cf-20d + 4 cf-20c-2 + 1 edit-loads)
+# Expected: 27 passed (11 cf-22 incl. 4 R1+R2 tests + 5 cf-20e + 6 cf-20d + 4 cf-20c-2 + 1 edit-loads)
 ```
 
 ```bash
