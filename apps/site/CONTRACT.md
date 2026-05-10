@@ -70,6 +70,71 @@
   changes produces new chunk names/bytes, so CDN or proxy stale-cache reuse of an
   old index is avoided without client-side reindexing.
 
+## Layout shell (Wave 6 cf-23)
+
+`apps/site/src/layouts/BaseLayout.astro` is the canonical page shell for
+every route. Wave 6 cf-23 (per ADR-0018 v0.7 D9) introduced an optional
+`wide?: boolean` prop:
+
+- `wide={false}` (default): the main element carries the legacy
+  `prose mx-auto max-w-3xl py-12 px-4` className. Tailwind `prose`
+  typography preset applies; container is capped at ~768px (`max-w-3xl`).
+  Routes using this default: `/` index, `/search`. Future routes that
+  want the legacy narrow prose layout MUST omit `wide`.
+- `wide={true}`: the main element swaps to
+  `mx-auto py-10 px-4 lg:px-12 notes-doc-wrap` with inline
+  `style="max-width: 1180px"`. Tailwind `prose` is dropped
+  intentionally so `apps/site/src/styles/prose.css` `.skb-prose` rules +
+  v2 typography tokens (`--font-size-body 15px`, `--font-size-b-p 14.5px`)
+  cascade unchallenged. Routes using `wide`: `/notes/[slug]` (read) +
+  `/notes/[slug]/edit` (edit), in lockstep per ADR-0018 v0.7 D9 D2.a.
+
+The `notes-doc-wrap` className is selector bait for Playwright + future
+dark-mode probes; no CSS rules attach to it directly. The inline
+`style="max-width: 1180px"` is intentional (over Tailwind arbitrary
+value `max-w-[1180px]`) so the v2 doc-wrap contract source remains
+visible at the layout call site, not buried in Tailwind tree-shake
+output.
+
+**4-viewport doc-wrap measurement table** (locked by
+`apps/site/playwright/notes-route-width-parity.spec.ts`; ±4px tolerance):
+
+| Viewport | main outer width | inner content width |
+| --- | ---: | ---: |
+| 1280 | 1180px (max-width cap; mx-auto centers; 50px each side margin) | 1084px (lg:px-12 = 48*2 = 96 deducted) |
+| 1024 | 1024px (no cap; box fills viewport) | 928px (lg:px-12 = 48*2 = 96 deducted) |
+| 768 | 768px (no cap; below `lg:` breakpoint) | 736px (px-4 = 16*2 = 32 deducted) |
+| 375 | 375px (no cap; mobile) | 343px (px-4 = 16*2 = 32 deducted) |
+
+Both outer and inner widths are asserted by the spec at every viewport
+(cf-23 R0 F2 — pre-R0 only outer was locked; a future regression like
+`lg:px-12` → `lg:px-8` would silently shrink inner without changing
+outer, defeating D10's "lock the doc-wrap padding spec" intent).
+
+**No-affordance contract for the read route** (locked by
+`apps/site/playwright/sample-blocks-read-no-edit-affordances.spec.ts`):
+the static `/notes/[slug]` route MUST contain ZERO of these editor-only
+DOM tokens — `[data-skb-drag-handle]`, `[data-skb-resize-handle]`,
+`[data-skb-kebab-block-id]`, `.skb-live-announcer`, `.skb-block-nodeview`,
+`.skb-block-nodeview__gutter`, `.skb-block-nodeview__kind-chip`,
+`.skb-editor-content`, `.ProseMirror`. AND it MUST contain at least 8
+`.skb-block-static` wrappers (positive chrome lock for a representative
+sample-blocks fixture). Future PRs that touch the read-route or
+EditorShellMount paths MUST keep this contract.
+
+**`h1` divergence from v2 reference**: SKB notes routes intentionally
+render a 28px `h1` heading containing `{note.data.title}` (consuming
+`--font-size-h1`) even though `/mnt/d/download/web/v2-styles.css:129-134`
+`.doc-title` is 13px gray. SKB is a knowledge base; real heading
+semantics (document-outline, screen-reader nav, page-title cross-reference)
+outweigh the editor-mock incidental UI label. Per ADR-0018 v0.7 D9
+decision (5) this divergence is explicit, not oversight.
+
+**Outer chrome (header + nav + theme toggle) unchanged**: v2
+reference defines no read-only outer shell (the v2 `.app` left-rail
+palette + top-bar are editor-mode chrome). cf-23 closes only the inner
+doc-wrap layer; outer chrome alignment is cf-24+ territory.
+
 ## Grid layout (Wave 5)
 
 - W5-1 source of truth: `packages/block-foundation/CONTRACT.md` owns the grid
@@ -617,3 +682,4 @@ Update this file when changing route structure, content frontmatter shape, build
 - [@skb/block-pdf contract](../../packages/block-pdf/CONTRACT.md)
 - [@skb/design-tokens contract](../../packages/design-tokens/CONTRACT.md)
 - [agent-contract.md `editor-integrator`](../../agent-contract.md)
+- [ADR-0018 v0.7 D9 read-route page-shell visual contract](../../docs/decisions/ADR-0018-v2-visual-migration.md) — BaseLayout `wide` opt-in + 4-viewport width-parity lock + D8 zero-affordance lock (Wave 6 cf-23)
