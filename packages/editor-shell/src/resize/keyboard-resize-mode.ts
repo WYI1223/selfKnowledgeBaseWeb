@@ -39,7 +39,16 @@ import {
   keyboardRowStep,
   keyboardSnapStep,
 } from '../a11y/keyboard-step';
+import { colSpanToFraction } from './size-tooltip';
 import type { ResizeAxis } from './resize-context';
+
+function safeFraction(colSpan: number, totalCols: number): string {
+  try {
+    return colSpanToFraction(colSpan, totalCols);
+  } catch {
+    return `${colSpan}/${totalCols}`;
+  }
+}
 
 export interface KeyboardResizeSnapshot {
   readonly blockId: string;
@@ -150,6 +159,11 @@ export interface UseKeyboardResizeModeOptions {
   // Mutated only as a side-channel when keyboard mode commits — kept
   // here so the parent doesn't need to expose its setSnapshot.
   readonly snapshotRef: MutableRefObject<unknown>;
+  // R1 F1 — WCAG 4.1.3 announce callbacks.
+  readonly onAnnounceChange:
+    | ((axis: 'right' | 'bottom' | 'corner', colSpan: number, rowSpan: number, fraction: string) => void)
+    | undefined;
+  readonly onAnnounceCancel: (() => void) | undefined;
 }
 
 export function useKeyboardResizeMode(
@@ -167,119 +181,155 @@ export function useKeyboardResizeMode(
     setSnapRowSpan,
     resetState,
     onCommitSuccess,
+    onAnnounceChange,
+    onAnnounceCancel,
   } = options;
 
   useEffect(() => {
     if (!keyboardActive) return;
     if (!editor || !snapshot) return;
 
+    // R1 F1 — announce a step change for the current snap state.
+    const announceStep = (
+      colSpanForFraction: number,
+      colSpanForState: number,
+      rowSpanForState: number,
+    ): void => {
+      onAnnounceChange?.(
+        snapshot.axis,
+        colSpanForState,
+        rowSpanForState,
+        safeFraction(colSpanForFraction, totalCols),
+      );
+    };
+
+    // R1 F3 — Tab commit / Shift+Tab cancel. Synchronous; no
+    // preventDefault so browser advances focus naturally after our
+    // commit/cancel runs.
+    const runCancel = (): void => {
+      onAnnounceCancel?.();
+      resetState();
+    };
+
+    const runCommit = (): void => {
+      const nextColSpan = snapColSpan ?? snapshot.startColSpan;
+      const nextRowSpan = snapRowSpan ?? snapshot.startRowSpanInt;
+      const colChanged = nextColSpan !== snapshot.startColSpan;
+      const rowChanged = nextRowSpan !== snapshot.startRowSpanInt;
+      const writeRowSpan =
+        rowChanged && (snapshot.axis === 'bottom' || snapshot.axis === 'corner');
+      const normalizedPosition = normalizeOverflowPosition(
+        snapshot.startCol,
+        snapshot.startColSpan,
+        totalCols,
+        activeColSnaps,
+      );
+      if (!colChanged && !writeRowSpan && normalizedPosition === null) {
+        resetState();
+        return;
+      }
+      const blocks = snapshotBlocks(editor);
+      const livePositions = liveBlockPositions(editor, blocks);
+      const live = livePositions.get(snapshot.blockId);
+      if (!live) {
+        resetState();
+        return;
+      }
+      const nextAttrDiff: Record<string, number> = buildResizeNextAttrs(
+        snapshot.axis,
+        nextColSpan,
+        nextRowSpan,
+        colChanged,
+        rowChanged,
+      );
+      if (normalizedPosition !== null) {
+        nextAttrDiff['col'] = normalizedPosition.col;
+        nextAttrDiff['colSpan'] = normalizedPosition.colSpan;
+      }
+      editor
+        .chain()
+        .command(({ tr }) => {
+          const node = tr.doc.nodeAt(live.pos);
+          if (!node) return false;
+          tr.setNodeMarkup(live.pos, undefined, {
+            ...node.attrs,
+            ...nextAttrDiff,
+          });
+          return true;
+        })
+        .run();
+      announceStep(nextColSpan, nextColSpan, nextRowSpan);
+      const blockId = snapshot.blockId;
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          const newBlocks = snapshotBlocks(editor);
+          const newLive = liveBlockPositions(editor, newBlocks).get(blockId);
+          if (!newLive) return;
+          const dom = editor.view.nodeDOM(newLive.pos);
+          if (dom instanceof HTMLElement) {
+            onCommitSuccess?.(blockId, dom.getBoundingClientRect());
+          }
+        });
+      });
+      resetState();
+    };
+
     const handleKeyDown = (event: KeyboardEvent): void => {
       const axis = snapshot.axis;
       const allowsCol = axis === 'right' || axis === 'corner';
       const allowsRow = axis === 'bottom' || axis === 'corner';
 
+      // R1 F3 — Tab handling (NOT preventDefault; commit-or-cancel
+      // synchronously; browser advances focus after).
+      if (event.key === 'Tab') {
+        if (event.shiftKey) {
+          runCancel();
+        } else {
+          runCommit();
+        }
+        return;
+      }
+
       if (event.key === 'ArrowLeft' && allowsCol) {
         event.preventDefault();
         event.stopPropagation();
         const current = snapColSpan ?? snapshot.startColSpan;
-        setSnapColSpan(keyboardSnapStep(current, 'left', activeColSnaps));
+        const next = keyboardSnapStep(current, 'left', activeColSnaps);
+        setSnapColSpan(next);
+        announceStep(next, next, snapRowSpan ?? snapshot.startRowSpanInt);
         return;
       }
       if (event.key === 'ArrowRight' && allowsCol) {
         event.preventDefault();
         event.stopPropagation();
         const current = snapColSpan ?? snapshot.startColSpan;
-        setSnapColSpan(keyboardSnapStep(current, 'right', activeColSnaps));
+        const next = keyboardSnapStep(current, 'right', activeColSnaps);
+        setSnapColSpan(next);
+        announceStep(next, next, snapRowSpan ?? snapshot.startRowSpanInt);
         return;
       }
       if (event.key === 'ArrowUp' && allowsRow) {
         event.preventDefault();
         event.stopPropagation();
         const current = snapRowSpan ?? snapshot.startRowSpanInt;
-        setSnapRowSpan(keyboardRowStep(current, 'up'));
+        const next = keyboardRowStep(current, 'up');
+        setSnapRowSpan(next);
+        announceStep(snapColSpan ?? snapshot.startColSpan, snapColSpan ?? snapshot.startColSpan, next);
         return;
       }
       if (event.key === 'ArrowDown' && allowsRow) {
         event.preventDefault();
         event.stopPropagation();
         const current = snapRowSpan ?? snapshot.startRowSpanInt;
-        setSnapRowSpan(keyboardRowStep(current, 'down'));
+        const next = keyboardRowStep(current, 'down');
+        setSnapRowSpan(next);
+        announceStep(snapColSpan ?? snapshot.startColSpan, snapColSpan ?? snapshot.startColSpan, next);
         return;
       }
       if (event.key === 'Enter') {
         event.preventDefault();
         event.stopPropagation();
-        const nextColSpan = snapColSpan ?? snapshot.startColSpan;
-        const nextRowSpan = snapRowSpan ?? snapshot.startRowSpanInt;
-        const colChanged = nextColSpan !== snapshot.startColSpan;
-        const rowChanged = nextRowSpan !== snapshot.startRowSpanInt;
-        const writeRowSpan =
-          rowChanged && (axis === 'bottom' || axis === 'corner');
-
-        const normalizedPosition = normalizeOverflowPosition(
-          snapshot.startCol,
-          snapshot.startColSpan,
-          totalCols,
-          activeColSnaps,
-        );
-
-        if (
-          !colChanged &&
-          !writeRowSpan &&
-          normalizedPosition === null
-        ) {
-          resetState();
-          return;
-        }
-
-        // Resolve live PM position.
-        const blocks = snapshotBlocks(editor);
-        const livePositions = liveBlockPositions(editor, blocks);
-        const live = livePositions.get(snapshot.blockId);
-        if (!live) {
-          resetState();
-          return;
-        }
-
-        const nextAttrDiff: Record<string, number> = buildResizeNextAttrs(
-          axis,
-          nextColSpan,
-          nextRowSpan,
-          colChanged,
-          rowChanged,
-        );
-        if (normalizedPosition !== null) {
-          nextAttrDiff['col'] = normalizedPosition.col;
-          nextAttrDiff['colSpan'] = normalizedPosition.colSpan;
-        }
-        editor
-          .chain()
-          .command(({ tr }) => {
-            const node = tr.doc.nodeAt(live.pos);
-            if (!node) return false;
-            const nextAttrs = { ...node.attrs, ...nextAttrDiff };
-            tr.setNodeMarkup(live.pos, undefined, nextAttrs);
-            return true;
-          })
-          .run();
-
-        // Re-measure landed position post-mutation for success-pulse.
-        const blockId = snapshot.blockId;
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            const newBlocks = snapshotBlocks(editor);
-            const newLive = liveBlockPositions(editor, newBlocks).get(
-              blockId,
-            );
-            if (!newLive) return;
-            const dom = editor.view.nodeDOM(newLive.pos);
-            if (dom instanceof HTMLElement) {
-              onCommitSuccess?.(blockId, dom.getBoundingClientRect());
-            }
-          });
-        });
-
-        resetState();
+        runCommit();
         return;
       }
     };
@@ -297,6 +347,8 @@ export function useKeyboardResizeMode(
     totalCols,
     activeColSnaps,
     onCommitSuccess,
+    onAnnounceChange,
+    onAnnounceCancel,
     resetState,
     setSnapColSpan,
     setSnapRowSpan,

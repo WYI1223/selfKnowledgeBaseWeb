@@ -1,30 +1,14 @@
 /**
  * @skb/editor-shell useDragDropPipeline — drag/drop lifecycle owner.
  *
- * Wave 6 cf-20c-2 (2026-05-09) — composes the cf-20c-2 primitives
- * (snapshot, edge-rects, tiebreak, applyDropMode, layoutReducer,
- * outline-overlay, drag-ghost, drop-pulse, esc-cancel) into the
- * interactive drag-handle wire. Single mutation pipeline per
- * ADR-0016 D12 + ADR-0017 D12.
- *
- * Wave 6 cf-22 (2026-05-09) — adds parallel keyboard-mode entry
- * point per ADR-0017 D13 + WCAG 2.1.1: Enter/Space on drag handle
- * starts keyboard-mode (separate `state.keyboardActive` flag per
- * cf-22 D3); Arrow keys navigate via `useKeyboardDragMode` hook
- * (extracted to keep this file under the 500-LOC size-check limit);
- * Enter commits via the SAME `commitDropAtMatch` path as pointer
- * drop (per cf-22 D7 dropEpoch reuse).
- *
- * Lifecycle (per ADR-0017 D-list + cf-22 D13 amendment):
- *   POINTER: dragstart → window dragover → window drop → commit
- *   KEYBOARD: handle Enter/Space → window Arrow → window Enter → commit
- *   Both paths share: snapshotBlocks → edgeRects → tiebreak →
- *   commitDropAtMatch → setNodeMarkup → dropEpoch pulse.
- *
- * Block-id sourcing (cf-20c-2 D2): ProseMirror node `pos` as stable
- * string within a single drag transaction. Snapshot at start; never
- * re-read during the active window; at drop, walk the doc again to
- * map snapshot pos → live pos.
+ * cf-20c-2 + cf-22 + cf-22 R1. Composes drag primitives + commit
+ * logic + keyboard mode (extracted hook). Pointer + keyboard modes
+ * are separate (cf-22 D3); both share `commitDropAtMatch`. R1 F2:
+ * keyboard mode tracks GRID coords {col, row} (NOT pixel cursor).
+ * R1 F1: announce callbacks fire WCAG 4.1.3 messages on every
+ * arrow / commit / cancel. R1 F3: Tab commits + Shift+Tab cancels
+ * (handled inside useKeyboardDragMode). Full contract in ADR-0017
+ * D13 + CONTRACT.md.
  */
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import type { Editor } from '@tiptap/core';
@@ -39,17 +23,14 @@ import {
   snapshotBlocks,
   type SerializedBlock,
 } from './pipeline-snapshot';
-// Wave 6 cf-22 (2026-05-09) — extracted commit logic (re-used by
-// both pointer-drop and keyboard-Enter commit paths). Pre-cf-22 the
-// commit ran inline in the dragover/drop useEffect; keyboard mode
-// shares the SAME mutation path, so the extraction enables reuse +
-// keeps this file under the 500-LOC size-check limit.
+// cf-22: extracted commit logic (shared by pointer + keyboard).
 import { commitDropAtMatch } from './commit-drop';
-// Wave 6 cf-22 — extracted keyboard-mode lifecycle (Arrow keys +
-// Enter commit). The extraction keeps this file under the size-
-// check limit; the keyboard mode is logically separate from
-// pointer mode per cf-22 D3.
-import { useKeyboardDragMode } from './keyboard-drag-mode';
+// cf-22 R1 F2: extracted keyboard-mode hook with GRID-coord
+// tracking (per ADR-0017 D13 keyboard-parity contract).
+import {
+  useKeyboardDragMode,
+  type KeyboardDragSnapshot,
+} from './keyboard-drag-mode';
 
 const VELOCITY_WINDOW_MS = 16;
 
@@ -57,16 +38,9 @@ export interface PipelineDragState {
   /** True from drag-start until drag-end (success / cancel / mode-none). */
   readonly active: boolean;
   /**
-   * Wave 6 cf-22 (2026-05-09) — true while a KEYBOARD-mode drag is
-   * active (Enter/Space on drag handle → window Arrow keys move
-   * cursor → Enter commits). Per cf-22 D3 separate-modes decision,
-   * this is a SEPARATE flag from `active` (the pointer mode):
-   *   - At most ONE of `active` and `keyboardActive` is true.
-   *   - Mid-pointer-drag, Arrow keys are no-op.
-   *   - Mid-keyboard-drag, mouse pointerdown elsewhere ends keyboard
-   *     mode + restores focus per cf-22 D5.
-   * Consumers (OutlineOverlay / DragGhost mounts) should treat
-   * `active || keyboardActive` as the "drag-mode active" predicate.
+   * cf-22 — true while keyboard-mode drag active. Mutually exclusive
+   * with `active` (pointer mode) per cf-22 D3. Consumers treat
+   * `active || keyboardActive` as the drag-active predicate.
    */
   readonly keyboardActive: boolean;
   /** Per-block id → bounding rect snapshot taken at drag-start. */
@@ -97,6 +71,10 @@ export interface PipelineDragState {
    * commit via `setLastDroppedFromExternal`.
    */
   readonly dropEpoch: number;
+  /** cf-22 R1 F2 — keyboard-mode current grid `col`. */
+  readonly keyboardCol: number | null;
+  /** cf-22 R1 F2 — keyboard-mode current grid `row`. */
+  readonly keyboardRow: number | null;
 }
 
 export interface UseDragDropPipelineOptions {
@@ -108,6 +86,18 @@ export interface UseDragDropPipelineOptions {
    * listeners here.
    */
   readonly gridSelector?: string;
+  /** cf-22 R1 F1 — totalCols for keyboard grid clamping. Default 12. */
+  readonly totalCols?: number;
+  /** cf-22 R1 F1 — WCAG 4.1.3 arrow-key move announcement. */
+  readonly onAnnounceMove?: (
+    blockKind: string,
+    col: number,
+    totalCols: number,
+  ) => void;
+  /** cf-22 R1 F1 — WCAG 4.1.3 commit announcement (pointer + keyboard). */
+  readonly onAnnounceCommit?: (blockKind: string, col: number) => void;
+  /** cf-22 R1 F1 — WCAG 4.1.3 cancel announcement (Esc / Shift+Tab). */
+  readonly onAnnounceCancel?: () => void;
 }
 
 export interface UseDragDropPipelineReturn {
@@ -152,20 +142,29 @@ const INITIAL_LAYOUT_STATE: LayoutState = {
 export function useDragDropPipeline(
   options: UseDragDropPipelineOptions,
 ): UseDragDropPipelineReturn {
-  const { editor, gridSelector = '.skb-grid' } = options;
+  const {
+    editor,
+    gridSelector = '.skb-grid',
+    totalCols = 12,
+    onAnnounceMove,
+    onAnnounceCommit,
+    onAnnounceCancel,
+  } = options;
 
   const [layoutState, dispatchLayout] = useReducer(layoutReducer, INITIAL_LAYOUT_STATE);
   const [active, setActive] = useState(false);
   // Wave 6 cf-22 — separate keyboard-mode flag per cf-22 D3.
   const [keyboardActive, setKeyboardActive] = useState(false);
+  // Wave 6 cf-22 R1 F2 — grid-coord state for keyboard drag.
+  const [keyboardCol, setKeyboardCol] = useState<number | null>(null);
+  const [keyboardRow, setKeyboardRow] = useState<number | null>(null);
+  const [keyboardSnapshot, setKeyboardSnapshot] =
+    useState<KeyboardDragSnapshot | null>(null);
   const [activeMatch, setActiveMatch] = useState<EdgeMatch | null>(null);
   const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
   const [sourceBlockId, setSourceBlockId] = useState<string | null>(null);
   const [lastDroppedBlockId, setLastDroppedBlockId] = useState<string | null>(null);
-  // cf-20c-2 R2 F2 + R3 F2 — pulse anchor rect (post-drop landed
-  // position per ADR-0017 D11) + monotonic dropEpoch (React key
-  // for rapid-drop animation isolation). See PipelineDragState
-  // JSDoc above for full rationale.
+  // cf-20c-2 R2 F2 + R3 F2 — pulse anchor rect + monotonic dropEpoch.
   const [lastDroppedRect, setLastDroppedRect] = useState<DOMRectReadOnly | null>(null);
   const [dropEpoch, setDropEpoch] = useState(0);
 
@@ -210,36 +209,60 @@ export function useDragDropPipeline(
   );
 
   const onDragEnd = useCallback(() => {
-    // Fallback cleanup if drop event didn't fire on the grid (e.g. user
-    // released over browser chrome). Treat as cancel.
-    // Wave 6 cf-22 — also clears keyboardActive (Esc cancel via
-    // useEscCancel calls onDragEnd; keyboard-mode cleanup mirrors
-    // pointer-mode cleanup).
+    // Fallback cleanup. Esc cancel via useEscCancel + dragend-
+    // without-drop both route here. R1 F1: announce cancel for
+    // BOTH pointer + keyboard modes (the keyboard hook only owns
+    // Tab/Shift+Tab + Enter commit; Esc goes through this path).
     if (active || keyboardActive) {
+      onAnnounceCancel?.();
       dispatchLayout({ type: 'drag-end-cancel' });
       setActive(false);
       setKeyboardActive(false);
+      setKeyboardCol(null);
+      setKeyboardRow(null);
+      setKeyboardSnapshot(null);
       setActiveMatch(null);
       setCursor(null);
       setSourceBlockId(null);
     }
-  }, [active, keyboardActive]);
+  }, [active, keyboardActive, onAnnounceCancel]);
 
-  // Wave 6 cf-22 (2026-05-09) — keyboard-mode drag entry per WCAG
-  // 2.1.1. Snapshots blocks (same as pointer path) + computes a
-  // virtual cursor at the source block's center + flips
-  // `keyboardActive = true`. Window-level Arrow listener (in the
-  // useEffect below) takes over for navigation; Enter commits via
-  // the SAME commitDropAtMatch path as pointer drop. Per cf-22 D3,
-  // pointer-mode `active` is held false during keyboard mode.
+  // cf-22 R1 F2 — keyboard-mode entry per ADR-0017 D13. Snapshots
+  // grid coords {col, row, colSpan, rowSpan} (NOT pixel cursor;
+  // pre-R1 pixel-synth was viewport-dependent). useKeyboardDragMode
+  // window listener mutates {keyboardCol, keyboardRow} via
+  // keyboardGridStep + keyboardGridRowStep; Enter commits via
+  // setNodeMarkup writing {col, row} directly. cf-22 D3 separate-modes.
   const onDragStartKeyboard = useCallback(
     (blockId: string) => {
       if (!editor) return;
-      // Reject if already in any mode (per cf-22 D3 separate-modes
-      // — no mid-drag bridge between mouse + keyboard).
       if (active || keyboardActive) return;
       const blocks = snapshotBlocks(editor);
       const rects = measureBlockRects(editor, blocks);
+      const sourceBlock = blocks.find((b) => b.id === blockId);
+      if (!sourceBlock) return;
+
+      // Build grid-coord snapshot (R1 F2 — replaces pre-R1 pixel
+      // cursor model). hasRowAttr captures whether the source had
+      // an explicit `row` (so commit knows whether to write `row`
+      // back; blocks defaulted to no `row` should stay that way).
+      const startRow = typeof sourceBlock.row === 'number' ? sourceBlock.row : 1;
+      const hasRowAttr = sourceBlock.row !== undefined;
+      const rowSpan =
+        typeof sourceBlock.rowSpan === 'number' ? sourceBlock.rowSpan : 1;
+      const newSnapshot: KeyboardDragSnapshot = {
+        blockId,
+        startCol: sourceBlock.col,
+        startRow,
+        colSpan: sourceBlock.colSpan,
+        rowSpan,
+        hasRowAttr,
+      };
+
+      // Edge rects + block rects retained for OutlineOverlay
+      // rendering (the visual highlight reuses the same overlay
+      // primitives as pointer mode; outline at source's current
+      // position gets re-rendered on each grid-coord update).
       const layouts: BlockLayout[] = blocks
         .filter((b) => b.id !== blockId)
         .map((b) => {
@@ -248,31 +271,19 @@ export function useDragDropPipeline(
         })
         .filter((x): x is BlockLayout => x !== null);
       const edges = computeEdgeRects(layouts);
-      // Virtual cursor: center of the source block's bounding rect.
-      // This is the keyboard-mode initial cursor position; Arrow
-      // keys move it via lastCursorRef.
-      const sourceRect = rects.get(blockId);
-      const initialCursor = sourceRect
-        ? {
-            x: sourceRect.left + sourceRect.width / 2,
-            y: sourceRect.top + sourceRect.height / 2,
-          }
-        : { x: 0, y: 0 };
 
       snapshotRef.current = blocks;
       blockRectsRef.current = rects;
       edgeRectsRef.current = edges;
-      lastCursorRef.current = {
-        x: initialCursor.x,
-        y: initialCursor.y,
-        t: performance.now(),
-      };
 
       dispatchLayout({ type: 'drag-start', sourceBlockId: blockId });
       setSourceBlockId(blockId);
-      setCursor(initialCursor);
+      setKeyboardSnapshot(newSnapshot);
+      setKeyboardCol(sourceBlock.col);
+      setKeyboardRow(startRow);
       setKeyboardActive(true);
       setActiveMatch(null);
+      setCursor(null);
     },
     [editor, active, keyboardActive],
   );
@@ -287,20 +298,10 @@ export function useDragDropPipeline(
       const y = event.clientY;
       const last = lastCursorRef.current;
       const now = performance.now();
-      // Wave 6 cf-20c-2 R1 F3 fix (2026-05-09) — velocity unit
-      // alignment with `tiebreak()` contract. ADR-0017 D3 specifies
-      // the velocity threshold + direction-aware tiebreak in
-      // **px/frame** at 60fps (16.67ms/frame); `tiebreak()` reads
-      // `velocity.vx` / `vy` in those units. Pre-R1 the pipeline
-      // computed raw `delta px / delta ms` which under-triggered the
-      // direction filter (e.g. a real cursor moving at 60 px/sec —
-      // a slow drag — has `vxPxPerMs ≈ 0.06` which is FAR below the
-      // 0.5 px/frame threshold; tiebreak fell back to spatial order
-      // even when the user had clear directional intent). Multiply
-      // by VELOCITY_WINDOW_MS (= 16) so the unit is px/frame
-      // assuming 60fps. Real frame rate may differ but the threshold
-      // is intentionally tolerant (0.5 px/frame ≈ 30 px/sec) and
-      // the math holds for any framerate ≥ 30fps.
+      // cf-20c-2 R1 F3: velocity in px/frame at 60fps per ADR-0017 D3
+      // tiebreak contract. Multiply raw delta-px/delta-ms by
+      // VELOCITY_WINDOW_MS so units align with the 0.5 px/frame
+      // threshold. Full rationale in CONTRACT.md.
       const velocity =
         last && now - last.t < VELOCITY_WINDOW_MS * 4
           ? {
@@ -355,6 +356,18 @@ export function useDragDropPipeline(
         })),
       };
       dispatchLayout({ type: 'drag-end-success', mutation: reducerSnapshot });
+      // R1 F1 — WCAG 4.1.3 commit announcement (pointer-drop path).
+      if (didMutate) {
+        const sourceMutation = result.mutation.blocks.find(
+          (b) => b.id === sourceBlockId,
+        );
+        const sourceSnapBlock = snapshotRef.current.find(
+          (b) => b.id === sourceBlockId,
+        );
+        if (sourceMutation && sourceSnapBlock) {
+          onAnnounceCommit?.(sourceSnapBlock.nodeName, sourceMutation.col);
+        }
+      }
       // cf-20c-2 R3 F2: atomic clear-then-set of pulse state across
       // the 2-rAF measurement window so rapid drops don't render
       // stale rects. cf-20c-2 R2 F2: re-measure source AT landed
@@ -398,43 +411,40 @@ export function useDragDropPipeline(
       grid.removeEventListener('dragover', handleDragOver as EventListener);
       grid.removeEventListener('drop', handleDrop as EventListener);
     };
-  }, [active, editor, gridSelector, activeMatch, sourceBlockId]);
+  }, [active, editor, gridSelector, activeMatch, sourceBlockId, onAnnounceCommit]);
 
-  // Wave 6 cf-22 — keyboard-mode lifecycle extracted to its own
-  // hook to keep this file under the 500-LOC size-check limit.
-  // The extraction is mechanical (the keyboard mode is logically
-  // separate from pointer mode per cf-22 D3); same Arrow + Enter
-  // semantics, same commitDropAtMatch path.
+  // Wave 6 cf-22 R1 F2 — keyboard-mode lifecycle extracted to its
+  // own hook. R1 rewrite uses GRID-COORDINATE state (snapshot +
+  // currentCol + currentRow) per ADR-0017 D13 keyboard-parity
+  // contract; pre-R1 used pixel-cursor synth which violated parity
+  // on small viewports. R1 F1: announce callbacks wire WCAG 4.1.3.
+  // R1 F3: Tab commit + Shift+Tab cancel handled inside the hook.
   useKeyboardDragMode({
     keyboardActive,
     editor,
-    activeMatch,
-    sourceBlockId,
+    snapshot: keyboardSnapshot,
+    currentCol: keyboardCol,
+    currentRow: keyboardRow,
+    totalCols,
     snapshotRef,
-    blockRectsRef,
-    edgeRectsRef,
-    lastCursorRef,
-    dispatchLayout,
     setKeyboardActive,
-    setActiveMatch,
-    setCursor,
     setSourceBlockId,
+    setKeyboardCol,
+    setKeyboardRow,
+    setKeyboardSnapshot,
+    dispatchLayout,
     setLastDroppedBlockId,
     setLastDroppedRect,
     setDropEpoch,
+    onAnnounceMove,
+    onAnnounceCommit,
+    onAnnounceCancel,
   });
 
-  // Wave 6 cf-20c-2 R1 F2 fix (2026-05-09) — DropPulse cleanup hook.
-  // The consumer (EditorShellMount.tsx) renders <DropPulse> inside the
-  // landed block when `lastDroppedBlockId !== null`; on the
-  // `onAnimationEnd` callback it calls `clearLastDropped()` to unmount
-  // the pulse so a follow-up drag's mount cycle isn't suppressed by a
-  // stale "already pulsed" state.
-  // Wave 6 cf-20c-2 R2 F2 — also clears `lastDroppedRect` so the
-  // next drop's re-measure isn't mixed with the prior cycle's stale
-  // rect (the rect would be visually stale after consumers unmount
-  // the DropPulse anyway, but explicit reset keeps the state shape
-  // consistent).
+  // cf-20c-2 R1 F2 + R2 F2 — DropPulse cleanup; consumer's
+  // onAnimationEnd callback unmounts the pulse so the next drag
+  // cycle isn't suppressed by stale state. Also clears
+  // lastDroppedRect to avoid stale-rect leak across cycles.
   const clearLastDropped = useCallback(() => {
     setLastDroppedBlockId(null);
     setLastDroppedRect(null);
@@ -466,6 +476,8 @@ export function useDragDropPipeline(
       lastDroppedBlockId,
       lastDroppedRect,
       dropEpoch,
+      keyboardCol,
+      keyboardRow,
     },
     layoutState,
     onDragStart,

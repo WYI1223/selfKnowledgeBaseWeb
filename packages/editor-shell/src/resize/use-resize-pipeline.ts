@@ -1,15 +1,11 @@
 /**
  * @skb/editor-shell useResizePipeline — resize lifecycle owner.
  *
- * cf-20d + R1/R2 fixes + cf-22 keyboard mode. Composes resize visual
- * primitives (<ColRuler>, <SizeTooltip>, <RowLadder>) + resize-snap
- * math + Tiptap setNodeMarkup. Lifecycle: pointerdown (snapshot) →
- * pointermove (snap state, no mutation) → pointerup (commit-on-
- * release + 2-rAF re-measure + dropEpoch pulse). cf-22: parallel
- * keyboard-mode entry (Enter/Space on resize handle) → window Arrow
- * keys via useKeyboardResizeMode hook → Enter commits via SAME
- * setNodeMarkup path. esc-cancel + pointercancel rollback without
- * mutation per ADR-0017 D8 + D13. Decisions in CONTRACT.md.
+ * cf-20d + R1/R2 + cf-22 + R1. Pointer + keyboard modes share
+ * setNodeMarkup commit path; cf-22 keyboard mode in
+ * useKeyboardResizeMode hook. R1 F1: announce callbacks fire WCAG
+ * 4.1.3 messages on every change/cancel. Full contract in
+ * ADR-0017 D9 + D13 + CONTRACT.md.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Editor } from '@tiptap/core';
@@ -29,16 +25,13 @@ import {
   useKeyboardResizeMode,
   type KeyboardResizeSnapshot,
 } from './keyboard-resize-mode';
+// cf-22 R1 F1 — colSpanToFraction for pointer-mode commit announcement.
+import { colSpanToFraction } from './size-tooltip';
 
 export interface PipelineResizeState {
   /** True from pointerdown until commit/cancel/pointercancel. */
   readonly active: boolean;
-  /**
-   * Wave 6 cf-22 — true while a KEYBOARD-mode resize is active.
-   * Per cf-22 D3, separate from `active` (pointer-mode); at most
-   * ONE is true at a time. ColRuler/SizeTooltip/RowLadder mounts
-   * should treat `active || keyboardActive` as the active predicate.
-   */
+  /** cf-22 — keyboard-mode resize active; mutually exclusive with `active`. */
   readonly keyboardActive: boolean;
   /** Source block being resized (set on pointerdown). */
   readonly sourceBlockId: string | null;
@@ -57,16 +50,9 @@ export interface PipelineResizeState {
 export interface UseResizePipelineOptions {
   /** The Tiptap editor instance; null until onCreate fires. */
   readonly editor: Editor | null;
-  /**
-   * Selector for the grid container element. Defaults to '.skb-grid'.
-   * Used to read containerWidth for the snap math.
-   */
+  /** Grid container selector for containerWidth measurement. Default '.skb-grid'. */
   readonly gridSelector?: string;
-  /**
-   * Effective columns at the current viewport (12 / 6 / 1). cf-20d
-   * uses this to choose `effectiveColSnaps()` from block-foundation;
-   * caller derives via `useResponsiveCols`.
-   */
+  /** Effective viewport cols (12/6/1) per ADR-0016 D5. */
   readonly totalCols: number;
   /** Snap targets for the right-edge resize (per `effectiveColSnaps`). */
   readonly activeColSnaps: readonly number[];
@@ -86,6 +72,15 @@ export interface UseResizePipelineOptions {
     blockId: string,
     liveRect: DOMRectReadOnly,
   ) => void;
+  /** cf-22 R1 F1 — WCAG 4.1.3 resize change announcement (arrow + commit). */
+  readonly onAnnounceChange?: (
+    axis: ResizeAxis,
+    colSpan: number,
+    rowSpan: number,
+    fraction: string,
+  ) => void;
+  /** cf-22 R1 F1 — WCAG 4.1.3 resize cancel announcement (Esc / Shift+Tab). */
+  readonly onAnnounceCancel?: () => void;
 }
 
 export interface UseResizePipelineReturn {
@@ -98,12 +93,7 @@ export interface UseResizePipelineReturn {
   ) => void;
   /** Cleanup fallback (pointercancel route). */
   readonly onResizeEnd: (origin: { x: number; y: number }) => void;
-  /**
-   * Wave 6 cf-22 — keyboard-mode resize entry. Called from
-   * resize-handle's onKeyDown (Enter/Space). Snapshots block + sets
-   * snap state to current col/row + flips `keyboardActive = true`.
-   * Per cf-22 D3.
-   */
+  /** cf-22 — keyboard-mode resize entry from handle Enter/Space. */
   readonly onResizeStartKeyboard: (
     blockId: string,
     axis: ResizeAxis,
@@ -116,11 +106,7 @@ interface ResizeSnapshot {
   /** Pre-snap col (R1 F2 — for snapToColSpan overflow-filter). */
   readonly startCol: number;
   readonly startColSpan: number;
-  /**
-   * Original rowSpan attr (number | 'auto'). R1 F3: preserved so
-   * right-only commit omits rowSpan from setNodeMarkup (prose
-   * 'auto' preservation). bottom/corner commits write the integer.
-   */
+  /** R1 F3: original rowSpan attr; right-only commit preserves 'auto'. */
   readonly startRowSpanAttr: number | 'auto';
   /** Integer rowSpan for snap math (for 'auto', derived from rendered height). */
   readonly startRowSpanInt: number;
@@ -143,6 +129,8 @@ export function useResizePipeline(
     rowH = DEFAULT_ROW_H,
     gap = DEFAULT_GAP,
     onCommitSuccess,
+    onAnnounceChange,
+    onAnnounceCancel,
   } = options;
 
   const [active, setActive] = useState(false);
@@ -154,8 +142,7 @@ export function useResizePipeline(
   const [snapRowSpan, setSnapRowSpan] = useState<number | null>(null);
   const [sourceRect, setSourceRect] = useState<DOMRectReadOnly | null>(null);
 
-  // Snapshot ref (preserved across renders; mutating doesn't trigger
-  // re-render — same pattern as cf-20c-2 use-drag-drop-pipeline.ts).
+  // Snapshot ref preserved across renders (no re-render on mutation).
   const snapshotRef = useRef<ResizeSnapshot | null>(null);
 
   const resetState = useCallback(() => {
@@ -238,13 +225,14 @@ export function useResizePipeline(
   );
 
   const onResizeEnd = useCallback(() => {
-    // Pointercancel (rare browser-emitted) + keyboard-mode Esc cancel
-    // via useEscCancel both route here. Pointer pointerup + keyboard
-    // Enter are handled by their own listeners (commit path).
+    // Pointercancel + Esc cancel route here. R1 F1: announce cancel
+    // for BOTH modes (keyboard hook owns Tab + Enter; Esc routes
+    // through here for both pointer + keyboard).
     if (active || keyboardActive) {
+      onAnnounceCancel?.();
       resetState();
     }
-  }, [active, keyboardActive, resetState]);
+  }, [active, keyboardActive, onAnnounceCancel, resetState]);
 
   // Window-level pointermove / pointerup / pointercancel listeners.
   // Attached when active=true.
@@ -386,6 +374,19 @@ export function useResizePipeline(
         })
         .run();
 
+      // R1 F1 — WCAG 4.1.3 commit announcement (pointer-mode).
+      try {
+        const fraction = colSpanToFraction(nextColSpan, totalCols);
+        onAnnounceChange?.(snapshot.axis, nextColSpan, nextRowSpan, fraction);
+      } catch {
+        onAnnounceChange?.(
+          snapshot.axis,
+          nextColSpan,
+          nextRowSpan,
+          `${nextColSpan}/${totalCols}`,
+        );
+      }
+
       // 2-rAF re-measure for landed-position pulse anchor (mirrors
       // cf-20c-2 R2 F2 + R3 F2). cf-20d D3 dropEpoch reuse via
       // onCommitSuccess callback.
@@ -478,18 +479,14 @@ export function useResizePipeline(
     resetState,
     onCommitSuccess,
     snapshotRef,
+    onAnnounceChange,
+    onAnnounceCancel,
   });
 
   return {
     state: {
-      active,
-      keyboardActive,
-      sourceBlockId,
-      axis,
-      cursor,
-      snapColSpan,
-      snapRowSpan,
-      sourceRect,
+      active, keyboardActive, sourceBlockId, axis, cursor,
+      snapColSpan, snapRowSpan, sourceRect,
     },
     onResizeStart,
     onResizeEnd,

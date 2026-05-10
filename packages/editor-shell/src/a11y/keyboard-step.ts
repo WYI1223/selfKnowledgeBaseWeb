@@ -94,6 +94,39 @@ export function keyboardGridStep(
 }
 
 /**
+ * Wave 6 cf-22 R1 F2 fix (2026-05-09) — vertical companion to
+ * `keyboardGridStep` for the keyboard-drag row dimension. Per
+ * ADR-0017 D13 + R1 F2 dispatch ("track keyboard drag as grid
+ * coordinates not pixel cursor"), drag row dimension is also
+ * 1-row-per-arrow movement (NOT a snap set; row is sparsely
+ * populated by content). Up/down moves the source's `row` attr
+ * by ±1, clamped at row >= 1.
+ *
+ * Pre-R1 the keyboard-drag-mode synthesized a pixel cursor +
+ * reused the pointer-mode tiebreak logic which was viewport-
+ * dependent (60px pixel-step missed cells in tablet 6-col layout
+ * where each cell ≈ 120px wide). R1 F2 fix: arrow keys move
+ * grid coordinates directly via `keyboardGridStep` (col) +
+ * `keyboardGridRowStep` (row); commit writes `{col, row}`
+ * directly via setNodeMarkup (NOT via tiebreak/applyDropMode
+ * which is pointer-edge-zone semantics).
+ *
+ * The grid model has no upper row bound (rows are content-driven;
+ * a block can be at row=1 on a doc with 50 blocks above it).
+ * Caller decides ceiling if any.
+ */
+export function keyboardGridRowStep(
+  currentRow: number,
+  direction: 'up' | 'down',
+): number {
+  if (direction === 'down') {
+    return currentRow + 1;
+  }
+  // direction === 'up'
+  return Math.max(1, currentRow - 1);
+}
+
+/**
  * Compute the next valid rowSpan for a keyboard-resize bottom/corner
  * arrow press. RowSpan is an integer ≥ 1 (no snap set; ADR-0016 D6
  * Q4 only constrains colSpan to COL_SNAPS).

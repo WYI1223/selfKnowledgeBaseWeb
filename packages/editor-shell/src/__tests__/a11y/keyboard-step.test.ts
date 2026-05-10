@@ -10,6 +10,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
+  keyboardGridRowStep,
   keyboardGridStep,
   keyboardRowStep,
   keyboardSnapStep,
@@ -112,5 +113,30 @@ describe('keyboardRowStep — cf-22 D2 integer ±1 for rowSpan', () => {
 
   it("'up' from rowSpan=1 → clamps at rowSpan=1 (NOT 0)", () => {
     expect(keyboardRowStep(1, 'up')).toBe(1);
+  });
+});
+
+/**
+ * R1 F2 fix (2026-05-09) — `keyboardGridRowStep` for the keyboard-
+ * drag row dimension. Per ADR-0017 D13 + R1 F2 dispatch, the keyboard
+ * drag tracks grid coordinates directly (NOT a synthetic pixel
+ * cursor). The row step is integer ±1 with row >= 1 clamp; no
+ * upper bound (rows are content-driven).
+ */
+describe('keyboardGridRowStep — R1 F2 grid-coord row movement for drag', () => {
+  it("'down' from row=1 → row=2", () => {
+    expect(keyboardGridRowStep(1, 'down')).toBe(2);
+  });
+
+  it("'down' from large row → row + 1 (no upper clamp)", () => {
+    expect(keyboardGridRowStep(50, 'down')).toBe(51);
+  });
+
+  it("'up' from row=2 → row=1", () => {
+    expect(keyboardGridRowStep(2, 'up')).toBe(1);
+  });
+
+  it("'up' from row=1 → clamps at row=1 (NOT 0)", () => {
+    expect(keyboardGridRowStep(1, 'up')).toBe(1);
   });
 });

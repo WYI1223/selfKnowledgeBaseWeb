@@ -1,185 +1,304 @@
 /**
  * @skb/editor-shell useKeyboardDragMode — keyboard-mode lifecycle
- * for the drag pipeline (cf-22).
+ * for the drag pipeline (cf-22 + R1 fixes).
  *
  * Wave 6 cf-22 (2026-05-09) — extracted from
  * `use-drag-drop-pipeline.ts` to keep that file under the 500-LOC
  * size-check hard limit. The keyboard-mode useEffect listens for
- * Arrow keys (synthesizes cursor moves through the existing
- * edge-rect/tiebreak machinery) + Enter (commits via the SAME
- * commitDropAtMatch path as pointer drop). Esc is handled by the
- * parent's `useEscCancel` wiring on `state.keyboardActive`.
+ * Arrow keys (R1 F2: GRID-COORDINATE movement via `keyboardGridStep`
+ * + `keyboardGridRowStep`; pre-R1 used a synthetic pixel cursor +
+ * pointer-mode tiebreak which was viewport-dependent) + Enter
+ * (commits via `tr.setNodeMarkup` writing `{col, row}` directly,
+ * NOT via tiebreak/applyDropMode which is pointer-edge-zone
+ * semantics) + Tab/Shift+Tab (R1 F3: commit-or-cancel before browser
+ * advances focus) + Esc (handled by parent's `useEscCancel`).
  *
- * Per cf-22 D3 separate-modes decision: this hook ONLY runs while
- * `keyboardActive === true`; pointer-mode `active` and keyboard-
- * mode `keyboardActive` are mutually exclusive.
+ * Per cf-22 D3: keyboard mode is logically separate from pointer
+ * mode; pointer-mode `active` and keyboard-mode `keyboardActive`
+ * are mutually exclusive.
  *
- * Per cf-22 D7: success-pulse on commit reuses the same dropEpoch
- * infrastructure as pointer-drop + cf-20d resize-commit + cf-20e
- * duplicate (the canonical "rapid-action animation isolation"
- * pattern; cf-22 keyboard commit is the 4th action).
+ * Per cf-22 R1 F1: announce callbacks (`onAnnounceMove`,
+ * `onAnnounceCommit`, `onAnnounceCancel`) are wired so the WCAG
+ * 4.1.3 aria-live announcements actually fire on keyboard events.
+ *
+ * Per cf-22 D7: success-pulse on commit reuses the cf-20c-2
+ * dropEpoch infrastructure via the parent's lastDropped setters.
  */
-import { useEffect, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
+import {
+  useEffect,
+  type Dispatch,
+  type MutableRefObject,
+  type SetStateAction,
+} from 'react';
 import type { Editor } from '@tiptap/core';
-import { commitDropAtMatch } from './commit-drop';
-import type { EdgeRect } from './edge-rects';
+import {
+  keyboardGridRowStep,
+  keyboardGridStep,
+} from '../a11y/keyboard-step';
 import {
   liveBlockPositions,
   type SerializedBlock,
 } from './pipeline-snapshot';
-import { findMatches, tiebreak, type EdgeMatch } from './tiebreak';
 import type { LayoutAction } from './layout-reducer';
 
-const KEYBOARD_STEP_PX = 60; // ~1 grid cell (12-col @ 1200px container ≈ 87px/col; 60 is conservative).
+/**
+ * R1 F2 — keyboard drag tracks grid coordinates `{col, row}` per
+ * the source block, NOT a synthetic pixel cursor. The snapshot is
+ * captured at start; arrow keys mutate `currentCol` / `currentRow`
+ * via the pure step helpers.
+ */
+export interface KeyboardDragSnapshot {
+  readonly blockId: string;
+  readonly startCol: number;
+  readonly startRow: number;
+  readonly colSpan: number;
+  readonly rowSpan: number;
+  readonly hasRowAttr: boolean; // true if source block had explicit `row` attr
+}
 
 export interface UseKeyboardDragModeOptions {
   readonly keyboardActive: boolean;
   readonly editor: Editor | null;
-  readonly activeMatch: EdgeMatch | null;
-  readonly sourceBlockId: string | null;
+  readonly snapshot: KeyboardDragSnapshot | null;
+  readonly currentCol: number | null;
+  readonly currentRow: number | null;
+  readonly totalCols: number;
   readonly snapshotRef: MutableRefObject<readonly SerializedBlock[]>;
-  readonly blockRectsRef: MutableRefObject<Map<string, DOMRectReadOnly>>;
-  readonly edgeRectsRef: MutableRefObject<readonly EdgeRect[]>;
-  readonly lastCursorRef: MutableRefObject<{
-    x: number;
-    y: number;
-    t: number;
-  } | null>;
-  readonly dispatchLayout: Dispatch<LayoutAction>;
   readonly setKeyboardActive: Dispatch<SetStateAction<boolean>>;
-  readonly setActiveMatch: Dispatch<SetStateAction<EdgeMatch | null>>;
-  readonly setCursor: Dispatch<
-    SetStateAction<{ x: number; y: number } | null>
-  >;
   readonly setSourceBlockId: Dispatch<SetStateAction<string | null>>;
+  readonly setKeyboardCol: Dispatch<SetStateAction<number | null>>;
+  readonly setKeyboardRow: Dispatch<SetStateAction<number | null>>;
+  readonly setKeyboardSnapshot: Dispatch<
+    SetStateAction<KeyboardDragSnapshot | null>
+  >;
+  readonly dispatchLayout: Dispatch<LayoutAction>;
   readonly setLastDroppedBlockId: Dispatch<SetStateAction<string | null>>;
   readonly setLastDroppedRect: Dispatch<
     SetStateAction<DOMRectReadOnly | null>
   >;
   readonly setDropEpoch: Dispatch<SetStateAction<number>>;
+  // R1 F1 — announce callbacks (WCAG 4.1.3).
+  readonly onAnnounceMove:
+    | ((blockKind: string, col: number, totalCols: number) => void)
+    | undefined;
+  readonly onAnnounceCommit:
+    | ((blockKind: string, col: number) => void)
+    | undefined;
+  readonly onAnnounceCancel: (() => void) | undefined;
 }
 
 export function useKeyboardDragMode(options: UseKeyboardDragModeOptions): void {
   const {
     keyboardActive,
     editor,
-    activeMatch,
-    sourceBlockId,
+    snapshot,
+    currentCol,
+    currentRow,
+    totalCols,
     snapshotRef,
-    blockRectsRef,
-    edgeRectsRef,
-    lastCursorRef,
-    dispatchLayout,
     setKeyboardActive,
-    setActiveMatch,
-    setCursor,
     setSourceBlockId,
+    setKeyboardCol,
+    setKeyboardRow,
+    setKeyboardSnapshot,
+    dispatchLayout,
     setLastDroppedBlockId,
     setLastDroppedRect,
     setDropEpoch,
+    onAnnounceMove,
+    onAnnounceCommit,
+    onAnnounceCancel,
   } = options;
 
   useEffect(() => {
     if (!keyboardActive) return;
-    if (!editor) return;
+    if (!editor || !snapshot) return;
 
-    const handleKeyDown = (event: KeyboardEvent): void => {
-      const last = lastCursorRef.current;
-      if (!last) return;
-      let dx = 0;
-      let dy = 0;
-      if (event.key === 'ArrowLeft') dx = -KEYBOARD_STEP_PX;
-      else if (event.key === 'ArrowRight') dx = KEYBOARD_STEP_PX;
-      else if (event.key === 'ArrowUp') dy = -KEYBOARD_STEP_PX;
-      else if (event.key === 'ArrowDown') dy = KEYBOARD_STEP_PX;
-      else if (event.key === 'Enter') {
-        // Commit via the same path as pointer drop.
-        event.preventDefault();
-        event.stopPropagation();
-        const winner = activeMatch;
-        if (!winner || !sourceBlockId) {
-          dispatchLayout({ type: 'drag-end-mode-none' });
-          setKeyboardActive(false);
-          setActiveMatch(null);
-          setCursor(null);
-          setSourceBlockId(null);
-          return;
-        }
-        const result = commitDropAtMatch(
-          editor,
-          winner,
-          sourceBlockId,
-          snapshotRef.current,
-        );
-        if (result.mutation === null) {
-          dispatchLayout({ type: 'drag-end-mode-none' });
-        } else {
-          const reducerSnapshot = {
-            blocks: result.mutation.blocks.map((b) => ({
-              col: b.col,
-              ...(b.row !== undefined && { row: b.row }),
+    const cleanup = (): void => {
+      setKeyboardActive(false);
+      setSourceBlockId(null);
+      setKeyboardCol(null);
+      setKeyboardRow(null);
+      setKeyboardSnapshot(null);
+    };
+
+    const findSourceBlockKind = (): string => {
+      const block = snapshotRef.current.find((b) => b.id === snapshot.blockId);
+      return block?.nodeName ?? 'block';
+    };
+
+    const commit = (): void => {
+      const col = currentCol ?? snapshot.startCol;
+      const row = currentRow ?? snapshot.startRow;
+      const blockId = snapshot.blockId;
+      // Resolve live PM position.
+      const livePositions = liveBlockPositions(editor, snapshotRef.current);
+      const live = livePositions.get(blockId);
+      if (!live) {
+        cleanup();
+        return;
+      }
+      // Write {col, row?} directly; preserve colSpan/rowSpan.
+      // R1 F2: grid-coord commit (NOT pointer-edge applyDropMode).
+      const willChangeCol = col !== snapshot.startCol;
+      const willChangeRow =
+        snapshot.hasRowAttr && row !== snapshot.startRow;
+      if (!willChangeCol && !willChangeRow) {
+        // No-op commit — treat as cancel without firing pulse.
+        dispatchLayout({ type: 'drag-end-cancel' });
+        cleanup();
+        return;
+      }
+      let didMutate = false;
+      editor
+        .chain()
+        .command(({ tr }) => {
+          const node = tr.doc.nodeAt(live.pos);
+          if (!node) return false;
+          const nextAttrs: Record<string, unknown> = {
+            ...node.attrs,
+            col,
+          };
+          // Only write `row` if the source had an explicit row attr;
+          // for blocks that defaulted (no explicit row), leave it
+          // undefined to preserve doc-order auto-row.
+          if (snapshot.hasRowAttr) {
+            nextAttrs['row'] = row;
+          }
+          tr.setNodeMarkup(live.pos, undefined, nextAttrs);
+          didMutate = true;
+          return true;
+        })
+        .run();
+      if (!didMutate) {
+        dispatchLayout({ type: 'drag-end-cancel' });
+        cleanup();
+        return;
+      }
+      // Build the mutation snapshot for layoutReducer.
+      const reducerSnapshot = {
+        blocks: snapshotRef.current.map((b) => {
+          if (b.id === blockId) {
+            return {
+              col,
+              ...(snapshot.hasRowAttr && { row }),
               colSpan: b.colSpan,
               rowSpan: b.rowSpan,
-            })),
-          };
-          dispatchLayout({
-            type: 'drag-end-success',
-            mutation: reducerSnapshot,
-          });
-          // Fire success-pulse via the existing dropEpoch
-          // infrastructure (cf-22 D7 reuse — 4th action).
-          if (result.didMutate) {
-            requestAnimationFrame(() => {
-              requestAnimationFrame(() => {
-                const newLivePositions = liveBlockPositions(
-                  editor,
-                  snapshotRef.current,
-                );
-                const newSourceLive = newLivePositions.get(sourceBlockId);
-                if (!newSourceLive) return;
-                const dom = editor.view.nodeDOM(newSourceLive.pos);
-                if (dom instanceof HTMLElement) {
-                  setLastDroppedBlockId(null);
-                  setLastDroppedRect(null);
-                  setLastDroppedBlockId(sourceBlockId);
-                  setLastDroppedRect(dom.getBoundingClientRect());
-                  setDropEpoch((prev) => prev + 1);
-                }
-              });
-            });
+            };
           }
+          return {
+            col: b.col,
+            ...(b.row !== undefined && { row: b.row }),
+            colSpan: b.colSpan,
+            rowSpan: b.rowSpan,
+          };
+        }),
+      };
+      dispatchLayout({
+        type: 'drag-end-success',
+        mutation: reducerSnapshot,
+      });
+      // Announce per WCAG 4.1.3.
+      onAnnounceCommit?.(findSourceBlockKind(), col);
+      // Success-pulse via cf-20c-2 R3 dropEpoch infrastructure.
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          const newLivePositions = liveBlockPositions(
+            editor,
+            snapshotRef.current,
+          );
+          const newSourceLive = newLivePositions.get(blockId);
+          if (!newSourceLive) return;
+          const dom = editor.view.nodeDOM(newSourceLive.pos);
+          if (dom instanceof HTMLElement) {
+            setLastDroppedBlockId(null);
+            setLastDroppedRect(null);
+            setLastDroppedBlockId(blockId);
+            setLastDroppedRect(dom.getBoundingClientRect());
+            setDropEpoch((prev) => prev + 1);
+          }
+        });
+      });
+      cleanup();
+    };
+
+    const cancel = (): void => {
+      onAnnounceCancel?.();
+      dispatchLayout({ type: 'drag-end-cancel' });
+      cleanup();
+    };
+
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      // R1 F3 — Tab/Shift+Tab: commit-or-cancel before browser
+      // advances focus. We do NOT preventDefault so focus advances
+      // naturally to the next/prev tabstop AFTER our synchronous
+      // commit/cancel runs.
+      if (event.key === 'Tab') {
+        if (event.shiftKey) {
+          cancel();
+        } else {
+          commit();
         }
-        setKeyboardActive(false);
-        setActiveMatch(null);
-        setCursor(null);
-        setSourceBlockId(null);
+        return;
+      }
+      // R1 F2 — arrow keys move grid coordinates directly.
+      let nextCol = currentCol ?? snapshot.startCol;
+      let nextRow = currentRow ?? snapshot.startRow;
+      let moved = false;
+      if (event.key === 'ArrowLeft') {
+        nextCol = keyboardGridStep(nextCol, 'left', totalCols, snapshot.colSpan);
+        moved = true;
+      } else if (event.key === 'ArrowRight') {
+        nextCol = keyboardGridStep(nextCol, 'right', totalCols, snapshot.colSpan);
+        moved = true;
+      } else if (event.key === 'ArrowUp') {
+        nextRow = keyboardGridRowStep(nextRow, 'up');
+        moved = true;
+      } else if (event.key === 'ArrowDown') {
+        nextRow = keyboardGridRowStep(nextRow, 'down');
+        moved = true;
+      } else if (event.key === 'Enter') {
+        event.preventDefault();
+        event.stopPropagation();
+        commit();
         return;
       } else {
         return; // Ignore other keys (Esc handled by useEscCancel).
       }
-      // Arrow key path: synthesize cursor move + recompute tiebreak.
-      event.preventDefault();
-      event.stopPropagation();
-      const newX = last.x + dx;
-      const newY = last.y + dy;
-      const now = performance.now();
-      lastCursorRef.current = { x: newX, y: newY, t: now };
-      setCursor({ x: newX, y: newY });
-      const matches = findMatches(
-        newX,
-        newY,
-        [...edgeRectsRef.current],
-        blockRectsRef.current,
-      );
-      // Zero velocity (keyboard moves are discrete; tiebreak falls
-      // back to spatial order).
-      const winner = tiebreak(matches, { vx: 0, vy: 0 });
-      setActiveMatch(winner);
+      if (moved) {
+        event.preventDefault();
+        event.stopPropagation();
+        setKeyboardCol(nextCol);
+        setKeyboardRow(nextRow);
+        // Announce the new col (totalCols context tells AT users
+        // where in the grid they are).
+        onAnnounceMove?.(findSourceBlockKind(), nextCol, totalCols);
+      }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [keyboardActive, editor, activeMatch, sourceBlockId]);
+  }, [
+    keyboardActive,
+    editor,
+    snapshot,
+    currentCol,
+    currentRow,
+    totalCols,
+    snapshotRef,
+    setKeyboardActive,
+    setSourceBlockId,
+    setKeyboardCol,
+    setKeyboardRow,
+    setKeyboardSnapshot,
+    dispatchLayout,
+    setLastDroppedBlockId,
+    setLastDroppedRect,
+    setDropEpoch,
+    onAnnounceMove,
+    onAnnounceCommit,
+    onAnnounceCancel,
+  ]);
 }

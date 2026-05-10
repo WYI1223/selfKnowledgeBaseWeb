@@ -57,14 +57,33 @@ function posFromBlockId(blockId: string): number | null {
   return pos;
 }
 
-/** Imperative delete: remove the node at the given pos. */
-export function makeKebabDelete(editor: Editor | null) {
+/**
+ * cf-22 R1 F1 — kebab announce callback signature. Receives the
+ * action enum + source kind + (for change-kind) the new kind.
+ * Optional (degraded mode for tests / pre-LiveAnnouncer mounts).
+ */
+export type KebabAnnounceFn = (
+  action: 'delete' | 'duplicate' | 'change kind',
+  blockKind: string,
+  newKind?: string,
+) => void;
+
+/**
+ * Imperative delete: remove the node at the given pos. cf-22 R1 F1
+ * fires `announce(formatKebabAction('delete', kind))` post-mutation
+ * for WCAG 4.1.3.
+ */
+export function makeKebabDelete(
+  editor: Editor | null,
+  announce?: KebabAnnounceFn,
+) {
   return (blockId: string): void => {
     if (!editor) return;
     const pos = posFromBlockId(blockId);
     if (pos === null) return;
     const node = editor.state.doc.nodeAt(pos);
     if (!node) return;
+    const blockKind = node.type.name;
     editor
       .chain()
       .command(({ tr }: TiptapCommandArg) => {
@@ -72,6 +91,7 @@ export function makeKebabDelete(editor: Editor | null) {
         return true;
       })
       .run();
+    announce?.('delete', blockKind);
   };
 }
 
@@ -95,6 +115,7 @@ export function makeKebabDuplicate(
     blockId: string,
     rect: DOMRectReadOnly,
   ) => void,
+  announce?: KebabAnnounceFn,
 ) {
   return (blockId: string): void => {
     if (!editor) return;
@@ -103,16 +124,8 @@ export function makeKebabDuplicate(
     const node = editor.state.doc.nodeAt(pos);
     if (!node) return;
     const insertPos = pos + node.nodeSize;
-    // Use ProseMirror's `tr.insert(pos, node.copy())` directly via
-    // the Tiptap command wrapper. `node.copy()` clones the node
-    // without its content (atom blocks like ours have no content,
-    // so copy() reproduces the entire node structurally including
-    // attrs). This is more reliable than `insertContentAt(pos,
-    // node.toJSON())` which goes through Tiptap's parser and can
-    // silently no-op if the JSON shape doesn't match the schema's
-    // expectations precisely (cf-20e R0 saw this with sample-blocks
-    // fixture — the chain insertContentAt returned but no node was
-    // inserted; the direct tr.insert path works reliably).
+    const blockKind = node.type.name;
+    // Use ProseMirror's tr.insert(pos, node.copy()) per cf-20e D7.
     editor
       .chain()
       .command(({ tr }: TiptapCommandArg) => {
@@ -121,6 +134,7 @@ export function makeKebabDuplicate(
         return true;
       })
       .run();
+    announce?.('duplicate', blockKind);
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         const dom = editor.view.nodeDOM(insertPos);
@@ -144,7 +158,10 @@ export function makeKebabDuplicate(
  * the pure-helper module stays free of the registry-wire dependency
  * graph.
  */
-export function makeKebabChangeKind(editor: Editor | null) {
+export function makeKebabChangeKind(
+  editor: Editor | null,
+  announce?: KebabAnnounceFn,
+) {
   return (blockId: string, newKind: BlockAffordanceKind): void => {
     if (!editor) return;
     const pos = posFromBlockId(blockId);
@@ -153,6 +170,7 @@ export function makeKebabChangeKind(editor: Editor | null) {
     if (!node) return;
     const newNodeType = editor.schema.nodes[newKind];
     if (!newNodeType) return;
+    const sourceKind = node.type.name;
     const newAttrs = buildChangeKindAttrs(
       node.attrs,
       newKind,
@@ -165,5 +183,6 @@ export function makeKebabChangeKind(editor: Editor | null) {
         return true;
       })
       .run();
+    announce?.('change kind', sourceKind, newKind);
   };
 }

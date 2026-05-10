@@ -772,6 +772,16 @@ are the SAME DOM elements as pointer handles; the mobile `display: none`
 rules from cf-20c-2 / cf-20d / cf-20e CSS apply equally. The
 `<LiveAnnouncer/>` is sr-only (NOT mobile-gated; AT works on mobile).
 
+##### R1 amendment (2026-05-10 codex-pr-reviewer-55 round 1; F1+F2+F3)
+
+R1 strengthens the keyboard contract per the ADR-0017 D13 amendment 2026-05-10 update:
+
+- **F2 (HIGH; grid-coord parity)**: `keyboard-drag-mode.ts` rewritten to track grid coordinates `{col, row}` directly (NOT a synthesized pixel cursor). NEW exported helper `keyboardGridRowStep(currentRow, direction)` for vertical movement (returns row ±1 clamped to ≥ 1). NEW exported interface `KeyboardDragSnapshot` carrying `{blockId, startCol, startRow, colSpan, rowSpan, hasRowAttr}` captured at `onDragStartKeyboard`. Pipeline state `keyboardCol` + `keyboardRow` initialized from `sourceBlock.{col, row}`; arrow handlers mutate via `keyboardGridStep`/`keyboardGridRowStep`; commit writes `setNodeMarkup({col: keyboardCol, ...(hasRowAttr ? {row: keyboardRow} : {})})` directly via Tiptap tr (NOT through `applyDropMode`/`commitDropAtMatch`). `commit-drop.ts` is now pointer-path-only.
+- **F1 (HIGH; announcer wiring)**: `useDragDropPipeline` now accepts optional `totalCols?: number` (default 12) + `onAnnounceMove?(blockKind, col, totalCols)` + `onAnnounceCommit?(blockKind, col)` + `onAnnounceCancel?()` callbacks. `useResizePipeline` accepts `onAnnounceChange?(axis, colSpan, rowSpan, fraction)` + `onAnnounceCancel?()`. Each pipeline invokes the callbacks at the appropriate mutation-success / cancel sites (after `setNodeMarkup` for commits; in `onDragEnd` / `onResizeEnd` for cancels). Consumer (apps/site `EditorShellMountInner.tsx`) wraps the format helpers in `useCallback` factories + passes them in. `LiveAnnouncer` now actually consumed (was silent pre-R1 — exists but no caller).
+- **F3 (MEDIUM; Tab as exit path)**: keyboard-drag-mode + keyboard-resize-mode `keydown` handlers now treat Tab = sync `commit()`, Shift+Tab = sync `cancel()`. NO `preventDefault` so the browser advances focus naturally per WCAG 2.4.3. This cleans up `keyboardActive` state without leaving stale active-mode flags.
+
+Operational rule landed (cf-22 R1 reflection rule #19): scaffolding (helpers / hooks / components) MUST have a verified consumer in the same PR. Exporting + unit-testing the helper is NOT the contract; the consumer wiring is.
+
 ### Responsive viewport (C.2-9)
 
 C.2-9 adds `responsive-cols.ts` as the editor-shell owner for ADR-0016 D5's

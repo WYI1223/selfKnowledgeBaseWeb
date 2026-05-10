@@ -5,10 +5,24 @@ import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const workspaceRoot = resolve(here, '../../../../..');
-const editorMountSource = readFileSync(
-  resolve(workspaceRoot, 'apps/site/src/components/EditorShellMount.tsx'),
-  'utf8',
-);
+// Wave 6 cf-22 R1 F1 — `EditorShellMount.tsx` was split into outer
+// (LiveAnnouncer provider) + inner (`EditorShellMountInner.tsx`).
+// The lifecycle wiring (registerBlocks, ApiAdapter, save chain) now
+// lives in the Inner. Concatenate both source files so structural
+// assertions catch either location.
+const editorMountSource = [
+  readFileSync(
+    resolve(workspaceRoot, 'apps/site/src/components/EditorShellMount.tsx'),
+    'utf8',
+  ),
+  readFileSync(
+    resolve(
+      workspaceRoot,
+      'apps/site/src/components/EditorShellMountInner.tsx',
+    ),
+    'utf8',
+  ),
+].join('\n\n// --- next file ---\n\n');
 const registerBlocksSource = readFileSync(
   resolve(workspaceRoot, 'packages/editor-shell/src/registerBlocks.ts'),
   'utf8',

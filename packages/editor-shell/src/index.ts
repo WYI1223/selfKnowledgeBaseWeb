@@ -129,6 +129,7 @@ export type {
 export { useFocusReturn } from './a11y/use-focus-return';
 export type { UseFocusReturnOptions } from './a11y/use-focus-return';
 export {
+  keyboardGridRowStep,
   keyboardGridStep,
   keyboardRowStep,
   keyboardSnapStep,

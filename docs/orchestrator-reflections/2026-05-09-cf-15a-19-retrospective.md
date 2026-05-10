@@ -484,3 +484,41 @@ For aria-hidden: audit ALL interactive controls during PR planning for `aria-hid
 19. **Pre-PR planning checklist additions**: (a) check target file LOC budget; (b) `grep aria-hidden` audit on all interactive surfaces; (c) for keyboard a11y, verify all controls reachable via Tab + activatable via Enter/Space + cancellable via Esc + focus returns to originator post-cancel.
 
 **Bonus observation (cf-22 R0 vs cf-20d/cf-20e R0)**: cf-22 R0 took ~2.5 hours — between cf-20d (3h, stateful pipeline) and cf-20e (1.5h, one-shot actions). The keyboard-mode parallel input adds a state flag + a window listener per pipeline + a keyboard handler in the component (drag-handle, resize-handles, kebab-menu); each addition is structurally simple but the SUM crosses 500-LOC boundaries forcing extraction work. The R-round prediction: 2-3 R-rounds (matching cf-20d's complexity profile — both extend stateful pipelines with new logic). The aria-hidden mistake (item 2 above) — if it had occurred fresh in cf-22 — would have been the most likely R1 finding; in this case cf-22 caught + fixed it preemptively.
+
+## ux-ui-lead reflection — cf-22 R1 (silent-scaffolding gap, pixel-cursor-vs-grid-coord, ignored Tab) (2026-05-10)
+
+**What R1 found** (codex-pr-reviewer-55 round 1, 3 findings):
+
+- **F1 (HIGH) — silent-scaffolding gap**: `LiveAnnouncer` was mounted in `EditorShellMount.tsx` AND the 6 format helpers existed in `announce-format.ts` (drag move/commit/cancel + resize change/cancel + kebab) — but no caller invoked them. The live region existed; nothing spoke into it. WCAG 4.1.3 silent violation. All 6 a11y unit tests passed because they verified the helpers in isolation, never the wiring.
+
+- **F2 (HIGH) — pixel-cursor instead of grid-coord**: keyboard-drag-mode synthesized a 60px pixel cursor + reused pointer-mode `applyDropMode` tiebreak. On the tablet 6-col grid (48px col + 16px gap) a 60px arrow step cleared less than one cell — keyboard users could lose alignment. Worse, the keyboard-commit went through `commitDropAtMatch` implying arrow keys synthesize pointer-mode semantics, contradicting the ADR-0017 D13 keyboard-parity contract that says keyboard mode produces grid-coord mutations directly.
+
+- **F3 (MEDIUM) — ignored Tab**: keyboard-drag-mode + keyboard-resize-mode keydown handlers ignored Tab. Browser default Tab fired AFTER the handler returned, advancing focus while `keyboardActive=true` remained — leaving the pipeline in an inconsistent state.
+
+**Why I missed all 3**:
+
+The common thread: I built **infrastructure** (announcer + format helpers + `keyboardSnapStep` + `KeyboardDragSnapshot` types) and verified each in isolation, but did not verify the **end-to-end consumer wiring** at the mount-component level. The R0 reflection's bonus observation actually predicted "2-3 R-rounds" — I did not catch this because the silent-scaffolding pattern is invisible in unit tests by construction (the unit tests verify the helpers' inputs/outputs; they do not verify that some other code path actually calls them).
+
+For F2 specifically: I treated keyboard-drag as "pointer-drag with synthesized cursor" because the existing `applyDropMode` infrastructure was right there. The pointer-mode mental model leaked into keyboard mode despite the ADR-0017 D13 amendment text explicitly saying keyboard is parity (NOT a degraded subset). The pixel-cursor synthesis is a natural extension of pointer code but does not realize the keyboard-parity contract; the keyboard-parity contract requires grid-coord mutations directly.
+
+For F3 specifically: Tab handling defaults to "let browser handle it" feels safe but breaks the active-mode invariant. Pre-R1 I assumed Esc was the only exit path; F3 requires Tab/Shift+Tab as additional exit paths because users escape modes by Tab-ing in the natural focus walk.
+
+**What I'd do differently**:
+
+For silent-scaffolding: write an INTEGRATION test as the FIRST test for any infrastructure (announcer, hook, helper) — the integration test verifies that some real consumer in the same PR actually invokes the infrastructure end-to-end. The Playwright spec test "cf-22 R1 F1 — keyboard-drag arrow updates LiveAnnouncer textContent within 200ms (WCAG 4.1.3)" is the integration shape: it forces the consumer wiring to be present + functional. R0 had ZERO integration-shaped tests for the announcer; R1 added 3.
+
+For pointer-vs-keyboard semantics: when an ADR amendment says "X mode is parity (NOT degraded subset)", the code MUST NOT call into the other-mode's helpers. cf-22 R1 fix removes ALL keyboard-mode dependence on `applyDropMode` / `commitDropAtMatch`; keyboard-drag now writes `setNodeMarkup({col, row?})` directly. The pointer/keyboard separation is BIDIRECTIONAL — neither mode's helpers should leak into the other.
+
+For Tab handling: any active-mode keydown handler MUST handle Tab/Shift+Tab explicitly (commit/cancel respectively, no preventDefault). The default "browser handles Tab" behavior breaks the active-mode invariant whenever the mode tracks state (drag-keyboard-active / resize-keyboard-active flags).
+
+**Operational rules landed (cf-22 R1 reflection)**:
+
+19. **Scaffolding (helpers / hooks / components) MUST have a verified consumer in the same PR**. Exporting + unit-testing the helper is NOT the contract; the consumer wiring is. The integration test verifies end-to-end invocation, not just the helper's input/output.
+
+20. **When an ADR amendment declares mode-X parity (NOT degraded subset), code in mode-X MUST NOT call into mode-Y's helpers**. The pointer/keyboard separation is bidirectional. cf-22 R1 keyboard-drag-mode no longer calls `applyDropMode`/`commitDropAtMatch`; it writes `setNodeMarkup({col, row?})` directly via Tiptap tr.
+
+21. **Active-mode keydown handlers MUST explicitly handle Tab/Shift+Tab as commit/cancel exit paths (synchronous, no preventDefault)**. Default "browser handles Tab" breaks the active-mode invariant whenever the mode tracks state. Esc is NOT the only mode-exit path; Tab is part of natural focus walk.
+
+22. **Component-split pattern for `useContext` infrastructure**: when a component mounts a Provider AND consumes its context, split into outer (Provider) + inner (consumer). cf-22 R1 split `EditorShellMount.tsx` (39-LOC outer mounting `<LiveAnnouncer>`) + `EditorShellMountInner.tsx` (445-LOC inner calling `useAnnounce()` + 6 useCallback factories). Required because React hooks (including useContext) cannot be called outside the provider scope.
+
+**R1 prediction outcome**: R0 predicted 2-3 R-rounds. R1 had 3 findings, all real-correctness bugs, all fixable in a single iteration without further design work. R2 should be PASS (no design questions remain; F1+F2+F3 fixes are mechanical wirings of the existing infrastructure). If R2 finds more, the most likely class is "edge case in the new keyboard-drag-mode commit path" (e.g., what if the source block has no row attribute? — fixed pre-R1 via `hasRowAttr` check; what if commit happens at col=1 with colSpan=12? — `keyboardGridStep` clamps to `[1, totalCols-colSpan+1]`).

@@ -536,6 +536,33 @@ content-editable). Convert resize handles from `<div>` to
 
 Per cf-22 D4 documentation in D13 ADR amendment.
 
+### D5 R1 amendment — Tab in active keyboard-mode = sync commit-or-cancel (NO preventDefault; browser advances focus naturally)
+
+**R1 finding F3 (codex-pr-reviewer-55 round 1, 2026-05-10)**:
+pre-R1 `keydown` handlers in keyboard-drag-mode + keyboard-
+resize-mode IGNORED Tab. The browser's default Tab behavior would
+fire AFTER the handler returned, advancing focus while
+`keyboardActive=true` remained — leaving the pipeline in an
+inconsistent state (subsequent arrow keys outside the originating
+handle would still fire as if the user was still in
+keyboard-drag-mode).
+
+**Decision (R1)**: Tab in active keyboard-mode = synchronous
+`commit()`. Shift+Tab in active keyboard-mode = synchronous
+`cancel()`. NEITHER calls `event.preventDefault()` so the browser
+advances focus naturally after the handler returns. This:
+1. Cleans up `keyboardActive` (commit/cancel both reset to false).
+2. Preserves WCAG 2.4.3 focus order (browser Tab walk continues
+   normally after exit).
+3. Mirrors Esc semantics (sync cancel + restore focus) but with a
+   focus-walk twist (Esc returns to originating handle; Tab moves
+   forward through the page).
+
+Applied to BOTH `keyboard-drag-mode.ts` + `keyboard-resize-mode.ts`
+keydown handlers. Playwright spec test "cf-22 R1 F3 — Tab in
+keyboard-drag commits + resets keyboardActive + focus advances"
+locks the contract.
+
 ### D5 — Esc cancel + focus return to originating handle (verify all 3 paths)
 
 **Open question Q5 from dispatch brief**: cancel-without-commit
@@ -557,6 +584,42 @@ cleanup paths.
 
 Test 4 of the Playwright spec covers all 3 paths.
 
+### D6 R1 amendment — `<LiveAnnouncer>` provider/consumer split + 6 useCallback announce wirings (silent-scaffolding gap fix)
+
+**R1 finding F1 (codex-pr-reviewer-55 round 1, 2026-05-10)**:
+pre-R1 the `<LiveAnnouncer>` was mounted inside
+`EditorShellMount.tsx` AND the format helpers
+(`formatDragMove`/`formatDragCommit`/`formatDragCancel`/
+`formatResizeChange`/`formatResizeCancel`/`formatKebabAction`)
+existed in `announce-format.ts` BUT no caller invoked them. The
+live region existed; nothing spoke into it. Silent WCAG 4.1.3
+violation that all 6 a11y unit tests passed because they verified
+the helpers in isolation, never the wiring.
+
+**Decision (R1)**: split `EditorShellMount.tsx` into outer
+`<LiveAnnouncer>` provider (39 LOC) + inner consumer
+`EditorShellMountInner.tsx` (445 LOC). The inner component calls
+`useAnnounce()` — possible only because it's inside the provider's
+React-context scope. Six `useCallback` factories
+(`onAnnounceDragMove` / `onAnnounceDragCommit` /
+`onAnnounceDragCancel` / `onAnnounceResizeChange` /
+`onAnnounceResizeCancel` / `onAnnounceKebab`) wrap the format
+helpers + push messages through `announce()`. They wire into:
+- `useDragDropPipeline({onAnnounceMove, onAnnounceCommit, onAnnounceCancel})`
+- `useResizePipeline({onAnnounceChange, onAnnounceCancel})`
+- `makeKebabDelete(editor, onAnnounceKebab)` /
+  `makeKebabDuplicate(editor, setLast, onAnnounceKebab)` /
+  `makeKebabChangeKind(editor, onAnnounceKebab)` factories.
+
+The pipelines now invoke the callbacks at the appropriate
+mutation-success / cancel sites (after `setNodeMarkup` /
+`commitDropAtMatch` / commit close).
+
+Operational rule landed (cf-22 R1 reflection rule #19):
+**Scaffolding (helpers / hooks / components) MUST have a verified
+consumer in the same PR**. Exporting + unit-testing the helper is
+NOT the contract; the consumer wiring is.
+
 ### D6 — `<LiveAnnouncer/>` mounted ONCE at the editor mount level (NOT per-pipeline)
 
 The `aria-live` region is a single shared element. Mounting one
@@ -572,6 +635,49 @@ uses React context to push messages into the single queue.
 Throttle: the announcer maintains a 100ms quiet window — only the
 LATEST message after 100ms of silence is rendered (so rapid arrow-
 key spam doesn't flood AT).
+
+### D7 R1 amendment — Drag keyboard mode tracks `{col, row}` grid-coords directly (NO synthesized pixel cursor; commit writes `setNodeMarkup({col, row?})` directly)
+
+**R1 finding F2 (codex-pr-reviewer-55 round 1, 2026-05-10)**:
+pre-R1 keyboard-drag-mode synthesized a 60px pixel cursor
+(`{x: blockRect.x + 60 * arrowDelta, y: blockRect.y}`) and reused
+the pointer-mode tiebreak / `applyDropMode` to compute the drop
+target. This was viewport-dependent — on the tablet 6-col grid
+(48px col + 16px gap) a 60px arrow step cleared less than one cell
+and the user could lose alignment. Worse, the keyboard-commit went
+through the same `commitDropAtMatch` path as a pointer drop,
+implying that arrow keys synthesize pointer-mode semantics — but
+the ADR-0017 D13 keyboard-parity contract explicitly says the
+keyboard mode produces grid-coord mutations directly.
+
+**Decision (R1)**: keyboard-drag-mode tracks `{col, row}` grid
+coordinates directly via:
+1. `KeyboardDragSnapshot` interface captured at `onDragStartKeyboard`:
+   `{blockId, startCol, startRow, colSpan, rowSpan, hasRowAttr}`.
+2. Pipeline state `keyboardCol` + `keyboardRow` initialized from
+   `sourceBlock.{col, row}`.
+3. ArrowLeft/Right handlers call `keyboardGridStep(keyboardCol,
+   direction, totalCols, colSpan)` which returns the next valid
+   col index (clamped to `[1, totalCols - colSpan + 1]`).
+4. ArrowUp/Down handlers call NEW `keyboardGridRowStep(keyboardRow,
+   direction)` which returns row ±1 (clamped to ≥ 1).
+5. Enter / Tab commit writes `setNodeMarkup({col: keyboardCol, ...
+   (hasRowAttr ? {row: keyboardRow} : {})})` directly via Tiptap
+   tr.setNodeMarkup. NO `applyDropMode`. NO `commitDropAtMatch`.
+   NO synthesized pixel cursor.
+6. dropEpoch infrastructure reuse from cf-22 D7 stays — keyboard
+   commit still calls `setLastDroppedBlockId/Rect` + `dropEpoch++`
+   for the success-pulse.
+
+The `totalCols` value is now an explicit option on
+`useDragDropPipeline` (default 12); `EditorShellMountInner`
+passes the responsive `totalCols` from `useResponsiveCols`.
+
+Playwright spec test "cf-22 R1 F2 — keyboard-drag ArrowRight +
+Enter commits to col=2 EXACTLY (grid-coord, NOT pixel-derived)"
+locks the contract via a colSpan=6 fixture (so ArrowRight has
+room to advance from col=1 → col=2 in a 6-span block on a 12-col
+grid).
 
 ### D7 — Reuse cf-20c-2 R3 dropEpoch infrastructure for keyboard-commit success-pulse
 
@@ -621,7 +727,7 @@ pnpm --filter @skb/site test 2>&1 | grep -E 'Tests'
 ```
 
 ```bash
-# AC-3: targeted Playwright passes (a11y spec + carried)
+# AC-3: targeted Playwright passes (a11y spec + carried; post-R1 expanded set)
 pnpm --filter @skb/site exec playwright test \
   playwright/sample-blocks-keyboard-a11y.spec.ts \
   playwright/sample-blocks-kebab-menu.spec.ts \
@@ -629,13 +735,13 @@ pnpm --filter @skb/site exec playwright test \
   playwright/sample-blocks-drag-handle.spec.ts \
   playwright/sample-blocks-edit-loads.spec.ts \
   --reporter=line --workers=1 2>&1 | tail -3
-# Expected: 20 passed (6 new cf-22 + 5 cf-20e + 6 cf-20d + 3 cf-20c-2 + 1 edit-loads)
+# Expected: 23 passed (10 cf-22 incl. 3 R1 tests + 5 cf-20e + 4 cf-20d + 4 cf-20c-2 + 1 edit-loads)
 ```
 
 ```bash
-# AC-4: full apps/site Playwright suite passes
+# AC-4: full apps/site Playwright suite passes (post-R1)
 pnpm --filter @skb/site exec playwright test --reporter=line --workers=1 2>&1 | tail -3
-# Expected: 74 passed | 14 skipped | 0 failed (was 68 in cf-20e; +6 new cf-22)
+# Expected: 78 passed | 14 skipped | 0 failed (was 75 in pre-R1; +3 new R1 tests)
 ```
 
 ```bash
@@ -700,16 +806,33 @@ grep -cE 'readFileSync|writeFileSync' apps/site/playwright/sample-blocks-keyboar
 
 ## Reflection landing
 
-This PR appends one entry to
+This PR appends two entries to
 `docs/orchestrator-reflections/2026-05-09-cf-15a-19-retrospective.md`
-per the 2026-05-09 retrospective process rule. The entry documents
-what surprised ux-ui-lead during cf-22 (the parallel input mode
-forced a `keyboardActive` separate from `active` in BOTH pipelines
-— a structural change that touched cf-20c-2 + cf-20d in addition
-to the new a11y modules; the WCAG 4.1.3 throttle window for
-aria-live; the structural change of converting resize handles
-from `<div>` to `<button>` removed the wrapper's `aria-hidden`
-which had been silently breaking AT discoverability since cf-20d).
+per the 2026-05-09 retrospective process rule:
+
+1. **cf-22 initial entry**: what surprised ux-ui-lead during the
+   first round (the parallel input mode forced a `keyboardActive`
+   separate from `active` in BOTH pipelines — a structural change
+   that touched cf-20c-2 + cf-20d in addition to the new a11y
+   modules; the WCAG 4.1.3 throttle window for aria-live; the
+   structural change of converting resize handles from `<div>` to
+   `<button>` removed the wrapper's `aria-hidden` which had been
+   silently breaking AT discoverability since cf-20d).
+
+2. **cf-22 R1 entry**: 3 codex-pr-reviewer-55 R1 findings (F1
+   silent-scaffolding announcer, F2 pixel-cursor instead of
+   grid-coord, F3 ignored Tab) → operational rule #19
+   "Scaffolding MUST have verified consumer in same PR"
+   (Exporting + unit-testing the helper is NOT the contract; the
+   consumer wiring is). The R1 findings traced to a common
+   anti-pattern: ux-ui-lead built infrastructure (announcer +
+   format helpers + keyboardSnapStep + KeyboardDragSnapshot
+   types) and verified each in isolation, but did not verify the
+   end-to-end consumer wiring at the mount-component level. cf-22
+   R1 fix splits `EditorShellMount.tsx` into outer-provider +
+   inner-consumer, wires 6 announce callbacks, rewrites
+   keyboard-drag-mode.ts to track grid-coords directly, adds Tab
+   handlers in both keyboard pipelines.
 
 ## Out-of-scope
 

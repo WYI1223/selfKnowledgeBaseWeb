@@ -374,39 +374,37 @@ cf-22 adds keyboard-mode parity for all 3 cf-20 per-block affordances (drag / re
 
 **v2-design-granularity intent vs cf-22 amendment**: v2 §"心智模型" describes pointer-only interactions ("拖拽抽屉 + 边框拖拽吸附宽度"). cf-22 D13 EXTENDS this without contradicting — keyboard mode produces the same final mutations (setNodeMarkup with the same attrs) as pointer mode; the user-visible v2 state machine is unchanged.
 
-**Keyboard contract per affordance**:
+**Keyboard contract per affordance** (post-cf-22 R1 amendment 2026-05-10):
 
-| Affordance | Tab | Enter/Space | Arrow keys | Enter (active) | Esc |
+| Affordance | Tab (active) | Enter/Space | Arrow keys | Enter (active) | Esc |
 |---|---|---|---|---|---|
-| **Drag handle** | focus | start keyboard-drag mode | move source ±1 grid cell (synthesize cursor; tiebreak picks active edge) | commit drop via `commitDropAtMatch` (same path as pointer drop) | cancel + restore focus |
-| **Resize handle (right)** | focus | start keyboard-resize mode | ←/→: snap-step colSpan via `keyboardSnapStep` (per cf-22 D2) | commit via `tr.setNodeMarkup` (same path as pointerup) | cancel + restore focus |
-| **Resize handle (bottom)** | focus | start keyboard-resize mode | ↑/↓: ±1 rowSpan via `keyboardRowStep` | commit | cancel |
-| **Resize handle (corner)** | focus | start keyboard-resize mode | ←/→ adjusts colSpan; ↑/↓ adjusts rowSpan | commit | cancel |
-| **Kebab button** | focus | open menu | (default browser button activation) | (default click → toggle) | (no action when closed) |
-| **Kebab menu (open)** | (focus auto-trapped) | activate focused item | ↓/↑: cycle item focus; → on "Change kind…": expand sub-menu + focus first sub-item; ← from sub-item: collapse + restore focus | activate item | close + restore focus to kebab button |
+| **Drag handle** | commit + focus advances (Shift+Tab = cancel) | start keyboard-drag | ±1 grid cell via `keyboardGridStep`/`keyboardGridRowStep` mutating tracked `{col, row}` (NO synthesized pixel cursor) | commit `setNodeMarkup({col, row})` directly (NOT via `applyDropMode`/`commitDropAtMatch`) | cancel + restore focus |
+| **Resize right** | commit + focus advances (Shift+Tab = cancel) | start keyboard-resize | ←/→: snap-step colSpan via `keyboardSnapStep` (D2) | `tr.setNodeMarkup` (same path as pointerup) | cancel + restore focus |
+| **Resize bottom** | commit + focus advances (Shift+Tab = cancel) | start keyboard-resize | ↑/↓: ±1 rowSpan via `keyboardRowStep` | commit | cancel |
+| **Resize corner** | commit + focus advances (Shift+Tab = cancel) | start keyboard-resize | ←/→ colSpan; ↑/↓ rowSpan | commit | cancel |
+| **Kebab button** | focus | open menu | (default activation) | (toggle) | (no-op when closed) |
+| **Kebab menu (open)** | (focus auto-trapped) | activate item | ↓/↑ cycle; → expand sub-menu; ← collapse | activate | close + restore focus to button |
 
-**cf-22 D-decisions (full rationale in PR.md `wave-6-cf-22-keyboard-a11y.md`)**:
+**R1 amendments (2026-05-10 codex-pr-reviewer-55 round 1)**: F2 (HIGH) drag keyboard mode now tracks `{col, row}` grid-coords directly via `keyboardGridStep`/NEW `keyboardGridRowStep` (NO synthesized pixel cursor; commit writes `setNodeMarkup({col, row?})` directly without `applyDropMode`/`commitDropAtMatch`); F1 (HIGH) `<LiveAnnouncer>` actually consumed via outer-provider + inner-consumer split (`EditorShellMountInner.tsx`) wiring 6 `useCallback` announce callbacks; F3 (MEDIUM) Tab/Shift+Tab in active keyboard-mode = sync commit/cancel without `preventDefault` so browser advances focus naturally per WCAG 2.4.3.
 
-- **D1**: ADR-0017 amendment with NEW D13 (this section), NOT a separate ADR. Keyboard mode is intrinsic to the drag/resize UX.
-- **D2**: Resize Arrow ±1 = snap-step (next valid `effectiveColSnaps` member). Drag Arrow ±1 = next grid cell. RowSpan Arrow ±1 = integer ±1 (no snap set; ADR-0016 D6 only constrains colSpan).
-- **D3**: Mouse + keyboard modes are SEPARATE. Each pipeline has `state.active` (pointer) AND `state.keyboardActive` (keyboard) — at most ONE is true at a time. No mid-drag mode bridge.
-- **D4**: `<button>` elements for ALL handles (NOT `role="application"` on .ProseMirror). Resize handles converted from `<div>` (cf-20d) to `<button>` (cf-22). Wrapper `aria-hidden` removed.
-- **D5**: Esc cancel + focus return to originating handle via new `useFocusReturn` hook (generalizes the `useEscCancel` focus-snap-and-restore pattern).
-- **D6**: Single shared `<LiveAnnouncer/>` mounted ONCE at editor mount level. 100ms throttle on `aria-live` updates so rapid arrow-key spam doesn't flood AT.
-- **D7**: Keyboard-commit reuses cf-20c-2 R3 dropEpoch infrastructure (canonical "rapid-action animation isolation" pattern). 4th action joining drag-pointer + resize-pointer + kebab-duplicate.
-- **D8**: Kebab menu auto-focuses first item on open per WCAG 2.4.3 + canonical menu pattern.
+**cf-22 D-decisions** (full rationale in PR.md `wave-6-cf-22-keyboard-a11y.md`): D1 amendment-not-separate-ADR; D2 snap-step semantics (resize ±snap, drag ±cell, rowSpan ±1); D3 mouse+keyboard SEPARATE pipeline-state flags; D4 `<button>` elements (NOT `role="application"`); D5 `useFocusReturn` hook; D6 single `<LiveAnnouncer/>` 100ms throttle; D7 dropEpoch infrastructure reuse; D8 kebab auto-focus first item.
 
-**Implementation surface (cf-22 source files)**:
+**Implementation surface (cf-22 source files; updated post-R1)**:
 
-- `packages/editor-shell/src/a11y/live-announcer.tsx` — shared `<LiveAnnouncer/>` + `useAnnounce()` hook (D6).
-- `packages/editor-shell/src/a11y/use-focus-return.ts` — focus snap-and-restore hook (D5; WCAG 2.4.3).
-- `packages/editor-shell/src/a11y/keyboard-step.ts` — pure `keyboardSnapStep` / `keyboardGridStep` / `keyboardRowStep` (D2).
-- `packages/editor-shell/src/a11y/announce-format.ts` — pure WCAG 4.1.3 message formatters.
-- `packages/editor-shell/src/drag-drop/keyboard-drag-mode.ts` — extracted keyboard-drag useEffect (Arrow + Enter; reuses `commitDropAtMatch`).
-- `packages/editor-shell/src/drag-drop/commit-drop.ts` — extracted commit logic (shared by pointer + keyboard paths).
-- `packages/editor-shell/src/resize/keyboard-resize-mode.ts` — extracted keyboard-resize useEffect + `startKeyboardResize` snapshot helper.
+- `packages/editor-shell/src/a11y/live-announcer.tsx` — `<LiveAnnouncer/>` + `useAnnounce()` (D6; 100ms latest-wins throttle).
+- `packages/editor-shell/src/a11y/use-focus-return.ts` — focus snap-and-restore hook (D5).
+- `packages/editor-shell/src/a11y/keyboard-step.ts` — pure step helpers; **R1**: NEW `keyboardGridRowStep` for vertical grid-coord movement.
+- `packages/editor-shell/src/a11y/announce-format.ts` — pure WCAG 4.1.3 message formatters (now consumed via R1-F1).
+- `packages/editor-shell/src/drag-drop/keyboard-drag-mode.ts` — **R1 rewrite**: NEW `KeyboardDragSnapshot`; arrow handlers mutate tracked `{col, row}`; Tab handler commits/cancels; commit writes `setNodeMarkup({col, row?})` directly (NOT via `commitDropAtMatch`/`applyDropMode`); fires 3 announce callbacks.
+- `packages/editor-shell/src/drag-drop/commit-drop.ts` — pointer path only post-R1 (keyboard path bypasses).
+- `packages/editor-shell/src/resize/keyboard-resize-mode.ts` — **R1**: Tab handler + 2 announce callbacks via `announceStep` helper.
+- `packages/editor-shell/src/drag-drop/use-drag-drop-pipeline.ts` — exposes `keyboardCol`/`keyboardRow`/`keyboardSnapshot` + `totalCols` + 3 announce callbacks (R1-F1+F2).
+- `packages/editor-shell/src/resize/use-resize-pipeline.ts` — exposes 2 resize announce callbacks (R1-F1).
+- `apps/site/src/components/EditorShellMount.tsx` — **R1 split**: 39-LOC outer wrapper mounting `<LiveAnnouncer>` ONCE.
+- `apps/site/src/components/EditorShellMountInner.tsx` — **NEW** (R1-F1; 445 LOC). Holds `useAnnounce()` consumer + 6 `useCallback` factories + mount lifecycle (registry / ApiAdapter / save chain / GridContainer / pipelines / overlays).
+- `apps/site/src/components/EditorShellKebabActions.ts` — **R1**: 3 factories accept optional `KebabAnnounceFn`; capture `node.type.name` BEFORE mutation.
 
-**Mobile path inheritance**: cf-22 keyboard handles are the SAME DOM elements as pointer handles (just gain new event listeners); the mobile `@media (max-width: 768px) { display: none }` rules from cf-20c-2 / cf-20d / cf-20e CSS apply equally. No new mobile-specific rules added.
+**Mobile path inheritance**: cf-22 keyboard handles share DOM with pointer handles; mobile `@media (max-width: 768px) { display: none }` rules from cf-20c-2/cf-20d/cf-20e apply equally. No new mobile-specific rules.
 
 ## Acceptance criteria (AC list)
 
