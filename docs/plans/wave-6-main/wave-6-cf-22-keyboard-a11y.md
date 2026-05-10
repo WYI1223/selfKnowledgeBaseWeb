@@ -563,6 +563,58 @@ keydown handlers. Playwright spec test "cf-22 R1 F3 — Tab in
 keyboard-drag commits + resets keyboardActive + focus advances"
 locks the contract.
 
+### D5 R2 amendment — useEscCancel reason flag (skip focus-restore on tab-commit/tab-cancel)
+
+**R2 finding F3 (codex-pr-reviewer-55 round 2, 2026-05-10)**: R1
+F3 fix was 80% complete. The Tab keydown handler synchronously
+fires commit/cancel + flips `keyboardActive: true → false` without
+preventDefault, which is correct. BUT the sibling `useEscCancel`
+hook ALSO consumes `keyboardActive` (via the
+`active || keyboardActive` predicate). Its `useEffect` snapshots
+`document.activeElement` on the `false → true` flip and refocuses
+that element on the `true → false` flip, **regardless of whether
+the deactivation reason was Esc OR Tab**. So the sequence was:
+
+1. Tab pressed → handler runs `commit()` → `keyboardActive` flips false.
+2. Browser's natural Tab focus-advance fires (handler did NOT preventDefault).
+3. React commits the `keyboardActive: false` state → `useEscCancel`'s
+   effect runs → restores focus to the snapshotted originating handle.
+4. **Tab focus-advance is undone**.
+
+The R1 Playwright lock at `sample-blocks-keyboard-a11y.spec.ts:480`
+asserted only `commit happened` + `overlay cleanup`; it did NOT
+assert `document.activeElement` actually moved past the handle.
+The test passed by accident.
+
+**Decision (R2)**: introduce an explicit reason flag on
+`useEscCancel`. The hook now exposes:
+- `EscDeactivationReason = 'esc-cancel' | 'commit' | 'pointer-up' | 'tab-commit' | 'tab-cancel'`
+- `EscCancelHandle.markDeactivationReason(reason)` returned from the hook.
+- The hook's deactivation `useEffect` checks the reason; for
+  `'tab-commit'` / `'tab-cancel'` it SKIPS focus restoration so the
+  browser's natural Tab focus-advance is preserved.
+- The reason is one-shot — reset to `'esc-cancel'` (the default,
+  matching the hook's primary purpose) after each deactivation
+  cycle.
+
+Drag + resize keyboard pipelines now accept an optional
+`markEscDeactivationReason: (reason: 'tab-commit' | 'tab-cancel') => void`
+option. The `EditorShellMountInner.tsx` consumer wires this through
+a ref-based indirection (the hook's return is captured AFTER the
+pipeline construction; a stable callback closures over the ref).
+On Tab keydown, both keyboard pipelines call
+`markEscDeactivationReason('tab-commit' | 'tab-cancel')` BEFORE
+their commit/cancel state flip. Esc-originated cancels keep the
+default reason and continue restoring focus to the originating
+handle (existing behavior preserved).
+
+Strengthened Playwright locks:
+- `cf-22 R1 F3 + R2 F3 — Tab in keyboard-drag commits + resets
+  keyboardActive + focus advances PAST originating handle` —
+  asserts `document.activeElement.outerHTML !== originatingHandleHTML`.
+- `cf-22 R2 F3 — Tab in keyboard-resize commits colSpan + focus
+  advances PAST originating handle` — same contract for resize.
+
 ### D5 — Esc cancel + focus return to originating handle (verify all 3 paths)
 
 **Open question Q5 from dispatch brief**: cancel-without-commit
@@ -727,7 +779,7 @@ pnpm --filter @skb/site test 2>&1 | grep -E 'Tests'
 ```
 
 ```bash
-# AC-3: targeted Playwright passes (a11y spec + carried; post-R1 expanded set)
+# AC-3: targeted Playwright passes (a11y spec + carried; post-R2 expanded set)
 pnpm --filter @skb/site exec playwright test \
   playwright/sample-blocks-keyboard-a11y.spec.ts \
   playwright/sample-blocks-kebab-menu.spec.ts \
@@ -735,13 +787,15 @@ pnpm --filter @skb/site exec playwright test \
   playwright/sample-blocks-drag-handle.spec.ts \
   playwright/sample-blocks-edit-loads.spec.ts \
   --reporter=line --workers=1 2>&1 | tail -3
-# Expected: 23 passed (10 cf-22 incl. 3 R1 tests + 5 cf-20e + 4 cf-20d + 4 cf-20c-2 + 1 edit-loads)
+# Expected: 24 passed (11 cf-22 incl. 4 R1+R2 tests + 5 cf-20e + 4 cf-20d + 4 cf-20c-2 + 1 edit-loads)
 ```
 
 ```bash
-# AC-4: full apps/site Playwright suite passes (post-R1)
+# AC-4: full apps/site Playwright suite passes (post-R2)
 pnpm --filter @skb/site exec playwright test --reporter=line --workers=1 2>&1 | tail -3
-# Expected: 78 passed | 14 skipped | 0 failed (was 75 in pre-R1; +3 new R1 tests)
+# Expected: 79 passed | 14 skipped | 0 failed (was 78 in pre-R2; +1 new R2 resize-Tab test)
+# Note: cf-20d/cf-20e tests have a known intermittent flake under full-suite ordering;
+# pass in isolation. R2 changes are unrelated.
 ```
 
 ```bash
@@ -833,6 +887,21 @@ per the 2026-05-09 retrospective process rule:
    inner-consumer, wires 6 announce callbacks, rewrites
    keyboard-drag-mode.ts to track grid-coords directly, adds Tab
    handlers in both keyboard pipelines.
+
+3. **cf-22 R2 entry**: 1 codex-pr-reviewer-55 R2 finding — F3
+   incomplete because the sibling `useEscCancel` hook (consuming
+   `keyboardActive` for Esc cancellation) ALSO restored focus on
+   the `keyboardActive: true → false` flip regardless of whether
+   the deactivation was Esc-originated OR Tab-originated, undoing
+   the browser's natural Tab focus advance. Test passed by
+   accident (asserted commit + overlay cleanup but NOT focus
+   position). Operational rule #23 landed: "When a feature toggles
+   a state flag (active → inactive), audit ALL hooks that consume
+   that flag for unintended side effects on the new flip path".
+   Fix: reason flag (`tab-commit` / `tab-cancel`) on
+   `useEscCancel` skips focus restore for Tab-originated flips.
+   Strengthened spec asserts `document.activeElement.outerHTML`
+   actually moved past originating handle.
 
 ## Out-of-scope
 

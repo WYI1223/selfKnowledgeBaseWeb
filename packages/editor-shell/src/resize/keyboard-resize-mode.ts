@@ -164,6 +164,11 @@ export interface UseKeyboardResizeModeOptions {
     | ((axis: 'right' | 'bottom' | 'corner', colSpan: number, rowSpan: number, fraction: string) => void)
     | undefined;
   readonly onAnnounceCancel: (() => void) | undefined;
+  // R2 F3 — Tab-originated commit/cancel signals useEscCancel to skip
+  // focus restoration so browser's natural Tab focus advance wins.
+  readonly markEscDeactivationReason:
+    | ((reason: 'tab-commit' | 'tab-cancel') => void)
+    | undefined;
 }
 
 export function useKeyboardResizeMode(
@@ -183,6 +188,7 @@ export function useKeyboardResizeMode(
     onCommitSuccess,
     onAnnounceChange,
     onAnnounceCancel,
+    markEscDeactivationReason,
   } = options;
 
   useEffect(() => {
@@ -279,12 +285,17 @@ export function useKeyboardResizeMode(
       const allowsCol = axis === 'right' || axis === 'corner';
       const allowsRow = axis === 'bottom' || axis === 'corner';
 
-      // R1 F3 — Tab handling (NOT preventDefault; commit-or-cancel
-      // synchronously; browser advances focus after).
+      // R1 F3 + R2 F3 — Tab handling (NOT preventDefault; commit-or-
+      // cancel synchronously; browser advances focus after). R2 F3:
+      // signal useEscCancel to SKIP focus restoration so the browser's
+      // natural Tab focus advance wins (else sibling useEscCancel
+      // restores focus to originating handle, undoing the advance).
       if (event.key === 'Tab') {
         if (event.shiftKey) {
+          markEscDeactivationReason?.('tab-cancel');
           runCancel();
         } else {
+          markEscDeactivationReason?.('tab-commit');
           runCommit();
         }
         return;
@@ -349,6 +360,7 @@ export function useKeyboardResizeMode(
     onCommitSuccess,
     onAnnounceChange,
     onAnnounceCancel,
+    markEscDeactivationReason,
     resetState,
     setSnapColSpan,
     setSnapRowSpan,

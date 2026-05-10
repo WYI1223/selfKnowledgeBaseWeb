@@ -522,3 +522,38 @@ For Tab handling: any active-mode keydown handler MUST handle Tab/Shift+Tab expl
 22. **Component-split pattern for `useContext` infrastructure**: when a component mounts a Provider AND consumes its context, split into outer (Provider) + inner (consumer). cf-22 R1 split `EditorShellMount.tsx` (39-LOC outer mounting `<LiveAnnouncer>`) + `EditorShellMountInner.tsx` (445-LOC inner calling `useAnnounce()` + 6 useCallback factories). Required because React hooks (including useContext) cannot be called outside the provider scope.
 
 **R1 prediction outcome**: R0 predicted 2-3 R-rounds. R1 had 3 findings, all real-correctness bugs, all fixable in a single iteration without further design work. R2 should be PASS (no design questions remain; F1+F2+F3 fixes are mechanical wirings of the existing infrastructure). If R2 finds more, the most likely class is "edge case in the new keyboard-drag-mode commit path" (e.g., what if the source block has no row attribute? — fixed pre-R1 via `hasRowAttr` check; what if commit happens at col=1 with colSpan=12? — `keyboardGridStep` clamps to `[1, totalCols-colSpan+1]`).
+
+## ux-ui-lead reflection — cf-22 R2 (F3 reopened: useEscCancel sibling-hook undid Tab focus advance) (2026-05-10)
+
+**What R2 found** (codex-pr-reviewer-55 round 2, 1 finding):
+
+R1 F3 fix was 80% complete. The Tab keydown handler in keyboard-drag-mode + keyboard-resize-mode synchronously fired `commit()` / `cancel()` and flipped `keyboardActive: true → false` without `preventDefault` so the browser's natural Tab focus-advance ran. That logic was correct in isolation. **BUT** the sibling `useEscCancel` hook ALSO consumed `keyboardActive` (via the `pipeline.state.active || pipeline.state.keyboardActive` predicate). Its useEffect snapshotted `document.activeElement` on `false → true` and refocused that element on `true → false` flips — regardless of WHY the deactivation happened. Sequence:
+
+1. Tab pressed → handler runs `commit()` → `keyboardActive` flips false.
+2. Browser's natural Tab focus-advance fires (handler did NOT preventDefault).
+3. React commits the `keyboardActive: false` state → `useEscCancel`'s effect runs → restores focus to the snapshotted originating handle.
+4. **Tab focus-advance is undone**.
+
+The R1 Playwright lock at `sample-blocks-keyboard-a11y.spec.ts:480` asserted only `commit happened` + `overlay cleanup`; it did NOT assert `document.activeElement` actually moved past the handle. **The test passed by accident.**
+
+**Why I missed it**:
+
+The R1 reflection's prediction was "F1+F2+F3 fixes are mechanical wirings of the existing infrastructure" — confidently optimistic about R2. The R1 mental model treated each pipeline as a self-contained unit; I did NOT audit sibling hooks (specifically `useEscCancel`, which I knew consumed the same `keyboardActive` flag) for their behavior under the new flip path. I correctly identified that Tab needed explicit handling (R1 F3 fix), but did not consider that the new flip path (Tab-originated, NOT Esc-originated) might trigger different behavior in any other hook reading the same flag.
+
+The Playwright spec failure is more fundamental. R1 F3's spec used `expect(colAfter).toBe('2 / span 6')` and `expect(...skb-grid-outline-base).toHaveCount(0)` to lock "commit happened + state cleanup". Both assertions were necessary but neither tested the actual user-visible outcome of the F3 fix: **focus moved past the originating handle**. The test should have asserted `document.activeElement.outerHTML !== originatingHandleHTML`. Without that explicit assertion, the silent focus-restore bug slipped through both R1 reviewer + my pre-R1 verification.
+
+**What I'd do differently**:
+
+For sibling-hook auditing: when adding a NEW deactivation path to a state flag, list ALL hooks/effects in the same component tree that read that flag, and walk through their behavior step-by-step under the new path. cf-22 had `useEscCancel` listed in `EditorShellMountInner.tsx` consuming `keyboardActive` — the audit would have surfaced the focus-restore behavior immediately.
+
+For Playwright contract assertions: when asserting "side-effect Y happens after action X", also assert "side-effect Y is observable in the user-visible DOM state Z". For F3 this means: after Tab commit, assert that the focus position is observably different (not just that the commit data-mutation occurred + the overlay cleaned up).
+
+**Operational rules landed (cf-22 R2 reflection)**:
+
+23. **When a feature toggles a state flag (`active` → `inactive`), audit ALL hooks that consume that flag for unintended side effects on the new flip path**. The reason for the flip matters; do NOT assume sibling hooks treat all flips identically. Walk through each consumer hook's behavior under the new deactivation path.
+
+24. **Playwright spec assertions for "side-effect after action" MUST include observable user-visible DOM state, NOT just internal-state mutation**. cf-22 R1 F3's spec asserted commit + cleanup but NOT focus position; the test passed by accident because the focus-restore-bug only affected `document.activeElement`, not the asserted state. Lock the user-visible outcome explicitly (here: `activeElement.outerHTML !== originatingHandleHTML`).
+
+25. **Hook reason flags / one-shot tokens are valid REST-style state when sibling hooks need to discriminate flip causes**. The cf-22 R2 fix introduces `EscDeactivationReason` as a one-shot token consumed at deactivation time + reset to default. This pattern is preferable to suppress flags (easy to forget to reset) and to multi-hook callback orchestration (couples consumers tightly).
+
+**R2 prediction outcome**: my R1 prediction "R2 should be PASS" was wrong — the silent-sibling-hook bug class is harder to predict than the explicit infrastructure-wiring bug class (R1's F1+F2+F3). R3 prediction: PASS likely. The R2 fix is structurally simple (reason flag + ref-based callback indirection in mount + new spec assertions for both drag-Tab + resize-Tab). The pattern is now generalized — any future keyboard-pipeline addition (cf-23+ slash-menu / toolbar) inherits the reason-flag mechanism. The remaining risk is the same as R1: edge cases in the keyboard-pipelines themselves, not the focus-management surface.

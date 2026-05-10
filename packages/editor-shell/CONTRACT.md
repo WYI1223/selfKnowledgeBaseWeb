@@ -782,6 +782,20 @@ R1 strengthens the keyboard contract per the ADR-0017 D13 amendment 2026-05-10 u
 
 Operational rule landed (cf-22 R1 reflection rule #19): scaffolding (helpers / hooks / components) MUST have a verified consumer in the same PR. Exporting + unit-testing the helper is NOT the contract; the consumer wiring is.
 
+##### R2 amendment (2026-05-10 codex-pr-reviewer-55 round 2; F3 reopened)
+
+R1 F3 fix was 80% complete — Tab keydown synchronously fires commit/cancel + flips `keyboardActive: true → false` without preventDefault, BUT the sibling `useEscCancel` hook ALSO consumes `keyboardActive` and its useEffect snapshots `document.activeElement` on `false → true` then refocuses on `true → false` regardless of reason, undoing the browser's natural Tab focus advance. The R1 Playwright lock asserted commit + overlay cleanup but NOT focus position — passed by accident.
+
+R2 fix introduces an explicit reason flag:
+
+- NEW exported type `EscDeactivationReason = 'esc-cancel' | 'commit' | 'pointer-up' | 'tab-commit' | 'tab-cancel'` from `drag-drop/esc-cancel.ts`.
+- NEW exported interface `EscCancelHandle { markDeactivationReason(reason: EscDeactivationReason): void }` returned from `useEscCancel(...)`.
+- The hook's deactivation `useEffect` checks the reason; for `'tab-commit'` / `'tab-cancel'` it SKIPS focus restoration so the browser's natural Tab focus-advance is preserved. Reason is one-shot — reset to `'esc-cancel'` (the hook's default + primary purpose) after each deactivation cycle. Esc keydown sets reason to `'esc-cancel'` explicitly before dispatching the cancel.
+- Drag pipeline (`useDragDropPipeline`) and resize pipeline (`useResizePipeline`) accept new optional `markEscDeactivationReason: (reason: 'tab-commit' | 'tab-cancel') => void` option, threaded into `useKeyboardDragMode` + `useKeyboardResizeMode` Tab handlers. They invoke the callback BEFORE the state flip on Tab keydown.
+- Consumer (`EditorShellMountInner.tsx`) uses ref-based indirection — `useEscCancel`'s return handle is captured AFTER pipeline construction, populated into a ref, then a stable callback closures over the ref to feed the pipeline's `markEscDeactivationReason` option.
+
+Operational rule landed (cf-22 R2 reflection rule #23): when a feature toggles a state flag (`active` → `inactive`), audit ALL hooks that consume that flag for unintended side effects on the new flip path. The reason for the flip matters; do NOT assume sibling hooks treat all flips identically.
+
 ### Responsive viewport (C.2-9)
 
 C.2-9 adds `responsive-cols.ts` as the editor-shell owner for ADR-0016 D5's

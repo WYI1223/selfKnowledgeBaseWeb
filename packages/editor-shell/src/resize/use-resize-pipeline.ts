@@ -63,11 +63,7 @@ export interface UseResizePipelineOptions {
   readonly rowH?: number;
   /** Grid gap in CSS pixels. Defaults to 14. */
   readonly gap?: number;
-  /**
-   * Success-commit callback fired post-2-rAF re-measure. Consumer
-   * wires to cf-20c-2 `setLastDroppedFromExternal(blockId, rect)`
-   * for dropEpoch reuse pattern (cf-20c-2 R3 + cf-20d D3).
-   */
+  /** Success-commit callback (post-2-rAF). Consumer wires to cf-20c-2 `setLastDroppedFromExternal` per dropEpoch reuse (cf-20c-2 R3 + cf-20d D3). */
   readonly onCommitSuccess?: (
     blockId: string,
     liveRect: DOMRectReadOnly,
@@ -81,6 +77,10 @@ export interface UseResizePipelineOptions {
   ) => void;
   /** cf-22 R1 F1 — WCAG 4.1.3 resize cancel announcement (Esc / Shift+Tab). */
   readonly onAnnounceCancel?: () => void;
+  /** cf-22 R2 F3 — Tab signals useEscCancel to skip focus restore. */
+  readonly markEscDeactivationReason?: (
+    reason: 'tab-commit' | 'tab-cancel',
+  ) => void;
 }
 
 export interface UseResizePipelineReturn {
@@ -131,6 +131,7 @@ export function useResizePipeline(
     onCommitSuccess,
     onAnnounceChange,
     onAnnounceCancel,
+    markEscDeactivationReason,
   } = options;
 
   const [active, setActive] = useState(false);
@@ -481,6 +482,7 @@ export function useResizePipeline(
     snapshotRef,
     onAnnounceChange,
     onAnnounceCancel,
+    markEscDeactivationReason,
   });
 
   return {

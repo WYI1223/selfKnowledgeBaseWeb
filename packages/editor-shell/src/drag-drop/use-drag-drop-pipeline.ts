@@ -98,6 +98,10 @@ export interface UseDragDropPipelineOptions {
   readonly onAnnounceCommit?: (blockKind: string, col: number) => void;
   /** cf-22 R1 F1 — WCAG 4.1.3 cancel announcement (Esc / Shift+Tab). */
   readonly onAnnounceCancel?: () => void;
+  /** cf-22 R2 F3 — Tab signals useEscCancel to skip focus restore. */
+  readonly markEscDeactivationReason?: (
+    reason: 'tab-commit' | 'tab-cancel',
+  ) => void;
 }
 
 export interface UseDragDropPipelineReturn {
@@ -149,6 +153,7 @@ export function useDragDropPipeline(
     onAnnounceMove,
     onAnnounceCommit,
     onAnnounceCancel,
+    markEscDeactivationReason,
   } = options;
 
   const [layoutState, dispatchLayout] = useReducer(layoutReducer, INITIAL_LAYOUT_STATE);
@@ -439,6 +444,7 @@ export function useDragDropPipeline(
     onAnnounceMove,
     onAnnounceCommit,
     onAnnounceCancel,
+    markEscDeactivationReason,
   });
 
   // cf-20c-2 R1 F2 + R2 F2 — DropPulse cleanup; consumer's

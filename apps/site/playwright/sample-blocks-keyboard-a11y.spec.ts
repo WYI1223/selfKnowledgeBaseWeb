@@ -4,17 +4,8 @@ import { resolve } from 'node:path';
 import { expect, test } from '@playwright/test';
 
 /**
- * Wave 6 cf-22 (2026-05-09) — keyboard a11y integration spec.
- *
- * cf-22 wires keyboard-mode parity for all 3 cf-20 per-block
- * affordances (drag / resize / kebab) per WCAG 2.1.1 + 2.4.3 +
- * 2.4.7 + 4.1.3. The keyboard mode is SEPARATE from pointer mode
- * (per cf-22 D3); each affordance has an Enter/Space entry on its
- * handle button + Arrow keys for navigation + Enter to commit +
- * Esc to cancel.
- *
- * Byte-snapshot fixture isolation per cf-20c-2 R3 F1 reflection
- * rule (3 commit-style tests trigger Tiptap mutations → file write).
+ * Wave 6 cf-22 (2026-05-09) keyboard a11y integration spec + R1 + R2 locks.
+ * Byte-snapshot fixture isolation per cf-20c-2 R3 F1 reflection rule.
  */
 const SAMPLE_BLOCKS_MDX = resolve(
   process.cwd(),
@@ -88,35 +79,14 @@ test('cf-22 — Resize handles converted to <button> + AT-reachable (cf-22 D4)',
   await expect(editor.locator('.skb-block-nodeview').first()).toBeVisible({
     timeout: 10_000,
   });
-
-  // Resize handles are now <button> (NOT <div>) — keyboard-focusable +
-  // AT-reachable. Verify the first right handle is a BUTTON tag.
-  const firstRight = page
-    .locator('.skb-block-nodeview .gblock-handle.right')
-    .first();
+  const firstRight = page.locator('.skb-block-nodeview .gblock-handle.right').first();
   const tagName = await firstRight.evaluate((el) => el.tagName.toLowerCase());
   expect(tagName).toBe('button');
-  expect(await firstRight.getAttribute('aria-label')).toBe(
-    'Resize block width',
-  );
-
-  // Bottom handle aria-label.
-  const firstBottom = page
-    .locator('.skb-block-nodeview .gblock-handle.bottom')
-    .first();
-  expect(await firstBottom.getAttribute('aria-label')).toBe(
-    'Resize block height',
-  );
-
-  // Corner handle aria-label.
-  const firstCorner = page
-    .locator('.skb-block-nodeview .gblock-handle.corner')
-    .first();
-  expect(await firstCorner.getAttribute('aria-label')).toBe(
-    'Resize block width and height',
-  );
-
-  // Wrapper aria-hidden REMOVED (cf-20d had it; cf-22 D4 removes it).
+  expect(await firstRight.getAttribute('aria-label')).toBe('Resize block width');
+  const firstBottom = page.locator('.skb-block-nodeview .gblock-handle.bottom').first();
+  expect(await firstBottom.getAttribute('aria-label')).toBe('Resize block height');
+  const firstCorner = page.locator('.skb-block-nodeview .gblock-handle.corner').first();
+  expect(await firstCorner.getAttribute('aria-label')).toBe('Resize block width and height');
   const wrapper = page.locator('.skb-block-nodeview__resize-handles').first();
   expect(await wrapper.getAttribute('aria-hidden')).toBeNull();
 });
@@ -131,33 +101,15 @@ test('cf-22 R1 F2 — Drag handle Enter starts keyboard-mode (grid-coord; Outlin
     timeout: 10_000,
   });
 
-  // Pre-key baseline: no overlay/ghost mounted.
   await expect(page.locator('.skb-grid-outline-base')).toHaveCount(0);
   await expect(page.locator('.drag-ghost')).toHaveCount(0);
-
-  // Focus first drag-handle + press Enter.
-  const firstHandle = page
-    .locator('.skb-block-nodeview .skb-block-nodeview__drag-handle')
-    .first();
+  const firstHandle = page.locator('.skb-block-nodeview .skb-block-nodeview__drag-handle').first();
   await firstHandle.focus();
   await firstHandle.press('Enter');
-
-  // R1 F2 contract: keyboard mode tracks GRID coords (not pixel
-  // cursor). OutlineOverlay mounts (highlights source's grid
-  // position). DragGhost does NOT mount because there's no
-  // synthetic pixel cursor to follow — that was a pointer-mode
-  // artifact removed in R1.
-  await expect(page.locator('.skb-grid-outline-base').first()).toHaveCount(1, {
-    timeout: 5_000,
-  });
+  await expect(page.locator('.skb-grid-outline-base').first()).toHaveCount(1, { timeout: 5_000 });
   await expect(page.locator('.drag-ghost')).toHaveCount(0);
-
-  // Esc cancels: overlay unmounts; focus returns to handle per cf-22
-  // D5 / WCAG 2.4.3.
   await page.keyboard.press('Escape');
-  await expect(page.locator('.skb-grid-outline-base')).toHaveCount(0, {
-    timeout: 3_000,
-  });
+  await expect(page.locator('.skb-grid-outline-base')).toHaveCount(0, { timeout: 3_000 });
 });
 
 test('cf-22 — Resize handle Enter starts keyboard-mode → ColRuler + SizeTooltip mount', async ({
@@ -227,37 +179,16 @@ test('cf-22 — Kebab menu opens with first item auto-focused; ArrowDown cycles 
   );
   expect(focusedAttr).toBe('delete');
 
-  // ArrowDown moves focus to "Duplicate".
+  const focusedAction = () =>
+    page.evaluate(() => document.activeElement?.getAttribute('data-skb-kebab-action'));
   await page.keyboard.press('ArrowDown');
-  expect(
-    await page.evaluate(() =>
-      document.activeElement?.getAttribute('data-skb-kebab-action'),
-    ),
-  ).toBe('duplicate');
-
-  // ArrowDown again → "Change kind…".
+  expect(await focusedAction()).toBe('duplicate');
   await page.keyboard.press('ArrowDown');
-  expect(
-    await page.evaluate(() =>
-      document.activeElement?.getAttribute('data-skb-kebab-action'),
-    ),
-  ).toBe('change-kind-toggle');
-
-  // ArrowDown wraps to "Delete" (first).
+  expect(await focusedAction()).toBe('change-kind-toggle');
   await page.keyboard.press('ArrowDown');
-  expect(
-    await page.evaluate(() =>
-      document.activeElement?.getAttribute('data-skb-kebab-action'),
-    ),
-  ).toBe('delete');
-
-  // ArrowUp wraps to "Change kind…" (last).
+  expect(await focusedAction()).toBe('delete');
   await page.keyboard.press('ArrowUp');
-  expect(
-    await page.evaluate(() =>
-      document.activeElement?.getAttribute('data-skb-kebab-action'),
-    ),
-  ).toBe('change-kind-toggle');
+  expect(await focusedAction()).toBe('change-kind-toggle');
 
   // Esc closes the menu + returns focus to kebab button per cf-22 D5.
   await page.keyboard.press('Escape');
@@ -329,34 +260,12 @@ test('cf-22 — Mobile (≤768px) keyboard handles still hidden per ADR-0017 D9 
   await page.goto('/notes/sample-blocks/edit');
   const editor = page.locator('.ProseMirror').first();
   await expect(editor).toBeVisible({ timeout: 15_000 });
-  await expect(editor.locator('.skb-block-nodeview').first()).toBeVisible({
-    timeout: 10_000,
-  });
-
-  // All 3 affordance types remain `display: none` on mobile (the
-  // cf-20c-2 / cf-20d / cf-20e mobile @media rules apply equally to
-  // the keyboard-mode entry points since they're the SAME DOM
-  // elements).
-  const dragHandle = page
-    .locator('.skb-block-nodeview .skb-block-nodeview__drag-handle')
-    .first();
-  expect(
-    await dragHandle.evaluate((el) => window.getComputedStyle(el).display),
-  ).toBe('none');
-
-  const rightHandle = page
-    .locator('.skb-block-nodeview .gblock-handle.right')
-    .first();
-  expect(
-    await rightHandle.evaluate((el) => window.getComputedStyle(el).display),
-  ).toBe('none');
-
-  const kebab = page
-    .locator('.skb-block-nodeview .skb-block-nodeview__kebab')
-    .first();
-  expect(
-    await kebab.evaluate((el) => window.getComputedStyle(el).display),
-  ).toBe('none');
+  await expect(editor.locator('.skb-block-nodeview').first()).toBeVisible({ timeout: 10_000 });
+  const computedDisplay = (sel: string) =>
+    page.locator(sel).first().evaluate((el) => window.getComputedStyle(el).display);
+  expect(await computedDisplay('.skb-block-nodeview .skb-block-nodeview__drag-handle')).toBe('none');
+  expect(await computedDisplay('.skb-block-nodeview .gblock-handle.right')).toBe('none');
+  expect(await computedDisplay('.skb-block-nodeview .skb-block-nodeview__kebab')).toBe('none');
 });
 
 // R1 F2/F3 fixture: shrinks first Callout's colSpan from 12 to 6
@@ -455,9 +364,12 @@ test('cf-22 R1 F2 — keyboard-drag ArrowRight + Enter commits to col=2 EXACTLY 
   restoreSampleBlocksFixture();
 });
 
-// R1 F3 lock — Tab in keyboard mode commits + resets keyboardActive +
-// does NOT preventDefault so browser focus advances naturally.
-test('cf-22 R1 F3 — Tab in keyboard-drag commits + resets keyboardActive + focus advances', async ({
+// R1 F3 + R2 F3 lock — Tab in keyboard mode commits + resets
+// keyboardActive + does NOT preventDefault so browser focus advances
+// naturally. R2 F3: ALSO assert document.activeElement actually moved
+// past the originating drag handle (the R1 lock did not assert this,
+// allowing the useEscCancel sibling-hook focus-restore bug to slip).
+test('cf-22 R1 F3 + R2 F3 — Tab in keyboard-drag commits + resets keyboardActive + focus advances PAST originating handle', async ({
   page,
 }) => {
   installColSpan6Fixture();
@@ -474,11 +386,20 @@ test('cf-22 R1 F3 — Tab in keyboard-drag commits + resets keyboardActive + foc
     .locator('.skb-block-nodeview .skb-block-nodeview__drag-handle')
     .first();
   await firstHandle.focus();
+  // Snapshot the originating handle's outerHTML so we can assert later
+  // that document.activeElement is NOT this exact element (focus
+  // actually advanced past it; useEscCancel did NOT undo the advance).
+  const originatingHandleHTML = await firstHandle.evaluate(
+    (el) => (el as HTMLElement).outerHTML,
+  );
   await firstHandle.press('Enter');
   await page.keyboard.press('ArrowRight');
   await page.waitForTimeout(50);
   await page.keyboard.press('Tab');
-  await page.waitForTimeout(300);
+  // Wait long enough for both: (a) the synchronous commit to finish,
+  // (b) the useEscCancel useEffect to run on dragActive flip false,
+  // (c) any setTimeout(0) focus-restoration to fire.
+  await page.waitForTimeout(400);
 
   const colAfter = await firstWrapper.evaluate(
     (el) => (el as HTMLElement).style.gridColumn,
@@ -488,6 +409,76 @@ test('cf-22 R1 F3 — Tab in keyboard-drag commits + resets keyboardActive + foc
     'cf-22 R1 F3: Tab MUST commit (col=2) before focus shifts.',
   ).toBe('2 / span 6');
   await expect(page.locator('.skb-grid-outline-base')).toHaveCount(0);
+
+  // R2 F3 lock — focus MUST have moved past the originating handle.
+  // Pre-R2 the useEscCancel hook captured activeElement on drag-start
+  // and refocused it whenever dragActive flipped false (regardless of
+  // whether the deactivation was Esc-originated or Tab-originated),
+  // undoing the browser's natural Tab focus-advance. R2 F3 fixes this
+  // via the reason-flag mechanism (`tab-commit` / `tab-cancel`) so the
+  // hook SKIPS focus-restore on Tab paths.
+  const activeAfterHTML = await page.evaluate(
+    () => (document.activeElement as HTMLElement | null)?.outerHTML ?? '',
+  );
+  expect(
+    activeAfterHTML,
+    'cf-22 R2 F3: focus MUST have moved past originating drag handle (useEscCancel must NOT restore focus on tab-commit reason).',
+  ).not.toBe(originatingHandleHTML);
+
+  restoreSampleBlocksFixture();
+});
+
+// R2 F3 lock for resize — same Tab-commit-then-focus-advance contract
+// applies to the keyboard-resize-mode pipeline. The bug was symmetric:
+// resize's useEscCancel sibling restore-focus call also ignored Tab vs
+// Esc origin pre-R2.
+test('cf-22 R2 F3 — Tab in keyboard-resize commits colSpan + focus advances PAST originating handle', async ({
+  page,
+}) => {
+  installColSpan6Fixture();
+  await page.goto('/notes/sample-blocks/edit');
+  const editor = page.locator('.ProseMirror').first();
+  await expect(editor).toBeVisible({ timeout: 15_000 });
+  await expect(editor.locator('.skb-block-nodeview').first()).toBeVisible({
+    timeout: 10_000,
+  });
+  await page.waitForTimeout(500);
+
+  // Hover-focus the right-edge resize handle to enter keyboard-resize.
+  const firstWrapper = page.locator('.skb-block-nodeview').first();
+  await firstWrapper.hover();
+  const rightHandle = firstWrapper.locator('.gblock-handle.right').first();
+  await expect(rightHandle).toBeVisible({ timeout: 5_000 });
+  const originatingHandleHTML = await rightHandle.evaluate(
+    (el) => (el as HTMLElement).outerHTML,
+  );
+  await rightHandle.focus();
+  await rightHandle.press('Enter');
+  await page.waitForTimeout(50);
+  // ArrowLeft snap-step (6 → 4 or similar valid effective col snap).
+  await page.keyboard.press('ArrowLeft');
+  await page.waitForTimeout(50);
+  await page.keyboard.press('Tab');
+  await page.waitForTimeout(400);
+
+  // Tab MUST commit. The col-span integer should differ from the start
+  // (started at 6, ArrowLeft moved to a lower effective col snap).
+  const gridColAfter = await firstWrapper.evaluate(
+    (el) => (el as HTMLElement).style.gridColumn,
+  );
+  expect(
+    gridColAfter.replace(/\s+/g, ' ').trim(),
+    'cf-22 R2 F3 resize: Tab MUST commit a smaller colSpan via setNodeMarkup.',
+  ).not.toBe('1 / span 6');
+
+  // Focus MUST have advanced past the originating resize handle.
+  const activeAfterHTML = await page.evaluate(
+    () => (document.activeElement as HTMLElement | null)?.outerHTML ?? '',
+  );
+  expect(
+    activeAfterHTML,
+    'cf-22 R2 F3 resize: focus MUST advance past originating handle.',
+  ).not.toBe(originatingHandleHTML);
 
   restoreSampleBlocksFixture();
 });

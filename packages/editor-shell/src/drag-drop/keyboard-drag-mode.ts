@@ -85,6 +85,11 @@ export interface UseKeyboardDragModeOptions {
     | ((blockKind: string, col: number) => void)
     | undefined;
   readonly onAnnounceCancel: (() => void) | undefined;
+  // R2 F3 — Tab-originated commit/cancel signals useEscCancel to skip
+  // focus restoration so browser's natural Tab focus advance wins.
+  readonly markEscDeactivationReason:
+    | ((reason: 'tab-commit' | 'tab-cancel') => void)
+    | undefined;
 }
 
 export function useKeyboardDragMode(options: UseKeyboardDragModeOptions): void {
@@ -108,6 +113,7 @@ export function useKeyboardDragMode(options: UseKeyboardDragModeOptions): void {
     onAnnounceMove,
     onAnnounceCommit,
     onAnnounceCancel,
+    markEscDeactivationReason,
   } = options;
 
   useEffect(() => {
@@ -229,14 +235,19 @@ export function useKeyboardDragMode(options: UseKeyboardDragModeOptions): void {
     };
 
     const handleKeyDown = (event: KeyboardEvent): void => {
-      // R1 F3 — Tab/Shift+Tab: commit-or-cancel before browser
+      // R1 F3 + R2 F3 — Tab/Shift+Tab: commit-or-cancel before browser
       // advances focus. We do NOT preventDefault so focus advances
       // naturally to the next/prev tabstop AFTER our synchronous
-      // commit/cancel runs.
+      // commit/cancel runs. R2 F3: signal useEscCancel to SKIP focus
+      // restoration so the browser's natural Tab focus advance wins
+      // (else the sibling useEscCancel hook restores focus to the
+      // originating handle, undoing the Tab advance).
       if (event.key === 'Tab') {
         if (event.shiftKey) {
+          markEscDeactivationReason?.('tab-cancel');
           cancel();
         } else {
+          markEscDeactivationReason?.('tab-commit');
           commit();
         }
         return;
@@ -300,5 +311,6 @@ export function useKeyboardDragMode(options: UseKeyboardDragModeOptions): void {
     onAnnounceMove,
     onAnnounceCommit,
     onAnnounceCancel,
+    markEscDeactivationReason,
   ]);
 }

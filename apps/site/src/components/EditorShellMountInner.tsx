@@ -142,6 +142,22 @@ export function EditorShellMountInner({
     announce(formatDragCancel());
   }, [announce]);
 
+  // cf-22 R2 F3 — reason-marker indirection for useEscCancel: the
+  // pipeline needs to mark deactivation-reason BEFORE we can take
+  // useEscCancel's return handle. Refs invert the dependency: stable
+  // markers route through `dragEscHandleRef` populated post-useEscCancel.
+  const dragEscHandleRef = useRef<{
+    markDeactivationReason: (
+      reason: 'esc-cancel' | 'commit' | 'pointer-up' | 'tab-commit' | 'tab-cancel',
+    ) => void;
+  } | null>(null);
+  const markDragEscDeactivationReason = useCallback(
+    (reason: 'tab-commit' | 'tab-cancel') => {
+      dragEscHandleRef.current?.markDeactivationReason(reason);
+    },
+    [],
+  );
+
   const viewportCols = useResponsiveCols();
   const pipeline = useDragDropPipeline({
     editor,
@@ -149,6 +165,7 @@ export function EditorShellMountInner({
     onAnnounceMove: onAnnounceDragMove,
     onAnnounceCommit: onAnnounceDragCommit,
     onAnnounceCancel: onAnnounceDragCancel,
+    markEscDeactivationReason: markDragEscDeactivationReason,
   });
   const dragContextValue = useMemo(
     () => ({
@@ -164,13 +181,17 @@ export function EditorShellMountInner({
       pipeline.state.sourceBlockId,
     ],
   );
-  // Esc cancel — covers both pointer + keyboard active modes.
-  useEscCancel({
+  // Esc cancel — covers both pointer + keyboard active modes. R2 F3:
+  // capture handle so Tab paths can mark `tab-commit`/`tab-cancel`
+  // reason; hook then SKIPS focus restoration on those flips so the
+  // browser's Tab focus-advance is preserved.
+  const dragEscHandle = useEscCancel({
     dragActive: pipeline.state.active || pipeline.state.keyboardActive,
     onCancel: () => {
       pipeline.onDragEnd({ x: 0, y: 0 });
     },
   });
+  dragEscHandleRef.current = dragEscHandle;
 
   // cf-22 R1 F1 — resize pipeline announce callbacks.
   const onAnnounceResizeChange = useCallback(
@@ -187,6 +208,19 @@ export function EditorShellMountInner({
   const onAnnounceResizeCancel = useCallback(() => {
     announce(formatResizeCancel());
   }, [announce]);
+
+  // cf-22 R2 F3 — same reason-marker indirection as drag pipeline.
+  const resizeEscHandleRef = useRef<{
+    markDeactivationReason: (
+      reason: 'esc-cancel' | 'commit' | 'pointer-up' | 'tab-commit' | 'tab-cancel',
+    ) => void;
+  } | null>(null);
+  const markResizeEscDeactivationReason = useCallback(
+    (reason: 'tab-commit' | 'tab-cancel') => {
+      resizeEscHandleRef.current?.markDeactivationReason(reason);
+    },
+    [],
+  );
 
   const resizeColSnaps = useMemo(
     () => effectiveColSnaps(viewportCols satisfies EffectiveViewportCols),
@@ -205,6 +239,7 @@ export function EditorShellMountInner({
     onCommitSuccess: onResizeCommitSuccess,
     onAnnounceChange: onAnnounceResizeChange,
     onAnnounceCancel: onAnnounceResizeCancel,
+    markEscDeactivationReason: markResizeEscDeactivationReason,
   });
   const resizeContextValue = useMemo(
     () => ({
@@ -222,12 +257,13 @@ export function EditorShellMountInner({
       resize.state.axis,
     ],
   );
-  useEscCancel({
+  const resizeEscHandle = useEscCancel({
     dragActive: resize.state.active || resize.state.keyboardActive,
     onCancel: () => {
       resize.onResizeEnd({ x: 0, y: 0 });
     },
   });
+  resizeEscHandleRef.current = resizeEscHandle;
 
   // cf-22 R1 F1 — kebab announce adapter (translates the action enum
   // + source/new kinds into the formatKebabAction message).

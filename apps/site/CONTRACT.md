@@ -411,7 +411,18 @@
   `pipeline.state.active || pipeline.state.keyboardActive` (and same for
   resize) so Esc cancels EITHER mode + restores focus per WCAG 2.4.3.
   Tab/Shift+Tab in active keyboard-mode = sync commit/cancel without
-  preventDefault so browser advances focus naturally (R1 F3 fix).
+  preventDefault so browser advances focus naturally (R1 F3 fix). R2
+  F3: ALSO threads a `markEscDeactivationReason: ('tab-commit' |
+  'tab-cancel') => void` callback into both keyboard pipelines via
+  ref-based indirection (the `useEscCancel` hook's return handle is
+  captured AFTER pipeline construction; a stable callback closures
+  over the ref). On Tab keydown the keyboard pipelines mark the
+  reason BEFORE the state flip; `useEscCancel` then SKIPS focus
+  restoration on `tab-commit`/`tab-cancel` reasons so the browser's
+  Tab focus-advance is preserved (pre-R2 the hook restored focus on
+  EVERY `keyboardActive: true → false` flip, undoing the advance —
+  R1 Playwright lock missed it because it asserted commit + overlay
+  cleanup but NOT focus position).
   Drag keyboard-mode tracks `{col, row}` grid-coords directly via
   `keyboardGridStep`/`keyboardGridRowStep` and writes
   `setNodeMarkup({col, row?})` directly (NOT via pointer-mode
