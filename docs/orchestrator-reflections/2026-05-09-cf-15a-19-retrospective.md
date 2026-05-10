@@ -557,3 +557,53 @@ For Playwright contract assertions: when asserting "side-effect Y happens after 
 25. **Hook reason flags / one-shot tokens are valid REST-style state when sibling hooks need to discriminate flip causes**. The cf-22 R2 fix introduces `EscDeactivationReason` as a one-shot token consumed at deactivation time + reset to default. This pattern is preferable to suppress flags (easy to forget to reset) and to multi-hook callback orchestration (couples consumers tightly).
 
 **R2 prediction outcome**: my R1 prediction "R2 should be PASS" was wrong — the silent-sibling-hook bug class is harder to predict than the explicit infrastructure-wiring bug class (R1's F1+F2+F3). R3 prediction: PASS likely. The R2 fix is structurally simple (reason flag + ref-based callback indirection in mount + new spec assertions for both drag-Tab + resize-Tab). The pattern is now generalized — any future keyboard-pipeline addition (cf-23+ slash-menu / toolbar) inherits the reason-flag mechanism. The remaining risk is the same as R1: edge cases in the keyboard-pipelines themselves, not the focus-management surface.
+
+## ux-ui-lead reflection — cf-22 R3 follow-up (CI visual-smoke fixture-leak race; pre-existing-flake framing rejected) (2026-05-10)
+
+**What CI found** (PR #116 visual-smoke job 75237845909, post-R3 push):
+
+- 1 hard FAIL: `sample-blocks-resize-handles.spec.ts:115` — `colBefore` expected `'1 / span 12'`, received `'7 / span 6'` initial run, `'2 / span 6'` retry 1, `'1 / span 6'` retry 2. The values mutate between retries — proof the disk fixture is being polluted progressively across test runs, not a render-time race.
+- 3 FLAKY (passed on retry but flagged): `sample-blocks-drag-handle.spec.ts:259` (split-right drop didn't take), `sample-blocks-kebab-menu.spec.ts:178` (Duplicate's pulse-anchor count = 0), `sample-blocks-keyboard-a11y.spec.ts:328` (col=2 expected, got col=7 from prior fixture pollution).
+
+**Root cause** (verified by reading `EditorShellMountInner.tsx:366-395`):
+
+The editor's `handleChange` handler debounces autosave by 800 ms via `setTimeout`. When a mutating Playwright test ends mid-debounce-window:
+
+1. test mutates fixture → `handleChange` schedules an 800 ms save timer.
+2. test asserts → test calls inline `restoreSampleBlocksFixture()` (the pre-followup pattern: bytes were snapshotted in `beforeAll`, restored at end-of-test).
+3. test ends → next test's `beforeEach` (or implicit teardown) runs.
+4. **The 800 ms timer fires AFTER the restore.** The pending `ApiAdapter.save` POST hits the API endpoint, which writes the polluted MDX back to disk + creates `state.json`.
+5. Next test's `page.goto('/notes/sample-blocks/edit')` mounts the editor → `loadWithFallback` calls `apiAdapter.load()` → API GET reads the polluted disk → editor mounts with `'7 / span 6'` instead of pristine `'1 / span 12'`.
+
+The local Playwright run that "passed pre-PR" was wall-clock-faster than CI: the autosave coincidentally completed inside the test's window on the developer's WSL2, but raced past it on GitHub Actions runner (slower fetch + slower fs).
+
+**The fix** (4 spec files + 1 new helper file, all already in the working tree pre-commit):
+
+1. **Single-source helper**: `apps/site/playwright/fixtures/sample-blocks-fixture.ts` exports `snapshotSampleBlocksFixture()` (idempotent module-scoped byte snapshot), `restoreSampleBlocksFixture()` (writes MDX + restores-or-deletes state.json + **strict verify-on-restore** that throws "MDX restore did not take" if the disk doesn't match the snapshot — turns the silent fixture-leak into a loud at-source error), `getSampleBlocksOriginalMdxBytes()` (snapshot accessor for installer helpers like `installColSpan6Fixture`), and constants `SAMPLE_BLOCKS_MDX_PATH` / `SAMPLE_BLOCKS_STATE_PATH` / `AUTOSAVE_SETTLE_MS=1500`.
+
+2. **Per-spec hook discipline**: every mutating spec installs `test.beforeAll(snapshotSampleBlocksFixture)` + `test.beforeEach(restoreSampleBlocksFixture)` + `test.afterAll(restoreSampleBlocksFixture)`. The `beforeEach` strict-verify catches any leaked autosave from the previous test BEFORE the next test mounts.
+
+3. **`AUTOSAVE_SETTLE_MS` waits**: every mutating test calls `await page.waitForTimeout(AUTOSAVE_SETTLE_MS)` BEFORE its trailing `restoreSampleBlocksFixture()` so the in-flight 800 ms debounced POST + 250 ms saveSettleTimer + headroom complete inside the test's window. Restore then overwrites the persisted polluted bytes cleanly.
+
+4. **Pulse-anchor assertion timing**: the cf-20c-2 R1 F4 + cf-20e D6 + cf-20d D11 pulse assertions are reordered to assert `toBeAttached({ timeout: 1500 })` IMMEDIATELY after the action that mounts the pulse, BEFORE other assertions run. Pre-followup the count snapshot landed after the 720 ms pulse animation already unmounted the anchor on slow CI runs.
+
+**Verification** (workers=1 retries=0 + workers=1 retries=2 both clean):
+
+- `pnpm exec playwright test sample-blocks-* --workers=1 --retries=0`: 26/26 pass
+- `pnpm exec playwright test sample-blocks-* --workers=1 --retries=2`: 26/26 pass (CI's mode); zero flakes
+- `pnpm exec playwright test --workers=1 --retries=0` (full suite): 79 passed, 14 skipped, 0 failed, 0 flaky
+- `pnpm check`: 41/41 tasks successful
+
+**Why I (ux-ui-lead) missed this on the original cf-22 R3 push**:
+
+The cf-20c-2 R3 F1 fix (byte-snapshot fixture isolation) shipped per-spec inline copies of `snapshotSampleBlocksFixture` / `restoreSampleBlocksFixture`. Each spec's copy looked identical by eyeball + each spec's own tests passed in isolation locally. I did NOT recognize three failure modes:
+
+1. The autosave 800 ms debounce + ApiAdapter.save POST + 250 ms saveSettleTimer chain takes ~1100-1300 ms total post-mutation → a test that ends in <1100 ms post-mutation leaks the autosave into the next test (or the next test's beforeAll/beforeEach).
+2. The CI runner is wall-clock SLOWER than local WSL2 (GitHub Actions cold runner + Astro preview server's fs cache + chromium launch time), so the leak deterministically exposes in CI even if it never exposed locally.
+3. Per-spec inline copies CANNOT enforce a uniform discipline. If test author A adds `await page.waitForTimeout(AUTOSAVE_SETTLE_MS)` to their copy, test author B's copy might not — and CI exposes the asymmetry months later.
+
+**Operational rule landed (this reflection — rule #26)**:
+
+26. **"Pre-existing flake" is never an acceptable answer when CI gates on the suite. Any test that fails-then-passes-on-retry IS a bug; root-cause it before claiming pre-verify clean.** Specifically for fixture-mutation tests: identify EVERY async side-effect the test triggers (debounced autosave, API POST, fs write, animation unmount) and ensure every test's restore-and-cleanup window strictly contains all of them. Use a SINGLE shared helper module per fixture to enforce uniform discipline across spec files; per-spec inline copies of the same helper are how asymmetric drift slips into CI months later. The first symptom of fixture-leak across spec files is "the SAME assertion fails with DIFFERENT values across retries" — that is deterministic state pollution evolving with each test invocation, not flake.
+
+**R-round prediction for next CI cycle**: PASS likely. The fix-forward is structurally complete: byte-strict restore-verify catches leaks at-source, AUTOSAVE_SETTLE_MS bracketing closes the autosave window, single helper enforces uniformity. Residual risk class: a NEW mutating spec added later that forgets to call `AUTOSAVE_SETTLE_MS` before its restore. Mitigation: add a lint rule or a CI-level regression-lock that asserts pristine MDX bytes at start-of-every-test (deferred — would need a custom Playwright fixture/reporter). For cf-22 R3 follow-up scope the helper extraction + per-spec uniform usage is sufficient.

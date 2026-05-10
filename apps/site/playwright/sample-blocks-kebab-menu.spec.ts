@@ -1,7 +1,12 @@
-import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { expect, test } from '@playwright/test';
+
+import {
+  AUTOSAVE_SETTLE_MS,
+  restoreSampleBlocksFixture,
+  snapshotSampleBlocksFixture,
+} from './fixtures/sample-blocks-fixture';
 
 /**
  * Wave 6 cf-20e (2026-05-09) — kebab menu (per-block actions) integration spec.
@@ -16,46 +21,17 @@ import { expect, test } from '@playwright/test';
  *   - Change kind… (sub-menu with 8 BlockKind options;
  *     drop-and-default attr translation per cf-20e D3)
  *
- * Byte-snapshot fixture isolation per cf-20c-2 R3 F1 reflection rule:
- * "tests that touch repository files MUST snapshot bytes pre-mutation;
- * never use destructive git operations". The 3 commit-style tests
- * (delete / duplicate / change-kind) trigger Tiptap mutations →
- * tiptapToMdx → ApiAdapter.save → file write chain; snapshot before +
- * restore after.
+ * Byte-snapshot fixture isolation per cf-20c-2 R3 F1 reflection rule
+ * lives in `./fixtures/sample-blocks-fixture.ts`. cf-22 follow-up
+ * (2026-05-10) extracted the per-spec inline copies to a single helper
+ * + added `beforeEach` + `AUTOSAVE_SETTLE_MS` waits before trailing
+ * restores so the editor's 800 ms debounced autosave can't race past
+ * cleanup. See PR #116 retrospective for the full root-cause writeup.
  */
-const SAMPLE_BLOCKS_MDX = resolve(
-  process.cwd(),
-  '../../content/notes/sample-blocks/index.mdx',
-);
-const SAMPLE_BLOCKS_STATE = resolve(
-  process.cwd(),
-  '../../content/notes/sample-blocks/state.json',
-);
 
-let originalMdxBytes: string | null = null;
-let originalStateBytes: string | null = null;
-
-test.beforeAll(() => {
-  originalMdxBytes = readFileSync(SAMPLE_BLOCKS_MDX, 'utf8');
-  originalStateBytes = existsSync(SAMPLE_BLOCKS_STATE)
-    ? readFileSync(SAMPLE_BLOCKS_STATE, 'utf8')
-    : null;
-});
-
-function restoreSampleBlocksFixture(): void {
-  if (originalMdxBytes !== null) {
-    writeFileSync(SAMPLE_BLOCKS_MDX, originalMdxBytes, 'utf8');
-  }
-  if (originalStateBytes !== null) {
-    writeFileSync(SAMPLE_BLOCKS_STATE, originalStateBytes, 'utf8');
-  } else if (existsSync(SAMPLE_BLOCKS_STATE)) {
-    unlinkSync(SAMPLE_BLOCKS_STATE);
-  }
-}
-
-test.afterAll(() => {
-  restoreSampleBlocksFixture();
-});
+test.beforeAll(snapshotSampleBlocksFixture);
+test.beforeEach(restoreSampleBlocksFixture);
+test.afterAll(restoreSampleBlocksFixture);
 
 const SCREENSHOT_PATH = resolve(
   process.cwd(),
@@ -65,8 +41,6 @@ const SCREENSHOT_PATH = resolve(
 test('sample-blocks edit route — cf-20e kebab-menu wire (button visibility + open + close)', async ({
   page,
 }) => {
-  restoreSampleBlocksFixture();
-
   await page.goto('/notes/sample-blocks/edit');
   const editor = page.locator('.ProseMirror').first();
   await expect(editor).toBeVisible({ timeout: 15_000 });
@@ -126,8 +100,6 @@ test('sample-blocks edit route — cf-20e kebab-menu wire (button visibility + o
 test('cf-20e — Delete action removes block from doc + decreases NodeView count by 1', async ({
   page,
 }) => {
-  restoreSampleBlocksFixture();
-
   await page.goto('/notes/sample-blocks/edit');
   const editor = page.locator('.ProseMirror').first();
   await expect(editor).toBeVisible({ timeout: 15_000 });
@@ -172,14 +144,17 @@ test('cf-20e — Delete action removes block from doc + decreases NodeView count
   // Menu auto-closed post-action.
   await expect(page.locator('.skb-kebab-menu')).toHaveCount(0);
 
+  // cf-22 follow-up — let the editor's 800 ms debounced autosave fire +
+  // settle to disk BEFORE the trailing restore so the in-flight POST
+  // can't race past cleanup. AUTOSAVE_SETTLE_MS budgets debounce + fetch
+  // + saveSettleTimer + headroom (1500 ms total).
+  await page.waitForTimeout(AUTOSAVE_SETTLE_MS);
   restoreSampleBlocksFixture();
 });
 
 test('cf-20e — Duplicate action inserts a copy + fires success-pulse via cf-20c-2 dropEpoch reuse', async ({
   page,
 }) => {
-  restoreSampleBlocksFixture();
-
   await page.goto('/notes/sample-blocks/edit');
   const editor = page.locator('.ProseMirror').first();
   await expect(editor).toBeVisible({ timeout: 15_000 });
@@ -201,7 +176,23 @@ test('cf-20e — Duplicate action inserts a copy + fires success-pulse via cf-20
   await page
     .locator('.skb-kebab-menu .skb-kebab-menu__item[data-skb-kebab-action="duplicate"]')
     .click();
-  // Wait for ProseMirror tr.insert + 2-rAF re-measure + success-pulse mount.
+
+  // cf-22 follow-up 2026-05-10 — assert pulse-anchor mount FIRST,
+  // BEFORE the post-insert settle wait, so we catch the anchor inside
+  // its 720 ms animation window. The previous test ordering waited
+  // 400 ms after click + then asserted, which races the unmount when
+  // mount fires fast (e.g., 100 ms post-click → unmount at 820 ms,
+  // measurement at 450 ms passed; on slow runs mount slips later +
+  // unmount happens BEFORE the 400 ms wait elapses → count = 0).
+  // Asserting attachment with a poll-window catches the live anchor
+  // regardless of mount/unmount jitter.
+  await expect(
+    page.locator('[data-skb-drop-pulse-anchor]').first(),
+    'cf-20e D6: Duplicate MUST mount [data-skb-drop-pulse-anchor] via the SAME cf-20c-2 dropEpoch infrastructure (consumer-side onDuplicate → pipeline.setLastDroppedFromExternal)',
+  ).toBeAttached({ timeout: 1_500 });
+
+  // Now wait for ProseMirror tr.insert + 2-rAF re-measure to settle so
+  // the wrapper-count + kind assertions read the post-insert DOM.
   await page.waitForTimeout(400);
 
   const afterCount = await wrappers.count();
@@ -218,25 +209,14 @@ test('cf-20e — Duplicate action inserts a copy + fires success-pulse via cf-20
     'cf-20e Duplicate: duplicated block MUST share `data-skb-block-kind` with the source (cf-20e D7 tr.insert + node.copy primitive)',
   ).toBe(sourceKind);
 
-  // cf-20e D6: success-pulse mounts via cf-20c-2 dropEpoch reuse.
-  // The pulse anchor element is `[data-skb-drop-pulse-anchor]`.
-  await page.waitForTimeout(50);
-  const pulseAnchorCount = await page
-    .locator('[data-skb-drop-pulse-anchor]')
-    .count();
-  expect(
-    pulseAnchorCount,
-    'cf-20e D6: Duplicate MUST mount [data-skb-drop-pulse-anchor] via the SAME cf-20c-2 dropEpoch infrastructure (consumer-side onDuplicate → pipeline.setLastDroppedFromExternal)',
-  ).toBeGreaterThanOrEqual(1);
-
+  // cf-22 follow-up — settle autosave before restore (see helper).
+  await page.waitForTimeout(AUTOSAVE_SETTLE_MS);
   restoreSampleBlocksFixture();
 });
 
 test('cf-20e — Change-kind action mutates first block from callout → componentCode while preserving grid attrs', async ({
   page,
 }) => {
-  restoreSampleBlocksFixture();
-
   await page.goto('/notes/sample-blocks/edit');
   const editor = page.locator('.ProseMirror').first();
   await expect(editor).toBeVisible({ timeout: 15_000 });
@@ -290,6 +270,8 @@ test('cf-20e — Change-kind action mutates first block from callout → compone
   // Menu auto-closed post-action.
   await expect(page.locator('.skb-kebab-menu')).toHaveCount(0);
 
+  // cf-22 follow-up — settle autosave before restore (see helper).
+  await page.waitForTimeout(AUTOSAVE_SETTLE_MS);
   restoreSampleBlocksFixture();
 });
 

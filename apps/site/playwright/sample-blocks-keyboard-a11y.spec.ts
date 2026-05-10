@@ -1,45 +1,30 @@
-import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, unlinkSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { expect, test } from '@playwright/test';
 
+import {
+  AUTOSAVE_SETTLE_MS,
+  getSampleBlocksOriginalMdxBytes,
+  restoreSampleBlocksFixture,
+  SAMPLE_BLOCKS_MDX_PATH,
+  SAMPLE_BLOCKS_STATE_PATH,
+  snapshotSampleBlocksFixture,
+} from './fixtures/sample-blocks-fixture';
+
 /**
  * Wave 6 cf-22 (2026-05-09) keyboard a11y integration spec + R1 + R2 locks.
- * Byte-snapshot fixture isolation per cf-20c-2 R3 F1 reflection rule.
+ *
+ * Byte-snapshot fixture isolation per cf-20c-2 R3 F1 reflection rule
+ * lives in `./fixtures/sample-blocks-fixture.ts`. cf-22 follow-up
+ * (2026-05-10) extracted the per-spec inline copies + added
+ * `beforeEach` + `AUTOSAVE_SETTLE_MS` waits so the editor's 800 ms
+ * debounced autosave can't race past the trailing restore.
  */
-const SAMPLE_BLOCKS_MDX = resolve(
-  process.cwd(),
-  '../../content/notes/sample-blocks/index.mdx',
-);
-const SAMPLE_BLOCKS_STATE = resolve(
-  process.cwd(),
-  '../../content/notes/sample-blocks/state.json',
-);
 
-let originalMdxBytes: string | null = null;
-let originalStateBytes: string | null = null;
-
-test.beforeAll(() => {
-  originalMdxBytes = readFileSync(SAMPLE_BLOCKS_MDX, 'utf8');
-  originalStateBytes = existsSync(SAMPLE_BLOCKS_STATE)
-    ? readFileSync(SAMPLE_BLOCKS_STATE, 'utf8')
-    : null;
-});
-
-function restoreSampleBlocksFixture(): void {
-  if (originalMdxBytes !== null) {
-    writeFileSync(SAMPLE_BLOCKS_MDX, originalMdxBytes, 'utf8');
-  }
-  if (originalStateBytes !== null) {
-    writeFileSync(SAMPLE_BLOCKS_STATE, originalStateBytes, 'utf8');
-  } else if (existsSync(SAMPLE_BLOCKS_STATE)) {
-    unlinkSync(SAMPLE_BLOCKS_STATE);
-  }
-}
-
-test.afterAll(() => {
-  restoreSampleBlocksFixture();
-});
+test.beforeAll(snapshotSampleBlocksFixture);
+test.beforeEach(restoreSampleBlocksFixture);
+test.afterAll(restoreSampleBlocksFixture);
 
 const SCREENSHOT_PATH = resolve(
   process.cwd(),
@@ -271,13 +256,16 @@ test('cf-22 — Mobile (≤768px) keyboard handles still hidden per ADR-0017 D9 
 // R1 F2/F3 fixture: shrinks first Callout's colSpan from 12 to 6
 // so keyboard ArrowRight has room to advance col.
 function installColSpan6Fixture(): void {
-  if (originalMdxBytes === null) throw new Error('originalMdxBytes null');
-  const mdx = originalMdxBytes.replace(
+  const original = getSampleBlocksOriginalMdxBytes();
+  const mdx = original.replace(
     /<Callout col=\{1\} colSpan=\{12\} rowSpan=\{1\} variant="note" title="Sampler scope">/,
     '<Callout col={1} colSpan={6} rowSpan={1} variant="note" title="Sampler scope">',
   );
-  writeFileSync(SAMPLE_BLOCKS_MDX, mdx, 'utf8');
-  if (existsSync(SAMPLE_BLOCKS_STATE)) unlinkSync(SAMPLE_BLOCKS_STATE);
+  if (mdx === original) {
+    throw new Error('installColSpan6Fixture: replacement pattern not found in fixture');
+  }
+  writeFileSync(SAMPLE_BLOCKS_MDX_PATH, mdx, 'utf8');
+  if (existsSync(SAMPLE_BLOCKS_STATE_PATH)) unlinkSync(SAMPLE_BLOCKS_STATE_PATH);
 }
 
 // R1 F1 lock — LiveAnnouncer textContent updates on keyboard events
@@ -361,6 +349,8 @@ test('cf-22 R1 F2 — keyboard-drag ArrowRight + Enter commits to col=2 EXACTLY 
     'cf-22 R1 F2: ArrowRight + Enter MUST commit to col=2 (grid-coord).',
   ).toBe('2 / span 6');
 
+  // cf-22 follow-up — settle autosave before restore (see helper).
+  await page.waitForTimeout(AUTOSAVE_SETTLE_MS);
   restoreSampleBlocksFixture();
 });
 
@@ -425,6 +415,8 @@ test('cf-22 R1 F3 + R2 F3 — Tab in keyboard-drag commits + resets keyboardActi
     'cf-22 R2 F3: focus MUST have moved past originating drag handle (useEscCancel must NOT restore focus on tab-commit reason).',
   ).not.toBe(originatingHandleHTML);
 
+  // cf-22 follow-up — settle autosave before restore (see helper).
+  await page.waitForTimeout(AUTOSAVE_SETTLE_MS);
   restoreSampleBlocksFixture();
 });
 
@@ -480,5 +472,7 @@ test('cf-22 R2 F3 — Tab in keyboard-resize commits colSpan + focus advances PA
     'cf-22 R2 F3 resize: focus MUST advance past originating handle.',
   ).not.toBe(originatingHandleHTML);
 
+  // cf-22 follow-up — settle autosave before restore (see helper).
+  await page.waitForTimeout(AUTOSAVE_SETTLE_MS);
   restoreSampleBlocksFixture();
 });

@@ -1,75 +1,29 @@
-import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { expect, test } from '@playwright/test';
 
+import {
+  AUTOSAVE_SETTLE_MS,
+  restoreSampleBlocksFixture,
+  snapshotSampleBlocksFixture,
+} from './fixtures/sample-blocks-fixture';
+
 /**
  * Wave 6 cf-20c-2 R3 F1 fix (2026-05-09) — byte-snapshot fixture
- * isolation (replaces R2's destructive `git checkout` model).
+ * isolation (replaces R2's destructive `git checkout` model). Per the
+ * cf-20c-2 R3 reflection rule "tests that touch repository files MUST
+ * snapshot bytes pre-mutation; never use destructive git operations".
  *
- * Pre-R2 the F4 terminal-drop test mutated `content/notes/sample-blocks/index.mdx`
- * via the cf-20c-2 wire's setNodeMarkup → tiptapToMdx → ApiAdapter.save
- * → file write chain. R2 added `test.afterAll(restoreSampleBlocksFixture)`
- * which shelled out to `git checkout -- <path>`. codex-pr-reviewer-55
- * R3 F1 caught this as a real safety bug: running the spec
- * **silently discards uncommitted edits** to the fixture file —
- * anyone mid-edit on `sample-blocks/index.mdx` loses their work.
- *
- * R3 fix (per reviewer's recommendation): snapshot the EXACT bytes
- * the file had at `beforeAll` time, restore those bytes at
- * `afterAll`. Works whether or not the user has uncommitted edits;
- * doesn't touch git.
- *
- * Operational rule landed (cf-20c-2 R3 reflection): tests that touch
- * repository files MUST snapshot bytes pre-mutation; never use
- * destructive git operations (`git checkout`, `git restore`,
- * `git reset --hard`) in test code. Adding to the standard
- * pre-dispatch checklist for any spec that triggers fs writes.
+ * cf-22 follow-up (2026-05-10) — extracted the per-spec inline copies
+ * to `./fixtures/sample-blocks-fixture.ts` + added `beforeEach` +
+ * `AUTOSAVE_SETTLE_MS` waits so the editor's 800 ms debounced
+ * autosave can't race past the trailing restore. See PR #116
+ * retrospective for the full root-cause writeup.
  */
-const SAMPLE_BLOCKS_MDX = resolve(
-  process.cwd(),
-  '../../content/notes/sample-blocks/index.mdx',
-);
-const SAMPLE_BLOCKS_STATE = resolve(
-  process.cwd(),
-  '../../content/notes/sample-blocks/state.json',
-);
 
-let originalMdxBytes: string | null = null;
-let originalStateBytes: string | null = null;
-
-test.beforeAll(() => {
-  // Snapshot the fixture's EXACT bytes (whatever the user has on
-  // disk — committed or not). Restore-after-test uses these snapshots
-  // so the test's mutation is invisible to anyone watching the file.
-  originalMdxBytes = readFileSync(SAMPLE_BLOCKS_MDX, 'utf8');
-  originalStateBytes = existsSync(SAMPLE_BLOCKS_STATE)
-    ? readFileSync(SAMPLE_BLOCKS_STATE, 'utf8')
-    : null;
-});
-
-/**
- * Restore the snapshotted fixture bytes. Called both per-test (the F4
- * terminal-drop test triggers the mutation; the test calls this BEFORE
- * starting so prior runs in the same Playwright session don't leave
- * a mutated baseline that breaks the strict `1 / span 12` initial
- * assertion) AND in afterAll (cross-spec isolation: other spec files
- * see clean fixture).
- */
-function restoreSampleBlocksFixture(): void {
-  if (originalMdxBytes !== null) {
-    writeFileSync(SAMPLE_BLOCKS_MDX, originalMdxBytes, 'utf8');
-  }
-  if (originalStateBytes !== null) {
-    writeFileSync(SAMPLE_BLOCKS_STATE, originalStateBytes, 'utf8');
-  } else if (existsSync(SAMPLE_BLOCKS_STATE)) {
-    unlinkSync(SAMPLE_BLOCKS_STATE);
-  }
-}
-
-test.afterAll(() => {
-  restoreSampleBlocksFixture();
-});
+test.beforeAll(snapshotSampleBlocksFixture);
+test.beforeEach(restoreSampleBlocksFixture);
+test.afterAll(restoreSampleBlocksFixture);
 
 /**
  * Wave 6 cf-20c-2 (2026-05-09) — drag-handle UI + DnD wire integration
@@ -259,10 +213,7 @@ test('cf-20c-2 R1 F1 — source-lift visual: dragstart applies .skb-block-nodevi
 test('cf-20c-2 R1 F4 — terminal drop: dragstart → dragover edge → drop mutates ProseMirror node attrs + fires DropPulse (ADR-0017 D1 + D11)', async ({
   page,
 }) => {
-  // cf-20c-2 R2 fixture isolation: restore baseline MDX + clear state
-  // sidecar BEFORE the test runs (the mutation this test triggers
-  // would otherwise persist via ApiAdapter.save → file write).
-  restoreSampleBlocksFixture();
+  // cf-22 follow-up: per-test restore now handled by `beforeEach`.
 
   // Wave 6 cf-20c-2 R1 F4 lock — codex-pr-reviewer-55 R1 caught
   // that pre-R1 Playwright coverage only fired dragstart + dragend,
@@ -371,6 +322,26 @@ test('cf-20c-2 R1 F4 — terminal drop: dragstart → dragover edge → drop mut
   );
   await page.waitForTimeout(200); // Let React commit + Tiptap setNodeMarkup
 
+  // cf-22 follow-up 2026-05-10 — assert pulse-anchor mount FIRST,
+  // BEFORE the source/target col assertions, so we catch the anchor
+  // inside its 720 ms animation window. Earlier ordering (count after
+  // all other asserts) raced the unmount on slow runs: pulse mounts
+  // ~100 ms post-drop → unmounts at ~820 ms; expect() chain takes
+  // longer → count = 0. Moving the assertion right after the
+  // post-drop settle catches the anchor before unmount. Capture the
+  // anchor's bounding box immediately so the F2 R2 sub-pixel check
+  // below has a value even if the anchor unmounts later in the test.
+  await expect(
+    page.locator('[data-skb-drop-pulse-anchor]').first(),
+    'cf-20c-2 R1 F2: DropPulse anchor MUST mount within 1.5 s post-drop ' +
+      '(proves drag-end-success branch ran + lastDroppedBlockId set + ' +
+      'lastDroppedRect measured + EditorShellMount conditional render fired)',
+  ).toBeAttached({ timeout: 1_500 });
+  const pulseRect = await page
+    .locator('[data-skb-drop-pulse-anchor]')
+    .first()
+    .boundingBox();
+
   // F4 (b) — STRICT split-right algebra assertion (cf-20c-2 R2 F3).
   // Pre-R2 the spec asserted `toContain('span 6')` which would
   // false-positive accept `1 / span 6` (LEFT half — which is the
@@ -406,26 +377,14 @@ test('cf-20c-2 R1 F4 — terminal drop: dragstart → dragover edge → drop mut
     'cf-20c-2 R2 F3: target host MUST shrink to left half (col=1, colSpan=6) per cf-20c-1 split-right algebra reciprocal mutation',
   ).toBe('1 / span 6');
 
-  // F2: DropPulse anchor mounted (proves drag-end-success branch ran
-  // AND lastDroppedBlockId is set AND lastDroppedRect is measured AND
-  // the EditorShellMount conditional render path took effect). The
-  // 720ms animation will eventually unmount it via clearLastDropped
-  // onAnimationEnd, so we assert count >= 1 immediately after drop
-  // (timing race tolerance). Wait one extra frame for the pipeline's
-  // post-drop rAF measurement that sets lastDroppedRect.
-  await page.waitForTimeout(50);
-  const pulseAnchorCount = await page
-    .locator('[data-skb-drop-pulse-anchor]')
-    .count();
-  expect(pulseAnchorCount).toBeGreaterThanOrEqual(1);
-
   // F2 (R2): DropPulse anchor's rect MUST match the source NodeView's
   // post-drop rect (within 1px tolerance for browser sub-pixel
   // rounding) per ADR-0017 D11 line 344. Pre-R2 the anchor was at
   // the source's pre-drag rect; R2 pipeline re-measures post-mutation
-  // and the anchor consumes lastDroppedRect.
-  const pulseAnchor = page.locator('[data-skb-drop-pulse-anchor]').first();
-  const pulseRect = await pulseAnchor.boundingBox();
+  // and the anchor consumes lastDroppedRect. cf-22 follow-up
+  // 2026-05-10 — `pulseRect` was already captured above (immediately
+  // after toBeAttached) so it's pinned even if the 720 ms pulse
+  // animation has since unmounted the anchor.
   const sourceRectAfter = await page
     .locator('.skb-block-nodeview')
     .first()
@@ -439,6 +398,12 @@ test('cf-20c-2 R1 F4 — terminal drop: dragstart → dragover edge → drop mut
   expect(
     Math.abs((pulseRect?.width ?? 0) - (sourceRectAfter?.width ?? 0)),
   ).toBeLessThanOrEqual(1);
+
+  // cf-22 follow-up — let the editor's 800 ms debounced autosave fire +
+  // settle to disk BEFORE the spec's afterAll-style restore so the
+  // in-flight POST can't race past cleanup. See helper for budget math.
+  await page.waitForTimeout(AUTOSAVE_SETTLE_MS);
+  restoreSampleBlocksFixture();
 });
 
 test('cf-20c-2 — drag handles are hidden on mobile (≤768px) per cf-20b R1 view-only path', async ({
