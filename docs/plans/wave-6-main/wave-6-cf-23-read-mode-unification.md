@@ -270,7 +270,14 @@ satisfies D9.5 archive obligation.
     edit that silently changes the breakpoint padding fails CI.
   target_url: /notes/sample-blocks (+ /edit)
   playwright_spec: apps/site/playwright/notes-route-width-parity.spec.ts:"read and edit routes have parity main widths at 4 viewports (cf-23 D10 lock)"
-  screenshot_archive: docs/audits/screenshots/wave-6-cf-23-after-{read,edit}-{1280,1024,768,375}.png (8 archives)
+  screenshot_archive: docs/audits/screenshots/wave-6-cf-23-after-read-1280.png
+  screenshot_archive: docs/audits/screenshots/wave-6-cf-23-after-read-1024.png
+  screenshot_archive: docs/audits/screenshots/wave-6-cf-23-after-read-768.png
+  screenshot_archive: docs/audits/screenshots/wave-6-cf-23-after-read-375.png
+  screenshot_archive: docs/audits/screenshots/wave-6-cf-23-after-edit-1280.png
+  screenshot_archive: docs/audits/screenshots/wave-6-cf-23-after-edit-1024.png
+  screenshot_archive: docs/audits/screenshots/wave-6-cf-23-after-edit-768.png
+  screenshot_archive: docs/audits/screenshots/wave-6-cf-23-after-edit-375.png
   assertions:
     - viewport 1280 → read.mainWidth ~ edit.mainWidth (delta <= 2px)
        AND read.innerWidth ~ edit.innerWidth (delta <= 2px)
