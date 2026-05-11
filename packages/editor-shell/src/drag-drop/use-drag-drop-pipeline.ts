@@ -1,34 +1,28 @@
 /**
  * @skb/editor-shell useDragDropPipeline — drag/drop lifecycle owner.
  *
- * cf-20c-2 + cf-22 + cf-22 R1. Composes drag primitives + commit
- * logic + keyboard mode (extracted hook). Pointer + keyboard modes
- * are separate (cf-22 D3); both share `commitDropAtMatch`. R1 F2:
- * keyboard mode tracks GRID coords {col, row} (NOT pixel cursor).
- * R1 F1: announce callbacks fire WCAG 4.1.3 messages on every
- * arrow / commit / cancel. R1 F3: Tab commits + Shift+Tab cancels
- * (handled inside useKeyboardDragMode). Full contract in ADR-0017
- * D13 + CONTRACT.md.
+ * Wave 7 Phase 2B.2 (ADR-0020 D2) — cuts over from cf-20c-1's
+ * `applyDropMode` 4-mode algebra to `@skb/grid-engine` ops. Tracks an
+ * `activeIntent: DropIntent` (cursor → grid-coord → hole-fill) instead
+ * of an `activeMatch: EdgeMatch`. The host block is NEVER shrunk; the
+ * dragged block goes to its inferred hole-fill anchor, gravity
+ * collapses (ADR-0020 D3 Option A).
+ *
+ * Pointer + keyboard modes stay separate (cf-22 D3). Both share the
+ * engine-backed commit path via the grid-engine adapter.
  */
 import { useCallback, useReducer, useRef, useState } from 'react';
 import type { Editor } from '@tiptap/core';
-import { computeEdgeRects, type BlockLayout, type EdgeRect } from './edge-rects';
-import type { EdgeMatch } from './tiebreak';
+import type { DropIntent } from '@skb/grid-engine';
 import { layoutReducer, type LayoutState } from './layout-reducer';
-// Wave 6 cf-20c-2 R2 — extracted snapshot helpers (kept the main hook
-// file under the 500-line size-check hard limit).
 import {
   measureBlockRects,
   snapshotBlocks,
   type SerializedBlock,
 } from './pipeline-snapshot';
-// cf-24: extracted hooks for the cf-22-then-cf-24 growing surface,
-// each split out to keep this file under the 500 LOC hard cap.
 import { useExternalDragStart } from './use-external-drag-start';
 import { usePointerDragListeners } from './use-pointer-drag-listeners';
 import type { BlockAffordanceKind } from '../registry-wire';
-// cf-22 R1 F2: extracted keyboard-mode hook with GRID-coord
-// tracking (per ADR-0017 D13 keyboard-parity contract).
 import {
   useKeyboardDragMode,
   type KeyboardDragSnapshot,
@@ -37,130 +31,60 @@ import {
 export interface PipelineDragState {
   /** True from drag-start until drag-end (success / cancel / mode-none). */
   readonly active: boolean;
-  /**
-   * cf-22 — true while keyboard-mode drag active. Mutually exclusive
-   * with `active` (pointer mode) per cf-22 D3. Consumers treat
-   * `active || keyboardActive` as the drag-active predicate.
-   */
+  /** True while keyboard-mode drag active (mutually exclusive with `active`). */
   readonly keyboardActive: boolean;
   /** Per-block id → bounding rect snapshot taken at drag-start. */
   readonly blockRects: Map<string, DOMRectReadOnly>;
-  /** Pre-computed 4-edge rects per block (snapshotted at drag-start). */
-  readonly edgeRects: readonly EdgeRect[];
-  /** Currently-resolved drop target (from `tiebreak`). null = no match. */
-  readonly activeMatch: EdgeMatch | null;
+  /**
+   * Wave 7 Phase 2B.2 — current drop intent inferred from the cursor's
+   * grid coord (replaces the pre-2B.2 EdgeMatch + 4-mode classification).
+   * `null` until the first dragover fires.
+   */
+  readonly activeIntent: DropIntent | null;
   /** Cursor position (for DragGhost following). */
   readonly cursor: { readonly x: number; readonly y: number } | null;
-  /** Source block being dragged (set at drag-start). */
+  /** Source block being dragged. */
   readonly sourceBlockId: string | null;
   /** Block ID that received the most recent drop (for DropPulse). */
   readonly lastDroppedBlockId: string | null;
-  /**
-   * Bounding rect of source NodeView at POST-DROP landed grid
-   * position (cf-20c-2 R2 F2 — pulse anchors at the new position
-   * per ADR-0017 D11 line 344, not the snapshot rect). Set 2 rAFs
-   * after Tiptap setNodeMarkup commits.
-   */
+  /** Bounding rect of source NodeView at POST-DROP landed position. */
   readonly lastDroppedRect: DOMRectReadOnly | null;
-  /**
-   * Monotonic dropEpoch (cf-20c-2 R3 F2) — used as React `key` on
-   * <DropPulseAtRect> to remount the animation across rapid drops
-   * within the 720ms animation window. cf-20c-2 R3 reflection:
-   * canonical "rapid-action animation isolation" pattern; reused
-   * by cf-20d resize-commit + cf-20e duplicate + cf-22 keyboard-
-   * commit via `setLastDroppedFromExternal`.
-   */
+  /** Monotonic dropEpoch for animation isolation across rapid drops. */
   readonly dropEpoch: number;
-  /** cf-22 R1 F2 — keyboard-mode current grid `col`. */
+  /** Keyboard-mode current grid `col` (1-based editor coord). */
   readonly keyboardCol: number | null;
-  /** cf-22 R1 F2 — keyboard-mode current grid `row`. */
+  /** Keyboard-mode current grid `row` (1-based editor coord). */
   readonly keyboardRow: number | null;
 }
 
 export interface UseDragDropPipelineOptions {
-  /** The Tiptap editor instance; null until onCreate fires. */
   readonly editor: Editor | null;
-  /**
-   * Selector for the grid container element that holds the .ProseMirror.
-   * Defaults to '.skb-grid'. The pipeline attaches dragover / drop
-   * listeners here.
-   */
   readonly gridSelector?: string;
-  /** cf-22 R1 F1 — totalCols for keyboard grid clamping. Default 12. */
   readonly totalCols?: number;
-  /** cf-22 R1 F1 — WCAG 4.1.3 arrow-key move announcement. */
-  readonly onAnnounceMove?: (
-    blockKind: string,
-    col: number,
-    totalCols: number,
-  ) => void;
-  /** cf-22 R1 F1 — WCAG 4.1.3 commit announcement (pointer + keyboard). */
+  readonly onAnnounceMove?: (blockKind: string, col: number, totalCols: number) => void;
   readonly onAnnounceCommit?: (blockKind: string, col: number) => void;
-  /** cf-22 R1 F1 — WCAG 4.1.3 cancel announcement (Esc / Shift+Tab). */
   readonly onAnnounceCancel?: () => void;
-  /** cf-22 R2 F3 — Tab signals useEscCancel to skip focus restore. */
-  readonly markEscDeactivationReason?: (
-    reason: 'tab-commit' | 'tab-cancel',
-  ) => void;
-  /** cf-24 — WCAG 4.1.3 external-source (PaletteSidebar) move
-   *  announcement; fires on grid dragover (per arrow-equivalent
-   *  pointer move). */
+  readonly markEscDeactivationReason?: (reason: 'tab-commit' | 'tab-cancel') => void;
   readonly onAnnounceExternalMove?: (
     blockKind: string,
     col: number,
     totalCols: number,
   ) => void;
-  /** cf-24 — WCAG 4.1.3 external-source commit announcement
-   *  (insert succeeded at landed col). */
-  readonly onAnnounceExternalCommit?: (
-    blockKind: string,
-    col: number,
-  ) => void;
+  readonly onAnnounceExternalCommit?: (blockKind: string, col: number) => void;
 }
 
 export interface UseDragDropPipelineReturn {
-  /** Reactive drag state for OutlineOverlay / DragGhost / DropPulse mounts. */
   readonly state: PipelineDragState;
-  /** Layout state (epoch + baseline + snapshot). Externalised for tests. */
   readonly layoutState: LayoutState;
-  /** Bound to the per-block drag-handle button via DragDropContext. */
   readonly onDragStart: (blockId: string, origin: { x: number; y: number }) => void;
-  /** Bound to the per-block drag-handle button's dragend (cleanup fallback). */
   readonly onDragEnd: (origin: { x: number; y: number }) => void;
-  /**
-   * cf-22 keyboard-mode entry. Called from drag-handle's onKeyDown
-   * (Enter/Space). Snapshots blocks + sets virtual cursor at source
-   * center + flips `keyboardActive = true`. Per cf-22 D3.
-   */
   readonly onDragStartKeyboard: (blockId: string) => void;
-  /**
-   * cf-24 — external-source (PaletteSidebar card) drag entry. Called
-   * from PaletteSidebar's onDragStart handler. Snapshots blocks (no
-   * source-lift since the new block isn't in the doc yet) + sets
-   * sourceBlockId = EXTERNAL_DROP_SENTINEL + flips active=true. The
-   * grid dragover/drop listener routes external-source drops through
-   * commitExternalDrop instead of commitDropAtMatch per cf-24 D7.
-   */
   readonly onDragStartExternal: (
     kind: BlockAffordanceKind,
     origin: { x: number; y: number },
   ) => void;
-  /**
-   * cf-20c-2 R1 F2 DropPulse cleanup; consumer wires
-   * `<DropPulse onAnimationEnd={clearLastDropped} />` so the pulse
-   * unmounts after its 720ms keyframe completes.
-   */
   readonly clearLastDropped: () => void;
-  /**
-   * cf-20d external setter for the success-pulse fields; cf-20d
-   * resize / cf-20e duplicate / cf-22 keyboard-commit all route
-   * their pulse through this method per the dropEpoch reuse
-   * pattern (cf-20c-2 R3 generalization).
-   */
-  readonly setLastDroppedFromExternal: (
-    blockId: string,
-    rect: DOMRectReadOnly,
-  ) => void;
+  readonly setLastDroppedFromExternal: (blockId: string, rect: DOMRectReadOnly) => void;
 }
 
 const INITIAL_LAYOUT_STATE: LayoutState = {
@@ -186,29 +110,20 @@ export function useDragDropPipeline(
 
   const [layoutState, dispatchLayout] = useReducer(layoutReducer, INITIAL_LAYOUT_STATE);
   const [active, setActive] = useState(false);
-  // Wave 6 cf-22 — separate keyboard-mode flag per cf-22 D3.
   const [keyboardActive, setKeyboardActive] = useState(false);
-  // Wave 6 cf-22 R1 F2 — grid-coord state for keyboard drag.
   const [keyboardCol, setKeyboardCol] = useState<number | null>(null);
   const [keyboardRow, setKeyboardRow] = useState<number | null>(null);
   const [keyboardSnapshot, setKeyboardSnapshot] =
     useState<KeyboardDragSnapshot | null>(null);
-  const [activeMatch, setActiveMatch] = useState<EdgeMatch | null>(null);
+  const [activeIntent, setActiveIntent] = useState<DropIntent | null>(null);
   const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
   const [sourceBlockId, setSourceBlockId] = useState<string | null>(null);
   const [lastDroppedBlockId, setLastDroppedBlockId] = useState<string | null>(null);
-  // cf-20c-2 R2 F2 + R3 F2 — pulse anchor rect + monotonic dropEpoch.
   const [lastDroppedRect, setLastDroppedRect] = useState<DOMRectReadOnly | null>(null);
   const [dropEpoch, setDropEpoch] = useState(0);
 
-  // Snapshot refs (preserved across renders; not state because
-  // changing them shouldn't trigger re-render).
   const snapshotRef = useRef<readonly SerializedBlock[]>([]);
   const blockRectsRef = useRef<Map<string, DOMRectReadOnly>>(new Map());
-  const edgeRectsRef = useRef<readonly EdgeRect[]>([]);
-  const lastCursorRef = useRef<{ x: number; y: number; t: number } | null>(null);
-  // cf-24 — external-source drag carries the selected kind through
-  // the dragover/drop lifecycle. Cleared on drag-end.
   const externalDragKindRef = useRef<BlockAffordanceKind | null>(null);
 
   const onDragStart = useCallback(
@@ -216,39 +131,20 @@ export function useDragDropPipeline(
       if (!editor) return;
       const blocks = snapshotBlocks(editor);
       const rects = measureBlockRects(editor, blocks);
-      // cf-20c-2 R1 F1: edge-rects from baseline-WITHOUT-source per
-      // ADR-0017 D6 source-lift compliance (else the user could drop
-      // onto themselves at the lifted position). Source-lift visual
-      // applied via `.skb-block-nodeview--dragging-self` CSS class
-      // bound to DragDropContext.sourceBlockId in BlockNodeView.tsx.
-      const layouts: BlockLayout[] = blocks
-        .filter((b) => b.id !== blockId)
-        .map((b) => {
-          const rect = rects.get(b.id);
-          return rect ? { blockId: b.id, rect } : null;
-        })
-        .filter((x): x is BlockLayout => x !== null);
-      const edges = computeEdgeRects(layouts);
 
       snapshotRef.current = blocks;
       blockRectsRef.current = rects;
-      edgeRectsRef.current = edges;
-      lastCursorRef.current = { x: origin.x, y: origin.y, t: performance.now() };
 
       dispatchLayout({ type: 'drag-start', sourceBlockId: blockId });
       setSourceBlockId(blockId);
       setCursor({ x: origin.x, y: origin.y });
       setActive(true);
-      setActiveMatch(null);
+      setActiveIntent(null);
     },
     [editor],
   );
 
   const onDragEnd = useCallback(() => {
-    // Fallback cleanup. Esc cancel via useEscCancel + dragend-
-    // without-drop both route here. R1 F1: announce cancel for
-    // BOTH pointer + keyboard modes (the keyboard hook only owns
-    // Tab/Shift+Tab + Enter commit; Esc goes through this path).
     if (active || keyboardActive) {
       onAnnounceCancel?.();
       dispatchLayout({ type: 'drag-end-cancel' });
@@ -257,44 +153,30 @@ export function useDragDropPipeline(
       setKeyboardCol(null);
       setKeyboardRow(null);
       setKeyboardSnapshot(null);
-      setActiveMatch(null);
+      setActiveIntent(null);
       setCursor(null);
       setSourceBlockId(null);
-      // cf-24 — clear external-drag kind on cancel; the next drag
-      // (per-block or external) starts with a fresh ref.
       externalDragKindRef.current = null;
     }
   }, [active, keyboardActive, onAnnounceCancel]);
 
-  // cf-24 — external-source drag entry. Snapshots the doc + sets
-  // sourceBlockId to the EXTERNAL_DROP_SENTINEL so the dragover/drop
-  // listener routes to commitExternalDrop instead of commitDropAtMatch
-  // (per cf-24 D7 single-branch dispatch). Per-block source-lift
-  // does NOT apply (the new block isn't in the doc yet).
-  // cf-24 — external-source drag entry (PaletteSidebar). Extracted
-  // to useExternalDragStart to keep this file under the size-check
-  // 500 LOC hard cap. Snapshots blocks (no source-lift; new block
-  // isn't in the doc yet) + sets sourceBlockId = EXTERNAL_DROP_SENTINEL.
   const onDragStartExternal = useExternalDragStart({
     editor,
     snapshotRef,
     blockRectsRef,
-    edgeRectsRef,
-    lastCursorRef,
     externalDragKindRef,
     dispatchLayout,
     setSourceBlockId,
     setCursor,
     setActive,
-    setActiveMatch,
+    setActiveIntent,
   });
 
-  // cf-22 R1 F2 — keyboard-mode entry per ADR-0017 D13. Snapshots
-  // grid coords {col, row, colSpan, rowSpan} (NOT pixel cursor;
-  // pre-R1 pixel-synth was viewport-dependent). useKeyboardDragMode
-  // window listener mutates {keyboardCol, keyboardRow} via
-  // keyboardGridStep + keyboardGridRowStep; Enter commits via
-  // setNodeMarkup writing {col, row} directly. cf-22 D3 separate-modes.
+  // Keyboard-mode entry (cf-22 R1 F2). Snapshots {col, row, colSpan,
+  // rowSpan} per ADR-0017 D13 keyboard-parity contract. Wave 7
+  // Phase 2B.2: edge-rects compute dropped (was only used by the
+  // pre-cutover OutlineOverlay rendering; the new outline uses the
+  // activeIntent directly).
   const onDragStartKeyboard = useCallback(
     (blockId: string) => {
       if (!editor) return;
@@ -304,39 +186,19 @@ export function useDragDropPipeline(
       const sourceBlock = blocks.find((b) => b.id === blockId);
       if (!sourceBlock) return;
 
-      // Build grid-coord snapshot (R1 F2 — replaces pre-R1 pixel
-      // cursor model). hasRowAttr captures whether the source had
-      // an explicit `row` (so commit knows whether to write `row`
-      // back; blocks defaulted to no `row` should stay that way).
       const startRow = typeof sourceBlock.row === 'number' ? sourceBlock.row : 1;
       const hasRowAttr = sourceBlock.row !== undefined;
-      const rowSpan =
-        typeof sourceBlock.rowSpan === 'number' ? sourceBlock.rowSpan : 1;
       const newSnapshot: KeyboardDragSnapshot = {
         blockId,
         startCol: sourceBlock.col,
         startRow,
         colSpan: sourceBlock.colSpan,
-        rowSpan,
+        rowSpan: sourceBlock.rowSpan,
         hasRowAttr,
       };
 
-      // Edge rects + block rects retained for OutlineOverlay
-      // rendering (the visual highlight reuses the same overlay
-      // primitives as pointer mode; outline at source's current
-      // position gets re-rendered on each grid-coord update).
-      const layouts: BlockLayout[] = blocks
-        .filter((b) => b.id !== blockId)
-        .map((b) => {
-          const rect = rects.get(b.id);
-          return rect ? { blockId: b.id, rect } : null;
-        })
-        .filter((x): x is BlockLayout => x !== null);
-      const edges = computeEdgeRects(layouts);
-
       snapshotRef.current = blocks;
       blockRectsRef.current = rects;
-      edgeRectsRef.current = edges;
 
       dispatchLayout({ type: 'drag-start', sourceBlockId: blockId });
       setSourceBlockId(blockId);
@@ -344,32 +206,24 @@ export function useDragDropPipeline(
       setKeyboardCol(sourceBlock.col);
       setKeyboardRow(startRow);
       setKeyboardActive(true);
-      setActiveMatch(null);
+      setActiveIntent(null);
       setCursor(null);
     },
     [editor, active, keyboardActive],
   );
 
-  // Window-level dragover / drop listeners. Extracted to
-  // usePointerDragListeners (cf-24) to keep this file under the
-  // size-check 500 LOC hard cap. The hook handles BOTH per-block +
-  // external-source pointer paths; per-block code path stays
-  // IDENTICAL byte-for-byte to cf-22 (regression net: cf-22 +
-  // cf-20c-2 + cf-20d + cf-20e Playwright specs).
   usePointerDragListeners({
     active,
     editor,
     gridSelector,
-    activeMatch,
+    activeIntent,
     sourceBlockId,
     totalCols,
     snapshotRef,
     blockRectsRef,
-    edgeRectsRef,
-    lastCursorRef,
     externalDragKindRef,
     setActive,
-    setActiveMatch,
+    setActiveIntent,
     setCursor,
     setSourceBlockId,
     setLastDroppedBlockId,
@@ -381,12 +235,6 @@ export function useDragDropPipeline(
     onAnnounceExternalCommit,
   });
 
-  // Wave 6 cf-22 R1 F2 — keyboard-mode lifecycle extracted to its
-  // own hook. R1 rewrite uses GRID-COORDINATE state (snapshot +
-  // currentCol + currentRow) per ADR-0017 D13 keyboard-parity
-  // contract; pre-R1 used pixel-cursor synth which violated parity
-  // on small viewports. R1 F1: announce callbacks wire WCAG 4.1.3.
-  // R1 F3: Tab commit + Shift+Tab cancel handled inside the hook.
   useKeyboardDragMode({
     keyboardActive,
     editor,
@@ -410,18 +258,11 @@ export function useDragDropPipeline(
     markEscDeactivationReason,
   });
 
-  // cf-20c-2 R1 F2 + R2 F2 — DropPulse cleanup; consumer's
-  // onAnimationEnd callback unmounts the pulse so the next drag
-  // cycle isn't suppressed by stale state. Also clears
-  // lastDroppedRect to avoid stale-rect leak across cycles.
   const clearLastDropped = useCallback(() => {
     setLastDroppedBlockId(null);
     setLastDroppedRect(null);
   }, []);
 
-  // Wave 6 cf-20d — external setter (resize pipeline routes the
-  // success-pulse here per cf-20d D3 dropEpoch reuse). Atomic
-  // clear-then-set + dropEpoch++ mirrors the internal R3 F2 pattern.
   const setLastDroppedFromExternal = useCallback(
     (blockId: string, rect: DOMRectReadOnly) => {
       setLastDroppedBlockId(null);
@@ -438,8 +279,7 @@ export function useDragDropPipeline(
       active,
       keyboardActive,
       blockRects: blockRectsRef.current,
-      edgeRects: edgeRectsRef.current,
-      activeMatch,
+      activeIntent,
       cursor,
       sourceBlockId,
       lastDroppedBlockId,

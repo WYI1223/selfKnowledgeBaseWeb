@@ -2,52 +2,32 @@
  * @skb/editor-shell commit-external-drop — external-source drop
  * commit helper for the cf-24 PaletteSidebar drag-to-insert path.
  *
- * Wave 6 cf-24 (2026-05-10) — sibling to cf-22 commit-drop.ts. Where
- * commit-drop handles per-block MOVE (sourceBlockId = real UUID,
- * source block already exists in the doc), commit-external-drop
- * handles INSERT (sourceBlockId = EXTERNAL_DROP_SENTINEL; the new
- * block must be created via `appendBlockKind` (cf-24 R0 F1 fix —
- * deterministic doc-end append; NOT `insertBlockKind` which would
- * insert at user's current selection) first, then positioned via
- * applyDropMode + setNodeMarkup).
+ * Wave 7 Phase 2B.2 (ADR-0020 D2) — cuts over from the cf-20c-1
+ * `applyDropMode` 4-mode algebra to `@skb/grid-engine` ops via the
+ * grid-engine adapter. Drop intent is now inferred from the cursor's
+ * (col, row) grid coord (hole-fill); the host block is NEVER shrunk.
  *
- * Per ADR-0017 v0.4 D14:
+ * Per ADR-0017 v0.4 D14 (cf-24 path):
  * 1. `appendBlockKind` appends the new block at end-of-doc with
- *    default attrs (cf-24 R0 F1 fix — deterministic-end contract;
- *    pre-fix `insertBlockKind` would respect user selection +
- *    break the post-snap diff at line 110 when user selection was
- *    mid-doc).
+ *    default attrs (cf-24 R0 F1 deterministic doc-end append).
  * 2. Snapshot the doc (now with the new block at end).
- * 3. Identify the new block's id from the live doc walk (the
- *    deterministic-end append guarantees exactly one new id in
- *    the post-snap diff).
- * 4. Build the applyDropMode input with sourceBlockId = newBlockId
- *    + remove the new block from the baseline (so applyDropMode
- *    sees the doc PRE-insertion + treats the new block as the
- *    source being placed via mode={empty | split-*}).
- *    This reuses applyDropMode's existing per-block move algebra
- *    rather than reaching for the native palette-insert (sourceBlockId
- *    === null + newBlock) path; the move path is well-tested + already
- *    handles split-* host shrinking correctly.
- * 5. Translate the mutation snapshot → setNodeMarkup chain.
+ * 3. Identify the new block's id (the only post-snap id not in
+ *    pre-snap).
+ * 4. Build engine GridState from snapshot; run `transformBlock(newId,
+ *    {col, row, colSpan, rowSpan})` to position the new block at the
+ *    inferred drop intent. Gravity collapses (ADR-0020 D3 Option A).
+ * 5. Translate the mutation → setNodeMarkup chain.
  *
  * The helper is NOT pure (mutates the editor) but has no React + no
  * DOM event interactions, so it can be unit-tested via Tiptap mock.
- *
- * Plan deviation: PR.md cf-24 D5 originally said "bypass
- * commitDropAtMatch entirely; insertBlockKind + setNodeMarkup".
- * Implementation reuses applyDropMode (which natively supports
- * sourceBlockId === null + newBlock palette insertion path per
- * apply-drop-mode.ts:65-70), routing through it for split-* host
- * shrinking correctness; AND swaps the insert helper to
- * `appendBlockKind` per cf-24 R0 F1 fix for selection-state
- * independence. Documented at orchestrator hand-back + R0 R1
- * iteration.
  */
 import type { Editor } from '@tiptap/core';
-import { applyDropMode, type IdentifiedBlock } from './apply-drop-mode';
-import type { EdgeMatch } from './tiebreak';
+import { inferDropIntent, transformBlock } from '@skb/grid-engine';
 import type { LayoutAction } from './layout-reducer';
+import {
+  engineBlockToEditorAttrs,
+  toEngineState,
+} from './grid-engine-adapter';
 import {
   liveBlockPositions,
   snapshotBlocks,
@@ -55,71 +35,60 @@ import {
 } from './pipeline-snapshot';
 import {
   appendBlockKind,
-  defaultBlockAttrsFor,
   type BlockAffordanceKind,
 } from '../registry-wire';
 
 export interface CommitExternalDropInput {
   /** The Tiptap editor instance. */
   readonly editor: Editor;
-  /** The active drop target match resolved by tiebreak. */
-  readonly activeMatch: EdgeMatch;
   /** The block kind to insert (from PaletteSidebar drag). */
   readonly kind: BlockAffordanceKind;
-  /** Pre-drop snapshot of all blocks (taken at dragstart, not
-   *  post-insert; this is the baseline applyDropMode operates on). */
+  /** Cursor (col, row) in engine 0-based coords (caller already mapped
+   *  from pixel via `cursorToEngineCoord`). */
+  readonly cursorCol: number;
+  readonly cursorRow: number;
+  /** Pre-drop snapshot of all blocks (taken at dragstart, before the
+   *  insert ran). */
   readonly preInsertSnapshot: readonly SerializedBlock[];
 }
 
 export interface CommitExternalDropResult {
   /** True when an insert + position commit succeeded (pulse fires). */
   readonly didMutate: boolean;
-  /** The id of the freshly-inserted block (post-Tiptap insert),
-   *  or null on failure. */
+  /** The id of the freshly-inserted block, or null on failure. */
   readonly insertedBlockId: string | null;
-  /** The final col / row the block landed at; consumers use this
-   *  for the WCAG 4.1.3 commit announcement (formatExternalDragCommit). */
+  /** The final col (1-based editor coord) the block landed at; for
+   *  the WCAG 4.1.3 commit announcement. */
   readonly landedCol: number | null;
 }
 
 /**
  * Commit an external-source drop. Inserts a new block of `kind` at
- * end-of-doc, then runs applyDropMode to position it at the drop
- * target (split-* may also shrink the host).
+ * end-of-doc, runs grid-engine `transformBlock` to move it to the
+ * cursor's hole-fill intent.
  *
- * Returns `{ didMutate: false, insertedBlockId: null, landedCol: null }`
- * when:
- *  - `appendBlockKind` returns null (editor invalid / unknown kind /
- *    chain run returned false).
- *  - applyDropMode throws (algebra precondition failed).
+ * Returns `{ didMutate: false, ... }` when:
+ *  - `appendBlockKind` returns null (editor invalid / unknown kind).
  *  - The newly-inserted block can't be found in the post-insert doc walk.
- *
- * Caller (use-drag-drop-pipeline.ts handleDrop) dispatches mode-none on
- * failure + clears state per the same flow as commitDropAtMatch.
+ *  - The engine rejects the cursor coord (no hole-fill possible —
+ *    e.g. cursor on an existing block; degraded UX: block stays at
+ *    end-of-doc with defaults).
  */
 export function commitExternalDrop(
   input: CommitExternalDropInput,
 ): CommitExternalDropResult {
-  const { editor, activeMatch, kind, preInsertSnapshot } = input;
+  const { editor, kind, cursorCol, cursorRow, preInsertSnapshot } = input;
 
   // Step 1: append the new block at DETERMINISTIC doc-end position
-  // via the cf-24 R0 F1 fix `appendBlockKind` helper (NOT
-  // `insertBlockKind` — see registry-wire.tsx:appendBlockKind JSDoc
-  // for the rationale). insertBlockKind inserts at the user's
-  // current selection (correct for slash-menu / PaletteModal); for
-  // external-source drag we MUST land at end so the post-insert
-  // snapshot diff identifies exactly one new block id (the appended
-  // one), with no ambiguity from selection-state-dependent position
-  // shifts.
+  // (cf-24 R0 F1 — see `appendBlockKind` JSDoc). insertBlockKind
+  // inserts at user selection (correct for slash-menu); for drag we
+  // MUST land at end so post-insert diff identifies exactly one new id.
   const insertPos = appendBlockKind(editor, kind);
   if (insertPos === null) {
     return { didMutate: false, insertedBlockId: null, landedCol: null };
   }
 
-  // Step 2: post-insert snapshot — the new block is at the END of
-  // the doc with default attrs. Identify by diffing pre-insert ids
-  // (deterministic post-cf-24-R0-F1: append-at-end guarantees
-  // exactly one new block in the post-snap that wasn't in pre-snap).
+  // Step 2: post-insert snapshot — new block at the end of the doc.
   const postInsertSnap = snapshotBlocks(editor);
   const preIds = new Set(preInsertSnapshot.map((b) => b.id));
   const newBlock = postInsertSnap.find((b) => !preIds.has(b.id));
@@ -127,96 +96,77 @@ export function commitExternalDrop(
     return { didMutate: false, insertedBlockId: null, landedCol: null };
   }
 
-  // Step 3: build the applyDropMode input. The baseline is the
-  // PRE-insert snapshot + the new block tagged with default
-  // grid attrs. Treat the new block as the source being placed
-  // via the existing per-block move algebra; that way split-* host
-  // shrinking is handled correctly without duplicating the math.
-  const defaults = defaultBlockAttrsFor(kind);
-  const newAsSource: IdentifiedBlock = {
-    id: newBlock.id,
-    col: typeof defaults.col === 'number' ? defaults.col : 1,
-    ...(typeof defaults.row === 'number' && { row: defaults.row }),
-    colSpan: typeof defaults.colSpan === 'number' ? defaults.colSpan : 12,
-    rowSpan: typeof defaults.rowSpan === 'number' ? defaults.rowSpan : 1,
-  };
+  // Step 3: build engine state from the PRE-insert snapshot (not
+  // post-insert — we want hole-fill against the doc state the user
+  // sees during dragover) + infer intent at the cursor coord.
+  const { state: preInsertState } = toEngineState(preInsertSnapshot);
+  const intent = inferDropIntent(
+    preInsertState,
+    cursorCol,
+    cursorRow,
+    nodeNameToKindLocal(newBlock.nodeName),
+  );
 
-  // Convert preInsertSnapshot (SerializedBlock[]) to IdentifiedBlock[]
-  // so applyDropMode can consume it. Add the new block at the end
-  // (so applyDropMode's "remove source from baseline" branch finds it).
-  const baselineWithSource = {
-    blocks: [
-      ...preInsertSnapshot.map((b): IdentifiedBlock => ({
-        id: b.id,
-        col: b.col,
-        ...(b.row !== undefined && { row: b.row }),
-        colSpan: b.colSpan,
-        rowSpan: b.rowSpan,
-      })),
-      newAsSource,
-    ],
-  };
-
-  // Step 4: run applyDropMode. EdgeMatch.mode is always one of the
-  // 4 split-* values (per tiebreak EdgeMode union); 'empty' / 'none'
-  // are pipeline-level concepts not produced by the tiebreak path.
-  // applyDropMode handles host-shrinking + source placement
-  // automatically for split-* modes.
-  let mutation;
-  try {
-    mutation = applyDropMode({
-      baseline: baselineWithSource,
-      mode: activeMatch.mode,
-      sourceBlockId: newBlock.id,
-      hostBlockId: activeMatch.blockId,
-    });
-  } catch {
-    // Algebra precondition failed (e.g. split-* on too-small host).
-    // The block was inserted at end-of-doc with defaults — that's
-    // an acceptable degraded UX (block is in the doc, just not at
-    // the user's exact target slot). We return didMutate=true with
-    // landedCol from defaults so the announcer fires + user sees
-    // the new block.
+  if (intent.intent !== 'place') {
+    // Degraded UX: insert succeeded but cursor can't anchor. Block
+    // remains at end-of-doc with defaults. Caller still counts as a
+    // mutation (the user sees a new block).
     return {
       didMutate: true,
       insertedBlockId: newBlock.id,
-      landedCol: newAsSource.col,
+      landedCol: newBlock.col,
     };
   }
 
-  // Step 5: translate mutation → setNodeMarkup chain. We need to
-  // walk the post-insert doc (the new block is now in it) and
-  // setNodeMarkup for any block whose attrs changed.
+  // Step 4: build the POST-insert engine state + transform the new
+  // block to the intent's anchor + size. Gravity runs after
+  // (ADR-0020 D3 Option A).
+  const { state: postInsertState } = toEngineState(postInsertSnap);
+  const transformResult = transformBlock(postInsertState, newBlock.id, {
+    col: intent.col,
+    row: intent.row,
+    colSpan: intent.colSpan,
+    rowSpan: intent.rowSpan,
+  });
+  if (!transformResult.ok) {
+    return {
+      didMutate: true,
+      insertedBlockId: newBlock.id,
+      landedCol: newBlock.col,
+    };
+  }
+
+  // Step 5: write back mutations via setNodeMarkup. Walk post-op state
+  // + diff against post-insert (pre-op) state; emit setNodeMarkup for
+  // every changed block.
   const livePositions = liveBlockPositions(editor, postInsertSnap);
   const chain = editor.chain();
   let didMutate = false;
-  let landedCol = newAsSource.col;
-  for (const mutated of mutation.blocks) {
-    const baselineBlock = baselineWithSource.blocks.find((b) => b.id === mutated.id);
-    if (!baselineBlock) continue;
-    const sameCol = baselineBlock.col === mutated.col;
-    const sameRow = (baselineBlock.row ?? null) === (mutated.row ?? null);
-    const sameColSpan = baselineBlock.colSpan === mutated.colSpan;
-    const sameRowSpan = baselineBlock.rowSpan === mutated.rowSpan;
-    if (mutated.id === newBlock.id) {
-      // Track the landed col for the announcement even if attrs
-      // happen to equal defaults (e.g. drop at empty col=1).
-      landedCol = mutated.col;
+  let landedCol = newBlock.col;
+  for (const next of transformResult.state.blocks) {
+    const prev = postInsertState.blocks.find((b) => b.id === next.id);
+    if (!prev) continue;
+    const sameCol = prev.col === next.col;
+    const sameRow = prev.row === next.row;
+    const sameColSpan = prev.colSpan === next.colSpan;
+    const sameRowSpan = prev.rowSpan === next.rowSpan;
+    if (next.id === newBlock.id) {
+      landedCol = next.col + 1; // engine 0-based → editor 1-based
     }
     if (sameCol && sameRow && sameColSpan && sameRowSpan) continue;
-    const live = livePositions.get(mutated.id);
+    const live = livePositions.get(next.id);
     if (!live) continue;
+    const editorAttrs = engineBlockToEditorAttrs(next);
     chain.command(({ tr }) => {
       const node = tr.doc.nodeAt(live.pos);
       if (!node) return false;
-      const nextAttrs = {
+      tr.setNodeMarkup(live.pos, undefined, {
         ...node.attrs,
-        col: mutated.col,
-        colSpan: mutated.colSpan,
-        rowSpan: mutated.rowSpan,
-        ...(mutated.row !== undefined && { row: mutated.row }),
-      };
-      tr.setNodeMarkup(live.pos, undefined, nextAttrs);
+        col: editorAttrs.col,
+        row: editorAttrs.row,
+        colSpan: editorAttrs.colSpan,
+        rowSpan: editorAttrs.rowSpan,
+      });
       return true;
     });
     didMutate = true;
@@ -230,10 +180,32 @@ export function commitExternalDrop(
   };
 }
 
+/** Local mirror of grid-engine-adapter's nodeNameToKind (kept private
+ *  to avoid exposing the helper publicly while keeping coupling tight). */
+function nodeNameToKindLocal(nodeName: string): import('@skb/grid-engine').BlockKind {
+  switch (nodeName) {
+    case 'markdown':
+    case 'image':
+    case 'code':
+    case 'callout':
+    case 'math':
+    case 'pdf':
+    case 'jupyter':
+    case 'nn-viz':
+    case 'agent-flow':
+      return nodeName;
+    case 'componentCode':
+      return 'code';
+    default:
+      return 'markdown';
+  }
+}
+
 export interface RunExternalDropDispatchInput {
   readonly editor: Editor;
-  readonly activeMatch: EdgeMatch;
   readonly kind: BlockAffordanceKind;
+  readonly cursorCol: number;
+  readonly cursorRow: number;
   readonly preInsertSnapshot: readonly SerializedBlock[];
   readonly dispatchLayout: (action: LayoutAction) => void;
   readonly setLastDroppedBlockId: (id: string | null) => void;
@@ -245,28 +217,22 @@ export interface RunExternalDropDispatchInput {
 }
 
 /**
- * Wave 6 cf-24 — pipeline-side dispatch wrapper around
- * commitExternalDrop. Encapsulates the layout reducer dispatch +
- * announce + 2-rAF drop-pulse measurement so the use-drag-drop-pipeline
- * file stays under the size-check 500 LOC hard cap. Mirrors the
- * shape of commit-drop.ts's commitDropAtMatch return-then-caller-handles
- * pattern, but pushes the dispatch + pulse into the helper because
- * the cf-24 path has more branches (fail / no-mutation / success +
- * pulse) than commit-drop's two-state result.
+ * Pipeline-side dispatch wrapper around `commitExternalDrop`.
+ * Encapsulates the layout reducer dispatch + announce + 2-rAF
+ * drop-pulse measurement.
  *
- * Returns true if the caller should treat the drop as a successful
- * commit (clear active state via the standard reset). Returns false
- * on degraded UX (insert ran but positioning failed; cf-24 still
- * counts that as a successful insert from the user's POV — the
- * block is in the doc).
+ * Returns true on successful commit (caller resets active state);
+ * false on degraded UX (insert ran but positioning failed; from the
+ * user's POV the block is in the doc).
  */
 export function runExternalDropDispatch(
   input: RunExternalDropDispatchInput,
 ): boolean {
   const {
     editor,
-    activeMatch,
     kind,
+    cursorCol,
+    cursorRow,
     preInsertSnapshot,
     dispatchLayout,
     setLastDroppedBlockId,
@@ -276,16 +242,16 @@ export function runExternalDropDispatch(
   } = input;
   const extResult = commitExternalDrop({
     editor,
-    activeMatch,
     kind,
+    cursorCol,
+    cursorRow,
     preInsertSnapshot,
   });
   if (!extResult.didMutate || !extResult.insertedBlockId) {
     dispatchLayout({ type: 'drag-end-mode-none' });
     return false;
   }
-  // Re-snapshot post-insert + dispatch reducer success so layoutEpoch
-  // advances per ADR-0016 D12.
+  // Re-snapshot post-insert + dispatch reducer success per ADR-0016 D12.
   const postSnap = snapshotBlocks(editor);
   dispatchLayout({
     type: 'drag-end-success',
@@ -301,8 +267,7 @@ export function runExternalDropDispatch(
   if (extResult.landedCol !== null) {
     onAnnounceExternalCommit?.(kind, extResult.landedCol);
   }
-  // Drop pulse on the freshly-inserted block (2-rAF anchor measurement
-  // per cf-20c-2 R3 F2 pattern).
+  // Drop pulse on the freshly-inserted block (2-rAF anchor measurement).
   setLastDroppedBlockId(null);
   setLastDroppedRect(null);
   const insertedId = extResult.insertedBlockId;

@@ -18,7 +18,18 @@
  * setNodeMarkup.
  */
 import type { Editor } from '@tiptap/core';
-import type { IdentifiedBlock } from './apply-drop-mode';
+import type { BlockGridPosition } from '@skb/block-foundation';
+
+/**
+ * Wave 7 Phase 2B.2 (ADR-0020 D2): the legacy `IdentifiedBlock` from
+ * the deleted `apply-drop-mode.ts` is replaced by a direct extension
+ * of `BlockGridPosition` + an `id` field. `SerializedBlock` keeps the
+ * same fields (id, col, row?, colSpan, rowSpan, pmPos, nodeName) so
+ * downstream callers remain byte-equivalent.
+ */
+export interface IdentifiedBlock extends BlockGridPosition {
+  readonly id: string;
+}
 
 export interface SerializedBlock extends IdentifiedBlock {
   readonly pmPos: number;

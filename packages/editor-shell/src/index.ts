@@ -58,10 +58,6 @@ export {
 export type { GridPlacementInput } from './grid-style';
 export { useResponsiveCols, RESPONSIVE_BREAKPOINTS } from './responsive-cols';
 export type { UseResponsiveColsOptions, ViewportCols } from './responsive-cols';
-export { EDGE_W, GAP, computeEdgeRects } from './drag-drop/edge-rects';
-export type { EdgeRect, BlockLayout } from './drag-drop/edge-rects';
-export { tiebreak, findMatches } from './drag-drop/tiebreak';
-export type { EdgeMatch, DragVelocity } from './drag-drop/tiebreak';
 export { OutlineOverlay } from './drag-drop/outline-overlay';
 export type { OutlineOverlayProps } from './drag-drop/outline-overlay';
 export { DropPulse, dropPulseClassName } from './drag-drop/drop-pulse';
@@ -72,15 +68,10 @@ export { useEscCancel } from './drag-drop/esc-cancel';
 export type { EscCancelOptions } from './drag-drop/esc-cancel';
 export { layoutReducer } from './drag-drop/layout-reducer';
 export type { GridSnapshot, LayoutAction, LayoutState } from './drag-drop/layout-reducer';
-export { applyDropMode } from './drag-drop/apply-drop-mode';
-export type {
-  ApplyDropModeInput,
-  DropMode,
-  GridSnapshotIdentified,
-  IdentifiedBlock,
-} from './drag-drop/apply-drop-mode';
-// Wave 7 Phase 2B.1 — grid-engine adapter (replacement for applyDropMode;
-// full cutover lands in Phase 2B.2 per ADR-0020 D2).
+// Wave 7 Phase 2B.2 (ADR-0020 D2) — grid-engine adapter is now the
+// sole drag-drop commit surface; the cf-20c-1 4-mode `applyDropMode`
+// path + its support modules (`edge-rects`, `tiebreak`) have been
+// deleted.
 export {
   commitInsertAtCursor,
   commitMoveAtCursor,

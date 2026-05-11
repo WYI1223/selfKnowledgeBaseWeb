@@ -55,98 +55,11 @@ test.describe('cf-25 R2 F6 — markdown wrapper-block behavioral specs', () => {
   test.afterEach(restoreSampleBlocksFixture);
   test.afterAll(restoreSampleBlocksFixture);
 
-  test('AC3-2a — drag a markdown block to another block triggers cf-20c-2 split + announcer fires Moved', async ({
-    page,
-  }) => {
-    // Install the cf-25 demo so the doc has at least 2 markdown
-    // blocks; we drag the FIRST markdown block over the SECOND to
-    // exercise cf-20c-2 split-right algebra. Markdown shares the
-    // per-block drag pipeline IDENTICALLY (cf-25 D8 + ADR-0017 v0.5
-    // D15) so this exercises the same applyDropMode + setNodeMarkup +
-    // DropPulse path as the cf-20c-2 R1 F4 spec, but with a markdown
-    // source.
-    installCf25Demo();
-    await page.goto(EDIT_URL);
-    await page.waitForSelector('.skb-block-nodeview[data-skb-block-kind="markdown"]');
-    await page.waitForTimeout(500);
-
-    const markdownWrappers = await page
-      .locator('.skb-block-nodeview[data-skb-block-kind="markdown"]')
-      .all();
-    expect(markdownWrappers.length).toBeGreaterThanOrEqual(2);
-    const sourceWrapper = markdownWrappers[0];
-    const targetWrapper = markdownWrappers[1];
-    const sourceHandle = sourceWrapper.locator('.skb-block-nodeview__drag-handle');
-    const sourceBlockId = await sourceHandle.getAttribute('data-skb-drag-handle');
-    expect(sourceBlockId).toMatch(/^\d+$/);
-
-    // Scroll the target INTO view so the cf-20c-2 drop pipeline's
-    // elementFromPoint hit-test finds the target. Without this the
-    // target may sit below the viewport and the drop event lands on
-    // null / outside the grid → no mutation.
-    await targetWrapper.scrollIntoViewIfNeeded();
-    await page.waitForTimeout(100);
-
-    const targetBox = await targetWrapper.boundingBox();
-    if (!targetBox) throw new Error('target markdown has no box');
-    const dropX = targetBox.x + targetBox.width - 6;
-    const dropY = targetBox.y + targetBox.height / 2;
-
-    const mtimeBefore = sampleBlocksMdxMtimeMs();
-    const sourceColBefore = await sourceWrapper.evaluate(
-      (el) => (el as HTMLElement).style.gridColumn,
+  test('AC3-2a — drag a markdown block to another block triggers cf-20c-2 split + announcer fires Moved', () => {
+    test.skip(
+      true,
+      'REMOVED-IN-WAVE-7-PHASE-2B: cf-20c-1 split-with-shrink replaced by hole-fill that rejects cursor-on-occupied. New drag-on-empty coverage lands in Phase 2C.',
     );
-
-    await sourceHandle.dispatchEvent('dragstart');
-    await page.waitForTimeout(50);
-    await page.evaluate(
-      ({ x, y }) => {
-        const grid = document.querySelector('.skb-grid');
-        if (!grid) throw new Error('no .skb-grid');
-        const dt = new DataTransfer();
-        grid.dispatchEvent(
-          new DragEvent('dragover', {
-            bubbles: true,
-            cancelable: true,
-            clientX: x,
-            clientY: y,
-            dataTransfer: dt,
-          }),
-        );
-        return new Promise<void>((resolve) => {
-          requestAnimationFrame(() => {
-            grid.dispatchEvent(
-              new DragEvent('drop', {
-                bubbles: true,
-                cancelable: true,
-                clientX: x,
-                clientY: y,
-                dataTransfer: dt,
-              }),
-            );
-            requestAnimationFrame(() => resolve());
-          });
-        });
-      },
-      { x: dropX, y: dropY },
-    );
-    await page.waitForTimeout(300);
-
-    const sourceColAfter = await sourceWrapper.evaluate(
-      (el) => (el as HTMLElement).style.gridColumn,
-    );
-    expect(sourceColAfter).not.toBe(sourceColBefore);
-    await expect(
-      page.locator('[data-skb-drop-pulse-anchor]').first(),
-    ).toBeAttached({ timeout: 1_500 });
-    await expect
-      .poll(
-        () => page.locator('[data-skb-live-announcer]').textContent(),
-        { timeout: 5_000 },
-      )
-      .toContain('Moved markdown block');
-
-    await waitForAutosaveLanded(page, mtimeBefore, AUTOSAVE_SETTLE_MS);
   });
 
   test('AC3-2b — right-edge resize on a markdown block mutates colSpan + fires Resized', async ({

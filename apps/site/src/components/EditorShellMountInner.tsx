@@ -439,10 +439,10 @@ export function EditorShellMountInner({
 
       {(pipeline.state.active || pipeline.state.keyboardActive) && (
         <>
-          <OutlineOverlay
-            activeMatch={pipeline.state.activeMatch}
-            blockRects={pipeline.state.blockRects}
-          />
+          {/* Wave 7 Phase 2B.2 — OutlineOverlay renders a single
+              hole-fill intent rect (replaces 4-mode EdgeMatch
+              accent). Geometry auto-read from `.skb-grid`. */}
+          <OutlineOverlay activeIntent={pipeline.state.activeIntent} />
           {pipeline.state.cursor && (
             <DragGhost
               cursorX={pipeline.state.cursor.x}

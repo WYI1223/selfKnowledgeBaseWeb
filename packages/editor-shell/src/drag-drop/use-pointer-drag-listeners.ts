@@ -2,19 +2,23 @@
  * @skb/editor-shell usePointerDragListeners — extracted dragover /
  * drop window-listener useEffect for the pipeline's pointer mode.
  *
- * Wave 6 cf-24 (2026-05-10) — separated from `use-drag-drop-pipeline.ts`
- * to keep the pipeline file under the size-check 500 LOC hard cap.
- * Owns the full pointer-mode dragover + drop lifecycle: tiebreak →
- * activeMatch → commit (commitDropAtMatch for per-block, runExternalDropDispatch
- * for external) → state cleanup. cf-22 keyboard mode is in
- * `use-keyboard-drag-mode.ts`; this file handles ONLY pointer mode.
+ * Wave 7 Phase 2B.2 (ADR-0020 D2) — cuts over from tiebreak/edge-rects
+ * 4-mode classification to cursor → grid-coord + grid-engine
+ * `inferDropIntent` hole-fill placement. The host block is NEVER
+ * shrunk; on-drop calls `commitMoveAtCursor` (per-block) or
+ * `runExternalDropDispatch` (palette insert).
  */
 import { useEffect } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import type { Editor } from '@tiptap/core';
-import { findMatches, tiebreak, type EdgeMatch } from './tiebreak';
-import { computeEdgeRects, type EdgeRect } from './edge-rects';
-import { commitDropAtMatch } from './commit-drop';
+import type { DropIntent } from '@skb/grid-engine';
+import {
+  commitMoveAtCursor,
+  cursorToEngineCoord,
+  intentForInsert,
+  intentForMove,
+  toEngineState,
+} from './grid-engine-adapter';
 import {
   liveBlockPositions,
   type SerializedBlock,
@@ -24,22 +28,18 @@ import { isExternalDragSource } from './external-drop-source';
 import type { LayoutAction } from './layout-reducer';
 import type { BlockAffordanceKind } from '../registry-wire';
 
-const VELOCITY_WINDOW_MS = 16;
-
 export interface UsePointerDragListenersOptions {
   readonly active: boolean;
   readonly editor: Editor | null;
   readonly gridSelector: string;
-  readonly activeMatch: EdgeMatch | null;
+  readonly activeIntent: DropIntent | null;
   readonly sourceBlockId: string | null;
   readonly totalCols: number;
   readonly snapshotRef: MutableRefObject<readonly SerializedBlock[]>;
   readonly blockRectsRef: MutableRefObject<Map<string, DOMRectReadOnly>>;
-  readonly edgeRectsRef: MutableRefObject<readonly EdgeRect[]>;
-  readonly lastCursorRef: MutableRefObject<{ x: number; y: number; t: number } | null>;
   readonly externalDragKindRef: MutableRefObject<BlockAffordanceKind | null>;
   readonly setActive: Dispatch<SetStateAction<boolean>>;
-  readonly setActiveMatch: Dispatch<SetStateAction<EdgeMatch | null>>;
+  readonly setActiveIntent: Dispatch<SetStateAction<DropIntent | null>>;
   readonly setCursor: Dispatch<SetStateAction<{ x: number; y: number } | null>>;
   readonly setSourceBlockId: Dispatch<SetStateAction<string | null>>;
   readonly setLastDroppedBlockId: Dispatch<SetStateAction<string | null>>;
@@ -55,6 +55,27 @@ export interface UsePointerDragListenersOptions {
     | undefined;
 }
 
+/**
+ * Read grid container's pixel geometry from CSS custom props.
+ * `.skb-grid` declares `--row-h` and `--gap` per ADR-0016 D5.
+ * Returns the cursor → coord conversion params (`oneFrPx`, `rowPx`)
+ * + the container's bounding rect, or null if grid not in DOM yet.
+ */
+function readGridGeometry(
+  gridEl: Element,
+  totalCols: number,
+): { rect: DOMRect; oneFrPx: number; rowPx: number } | null {
+  const rect = gridEl.getBoundingClientRect();
+  const style = getComputedStyle(gridEl);
+  const rowH = parseFloat(style.getPropertyValue('--row-h')) || 48;
+  const gap = parseFloat(style.getPropertyValue('--gap')) || 14;
+  const rowPx = rowH + gap;
+  // 1 fr = (containerWidth - (totalCols - 1) * gap) / totalCols; one
+  // column's pixel pitch = 1fr + gap (i.e., total / totalCols ≈ rect.width / totalCols).
+  const oneFrPx = (rect.width + gap) / totalCols;
+  return { rect, oneFrPx, rowPx };
+}
+
 export function usePointerDragListeners(
   options: UsePointerDragListenersOptions,
 ): void {
@@ -62,16 +83,14 @@ export function usePointerDragListeners(
     active,
     editor,
     gridSelector,
-    activeMatch,
+    activeIntent,
     sourceBlockId,
     totalCols,
     snapshotRef,
     blockRectsRef,
-    edgeRectsRef,
-    lastCursorRef,
     externalDragKindRef,
     setActive,
-    setActiveMatch,
+    setActiveIntent,
     setCursor,
     setSourceBlockId,
     setLastDroppedBlockId,
@@ -83,44 +102,51 @@ export function usePointerDragListeners(
     onAnnounceExternalCommit,
   } = options;
 
-  // Reference computeEdgeRects so the import isn't dropped by tree-
-  // shake; the actual edge-rect snapshot is owned by onDragStart in
-  // the pipeline.
-  void computeEdgeRects;
+  // Reference blockRectsRef to keep the existing snapshot contract
+  // (the pipeline measures + stores rects at drag-start; we don't
+  // consume them in the new model since the cursor-coord path
+  // doesn't need per-block rect data, but the snapshot ref is still
+  // exposed for overlay rendering by consumers).
+  void blockRectsRef;
 
   useEffect(() => {
     if (!active) return;
+
+    const grid = document.querySelector(gridSelector);
+    if (!grid) return;
 
     const handleDragOver = (event: DragEvent): void => {
       event.preventDefault();
       const x = event.clientX;
       const y = event.clientY;
-      const last = lastCursorRef.current;
-      const now = performance.now();
-      const velocity =
-        last && now - last.t < VELOCITY_WINDOW_MS * 4
-          ? {
-              vx: ((x - last.x) / Math.max(1, now - last.t)) * VELOCITY_WINDOW_MS,
-              vy: ((y - last.y) / Math.max(1, now - last.t)) * VELOCITY_WINDOW_MS,
-            }
-          : { vx: 0, vy: 0 };
-      lastCursorRef.current = { x, y, t: now };
       setCursor({ x, y });
-      const matches = findMatches(x, y, [...edgeRectsRef.current], blockRectsRef.current);
-      const winner = tiebreak(matches, velocity);
-      setActiveMatch(winner);
+      const geo = readGridGeometry(grid, totalCols);
+      if (!geo) return;
+      const { col, row } = cursorToEngineCoord(x, y, geo.rect, geo.oneFrPx, geo.rowPx);
+      const { state } = toEngineState(snapshotRef.current);
       const extKind = externalDragKindRef.current;
-      if (extKind && winner) {
-        // EdgeMatch.mode is always one of the 4 split-* values;
-        // use the host's col as the move-announcement target.
-        const host = snapshotRef.current.find((b) => b.id === winner.blockId);
-        onAnnounceExternalMove?.(extKind, host?.col ?? 1, totalCols);
+      let intent: DropIntent;
+      if (extKind) {
+        intent = intentForInsert(state, nodeNameToKindLocal(extKind), col, row);
+        if (intent.intent === 'place') {
+          onAnnounceExternalMove?.(extKind, intent.col + 1, totalCols);
+        }
+      } else if (sourceBlockId) {
+        const result = intentForMove(state, sourceBlockId, col, row);
+        if (!result) {
+          setActiveIntent(null);
+          return;
+        }
+        intent = result;
+      } else {
+        return;
       }
+      setActiveIntent(intent);
     };
 
     const resetState = (): void => {
       setActive(false);
-      setActiveMatch(null);
+      setActiveIntent(null);
       setCursor(null);
       setSourceBlockId(null);
       externalDragKindRef.current = null;
@@ -128,20 +154,34 @@ export function usePointerDragListeners(
 
     const handleDrop = (event: DragEvent): void => {
       event.preventDefault();
-      const winner = activeMatch;
-      if (!editor || !winner || !sourceBlockId) {
+      if (!editor || !sourceBlockId) {
         dispatchLayout({ type: 'drag-end-mode-none' });
         resetState();
         return;
       }
-      // cf-24 — branch on external-source drag (PaletteSidebar).
+      const geo = readGridGeometry(grid, totalCols);
+      if (!geo) {
+        dispatchLayout({ type: 'drag-end-mode-none' });
+        resetState();
+        return;
+      }
+      const { col, row } = cursorToEngineCoord(
+        event.clientX,
+        event.clientY,
+        geo.rect,
+        geo.oneFrPx,
+        geo.rowPx,
+      );
+
+      // External-source (palette) drop branches into commitExternalDrop.
       if (isExternalDragSource(sourceBlockId)) {
         const kind = externalDragKindRef.current;
         if (kind) {
           runExternalDropDispatch({
             editor,
-            activeMatch: winner,
             kind,
+            cursorCol: col,
+            cursorRow: row,
             preInsertSnapshot: snapshotRef.current,
             dispatchLayout,
             setLastDroppedBlockId,
@@ -155,49 +195,45 @@ export function usePointerDragListeners(
         resetState();
         return;
       }
-      // Per-block path — UNCHANGED byte-for-byte from cf-22.
-      const result = commitDropAtMatch(
+
+      // Per-block move path.
+      const result = commitMoveAtCursor(
         editor,
-        winner,
-        sourceBlockId,
         snapshotRef.current,
+        sourceBlockId,
+        col,
+        row,
       );
-      if (result.mutation === null) {
+      if (!result.mutation) {
         dispatchLayout({ type: 'drag-end-mode-none' });
-        setActive(false);
-        setActiveMatch(null);
-        setCursor(null);
-        setSourceBlockId(null);
+        resetState();
         return;
       }
-      const didMutate = result.didMutate;
-      const reducerSnapshot = {
-        blocks: result.mutation.blocks.map((b) => ({
-          col: b.col,
-          ...(b.row !== undefined && { row: b.row }),
-          colSpan: b.colSpan,
-          rowSpan: b.rowSpan,
-        })),
-      };
-      dispatchLayout({ type: 'drag-end-success', mutation: reducerSnapshot });
-      if (didMutate) {
-        const sourceMutation = result.mutation.blocks.find(
-          (b) => b.id === sourceBlockId,
-        );
-        const sourceSnapBlock = snapshotRef.current.find(
-          (b) => b.id === sourceBlockId,
-        );
+      // Reducer-friendly snapshot (1-based editor coords).
+      dispatchLayout({
+        type: 'drag-end-success',
+        mutation: {
+          blocks: result.mutation.blocks.map((b) => ({
+            col: b.col + 1,
+            row: b.row + 1,
+            colSpan: b.colSpan,
+            rowSpan: b.rowSpan,
+          })),
+        },
+      });
+      if (result.didMutate) {
+        const sourceMutation = result.mutation.blocks.find((b) => b.id === sourceBlockId);
+        const sourceSnapBlock = snapshotRef.current.find((b) => b.id === sourceBlockId);
         if (sourceMutation && sourceSnapBlock) {
-          onAnnounceCommit?.(sourceSnapBlock.nodeName, sourceMutation.col);
+          onAnnounceCommit?.(sourceSnapBlock.nodeName, sourceMutation.col + 1);
         }
-      }
-      setLastDroppedBlockId(null);
-      setLastDroppedRect(null);
-      if (didMutate) {
+        // Pulse rect: 2 rAFs after setNodeMarkup commits.
+        setLastDroppedBlockId(null);
+        setLastDroppedRect(null);
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
-            const newLivePositions = liveBlockPositions(editor, snapshotRef.current);
-            const newSourceLive = newLivePositions.get(sourceBlockId);
+            const newLive = liveBlockPositions(editor, snapshotRef.current);
+            const newSourceLive = newLive.get(sourceBlockId);
             if (!newSourceLive) return;
             const dom = editor.view.nodeDOM(newSourceLive.pos);
             if (dom instanceof HTMLElement) {
@@ -208,14 +244,9 @@ export function usePointerDragListeners(
           });
         });
       }
-      setActive(false);
-      setActiveMatch(null);
-      setCursor(null);
-      setSourceBlockId(null);
+      resetState();
     };
 
-    const grid = document.querySelector(gridSelector);
-    if (!grid) return;
     grid.addEventListener('dragover', handleDragOver as EventListener);
     grid.addEventListener('drop', handleDrop as EventListener);
     return () => {
@@ -226,16 +257,13 @@ export function usePointerDragListeners(
     active,
     editor,
     gridSelector,
-    activeMatch,
+    activeIntent,
     sourceBlockId,
     totalCols,
     snapshotRef,
-    blockRectsRef,
-    edgeRectsRef,
-    lastCursorRef,
     externalDragKindRef,
     setActive,
-    setActiveMatch,
+    setActiveIntent,
     setCursor,
     setSourceBlockId,
     setLastDroppedBlockId,
@@ -246,4 +274,23 @@ export function usePointerDragListeners(
     onAnnounceExternalMove,
     onAnnounceExternalCommit,
   ]);
+}
+
+function nodeNameToKindLocal(nodeName: string): import('@skb/grid-engine').BlockKind {
+  switch (nodeName) {
+    case 'markdown':
+    case 'image':
+    case 'code':
+    case 'callout':
+    case 'math':
+    case 'pdf':
+    case 'jupyter':
+    case 'nn-viz':
+    case 'agent-flow':
+      return nodeName;
+    case 'componentCode':
+      return 'code';
+    default:
+      return 'markdown';
+  }
 }
