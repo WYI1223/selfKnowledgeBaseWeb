@@ -77,16 +77,16 @@ test('sample-blocks edit route — cf-20c-2 drag-handle wire (button + outline +
   // (a) Per-block drag handles present + structured per cf-20c-2 D2.
   // Wave 6 cf-25 — count component-block drag-handles only (exclude
   // markdown wrapper-blocks added by the chunking pass; cf-25 adds
-  // ~10-11 markdown drag-handles to the pre-cf-25 14 component-block
+  // ~10-11 markdown drag-handles to the pre-cf-25 15 component-block (cf-25 D14 demo +1 image)
   // drag-handles, total fluctuates with fixture content). The cf-25
   // markdown count is asserted by sample-blocks-markdown-blocks.spec.ts.
   const handles = page.locator(
     '.skb-block-nodeview:not([data-skb-block-kind="markdown"]) .skb-block-nodeview__drag-handle',
   );
-  // The fixture has 14 component-block NodeViews (4 callout + 1 code + 2 image +
+  // The fixture has 15 component-block (cf-25 D14 demo +1 image) NodeViews (4 callout + 1 code + 3 image (cf-25 D14 demo +1) +
   // 2 math + 2 pdf + 1 jupyter + 1 nn-viz + 1 agent-flow). Each gets
   // one drag-handle button. Pre-drag the count is 14.
-  await expect(handles).toHaveCount(14);
+  await expect(handles).toHaveCount(15);
 
   const firstHandle = handles.first();
   expect(await firstHandle.getAttribute('aria-label')).toBe('Drag block');
@@ -123,8 +123,8 @@ test('sample-blocks edit route — cf-20c-2 drag-handle wire (button + outline +
 
   // Post-cancel: handles still present (cancel doesn't tear down the
   // editor; the drag is cleanly aborted). cf-25 selector still
-  // filters to the 14 component-block NodeViews.
-  await expect(handles).toHaveCount(14);
+  // filters to the 15 component-block (cf-25 D14 demo +1 image) NodeViews.
+  await expect(handles).toHaveCount(15);
 
   await page.screenshot({ fullPage: false, path: SCREENSHOT_PATH });
 });
@@ -448,7 +448,7 @@ test('cf-20c-2 — drag handles are hidden on mobile (≤768px) per cf-20b R1 vi
   // doesn't conditionally render based on viewport); the CSS hides
   // them. Count should still be 14 in DOM but each one's computed
   // display === 'none'.
-  await expect(handles).toHaveCount(14);
+  await expect(handles).toHaveCount(15);
   const firstDisplay = await handles.first().evaluate((el) => window.getComputedStyle(el).display);
   expect(firstDisplay).toBe('none');
 });

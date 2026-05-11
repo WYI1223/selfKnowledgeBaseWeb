@@ -61,9 +61,9 @@ test('sample-blocks edit route — cf-20d resize-handles wire (handle visibility
   const rightHandles = page.locator(`${COMPONENT_NODE} .gblock-handle.right`);
   const bottomHandles = page.locator(`${COMPONENT_NODE} .gblock-handle.bottom`);
   const cornerHandles = page.locator(`${COMPONENT_NODE} .gblock-handle.corner`);
-  await expect(rightHandles).toHaveCount(14);
-  await expect(bottomHandles).toHaveCount(14);
-  await expect(cornerHandles).toHaveCount(14);
+  await expect(rightHandles).toHaveCount(15);
+  await expect(bottomHandles).toHaveCount(15);
+  await expect(cornerHandles).toHaveCount(15);
 
   // First right handle has the expected ADR-0017 D9 + cf-20d data
   // attributes + ew-resize cursor per v2-styles.css:271.
@@ -195,7 +195,7 @@ test('cf-20d — resize handles hidden on mobile (≤768px) per ADR-0017 D9 view
   // Wave 6 cf-25 — filter to component-block handles only.
   const COMPONENT_NODE = '.skb-block-nodeview:not([data-skb-block-kind="markdown"])';
   const rightHandles = page.locator(`${COMPONENT_NODE} .gblock-handle.right`);
-  await expect(rightHandles).toHaveCount(14);
+  await expect(rightHandles).toHaveCount(15);
   const firstDisplay = await rightHandles.first().evaluate(
     (el) => window.getComputedStyle(el).display,
   );
@@ -204,8 +204,8 @@ test('cf-20d — resize handles hidden on mobile (≤768px) per ADR-0017 D9 view
   // Bottom + corner handles also hidden.
   const bottomHandles = page.locator(`${COMPONENT_NODE} .gblock-handle.bottom`);
   const cornerHandles = page.locator(`${COMPONENT_NODE} .gblock-handle.corner`);
-  await expect(bottomHandles).toHaveCount(14);
-  await expect(cornerHandles).toHaveCount(14);
+  await expect(bottomHandles).toHaveCount(15);
+  await expect(cornerHandles).toHaveCount(15);
   expect(
     await bottomHandles.first().evaluate(
       (el) => window.getComputedStyle(el).display,

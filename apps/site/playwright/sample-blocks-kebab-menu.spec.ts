@@ -57,7 +57,7 @@ test('sample-blocks edit route — cf-20e kebab-menu wire (button visibility + o
   const kebabs = page.locator(
     '.skb-block-nodeview:not([data-skb-block-kind="markdown"]) .skb-block-nodeview__kebab',
   );
-  await expect(kebabs).toHaveCount(14);
+  await expect(kebabs).toHaveCount(15);
 
   const firstKebab = kebabs.first();
   expect(await firstKebab.getAttribute('aria-label')).toBe('Block actions');
@@ -123,7 +123,7 @@ test('cf-20e — Delete action removes block from doc + decreases NodeView count
     '.skb-block-nodeview:not([data-skb-block-kind="markdown"])',
   );
   const beforeCount = await wrappers.count();
-  expect(beforeCount).toBe(14);
+  expect(beforeCount).toBe(15);
 
   // Capture the SECOND wrapper's block-kind so we can verify it
   // becomes the new first block after delete.
@@ -186,7 +186,7 @@ test('cf-20e — Duplicate action inserts a copy + fires success-pulse via cf-20
     '.skb-block-nodeview:not([data-skb-block-kind="markdown"])',
   );
   const beforeCount = await wrappers.count();
-  expect(beforeCount).toBe(14);
+  expect(beforeCount).toBe(15);
 
   // Source kind = first component block's kind (callout per sample-blocks fixture).
   const sourceKind = await wrappers.nth(0).getAttribute('data-skb-block-kind');
@@ -324,7 +324,7 @@ test('cf-20e — kebab hidden on mobile (≤768px) per ADR-0017 D9 view-only con
   const kebabs = page.locator(
     '.skb-block-nodeview:not([data-skb-block-kind="markdown"]) .skb-block-nodeview__kebab',
   );
-  await expect(kebabs).toHaveCount(14);
+  await expect(kebabs).toHaveCount(15);
   const firstDisplay = await kebabs.first().evaluate(
     (el) => window.getComputedStyle(el).display,
   );

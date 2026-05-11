@@ -94,14 +94,14 @@ test('sample-blocks edit route loads non-empty content (mdxFlowExpression no lon
   // 2× Pdf, 1× Jupyter, 1× NnViz, 1× AgentFlow):
   //
   // 1. Each registered NodeView's inner host div carries
-  //    `data-skb-block-host` — 14 component-block instances (one per
+  //    `data-skb-block-host` — 15 component-block (cf-25 D14 demo +1 image) instances (one per
   //    fixture), with at least one per kind. Wave 6 cf-25 — count
   //    component-block hosts only (exclude markdown wrapper-blocks
   //    added by the chunking pass; markdown chunk count is asserted
   //    by sample-blocks-markdown-blocks.spec.ts).
   await expect(
     editor.locator('[data-skb-block-host]:not([data-skb-block-host="markdown"])'),
-  ).toHaveCount(14);
+  ).toHaveCount(15);
   for (const kind of [
     'callout',
     'componentCode',
