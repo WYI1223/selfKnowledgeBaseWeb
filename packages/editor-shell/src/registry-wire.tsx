@@ -6,6 +6,7 @@ import { makeBlockNodeView } from './BlockNodeView';
 import { parseCallout, serializeCallout } from '@skb/block-callout/core';
 import { parseCode, serializeCode } from '@skb/block-code/core';
 import { parseImage, serializeImage } from '@skb/block-image/core';
+import { parseMarkdown, serializeMarkdown } from '@skb/block-markdown/core';
 import { parseMath, serializeMath } from '@skb/block-math/core';
 import { parsePdf, serializePdf } from '@skb/block-pdf/core';
 import { parseJupyter, serializeJupyter } from '@skb/block-jupyter/core';
@@ -20,13 +21,20 @@ type JsxDispatchEntry = Parameters<typeof registerJsxDispatch>[0];
 // both a node and a mark). User-facing slash-menu label stays
 // 'Code'; MDX tag stays `<Code>`; only the internal kind identifier
 // changed. See packages/block-code/src/core/core-definition.ts.
+// Wave 6 cf-25 — `markdown` is the 9th BlockAffordanceKind. Per
+// PR.md D1 (Path B), it carries inner ProseMirror prose (paragraph /
+// heading / list / blockquote / etc.) as content, NOT as a string
+// prop. The Tiptap node has `atom: false` + `content: 'block+'` (vs
+// the 8 component blocks' `atom: true`); the editor mount
+// short-circuits to `<NodeViewContent>` in BlockNodeView per cf-25 D7.
 export type BlockAffordanceKind =
   | 'callout'
   | 'componentCode'
   | 'image'
+  | 'jupyter'
+  | 'markdown'
   | 'math'
   | 'pdf'
-  | 'jupyter'
   | 'nn-viz'
   | 'agent-flow';
 
@@ -40,6 +48,8 @@ export const BLOCK_KIND_OPTIONS: readonly BlockKindOption[] = [
   { kind: 'callout', label: 'Callout', mdxComponent: 'Callout' },
   { kind: 'componentCode', label: 'Code', mdxComponent: 'Code' },
   { kind: 'image', label: 'Image', mdxComponent: 'Image' },
+  // cf-25 — 9th kind. Content lives as ProseMirror children, not props.
+  { kind: 'markdown', label: 'Markdown', mdxComponent: 'Markdown' },
   { kind: 'math', label: 'Math', mdxComponent: 'Math' },
   { kind: 'pdf', label: 'Pdf', mdxComponent: 'Pdf' },
   { kind: 'jupyter', label: 'Jupyter', mdxComponent: 'Jupyter' },
@@ -51,6 +61,7 @@ const jsxDispatches = [
   ['Callout', 'callout', parseCallout, serializeCallout],
   ['Code', 'componentCode', parseCode, serializeCode],
   ['Image', 'image', parseImage, serializeImage],
+  ['Markdown', 'markdown', parseMarkdown, serializeMarkdown],
   ['Math', 'math', parseMath, serializeMath],
   ['Pdf', 'pdf', parsePdf, serializePdf],
   ['Jupyter', 'jupyter', parseJupyter, serializeJupyter],
@@ -59,11 +70,18 @@ const jsxDispatches = [
 ] as const;
 
 const gridAttrs = { col: 1, colSpan: 12, rowSpan: 1 };
+// Wave 6 cf-25 — markdown blocks default to rowSpan='auto' per
+// ADR-0016 D3 (isProse) + cf-25 D4. The 'auto' rowSpan tells
+// useAutoRowSpan to derive height from rendered content height.
+const proseGridAttrs = { col: 1, colSpan: 12, rowSpan: 'auto' as const };
 
 const defaultBlockAttrs: Record<BlockAffordanceKind, Record<string, unknown>> = {
   callout: { ...gridAttrs, variant: 'note', title: 'New callout' },
   componentCode: { ...gridAttrs, language: 'ts', code: '// New code block', showLineNumbers: true },
   image: { ...gridAttrs, src: '/sample-assets/diagram-small.png', alt: 'Inserted image' },
+  // cf-25 — markdown defaults: NO content-prop fields (content
+  // lives as ProseMirror children, NOT attrs). Grid attrs only.
+  markdown: { ...proseGridAttrs },
   math: { ...gridAttrs, expression: 'x^2', display: true },
   pdf: { ...gridAttrs, src: '/sample-assets/whitepaper.pdf', page: 1, searchable: false },
   jupyter: {
@@ -112,11 +130,24 @@ function createBlockExtension(option: BlockKindOption, registry?: BlockRegistry)
         },
       }
     : {};
+
+  // Wave 6 cf-25 D7 — markdown is the ONLY non-atom block kind:
+  // it carries inner ProseMirror prose (paragraph / heading / list /
+  // blockquote / etc.) as content, so atom: false + content: 'block+'
+  // (one or more block nodes). All 8 component blocks remain atomic
+  // (atom: true, no content). Defining: true makes the wrapper a
+  // ProseMirror "defining" boundary so backspace at start unwraps
+  // gracefully rather than merging into the previous block.
+  const isMarkdown = option.kind === 'markdown';
+  const schemaExtras: Record<string, unknown> = isMarkdown
+    ? { atom: false, content: 'block+', defining: true }
+    : { atom: true };
+
   return Node.create({
     name: option.kind,
     group: 'block',
-    atom: true,
     selectable: true,
+    ...schemaExtras,
 
     addAttributes() {
       const attrs = defaultAttrs(option.kind);
@@ -126,6 +157,20 @@ function createBlockExtension(option: BlockKindOption, registry?: BlockRegistry)
     },
 
     renderHTML({ HTMLAttributes }) {
+      // cf-25 — markdown's renderHTML must allow content insertion
+      // (Tiptap requires the content hole as element index 0 in the
+      // tuple). Component blocks render the placeholder text directly
+      // since they're atom-blocks with no inner content.
+      if (isMarkdown) {
+        return [
+          'div',
+          mergeAttributes(HTMLAttributes, {
+            'data-skb-block-kind': option.kind,
+            class: 'skb-inserted-block',
+          }),
+          0, // 0 marks the content hole
+        ];
+      }
       return [
         'div',
         mergeAttributes(HTMLAttributes, {
@@ -140,6 +185,21 @@ function createBlockExtension(option: BlockKindOption, registry?: BlockRegistry)
   });
 }
 
+/**
+ * Wave 6 cf-25 — markdown blocks need at least one inner block
+ * node to satisfy the `content: 'block+'` schema constraint.
+ * Seed an empty paragraph so insertion is valid. Component blocks
+ * (atom: true) have no inner content; their insert payload omits
+ * `content`.
+ */
+function buildInsertPayload(kind: BlockAffordanceKind): Record<string, unknown> {
+  const attrs = defaultAttrs(kind);
+  if (kind === 'markdown') {
+    return { type: kind, attrs, content: [{ type: 'paragraph' }] };
+  }
+  return { type: kind, attrs };
+}
+
 export function insertBlockKind(editor: Editor | null, kind: BlockAffordanceKind): boolean {
   if (!editor) return false;
   if (typeof editor.chain !== 'function') return false;
@@ -148,7 +208,7 @@ export function insertBlockKind(editor: Editor | null, kind: BlockAffordanceKind
   return editor
     .chain()
     .focus()
-    .insertContent({ type: option.kind, attrs: defaultAttrs(option.kind) })
+    .insertContent(buildInsertPayload(option.kind))
     .run();
 }
 
@@ -217,10 +277,7 @@ export function appendBlockKind(
   const insertPos = editor.state.doc.content.size;
   const ok = editor
     .chain()
-    .insertContentAt(insertPos, {
-      type: option.kind,
-      attrs: defaultAttrs(option.kind),
-    })
+    .insertContentAt(insertPos, buildInsertPayload(option.kind))
     .run();
   if (!ok) return null;
   return insertPos;

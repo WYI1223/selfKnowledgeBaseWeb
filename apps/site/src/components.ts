@@ -1,4 +1,4 @@
-import { type ComponentType } from 'react';
+import { type ComponentType, createElement } from 'react';
 import { CalloutRenderView } from '@skb/block-callout/ui-default';
 import { CodeRenderView } from '@skb/block-code/ui-default';
 import { ImageRenderView } from '@skb/block-image/ui-default';
@@ -8,7 +8,12 @@ import Jupyter from './components/Jupyter.astro';
 import NnViz from './components/NnViz.astro';
 import AgentFlow from './components/AgentFlow.astro';
 import '@skb/heavy-block-boundary/heavy-block-skeleton.css';
-import { type FlatProps, makeMdxAdapter } from './lib/mdx-adapter';
+import {
+  type FlatProps,
+  extractGridPosition,
+  gridPlacementStyle,
+  makeMdxAdapter,
+} from './lib/mdx-adapter';
 
 export type { FlatProps } from './lib/mdx-adapter';
 export { makeMdxAdapter } from './lib/mdx-adapter';
@@ -28,12 +33,51 @@ const asMdxComponent = (component: ComponentType<FlatProps>): ComponentType<unkn
 // `code` mark); the user-facing chip label collapses back to `code` in
 // BlockNodeView.tsx but the data attribute uses the internal name so
 // the CSS selector matches the editor-side rule exactly.
+// Wave 6 cf-25 — Markdown wrapper-block read-route adapter.
+//
+// Unlike the 8 component blocks (which take fully-typed props +
+// optional string content), the Markdown JSX wrapper takes prose
+// children rendered by MDX (paragraph / heading / list / etc.) as
+// React nodes. The wrapper's job is ONLY to apply the
+// `.skb-block-static[data-skb-block-kind='markdown']` chrome +
+// grid placement style; the inner prose renders via MDX's normal
+// component map (h1, h2, p, ul, etc. — handled by Astro's MDX
+// renderer + global prose styles).
+//
+// Per cf-25 D12: ZERO drag/kebab/resize affordances on the read
+// route (cf-23 D8 zero-affordance lock preserved); the wrapper
+// emits ONLY the chrome + the `.skb-prose` namespace class.
+function MarkdownReadView({ children, ...rest }: FlatProps) {
+  // Wave 6 cf-25 — Markdown JSX wrapper omits rowSpan when isProse
+  // (per ADR-0016 D3 + mdx-bridge serialize.ts:206 isProse branch).
+  // extractGridPosition requires rowSpan, so default to 'auto'
+  // before extraction to honor the prose contract. This mirrors the
+  // editor-side BlockNodeView behavior — markdown blocks get
+  // rowSpan='auto' as their canonical default.
+  const restWithRowSpan: Record<string, unknown> =
+    rest['rowSpan'] === undefined ? { ...rest, rowSpan: 'auto' } : rest;
+  const gridPos = extractGridPosition(restWithRowSpan);
+  const wrapperStyle = gridPos ? gridPlacementStyle(gridPos) : undefined;
+  return createElement(
+    'div',
+    {
+      className: 'skb-block-static',
+      'data-skb-block-kind': 'markdown',
+      ...(wrapperStyle && { style: wrapperStyle }),
+    },
+    createElement('div', { className: 'skb-prose' }, children),
+  );
+}
+
 export const componentsMap = {
   // 5 light blocks: server-rendered via prop-shape adapter + chrome wrap
   Callout: asMdxComponent(makeMdxAdapter(CalloutRenderView as never, 'callout')),
   Code: asMdxComponent(makeMdxAdapter(CodeRenderView as never, 'componentCode')),
   Image: asMdxComponent(makeMdxAdapter(ImageRenderView as never, 'image')),
   Math: asMdxComponent(makeMdxAdapter(MathRenderView as never, 'math')),
+  // Wave 6 cf-25 — Markdown wrapper (inline adapter, NOT
+  // makeMdxAdapter — children are JSX prose, not a string prop).
+  Markdown: asMdxComponent(MarkdownReadView),
   Pdf: asMdxComponent(makeMdxAdapter(PdfRenderView as never, 'pdf')),
   // 3 heavy blocks: Astro wrappers attach client:load hydration around React islands.
   // The Astro wrappers emit their own `.skb-block-static` chrome wrap; see

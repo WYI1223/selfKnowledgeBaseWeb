@@ -46,13 +46,14 @@ describe('componentsMap', () => {
     expect(AgentFlowEditorView).toBe(AgentFlowRenderView);
   });
 
-  it('contains exactly the 8 canonical PascalCase component names', () => {
+  it('contains exactly the 9 canonical PascalCase component names (cf-25 +Markdown)', () => {
     expect(Object.keys(componentsMap).sort()).toEqual([
       'AgentFlow',
       'Callout',
       'Code',
       'Image',
       'Jupyter',
+      'Markdown', // Wave 6 cf-25 — 9th BlockKindForChrome member
       'Math',
       'NnViz',
       'Pdf',

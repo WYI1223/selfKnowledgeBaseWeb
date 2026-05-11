@@ -43,10 +43,20 @@ export interface KebabButtonProps {
   readonly blockId: string;
   /** Optional label override; defaults to "Block actions". */
   readonly label?: string;
+  /**
+   * Wave 6 cf-25 R1 F3 — the source block's BlockAffordanceKind.
+   * Passed to `<KebabMenu>` so it can disable the Change-kind action
+   * when the source is `markdown` (cf-25 D10 — markdown ↔ component
+   * conversion is lossy because prose content doesn't map to
+   * component props). Defaults undefined → menu treats as
+   * non-markdown (existing behavior preserved for callers that
+   * don't pass the prop, e.g. legacy tests).
+   */
+  readonly sourceKind?: string;
 }
 
 export function KebabButton(props: KebabButtonProps): ReactElement {
-  const { blockId, label = 'Block actions' } = props;
+  const { blockId, label = 'Block actions', sourceKind } = props;
   const ctx = useContext(KebabContext);
   const [open, setOpen] = useState(false);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
@@ -152,6 +162,8 @@ export function KebabButton(props: KebabButtonProps): ReactElement {
         onDuplicate: ctx?.onDuplicate ?? noopDuplicate,
         onChangeKind: ctx?.onChangeKind ?? noopChangeKind,
         onClose: closeMenu,
+        // exactOptionalPropertyTypes: only spread sourceKind when defined.
+        ...(sourceKind !== undefined && { sourceKind }),
       }),
   );
 }

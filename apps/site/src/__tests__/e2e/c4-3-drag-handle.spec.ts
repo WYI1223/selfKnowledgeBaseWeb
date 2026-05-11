@@ -60,10 +60,17 @@ test.describe('C.4-3 drag handle', () => {
     await expect(firstHandle).toBeVisible({ timeout: 15_000 });
 
     // The data-skb-drag-handle attribute carries the ProseMirror node
-    // pos (cf-20c-2 D2 path A). Just assert non-empty + non-zero.
+    // pos (cf-20c-2 D2 path A). Wave 6 cf-25 R3 F7 — relaxed to >=0
+    // because cf-25 chunking promotes the doc's intro markdown chunk
+    // to a `markdown` wrapper at ProseMirror pos=0 (the very first
+    // top-level node). Pre-cf-25 the first NodeView was a callout at
+    // pos>0 (because untyped prose preceded it without a NodeView);
+    // post-cf-25 every prose chunk wraps in a markdown NodeView, and
+    // the first such wrapper sits at pos=0. ProseMirror positions are
+    // 0-indexed; pos=0 is a valid block id, not a sentinel.
     const blockId = await firstHandle.getAttribute('data-skb-drag-handle');
     expect(blockId).toMatch(/^\d+$/);
-    expect(parseInt(blockId ?? '', 10)).toBeGreaterThan(0);
+    expect(parseInt(blockId ?? '', 10)).toBeGreaterThanOrEqual(0);
 
     // a11y baseline: aria-label + draggable=true.
     expect(await firstHandle.getAttribute('aria-label')).toBe('Drag block');

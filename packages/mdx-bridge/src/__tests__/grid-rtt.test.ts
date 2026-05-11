@@ -16,7 +16,6 @@ import {
   type JsxDispatchEntry,
   type MdxBridgeOptions,
   type TiptapDoc,
-  type TiptapNode,
 } from '../index';
 
 type ComponentFixture = {
@@ -226,6 +225,15 @@ describe('grid attr round-trip', () => {
   }
 
   it("omits rowSpan='auto' for Markdown while preserving parsed prose semantics", () => {
+    // Wave 6 cf-25 — the markdown wrapper-block now has cf-25-aware
+    // inner content recursion at both parse + serialize boundaries.
+    // Pre-cf-25 this test used mdast-shape inner children inside a
+    // hand-built doc to exercise the old stub-passthrough contract;
+    // the cf-25 contract requires the inner content to be Tiptap-shape
+    // (so the new isMarkdown branch in tiptapComponentToMdast can
+    // round-trip it through tiptapToMdastBlock). Updated to use a
+    // proper Tiptap paragraph + text leaf shape — same round-trip
+    // intent (rowSpan='auto' omitted on serialize, restored on parse).
     const options = buildOptions(true);
     const doc: TiptapDoc = {
       type: 'doc',
@@ -236,8 +244,8 @@ describe('grid attr round-trip', () => {
           content: [
             {
               type: 'paragraph',
-              children: [{ type: 'text', value: 'Some content here.' }],
-            } as unknown as TiptapNode,
+              content: [{ type: 'text', text: 'Some content here.' }],
+            },
           ],
         },
       ],

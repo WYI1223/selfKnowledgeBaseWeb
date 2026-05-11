@@ -1067,3 +1067,126 @@ Pattern precedent: VSCode (Cmd+P command palette + activity bar), Notion (Cmd+/ 
 - `packages/design-tokens/CONTRACT.md`: token catalog gains `--palette-w: 230px`.
 - `apps/site/playwright/notes-route-width-parity.spec.ts`: amended for cf-24 D9 3-band model.
 - ADR-0017 v0.4 D14: external-source drag protocol cross-reference (the DnD plumbing that backs the visual contract here).
+
+## v0.9 Amendment (Wave 6 cf-25 — markdown wrapper-block visual contract)
+
+### D11 — Markdown wrapper-block visual contract (Wave 6 cf-25 amendment 2026-05-10)
+
+**Status**: v0.9 amendment. cf-25 promotes markdown chunks (paragraph / heading / list / blockquote / horizontalRule / fenced code) to first-class grid blocks. The new `markdown` BlockAffordanceKind shares the cf-19 `.gblock` chrome via the cf-20a paired-selector contract; this section pins the per-kind hue + the inner-prose rendering shell + the mixed-grid demonstration.
+
+#### Why this amendment
+
+User feedback after cf-24 close (2026-05-10): "edit mode 还是一个大块 markdown，不是像 v2 那样每个功能块就一个 block，整个 12×n 面板都可以容纳不同 block。Markdown 应该是一个独立的 block。" Pre-cf-25 the editor mounted 21 bare prose elements (`<p>` / `<h2>` / `<ul>`) as direct children of `.ProseMirror` with the CSS-fallback `grid-column: 1 / -1` rule — they had ZERO chrome, ZERO drag handle, ZERO kebab, ZERO per-kind hue stripe, ZERO resize affordances. The grid was a LEGO baseboard but only component blocks were citizens; markdown was floating filler. cf-25 lands the missing 9th citizen.
+
+Empirical baseline pre-cf-25 (mcp playwright at /notes/sample-blocks/edit, 1280×900): 36 top-level grid children, 21 bare prose, 15 component-block wrappers. After cf-25: 26 top-level grid children, 0 bare prose, 11 markdown wrappers + 8 component wrappers + the cf-25 mixed-grid demo. Visual evidence at `docs/audits/screenshots/wave-6-cf-25-{before,after}-edit-1280-*.png`.
+
+#### D11.a — `markdown` is the 9th BlockAffordanceKind sharing the cf-19 chrome via cf-20a paired-selector
+
+Selector pair (`block-chrome.css`):
+```
+.skb-block-nodeview[data-skb-block-kind='markdown'],
+.skb-block-static[data-skb-block-kind='markdown'] { ... }
+```
+
+The Tiptap node spec carries `data-skb-block-kind="markdown"` on the inner `.skb-block-nodeview` wrapper (editor route) AND `apps/site/src/components.ts:MarkdownReadView` emits `<div class="skb-block-static" data-skb-block-kind="markdown">` (read route). The cf-20a single-source chrome (border / radius / hover lift / per-kind 2px top stripe) applies identically on both routes.
+
+#### D11.b — Per-kind 2px top stripe via NEW `--accent-prose` design token
+
+Hue assignment: `oklch(75% 0.04 80)` — warm-neutral canvas family per ADR-0018 v0.5 D3 hue family taxonomy. Intentionally LESS saturated than the 8 colorful component-block kinds (`--accent-runnable` 145°, `--accent-image` 60°, `--accent-math` 280°, etc.) because **prose IS the document substrate, NOT an accent block**. The lower saturation reads as "background canvas color" while still passing the cf-19 D2 visual-identification contract (distinguishable stripe color per kind).
+
+Token registration (`packages/design-tokens/src/tokens.css`):
+```
+--accent-prose: oklch(75% 0.04 80);
+```
+
+`tokens-fallback.css` provides the sRGB approximation `#d4c8b6` for the rare browsers without OKLCH support (per ADR-0018 D1 fallback strategy). `tokens-dark.css` does NOT carry the OKLCH `--accent-*` keys (deferred per ADR-0018 D1 dark-mode carve-out); the inline fallback in `block-chrome.css` (`oklch(75% 0.04 80)`) handles dark-mode rendering.
+
+#### D11.c — Inner content rendering: `.skb-prose` namespace + StarterKit-managed children
+
+Markdown blocks render inner ProseMirror children (paragraph / heading / list / blockquote / etc.) inside a `.skb-prose` namespace class. Existing prose typography from `packages/design-tokens/CONTRACT.md` typography hierarchy applies — NO new typography rules. The cf-25 D7 `BlockNodeView` short-circuit emits `<NodeViewContent class="skb-prose" />` so ProseMirror manages the inner editable prose; the 8 component blocks' atom-block path stays identical (mounts the registered `EditorView` with `props={editorProps}` static-prop signature).
+
+`packages/block-markdown/src/ui-default/markdown.css` ships a minimal margin-reset for `.skb-prose > :first-child` and `:last-child` so the inner prose hugs the body padding edges (without this, h1/p/ul natural top margins double the visual padding inside the cf-20d body container). All other prose typography rules inherit from the global stylesheet.
+
+#### D11.d — Mixed-grid demonstration (sample-blocks fixture)
+
+`content/notes/sample-blocks/index.mdx` ships ONE side-by-side row at the end of the document:
+```
+<Markdown col={1} colSpan={6}>
+  ### Side-by-side text
+  ...prose body...
+</Markdown>
+
+<Image col={7} colSpan={6} rowSpan={1} src="..." alt="..." />
+```
+
+The two blocks render at IDENTICAL `top` ±2px on viewport ≥ 1024 (Playwright assertion in `apps/site/playwright/sample-blocks-markdown-blocks.spec.ts:AC3-5`). This is the visible proof of the LEGO-baseboard mental model — the 12-col grid carries arbitrary block-kind mixes at arbitrary placements.
+
+At viewport < 1024 the cf-20b 6→1 col flatten kicks in; both blocks reflow to single-column (stacked vertically). cf-25 preserves cf-20b's responsive contract.
+
+#### D11.e — Round-trip invariant (NO `<Markdown>` wrapper for default-grid prose)
+
+Per cf-25 PR.md D5 + the existing mdx-bridge `mdxComponent === 'Markdown'` isProse seam (parse.ts:217 + serialize.ts:185, pre-built at Wave 5 C.2-3.5):
+
+- **Parse**: bare prose chunks fold into a synthetic Markdown wrapper with default attrs (col=1, colSpan=12, rowSpan='auto'). Explicit `<Markdown col={N} colSpan={N}>` wrappers preserve their attrs.
+- **Serialize**: default-grid markdown wrappers UNWRAP back to bare prose (NO `<Markdown>` wrapper in MDX output). Non-default grid attrs preserve the wrapper.
+
+Round-trip invariant: `bare-prose-in → markdown(default) → bare-prose-out` byte-equivalent. Every existing mdx-bridge fixture (01-paragraph through 06-nested-inline) continues to round-trip byte-equivalent post-cf-25 (verified by `packages/mdx-bridge/src/__tests__/round-trip.test.ts`). cf-25 introduces NO net write to legacy MDX files when no user resize/move action has changed the chunk's grid attrs.
+
+**Read-route consequence**: bare prose in source MDX renders as bare prose on the read route (no `.skb-block-static` chrome). The `.skb-block-static[data-skb-block-kind='markdown']` wrapper appears ONLY for source MDX with explicit `<Markdown col={N} colSpan={N}>` wrappers. This is intentional — the read route preserves byte-equivalent legacy rendering for unmodified prose.
+
+#### D11.f — Tiptap react-renderer outer-wrapper grid propagation (useLayoutEffect projection per cf-25 R1 F2)
+
+Pre-cf-25 the `.react-renderer.node-{kind}` outer wrapper (created by Tiptap's `ReactNodeViewRenderer`) sits as a direct child of `.ProseMirror` (the grid container). The inner `.skb-block-nodeview` carries the inline `style="grid-area: ..."` per cf-20b BlockNodeView wrapper, but it's NOT the grid item — the outer wrapper is, and falls into the CSS-fallback `grid-column: 1 / -1` rule.
+
+This was a latent bug pre-cf-25 (component blocks at `colSpan != 12` rendered full-width regardless of attrs); it surfaced as a cf-25 blocker because the mixed-grid demo requires functional placement.
+
+**Strategy (cf-25 R1 F2)**: project the grid placement style from the inner React component up to the outer Tiptap-created wrapper via `useLayoutEffect`. The `useProjectGridStyleToOuter` hook in `packages/editor-shell/src/BlockNodeView.tsx` walks up from the `NodeViewWrapper` ref's parent and writes `outerEl.style.gridColumn` + `outerEl.style.gridRow` whenever the node attrs change.
+
+```ts
+function useProjectGridStyleToOuter(
+  innerRef: React.RefObject<HTMLDivElement>,
+  style: CSSProperties | undefined,
+): void {
+  useLayoutEffect(() => {
+    const innerEl = innerRef.current;
+    const outerEl = innerEl?.parentElement;
+    if (!outerEl?.classList.contains('react-renderer')) return;
+    if (style?.gridColumn) outerEl.style.gridColumn = String(style.gridColumn);
+    if (style?.gridRow) outerEl.style.gridRow = String(style.gridRow);
+  });
+}
+```
+
+**Why useLayoutEffect (not useEffect)**: grid layout must apply BEFORE paint to avoid a single-frame flash where the block jumps from `1 / -1` (CSS fallback) to its real placement. Layout effects run synchronously after DOM mutations + before paint, so the user never sees the fallback position.
+
+**Defense-in-depth class predicate**: `outerEl.classList.contains('react-renderer')` ensures we only mutate the actual Tiptap nodeView wrapper, never an unrelated ancestor (e.g., if the React tree is restructured by a future Tiptap version).
+
+**Rejected alternatives** (per cf-25 R0 → R1 codex stage 3 reviewer chain):
+- `display: contents` on the outer wrapper — removes the box from the layout tree; breaks cf-20c-2 R1 F4 drop-pipeline because the dragstart snapshot computes edge rects via `closest('.react-renderer')` walks that lose a level when the wrapper has no box.
+- CSS `:has(> .skb-block-nodeview[style*="..."])` attribute selectors — brittle: the inner inline style is the React shorthand `grid-area: span 1 / N / auto / span M` (NOT `grid-column: ...`); generic `[style*="span N"]` selectors false-positive match `grid-row: span 1` for any colSpan; per-shape selectors require enumerating all 144 (col, colSpan) pairs (untenable). Rejected at cf-25 R1.
+
+**Inner block CSS**: with the outer wrapper now carrying the placement, the inner `.skb-block-nodeview` only needs to fill the outer's box. `apps/site/src/styles/grid.css` keeps a single rule:
+
+```css
+.skb-grid .ProseMirror > .react-renderer > .skb-block-nodeview {
+  width: 100%;
+}
+```
+
+**Dual-write inline style**: the inner `.skb-block-nodeview` still receives the `wrapperStyle` via React `style={wrapperStyle}` for backward compatibility with the cf-22 / cf-20c-2 / cf-20d / cf-20e regression spec suite (19 sites read `el.style.gridColumn` from the inner via Playwright `.evaluate`). The inner's inline style is now visually a no-op (CSS `width: 100%` makes it fill the outer's already-sized box), but the attribute presence keeps the test surface stable. The OUTER wrapper's projected style is the load-bearing one for actual layout.
+
+#### Out of scope cf-25
+
+- **Read-route chrome for default-grid markdown**: the unwrap-on-default pass (D11.e) means default-grid prose renders bare on read route (no `.skb-block-static` chrome). To get chrome on ALL prose chunks the read route would need to apply chunking at render time (NOT just at editor mount). Scope deferred — round-trip invariant for legacy MDX is the priority.
+- **Per-element granularity** (drag a single heading independent of surrounding paragraphs): cf-25 ships chunk-level granularity per cf-25 PR.md D1 (Path B). Per-element would require 6+ new BlockAffordanceKind variants. A future "split markdown at cursor" gesture (slash-command `/split` or kebab "Split block here") can fragment a chunk into multiple smaller markdown blocks if user demand emerges.
+- **Markdown ↔ component-block kebab Change-kind**: lossy (prose ↔ component props don't map). cf-20e Change-kind action is DISABLED for markdown blocks per cf-25 D10.
+
+#### Sister-doc updates (per ADR-0006 #6)
+
+- `packages/block-markdown/CONTRACT.md`: NEW package contract; `markdownCore` (`name='markdown'`, `kind='prose'`, `mdxComponent='Markdown'`); propsSchema is grid-attrs-only (no content props).
+- `packages/editor-shell/CONTRACT.md`: BlockAffordanceKind union extended to 9 kinds; `markdown` is `atom: false` + `content: 'block+'` (vs the 8 component blocks' `atom: true`); BlockNodeView short-circuit branch documented.
+- `packages/mdx-bridge/CONTRACT.md`: chunking pass + unwrap-on-default pass + round-trip invariant for the markdown wrapper.
+- `apps/site/CONTRACT.md`: BlockKindForChrome union extended to include 'markdown'; `MarkdownReadView` adapter wraps inner JSX prose children in `.skb-block-static` chrome.
+- `packages/design-tokens/CONTRACT.md`: NEW `--accent-prose` token (light theme + sRGB fallback).
+- `apps/site/src/styles/grid.css`: `:has()` rule for react-renderer outer-wrapper grid propagation per D11.f.
+- `apps/site/playwright/sample-blocks-markdown-blocks.spec.ts`: NEW spec; 5 named test cases per cf-25 PR.md AC-3 + the e2e_smoke section.

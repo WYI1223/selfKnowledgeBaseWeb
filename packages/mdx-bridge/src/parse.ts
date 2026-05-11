@@ -6,6 +6,7 @@ import type { Root, RootContent } from 'mdast';
 import type { BlockRegistry } from '@skb/block-foundation';
 import { COL_SNAPS } from '@skb/block-foundation';
 import { getJsxDispatch, type MdastJsxElement } from './dispatch-table';
+import { chunkProseBlocks } from './markdown-chunking';
 
 export interface MdxBridgeOptions {
   blockRegistry?: BlockRegistry;
@@ -88,7 +89,7 @@ export function mdxToTiptap(source: string, options?: MdxBridgeOptions): TiptapD
     .parse(source);
 
   let frontmatter: string | undefined;
-  const blocks: RootContent[] = [];
+  const rawBlocks: RootContent[] = [];
   const softParse = options?.softParse === true;
 
   for (const node of tree.children) {
@@ -104,9 +105,37 @@ export function mdxToTiptap(source: string, options?: MdxBridgeOptions): TiptapD
       // pack §"What is NOT closed").
       continue;
     } else {
-      blocks.push(node);
+      rawBlocks.push(node);
     }
   }
+
+  // Wave 6 cf-25 — chunking pass. Per cf-25 PR.md D5 + D6:
+  // consecutive top-level prose mdast nodes (paragraph / heading /
+  // list / blockquote / code / thematicBreak) fold into ONE
+  // synthetic `mdxJsxFlowElement{name:'Markdown'}` carrying those
+  // prose nodes as children. JSX flow elements
+  // (`mdxJsxFlowElement`) BREAK the chunk and pass through unchanged.
+  //
+  // The synthetic Markdown element has no grid attrs, so
+  // `parseGridAttrs` (called from `mdastJsxFlowElementToTiptap`)
+  // falls into the isProse default branch: col=1, colSpan=12,
+  // rowSpan='auto'. The dispatch then routes to
+  // `@skb/block-markdown`'s `parseMarkdown`, which returns
+  // `{type:'markdown', content: node.children}`. mdx-bridge's
+  // `mdastJsxFlowElementToTiptap` then recurses into those children
+  // via `recurseProseChildrenToTiptap` (cf-25 special-case for the
+  // Markdown wrapper) before returning the final Tiptap node.
+  //
+  // Chunk-eligible nodes: anything OTHER than `mdxJsxFlowElement`.
+  // (Yaml is already extracted; mdxFlowExpression is dropped under
+  // softParse.) The fold is conditional on `options.blockRegistry`
+  // having a 'markdown' core registered — without it, dispatch
+  // would throw on the synthetic Markdown element. When no
+  // markdown core is registered, the chunking pass is a no-op
+  // (legacy compat path for tests that don't register markdown).
+  const blocks = options?.blockRegistry?.getCore('markdown') !== undefined
+    ? chunkProseBlocks(rawBlocks)
+    : rawBlocks;
 
   const content = softParse
     ? blocks.flatMap((node) => {
@@ -214,15 +243,43 @@ function mdastJsxFlowElementToTiptap(
   const dispatch = getJsxDispatch(componentName);
   if (!dispatch || dispatch.blockType !== core.name) return unsupportedBlock(componentName);
 
-  const gridAttrs = parseGridAttrs(node, core.name, componentName === 'Markdown');
+  const isMarkdown = componentName === 'Markdown';
+  const gridAttrs = parseGridAttrs(node, core.name, isMarkdown);
   const nodeForDispatch = stripGridAttrsForDispatch(node);
   const parsed = dispatch.parse(nodeForDispatch);
+
+  // Wave 6 cf-25 — Markdown wrapper-block requires recursing inner
+  // mdast block children into Tiptap blocks. The dispatch's `parse`
+  // hook returns `content: node.children` (raw mdast); we walk
+  // those into Tiptap nodes via `mdastBlockToTiptap` so the
+  // resulting Tiptap tree is flat (markdown wrapper holds Tiptap
+  // paragraph / heading / list nodes, not raw mdast). This is the
+  // ONLY JSX wrapper that recurses children at the dispatch
+  // boundary — the other 8 component blocks are atom-blocks and
+  // their `parse` returns `content` describing inline-only content
+  // (callout body) or no content (math/image/etc.).
+  if (isMarkdown && Array.isArray(parsed.content)) {
+    const innerChildren = parsed.content as ReadonlyArray<RootContent | MdastJsxElement>;
+    const recursed = innerChildren.map((child) => mdastBlockToTiptap(child, options));
+    return {
+      ...parsed,
+      attrs: mergeGridAttrs(parsed.attrs, gridAttrs),
+      content: recursed,
+      _mdast: nodeForDispatch,
+    };
+  }
+
   return {
     ...parsed,
     attrs: mergeGridAttrs(parsed.attrs, gridAttrs),
     _mdast: nodeForDispatch,
   };
 }
+
+// Wave 6 cf-25 — chunking pass extracted to `./markdown-chunking.ts`
+// per the 500-LOC hard cap (`scripts/check-size-limits.mjs`). See
+// `chunkProseBlocks` + `unwrapDefaultMarkdownWrappers` in that module
+// for the cf-25 PR.md D5 + D6 contract.
 
 function unsupportedBlock(type: string): never {
   throw new Error(

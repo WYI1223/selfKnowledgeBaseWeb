@@ -50,8 +50,14 @@ test('sample-blocks edit route — cf-20e kebab-menu wire (button visibility + o
 
   // (a) Each NodeView wrapper renders 1 kebab button (14 sample-blocks
   // fixtures all non-prose component blocks → 14 kebabs).
-  const kebabs = page.locator('.skb-block-nodeview .skb-block-nodeview__kebab');
-  await expect(kebabs).toHaveCount(14);
+  // Wave 6 cf-25 — filter to component-block kebabs only (cf-25
+  // chunking adds ~10-11 markdown-block kebabs that aren't part of
+  // the pre-cf-25 14-block expectation; the cf-25 markdown kebab count
+  // is asserted by sample-blocks-markdown-blocks.spec.ts).
+  const kebabs = page.locator(
+    '.skb-block-nodeview:not([data-skb-block-kind="markdown"]) .skb-block-nodeview__kebab',
+  );
+  await expect(kebabs).toHaveCount(15);
 
   const firstKebab = kebabs.first();
   expect(await firstKebab.getAttribute('aria-label')).toBe('Block actions');
@@ -108,9 +114,16 @@ test('cf-20e — Delete action removes block from doc + decreases NodeView count
   });
   await page.waitForTimeout(500);
 
-  const wrappers = page.locator('.skb-block-nodeview');
+  // Wave 6 cf-25 — count + select component-block wrappers only;
+  // cf-25 chunking adds markdown wrappers ahead of the first callout,
+  // and Delete operates on whichever wrapper is "first" (markdown vs
+  // component). For this test we want to delete the FIRST COMPONENT
+  // (callout) per the pre-cf-25 behavior intent.
+  const wrappers = page.locator(
+    '.skb-block-nodeview:not([data-skb-block-kind="markdown"])',
+  );
   const beforeCount = await wrappers.count();
-  expect(beforeCount).toBe(14);
+  expect(beforeCount).toBe(15);
 
   // Capture the SECOND wrapper's block-kind so we can verify it
   // becomes the new first block after delete.
@@ -118,8 +131,13 @@ test('cf-20e — Delete action removes block from doc + decreases NodeView count
     .nth(1)
     .getAttribute('data-skb-block-kind');
 
-  // Click first kebab → click "Delete".
-  await page.locator('.skb-block-nodeview__kebab').first().click();
+  // Click first kebab → click "Delete". Filter to component-block kebabs.
+  await page
+    .locator(
+      '.skb-block-nodeview:not([data-skb-block-kind="markdown"]) .skb-block-nodeview__kebab',
+    )
+    .first()
+    .click();
   await expect(page.locator('.skb-kebab-menu')).toHaveCount(1);
   await page
     .locator('.skb-kebab-menu .skb-kebab-menu__item[data-skb-kebab-action="delete"]')
@@ -163,15 +181,23 @@ test('cf-20e — Duplicate action inserts a copy + fires success-pulse via cf-20
   });
   await page.waitForTimeout(500);
 
-  const wrappers = page.locator('.skb-block-nodeview');
+  // Wave 6 cf-25 — count + select component-block wrappers only.
+  const wrappers = page.locator(
+    '.skb-block-nodeview:not([data-skb-block-kind="markdown"])',
+  );
   const beforeCount = await wrappers.count();
-  expect(beforeCount).toBe(14);
+  expect(beforeCount).toBe(15);
 
-  // Source kind = first block's kind (callout per sample-blocks fixture).
+  // Source kind = first component block's kind (callout per sample-blocks fixture).
   const sourceKind = await wrappers.nth(0).getAttribute('data-skb-block-kind');
 
-  // Click first kebab → click "Duplicate".
-  await page.locator('.skb-block-nodeview__kebab').first().click();
+  // Click first kebab → click "Duplicate". Filter to component-block kebabs.
+  await page
+    .locator(
+      '.skb-block-nodeview:not([data-skb-block-kind="markdown"]) .skb-block-nodeview__kebab',
+    )
+    .first()
+    .click();
   await expect(page.locator('.skb-kebab-menu')).toHaveCount(1);
   await page
     .locator('.skb-kebab-menu .skb-kebab-menu__item[data-skb-kebab-action="duplicate"]')
@@ -225,7 +251,8 @@ test('cf-20e — Change-kind action mutates first block from callout → compone
   });
   await page.waitForTimeout(500);
 
-  const firstWrapper = page.locator('.skb-block-nodeview').first();
+  // Wave 6 cf-25 — skip markdown wrapper-blocks (chunking pass adds them).
+  const firstWrapper = page.locator('.skb-block-nodeview:not([data-skb-block-kind="markdown"])').first();
 
   // Pre-change: first block is a callout per sample-blocks fixture
   // with `col=1, colSpan=12, rowSpan=1`.
@@ -235,8 +262,13 @@ test('cf-20e — Change-kind action mutates first block from callout → compone
   );
   expect(colBefore.replace(/\s+/g, ' ').trim()).toBe('1 / span 12');
 
-  // Click first kebab → click "Change kind…" → click "Code" sub-item.
-  await page.locator('.skb-block-nodeview__kebab').first().click();
+  // Click first component-kebab → click "Change kind…" → click "Code" sub-item.
+  await page
+    .locator(
+      '.skb-block-nodeview:not([data-skb-block-kind="markdown"]) .skb-block-nodeview__kebab',
+    )
+    .first()
+    .click();
   await expect(page.locator('.skb-kebab-menu')).toHaveCount(1);
   await page
     .locator(
@@ -288,8 +320,11 @@ test('cf-20e — kebab hidden on mobile (≤768px) per ADR-0017 D9 view-only con
 
   // Kebab buttons still exist in the React tree but each has computed
   // display === 'none' per the cf-20e mobile @media rule.
-  const kebabs = page.locator('.skb-block-nodeview .skb-block-nodeview__kebab');
-  await expect(kebabs).toHaveCount(14);
+  // Wave 6 cf-25 — filter to component-block kebabs only.
+  const kebabs = page.locator(
+    '.skb-block-nodeview:not([data-skb-block-kind="markdown"]) .skb-block-nodeview__kebab',
+  );
+  await expect(kebabs).toHaveCount(15);
   const firstDisplay = await kebabs.first().evaluate(
     (el) => window.getComputedStyle(el).display,
   );

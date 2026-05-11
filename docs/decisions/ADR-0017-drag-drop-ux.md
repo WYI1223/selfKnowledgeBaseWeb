@@ -458,6 +458,38 @@ CI gates BOTH the new external-drop spec AND the existing per-block specs.
 - `packages/design-tokens/CONTRACT.md`: NEW `--palette-w: 230px` layout token.
 - `apps/site/playwright/notes-route-width-parity.spec.ts`: amended for cf-24 D9 3-band model (palette-rail Band 2 width subtraction).
 
+### D15 — Markdown wrapper-block drag-drop semantics (Wave 6 cf-25 amendment 2026-05-10)
+
+**Status**: v0.5 amendment. cf-25 promotes prose chunks to first-class grid blocks (the 9th BlockAffordanceKind, `markdown`). Per cf-25 PR.md D8, markdown blocks share the per-block drag/drop pipeline IDENTICALLY — no special branch, no kind-specific code path.
+
+#### Why this amendment is documentation-only
+
+The cf-25 markdown wrapper-block uses the same `BlockAffordanceKind` union as the 8 component blocks. The drag pipeline (`useDragDropPipeline` + `usePointerDragListeners` + `applyDropMode`) keys off `blockId` (ProseMirror node pos), NOT off block kind. From the pipeline's perspective, a markdown block IS a per-block drag source like any other — `commitDropAtMatch` swaps it via the existing apply-drop-mode algebra without modification.
+
+#### Drag handle vs inline-text-selection conflict
+
+cf-25 markdown blocks have inner editable prose (paragraph / heading / list / blockquote) inside the cf-19 `.skb-block-nodeview__body` container. Selecting text inside the body is the inline-selection gesture (handled by ProseMirror); the cf-20c-2 drag-handle button lives in the gutter shell (`.skb-block-nodeview__gutter`, `contentEditable={false}`), so dragging from text vs the gutter is unambiguous at DOM level. v2 reference (`/mnt/d/download/web/v2-app.jsx:309`) uses the same gutter-only drag pattern.
+
+#### applyDropMode interaction (no changes)
+
+`applyDropMode` mutates the `{col, row, colSpan, rowSpan}` attrs on the source block. For markdown the source has `rowSpan='auto'` per cf-25 D4 default; the mutation either:
+- Preserves `rowSpan='auto'` (cf-20c-1 algebra split-* / lift modes — only col/row/colSpan change)
+- Overrides to integer (cf-20d resize commits — bottom-edge drag explicitly sets a fixed row span)
+
+The pre-cf-25 AC#8 invariant (`useAutoRowSpan` re-measures markdown drop) IS HONORED — applyDropMode only writes the attrs the user mutated; row-span auto-mode survives.
+
+#### Out of scope cf-25
+
+- **Inner prose drag** (drag a paragraph from inside a markdown block to another markdown block): out of scope. ProseMirror's native inline drag stays inside the block. Cross-block prose move is a future "split markdown at cursor" feature.
+- **Markdown ↔ component-block kebab Change-kind**: cf-20e Change-kind action is DISABLED for markdown blocks per cf-25 D10 (lossy: prose content doesn't map to component props). Implementation: kebab menu hides or disables the Change-kind submenu when source block kind is `markdown`.
+
+#### Sister-doc updates (per ADR-0006 #6)
+
+- `packages/editor-shell/CONTRACT.md`: Public surface `BlockAffordanceKind` union extended to 9 kinds (markdown is the 9th).
+- `packages/block-markdown/CONTRACT.md`: NEW package; mirrors block-callout shape.
+- `packages/mdx-bridge/CONTRACT.md`: chunking pass + unwrap-on-default pass + round-trip invariant for markdown wrapper.
+- `apps/site/CONTRACT.md`: BlockKindForChrome union extended to include 'markdown'.
+
 ## Acceptance criteria (AC list)
 
 `@skb/editor-shell` 包 + `apps/site` Astro renderer (drag-handle source) + visual smoke playwright 必满足:

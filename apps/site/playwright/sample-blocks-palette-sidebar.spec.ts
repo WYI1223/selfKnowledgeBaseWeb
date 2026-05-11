@@ -61,7 +61,7 @@ test('cf-24 AC3-1 — palette-sidebar visible on edit, absent on read (D2 + D11 
   await page.screenshot({ fullPage: false, path: SCREENSHOT_PATH });
 });
 
-test('cf-24 AC3-2 — palette-sidebar renders 8 block-kind items (D4 BLOCK_KIND_OPTIONS parity)', async ({
+test('cf-24 AC3-2 — palette-sidebar renders 9 block-kind items (D4 BLOCK_KIND_OPTIONS parity; cf-25 +markdown)', async ({
   page,
 }) => {
   await page.goto('/notes/sample-blocks/edit');
@@ -69,13 +69,14 @@ test('cf-24 AC3-2 — palette-sidebar renders 8 block-kind items (D4 BLOCK_KIND_
   await expect(editor).toBeVisible({ timeout: 15_000 });
 
   const items = page.locator('[data-skb-palette-item]');
-  await expect(items).toHaveCount(8);
+  await expect(items).toHaveCount(9); // cf-25 — was 8
 
   // Each kind must be present per BLOCK_KIND_OPTIONS canonical list.
   const expectedKinds = [
     'callout',
     'componentCode',
     'image',
+    'markdown', // cf-25
     'math',
     'pdf',
     'jupyter',
@@ -285,10 +286,10 @@ test('cf-24 AC3-6 (R0 F3 fix) — FULL drag-and-drop external-source path: drags
   );
   await page.waitForTimeout(500); // Let initial layout settle
 
-  // Pick the FIRST existing block as the drop target; we'll drop at
-  // its right edge to trigger split-right, which puts the new block
-  // at col=7 colSpan=6 (host shrinks from colSpan=12 → 6 on left).
-  const targetWrapper = page.locator('.skb-block-nodeview').first();
+  // FIRST component-block (cf-25 — exclude markdown chunking wrappers).
+  const targetWrapper = page
+    .locator('.skb-block-nodeview:not([data-skb-block-kind="markdown"])')
+    .first();
   const targetBox = await targetWrapper.boundingBox();
   if (!targetBox) throw new Error('target wrapper has no bounding box');
   const dropX = targetBox.x + targetBox.width - 6; // 6px inside right edge
