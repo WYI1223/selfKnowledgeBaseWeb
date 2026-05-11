@@ -54,13 +54,13 @@ test('sample-blocks edit route — cf-20d resize-handles wire (handle visibility
   // (a) Handle visibility — each NodeView wrapper renders 3 handles
   // (right + bottom + corner). 14 sample-blocks fixtures all non-prose
   // → 14 right + 14 bottom + 14 corner.
-  const rightHandles = page.locator('.skb-block-nodeview .gblock-handle.right');
-  const bottomHandles = page.locator(
-    '.skb-block-nodeview .gblock-handle.bottom',
-  );
-  const cornerHandles = page.locator(
-    '.skb-block-nodeview .gblock-handle.corner',
-  );
+  // Wave 6 cf-25 — filter to component-block handles only (cf-25
+  // chunked markdown blocks add ~10-11 more right/bottom/corner
+  // handles; markdown handle counts asserted by sample-blocks-markdown-blocks.spec.ts).
+  const COMPONENT_NODE = '.skb-block-nodeview:not([data-skb-block-kind="markdown"])';
+  const rightHandles = page.locator(`${COMPONENT_NODE} .gblock-handle.right`);
+  const bottomHandles = page.locator(`${COMPONENT_NODE} .gblock-handle.bottom`);
+  const cornerHandles = page.locator(`${COMPONENT_NODE} .gblock-handle.corner`);
   await expect(rightHandles).toHaveCount(14);
   await expect(bottomHandles).toHaveCount(14);
   await expect(cornerHandles).toHaveCount(14);
@@ -192,7 +192,9 @@ test('cf-20d — resize handles hidden on mobile (≤768px) per ADR-0017 D9 view
 
   // Right handles still exist in the React tree (NodeView doesn't
   // conditionally render based on viewport); the CSS hides them.
-  const rightHandles = page.locator('.skb-block-nodeview .gblock-handle.right');
+  // Wave 6 cf-25 — filter to component-block handles only.
+  const COMPONENT_NODE = '.skb-block-nodeview:not([data-skb-block-kind="markdown"])';
+  const rightHandles = page.locator(`${COMPONENT_NODE} .gblock-handle.right`);
   await expect(rightHandles).toHaveCount(14);
   const firstDisplay = await rightHandles.first().evaluate(
     (el) => window.getComputedStyle(el).display,
@@ -200,8 +202,8 @@ test('cf-20d — resize handles hidden on mobile (≤768px) per ADR-0017 D9 view
   expect(firstDisplay).toBe('none');
 
   // Bottom + corner handles also hidden.
-  const bottomHandles = page.locator('.skb-block-nodeview .gblock-handle.bottom');
-  const cornerHandles = page.locator('.skb-block-nodeview .gblock-handle.corner');
+  const bottomHandles = page.locator(`${COMPONENT_NODE} .gblock-handle.bottom`);
+  const cornerHandles = page.locator(`${COMPONENT_NODE} .gblock-handle.corner`);
   await expect(bottomHandles).toHaveCount(14);
   await expect(cornerHandles).toHaveCount(14);
   expect(
@@ -335,7 +337,11 @@ test('cf-20d R2 F2 — bottom-only resize on persisted-overflow block normalizes
   // placement is `4 / span 6` (overflow), but CSS may visually
   // clip; we just assert the inline style reflects the persisted
   // (invalid) state at load time.
-  const firstWrapper = page.locator('.skb-block-nodeview').first();
+  // Wave 6 cf-25 — skip markdown wrapper-blocks (cf-25 chunking
+  // pass moved an intro paragraph ahead of the first callout).
+  const firstWrapper = page
+    .locator('.skb-block-nodeview:not([data-skb-block-kind="markdown"])')
+    .first();
   const colBefore = await firstWrapper.evaluate(
     (el) => (el as HTMLElement).style.gridColumn,
   );
@@ -425,7 +431,10 @@ test('cf-20d R3 F1 — bottom-only resize on col-overflow block normalizes BOTH 
 
   // Pre-resize: the inline gridColumn reflects col=7 (overflowing)
   // — `7 / span 6` even though that's outside the grid.
-  const firstWrapper = page.locator('.skb-block-nodeview').first();
+  // Wave 6 cf-25 — skip markdown wrapper-blocks added by chunking pass.
+  const firstWrapper = page
+    .locator('.skb-block-nodeview:not([data-skb-block-kind="markdown"])')
+    .first();
   const colBefore = await firstWrapper.evaluate(
     (el) => (el as HTMLElement).style.gridColumn,
   );

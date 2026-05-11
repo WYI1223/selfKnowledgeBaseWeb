@@ -84,6 +84,11 @@ export const PALETTE_SIDEBAR_ITEMS: readonly PaletteSidebarItem[] =
         return { ...opt, glyph: '</>', description: 'TS · JS · Python · syntax-highlighted' };
       case 'image':
         return { ...opt, glyph: '◨', description: 'Photo · figure · diagram' };
+      // Wave 6 cf-25 — 9th kind. Glyph 'T' (typographic mark) is
+      // intentionally neutral; per ADR-0018 v0.9 D11.b prose IS the
+      // document substrate, NOT an accent block.
+      case 'markdown':
+        return { ...opt, glyph: 'T', description: 'Heading · paragraph · list · quote' };
       case 'math':
         return { ...opt, glyph: '∑', description: 'KaTeX inline + display' };
       case 'pdf':

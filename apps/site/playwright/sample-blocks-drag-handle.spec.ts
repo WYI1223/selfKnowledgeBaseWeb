@@ -75,8 +75,15 @@ test('sample-blocks edit route — cf-20c-2 drag-handle wire (button + outline +
   });
 
   // (a) Per-block drag handles present + structured per cf-20c-2 D2.
-  const handles = page.locator('.skb-block-nodeview .skb-block-nodeview__drag-handle');
-  // The fixture has 14 NodeView blocks (4 callout + 1 code + 2 image +
+  // Wave 6 cf-25 — count component-block drag-handles only (exclude
+  // markdown wrapper-blocks added by the chunking pass; cf-25 adds
+  // ~10-11 markdown drag-handles to the pre-cf-25 14 component-block
+  // drag-handles, total fluctuates with fixture content). The cf-25
+  // markdown count is asserted by sample-blocks-markdown-blocks.spec.ts.
+  const handles = page.locator(
+    '.skb-block-nodeview:not([data-skb-block-kind="markdown"]) .skb-block-nodeview__drag-handle',
+  );
+  // The fixture has 14 component-block NodeViews (4 callout + 1 code + 2 image +
   // 2 math + 2 pdf + 1 jupyter + 1 nn-viz + 1 agent-flow). Each gets
   // one drag-handle button. Pre-drag the count is 14.
   await expect(handles).toHaveCount(14);
@@ -115,7 +122,8 @@ test('sample-blocks edit route — cf-20c-2 drag-handle wire (button + outline +
   await expect(page.locator('.drag-ghost')).toHaveCount(0);
 
   // Post-cancel: handles still present (cancel doesn't tear down the
-  // editor; the drag is cleanly aborted).
+  // editor; the drag is cleanly aborted). cf-25 selector still
+  // filters to the 14 component-block NodeViews.
   await expect(handles).toHaveCount(14);
 
   await page.screenshot({ fullPage: false, path: SCREENSHOT_PATH });
@@ -162,7 +170,7 @@ test('cf-20c-2 R1 F1 — source-lift visual: dragstart applies .skb-block-nodevi
 
   // (b) Dispatch dragstart on the FIRST handle, expect exactly 1 source-lift
   const firstHandle = page
-    .locator('.skb-block-nodeview .skb-block-nodeview__drag-handle')
+    .locator('.skb-block-nodeview:not([data-skb-block-kind="markdown"]) .skb-block-nodeview__drag-handle')
     .first();
   const sourceBlockId = await firstHandle.getAttribute('data-skb-drag-handle');
   expect(sourceBlockId).toMatch(/^\d+$/);
@@ -247,7 +255,13 @@ test('cf-20c-2 R1 F4 — terminal drop: dragstart → dragover edge → drop mut
   // colSpan=12 in sample-blocks fixtures; a drop at the target's right
   // edge (within EDGE_W=28 → 14px inside) triggers split-right which
   // halves the target to colSpan=6 + places source at col=7 colSpan=6.
-  const allWrappers = await page.locator('.skb-block-nodeview').all();
+  // Wave 6 cf-25 — filter to component-block wrappers only (cf-25
+  // chunking pass adds markdown wrappers ahead of the first callout;
+  // the cf-20c-2 algebra works on component blocks per the original
+  // F4 fixture intent).
+  const allWrappers = await page
+    .locator('.skb-block-nodeview:not([data-skb-block-kind="markdown"])')
+    .all();
   expect(allWrappers.length).toBeGreaterThanOrEqual(2);
 
   const firstWrapper = allWrappers[0];
@@ -269,9 +283,10 @@ test('cf-20c-2 R1 F4 — terminal drop: dragstart → dragover edge → drop mut
   const dropX = targetBox.x + targetBox.width - 6;
   const dropY = targetBox.y + targetBox.height / 2;
 
-  // Capture pre-drop attrs of the source for diff comparison
+  // Capture pre-drop attrs of the source for diff comparison.
+  // Wave 6 cf-25 — filter to component-block wrappers.
   const sourceColBefore = await page
-    .locator('.skb-block-nodeview')
+    .locator('.skb-block-nodeview:not([data-skb-block-kind="markdown"])')
     .first()
     .evaluate((el) => el.style.gridColumn);
 
@@ -353,7 +368,7 @@ test('cf-20c-2 R1 F4 — terminal drop: dragstart → dragover edge → drop mut
   // Whitespace normalization (replace /\s+/g, ' ') accommodates
   // browser DOM serialization variants ('7 / span 6' vs '7  /  span  6').
   const sourceColAfter = await page
-    .locator('.skb-block-nodeview')
+    .locator('.skb-block-nodeview:not([data-skb-block-kind="markdown"])')
     .first()
     .evaluate((el) => el.style.gridColumn);
   expect(sourceColAfter).not.toBe(sourceColBefore);
@@ -386,7 +401,7 @@ test('cf-20c-2 R1 F4 — terminal drop: dragstart → dragover edge → drop mut
   // after toBeAttached) so it's pinned even if the 720 ms pulse
   // animation has since unmounted the anchor.
   const sourceRectAfter = await page
-    .locator('.skb-block-nodeview')
+    .locator('.skb-block-nodeview:not([data-skb-block-kind="markdown"])')
     .first()
     .boundingBox();
   expect(pulseRect).not.toBeNull();
@@ -423,7 +438,12 @@ test('cf-20c-2 — drag handles are hidden on mobile (≤768px) per cf-20b R1 vi
   });
 
   // Drag handles exist in the DOM but resolve to display: none.
-  const handles = page.locator('.skb-block-nodeview .skb-block-nodeview__drag-handle');
+  // Wave 6 cf-25 — filter to component-block drag-handles only
+  // (cf-25 chunked markdown blocks add ~10-11 more drag-handles
+  // that aren't covered by the pre-cf-25 14-block expectation).
+  const handles = page.locator(
+    '.skb-block-nodeview:not([data-skb-block-kind="markdown"]) .skb-block-nodeview__drag-handle',
+  );
   // The handles are still rendered in the React tree (Tiptap NodeView
   // doesn't conditionally render based on viewport); the CSS hides
   // them. Count should still be 14 in DOM but each one's computed

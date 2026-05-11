@@ -5,6 +5,8 @@ import { codeCore } from '@skb/block-code/core';
 import { codeUiDefault } from '@skb/block-code/ui-default';
 import { imageCore } from '@skb/block-image/core';
 import { imageUiDefault } from '@skb/block-image/ui-default';
+import { markdownCore } from '@skb/block-markdown/core';
+import { markdownUiDefault } from '@skb/block-markdown/ui-default';
 import { mathCore } from '@skb/block-math/core';
 import { mathUiDefault } from '@skb/block-math/ui-default';
 import { pdfCore } from '@skb/block-pdf/core';
@@ -33,6 +35,11 @@ export function registerBlocks(registry: BlockRegistry): void {
 
   registry.registerCore(imageCore);
   registry.registerUI(imageUiDefault as unknown as BlockUIDefinition);
+
+  // Wave 6 cf-25 — 9th kind. Same contravariance cast as the
+  // light-block cluster (callout/code/image/math/pdf).
+  registry.registerCore(markdownCore);
+  registry.registerUI(markdownUiDefault as unknown as BlockUIDefinition);
 
   // 2 render blocks (math/pdf): inference-default UiDefault still narrows
   // to the core's propsSchema via defineUI's generic; same cast required.

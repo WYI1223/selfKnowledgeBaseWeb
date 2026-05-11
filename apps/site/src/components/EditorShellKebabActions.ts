@@ -125,12 +125,20 @@ export function makeKebabDuplicate(
     if (!node) return;
     const insertPos = pos + node.nodeSize;
     const blockKind = node.type.name;
-    // Use ProseMirror's tr.insert(pos, node.copy()) per cf-20e D7.
+    // Use ProseMirror's tr.insert(pos, node.copy(content)) per cf-20e D7.
+    // Wave 6 cf-25 R2 F6 — pass `node.content` explicitly. Per
+    // ProseMirror Node.copy() source (prosemirror-model index.js):
+    // `copy(content = null)` — when omitted, content defaults to null,
+    // producing an EMPTY content copy. For atom blocks (content is
+    // null anyway) this is fine. For non-atom blocks like cf-25's
+    // `markdown` (content: 'block+'), an empty copy violates the
+    // schema. Passing `node.content` explicitly preserves the inner
+    // ProseMirror children for the wrapper-block case.
     editor
       .chain()
       .command(({ tr }: TiptapCommandArg) => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        tr.insert(insertPos, (node as any).copy());
+        tr.insert(insertPos, (node as any).copy(node.content));
         return true;
       })
       .run();
@@ -171,6 +179,15 @@ export function makeKebabChangeKind(
     const newNodeType = editor.schema.nodes[newKind];
     if (!newNodeType) return;
     const sourceKind = node.type.name;
+    // Wave 6 cf-25 R1 F3 — D10 lossy-conversion guard. markdown ↔
+    // component conversion has no preserved content map (prose body
+    // doesn't fit a callout/code/image schema; component props don't
+    // unfold into prose paragraphs). The KebabMenu UI hides the
+    // Change-kind affordance when the source is markdown (per cf-25
+    // R1 F3 site #1+#2), but defense-in-depth: the action handler
+    // also no-ops for either direction so a programmatic caller (or
+    // future shortcut/voice command) can't bypass the UI guard.
+    if (sourceKind === 'markdown' || newKind === 'markdown') return;
     const newAttrs = buildChangeKindAttrs(
       node.attrs,
       newKind,

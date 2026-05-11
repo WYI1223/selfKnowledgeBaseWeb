@@ -64,7 +64,7 @@ test('cf-22 — Resize handles converted to <button> + AT-reachable (cf-22 D4)',
   await expect(editor.locator('.skb-block-nodeview').first()).toBeVisible({
     timeout: 10_000,
   });
-  const firstRight = page.locator('.skb-block-nodeview .gblock-handle.right').first();
+  const firstRight = page.locator('.skb-block-nodeview:not([data-skb-block-kind="markdown"]) .gblock-handle.right').first();
   const tagName = await firstRight.evaluate((el) => el.tagName.toLowerCase());
   expect(tagName).toBe('button');
   expect(await firstRight.getAttribute('aria-label')).toBe('Resize block width');
@@ -88,7 +88,7 @@ test('cf-22 R1 F2 — Drag handle Enter starts keyboard-mode (grid-coord; Outlin
 
   await expect(page.locator('.skb-grid-outline-base')).toHaveCount(0);
   await expect(page.locator('.drag-ghost')).toHaveCount(0);
-  const firstHandle = page.locator('.skb-block-nodeview .skb-block-nodeview__drag-handle').first();
+  const firstHandle = page.locator('.skb-block-nodeview:not([data-skb-block-kind="markdown"]) .skb-block-nodeview__drag-handle').first();
   await firstHandle.focus();
   await firstHandle.press('Enter');
   await expect(page.locator('.skb-grid-outline-base').first()).toHaveCount(1, { timeout: 5_000 });
@@ -115,7 +115,7 @@ test('cf-22 — Resize handle Enter starts keyboard-mode → ColRuler + SizeTool
 
   // Focus first right handle + press Enter to start keyboard-resize mode.
   const firstRight = page
-    .locator('.skb-block-nodeview .gblock-handle.right')
+    .locator('.skb-block-nodeview:not([data-skb-block-kind="markdown"]) .gblock-handle.right')
     .first();
   await firstRight.focus();
   await firstRight.press('Enter');
@@ -150,7 +150,7 @@ test('cf-22 — Kebab menu opens with first item auto-focused; ArrowDown cycles 
 
   // Open the kebab menu via keyboard.
   const firstKebab = page
-    .locator('.skb-block-nodeview .skb-block-nodeview__kebab')
+    .locator('.skb-block-nodeview:not([data-skb-block-kind="markdown"]) .skb-block-nodeview__kebab')
     .first();
   await firstKebab.focus();
   await firstKebab.press('Enter');
@@ -199,7 +199,7 @@ test('cf-22 — Kebab Change-kind sub-menu: ArrowRight expands + auto-focus firs
 
   // Open kebab + navigate to "Change kind…".
   const firstKebab = page
-    .locator('.skb-block-nodeview .skb-block-nodeview__kebab')
+    .locator('.skb-block-nodeview:not([data-skb-block-kind="markdown"]) .skb-block-nodeview__kebab')
     .first();
   await firstKebab.focus();
   await firstKebab.press('Enter');
@@ -248,9 +248,9 @@ test('cf-22 — Mobile (≤768px) keyboard handles still hidden per ADR-0017 D9 
   await expect(editor.locator('.skb-block-nodeview').first()).toBeVisible({ timeout: 10_000 });
   const computedDisplay = (sel: string) =>
     page.locator(sel).first().evaluate((el) => window.getComputedStyle(el).display);
-  expect(await computedDisplay('.skb-block-nodeview .skb-block-nodeview__drag-handle')).toBe('none');
-  expect(await computedDisplay('.skb-block-nodeview .gblock-handle.right')).toBe('none');
-  expect(await computedDisplay('.skb-block-nodeview .skb-block-nodeview__kebab')).toBe('none');
+  expect(await computedDisplay('.skb-block-nodeview:not([data-skb-block-kind="markdown"]) .skb-block-nodeview__drag-handle')).toBe('none');
+  expect(await computedDisplay('.skb-block-nodeview:not([data-skb-block-kind="markdown"]) .gblock-handle.right')).toBe('none');
+  expect(await computedDisplay('.skb-block-nodeview:not([data-skb-block-kind="markdown"]) .skb-block-nodeview__kebab')).toBe('none');
 });
 
 // R1 F2/F3 fixture: shrinks first Callout's colSpan from 12 to 6
@@ -283,7 +283,7 @@ test('cf-22 R1 F1 — keyboard-drag arrow updates LiveAnnouncer textContent with
   expect((await announcer.textContent())?.trim() ?? '').toBe('');
 
   const firstHandle = page
-    .locator('.skb-block-nodeview .skb-block-nodeview__drag-handle')
+    .locator('.skb-block-nodeview:not([data-skb-block-kind="markdown"]) .skb-block-nodeview__drag-handle')
     .first();
   await firstHandle.focus();
   await firstHandle.press('Enter');
@@ -325,14 +325,15 @@ test('cf-22 R1 F2 — keyboard-drag ArrowRight + Enter commits to col=2 EXACTLY 
   });
   await page.waitForTimeout(500);
 
-  const firstWrapper = page.locator('.skb-block-nodeview').first();
+  // Wave 6 cf-25 — skip markdown wrapper-blocks (chunking pass adds them).
+  const firstWrapper = page.locator('.skb-block-nodeview:not([data-skb-block-kind="markdown"])').first();
   expect(
     (await firstWrapper.evaluate((el) => (el as HTMLElement).style.gridColumn))
       .replace(/\s+/g, ' ').trim(),
   ).toBe('1 / span 6');
 
   const firstHandle = page
-    .locator('.skb-block-nodeview .skb-block-nodeview__drag-handle')
+    .locator('.skb-block-nodeview:not([data-skb-block-kind="markdown"]) .skb-block-nodeview__drag-handle')
     .first();
   await firstHandle.focus();
   await firstHandle.press('Enter');
@@ -371,9 +372,10 @@ test('cf-22 R1 F3 + R2 F3 — Tab in keyboard-drag commits + resets keyboardActi
   });
   await page.waitForTimeout(500);
 
-  const firstWrapper = page.locator('.skb-block-nodeview').first();
+  // Wave 6 cf-25 — skip markdown wrapper-blocks (chunking pass adds them).
+  const firstWrapper = page.locator('.skb-block-nodeview:not([data-skb-block-kind="markdown"])').first();
   const firstHandle = page
-    .locator('.skb-block-nodeview .skb-block-nodeview__drag-handle')
+    .locator('.skb-block-nodeview:not([data-skb-block-kind="markdown"]) .skb-block-nodeview__drag-handle')
     .first();
   await firstHandle.focus();
   // Snapshot the originating handle's outerHTML so we can assert later
@@ -437,7 +439,8 @@ test('cf-22 R2 F3 — Tab in keyboard-resize commits colSpan + focus advances PA
   await page.waitForTimeout(500);
 
   // Hover-focus the right-edge resize handle to enter keyboard-resize.
-  const firstWrapper = page.locator('.skb-block-nodeview').first();
+  // Wave 6 cf-25 — skip markdown wrapper-blocks (chunking pass adds them).
+  const firstWrapper = page.locator('.skb-block-nodeview:not([data-skb-block-kind="markdown"])').first();
   await firstWrapper.hover();
   const rightHandle = firstWrapper.locator('.gblock-handle.right').first();
   await expect(rightHandle).toBeVisible({ timeout: 5_000 });

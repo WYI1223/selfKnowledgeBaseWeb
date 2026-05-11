@@ -13,6 +13,7 @@ import type {
 import { COL_SNAPS } from '@skb/block-foundation';
 import type { MdastJsxElement } from './dispatch-table';
 import { getJsxDispatch } from './dispatch-table';
+import { unwrapDefaultMarkdownWrappers } from './markdown-chunking';
 import type { MdxBridgeOptions, TiptapDoc, TiptapMark, TiptapNode } from './parse';
 
 const PHRASING_TYPES = new Set([
@@ -69,14 +70,25 @@ function isBlock(node: RootContent | MdastJsxElement): node is TiptapMdastBlock 
  * round-trip, fall back to reconstruction for nodes that originated in the
  * editor without a parsed source. Stringify with remark-stringify configured
  * to match canonical markdown output.
+ *
+ * Wave 6 cf-25 — Markdown wrapper-block unwrap-on-default pass per
+ * cf-25 PR.md D5. After per-block serialize, walk the synthetic
+ * Markdown JSX wrappers and UNWRAP them back to bare prose mdast
+ * when their grid attrs are at default values (col=1, no row,
+ * colSpan=12, rowSpan='auto'). Non-default grid attrs preserve
+ * the wrapper. This guarantees byte-equivalent round-trip for
+ * pre-cf-25 legacy MDX (no `<Markdown>` wrapper introduced) AND
+ * preserves the wrapper when the user resizes/places a markdown
+ * block to non-default grid coordinates.
  */
 export function tiptapToMdx(doc: TiptapDoc, options?: MdxBridgeOptions): string {
   const blocks = doc.content.map((node) => tiptapToMdastBlock(node, options));
+  const unwrapped = unwrapDefaultMarkdownWrappers(blocks);
   const children: RootContent[] = [];
   if (doc.frontmatter !== undefined) {
     children.push({ type: 'yaml', value: doc.frontmatter });
   }
-  children.push(...blocks);
+  children.push(...unwrapped);
   const tree: Root = { type: 'root', children };
 
   const out = unified()
@@ -160,13 +172,54 @@ function tiptapComponentToMdast(
   if (!dispatch || dispatch.blockType !== node.type) return unsupportedBlock(node.type);
 
   const gridAttrs = serializeGridAttrs(node, core.mdxComponent);
-  const element = dispatch.serialize(stripGridAttrsForDispatch(node));
+
+  // Wave 6 cf-25 — Markdown wrapper-block: serialize inner Tiptap
+  // content (paragraph / heading / list / etc.) back to mdast
+  // BEFORE handing to dispatch.serialize. Without this step the
+  // dispatch sees raw Tiptap nodes as `node.content` and emits them
+  // verbatim into the JSX wrapper's children — invalid mdast that
+  // breaks remark-stringify. Per cf-25 PR.md D7: markdown is the
+  // ONLY block kind whose serialize boundary recurses inner content
+  // (the 8 atom blocks have no inner Tiptap content to walk).
+  const isMarkdown = core.mdxComponent === 'Markdown';
+  const nodeForDispatch = stripGridAttrsForDispatch(node);
+  if (isMarkdown && Array.isArray(nodeForDispatch.content)) {
+    // `nodeForDispatch.content` is `TiptapNode[]` per the type contract;
+    // map each child through the recursive serializer to produce mdast
+    // children for the JSX wrapper. The result is then handed to the
+    // dispatch's serialize hook (which only emits the outer wrapper).
+    // The inner Tiptap children become mdast block nodes here. The
+    // dispatch's serialize hook stuffs them into the JSX wrapper's
+    // `children` slot — TypeScript's structural compatibility allows
+    // both shapes through the `TiptapNode.content` property since
+    // both are `unknown[]`-compatible at the dispatch boundary.
+    const innerSerialized = nodeForDispatch.content.map((child) =>
+      tiptapToMdastBlock(child, options),
+    );
+    const innerNode = {
+      ...nodeForDispatch,
+      content: innerSerialized,
+    } as unknown as TiptapNode;
+    const element = dispatch.serialize(innerNode);
+    if (gridAttrs.length === 0) return element;
+    return {
+      ...element,
+      attributes: [...gridAttrs, ...element.attributes],
+    };
+  }
+
+  const element = dispatch.serialize(nodeForDispatch);
   if (gridAttrs.length === 0) return element;
   return {
     ...element,
     attributes: [...gridAttrs, ...element.attributes],
   };
 }
+
+// Wave 6 cf-25 — unwrap-on-default pass extracted to
+// `./markdown-chunking.ts` per the 500-LOC hard cap. See
+// `unwrapDefaultMarkdownWrappers` in that module for the cf-25
+// PR.md D5 round-trip contract.
 
 function unsupportedBlock(type: string): never {
   throw new Error(

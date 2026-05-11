@@ -72,6 +72,9 @@ const expectedAccentKindFallbacks: Record<string, string> = {
   'accent-jupyter': '#b08a00',
   'accent-nn-viz': '#93329a',
   'accent-agent-flow': '#008974',
+  // Wave 6 cf-25 — markdown wrapper-block hue (oklch(75% 0.04 80) sRGB approx)
+  // per ADR-0018 v0.9 D11.b. Documentation lives in tokens-fallback.css.
+  'accent-prose': '#d4c8b6',
 };
 
 function readFallbacks(): Record<string, string> {

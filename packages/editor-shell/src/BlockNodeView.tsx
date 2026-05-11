@@ -1,5 +1,5 @@
-import { useContext, type ComponentType } from 'react';
-import { NodeViewWrapper, type ReactNodeViewProps } from '@tiptap/react';
+import { useContext, useLayoutEffect, useRef, type ComponentType, type CSSProperties } from 'react';
+import { NodeViewContent, NodeViewWrapper, type ReactNodeViewProps } from '@tiptap/react';
 import type { BlockRegistry, BlockViewProps } from '@skb/block-foundation';
 import type { ZodTypeAny } from 'zod';
 import { extractGridPosition, gridPlacementStyle } from './grid-style';
@@ -124,6 +124,56 @@ function nodeViewClassName(
   return parts.join(' ');
 }
 
+/**
+ * Wave 6 cf-25 R1 F2 — project the grid placement style onto the
+ * parent `.react-renderer` element (Tiptap's outer NodeView wrapper)
+ * via a useLayoutEffect that walks up from our `NodeViewWrapper`'s
+ * ref. The OUTER wrapper IS the actual grid item under
+ * `.ProseMirror`'s display:grid; placing the style on the inner
+ * `.skb-block-nodeview` (which sits one level INSIDE) is invisible
+ * to the parent grid layout because the outer takes a default cell.
+ *
+ * Why useLayoutEffect (not useEffect): grid layout must apply BEFORE
+ * the browser paints to avoid a single-frame flash where the block
+ * jumps from `1 / -1` (CSS fallback) to its real placement. Layout
+ * effects run synchronously after DOM mutations + before paint, so
+ * the user never sees the fallback position.
+ *
+ * Idempotent: rewrites the same style on every render. Tiptap calls
+ * the React update path on every node-attrs mutation, so the style
+ * stays in sync with `node.attrs.{col,colSpan,row,rowSpan}` updates
+ * from cf-20c-2 drag, cf-20d resize, cf-20e change-kind, etc.
+ *
+ * Cleanup: on unmount the parent `.react-renderer` is also removed
+ * by Tiptap (NodeView lifecycle owns the dom), so no manual cleanup
+ * needed; we keep the cleanup function null-returning to make this
+ * explicit.
+ */
+function useProjectGridStyleToOuter(
+  innerRef: React.RefObject<HTMLDivElement>,
+  style: CSSProperties | undefined,
+): void {
+  useLayoutEffect(() => {
+    const innerEl = innerRef.current;
+    if (!innerEl) return;
+    const outerEl = innerEl.parentElement;
+    // The expected parent is Tiptap's `.react-renderer.node-{kind}` div.
+    // Defensive: only mutate when the parent actually carries that
+    // class so we don't accidentally style some unrelated ancestor.
+    if (!outerEl || !outerEl.classList.contains('react-renderer')) return;
+    if (style?.gridColumn) {
+      outerEl.style.gridColumn = String(style.gridColumn);
+    } else {
+      outerEl.style.removeProperty('grid-column');
+    }
+    if (style?.gridRow) {
+      outerEl.style.gridRow = String(style.gridRow);
+    } else {
+      outerEl.style.removeProperty('grid-row');
+    }
+  });
+}
+
 export function makeBlockNodeView({
   registry,
 }: BlockNodeViewFactoryProps): ComponentType<ReactNodeViewProps> {
@@ -134,6 +184,9 @@ export function makeBlockNodeView({
     const gridPos = extractGridPosition(editorProps);
     const wrapperStyle = gridPos ? gridPlacementStyle(gridPos) : undefined;
     const blockId = blockIdFromProps(props);
+    // Wave 6 cf-25 R1 F2 — project grid style onto outer .react-renderer.
+    const innerRef = useRef<HTMLDivElement>(null);
+    useProjectGridStyleToOuter(innerRef, wrapperStyle);
     // Wave 6 cf-20c-2 R1 F1 — read sourceBlockId from DragDropContext
     // (null when no drag pipeline is mounted OR when no drag is
     // active). When this NodeView's blockId matches, apply the
@@ -160,13 +213,14 @@ export function makeBlockNodeView({
     if (!ui) {
       return (
         <NodeViewWrapper
+          ref={innerRef}
           className={nodeViewClassName(isDraggingSelf, true, isResizing)}
           data-skb-block-kind={nodeName}
           style={wrapperStyle}
         >
           <div className="skb-block-nodeview__gutter" contentEditable={false}>
             {blockId && <DragHandleButton blockId={blockId} />}
-            {blockId && <KebabButton blockId={blockId} />}
+            {blockId && <KebabButton blockId={blockId} sourceKind={nodeName} />}
             <span className="skb-block-nodeview__kind-chip" data-skb-block-kind={nodeName}>
               {chipLabel(nodeName)}
             </span>
@@ -178,16 +232,53 @@ export function makeBlockNodeView({
         </NodeViewWrapper>
       );
     }
+    // Wave 6 cf-25 D7 — markdown short-circuit: render
+    // <NodeViewContent> in the body so ProseMirror manages the inner
+    // prose (paragraph / heading / list / blockquote / etc.) as
+    // editable children. This is the only kind that uses content:
+    // 'block+' schema; the 8 component blocks are atom-blocks and
+    // mount their registered EditorView with `props={editorProps}`.
+    //
+    // The body container drops `contentEditable={false}` (only on
+    // the 8 atom-block path) so ProseMirror's children inside
+    // <NodeViewContent> can be edited. Gutter, drag-handle, kebab,
+    // resize wiring all stay identical.
+    if (nodeName === 'markdown') {
+      return (
+        <NodeViewWrapper
+          ref={innerRef}
+          className={nodeViewClassName(isDraggingSelf, false, isResizing)}
+          data-skb-block-kind={nodeName}
+          style={wrapperStyle}
+        >
+          <div className="skb-block-nodeview__gutter" contentEditable={false}>
+            {blockId && <DragHandleButton blockId={blockId} />}
+            {blockId && <KebabButton blockId={blockId} sourceKind={nodeName} />}
+            <span className="skb-block-nodeview__kind-chip" data-skb-block-kind={nodeName}>
+              {chipLabel(nodeName)}
+            </span>
+          </div>
+          <NodeViewContent
+            as="div"
+            className="skb-block-nodeview__body skb-prose"
+            data-skb-block-host={nodeName}
+          />
+          {blockId && <ResizeHandles blockId={blockId} gridKind={gridKind} />}
+        </NodeViewWrapper>
+      );
+    }
+
     const EditorView: ComponentType<BlockViewProps<ZodTypeAny>> = ui.EditorView;
     return (
       <NodeViewWrapper
+        ref={innerRef}
         className={nodeViewClassName(isDraggingSelf, false, isResizing)}
         data-skb-block-kind={nodeName}
         style={wrapperStyle}
       >
         <div className="skb-block-nodeview__gutter" contentEditable={false}>
           {blockId && <DragHandleButton blockId={blockId} />}
-          {blockId && <KebabButton blockId={blockId} />}
+          {blockId && <KebabButton blockId={blockId} sourceKind={nodeName} />}
           <span className="skb-block-nodeview__kind-chip" data-skb-block-kind={nodeName}>
             {chipLabel(nodeName)}
           </span>

@@ -40,7 +40,7 @@ import type { BlockAffordanceKind, BlockKindOption } from '../registry-wire';
 export interface KebabMenuProps {
   /** Stable block identifier (mirrors cf-20c-2 drag-handle pattern). */
   readonly blockId: string;
-  /** The 8 BlockKind options for the change-kind sub-menu. */
+  /** The 9 BlockKind options for the change-kind sub-menu. */
   readonly kinds: readonly BlockKindOption[];
   /** Called when user picks Delete. */
   readonly onDelete: (blockId: string) => void;
@@ -50,6 +50,14 @@ export interface KebabMenuProps {
   readonly onChangeKind: (blockId: string, newKind: BlockAffordanceKind) => void;
   /** Closes the menu (called after each action; also on Esc / click-outside). */
   readonly onClose: () => void;
+  /**
+   * Wave 6 cf-25 R1 F3 — source block's BlockAffordanceKind. When
+   * 'markdown' the Change-kind action is hidden (cf-25 D10 — prose
+   * ↔ component conversion is lossy: prose content doesn't map to
+   * component props). When undefined, all 9 kinds are offered as
+   * targets (legacy default).
+   */
+  readonly sourceKind?: string;
 }
 
 function stopPropagation(event: ReactMouseEvent<HTMLElement>): void {
@@ -97,8 +105,18 @@ const MenuItem = forwardRef<HTMLButtonElement, MenuItemProps>(
 );
 
 export function KebabMenu(props: KebabMenuProps): ReactElement {
-  const { blockId, kinds, onDelete, onDuplicate, onChangeKind, onClose } =
+  const { blockId, kinds, onDelete, onDuplicate, onChangeKind, onClose, sourceKind } =
     props;
+  // Wave 6 cf-25 R1 F3 — D10 disable Change-kind when source is
+  // markdown (lossy: prose ↔ component conversion has no preserved
+  // content map). When source is non-markdown, also EXCLUDE 'markdown'
+  // from the target options (the inverse direction is also lossy:
+  // component props don't map to prose content).
+  const sourceIsMarkdown = sourceKind === 'markdown';
+  const targetKinds = sourceIsMarkdown
+    ? ([] as readonly BlockKindOption[])
+    : kinds.filter((opt) => opt.kind !== 'markdown');
+  const showChangeKind = !sourceIsMarkdown;
   const [changeKindOpen, setChangeKindOpen] = useState(false);
   // cf-22 — refs for programmatic focus management.
   const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
@@ -237,22 +255,24 @@ export function KebabMenu(props: KebabMenuProps): ReactElement {
         onKeyDown={handleTopLevelKeyDown(1)}
         dataAttr="duplicate"
       />
-      <MenuItem
-        ref={(el) => {
-          itemRefs.current[2] = el;
-        }}
-        label="Change kind…"
-        onClick={handleChangeKindClick}
-        onKeyDown={handleTopLevelKeyDown(2)}
-        dataAttr="change-kind-toggle"
-      />
-      {changeKindOpen && (
+      {showChangeKind && (
+        <MenuItem
+          ref={(el) => {
+            itemRefs.current[2] = el;
+          }}
+          label="Change kind…"
+          onClick={handleChangeKindClick}
+          onKeyDown={handleTopLevelKeyDown(2)}
+          dataAttr="change-kind-toggle"
+        />
+      )}
+      {showChangeKind && changeKindOpen && (
         <div
           className="skb-kebab-menu__submenu"
           role="menu"
           data-skb-kebab-submenu="change-kind"
         >
-          {kinds.map((option, idx) => (
+          {targetKinds.map((option, idx) => (
             <MenuItem
               key={option.kind}
               ref={(el) => {

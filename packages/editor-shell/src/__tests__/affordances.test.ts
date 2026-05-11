@@ -120,11 +120,14 @@ describe('C.4-3 user affordances', () => {
     expect(screen.getByText(/Saved at/)).toBeTruthy();
   });
 
-  it('registry wire exposes block insertion extensions for all 8 kinds', () => {
+  it('registry wire exposes block insertion extensions for all 9 kinds (cf-25)', () => {
     const wired = wireRegistry({});
     expect(wired.blockKinds.map((kind) => kind.kind)).toEqual(
       BLOCK_KIND_OPTIONS.map((kind) => kind.kind),
     );
-    expect(wired.extensions).toHaveLength(8);
+    // Wave 6 cf-25 — count went from 8 to 9 with the addition of
+    // the markdown wrapper-block kind (BlockAffordanceKind union
+    // expansion per cf-25 D2).
+    expect(wired.extensions).toHaveLength(9);
   });
 });

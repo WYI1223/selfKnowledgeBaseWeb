@@ -13,6 +13,14 @@ import {
   gridPlacementStyle,
 } from '@skb/editor-shell/src/grid-style.ts';
 
+// Wave 6 cf-25 — re-export so the Markdown wrapper-block adapter
+// in components.ts can apply the same grid placement style as the
+// 8 component-block adapters (single source per ADR-0016 D2). The
+// SSR-safe deep-subpath import above is the canonical path for
+// Astro SSR consumers; the re-export here keeps the deep import
+// localized to this file.
+export { extractGridPosition, gridPlacementStyle };
+
 // MDX compiles `<Callout variant="note">body</Callout>` to flat React
 // props (`<CalloutRenderView variant="note">{body}</CalloutRenderView>`),
 // but block-* RenderView components destructure `{ props, content }:
