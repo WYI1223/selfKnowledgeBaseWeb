@@ -1087,7 +1087,7 @@ read-route lock + cf-24 PaletteSidebar item.
 
 - [ADR-0017 v0.4 → v0.5 D15 amendment](../../decisions/ADR-0017-drag-drop-ux.md) — markdown wrapper-block drag semantics (no special branch)
 - [ADR-0018 v0.8 → v0.9 D11 amendment](../../decisions/ADR-0018-v2-visual-migration.md) — markdown visual contract + `--accent-prose` token
-- [ADR-0016 D2 + D7](../../decisions/ADR-0016-grid-substrate.md) — grid attrs schema authority + end-state lock
+- [ADR-0016 D2 + D7](../../decisions/ADR-0016-grid-data-model.md) — grid attrs schema authority + end-state lock
 - [cf-19 PR.md](wave-6-cf-19-editor-block-visual-identity.md) — `.gblock` chrome + per-kind stripe (cf-25 adds 9th)
 - [cf-20a PR.md](wave-6-cf-20a-stripe-cleanup-single-source.md) — paired `.skb-block-nodeview, .skb-block-static` selector (cf-25 inherits)
 - [cf-20b PR.md](wave-6-cf-20b-grid-layout-substrate.md) — `.ProseMirror` is a 12-col grid (cf-25 makes prose first-class grid items)

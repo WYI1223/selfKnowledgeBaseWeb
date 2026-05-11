@@ -128,7 +128,7 @@ coupling per the cf-25 PR.md round-trip invariant).
 - [@skb/block-foundation CONTRACT](../block-foundation/CONTRACT.md) — `BlockCoreDefinition` authority
 - [@skb/block-callout CONTRACT](../block-callout/CONTRACT.md) — template clone source (cf-25 mirrors structure)
 - [@skb/mdx-bridge CONTRACT](../mdx-bridge/CONTRACT.md) — chunking + unwrap pass + round-trip invariant
-- [ADR-0016 D2 + D3 + D7 + D10](../../docs/decisions/ADR-0016-grid-substrate.md) — grid attrs schema + isProse + grid-kind taxonomy
+- [ADR-0016 D2 + D3 + D7 + D10](../../docs/decisions/ADR-0016-grid-data-model.md) — grid attrs schema + isProse + grid-kind taxonomy
 - [ADR-0017 v0.5 D15](../../docs/decisions/ADR-0017-drag-drop-ux.md) — markdown drag semantics (no special branch)
 - [ADR-0018 v0.9 D11](../../docs/decisions/ADR-0018-v2-visual-migration.md) — markdown visual contract + `--accent-prose` token
 - [cf-25 PR.md](../../docs/plans/wave-6-main/wave-6-cf-25-markdown-as-grid-blocks.md)
