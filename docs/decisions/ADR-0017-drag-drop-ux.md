@@ -2,7 +2,7 @@
 
 | 字段 | 值 |
 | ---- | --- |
-| 状态 | accepted (v0.4 Wave 6 cf-24 amendment 2026-05-10 — D14 external-source drag protocol added; per-block drag/drop UX from v0.1.1 unchanged) |
+| 状态 | accepted (v0.6 Wave 7 Phase 3 amendment 2026-05-11 — D1 4-mode split-with-shrink + D2 EDGE_W=28 + D3 tiebreak + D5 hit-test + D7 source lift + D9 resize-handles **DEPRECATED** in favor of [ADR-0020](ADR-0020-grid-engine-contract.md) D2 `inferDropIntent` hole-fill; AC#1-#6 + AC#11/#12 superseded; AC#7-#10 retained per Phase 3 retrofit. v0.4 Wave 6 cf-24 D14 external-source drag protocol still operative — same flow, hole-fill placement instead of split-with-shrink) |
 | 日期 | 2026-05-04 |
 | 作者 | orchestrator (Claude Opus 4.7 1M ctx) |
 | 触发 | [Wave 5 plan v0.2 D1+D5](../superpowers/plans/2026-05-04-phase-1-wave-5-integration.md) (Pre-A3 ADR-0017 drag/drop UX design lock) + reframe v2 memory `project_wave4_reframe_v2.md` + granularity doc v0.3.4 § "v2 整体用户体验 / 4 种 Drop 语义 / Drop 视觉 / 命中检测算法 / 源块 lift" body (旧编号 0013 → Wave 5 实际 ADR-0017 per plan v0.2 ADR 编号映射表 / D5) |
@@ -584,3 +584,65 @@ dispatch: `codex exec --yolo --profile plan-challenger ...` (Pre-A3 ADR-0017 des
 - [Wave 5 Pre-A1 PR.md](../plans/wave-5-main/Pre-A1-plan-lock.md) — Wave 5 plan v0.2 lock
 - granularity doc v0.3.4 (`/mnt/d/download/web/v2-design-granularity.md`) — gatekeeper-side scratch; § "4 种 Drop 语义" + § "Drop 视觉" + § "命中检测算法" + § "源块 drag 时 lift" body 是此 ADR 设计意图 source (per Wave 5 plan v0.2 D5 ADR 编号映射表 0013 → 0017)
 - drag-storyboard.css (`/mnt/d/download/web/drag-storyboard.css`) — 16 KB v2 demo drag UX storyboard CSS implementation reference
+
+## v0.6 amendment — Wave 7 Phase 3 deprecate 4-mode split-with-shrink (2026-05-11)
+
+[ADR-0020](ADR-0020-grid-engine-contract.md) D2 (Wave 7) replaces the
+4-mode split-with-shrink algebra with `inferDropIntent` hole-fill
+placement. Per the user critique that drove Wave 7
+("`applyDropMode` 4-mode split-target-shrink-host 算法是错的抽象 ——
+用户拖到 X 边缘 ≠ 'X 自己缩一半'"), the shrink-on-drop semantic was
+the wrong abstraction. The cutover landed in PR #126 (Phase 2B.2,
+commit `dde75a2`). This amendment formally retires the affected
+D-list items so future readers see one source of truth.
+
+### D-list status post-Wave-7
+
+| D# | Item | Wave 7 status |
+|---|---|---|
+| **D1** | 4-mode split-left/right/top/bottom + empty + none | **DEPRECATED** — replaced by ADR-0020 D2 ops (`insertBlock` + `transformBlock` + `inferDropIntent`); host block is NEVER shrunk |
+| **D2** | EDGE_W = 28px edge zones | **DEPRECATED** — cursor maps directly to grid (col, row); no edge-zone classification |
+| **D3** | Tiebreak distance + velocity + spatial + blockId | **DEPRECATED** — `inferDropIntent` returns a single answer per cursor frame; no arbitration needed |
+| **D4** | Outline overlay scheme A — per-affected-block dashed accent | **REPLACED** — `OutlineOverlay` now renders a single hole-fill intent rect (green = place, red = reject); per-mode accent classes gone (PR #126 commit `dde75a2`) |
+| **D5** | Hit-test algorithm (option 1: O(n) per-event) | **DEPRECATED** — cursor → grid-coord is O(1) by construction (single `Math.floor` pair); no per-event scan |
+| **D6** | Source block lift (`display: none` during drag) | **RETAINED** — still applies; the dragged block's old footprint is excluded from `inferDropIntent` baseline (see `intentForMove` in `packages/editor-shell/src/drag-drop/grid-engine-adapter.ts`) |
+| D7 | drop-pulse 720ms green halo | RETAINED — fires post-mutation per the engine commit path |
+| D8 | drag-ghost cursor follow + per-kind tinting | RETAINED — wiring unchanged |
+| D9 | resize handles per kind | RETAINED — orthogonal to drop-mode algebra; ADR-0020 D2 `resizeBlock` op uses the engine's collision check |
+| D10 | drag-ghost color mapping by `gridKind` | RETAINED — orthogonal |
+| D11 | drop-pulse 720ms anchor at landed rect | RETAINED — pulse anchor measured 2-rAF post-setNodeMarkup per engine commit |
+| D12 | global Esc cancel | RETAINED — cancel restores baseline GridState |
+| D13 | keyboard parity (cf-22 R1 F2 grid-coord state machine) | RETAINED — `keyboard-drag-mode.ts` writes `{col, row}` directly via setNodeMarkup; orthogonal to drop algebra |
+| D14 | external-source drag protocol (cf-24) | RETAINED — same flow; commit path now via `commitInsertAtCursor` (PR #126) |
+
+### AC list status post-Wave-7
+
+| AC# | Status |
+|---|---|
+| AC#1 (4-mode visual) | **SUPERSEDED** by Phase 3 hole-fill UX coverage (PR #129); legacy spec skipped with `REMOVED-IN-WAVE-7-PHASE-2B` markers |
+| AC#2 (EDGE_W boundary) | **SUPERSEDED** — no edge zones |
+| AC#3 (tiebreak) | **SUPERSEDED** — no arbitration |
+| AC#4 (static layer invariant) | **SUPERSEDED** — engine ops mutate via setNodeMarkup, same path as before; the no-mutation-during-drag invariant is preserved |
+| AC#5 (outline overlay class inventory) | **SUPERSEDED** — new shape uses `--place` / `--reject` intent variants; new vitest coverage at `packages/editor-shell/src/__tests__/drag-drop/outline-overlay.test.tsx` |
+| AC#6 (hit-test perf budget) | **SUPERSEDED** — O(1) cursor → grid-coord no longer needs synthetic perf budget |
+| AC#7 (source lift) | RETAINED — verified by `intentForMove` excluding source from baseline state |
+| AC#8 (useAutoRowSpan integration) | **REMOVED** — `useAutoRowSpan` deleted in Phase 2A (PR #124); markdown rowSpan is integer; content overflow scrolls inside block |
+| AC#9 (global Esc cancel) | RETAINED — `useEscCancel` unchanged |
+| AC#10 (col-ruler + size-tooltip) | RETAINED — resize coverage unchanged |
+| AC#11 (drag-ghost cursor follow) | RETAINED |
+| AC#12 (drop-pulse 720ms post-drop) | RETAINED — engine commit path emits the same pulse |
+
+### Phase 3 (PR #129) NEW coverage
+
+- `apps/site/playwright/grid-engine-drag-ux.spec.ts` — hole-fill drop intent (cursor → coord → place/reject classification) + per-theme outline preview rendering. Replaces the AC#1-#5 4-mode regression net.
+
+### Migration evidence
+
+| PR | Commit | Scope |
+|---|---|---|
+| #125 | `a41fb2c` | Phase 2B.1: `@skb/editor-shell/grid-engine-adapter.ts` ↔ `@skb/grid-engine` bridge |
+| #126 | `dde75a2` | Phase 2B.2: `applyDropMode` cutover; ~860 LOC dead code removed (`apply-drop-mode.ts` + `tiebreak.ts` + `edge-rects.ts`) |
+| #127 | `ad04765` | Phase 2C: theme switcher mount + cssVar foundation |
+| #128 | `0a257d9` | Phase 2D: theme baseplate + per-theme block chrome |
+| **#129** | this PR | Phase 3: ADR-0017 v0.6 amendment + new hole-fill drag UX coverage |
+| #130 | planned | Wave 7 close + ADR-0021; prototype absorption decision after user acceptance |
