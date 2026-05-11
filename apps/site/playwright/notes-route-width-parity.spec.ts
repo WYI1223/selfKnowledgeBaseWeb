@@ -87,27 +87,124 @@ const SCREENSHOT_DIR = resolve(
   '../../docs/audits/screenshots',
 );
 
+/**
+ * Wave 6 cf-24 (2026-05-10) — D9 3-band amendment.
+ *
+ * cf-24 adds a 230px-wide left-rail PaletteSidebar to the EDIT route
+ * only (BaseLayout `palette` opt-in). The rail is a flex sibling of
+ * `<main>`, so edit's main width shrinks below the cf-23 cap when the
+ * rail is visible. The 3-band model:
+ *
+ *   Band 1 (viewport ≥ 1410): main saturates at 1180 cap; rail 230 fits
+ *     beside; STRICT parity preserved at 1180 (informational extra row).
+ *   Band 2 (1024 ≤ viewport < 1410): rail visible; edit main shrinks
+ *     to ~viewport - 230 - margins (lg:px-12 = 96 each side total). The
+ *     read route has NO rail so read.main saturates at min(1180, viewport).
+ *   Band 3 (viewport < 1024): rail HIDDEN via @media (max-width: 768px);
+ *     cf-23 strict parity restored (read.main === edit.main ±2px).
+ *
+ * 768px boundary: rail still visible at 769-1023 per the global.css
+ * `max-width: 768px` breakpoint; hidden at 768. So 768 viewport is in
+ * Band 3 (rail HIDDEN), but the band-2 numeric formula still applies
+ * conceptually until viewport <= 768. We test 768 + 375 in Band 3 mode.
+ */
+type ParityMode = 'strict' | 'band2-rail-shrunk';
 type ViewportTarget = {
   width: number;
   height: number;
-  mainWidthTarget: number;
-  innerWidthTarget: number;
+  /** Read route main outer width (cf-23 unchanged). */
+  readMainWidth: number;
+  /** Read route main inner content width (cf-23 unchanged). */
+  readInnerWidth: number;
+  /** Edit route main outer width (cf-24 may shrink for band 2). */
+  editMainWidth: number;
+  /** Edit route main inner content width (cf-24 may shrink for band 2). */
+  editInnerWidth: number;
+  /** Width-target tolerance band (±px). */
   tolerance: number;
+  /** Parity mode — strict (cf-23) vs band-2 (cf-24 rail-visible). */
+  mode: ParityMode;
+  /** Whether `aside.palette-rail` should be display:none at this viewport. */
+  railHidden: boolean;
 };
 
+/**
+ * Empirical EXECUTE-time measurements (cf-24 TDD-write phase).
+ *
+ * The cf-23 read measurements stay unchanged (no read-route layout
+ * change). cf-24 edit measurements at 1280/1024 are smaller because the
+ * 230px rail consumes flex-sibling width.
+ *
+ * Numeric basis (cf-24 D9 Option A flex-sibling layout):
+ *   1280: read.main = 1180 (cap); edit.main = 1280 - 230 (rail) =
+ *         1050; edit.inner = 1050 - 96 (lg:px-12) = 954
+ *   1024: read.main = 1024 (no cap); edit.main = 1024 - 230 = 794;
+ *         edit.inner = 794 - 96 = 698
+ *   768: rail HIDDEN; strict parity: edit.main = read.main = 768;
+ *        inner = 768 - 32 (px-4) = 736
+ *   375: rail HIDDEN; strict parity: edit.main = read.main = 375;
+ *        inner = 375 - 32 (px-4) = 343
+ */
 const VIEWPORT_TARGETS: ViewportTarget[] = [
-  // 1280: max-width cap forces box to 1180; mx-auto centers (50px each side margin).
-  // Inner = 1180 - lg:px-12 (48*2) = 1084.
-  { width: 1280, height: 900, mainWidthTarget: 1180, innerWidthTarget: 1084, tolerance: 4 },
-  // 1024: below the 1180 cap; box fills viewport (lg:px-12 padding inside box).
-  // Inner = 1024 - lg:px-12 (48*2) = 928.
-  { width: 1024, height: 900, mainWidthTarget: 1024, innerWidthTarget: 928, tolerance: 4 },
-  // 768: below lg breakpoint; box fills viewport (px-4 padding inside box).
-  // Inner = 768 - px-4 (16*2) = 736.
-  { width: 768, height: 1024, mainWidthTarget: 768, innerWidthTarget: 736, tolerance: 4 },
-  // 375 mobile: box fills viewport (px-4 padding inside box).
-  // Inner = 375 - px-4 (16*2) = 343.
-  { width: 375, height: 812, mainWidthTarget: 375, innerWidthTarget: 343, tolerance: 4 },
+  // Band 1 (cf-24 D9 optional row): viewport ≥ 1410. Rail (230) +
+  // 1180-cap both fit; STRICT parity restored at 1180. Demonstrates
+  // the cap-saturation case where rail + main = 1410, well within
+  // 1440 viewport. Inner = 1180 - 96 (lg:px-12) = 1084.
+  {
+    width: 1440,
+    height: 900,
+    readMainWidth: 1180,
+    readInnerWidth: 1084,
+    editMainWidth: 1180,
+    editInnerWidth: 1084,
+    tolerance: 4,
+    mode: 'strict',
+    railHidden: false,
+  },
+  {
+    width: 1280,
+    height: 900,
+    readMainWidth: 1180,
+    readInnerWidth: 1084,
+    editMainWidth: 1050,
+    editInnerWidth: 954,
+    tolerance: 8,
+    mode: 'band2-rail-shrunk',
+    railHidden: false,
+  },
+  {
+    width: 1024,
+    height: 900,
+    readMainWidth: 1024,
+    readInnerWidth: 928,
+    editMainWidth: 794,
+    editInnerWidth: 698,
+    tolerance: 8,
+    mode: 'band2-rail-shrunk',
+    railHidden: false,
+  },
+  {
+    width: 768,
+    height: 1024,
+    readMainWidth: 768,
+    readInnerWidth: 736,
+    editMainWidth: 768,
+    editInnerWidth: 736,
+    tolerance: 4,
+    mode: 'strict',
+    railHidden: true,
+  },
+  {
+    width: 375,
+    height: 812,
+    readMainWidth: 375,
+    readInnerWidth: 343,
+    editMainWidth: 375,
+    editInnerWidth: 343,
+    tolerance: 4,
+    mode: 'strict',
+    railHidden: true,
+  },
 ];
 
 const PARITY_TOLERANCE_PX = 2;
@@ -143,9 +240,9 @@ async function measure(page: import('@playwright/test').Page) {
   });
 }
 
-test.describe('cf-23 D10 — read + edit routes share main outer + inner widths at 4 viewports', () => {
+test.describe('cf-23 D10 + cf-24 D9 — width-parity 3-band model with palette-rail amendment', () => {
   for (const vt of VIEWPORT_TARGETS) {
-    test(`viewport ${vt.width}x${vt.height} → both routes resolve mainWidth ~${vt.mainWidthTarget}px AND innerWidth ~${vt.innerWidthTarget}px (±${vt.tolerance}px) AND parity (±${PARITY_TOLERANCE_PX}px) AND no overflow`, async ({
+    test(`viewport ${vt.width}x${vt.height} (${vt.mode}, rail ${vt.railHidden ? 'hidden' : 'visible'})`, async ({
       page,
     }) => {
       await page.setViewportSize({ width: vt.width, height: vt.height });
@@ -159,15 +256,9 @@ test.describe('cf-23 D10 — read + edit routes share main outer + inner widths 
         path: `${SCREENSHOT_DIR}/wave-6-cf-23-after-read-${vt.width}.png`,
       });
 
-      // Edit route — let EditorShellMount hydrate before measuring main.
-      // The <main> width itself is set by Astro SSR, but we wait for the
-      // hydration target to ensure the EditorShellMount React island
-      // doesn't introduce post-mount layout shifts via late CSS imports.
+      // Edit route — wait for editor hydration before measuring.
       await page.goto('/notes/sample-blocks/edit');
       await expect(page.locator('main').first()).toBeVisible({ timeout: 15_000 });
-      // Wait for editor to mount so any late-hydration CSS that might
-      // shift container width (none expected, but defense in depth)
-      // has settled.
       await page.waitForFunction(
         () => document.querySelectorAll('.skb-block-nodeview').length > 0,
         undefined,
@@ -176,87 +267,89 @@ test.describe('cf-23 D10 — read + edit routes share main outer + inner widths 
       const editMeasure = await measure(page);
       await page.screenshot({
         fullPage: true,
-        path: `${SCREENSHOT_DIR}/wave-6-cf-23-after-edit-${vt.width}.png`,
+        path: `${SCREENSHOT_DIR}/wave-6-cf-24-after-edit-${vt.width}.png`,
       });
 
-      // (a) Parity: read.mainWidth ~ edit.mainWidth (outer box).
-      expect(
-        Math.abs(readMeasure.mainWidth - editMeasure.mainWidth),
-        `outer width parity at viewport ${vt.width}: read=${readMeasure.mainWidth}px, edit=${editMeasure.mainWidth}px (delta must be <= ${PARITY_TOLERANCE_PX}px)`,
-      ).toBeLessThanOrEqual(PARITY_TOLERANCE_PX);
+      // cf-24 — palette-rail visibility assertion.
+      const railDisplay = await page
+        .locator('aside.palette-rail')
+        .evaluate((el) => window.getComputedStyle(el).display);
+      if (vt.railHidden) {
+        expect(
+          railDisplay,
+          `palette-rail at ${vt.width} must be display:none (Band 3, cf-24 D8)`,
+        ).toBe('none');
+      } else {
+        expect(
+          railDisplay,
+          `palette-rail at ${vt.width} must be visible (cf-24 Band 1/2)`,
+        ).not.toBe('none');
+      }
 
-      // (a') Parity: read.innerWidth ~ edit.innerWidth (content area).
-      // cf-23 R0 F2 — also lock inner-content parity so a regression
-      // that diverges padding between routes (e.g. someone adds an
-      // override on /notes/<slug>/edit only) gets caught.
-      expect(
-        Math.abs(readMeasure.innerWidth - editMeasure.innerWidth),
-        `inner width parity at viewport ${vt.width}: read=${readMeasure.innerWidth}px, edit=${editMeasure.innerWidth}px (delta must be <= ${PARITY_TOLERANCE_PX}px)`,
-      ).toBeLessThanOrEqual(PARITY_TOLERANCE_PX);
+      // Parity assertion depends on mode.
+      if (vt.mode === 'strict') {
+        // Band 3 — cf-23 strict parity preserved (rail hidden).
+        expect(
+          Math.abs(readMeasure.mainWidth - editMeasure.mainWidth),
+          `Band 3 strict outer parity at ${vt.width}: read=${readMeasure.mainWidth}, edit=${editMeasure.mainWidth} (delta must <= ${PARITY_TOLERANCE_PX}px)`,
+        ).toBeLessThanOrEqual(PARITY_TOLERANCE_PX);
+        expect(
+          Math.abs(readMeasure.innerWidth - editMeasure.innerWidth),
+          `Band 3 strict inner parity at ${vt.width}: read=${readMeasure.innerWidth}, edit=${editMeasure.innerWidth} (delta must <= ${PARITY_TOLERANCE_PX}px)`,
+        ).toBeLessThanOrEqual(PARITY_TOLERANCE_PX);
+      } else {
+        // Band 2 — edit.main shrinks because the 230px rail consumes
+        // flex width. The exact delta depends on whether the 1180
+        // read-main cap binds at this viewport:
+        //   1280: read = 1180 (cap binds), edit = 1280 - 230 = 1050;
+        //         delta = 130 (NOT 230 — cap reduces read first).
+        //   1024: read = 1024 (cap doesn't bind), edit = 1024 - 230
+        //         = 794; delta = 230 (full rail subtraction).
+        // Verify: edit.main < read.main (qualitative shrink) AND the
+        // delta matches the per-viewport expected target locked in
+        // the VIEWPORT_TARGETS table. ±10px tolerance.
+        const expectedDelta = vt.readMainWidth - vt.editMainWidth;
+        const actualDelta = readMeasure.mainWidth - editMeasure.mainWidth;
+        expect(
+          Math.abs(actualDelta - expectedDelta),
+          `Band 2 outer delta at ${vt.width}: read=${readMeasure.mainWidth}, edit=${editMeasure.mainWidth}, delta=${actualDelta} (expected ~${expectedDelta} ±10px per cf-24 D9)`,
+        ).toBeLessThanOrEqual(10);
+      }
 
-      // (b) Locked target — read mainWidth in OUTER target band.
-      const outerLower = vt.mainWidthTarget - vt.tolerance;
-      const outerUpper = vt.mainWidthTarget + vt.tolerance;
-      expect(
+      // Locked target — read main + inner widths (cf-23 unchanged).
+      assertWithinBand(
         readMeasure.mainWidth,
-        `read mainWidth at ${vt.width}: expected in [${outerLower}, ${outerUpper}], got ${readMeasure.mainWidth}`,
-      ).toBeGreaterThanOrEqual(outerLower);
-      expect(
-        readMeasure.mainWidth,
-        `read mainWidth at ${vt.width}: expected in [${outerLower}, ${outerUpper}], got ${readMeasure.mainWidth}`,
-      ).toBeLessThanOrEqual(outerUpper);
-
-      expect(
-        editMeasure.mainWidth,
-        `edit mainWidth at ${vt.width}: expected in [${outerLower}, ${outerUpper}], got ${editMeasure.mainWidth}`,
-      ).toBeGreaterThanOrEqual(outerLower);
-      expect(
-        editMeasure.mainWidth,
-        `edit mainWidth at ${vt.width}: expected in [${outerLower}, ${outerUpper}], got ${editMeasure.mainWidth}`,
-      ).toBeLessThanOrEqual(outerUpper);
-
-      // (b') Locked target — read innerWidth in INNER target band.
-      // cf-23 R0 F2 — locks the lg:px-12 / px-4 padding spec. A
-      // regression like `lg:px-12` → `lg:px-8` would shrink inner
-      // by 16px while outer stays unchanged; pre-R0 this would have
-      // passed silently.
-      const innerLower = vt.innerWidthTarget - vt.tolerance;
-      const innerUpper = vt.innerWidthTarget + vt.tolerance;
-      expect(
+        vt.readMainWidth,
+        vt.tolerance,
+        `read mainWidth at ${vt.width}`,
+      );
+      assertWithinBand(
         readMeasure.innerWidth,
-        `read innerWidth at ${vt.width}: expected in [${innerLower}, ${innerUpper}], got ${readMeasure.innerWidth}`,
-      ).toBeGreaterThanOrEqual(innerLower);
-      expect(
-        readMeasure.innerWidth,
-        `read innerWidth at ${vt.width}: expected in [${innerLower}, ${innerUpper}], got ${readMeasure.innerWidth}`,
-      ).toBeLessThanOrEqual(innerUpper);
+        vt.readInnerWidth,
+        vt.tolerance,
+        `read innerWidth at ${vt.width}`,
+      );
 
-      expect(
+      // Locked target — edit main + inner widths (cf-24 may differ
+      // from read at Band 2).
+      assertWithinBand(
+        editMeasure.mainWidth,
+        vt.editMainWidth,
+        vt.tolerance,
+        `edit mainWidth at ${vt.width}`,
+      );
+      assertWithinBand(
         editMeasure.innerWidth,
-        `edit innerWidth at ${vt.width}: expected in [${innerLower}, ${innerUpper}], got ${editMeasure.innerWidth}`,
-      ).toBeGreaterThanOrEqual(innerLower);
-      expect(
-        editMeasure.innerWidth,
-        `edit innerWidth at ${vt.width}: expected in [${innerLower}, ${innerUpper}], got ${editMeasure.innerWidth}`,
-      ).toBeLessThanOrEqual(innerUpper);
+        vt.editInnerWidth,
+        vt.tolerance,
+        `edit innerWidth at ${vt.width}`,
+      );
 
-      // (c) No horizontal overflow at any viewport — exact equality
-      // against the viewport's `window.innerWidth` per the D10 contract
-      // claim (cf-20b R1 lesson: any scrollWidth EXCEEDING viewportWidth
-      // indicates content escaping the viewport bounds; any scrollWidth
-      // BELOW viewportWidth would indicate the <html> root itself is
-      // narrower than the viewport, a layout-shift bug we equally want
-      // to catch). Pre-R0 this used `<= viewportWidth` which would have
-      // masked a shrinking-document regression. Tightened per cf-23
-      // stage 3 R0 F1 (codex-pr-reviewer-55) to match D10 wording verbatim.
-      // (Variable renamed `innerWidth` → `viewportWidth` in the measure
-      // helper post-F2 to disambiguate from `<main>`'s inner content
-      // width, which is a separate field.)
+      // No horizontal overflow at any viewport (cf-23 contract intact).
       expect(
         readMeasure.scrollWidth,
         `read scrollWidth at ${vt.width} must equal viewport width (got scroll=${readMeasure.scrollWidth}, viewport=${readMeasure.viewportWidth})`,
       ).toBe(readMeasure.viewportWidth);
-
       expect(
         editMeasure.scrollWidth,
         `edit scrollWidth at ${vt.width} must equal viewport width (got scroll=${editMeasure.scrollWidth}, viewport=${editMeasure.viewportWidth})`,
@@ -264,3 +357,21 @@ test.describe('cf-23 D10 — read + edit routes share main outer + inner widths 
     });
   }
 });
+
+function assertWithinBand(
+  actual: number,
+  target: number,
+  tolerance: number,
+  label: string,
+): void {
+  const lower = target - tolerance;
+  const upper = target + tolerance;
+  expect(
+    actual,
+    `${label}: expected in [${lower}, ${upper}], got ${actual}`,
+  ).toBeGreaterThanOrEqual(lower);
+  expect(
+    actual,
+    `${label}: expected in [${lower}, ${upper}], got ${actual}`,
+  ).toBeLessThanOrEqual(upper);
+}

@@ -102,6 +102,59 @@ export function formatKebabAction(
 }
 
 /**
+ * Wave 6 cf-24 (2026-05-10) — external-source drag (PaletteSidebar
+ * card → editor canvas) arrow-key move announcement. Mirrors
+ * `formatDragMove` but uses verb "Inserting" because the source
+ * is a NEW block being added (not an existing block being moved).
+ *
+ * Per WCAG 4.1.3 + cf-22 R1 F1 announce wiring; consumed by the
+ * pipeline's external-drag branch in
+ * `useDragDropPipeline.handleDragOver` when
+ * `isExternalDragSource(sourceBlockId)` is true.
+ */
+export function formatExternalDragMove(
+  blockKind: string,
+  col: number,
+  totalCols: number,
+): string {
+  return `Inserting ${friendlyKind(blockKind)} block at column ${col} of ${totalCols}`;
+}
+
+/**
+ * Wave 6 cf-24 — external-source drag commit announcement
+ * (pointer-drop on grid). Verb "Inserted" matches the past-tense
+ * `formatDragCommit` "Moved" pattern.
+ */
+export function formatExternalDragCommit(
+  blockKind: string,
+  col: number,
+): string {
+  return `Inserted ${friendlyKind(blockKind)} block at column ${col}`;
+}
+
+/**
+ * Wave 6 cf-24 R0 F2 fix (2026-05-10) — PaletteSidebar click /
+ * Enter insertion announcement (NOT the drag path).
+ *
+ * The cf-22 R1 F1 silent-scaffolding rule: every consumer surface
+ * MUST fire LiveAnnouncer messages, NOT just exist with the
+ * provider mounted. Pre-R0 PaletteSidebar's `onInsert` callback
+ * was DEFINED on the component but the EditorShellMountInner
+ * portal mount never passed it — so click/Enter inserts (the
+ * keyboard-a11y path per AC-13) were silent. F2 fix wires the
+ * callback + this format helper.
+ *
+ * Distinct verb "Added" (vs cf-24 drag's "Inserted") signals the
+ * different user model: drag = positioning at a specific drop
+ * slot; click/Enter = appending at end-of-doc (no drop slot, no
+ * column number to announce). Per WCAG 4.1.3 + cf-22 R1 F1
+ * announce contract.
+ */
+export function formatPaletteInsert(blockKind: string): string {
+  return `Added ${friendlyKind(blockKind)} block at end of document`;
+}
+
+/**
  * Helper: collapse the cf-15b internal name `componentCode` to the
  * user-facing label `code`. Keeps the same friendly-name mapping
  * used by BlockNodeView's `chipLabel` so AT announcements + visual

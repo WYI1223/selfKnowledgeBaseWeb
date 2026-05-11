@@ -9,7 +9,10 @@ import {
   formatDragCancel,
   formatDragCommit,
   formatDragMove,
+  formatExternalDragCommit,
+  formatExternalDragMove,
   formatKebabAction,
+  formatPaletteInsert,
   formatResizeCancel,
   formatResizeChange,
 } from '../../a11y/announce-format';
@@ -64,6 +67,58 @@ describe('formatResizeChange — axis variants', () => {
 
   it('cancel is constant string', () => {
     expect(formatResizeCancel()).toBe('Resize cancelled, block restored');
+  });
+});
+
+describe('formatExternalDragMove + formatExternalDragCommit (cf-24 ADR-0017 v0.4 D14)', () => {
+  it('move uses verb "Inserting" + col / totalCols', () => {
+    expect(formatExternalDragMove('image', 4, 12)).toBe(
+      'Inserting image block at column 4 of 12',
+    );
+  });
+
+  it("collapses 'componentCode' to friendly 'code' on move", () => {
+    expect(formatExternalDragMove('componentCode', 7, 12)).toBe(
+      'Inserting code block at column 7 of 12',
+    );
+  });
+
+  it('commit uses verb "Inserted" + col', () => {
+    expect(formatExternalDragCommit('callout', 1)).toBe(
+      'Inserted callout block at column 1',
+    );
+  });
+
+  it("collapses 'componentCode' to friendly 'code' on commit", () => {
+    expect(formatExternalDragCommit('componentCode', 5)).toBe(
+      'Inserted code block at column 5',
+    );
+  });
+});
+
+describe('formatPaletteInsert (cf-24 R0 F2 fix — click/Enter announce)', () => {
+  it('uses verb "Added" + "at end of document" (distinct from drag verbs)', () => {
+    expect(formatPaletteInsert('callout')).toBe(
+      'Added callout block at end of document',
+    );
+  });
+
+  it("collapses 'componentCode' to friendly 'code'", () => {
+    expect(formatPaletteInsert('componentCode')).toBe(
+      'Added code block at end of document',
+    );
+  });
+
+  it('verb DIFFERS from drag verbs (cf-22 + cf-24 user-model parity)', () => {
+    // cf-22 drag = "Moved"; cf-24 external drag = "Inserted at column N";
+    // cf-24 click/Enter = "Added at end of document". Different verbs +
+    // different position semantics signal different user models per
+    // WCAG 4.1.3 message clarity.
+    const paletteInsert = formatPaletteInsert('image');
+    expect(paletteInsert).not.toContain('Moved');
+    expect(paletteInsert).not.toContain('Inserted');
+    expect(paletteInsert).toContain('Added');
+    expect(paletteInsert).toContain('end of document');
   });
 });
 

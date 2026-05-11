@@ -1,3 +1,19 @@
+/**
+ * @skb/editor-shell PaletteModal — Cmd+K command-bar style modal
+ * overlay listing every registered block kind. Power-user keyboard-
+ * first insertion surface.
+ *
+ * Wave 6 cf-24 (2026-05-10) renamed from `Palette` → `PaletteModal`
+ * per ADR-0018 v0.8 D10.e to disambiguate from the new persistent
+ * left-rail PaletteSidebar (cf-24 D3 — both surfaces are PERMANENT
+ * first-class siblings; modal is load-bearing for mobile UX where
+ * the rail is hidden < 768px). Atomic rename — no deprecation alias.
+ *
+ * Triggered by Ctrl+K / Cmd+K (any keystroke layer) + Escape closes.
+ * Click-to-insert appends the chosen block at end-of-doc via
+ * `insertBlockKind`. NOT bound to a drag pipeline — the modal is
+ * a click-only insertion path.
+ */
 import { useEffect, useState } from 'react';
 import type { CSSProperties } from 'react';
 import type { Editor } from '@tiptap/core';
@@ -8,7 +24,7 @@ import {
   type BlockKindOption,
 } from './registry-wire';
 
-export interface PaletteProps {
+export interface PaletteModalProps {
   editor: Editor | null;
   kinds?: readonly BlockKindOption[];
   onInsert?: (kind: BlockAffordanceKind) => void;
@@ -47,7 +63,7 @@ const buttonStyle: CSSProperties = {
   cursor: 'pointer',
 };
 
-export function Palette(props: PaletteProps) {
+export function PaletteModal(props: PaletteModalProps) {
   const { editor, kinds = BLOCK_KIND_OPTIONS, onInsert } = props;
   const [open, setOpen] = useState(false);
 

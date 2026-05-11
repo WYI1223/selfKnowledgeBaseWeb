@@ -1,7 +1,21 @@
 export { EditorShell } from './EditorShell';
 export type { EditorShellProps } from './EditorShell';
-export { Palette } from './palette';
-export type { PaletteProps } from './palette';
+// Wave 6 cf-24 (2026-05-10) — Palette command-bar renamed to
+// PaletteModal to disambiguate from the new persistent left-rail
+// PaletteSidebar (cf-24 D3 — both surfaces are PERMANENT first-class
+// siblings per ADR-0018 v0.8 D10.e). Atomic rename, no deprecation
+// alias; all import sites updated in the SAME PR.
+export { PaletteModal } from './palette-modal';
+export type { PaletteModalProps } from './palette-modal';
+export { PaletteSidebar, PALETTE_SIDEBAR_ITEMS } from './palette-sidebar';
+export type { PaletteSidebarProps, PaletteSidebarItem } from './palette-sidebar';
+export {
+  EXTERNAL_DROP_MIME,
+  EXTERNAL_DROP_SENTINEL,
+  isExternalDragSource,
+  readBlockKindFromDataTransfer,
+  writeBlockKindToDataTransfer,
+} from './drag-drop/external-drop-source';
 export { SlashMenu } from './slash-menu';
 export type { SlashMenuProps } from './slash-menu';
 export { DragHandle } from './drag-handle';
@@ -13,6 +27,7 @@ export type { EditModeBannerProps } from './edit-mode-banner';
 export { SaveIndicator } from './save-indicator';
 export type { SaveIndicatorProps, SaveIndicatorStatus } from './save-indicator';
 export {
+  appendBlockKind,
   BLOCK_KIND_OPTIONS,
   defaultBlockAttrsFor,
   insertBlockKind,
@@ -138,7 +153,10 @@ export {
   formatDragCancel,
   formatDragCommit,
   formatDragMove,
+  formatExternalDragCommit,
+  formatExternalDragMove,
   formatKebabAction,
+  formatPaletteInsert,
   formatResizeCancel,
   formatResizeChange,
 } from './a11y/announce-format';

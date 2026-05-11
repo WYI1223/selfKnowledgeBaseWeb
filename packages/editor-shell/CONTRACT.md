@@ -927,9 +927,71 @@ C.4-3 adds the editor-facing affordance layer that `apps/site`
 mounts around the Tiptap instance. The barrel exports these React
 components and types:
 
-- `Palette` / `PaletteProps`: opens on Ctrl/Cmd+K, lists the eight
-  Wave 2 block kinds, and calls `insertBlockKind(editor, kind)` when
-  a kind is selected.
+- `PaletteModal` / `PaletteModalProps`: opens on Ctrl/Cmd+K, lists
+  the eight Wave 2 block kinds in a centered dialog, and calls
+  `insertBlockKind(editor, kind)` when a kind is selected. **Wave 6
+  cf-24 (2026-05-10)** atomically renamed from `Palette` →
+  `PaletteModal` to disambiguate from the new `PaletteSidebar`
+  persistent left-rail; both surfaces are PERMANENT first-class
+  siblings per ADR-0018 v0.8 D10.e (modal is load-bearing for mobile
+  insertion UX where the sidebar is hidden < 768px). NO deprecation
+  alias — the rename is atomic; all 3 in-tree import sites updated
+  in the same PR.
+- `PaletteSidebar` / `PaletteSidebarProps` / `PaletteSidebarItem` /
+  `PALETTE_SIDEBAR_ITEMS`: NEW Wave 6 cf-24 component-library
+  left-rail palette per ADR-0018 v0.8 D10 + v2 reference
+  (`/mnt/d/download/web/v2-styles.css:38-99`). Renders 8 draggable
+  cards (one per BLOCK_KIND_OPTIONS); HTML5 dragstart writes the
+  external-source MIME via `writeBlockKindToDataTransfer`; click
+  inserts at end-of-doc via `insertBlockKind` (cf-22 keyboard
+  parity — click-as-Enter). Mounted by apps/site
+  `EditorShellMountInner.tsx` via React `createPortal` into the
+  `BaseLayout #palette-rail` aside slot (cf-24 D11 graceful
+  degradation: slot absent → no-op).
+- External-source drag protocol exports (Wave 6 cf-24 / ADR-0017
+  v0.4 D14): `EXTERNAL_DROP_MIME` constant
+  (`'application/x-block-kind'`), `EXTERNAL_DROP_SENTINEL` constant
+  (`'__external_palette__'`), `writeBlockKindToDataTransfer(dt,
+  kind)`, `readBlockKindFromDataTransfer(dt) → BlockAffordanceKind |
+  null` (whitelist-validated against BLOCK_KIND_OPTIONS for Q4
+  defense in depth), `isExternalDragSource(sourceBlockId)`
+  type-narrowing predicate. The pipeline branches on this predicate
+  to route external-source drops through `commitExternalDrop`
+  (`appendBlockKind` + `applyDropMode` positioning per cf-24 R0 F1
+  fix — see helper-pair distinction below) instead of the per-block
+  `commitDropAtMatch` path; per-block drag/drop byte-for-byte
+  UNCHANGED (cf-24 D7 regression net via cf-22 + cf-20c-2 + cf-20d
+  + cf-20e Playwright specs).
+- **`insertBlockKind` vs `appendBlockKind` — helper-pair distinction
+  (cf-24 R0 F1 fix, 2026-05-10)**:
+  - `insertBlockKind(editor, kind) → boolean` inserts at the user's
+    CURRENT SELECTION via Tiptap `chain().focus().insertContent(...)`.
+    Correct semantics for slash-menu (`/` typed at cursor → insert
+    at cursor) + PaletteModal Cmd+K command bar (insert at cursor).
+  - `appendBlockKind(editor, kind) → number | null` appends at the
+    DETERMINISTIC doc-end position via `chain().insertContentAt(
+    state.doc.content.size, ...)` and returns the insert position
+    on success. Required for cf-24 PaletteSidebar drag-to-insert:
+    `commitExternalDrop` walks the post-insert snapshot + diffs
+    pre/post block ids to find the new block + position it via
+    `setNodeMarkup`; selection-based insert at mid-doc would shift
+    OTHER blocks' PM positions and the diff would identify the
+    wrong block (or fail entirely after the insert already
+    happened — leaving the new block in the wrong place AND drop
+    attrs applied to a different block). The append-at-end contract
+    guarantees exactly one new block id in the post-snap diff.
+  - Pre-cf-24-R0 `commitExternalDrop` mistakenly called
+    `insertBlockKind`; codex stage 3 R0 caught it; F1 fix swapped
+    to `appendBlockKind`. Slash-menu + PaletteModal continue to
+    use `insertBlockKind` (they want insert-at-cursor; the rename
+    does NOT touch them).
+- LiveAnnouncer message formatters extended (Wave 6 cf-24):
+  `formatExternalDragMove(blockKind, col, totalCols)` — "Inserting X
+  block at column N of M" (verb "Inserting" distinct from cf-22
+  per-block "Moving"); `formatExternalDragCommit(blockKind, col)` —
+  "Inserted X block at column N". Per WCAG 4.1.3 + cf-22 R1 F1
+  silent-scaffolding rule (consumer wired via
+  `EditorShellMountInner.useEditorShellAnnounceCallbacks`).
 - `SlashMenu` / `SlashMenuProps`: listens on the editor DOM for `/`
   at line start, supports arrow-key navigation, and inserts the
   selected block on Enter or click.

@@ -152,6 +152,80 @@ export function insertBlockKind(editor: Editor | null, kind: BlockAffordanceKind
     .run();
 }
 
+/**
+ * Wave 6 cf-24 R0 F1 fix (HIGH bug — 2026-05-10) — explicit-end
+ * append for external-source PaletteSidebar drag inserts.
+ *
+ * # Why a separate helper
+ *
+ * `insertBlockKind` uses `chain().focus().insertContent(...)` which
+ * inserts at the CURRENT SELECTION (Tiptap default behavior). This
+ * is correct for slash-menu (`/` typed at cursor → insert at cursor)
+ * and PaletteModal (Cmd+K → insert at cursor). But for cf-24
+ * PaletteSidebar drag-to-insert, the new block MUST land at a
+ * deterministic doc-end position so `commitExternalDrop` can:
+ *   1. Capture the insert position BEFORE the insert (returned by
+ *      this helper).
+ *   2. Position the freshly-inserted block via `setNodeMarkup` at
+ *      that position (the post-insert post-snap diff would identify
+ *      the wrong block if the user's selection is mid-doc).
+ *
+ * The pre-fix `commitExternalDrop` walked the post-insert snapshot +
+ * diffed pre/post block ids to find the new block. That works ONLY
+ * when the new block is appended at end (so the diff yields exactly
+ * one new id). With selection-based insert at mid-doc, ProseMirror
+ * may shift positions of OTHER blocks (split/merge effects), and
+ * the diff identifies the wrong block (or fails entirely after the
+ * insert already happened — leaving the new block in the wrong
+ * place AND drop attrs applied to a different block).
+ *
+ * # Contract
+ *
+ * Returns the resolved post-insert position of the new block (the
+ * pos of the inserted node, suitable for a follow-up
+ * `setNodeMarkup(pos, undefined, attrs)` call) on success, or `null`
+ * on any failure (editor null/invalid; unknown kind; chain run
+ * returns false). Caller is responsible for the optional
+ * `setNodeMarkup` follow-up to position the block in the grid.
+ *
+ * Append happens at `state.doc.content.size` captured BEFORE the
+ * insert; this is a deterministic insert-pos contract. Tiptap's
+ * post-insert position normalisation may add 1 to the captured pos
+ * (the inserted node sits inside a paragraph or wrapping container);
+ * the helper returns the pre-insert capture so the caller can resolve
+ * via `editor.state.doc.nodeAt(pos)` if exact lookup is needed.
+ *
+ * # Consumer
+ *
+ * cf-24 `commit-external-drop.ts:commitExternalDrop` is the only
+ * intended caller. Slash-menu + PaletteModal continue to use
+ * `insertBlockKind` (insert-at-cursor semantics — they want that).
+ *
+ * @returns the inserted-block position on success, null on failure.
+ */
+export function appendBlockKind(
+  editor: Editor | null,
+  kind: BlockAffordanceKind,
+): number | null {
+  if (!editor) return null;
+  if (typeof editor.chain !== 'function') return null;
+  const option = BLOCK_KIND_OPTIONS.find((candidate) => candidate.kind === kind);
+  if (!option) return null;
+  // Capture the deterministic append position BEFORE the insert.
+  // `state.doc.content.size` is the position AFTER the last child
+  // node — Tiptap's `insertContentAt(pos, content)` inserts there.
+  const insertPos = editor.state.doc.content.size;
+  const ok = editor
+    .chain()
+    .insertContentAt(insertPos, {
+      type: option.kind,
+      attrs: defaultAttrs(option.kind),
+    })
+    .run();
+  if (!ok) return null;
+  return insertPos;
+}
+
 export interface RegistryWireOptions {
   blockRegistry?: BlockRegistry;
   kernelRegistry?: unknown;

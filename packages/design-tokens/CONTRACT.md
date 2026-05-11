@@ -111,6 +111,14 @@ It also adds one hex surface token (`--surface`), three layout tokens
 The OKLCH fallback authority is Culori `formatHex(parse(oklchValue))`, pinned
 to `culori@4.0.1` for C.3-1 Option alpha offline derivation.
 
+Wave 6 cf-24 (ADR-0018 v0.8 D10.a) adds one additional layout token:
+`--palette-w: 230px`. The token is consumed by
+`apps/site/src/styles/global.css` `.palette-rail` rule + the
+`apps/site/playwright/notes-route-width-parity.spec.ts` band-2
+width-parity assertion. Like the other layout tokens, it is light-only
+and does not need a `tokens-dark.css` mirror (ADR-0018 D1 layout-token
+exception applies).
+
 ### Block kind hue tokens (ADR-0018 D3)
 
 C.3-2 adds eight light-theme kind hue tokens for top-stripe visual

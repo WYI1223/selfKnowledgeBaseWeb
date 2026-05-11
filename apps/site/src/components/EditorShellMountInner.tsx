@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   BlockRegistry,
   effectiveColSnaps,
@@ -11,18 +12,13 @@ import {
   DragGhost,
   EditModeBanner,
   EditorShell,
-  formatDragCancel,
-  formatDragCommit,
-  formatDragMove,
-  formatKebabAction,
-  formatResizeCancel,
-  formatResizeChange,
   GridContainer,
   KebabProvider,
   LocalStorageAdapter,
   type NoteState,
   OutlineOverlay,
-  Palette,
+  PaletteModal,
+  PaletteSidebar,
   ResizeProvider,
   SaveIndicator,
   SlashMenu,
@@ -30,6 +26,7 @@ import {
   loadFromMdx,
   registerBlocks,
   saveToMdx,
+  type BlockAffordanceKind,
   type EditorShellProps,
   type SaveIndicatorStatus,
   useAnnounce,
@@ -44,8 +41,8 @@ import {
   makeKebabChangeKind,
   makeKebabDelete,
   makeKebabDuplicate,
-  type KebabAnnounceFn,
 } from './EditorShellKebabActions';
+import { useEditorShellAnnounceCallbacks } from './EditorShellAnnounceCallbacks';
 
 export interface EditorShellMountInnerProps {
   slug: string;
@@ -84,24 +81,12 @@ async function saveWithBackup(
 }
 
 /**
- * Wave 6 cf-22 R1 F1 — `EditorShellMountInner` consumes
- * `useAnnounce()` from the `<LiveAnnouncer>` provider mounted by the
- * outer `EditorShellMount`. The split is required because
- * `useAnnounce()` returns the no-op fallback when called outside the
- * provider (cf-22 R0 mounted `<LiveAnnouncer>` but no consumer ever
- * called the hook — F1 was the resulting silent-scaffolding gap).
- *
- * R1 F1 announce wiring:
- *   - drag pipeline: onAnnounceMove / onAnnounceCommit / onAnnounceCancel
- *     wired to `formatDragMove` / `formatDragCommit` / `formatDragCancel`.
- *     Fires for both pointer + keyboard paths via the pipeline's
- *     internal announce hooks.
- *   - resize pipeline: onAnnounceChange / onAnnounceCancel wired to
- *     `formatResizeChange` / `formatResizeCancel`. Fires for both
- *     pointer + keyboard paths.
- *   - kebab callbacks: each `make*` factory accepts an optional
- *     `KebabAnnounceFn` arg; we pass an adapter that calls
- *     `formatKebabAction(action, sourceKind, newKind?)`.
+ * Wave 6 cf-22 R1 F1 — consumer of `useAnnounce()` from the
+ * `<LiveAnnouncer>` provider mounted by the outer EditorShellMount.
+ * cf-24: announce-callback wiring extracted to
+ * `useEditorShellAnnounceCallbacks`; cf-24 also adds PaletteSidebar
+ * portal mount (BaseLayout #palette-rail slot) for the v2 left-rail
+ * component library per ADR-0018 v0.8 D10.
  */
 export function EditorShellMountInner({
   slug,
@@ -120,27 +105,44 @@ export function EditorShellMountInner({
   const [saveStatus, setSaveStatus] = useState<SaveIndicatorStatus>('idle');
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // Wave 6 cf-24 — portal target for the PaletteSidebar React island.
+  // BaseLayout renders an empty `<aside id="palette-rail">` slot only
+  // when `palette={true}` is passed (edit route only). We resolve it
+  // at hydration time (useEffect, post-mount) and render the sidebar
+  // via createPortal so the editor + pipeline state stay singleton.
+  // Per cf-24 D11 graceful-degradation invariants:
+  //   1. Slot absent → portal no-ops; PaletteModal Cmd+K still works.
+  //   2. Editor null (pre-create / post-destroy) → portal no-ops.
+  //   3. Re-mount of EditorShellMountInner triggers useEffect cleanup
+  //      + re-resolve; no stale portal targets persist.
+  const [paletteSlot, setPaletteSlot] = useState<HTMLElement | null>(null);
 
   // cf-22 R1 F1 — announce hook (no-op outside <LiveAnnouncer>; in
   // production the outer EditorShellMount mounts the provider).
   const announce = useAnnounce();
 
-  // cf-22 R1 F1 — drag pipeline announce callbacks.
-  const onAnnounceDragMove = useCallback(
-    (blockKind: string, col: number, totalCols: number) => {
-      announce(formatDragMove(blockKind, col, totalCols));
-    },
-    [announce],
-  );
-  const onAnnounceDragCommit = useCallback(
-    (blockKind: string, col: number) => {
-      announce(formatDragCommit(blockKind, col));
-    },
-    [announce],
-  );
-  const onAnnounceDragCancel = useCallback(() => {
-    announce(formatDragCancel());
-  }, [announce]);
+  // cf-22 R1 F1 + cf-24 — 8 WCAG 4.1.3 announce callbacks via
+  // useEditorShellAnnounceCallbacks (size-check extraction).
+  const {
+    onAnnounceDragMove,
+    onAnnounceDragCommit,
+    onAnnounceDragCancel,
+    onAnnounceExternalDragMove,
+    onAnnounceExternalDragCommit,
+    onAnnounceResizeChange,
+    onAnnounceResizeCancel,
+    onAnnounceKebab,
+    onAnnouncePaletteInsert,
+  } = useEditorShellAnnounceCallbacks(announce);
+
+  // cf-24 — resolve the BaseLayout `#palette-rail` aside slot at
+  // hydration time. Slot only exists on routes that pass
+  // `palette={true}` (edit route only). useEffect ensures we wait
+  // until the DOM is ready (server-rendered slot is present
+  // pre-React-hydration; the lookup is synchronous).
+  useEffect(() => {
+    setPaletteSlot(document.getElementById('palette-rail'));
+  }, []);
 
   // cf-22 R2 F3 — reason-marker indirection for useEscCancel: the
   // pipeline needs to mark deactivation-reason BEFORE we can take
@@ -166,7 +168,28 @@ export function EditorShellMountInner({
     onAnnounceCommit: onAnnounceDragCommit,
     onAnnounceCancel: onAnnounceDragCancel,
     markEscDeactivationReason: markDragEscDeactivationReason,
+    // cf-24 — external-source (PaletteSidebar) WCAG 4.1.3 wiring.
+    onAnnounceExternalMove: onAnnounceExternalDragMove,
+    onAnnounceExternalCommit: onAnnounceExternalDragCommit,
   });
+
+  // cf-24 — PaletteSidebar drag start: viewport-center origin (best-
+  // effort; first dragover overrides before the user notices).
+  const onPaletteDragKindStart = useCallback(
+    (kind: BlockAffordanceKind) => {
+      pipeline.onDragStartExternal(kind, {
+        x: window.innerWidth / 2,
+        y: window.innerHeight / 2,
+      });
+    },
+    [pipeline],
+  );
+  const onPaletteDragKindEnd = useCallback(() => {
+    // dragend cleanup — pipeline.onDragEnd handles both pointer +
+    // keyboard cancellation paths. Safe to call when external
+    // drag is in flight (sourceBlockId === EXTERNAL_DROP_SENTINEL).
+    pipeline.onDragEnd({ x: 0, y: 0 });
+  }, [pipeline]);
   const dragContextValue = useMemo(
     () => ({
       onDragStart: pipeline.onDragStart,
@@ -192,22 +215,6 @@ export function EditorShellMountInner({
     },
   });
   dragEscHandleRef.current = dragEscHandle;
-
-  // cf-22 R1 F1 — resize pipeline announce callbacks.
-  const onAnnounceResizeChange = useCallback(
-    (
-      axis: 'right' | 'bottom' | 'corner',
-      colSpan: number,
-      rowSpan: number,
-      fraction: string,
-    ) => {
-      announce(formatResizeChange(axis, colSpan, rowSpan, fraction));
-    },
-    [announce],
-  );
-  const onAnnounceResizeCancel = useCallback(() => {
-    announce(formatResizeCancel());
-  }, [announce]);
 
   // cf-22 R2 F3 — same reason-marker indirection as drag pipeline.
   const resizeEscHandleRef = useRef<{
@@ -264,15 +271,6 @@ export function EditorShellMountInner({
     },
   });
   resizeEscHandleRef.current = resizeEscHandle;
-
-  // cf-22 R1 F1 — kebab announce adapter (translates the action enum
-  // + source/new kinds into the formatKebabAction message).
-  const onAnnounceKebab = useCallback<KebabAnnounceFn>(
-    (action, blockKind, newKind) => {
-      announce(formatKebabAction(action, blockKind, newKind));
-    },
-    [announce],
-  );
 
   const onKebabDelete = useMemo(
     () => makeKebabDelete(editor, onAnnounceKebab),
@@ -431,7 +429,7 @@ export function EditorShellMountInner({
                 onCreate={handleCreate}
                 onChange={handleChange}
               />
-              <Palette editor={editor} kinds={wire.blockKinds} />
+              <PaletteModal editor={editor} kinds={wire.blockKinds} />
               <SlashMenu editor={editor} kinds={wire.blockKinds} />
             </GridContainer>
           </KebabProvider>
@@ -475,6 +473,22 @@ export function EditorShellMountInner({
             rect={pipeline.state.lastDroppedRect}
             onAnimationEnd={pipeline.clearLastDropped}
           />
+        )}
+
+      {/* cf-24 — PaletteSidebar portal mount. Rendered into the
+          BaseLayout `#palette-rail` slot iff the slot exists at
+          hydration (palette={true} was passed to BaseLayout) AND
+          the editor is created. Per cf-24 D11 graceful degradation:
+          slot absent → no-op; editor null → no-op. */}
+      {paletteSlot && editor &&
+        createPortal(
+          <PaletteSidebar
+            editor={editor}
+            onDragKindStart={onPaletteDragKindStart}
+            onDragKindEnd={onPaletteDragKindEnd}
+            onInsert={onAnnouncePaletteInsert}
+          />,
+          paletteSlot,
         )}
     </>
   );
