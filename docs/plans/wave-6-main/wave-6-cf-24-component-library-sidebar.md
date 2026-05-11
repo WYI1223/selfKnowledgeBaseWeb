@@ -388,6 +388,87 @@ spec):
 18. `packages/design-tokens/CONTRACT.md` — **MODIFY** (~5 LOC
     delta). Token catalog: add `--palette-w` row.
 
+## ui_touch
+
+`true` — `apps/site/src/layouts/BaseLayout.astro` matches the
+ADR-0011 D9.1 path pattern (apps/site/src/layouts/**); the new
+`apps/site/src/components/EditorShellMountInner.tsx` portal mount;
+`apps/site/src/styles/global.css` flex-shell additions; the 4
+new/modified Playwright specs under `apps/site/playwright/**.spec.ts`
+count as visual-surface tests; `packages/editor-shell/src/palette-sidebar.tsx`
++ `palette-sidebar.css` are new visual UI files.
+
+The 5-viewport AFTER visual sweep at EXECUTE stage emits 5 archive
+screenshots (edit at 1440/1280/1024/768/375) plus 2 BEFORE
+references (v2 reference + current edit at 1280) plus the
+PaletteSidebar standalone proof + 2 R0 audit-fix proofs (hover-state
++ focus-visible) → satisfies D9.5 archive obligation.
+
+## e2e_smoke
+
+- flow: `/notes/sample-blocks/edit` mounts the PaletteSidebar
+  left rail on viewports ≥ 769px and hides it on viewports
+  ≤ 768px; the read route `/notes/sample-blocks` MUST NOT mount it
+  (cf-23 D8 zero-affordance contract preserved).
+  target_url: /notes/sample-blocks/edit + /notes/sample-blocks
+  playwright_spec: apps/site/playwright/sample-blocks-palette-sidebar.spec.ts:"cf-24 AC3-1 — PaletteSidebar mounts on /notes/sample-blocks/edit + does NOT mount on /notes/sample-blocks (cf-23 D8 contract preserved)"
+  screenshot_archive: docs/audits/screenshots/wave-6-cf-24-palette-sidebar.png
+  assertions:
+    - edit route at 1280 viewport mounts `[data-skb-palette-sidebar]`
+    - read route at 1280 viewport contains zero `[data-skb-palette-sidebar]`
+    - both routes at 768 viewport contain zero visible `[data-skb-palette-sidebar]`
+      (display: none via @media)
+
+- flow: PaletteSidebar drag-from-palette → drop on grid inserts a
+  new block at the drop slot (D5 + ADR-0017 v0.4 D14
+  external-source path); the per-block per-block drag/move
+  pipeline (cf-22 + cf-20c-2) UNCHANGED byte-for-byte (D7
+  regression net all PASS).
+  target_url: /notes/sample-blocks/edit
+  playwright_spec: apps/site/playwright/sample-blocks-palette-sidebar.spec.ts:"cf-24 AC3-6 (R0 F3 fix) — FULL drag-and-drop external-source path"
+  screenshot_archive: docs/audits/screenshots/wave-6-cf-24-after-edit-1280.png
+  assertions:
+    - dragstart on palette image item attaches MIME `application/x-block-kind`
+    - dragover on `.skb-grid` shows OutlineOverlay
+    - drop on `.skb-grid` inserts a new image block (count = before + 1)
+    - inserted block's `style.gridColumn` is NOT default `1 / span 12`
+    - LiveAnnouncer textContent updated with `Inserted image block`
+    - after autosave settles, `restoreSampleBlocksFixture` cleans up
+
+- flow: PaletteSidebar click/Enter inserts a new block at end-of-doc
+  via `appendBlockKind` (R1 F5 fix; replaces the pre-fix
+  `insertBlockKind` which respected user selection); the inserted
+  block lands at end-of-doc REGARDLESS of cursor position.
+  target_url: /notes/sample-blocks/edit
+  playwright_spec: apps/site/playwright/sample-blocks-palette-sidebar.spec.ts:"cf-24 AC3-7 (R1 F5 fix) — click/Enter at mid-doc selection still appends at end-of-doc"
+  screenshot_archive: docs/audits/screenshots/wave-6-cf-24-after-edit-1024.png
+  assertions:
+    - cursor at mid-doc selection
+    - click palette callout item
+    - new block lands as LAST `.skb-block-nodeview` (NOT at cursor)
+    - LiveAnnouncer textContent updated with `Added callout block at end of document`
+
+- flow: D9 3-band width-parity — read.main.width === edit.main.width
+  at all viewports; rail visible at ≥ 769px shrinks edit.main below
+  the read.main cap; rail hidden at ≤ 768px restores cf-23 strict
+  parity.
+  target_url: /notes/sample-blocks (+ /edit)
+  playwright_spec: apps/site/playwright/notes-route-width-parity.spec.ts:"cf-24 D9 amendment — Band 1 viewport ≥ 1410 strict parity at 1180; Band 2 1024-1410 rail subtracts; Band 3 < 1024 strict parity preserved"
+  screenshot_archive: docs/audits/screenshots/wave-6-cf-24-after-edit-1440.png
+  screenshot_archive: docs/audits/screenshots/wave-6-cf-24-after-edit-768.png
+  screenshot_archive: docs/audits/screenshots/wave-6-cf-24-after-edit-375.png
+  screenshot_archive: docs/audits/screenshots/wave-6-cf-24-before-v2-reference-1280.png
+  screenshot_archive: docs/audits/screenshots/wave-6-cf-24-before-current-edit-1280.png
+  screenshot_archive: docs/audits/screenshots/wave-6-cf-24-r0-hover-state.png
+  screenshot_archive: docs/audits/screenshots/wave-6-cf-24-r0-focus-visible.png
+  assertions:
+    - viewport 1440 → read.main.width === edit.main.width === 1180 (Band 1)
+    - viewport 1280 → read.main.width = 1180; edit.main.width = 1050 (delta 130)
+    - viewport 1024 → read.main.width = 1024; edit.main.width = 794 (delta 230)
+    - viewport 768 → strict parity (rail hidden)
+    - viewport 375 → strict parity (rail hidden)
+    - scrollWidth === viewportWidth at all 5 viewports (no horizontal overflow)
+
 ## D-decisions (orchestrator-locked at PLAN time)
 
 ### D1 — Palette scope: drag-and-drop INSERT + click-INSERT, no search/filter
