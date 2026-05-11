@@ -79,6 +79,19 @@ export type {
   GridSnapshotIdentified,
   IdentifiedBlock,
 } from './drag-drop/apply-drop-mode';
+// Wave 7 Phase 2B.1 — grid-engine adapter (replacement for applyDropMode;
+// full cutover lands in Phase 2B.2 per ADR-0020 D2).
+export {
+  commitInsertAtCursor,
+  commitMoveAtCursor,
+  cursorToEngineCoord,
+  engineBlockToEditorAttrs,
+  intentForInsert,
+  intentForMove,
+  toEngineState,
+} from './drag-drop/grid-engine-adapter';
+export type { CommitResult as EngineCommitResult } from './drag-drop/grid-engine-adapter';
+export { commitDropAtCursor } from './drag-drop/commit-drop';
 export { DragHandleButton, DRAG_HANDLE_MIME } from './drag-drop/drag-handle-button';
 export type { DragHandleButtonProps } from './drag-drop/drag-handle-button';
 export { DragDropContext, DragDropProvider } from './drag-drop/drag-context';
