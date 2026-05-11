@@ -1,25 +1,37 @@
 /**
  * @skb/grid-engine — state-mutating operations.
  *
- * Per docs/design/grid-redesign-2026-05-11.md §3 + §9 (Option A).
+ * Per docs/design/grid-redesign-2026-05-11.md §3 + §9 (Option A locked
+ * but pluggable: `{ gravity: false }` opts out for power-user free-
+ * placement mode).
  *
  * Every op:
- * 1. Validates the operation against the current state (in bounds + no
+ * 1. Validates the operation against current state (in bounds + no
  *    overlap + valid id).
- * 2. Returns OpResult — either { ok: true, state: new } or { ok: false,
- *    error: human-readable }.
- * 3. Applies upward gravity (Option A) so the resulting state is always
- *    gravity-stable — no floating blocks left over for a future delete to
- *    surprise-leap.
+ * 2. Returns OpResult — either { ok: true, state: new } or
+ *    { ok: false, error: human-readable }.
+ * 3. Applies upward gravity AFTER the change UNLESS `options.gravity ===
+ *    false`. Default = `true` to preserve Option A invariant.
  *
  * deleteBlock returns GridState directly (no failure mode — deleting a
- * non-existent id is a silent no-op + still applies gravity).
+ * non-existent id is a silent no-op).
  */
 import { findCollidingBlocks, isRegionInBounds } from './collision';
 import { applyGravity } from './gravity';
-import type { Block, GridState, OpResult } from './types';
+import type { Block, GridState, OpResult, Region } from './types';
 
-export function insertBlock(state: GridState, block: Block): OpResult {
+export type OpOptions = { gravity?: boolean };
+
+function withGravity(state: GridState, options?: OpOptions): GridState {
+  if (options?.gravity === false) return state;
+  return applyGravity(state).state;
+}
+
+export function insertBlock(
+  state: GridState,
+  block: Block,
+  options?: OpOptions,
+): OpResult {
   if (!isRegionInBounds(state, block)) {
     return { ok: false, error: `out of bounds: ${describe(block)}` };
   }
@@ -33,9 +45,8 @@ export function insertBlock(state: GridState, block: Block): OpResult {
       error: `overlap with ${colliders.map((b) => b.id).join(', ')}`,
     };
   }
-  // Option A: insert always runs gravity → state stays gravity-stable.
   const seeded: GridState = { ...state, blocks: [...state.blocks, block] };
-  return { ok: true, state: applyGravity(seeded).state };
+  return { ok: true, state: withGravity(seeded, options) };
 }
 
 export function moveBlock(
@@ -43,6 +54,7 @@ export function moveBlock(
   id: string,
   newCol: number,
   newRow: number,
+  options?: OpOptions,
 ): OpResult {
   const block = state.blocks.find((b) => b.id === id);
   if (!block) return { ok: false, error: `no such block: ${id}` };
@@ -58,7 +70,7 @@ export function moveBlock(
     };
   }
   const newBlocks = state.blocks.map((b) => (b.id === id ? moved : b));
-  return { ok: true, state: applyGravity({ ...state, blocks: newBlocks }).state };
+  return { ok: true, state: withGravity({ ...state, blocks: newBlocks }, options) };
 }
 
 export function resizeBlock(
@@ -66,6 +78,7 @@ export function resizeBlock(
   id: string,
   newColSpan: number,
   newRowSpan: number,
+  options?: OpOptions,
 ): OpResult {
   const block = state.blocks.find((b) => b.id === id);
   if (!block) return { ok: false, error: `no such block: ${id}` };
@@ -81,24 +94,51 @@ export function resizeBlock(
     };
   }
   const newBlocks = state.blocks.map((b) => (b.id === id ? resized : b));
-  return { ok: true, state: applyGravity({ ...state, blocks: newBlocks }).state };
+  return { ok: true, state: withGravity({ ...state, blocks: newBlocks }, options) };
 }
 
 /**
- * Delete a block. Silent no-op if id doesn't exist. Always runs gravity.
- * Never fails — return type is GridState directly.
+ * Atomic move + resize. Useful for left-edge / top-edge resize where
+ * both position and size change in one user gesture (sequential
+ * moveBlock + resizeBlock would not be atomic — first op could leave
+ * block in a half-mutated state if second op fails).
  */
-export function deleteBlock(state: GridState, id: string): GridState {
-  const newBlocks = state.blocks.filter((b) => b.id !== id);
-  return applyGravity({ ...state, blocks: newBlocks }).state;
+export function transformBlock(
+  state: GridState,
+  id: string,
+  changes: Partial<Pick<Block, 'col' | 'row' | 'colSpan' | 'rowSpan'>>,
+  options?: OpOptions,
+): OpResult {
+  const block = state.blocks.find((b) => b.id === id);
+  if (!block) return { ok: false, error: `no such block: ${id}` };
+  const transformed: Block = { ...block, ...changes };
+  if (!isRegionInBounds(state, transformed)) {
+    return { ok: false, error: `out of bounds: ${describe(transformed)}` };
+  }
+  const colliders = findCollidingBlocks(state, transformed, id);
+  if (colliders.length > 0) {
+    return {
+      ok: false,
+      error: `overlap with ${colliders.map((b) => b.id).join(', ')}`,
+    };
+  }
+  const newBlocks = state.blocks.map((b) => (b.id === id ? transformed : b));
+  return { ok: true, state: withGravity({ ...state, blocks: newBlocks }, options) };
 }
 
-function describe(b: {
-  id?: string;
-  col: number;
-  row: number;
-  colSpan: number;
-  rowSpan: number;
-}): string {
+/**
+ * Delete a block. Silent no-op if id doesn't exist. Always runs gravity
+ * unless `options.gravity === false`.
+ */
+export function deleteBlock(
+  state: GridState,
+  id: string,
+  options?: OpOptions,
+): GridState {
+  const newBlocks = state.blocks.filter((b) => b.id !== id);
+  return withGravity({ ...state, blocks: newBlocks }, options);
+}
+
+function describe(b: { id?: string } & Region): string {
   return `${b.id ?? '?'} (col=${b.col} row=${b.row} w=${b.colSpan} h=${b.rowSpan})`;
 }

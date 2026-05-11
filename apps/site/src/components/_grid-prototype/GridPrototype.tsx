@@ -1,29 +1,37 @@
 /**
  * THROWAWAY — root component for the grid UI prototype.
  *
- * Renders one of 3 variants based on ?variant= URL param + the floating
- * switcher bar.
- *
- * Plan: "3 radically different visual mental models for the 12-col grid
- * baseplate, switchable via ?variant= on /grid-prototype, sharing the
- * same engine.ts logic and SAMPLE_BLOCKS data."
+ * Owns the GridState via useGridInteraction. Switching theme variants
+ * (via the floating bottom chip) PRESERVES the state — same blocks,
+ * same positions, different render style. This is the load-bearing
+ * test: same engine + ops, 3 different themes, all must feel right.
  */
 import { useEffect, useState } from 'react';
-import { getCurrentVariant, PrototypeSwitcher, type VariantKey } from './PrototypeSwitcher';
+import { MiniPalette } from './MiniPalette';
+import {
+  getCurrentVariant,
+  PrototypeSwitcher,
+  type VariantKey,
+} from './PrototypeSwitcher';
+import { useGridInteraction } from './useGridInteraction';
 import { VariantA } from './variants/VariantA';
 import { VariantB } from './variants/VariantB';
 import { VariantC } from './variants/VariantC';
 
 export function GridPrototype(): React.JSX.Element {
-  const [variant, setVariantState] = useState<VariantKey>('A');
+  const [variant, setVariant] = useState<VariantKey>('A');
+  const interaction = useGridInteraction();
+
   useEffect(() => {
-    setVariantState(getCurrentVariant());
+    setVariant(getCurrentVariant());
   }, []);
+
   return (
     <>
-      {variant === 'A' && <VariantA />}
-      {variant === 'B' && <VariantB />}
-      {variant === 'C' && <VariantC />}
+      {variant === 'A' && <VariantA interaction={interaction} />}
+      {variant === 'B' && <VariantB interaction={interaction} />}
+      {variant === 'C' && <VariantC interaction={interaction} />}
+      <MiniPalette interaction={interaction} />
       <PrototypeSwitcher current={variant} />
     </>
   );

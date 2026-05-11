@@ -39,8 +39,10 @@ export {
   insertBlock,
   moveBlock,
   resizeBlock,
+  transformBlock,
+  type OpOptions,
 } from './ops';
 
-export { inferDropIntent, maxEmptyRectAt } from './intent';
+export { inferDropIntent, maxEmptyRectAt, maxEmptyRectContaining } from './intent';
 
 export { validateState } from './validate';
