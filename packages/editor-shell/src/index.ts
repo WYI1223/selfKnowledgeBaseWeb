@@ -58,6 +58,9 @@ export {
 export type { GridPlacementInput } from './grid-style';
 export { useResponsiveCols, RESPONSIVE_BREAKPOINTS } from './responsive-cols';
 export type { UseResponsiveColsOptions, ViewportCols } from './responsive-cols';
+// Wave 7 Phase 2C — grid-themes wiring per ADR-0020 D7-D9.
+export { useTheme, DEFAULT_THEME } from './use-theme';
+export type { UseThemeOptions, UseThemeReturn, ThemeKey, GridTheme } from './use-theme';
 export { OutlineOverlay } from './drag-drop/outline-overlay';
 export type { OutlineOverlayProps } from './drag-drop/outline-overlay';
 export { DropPulse, dropPulseClassName } from './drag-drop/drop-pulse';

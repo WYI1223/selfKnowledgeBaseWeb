@@ -21,7 +21,9 @@ export interface GridContainerProps {
   children?: ReactNode;
   /** Optional consumer class appended after the required `skb-grid` class. */
   className?: string;
-  /** Optional CSS variable overrides such as `--row-h`, `--gap`, or `--total-cols`. */
+  /** Optional CSS variable overrides such as `--row-h`, `--gap`, or `--total-cols`.
+   *  Wave 7 Phase 2C: theme cssVars are injected here by EditorShellMount
+   *  (see `useTheme` hook + ADR-0020 D7-D9). */
   style?: CSSProperties;
   /**
    * Current responsive viewport columns per ADR-0016 D5.
@@ -29,17 +31,27 @@ export interface GridContainerProps {
    * per ADR-0017 D9.
    */
   viewportCols?: ViewportCols;
+  /** Wave 7 Phase 2C — active theme key (`'graph-paper' | 'lego-studs' |
+   *  'bento-canvas'`); emitted as `data-skb-theme` for CSS targeting +
+   *  Playwright assertions. */
+  'data-skb-theme'?: string;
 }
 
 export function GridContainer(props: GridContainerProps) {
   const { children, className, style, viewportCols } = props;
+  const themeAttr = props['data-skb-theme'];
   const mobileClass = viewportCols === 1 ? ' skb-grid--mobile' : '';
   const gridClassName = className
     ? `skb-grid ${className}${mobileClass}`
     : `skb-grid${mobileClass}`;
 
   return (
-    <div className={gridClassName} data-skb-viewport-cols={viewportCols} style={style}>
+    <div
+      className={gridClassName}
+      data-skb-viewport-cols={viewportCols}
+      data-skb-theme={themeAttr}
+      style={style}
+    >
       {children}
     </div>
   );
