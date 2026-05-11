@@ -14,6 +14,12 @@
  * The helper is NOT pure (it mutates the Tiptap editor + reads the
  * doc) but it has no React + no DOM interactions, so it can be
  * unit-tested via a Tiptap mock editor.
+ *
+ * Wave 7 Phase 2B.1 (ADR-0020 D2) — `commitDropAtCursor` added as the
+ * grid-engine-backed replacement for `commitDropAtMatch`. Phase 2B.2
+ * will cut over consumers + delete the 4-mode `applyDropMode` path.
+ * Until then both functions are exported so the pipeline keeps
+ * working byte-for-byte while the new path is type-checked + tested.
  */
 import type { Editor } from '@tiptap/core';
 import { applyDropMode, type GridSnapshotIdentified } from './apply-drop-mode';
@@ -22,6 +28,10 @@ import {
   liveBlockPositions,
   type SerializedBlock,
 } from './pipeline-snapshot';
+import {
+  commitMoveAtCursor,
+  type CommitResult as EngineCommitResult,
+} from './grid-engine-adapter';
 
 export interface CommitDropResult {
   /** True if at least one node was mutated (a setNodeMarkup ran). */
@@ -103,4 +113,28 @@ export function commitDropAtMatch(
   if (didMutate) chain.run();
 
   return { didMutate, mutation };
+}
+
+/**
+ * Wave 7 Phase 2B.1 — grid-engine-backed drop commit.
+ *
+ * Commits a drag-drop move using `@skb/grid-engine` ops (hole-fill
+ * intent inference + per-block AABB upward gravity per ADR-0020 D2/D3).
+ * The host block is NEVER shrunk (vs cf-20c-1 split-with-shrink).
+ *
+ * Returns `{didMutate, mutation: post-op engine GridState | null}`.
+ * `mutation: null` on reject (cursor in occupied region, source missing,
+ * engine validation failed).
+ *
+ * Phase 2B.2 (next PR) wires the pipeline + tests + deletes the
+ * legacy `commitDropAtMatch` 4-mode path once consumers cut over.
+ */
+export function commitDropAtCursor(
+  editor: Editor,
+  snapshot: readonly SerializedBlock[],
+  sourceBlockId: string,
+  cursorCol: number,
+  cursorRow: number,
+): EngineCommitResult {
+  return commitMoveAtCursor(editor, snapshot, sourceBlockId, cursorCol, cursorRow);
 }
