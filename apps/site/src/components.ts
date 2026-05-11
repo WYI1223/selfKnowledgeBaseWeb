@@ -48,14 +48,13 @@ const asMdxComponent = (component: ComponentType<FlatProps>): ComponentType<unkn
 // route (cf-23 D8 zero-affordance lock preserved); the wrapper
 // emits ONLY the chrome + the `.skb-prose` namespace class.
 function MarkdownReadView({ children, ...rest }: FlatProps) {
-  // Wave 6 cf-25 — Markdown JSX wrapper omits rowSpan when isProse
-  // (per ADR-0016 D3 + mdx-bridge serialize.ts:206 isProse branch).
-  // extractGridPosition requires rowSpan, so default to 'auto'
-  // before extraction to honor the prose contract. This mirrors the
-  // editor-side BlockNodeView behavior — markdown blocks get
-  // rowSpan='auto' as their canonical default.
+  // Wave 7 Phase 2A (ADR-0020 D1) — Markdown JSX wrapper omits rowSpan
+  // when it matches the prose default of 1 (unwrap-on-default pass).
+  // extractGridPosition requires rowSpan, so default to 1 here when
+  // the attr is absent. The defensive `'auto'` normalization remains
+  // in extractGridPosition for legacy un-migrated .mdx fixtures.
   const restWithRowSpan: Record<string, unknown> =
-    rest['rowSpan'] === undefined ? { ...rest, rowSpan: 'auto' } : rest;
+    rest['rowSpan'] === undefined ? { ...rest, rowSpan: 1 } : rest;
   const gridPos = extractGridPosition(restWithRowSpan);
   const wrapperStyle = gridPos ? gridPlacementStyle(gridPos) : undefined;
   return createElement(

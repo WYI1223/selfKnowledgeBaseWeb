@@ -70,7 +70,7 @@ describe('cf-25 markdown chunking pass (parse)', () => {
     expect(doc.content[0]?.attrs).toMatchObject({
       col: 1,
       colSpan: 12,
-      rowSpan: 'auto',
+      rowSpan: 1,
     });
   });
 
@@ -137,7 +137,7 @@ describe('cf-25 markdown chunking pass (parse)', () => {
     expect(doc.content[0]?.attrs).toMatchObject({
       col: 1,
       colSpan: 6,
-      rowSpan: 'auto',
+      rowSpan: 1,
     });
   });
 });

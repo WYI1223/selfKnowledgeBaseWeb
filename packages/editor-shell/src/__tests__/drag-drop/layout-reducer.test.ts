@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { layoutReducer, type GridSnapshot, type LayoutState } from '../../drag-drop/layout-reducer';
 
 const snapshotA: GridSnapshot = {
-  blocks: [{ col: 1, colSpan: 6, rowSpan: 'auto' }],
+  blocks: [{ col: 1, colSpan: 6, rowSpan: 1 }],
 };
 
 const snapshotB: GridSnapshot = {

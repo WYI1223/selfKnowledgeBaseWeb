@@ -1,4 +1,3 @@
-import type { BlockUIDefinition } from './registry';
 import {
   COL_SNAPS,
   type BlockGridKind,
@@ -90,19 +89,10 @@ export function effectiveColSnaps(
 }
 
 /**
- * ADR-0016 D2/D10 row-span resolver for editor-shell consumers.
- */
-export function effectiveRowSpan(
-  rowSpan: number | 'auto',
-  autoIntegerHint: number,
-): number {
-  return rowSpan === 'auto' ? autoIntegerHint : rowSpan;
-}
-
-/**
  * ADR-0016 D2/D6/D7 validation for explicit grid positions.
  *
  * Throws on explicit invalid input; callers decide how to surface errors.
+ * ADR-0020 D1 (Wave 7 Phase 2A): rowSpan is a discrete integer.
  */
 export function validateGridPosition(
   pos: GridPositionValidationInput,
@@ -127,26 +117,7 @@ export function validateGridPosition(
     throw new Error('row must be a 1-based integer when provided');
   }
 
-  if (pos.rowSpan === 'auto') {
-    if (pos.gridKind !== undefined && pos.gridKind !== 'prose') {
-      throw new Error("rowSpan='auto' is only valid for prose gridKind");
-    }
-    return;
-  }
-
   if (!Number.isInteger(pos.rowSpan) || pos.rowSpan < 1) {
-    throw new Error('rowSpan must be an integer >= 1 or auto');
+    throw new Error('rowSpan must be an integer >= 1');
   }
-}
-
-/**
- * ADR-0016 D10 auto-row-span query.
- *
- * Runtime `gridKind` mirroring from BlockKind is deferred to C.2-4, so
- * missing fields are treated as the backward-compatible integer path here.
- */
-export function isAutoRowSpan(
-  uiDef: Pick<BlockUIDefinition, 'rowSpanSemantic' | 'gridKind'>,
-): boolean {
-  return uiDef.rowSpanSemantic === 'auto' || uiDef.gridKind === 'prose';
 }

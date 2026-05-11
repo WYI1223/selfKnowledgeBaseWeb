@@ -188,7 +188,7 @@ function applySplitBottom(
   newBlock: IdentifiedBlock | undefined,
 ): GridSnapshotIdentified {
   const hostRow = host.row ?? 1;
-  const hostRowSpan = typeof host.rowSpan === 'number' ? host.rowSpan : 1;
+  const hostRowSpan = host.rowSpan;
   const insertRow = hostRow + hostRowSpan;
   const cascaded = baseline.blocks.map((b) => {
     if (b.id === sourceBlockId) return null;

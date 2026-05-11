@@ -10,7 +10,7 @@ function block(
   col: number,
   row: number,
   colSpan: number,
-  rowSpan: number | 'auto' = 1,
+  rowSpan: number = 1,
 ): IdentifiedBlock {
   return { id, col, row, colSpan, rowSpan };
 }
@@ -324,8 +324,8 @@ describe('applyDropMode — split-bottom', () => {
     expect(inserted?.row).toBe(4); // host.row=1 + host.rowSpan=3
   });
 
-  it('treats rowSpan=auto as 1 for placement', () => {
-    const baseline = snapshot(block('host', 1, 1, 12, 'auto'));
+  it('Wave 7 Phase 2A: rowSpan is integer (legacy auto path removed); single-row host places at row 2', () => {
+    const baseline = snapshot(block('host', 1, 1, 12, 1));
     const result = applyDropMode({
       baseline,
       mode: 'split-bottom',

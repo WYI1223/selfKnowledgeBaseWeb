@@ -10,7 +10,9 @@
  * 1. Core definition shape (name + kind + mdxComponent).
  * 2. propsSchema rejects non-strict shape (extra fields).
  * 3. propsSchema accepts the {col, row?, colSpan, rowSpan} shape
- *    with rowSpan='auto' OR positive integer.
+ *    with rowSpan as a positive integer (Wave 7 Phase 2A / ADR-0020 D1
+ *    — legacy `'auto'` literal no longer accepted by the schema;
+ *    mdx-bridge normalizes legacy attrs at parse time).
  * 4. parseMarkdown returns the right Tiptap node type.
  * 5. parseMarkdown rejects wrong mdxComponent name.
  * 6. serializeMarkdown emits the right MDX wrapper element.
@@ -28,11 +30,11 @@ describe('cf-25 markdownCore definition', () => {
 });
 
 describe('cf-25 markdownCore propsSchema', () => {
-  it('accepts default grid attrs (col=1, colSpan=12, rowSpan="auto")', () => {
+  it('accepts default grid attrs (col=1, colSpan=12, rowSpan=1)', () => {
     const result = markdownCore.propsSchema.safeParse({
       col: 1,
       colSpan: 12,
-      rowSpan: 'auto',
+      rowSpan: 1,
     });
     expect(result.success).toBe(true);
   });
@@ -51,9 +53,18 @@ describe('cf-25 markdownCore propsSchema', () => {
       col: 1,
       row: 5,
       colSpan: 12,
-      rowSpan: 'auto',
+      rowSpan: 2,
     });
     expect(result.success).toBe(true);
+  });
+
+  it('rejects rowSpan="auto" (Wave 7 Phase 2A: integer only)', () => {
+    const result = markdownCore.propsSchema.safeParse({
+      col: 1,
+      colSpan: 12,
+      rowSpan: 'auto',
+    });
+    expect(result.success).toBe(false);
   });
 
   it('rejects rowSpan="invalid" string', () => {
@@ -69,7 +80,7 @@ describe('cf-25 markdownCore propsSchema', () => {
     const result = markdownCore.propsSchema.safeParse({
       col: 0,
       colSpan: 12,
-      rowSpan: 'auto',
+      rowSpan: 1,
     });
     expect(result.success).toBe(false);
   });
@@ -78,7 +89,7 @@ describe('cf-25 markdownCore propsSchema', () => {
     const result = markdownCore.propsSchema.safeParse({
       col: 13,
       colSpan: 12,
-      rowSpan: 'auto',
+      rowSpan: 1,
     });
     expect(result.success).toBe(false);
   });
@@ -87,7 +98,7 @@ describe('cf-25 markdownCore propsSchema', () => {
     const result = markdownCore.propsSchema.safeParse({
       col: 1,
       colSpan: 12,
-      rowSpan: 'auto',
+      rowSpan: 1,
       extraField: 'evil',
     });
     expect(result.success).toBe(false);
@@ -128,7 +139,7 @@ describe('cf-25 serializeMarkdown', () => {
   it('emits a Markdown JSX wrapper element with empty attributes (grid attrs added by mdx-bridge upstream)', () => {
     const node = {
       type: 'markdown' as const,
-      attrs: { col: 1, colSpan: 6, rowSpan: 'auto' },
+      attrs: { col: 1, colSpan: 6, rowSpan: 1 },
       content: [],
     };
     const result = serializeMarkdown(node);

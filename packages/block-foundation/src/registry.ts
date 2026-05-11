@@ -1,10 +1,6 @@
 import type { ZodTypeAny, infer as ZodInfer } from 'zod';
 import type { ComponentType } from 'react';
-import type {
-  BlockGridKind,
-  BlockGridPosition,
-  RowSpanSemantic,
-} from './types';
+import type { BlockGridKind, BlockGridPosition } from './types';
 
 export type BlockKind = 'prose' | 'component' | 'render' | 'viz';
 
@@ -44,13 +40,10 @@ export interface BlockUIDefinition<TSchema extends ZodTypeAny = ZodTypeAny> {
    */
   readonly gridDefault?: BlockGridPosition;
   /**
-   * ADR-0016 D3/D10 row-span semantics. Default is 'integer' for backward
-   * compatibility when omitted.
-   */
-  readonly rowSpanSemantic?: RowSpanSemantic;
-  /**
    * ADR-0016 D10 grid serialize/parse kind. Default mirrors BlockKind;
-   * runtime mirror wiring is deferred to C.2-4.
+   * runtime mirror wiring is deferred to C.2-4. Per ADR-0020 D1 (Phase
+   * 2A), the `rowSpanSemantic` field has been removed — rowSpan is
+   * always a discrete integer; markdown overflow scrolls in-block.
    */
   readonly gridKind?: BlockGridKind;
 }

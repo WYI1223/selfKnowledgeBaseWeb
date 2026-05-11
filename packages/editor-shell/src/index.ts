@@ -55,8 +55,7 @@ export {
   gridPlacementStyle,
   gridPlacementStyleAttr,
 } from './grid-style';
-export type { GridPlacementInput, GridPlacementOptions } from './grid-style';
-export { useAutoRowSpan } from './use-auto-row-span';
+export type { GridPlacementInput } from './grid-style';
 export { useResponsiveCols, RESPONSIVE_BREAKPOINTS } from './responsive-cols';
 export type { UseResponsiveColsOptions, ViewportCols } from './responsive-cols';
 export { EDGE_W, GAP, computeEdgeRects } from './drag-drop/edge-rects';

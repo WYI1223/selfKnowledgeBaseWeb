@@ -11,7 +11,6 @@ import {
 } from '@skb/editor-shell/src/responsive-cols.ts';
 import { ColRuler } from '@skb/editor-shell/src/resize/col-ruler.tsx';
 import { colSpanToFraction, SizeTooltip } from '@skb/editor-shell/src/resize/size-tooltip.tsx';
-import { useAutoRowSpan } from '@skb/editor-shell/src/use-auto-row-span.ts';
 import { renderIntoPage, renderJsxMarkup } from './grid-drag-drop.fixtures';
 
 /**
@@ -354,111 +353,11 @@ test.describe('ADR-0016 D5 responsive viewport switch + GridContainer wire', () 
     await expect(page.locator('.skb-grid')).not.toHaveAttribute('data-skb-viewport-cols');
   });
 
-  test('AC#10 — useAutoRowSpan re-measures under viewport switch without mutating persistent rowSpan integer', () => {
-    // Wave 6 cf-20d R2 F1 boundary alignment: use width OUTSIDE
-    // the bucket boundary (1025) so the assertion is independent
-    // of the corrected boundary inclusivity. Pre-R2 width=1024
-    // gave cols=12; post-R2 width=1024 gives cols=6 (max-width:
-    // 1024 matches).
-    const win = new Window();
-    const controller = installMatchMedia(
-      win,
-      RESPONSIVE_BREAKPOINTS.desktop + 1,
+  test('AC#10 — useAutoRowSpan REMOVED in Wave 7 Phase 2A (rowSpan is integer per ADR-0020 D1)', () => {
+    test.skip(
+      true,
+      'REMOVED-IN-WAVE-7-PHASE-2A: useAutoRowSpan + measure-based rowSpan auto-grow deleted; markdown content overflow now scrolls inside the block. Responsive viewport switching no longer changes rowSpan semantics — integer rowSpan persists across viewport changes by definition.',
     );
-
-    class MockResizeObserver {
-      static instances: MockResizeObserver[] = [];
-      private readonly callback: ResizeObserverCallback;
-      private target: Element | null = null;
-
-      constructor(callback: ResizeObserverCallback) {
-        this.callback = callback;
-        MockResizeObserver.instances.push(this);
-      }
-
-      observe(target: Element): void {
-        this.target = target;
-      }
-
-      disconnect(): void {
-        this.target = null;
-      }
-
-      fire(scrollHeight: number): void {
-        if (!this.target) throw new Error('ResizeObserver fired before observe');
-        Object.defineProperty(this.target, 'scrollHeight', {
-          configurable: true,
-          value: scrollHeight,
-        });
-        this.callback([{ target: this.target } as ResizeObserverEntry], this as never);
-      }
-    }
-
-    // Q4 authority: packages/editor-shell/src/use-auto-row-span.ts:13,34-37.
-    const defaultRowHeightPx = 48;
-    const defaultGapPx = 14;
-    const expectedRowSpan = (scrollHeight: number) =>
-      Math.max(1, Math.ceil((scrollHeight + defaultGapPx) / (defaultRowHeightPx + defaultGapPx)));
-
-    function ResponsiveRowSpanHarness() {
-      const ref = React.useRef<HTMLDivElement>(null);
-      const cols = useResponsiveCols();
-      const measuredRowSpan = useAutoRowSpan(ref);
-
-      return React.createElement('div', {
-        ref,
-        'data-cols': String(cols),
-        'data-measured-row-span': String(measuredRowSpan),
-        'data-persistent-row-span': '2',
-      });
-    }
-
-    const restoreGlobals = installHappyDomGlobals(win, MockResizeObserver);
-    const host = win.document.createElement('section');
-    let root: Root | null = null;
-
-    function mount(): void {
-      act(() => {
-        root = createRoot(host as unknown as Container);
-        root.render(React.createElement(ResponsiveRowSpanHarness));
-      });
-    }
-
-    function unmount(): void {
-      act(() => root?.unmount());
-      root = null;
-      host.replaceChildren();
-    }
-
-    try {
-      win.document.body.append(host);
-      mount();
-      let observer = MockResizeObserver.instances.at(-1);
-      expect(observer).toBeDefined();
-      act(() => observer?.fire(210));
-
-      const target = () => host.querySelector('[data-persistent-row-span]') as HTMLElement | null;
-      expect(target()?.dataset.cols).toBe('12');
-      expect(target()?.dataset.measuredRowSpan).toBe(String(expectedRowSpan(210)));
-      expect(target()?.dataset.measuredRowSpan).toBe('4');
-      expect(target()?.dataset.persistentRowSpan).toBe('2');
-
-      unmount();
-      MockResizeObserver.instances = [];
-      controller.setWidth(RESPONSIVE_BREAKPOINTS.tablet - 1);
-      mount();
-      observer = MockResizeObserver.instances.at(-1);
-      expect(observer).toBeDefined();
-      act(() => observer?.fire(420));
-
-      expect(target()?.dataset.cols).toBe('1');
-      expect(target()?.dataset.measuredRowSpan).toBe(String(expectedRowSpan(420)));
-      expect(target()?.dataset.measuredRowSpan).toBe('7');
-      expect(target()?.dataset.persistentRowSpan).toBe('2');
-    } finally {
-      act(() => root?.unmount());
-      restoreGlobals();
-    }
   });
 });
 

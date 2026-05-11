@@ -75,11 +75,11 @@ function isBlock(node: RootContent | MdastJsxElement): node is TiptapMdastBlock 
  * cf-25 PR.md D5. After per-block serialize, walk the synthetic
  * Markdown JSX wrappers and UNWRAP them back to bare prose mdast
  * when their grid attrs are at default values (col=1, no row,
- * colSpan=12, rowSpan='auto'). Non-default grid attrs preserve
- * the wrapper. This guarantees byte-equivalent round-trip for
- * pre-cf-25 legacy MDX (no `<Markdown>` wrapper introduced) AND
- * preserves the wrapper when the user resizes/places a markdown
- * block to non-default grid coordinates.
+ * colSpan=12, rowSpan=1 per Wave 7 Phase 2A / ADR-0020 D1). Non-default
+ * grid attrs preserve the wrapper. This guarantees byte-equivalent
+ * round-trip for pre-cf-25 legacy MDX (no `<Markdown>` wrapper
+ * introduced) AND preserves the wrapper when the user resizes/places
+ * a markdown block to non-default grid coordinates.
  */
 export function tiptapToMdx(doc: TiptapDoc, options?: MdxBridgeOptions): string {
   const blocks = doc.content.map((node) => tiptapToMdastBlock(node, options));
@@ -229,24 +229,35 @@ function unsupportedBlock(type: string): never {
 }
 
 // Grid attr shape `{col, row?, colSpan, rowSpan}` per ADR-0016 D2 (single
-// schema authority). COL_SNAPS + col/colSpan/row/rowSpan validation rules
-// per D2 + D6 + D7. ADR-0016 D7 end-state per Wave 5 plan v1.1 row C.2-3.5
-// (R14 amendment 2026-05-05): grid attrs emit unconditionally in canonical
-// order, while non-prose rowSpan='auto' still fails loudly at serialize time.
+// schema authority). Wave 7 Phase 2A (ADR-0020 D1): rowSpan is a discrete
+// integer; legacy `'auto'` literal in attrs is normalized to 1. Prose
+// (Markdown) emits rowSpan ONLY when non-default (≠ 1); default rowSpan
+// stays absent so unwrap-on-default can round-trip bare prose.
 function serializeGridAttrs(node: TiptapNode, mdxComponent: string): MdastJsxAttribute[] {
   const attrs = node.attrs ?? {};
   const isProse = mdxComponent === 'Markdown';
 
+  // Wave 7 Phase 2A (ADR-0020 D1): non-prose blocks still reject the
+  // `'auto'` literal — in-memory state should never carry it on a
+  // non-prose block; throwing protects against corrupt state. Prose
+  // (Markdown) blocks normalize legacy `'auto'` to 1.
   if (attrs['rowSpan'] === 'auto' && !isProse) {
     throw new Error(
       `mdx-bridge: unsupported grid attr rowSpan='auto' on non-prose block ${node.type}; ` +
-        `rowSpan must be an integer per ADR-0016 D3.`,
+        `rowSpan must be an integer per ADR-0020 D1.`,
     );
   }
 
   const col = parseSerializableGridInteger('col', attrs['col'] ?? 1, node.type);
   const colSpan = parseSerializableGridInteger('colSpan', attrs['colSpan'] ?? 12, node.type);
   validateGridPosition(col, colSpan, node.type);
+
+  const rowSpanRaw = attrs['rowSpan'];
+  const rowSpan = parseSerializableGridInteger(
+    'rowSpan',
+    rowSpanRaw === 'auto' ? 1 : rowSpanRaw ?? 1,
+    node.type,
+  );
 
   const out: MdastJsxAttribute[] = [
     gridExpressionAttr('col', col),
@@ -257,12 +268,9 @@ function serializeGridAttrs(node: TiptapNode, mdxComponent: string): MdastJsxAtt
   ];
 
   if (!isProse) {
-    out.push(
-      gridExpressionAttr(
-        'rowSpan',
-        parseSerializableGridInteger('rowSpan', attrs['rowSpan'] ?? 1, node.type),
-      ),
-    );
+    out.push(gridExpressionAttr('rowSpan', rowSpan));
+  } else if (rowSpan !== 1) {
+    out.push(gridExpressionAttr('rowSpan', rowSpan));
   }
   return out;
 }

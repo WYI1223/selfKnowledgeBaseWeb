@@ -6,11 +6,9 @@ import { MarkdownRenderView } from './MarkdownRenderView';
 /**
  * Wave 6 cf-25 — Markdown block UI default.
  *
- * Registered as the 9th block kind alongside the 8 existing
- * BlockAffordanceKind kinds. `gridKind: 'prose'` + `rowSpanSemantic:
- * 'auto'` per ADR-0016 D10 prose grid defaults — markdown blocks
- * derive natural row span from rendered content height (per the
- * existing `useAutoRowSpan` hook).
+ * Wave 7 Phase 2A (ADR-0020 D1): `rowSpanSemantic` removed. Markdown
+ * defaults to 12 × 1 (design-doc §6); content overflow scrolls inside
+ * the block via grid.css `overflow-y: auto`.
  */
 export const markdownUiDefault: BlockUIDefinition<typeof markdownCore.propsSchema> =
   defineUI({
@@ -19,7 +17,6 @@ export const markdownUiDefault: BlockUIDefinition<typeof markdownCore.propsSchem
     EditorView: MarkdownEditorView,
     RenderView: MarkdownRenderView,
     gridKind: 'prose',
-    rowSpanSemantic: 'auto',
   });
 
 export { MarkdownEditorView } from './MarkdownEditorView';
