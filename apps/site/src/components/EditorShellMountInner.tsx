@@ -30,6 +30,7 @@ import {
   type EditorShellProps,
   type SaveIndicatorStatus,
   useAnnounce,
+  ThemeBaseplate,
   useDragDropPipeline,
   useEscCancel,
   useResizePipeline,
@@ -419,6 +420,12 @@ export function EditorShellMountInner({
               style={theme.cssVars}
               data-skb-theme={themeKey}
             >
+              {/* Wave 7 Phase 2D — theme baseplate (positioned absolute,
+                  z-index 0; behind block content). */}
+              <ThemeBaseplate
+                theme={theme}
+                dragInProgress={pipeline.state.active || pipeline.state.keyboardActive}
+              />
               <Toolbar editor={editor} />
               <EditorShell
                 extensions={wire.extensions}

@@ -25,12 +25,17 @@ export const KIND_HUE_VARS: Record<string, string> = {
 /**
  * Common positioning CSS for a baseplate canvas. Themes wrap the actual
  * rendering style on top.
+ *
+ * Wave 7 Phase 2D: the baseplate mounts as a positioned-absolute child
+ * of the grid container so the parent's CSS Grid (`.skb-grid display: grid`)
+ * doesn't reserve a layout cell for it. Container must be
+ * `position: relative` (set in `grid.css` `.skb-grid[data-skb-theme]`).
  */
 export function baseplateStyle(_slotSize: number): React.CSSProperties {
   return {
-    position: 'relative',
-    width: '100%',
-    height: '100%',
+    position: 'absolute',
+    inset: 0,
+    zIndex: 0,
     pointerEvents: 'none',
   };
 }

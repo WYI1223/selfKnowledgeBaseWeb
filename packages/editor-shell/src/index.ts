@@ -61,6 +61,9 @@ export type { UseResponsiveColsOptions, ViewportCols } from './responsive-cols';
 // Wave 7 Phase 2C — grid-themes wiring per ADR-0020 D7-D9.
 export { useTheme, DEFAULT_THEME } from './use-theme';
 export type { UseThemeOptions, UseThemeReturn, ThemeKey, GridTheme } from './use-theme';
+// Wave 7 Phase 2D — baseplate mount helper.
+export { ThemeBaseplate } from './theme-baseplate';
+export type { ThemeBaseplateProps } from './theme-baseplate';
 export { OutlineOverlay } from './drag-drop/outline-overlay';
 export type { OutlineOverlayProps } from './drag-drop/outline-overlay';
 export { DropPulse, dropPulseClassName } from './drag-drop/drop-pulse';

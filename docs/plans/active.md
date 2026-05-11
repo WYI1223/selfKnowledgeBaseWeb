@@ -10,13 +10,30 @@
 | PR | Branch | Status | Scope |
 |---|---|---|---|
 | #120 | wave-7-grid-redesign | ✅ merged 2026-05-11 (`1e25aeb`) | `@skb/grid-engine` package + 3-theme static prototype + `docs/design/grid-redesign-2026-05-11.md` |
-| #121 | wave-7-prototype-interaction | ✅ merged 2026-05-11 (`1e2283c`) | drag/resize/delete/insert prototype + 3 engine extensions (`maxEmptyRectContaining` / `transformBlock` / `OpOptions.gravity`); 43+ vitest tests |
+| #121 | wave-7-prototype-interaction | ✅ merged 2026-05-11 (`1e2283c`) | drag/resize/delete/insert prototype + 3 engine extensions; 43+ vitest tests |
 | #122 | wave-7-adr-0020-grid-engine-contract | ✅ merged 2026-05-11 (`23c96b9`) | ADR-0020 lock — engine contract D1-D9 + Theme spec |
-| **#123** | wave-7-phase-1-grid-themes | **📋 NEXT** | Phase 1: `@skb/grid-themes` package (NOT yet wired to editor) |
-| #124 | wave-7-phase-2a-rowspan-migration | 📋 planned | `rowSpan='auto'` → discrete integer; byte-equivalent round-trip preserved |
-| #125 | wave-7-phase-2b-replace-applyDropMode | 📋 planned | **HIGH RISK**: editor-shell DnD pipeline replaced with grid-engine ops |
-| #126 | wave-7-phase-2c-theme-placement-switcher | 📋 planned | replace `useProjectGridStyleToOuter`; wire toolbar theme switcher |
-| #127 | wave-7-phase-3-cleanup | 📋 planned | delete `/grid-prototype`; ADR-0017 v0.6 amendment to deprecate `applyDropMode`; Playwright coverage |
+| #123 | wave-7-phase-1-grid-themes | ✅ merged 2026-05-11 (`0d94892`) | Phase 1: `@skb/grid-themes` package + 3 built-in themes + registry + storage + ThemeSwitcher (NOT yet wired to editor) |
+| #124 | wave-7-phase-2a-rowspan-migration | ✅ merged 2026-05-11 (`d83f95c`) | `rowSpan='auto'` → discrete integer per ADR-0020 D1 |
+| #125 | wave-7-phase-2b1-grid-engine-adapter | ✅ merged 2026-05-11 (`a41fb2c`) | Phase 2B.1: grid-engine adapter (additive prep) |
+| #126 | wave-7-phase-2b2-applyDropMode-cutover | ✅ merged 2026-05-11 (`dde75a2`) | Phase 2B.2: applyDropMode cutover + ~860 LOC dead code removed |
+| #127 | wave-7-phase-2c-theme-wire | ✅ merged 2026-05-11 (`ad04765`) | Phase 2C **foundation**: useTheme hook + ThemeSwitcher mount + baseplate-color cssVar wire |
+| **#128** | wave-7-phase-2d-theme-layout-migration | **📋 NEXT** | Phase 2D **full theme integration**: absolute-positioning layout + theme.renderBlock + theme.renderBaseplate + theme.renderDropPreview; remove `useProjectGridStyleToOuter` |
+| #129 | wave-7-phase-3-coverage | 📋 planned | ADR-0017 v0.6 amendment + new Playwright drag-UX coverage for hole-fill placement |
+| #130 | wave-7-close | 📋 planned | Wave 7 close ceremony + ADR-0021 (close); prototype absorption decision |
+
+**Prototype preservation (user directive 2026-05-11)**: `apps/site/src/components/_grid-prototype/` + `/grid-prototype` route stay alive through Wave 7 close. They are the **acceptance benchmark**: user compares editor visual against prototype variants to verify Wave 7 delivered the promised theme experience. Deletion is deferred to PR #130 (Wave 7 close) only after the user has signed off on visual parity.
+
+**Phase 2D explicit plan** (the deferral the user called out):
+- **Layout model**: `.skb-grid` switches from CSS Grid (`display: grid; grid-template-columns; grid-row`) to relative positioning (`position: relative; height: totalRows × slotSize`)
+- **Block wrappers**: BlockNodeView delegates chrome rendering to `theme.renderBlock({ block, isDragging, isResizing, isFocused, children })` per the Theme contract; theme owns position/size/borders/radius/shadow
+- **Baseplate**: `theme.renderBaseplate({ totalCols, totalRows, dragInProgress, slotSize })` mounts as positioned-absolute child of `.skb-grid` (stud-dot for lego-studs, dotted for graph-paper, hidden-when-idle for bento-canvas)
+- **Drop preview**: `theme.renderDropPreview({ col, row, colSpan, rowSpan, isValid, slotSize })` replaces `OutlineOverlay`'s plain rect with per-theme styling
+- **Dead code**: `useProjectGridStyleToOuter` (CSS Grid projection hack), `extractGridPosition`, `gridPlacementStyle`, `gridPlacementStyleAttr` deleted; per-block grid-column inline styles removed
+- **CSS**: `.skb-grid display: grid` rule → `position: relative`; grid-auto-rows / grid-template-columns / fallback rules deleted
+- **Read route**: `apps/site/src/components.ts` MarkdownReadView + 3 heavy block .astro wrappers switch from `gridPlacementStyleAttr` to theme.renderBlock (or absolute-positioning helpers)
+- **Frontmatter `theme:`**: editor mount threads parsed frontmatter into `useTheme({ frontmatterTheme })`
+- **Risk**: same magnitude as Phase 2B.2 (~1500 LOC delta; touches every block render path). Single PR or 2D.1 + 2D.2 split TBD at start
+- **Acceptance**: editor visual matches prototype variants for each of the 3 themes
 
 **ADR-0020 locked decisions** ([`docs/decisions/ADR-0020-grid-engine-contract.md`](../decisions/ADR-0020-grid-engine-contract.md)):
 - D1 Block + GridState; rowSpan discrete integer
