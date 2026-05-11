@@ -144,3 +144,32 @@ describe('GridContainer viewportCols prop', () => {
     expect(root.className).toBe('skb-grid');
   });
 });
+
+describe('GridContainer Wave 7 Phase 2C theme attr', () => {
+  it('emits data-skb-theme when provided', () => {
+    const { container } = render(
+      <GridContainer data-skb-theme="lego-studs">x</GridContainer>,
+    );
+    const root = getGridRoot(container);
+    expect(root.getAttribute('data-skb-theme')).toBe('lego-studs');
+  });
+
+  it('omits data-skb-theme attribute when not provided', () => {
+    const { container } = render(<GridContainer>x</GridContainer>);
+    const root = getGridRoot(container);
+    expect(root.getAttribute('data-skb-theme')).toBeNull();
+  });
+
+  it('cssVars passed via style prop reach the grid element', () => {
+    const cssVars = { '--skb-baseplate-bg': 'oklch(96% 0.005 80)' } as CSSProperties;
+    const { container } = render(
+      <GridContainer style={cssVars} data-skb-theme="lego-studs">
+        x
+      </GridContainer>,
+    );
+    const root = getGridRoot(container);
+    expect(root.style.getPropertyValue('--skb-baseplate-bg')).toBe(
+      'oklch(96% 0.005 80)',
+    );
+  });
+});

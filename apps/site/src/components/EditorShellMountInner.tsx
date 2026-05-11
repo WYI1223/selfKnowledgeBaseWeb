@@ -34,8 +34,10 @@ import {
   useEscCancel,
   useResizePipeline,
   useResponsiveCols,
+  useTheme,
   wireRegistry,
 } from '@skb/editor-shell';
+import { ThemeSwitcher } from '@skb/grid-themes';
 import { DropPulseAtRect, ResizeOverlays } from './EditorShellOverlays';
 import {
   makeKebabChangeKind,
@@ -105,24 +107,12 @@ export function EditorShellMountInner({
   const [saveStatus, setSaveStatus] = useState<SaveIndicatorStatus>('idle');
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  // Wave 6 cf-24 — portal target for the PaletteSidebar React island.
-  // BaseLayout renders an empty `<aside id="palette-rail">` slot only
-  // when `palette={true}` is passed (edit route only). We resolve it
-  // at hydration time (useEffect, post-mount) and render the sidebar
-  // via createPortal so the editor + pipeline state stay singleton.
-  // Per cf-24 D11 graceful-degradation invariants:
-  //   1. Slot absent → portal no-ops; PaletteModal Cmd+K still works.
-  //   2. Editor null (pre-create / post-destroy) → portal no-ops.
-  //   3. Re-mount of EditorShellMountInner triggers useEffect cleanup
-  //      + re-resolve; no stale portal targets persist.
+  // cf-24 PaletteSidebar portal target; cf-24 D11 graceful degradation.
   const [paletteSlot, setPaletteSlot] = useState<HTMLElement | null>(null);
 
-  // cf-22 R1 F1 — announce hook (no-op outside <LiveAnnouncer>; in
-  // production the outer EditorShellMount mounts the provider).
   const announce = useAnnounce();
 
-  // cf-22 R1 F1 + cf-24 — 8 WCAG 4.1.3 announce callbacks via
-  // useEditorShellAnnounceCallbacks (size-check extraction).
+  // cf-22 R1 F1 + cf-24 — 8 WCAG 4.1.3 announce callbacks.
   const {
     onAnnounceDragMove,
     onAnnounceDragCommit,
@@ -161,6 +151,8 @@ export function EditorShellMountInner({
   );
 
   const viewportCols = useResponsiveCols();
+  // Wave 7 Phase 2C — theme cssVars inject on .skb-grid; switcher below.
+  const { themeKey, theme, setTheme } = useTheme();
   const pipeline = useDragDropPipeline({
     editor,
     totalCols: viewportCols,
@@ -422,7 +414,11 @@ export function EditorShellMountInner({
       <DragDropProvider value={dragContextValue}>
         <ResizeProvider value={resizeContextValue}>
           <KebabProvider value={kebabContextValue}>
-            <GridContainer viewportCols={viewportCols}>
+            <GridContainer
+              viewportCols={viewportCols}
+              style={theme.cssVars}
+              data-skb-theme={themeKey}
+            >
               <Toolbar editor={editor} />
               <EditorShell
                 extensions={wire.extensions}
@@ -439,9 +435,6 @@ export function EditorShellMountInner({
 
       {(pipeline.state.active || pipeline.state.keyboardActive) && (
         <>
-          {/* Wave 7 Phase 2B.2 — OutlineOverlay renders a single
-              hole-fill intent rect (replaces 4-mode EdgeMatch
-              accent). Geometry auto-read from `.skb-grid`. */}
           <OutlineOverlay activeIntent={pipeline.state.activeIntent} />
           {pipeline.state.cursor && (
             <DragGhost
@@ -474,6 +467,10 @@ export function EditorShellMountInner({
             onAnimationEnd={pipeline.clearLastDropped}
           />
         )}
+
+      {/* Wave 7 Phase 2C — theme switcher (production fold rule in component). */}
+      <ThemeSwitcher current={themeKey} onChange={setTheme} />
+
 
       {/* cf-24 — PaletteSidebar portal mount. Rendered into the
           BaseLayout `#palette-rail` slot iff the slot exists at
