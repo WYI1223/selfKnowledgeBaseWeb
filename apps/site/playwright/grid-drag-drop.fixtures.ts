@@ -1,11 +1,18 @@
 import { expect, type Page } from '@playwright/test';
 import * as React from 'react';
-import {
-  computeEdgeRects,
-  type BlockLayout,
-  type EdgeMode,
-} from '@skb/editor-shell/src/drag-drop/edge-rects.ts';
-import { findMatches, tiebreak, type EdgeMatch } from '@skb/editor-shell/src/drag-drop/tiebreak.ts';
+
+/**
+ * Wave 7 Phase 2B.2 (ADR-0020 D2) — the 4-mode classification helpers
+ * (`computeExpectedEdgeRect`, `classifyCursor`, `expectEdgeRect`,
+ * `match`, `blockLayout`, `blockRectMap`, `EdgeMode`, `Classification`)
+ * are removed alongside the deleted `edge-rects` / `tiebreak` modules.
+ * Specs that exercised AC#1-#5 (4-mode hit-test) skip with
+ * `REMOVED-IN-WAVE-7-PHASE-2B` markers.
+ *
+ * Remaining helpers: pixel-level block measurement +
+ * setContent-based render fixtures for synthetic Playwright harness
+ * tests.
+ */
 
 export interface BlockBounds {
   left: number;
@@ -15,17 +22,6 @@ export interface BlockBounds {
   width: number;
   height: number;
 }
-
-export interface ExpectedEdgeRect {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
-
-export type Classification = EdgeMode | 'empty' | 'none';
-
-const EDGE_W = 28;
 
 export async function measureBlockBounds(page: Page, blockKind: string): Promise<BlockBounds> {
   const block = page.locator(`[data-block="${blockKind}"]`).first();
@@ -46,92 +42,8 @@ export async function measureBlockBounds(page: Page, blockKind: string): Promise
   };
 }
 
-export function computeExpectedEdgeRect(bounds: BlockBounds, mode: EdgeMode): ExpectedEdgeRect {
-  switch (mode) {
-    case 'split-left':
-      return {
-        x: bounds.left - EDGE_W / 2,
-        y: bounds.top,
-        width: EDGE_W,
-        height: bounds.height,
-      };
-    case 'split-right':
-      return {
-        x: bounds.right - EDGE_W / 2,
-        y: bounds.top,
-        width: EDGE_W,
-        height: bounds.height,
-      };
-    case 'split-top':
-      return {
-        x: bounds.left,
-        y: bounds.top - EDGE_W / 2,
-        width: bounds.width,
-        height: EDGE_W,
-      };
-    case 'split-bottom':
-      return {
-        x: bounds.left,
-        y: bounds.bottom - EDGE_W / 2,
-        width: bounds.width,
-        height: EDGE_W,
-      };
-  }
-}
-
 export async function simulateCursorAt(page: Page, x: number, y: number): Promise<void> {
   await page.mouse.move(x, y);
-}
-
-export function rectFromBounds(bounds: BlockBounds): DOMRectReadOnly {
-  return {
-    x: bounds.left,
-    y: bounds.top,
-    left: bounds.left,
-    top: bounds.top,
-    right: bounds.right,
-    bottom: bounds.bottom,
-    width: bounds.width,
-    height: bounds.height,
-    toJSON: () => bounds,
-  };
-}
-
-export function blockLayout(blockId: string, bounds: BlockBounds): BlockLayout {
-  return { blockId, rect: rectFromBounds(bounds) };
-}
-
-export function blockRectMap(blockId: string, bounds: BlockBounds): Map<string, DOMRectReadOnly> {
-  return new Map([[blockId, rectFromBounds(bounds)]]);
-}
-
-export function classifyCursor(bounds: BlockBounds, x: number, y: number): Classification {
-  const blockId = 'fixture';
-  const edgeRects = computeEdgeRects([blockLayout(blockId, bounds)]);
-  const matches = findMatches(x, y, edgeRects, blockRectMap(blockId, bounds));
-  const winner = tiebreak(matches, { vx: 0, vy: 0 });
-  if (winner) return winner.mode;
-
-  const inside = x >= bounds.left && x <= bounds.right && y >= bounds.top && y <= bounds.bottom;
-  return inside ? 'none' : 'empty';
-}
-
-export function expectEdgeRect(actual: unknown, expected: ExpectedEdgeRect): void {
-  const edgeRect = actual as ExpectedEdgeRect;
-  expect(edgeRect.x).toBeCloseTo(expected.x, 4);
-  expect(edgeRect.y).toBeCloseTo(expected.y, 4);
-  expect(edgeRect.width).toBeCloseTo(expected.width, 4);
-  expect(edgeRect.height).toBeCloseTo(expected.height, 4);
-}
-
-export function match(
-  blockId: string,
-  mode: EdgeMode,
-  distance: number,
-  left: number,
-  top: number,
-): EdgeMatch {
-  return { blockId, mode, distance, blockBounds: { left, top } };
 }
 
 export async function readStaticLayer(page: Page, blockKind: string) {
@@ -202,41 +114,42 @@ function cssName(prop: string): string {
 function styleToCss(style: Record<string, unknown>): string {
   return Object.entries(style)
     .map(([prop, value]) => {
+      const cssProp = cssName(prop);
+      const isUnitless = UNIT_LESS_STYLE_PROPS.has(prop);
       const cssValue =
-        typeof value === 'number' && !UNIT_LESS_STYLE_PROPS.has(prop) && !prop.startsWith('--')
-          ? `${value}px`
-          : stringifyMarkupValue(value);
-      return `${cssName(prop)}:${cssValue}`;
+        typeof value === 'number' && !isUnitless ? `${value}px` : stringifyMarkupValue(value);
+      return `${cssProp}: ${cssValue}`;
     })
-    .join(';');
+    .join('; ');
 }
 
-function renderAttr(name: string, value: unknown): string {
-  if (value === undefined || value === null || value === false) return '';
-  if (name === 'children' || name === 'key') return '';
-  if (name === 'className') return ` class="${escapeHtml(stringifyMarkupValue(value))}"`;
-  if (name === 'style' && isRecord(value)) {
-    return ` style="${escapeHtml(styleToCss(value))}"`;
-  }
-  return ` ${name}="${escapeHtml(stringifyMarkupValue(value))}"`;
+function attrsToString(props: Record<string, unknown>): string {
+  return Object.entries(props)
+    .filter(([key]) => key !== 'children' && key !== 'style')
+    .map(([key, value]) => {
+      const attrName = key === 'className' ? 'class' : key;
+      const attrValue = escapeHtml(stringifyMarkupValue(value));
+      return `${attrName}="${attrValue}"`;
+    })
+    .join(' ');
 }
 
-export function renderJsxMarkup(node: unknown): string {
+export function renderJsxMarkup(node: React.ReactNode): string {
   if (node === null || node === undefined || typeof node === 'boolean') return '';
-  if (typeof node === 'string' || typeof node === 'number') return escapeHtml(String(node));
+  if (typeof node === 'string' || typeof node === 'number' || typeof node === 'bigint') {
+    return escapeHtml(stringifyMarkupValue(node));
+  }
   if (Array.isArray(node)) return node.map(renderJsxMarkup).join('');
-
   const element = node as JsxLikeElement;
-  if (typeof element.type === 'function') {
-    return renderJsxMarkup(element.type(element.props ?? {}));
-  }
-  if (element.type === React.Fragment || String(element.type).includes('react.fragment')) {
-    return renderJsxMarkup(element.props?.children);
-  }
-  if (typeof element.type !== 'string') return renderJsxMarkup(element.props?.children);
-
-  const attrs = Object.entries(element.props ?? {}).map(([name, value]) => renderAttr(name, value));
-  return `<${element.type}${attrs.join('')}>${renderJsxMarkup(
-    element.props?.children,
-  )}</${element.type}>`;
+  if (typeof element.type !== 'string') return '';
+  const props = isRecord(element.props) ? element.props : {};
+  const styleObj = isRecord(props['style']) ? props['style'] : null;
+  const attrParts: string[] = [];
+  const attrString = attrsToString(props);
+  if (attrString.length > 0) attrParts.push(attrString);
+  if (styleObj) attrParts.push(`style="${escapeHtml(styleToCss(styleObj))}"`);
+  const attrSection = attrParts.length > 0 ? ' ' + attrParts.join(' ') : '';
+  const children = props['children'];
+  const childMarkup = children === undefined ? '' : renderJsxMarkup(children as React.ReactNode);
+  return `<${element.type}${attrSection}>${childMarkup}</${element.type}>`;
 }

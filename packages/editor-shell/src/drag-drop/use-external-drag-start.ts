@@ -2,17 +2,16 @@
  * @skb/editor-shell useExternalDragStart — extracted onDragStartExternal
  * callback hook for the cf-24 PaletteSidebar drag entry.
  *
- * Wave 6 cf-24 (2026-05-10) — separated from `use-drag-drop-pipeline.ts`
- * to keep the pipeline file under the size-check 500 LOC hard cap.
- * Snapshots blocks (NO source-lift; the new block isn't in the doc
- * yet) + sets sourceBlockId = EXTERNAL_DROP_SENTINEL + flips
- * active=true. The grid dragover/drop listener (still in the pipeline
- * file) routes external-source drops through commitExternalDrop per
- * cf-24 D7.
+ * Wave 7 Phase 2B.2 (ADR-0020 D2) — dropped edge-rects compute (the
+ * 4-mode classifier was deleted alongside `apply-drop-mode`). The
+ * external-source drag-start now only snapshots blocks + block-rect
+ * data + flips `active=true` + sets `sourceBlockId =
+ * EXTERNAL_DROP_SENTINEL`. The grid dragover/drop listener uses
+ * cursor → engine coord + `inferDropIntent` to position the drop.
  */
 import { useCallback } from 'react';
 import type { Editor } from '@tiptap/core';
-import { computeEdgeRects, type BlockLayout, type EdgeRect } from './edge-rects';
+import type { DropIntent } from '@skb/grid-engine';
 import {
   measureBlockRects,
   snapshotBlocks,
@@ -26,14 +25,12 @@ export interface UseExternalDragStartOptions {
   readonly editor: Editor | null;
   readonly snapshotRef: React.MutableRefObject<readonly SerializedBlock[]>;
   readonly blockRectsRef: React.MutableRefObject<Map<string, DOMRectReadOnly>>;
-  readonly edgeRectsRef: React.MutableRefObject<readonly EdgeRect[]>;
-  readonly lastCursorRef: React.MutableRefObject<{ x: number; y: number; t: number } | null>;
   readonly externalDragKindRef: React.MutableRefObject<BlockAffordanceKind | null>;
   readonly dispatchLayout: (action: LayoutAction) => void;
   readonly setSourceBlockId: (id: string | null) => void;
   readonly setCursor: (cursor: { x: number; y: number } | null) => void;
   readonly setActive: (active: boolean) => void;
-  readonly setActiveMatch: (match: null) => void;
+  readonly setActiveIntent: (intent: DropIntent | null) => void;
 }
 
 export function useExternalDragStart(options: UseExternalDragStartOptions) {
@@ -41,54 +38,39 @@ export function useExternalDragStart(options: UseExternalDragStartOptions) {
     editor,
     snapshotRef,
     blockRectsRef,
-    edgeRectsRef,
-    lastCursorRef,
     externalDragKindRef,
     dispatchLayout,
     setSourceBlockId,
     setCursor,
     setActive,
-    setActiveMatch,
+    setActiveIntent,
   } = options;
   return useCallback(
     (kind: BlockAffordanceKind, origin: { x: number; y: number }) => {
       if (!editor) return;
       const blocks = snapshotBlocks(editor);
       const rects = measureBlockRects(editor, blocks);
-      // Edge rects from FULL block list (no source-lift; the new
-      // block isn't in the doc yet).
-      const layouts: BlockLayout[] = blocks
-        .map((b) => {
-          const rect = rects.get(b.id);
-          return rect ? { blockId: b.id, rect } : null;
-        })
-        .filter((x): x is BlockLayout => x !== null);
-      const edges = computeEdgeRects(layouts);
 
       snapshotRef.current = blocks;
       blockRectsRef.current = rects;
-      edgeRectsRef.current = edges;
-      lastCursorRef.current = { x: origin.x, y: origin.y, t: performance.now() };
       externalDragKindRef.current = kind;
 
       dispatchLayout({ type: 'drag-start', sourceBlockId: EXTERNAL_DROP_SENTINEL });
       setSourceBlockId(EXTERNAL_DROP_SENTINEL);
       setCursor({ x: origin.x, y: origin.y });
       setActive(true);
-      setActiveMatch(null);
+      setActiveIntent(null);
     },
     [
       editor,
       snapshotRef,
       blockRectsRef,
-      edgeRectsRef,
-      lastCursorRef,
       externalDragKindRef,
       dispatchLayout,
       setSourceBlockId,
       setCursor,
       setActive,
-      setActiveMatch,
+      setActiveIntent,
     ],
   );
 }
