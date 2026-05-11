@@ -28,22 +28,149 @@
 }
 
 /*
- * Wave 7 Phase 2C (ADR-0020 D7-D9) — theme-driven baseplate background.
- * When the editor mount injects theme cssVars via `<GridContainer
- * style={theme.cssVars} data-skb-theme="...">`, the rule below fires
- * to render the per-theme baseplate base color. Full per-theme
- * stud/dot patterns + block chrome integration are deferred to a
- * follow-up alongside the theme.renderBaseplate + theme.renderBlock
- * editor migration; this PR ships only the foundation (cssVar wiring +
- * baseplate color) so the theme switcher gives the user visible
- * confirmation that themes are reachable.
+ * Wave 7 Phase 2D (ADR-0020 D7-D9) — theme-driven baseplate + block
+ * chrome. When the editor mounts a theme, `.skb-grid[data-skb-theme]`
+ * adds `position: relative` so `theme.renderBaseplate(...)` can mount
+ * as a positioned-absolute child (z-index 0, behind content). CSS
+ * Grid layout for the block placement is preserved (the layout-model
+ * migration to absolute-positioning is deferred to Phase 2E per the
+ * Wave 7 plan).
+ *
+ * Per-theme block chrome rules override the v2 token contract
+ * (ADR-0018) so each theme delivers its distinctive look (rounded
+ * corners + hue tint + shadow per the prototype variants).
  *
  * Fallback: paths that don't mount a theme (read route, SSR pre-
- * hydration) render identically to pre-2C (no data-skb-theme attr,
- * rule doesn't match, no background applied).
+ * hydration) render identically to pre-2D.
  */
 .skb-grid[data-skb-theme] {
+  position: relative;
   background-color: var(--skb-baseplate-bg, transparent);
+}
+
+/* Baseplate stays at z-index 0 (negative z-index would clip behind
+ * scroll bg). DOM source-order then keeps normal-flow block wrappers
+ * (rendered after the baseplate in GridContainer's child list) above
+ * it without needing explicit z-index on every block — which avoids
+ * creating per-block stacking contexts that would suppress the
+ * toolbar's z-index 10 vs kebab submenu's z-index 60. */
+.skb-grid[data-skb-theme] > [data-skb-baseplate] {
+  z-index: 0;
+}
+
+/* Per-theme block chrome — overrides the v2 token contract
+ * (block-chrome.css) so each theme delivers prototype-matching
+ * visuals. The kind-hue var (`--skb-kind-<kind>`) is theme-provided
+ * via cssVars; the per-theme block rule blends it into the
+ * background. */
+
+.skb-grid[data-skb-theme='lego-studs'] .skb-block-nodeview,
+.skb-grid[data-skb-theme='lego-studs'] .skb-block-static {
+  background: color-mix(
+    in oklch,
+    var(--skb-kind-callout) var(--skb-block-bg-blend, 12%),
+    white
+  );
+  /* Per-side longhands so cf-19 D2 `border-top: 2px solid
+   * var(--accent-X)` per-kind hue stripe (the v2 chrome contract)
+   * remains intact on the top edge. The 3 other sides get the 1px
+   * theme-tinted border. */
+  border-bottom: 1px solid var(--skb-block-border, oklch(80% 0.01 80));
+  border-left: 1px solid var(--skb-block-border, oklch(80% 0.01 80));
+  border-right: 1px solid var(--skb-block-border, oklch(80% 0.01 80));
+  border-radius: var(--skb-block-radius, 4px);
+  box-shadow: var(--skb-block-shadow, 0 1px 3px oklch(0% 0 0 / 6%));
+}
+
+.skb-grid[data-skb-theme='lego-studs'] .skb-block-nodeview[data-skb-block-kind='markdown'],
+.skb-grid[data-skb-theme='lego-studs'] .skb-block-static[data-skb-block-kind='markdown'] {
+  background: color-mix(in oklch, var(--skb-kind-markdown) var(--skb-block-bg-blend, 12%), white);
+}
+.skb-grid[data-skb-theme='lego-studs'] .skb-block-nodeview[data-skb-block-kind='image'],
+.skb-grid[data-skb-theme='lego-studs'] .skb-block-static[data-skb-block-kind='image'] {
+  background: color-mix(in oklch, var(--skb-kind-image) var(--skb-block-bg-blend, 12%), white);
+}
+.skb-grid[data-skb-theme='lego-studs'] .skb-block-nodeview[data-skb-block-kind='code'],
+.skb-grid[data-skb-theme='lego-studs'] .skb-block-static[data-skb-block-kind='code'],
+.skb-grid[data-skb-theme='lego-studs'] .skb-block-nodeview[data-skb-block-kind='componentCode'] {
+  background: color-mix(in oklch, var(--skb-kind-code) var(--skb-block-bg-blend, 12%), white);
+}
+.skb-grid[data-skb-theme='lego-studs'] .skb-block-nodeview[data-skb-block-kind='math'],
+.skb-grid[data-skb-theme='lego-studs'] .skb-block-static[data-skb-block-kind='math'] {
+  background: color-mix(in oklch, var(--skb-kind-math) var(--skb-block-bg-blend, 12%), white);
+}
+.skb-grid[data-skb-theme='lego-studs'] .skb-block-nodeview[data-skb-block-kind='pdf'],
+.skb-grid[data-skb-theme='lego-studs'] .skb-block-static[data-skb-block-kind='pdf'] {
+  background: color-mix(in oklch, var(--skb-kind-pdf) var(--skb-block-bg-blend, 12%), white);
+}
+.skb-grid[data-skb-theme='lego-studs'] .skb-block-nodeview[data-skb-block-kind='jupyter'],
+.skb-grid[data-skb-theme='lego-studs'] .skb-block-static[data-skb-block-kind='jupyter'] {
+  background: color-mix(in oklch, var(--skb-kind-jupyter) var(--skb-block-bg-blend, 12%), white);
+}
+.skb-grid[data-skb-theme='lego-studs'] .skb-block-nodeview[data-skb-block-kind='nn-viz'],
+.skb-grid[data-skb-theme='lego-studs'] .skb-block-static[data-skb-block-kind='nn-viz'] {
+  background: color-mix(in oklch, var(--skb-kind-nn-viz) var(--skb-block-bg-blend, 12%), white);
+}
+.skb-grid[data-skb-theme='lego-studs'] .skb-block-nodeview[data-skb-block-kind='agent-flow'],
+.skb-grid[data-skb-theme='lego-studs'] .skb-block-static[data-skb-block-kind='agent-flow'] {
+  background: color-mix(in oklch, var(--skb-kind-agent-flow) var(--skb-block-bg-blend, 12%), white);
+}
+
+/* Graph-paper: clean white blocks with thin border + 2px hue top stripe
+ * per prototype VariantA. */
+.skb-grid[data-skb-theme='graph-paper'] .skb-block-nodeview,
+.skb-grid[data-skb-theme='graph-paper'] .skb-block-static {
+  background: white;
+  border: 1px solid var(--skb-block-border, oklch(85% 0.01 80));
+  border-radius: var(--skb-block-radius, 3px);
+  box-shadow: none;
+}
+.skb-grid[data-skb-theme='graph-paper'] .skb-block-nodeview[data-skb-block-kind='markdown'],
+.skb-grid[data-skb-theme='graph-paper'] .skb-block-static[data-skb-block-kind='markdown'] {
+  border-top: 2px solid var(--skb-kind-markdown);
+}
+.skb-grid[data-skb-theme='graph-paper'] .skb-block-nodeview[data-skb-block-kind='image'],
+.skb-grid[data-skb-theme='graph-paper'] .skb-block-static[data-skb-block-kind='image'] {
+  border-top: 2px solid var(--skb-kind-image);
+}
+.skb-grid[data-skb-theme='graph-paper'] .skb-block-nodeview[data-skb-block-kind='code'],
+.skb-grid[data-skb-theme='graph-paper'] .skb-block-static[data-skb-block-kind='code'],
+.skb-grid[data-skb-theme='graph-paper'] .skb-block-nodeview[data-skb-block-kind='componentCode'] {
+  border-top: 2px solid var(--skb-kind-code);
+}
+.skb-grid[data-skb-theme='graph-paper'] .skb-block-nodeview[data-skb-block-kind='callout'],
+.skb-grid[data-skb-theme='graph-paper'] .skb-block-static[data-skb-block-kind='callout'] {
+  border-top: 2px solid var(--skb-kind-callout);
+}
+.skb-grid[data-skb-theme='graph-paper'] .skb-block-nodeview[data-skb-block-kind='math'],
+.skb-grid[data-skb-theme='graph-paper'] .skb-block-static[data-skb-block-kind='math'] {
+  border-top: 2px solid var(--skb-kind-math);
+}
+.skb-grid[data-skb-theme='graph-paper'] .skb-block-nodeview[data-skb-block-kind='pdf'],
+.skb-grid[data-skb-theme='graph-paper'] .skb-block-static[data-skb-block-kind='pdf'] {
+  border-top: 2px solid var(--skb-kind-pdf);
+}
+.skb-grid[data-skb-theme='graph-paper'] .skb-block-nodeview[data-skb-block-kind='jupyter'],
+.skb-grid[data-skb-theme='graph-paper'] .skb-block-static[data-skb-block-kind='jupyter'] {
+  border-top: 2px solid var(--skb-kind-jupyter);
+}
+.skb-grid[data-skb-theme='graph-paper'] .skb-block-nodeview[data-skb-block-kind='nn-viz'],
+.skb-grid[data-skb-theme='graph-paper'] .skb-block-static[data-skb-block-kind='nn-viz'] {
+  border-top: 2px solid var(--skb-kind-nn-viz);
+}
+.skb-grid[data-skb-theme='graph-paper'] .skb-block-nodeview[data-skb-block-kind='agent-flow'],
+.skb-grid[data-skb-theme='graph-paper'] .skb-block-static[data-skb-block-kind='agent-flow'] {
+  border-top: 2px solid var(--skb-kind-agent-flow);
+}
+
+/* Bento-canvas: card style with bigger radius + softer shadow per
+ * prototype VariantC. */
+.skb-grid[data-skb-theme='bento-canvas'] .skb-block-nodeview,
+.skb-grid[data-skb-theme='bento-canvas'] .skb-block-static {
+  background: var(--skb-block-bg, white);
+  border: none;
+  border-radius: var(--skb-block-radius, 12px);
+  box-shadow: var(--skb-block-shadow, 0 4px 12px oklch(0% 0 0 / 8%), 0 1px 2px oklch(0% 0 0 / 4%));
 }
 
 /*
