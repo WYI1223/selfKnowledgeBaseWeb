@@ -3,11 +3,35 @@
 > SessionStart hook 读取此文件，把当前 wave 印在 session 起手位置。
 
 **当前 phase**: 1
-**当前 wave**: **Wave 6 Stage B ✅ CLOSED 2026-05-07 + 3 follow-up PRs landed 2026-05-08** — 5-PR Stage B sequence (B.1 ADR-0018 v0.6 amendment `fc7689f` + B.2 endpoint `100f1dc` + B.3 ApiAdapter `6e88cb4` + B.4 mount wire `376a559` + B.5 close `941c273`) + 3 post-close PRs: hotfix `6eaf676` (mdxFlowExpression softParse + per-block fault tolerance + Tiptap mark sanitizer + visible load-error banner — closed the user-reported "/notes/sample-blocks/edit empty" gap that B.5's synthetic close-ceremony fixture missed) + cf-15a `dbf48e1` (`@tiptap/extension-link` registered with title attr; markdown links now render as anchors in the edit surface) + cf-17 (this PR; ADR-0011 v0.2.2 D9.8 amendment codifying the close-ceremony fixture-representativeness rule that prevents this failure class from recurring). Editor persistence is now server-backed via the path-(b) Astro mixed-mode endpoint at `apps/site/src/pages/api/notes/[...slug].ts` with sidecar `state.json` for `{lastModified, version}` (preserves `@skb/content-types` frontmatter authority, zero schema drift). Cross-session + cross-device edit continuity via ApiAdapter primary + LocalStorageAdapter fallback per ADR-0018 v0.6 D13. **Static-build read-route caveat** (the `/notes/<slug>` HTML is prerendered at build time and does NOT auto-rebuild after a save in `astro build && preview` mode; works in `astro dev` HMR which is the workflow that motivated the user's original report; production read-route freshness is a Phase 3+ path-(a) `apps/api` SSR concern). Stage B handoff pack: [docs/plans/wave-6-main/stage-b-handoff-pack.md](wave-6-main/stage-b-handoff-pack.md). 14 codex R-rounds total (9 in B.2: R2-R10; 2 in B.3: R1-R2; 3 in B.4: R1-R3) plus B.5's own R-rounds; folded ADR-0011 v0.3 D9.1 API-route ui_touch exclusion + ADR-0006 v0.2.1 cross-ref-only + 9-point sweep across all consumer surfaces (root authority `agent-contract.md` + 3 generator templates + 3 regenerated docs + active runbook `team-operations.md`).
+**当前 wave**: **Wave 7 grid redesign** — replaces cf-22/23/24/25 grid implementation with new `@skb/grid-engine` + theme system. Triggered by user critique 2026-05-11 ("grid 没做好；过度信任 v2 reference；没在用户心智 / 体验视角下审视过"). Validated via 2 throwaway prototypes (algorithm + UI) before any production change.
 
-**Wave 5 prior context (kept for reference)**: ✅ FULLY CLOSED 2026-05-07 by [ADR-0019](../decisions/ADR-0019-wave-5-close.md) — 47 main pipeline PRs across Pre-A + 4 stages. MVP-ready milestone reached (10/10 user MVP items with Playwright coverage). v2 visual identity LANDED. Editor wired to `/notes/<slug>/edit`. 4 NEW ADRs (0016/0017/0018/0019) + 4 amendments ratified. 8 NEW retrospective items R23-R30.
+**Wave 7 PR sequence**:
 
-**当前 wave next**: **Wave 6 Stage B done; Stage C TBD** — Stage B closes the editor-persistence half of the original "MVP-ready" milestone. Stage C scope (next plan-draft) is gatekeeper TBD: candidates include the static-build read-route freshness gap, new-note creation, layoutEpoch sync (ADR-0019 D3 #1), mobile/a11y polish, or one of the other Wave 5 carry-forwards.
+| PR | Branch | Status | Scope |
+|---|---|---|---|
+| #120 | wave-7-grid-redesign | ✅ merged 2026-05-11 (`1e25aeb`) | `@skb/grid-engine` package + 3-theme static prototype + `docs/design/grid-redesign-2026-05-11.md` |
+| #121 | wave-7-prototype-interaction | ✅ merged 2026-05-11 (`1e2283c`) | drag/resize/delete/insert prototype + 3 engine extensions (`maxEmptyRectContaining` / `transformBlock` / `OpOptions.gravity`); 43+ vitest tests |
+| #122 | wave-7-adr-0020-grid-engine-contract | ✅ merged 2026-05-11 (`23c96b9`) | ADR-0020 lock — engine contract D1-D9 + Theme spec |
+| **#123** | wave-7-phase-1-grid-themes | **📋 NEXT** | Phase 1: `@skb/grid-themes` package (NOT yet wired to editor) |
+| #124 | wave-7-phase-2a-rowspan-migration | 📋 planned | `rowSpan='auto'` → discrete integer; byte-equivalent round-trip preserved |
+| #125 | wave-7-phase-2b-replace-applyDropMode | 📋 planned | **HIGH RISK**: editor-shell DnD pipeline replaced with grid-engine ops |
+| #126 | wave-7-phase-2c-theme-placement-switcher | 📋 planned | replace `useProjectGridStyleToOuter`; wire toolbar theme switcher |
+| #127 | wave-7-phase-3-cleanup | 📋 planned | delete `/grid-prototype`; ADR-0017 v0.6 amendment to deprecate `applyDropMode`; Playwright coverage |
+
+**ADR-0020 locked decisions** ([`docs/decisions/ADR-0020-grid-engine-contract.md`](../decisions/ADR-0020-grid-engine-contract.md)):
+- D1 Block + GridState; rowSpan discrete integer
+- D2 5 ops (insert/move/resize/transform/delete) + `OpOptions.gravity`
+- D3 Option A gravity (default invariant; opt-out via `{gravity: false}`)
+- D4 Hole-fill via `maxEmptyRectContaining` (anchor = hole top-left)
+- D5 `DEFAULT_SIZES` per BlockKind
+- D6 Engine 100% headless (no React/DOM/CSS/Tiptap/PM imports)
+- D7 Theme interface (closed v1 registry, extensible API)
+- D8 Storage hybrid (frontmatter > localStorage > default 'lego-studs')
+- D9 Switcher = floating chip bottom-right; production fold hidden
+
+**Wave 6 prior context (kept for reference)**: ✅ CLOSED via 4 carry-forward PRs cf-22 / cf-23 / cf-24 / cf-25 (keyboard a11y + read-mode unification + palette sidebar + markdown as grid blocks). User critique drove Wave 7 reset. Wave 6 Stage B editor persistence layer + 3 follow-ups still operative; static-build read-route caveat remains a Phase 3+ path-(a) `apps/api` SSR concern.
+
+**Wave 5 prior context (kept for reference)**: ✅ FULLY CLOSED 2026-05-07 by [ADR-0019](../decisions/ADR-0019-wave-5-close.md) — 47 main pipeline PRs across Pre-A + 4 stages. MVP-ready milestone reached. v2 visual identity LANDED. Editor wired to `/notes/<slug>/edit`. 4 NEW ADRs (0016/0017/0018/0019) + 4 amendments ratified.
 
 **Wave 5 stage handoff packs** (4-stage close evidence):
 
