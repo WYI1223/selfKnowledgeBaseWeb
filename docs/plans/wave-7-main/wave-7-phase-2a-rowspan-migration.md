@@ -100,15 +100,34 @@ of growing the block height. Existing `.mdx` files with no
 
 ## e2e_smoke
 
-- flow: load `/notes/sample-blocks` → verify markdown blocks render
-  at integer rowSpan=1 with `overflow-y: auto` chrome; long markdown
-  content shows a scrollbar inside the block.
-  target_url: /notes/sample-blocks
-  playwright_spec: existing `sample-blocks-markdown-blocks-behavior.spec.ts` coverage
+Phase 2A is a type-narrowing migration; the only visible change is
+that markdown blocks at default rowSpan=1 now scroll inner content
+instead of growing the block height. Existing cf-25 Playwright coverage
+(structural + behavioral) is the regression test for the migration:
+every markdown-block flow that passed pre-migration must still pass.
+
+### Flow 1 — markdown blocks still render as first-class grid blocks (cf-25 structural regression)
+
+- flow: every prose chunk wraps as a markdown block with integer
+  rowSpan (no `'auto'` literal anywhere in attrs); chrome + grid
+  placement preserved.
+  target_url: /notes/sample-blocks/edit
+  playwright_spec: apps/site/playwright/sample-blocks-markdown-blocks.spec.ts
   assertions:
-    - Markdown blocks have `overflow-y: auto` computed style
-    - No `rowSpan='auto'` literal in serialized .mdx after editor save
-    - Block height = rowSpan integer × (row-h + gap) (no auto-grow)
+    - `[data-skb-block-kind='markdown']` count ≥ 1
+    - cf-25 structural specs still PASS (no behavioral change for blocks at default rowSpan)
+
+### Flow 2 — drag/resize/duplicate behavioral regression (cf-25 behavioral coverage)
+
+- flow: drag, resize, duplicate, palette-drag flows on markdown
+  blocks still operate (integer rowSpan flows through the pipeline
+  unchanged).
+  target_url: /notes/sample-blocks/edit
+  playwright_spec: apps/site/playwright/sample-blocks-markdown-blocks-behavior.spec.ts
+  assertions:
+    - AC3-2a/2b/2c (drag/resize/duplicate) still PASS
+    - AC3-3a (palette drag insert) still PASS
+    - AC3-4a (read/edit parity) still PASS
 
 ## Acceptance
 
