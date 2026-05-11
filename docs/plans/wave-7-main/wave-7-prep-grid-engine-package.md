@@ -46,19 +46,16 @@ production UI; only accessible by URL) but technically lives under
 
 ## e2e_smoke
 
-- flow: `/grid-prototype?variant=A` renders Variant A "Graph paper"
-  theme without hydration errors. The route is throwaway, so we don't
-  add a Playwright spec — manual smoke-test via curl HTTP 200 +
-  inspection in browser is sufficient for prototype validation.
-  target_url: /grid-prototype?variant=A
-  playwright_spec: SKIP (throwaway prototype; manual smoke only)
-  screenshot_archive: SKIP (throwaway; will be deleted in follow-up wave-7 PR)
+- flow: `/grid-prototype?variant={A,B,C}` mounts the React island
+  for all 3 theme variants without hydration errors. Floating switcher
+  chip is visible (proves React island hydrated). Zero JS errors in
+  console.
+  target_url: /grid-prototype
+  playwright_spec: apps/site/playwright/grid-prototype-themes.spec.ts:"Wave 7 prep — /grid-prototype?variant=A mounts the React island without errors"
   assertions:
-    - HTTP 200 on /grid-prototype, /grid-prototype?variant=A,
-      /grid-prototype?variant=B, /grid-prototype?variant=C
-    - Astro build does not error
-    - All 3 variants share the same `@skb/grid-engine` import path
-      (no copy-pasted engine logic across variants)
+    - All 3 variants (A/B/C) mount without page errors
+    - All 3 variants render the floating switcher chip (hydration proof)
+    - No console.error during hydration
 
 ## Acceptance
 
