@@ -135,6 +135,42 @@ reference defines no read-only outer shell (the v2 `.app` left-rail
 palette + top-bar are editor-mode chrome). cf-23 closes only the inner
 doc-wrap layer; outer chrome alignment is cf-24+ territory.
 
+### Layout shell — `palette?: boolean` (Wave 6 cf-24)
+
+cf-24 (per ADR-0018 v0.8 D10) introduced an optional `palette?: boolean`
+prop mirroring the cf-23 `wide` opt-in pattern:
+
+- `palette={false}` (default): the layout renders a single `<main>` block.
+  Routes using this default: `/`, `/search`, `/notes/[slug]` (read).
+- `palette={true}`: the layout swaps to a 2-column flex shell —
+  `<div class="layout-with-palette">` wraps `<aside id="palette-rail"
+  class="palette-rail">` (230px fixed via `--palette-w`) + the existing
+  `<main>` (flex-1, inherits the `wide` doc-wrap container at 1180px
+  max-width). The aside is a server-rendered SLOT;
+  `EditorShellMountInner` portal-mounts the React `<PaletteSidebar>` into
+  it at hydration via `createPortal` (graceful degradation per cf-24
+  D11: slot absent → no-op; editor null → no-op).
+
+Routes using `palette`: `/notes/[slug]/edit` ONLY. The read route does
+NOT pass it (cf-23 D8 zero-affordance contract preserved — readers
+should not see editor affordances).
+
+**4-viewport rail-visibility table** (locked by
+`apps/site/playwright/notes-route-width-parity.spec.ts` cf-24 amendment):
+
+| Viewport | Rail visible? | Edit `<main>` width | Read `<main>` width | Parity mode |
+| --- | :---: | ---: | ---: | --- |
+| 1440 (Band 1) | yes (fits beside cap) | 1180px | 1180px | strict (cap binds both) |
+| 1280 (Band 2) | yes | ~1050px (1280 − 230) | 1180px | band2 (delta ≈ 230) |
+| 1024 (Band 2) | yes | ~794px (1024 − 230) | 1024px | band2 (delta ≈ 230) |
+| 768 (Band 3) | NO (display:none) | 768px | 768px | strict (cf-23 preserved) |
+| 375 (Band 3) | NO (display:none) | 375px | 375px | strict (cf-23 preserved) |
+
+The 768px hide breakpoint matches cf-20b grid responsive 6→1 col flatten;
+mobile insertion UX falls back to the PaletteModal Cmd+K command bar
+(load-bearing per ADR-0018 v0.8 D10.e — both palette surfaces are
+PERMANENT first-class siblings).
+
 ## Grid layout (Wave 5)
 
 - W5-1 source of truth: `packages/block-foundation/CONTRACT.md` owns the grid

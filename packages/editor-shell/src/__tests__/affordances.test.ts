@@ -2,7 +2,7 @@ import { createElement } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import type { Editor } from '@tiptap/core';
-import { Palette } from '../palette';
+import { PaletteModal } from '../palette-modal';
 import { SlashMenu } from '../slash-menu';
 import { DragHandle } from '../drag-handle';
 import { Toolbar } from '../toolbar';
@@ -44,9 +44,9 @@ function fakeToolbarEditor() {
 }
 
 describe('C.4-3 user affordances', () => {
-  it('palette opens with Ctrl+K and lists the 8 block kinds', () => {
+  it('palette modal opens with Ctrl+K and lists the 8 block kinds', () => {
     const onInsert = vi.fn();
-    render(createElement(Palette, { editor: null, onInsert }));
+    render(createElement(PaletteModal, { editor: null, onInsert }));
 
     fireEvent.keyDown(document, { key: 'k', ctrlKey: true });
 

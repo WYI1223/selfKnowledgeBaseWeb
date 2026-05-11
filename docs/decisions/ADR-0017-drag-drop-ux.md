@@ -2,7 +2,7 @@
 
 | 字段 | 值 |
 | ---- | --- |
-| 状态 | proposed (v0.1.1 post 13-Q plan-challenger absorbtion 2026-05-04: 11 ABSORBED + 2 PARTIALLY ABSORBED) |
+| 状态 | accepted (v0.4 Wave 6 cf-24 amendment 2026-05-10 — D14 external-source drag protocol added; per-block drag/drop UX from v0.1.1 unchanged) |
 | 日期 | 2026-05-04 |
 | 作者 | orchestrator (Claude Opus 4.7 1M ctx) |
 | 触发 | [Wave 5 plan v0.2 D1+D5](../superpowers/plans/2026-05-04-phase-1-wave-5-integration.md) (Pre-A3 ADR-0017 drag/drop UX design lock) + reframe v2 memory `project_wave4_reframe_v2.md` + granularity doc v0.3.4 § "v2 整体用户体验 / 4 种 Drop 语义 / Drop 视觉 / 命中检测算法 / 源块 lift" body (旧编号 0013 → Wave 5 实际 ADR-0017 per plan v0.2 ADR 编号映射表 / D5) |
@@ -407,6 +407,56 @@ cf-22 adds keyboard-mode parity for all 3 cf-20 per-block affordances (drag / re
 - `apps/site/src/components/EditorShellKebabActions.ts` — **R1**: 3 factories accept optional `KebabAnnounceFn`; capture `node.type.name` BEFORE mutation.
 
 **Mobile path inheritance**: cf-22 keyboard handles share DOM with pointer handles; mobile `@media (max-width: 768px) { display: none }` rules from cf-20c-2/cf-20d/cf-20e apply equally. No new mobile-specific rules.
+
+### D14 — External-source drag protocol (Wave 6 cf-24 amendment 2026-05-10)
+
+**Status**: v0.4 amendment. Per-block drag/drop UX from v0.1.1 (D1-D13) is UNCHANGED byte-for-byte; D14 adds a parallel external-source code path triggered ONLY when the drag originates from the cf-24 PaletteSidebar (not from a per-block drag-handle).
+
+#### Why this amendment
+
+cf-24 ships the v2-style left-rail PaletteSidebar (per ADR-0018 v0.8 D10). Each palette card is HTML5-draggable; dragging a card onto the editor canvas should INSERT a new block of that kind at the drop slot. The existing pipeline (D1-D13) handles per-block MOVE (sourceBlockId = real Tiptap node UUID; commitDropAtMatch swaps via apply-drop-mode algebra). External-source INSERT is a different mutation (no source block exists yet), so a parallel code path is required.
+
+#### Protocol
+
+**MIME contract**: `application/x-block-kind` (matches v2 reference `v2-app.jsx:135` protocol exactly). PaletteSidebar's onDragStart writes the kind string under this MIME via `writeBlockKindToDataTransfer`. The pipeline reads via `readBlockKindFromDataTransfer` at dragover/drop time.
+
+**Sentinel for state**: `EXTERNAL_DROP_SENTINEL = '__external_palette__'` is written into the pipeline's `sourceBlockId` slot when `onDragStartExternal` fires. `isExternalDragSource(sourceBlockId)` predicate branches the dragover/drop listener:
+- `false` (per-block UUID): cf-22 commitDropAtMatch path (UNCHANGED)
+- `true` (sentinel): cf-24 commitExternalDrop path (NEW)
+
+**External-source commit** (`commitExternalDrop` in `commit-external-drop.ts`):
+1. `appendBlockKind(editor, kind)` appends a new block at end-of-doc with default attrs (cf-24 R0 F1 fix; replaces the pre-fix `insertBlockKind` which respected user selection + would have placed the new block at cursor mid-doc, breaking the post-insert id-diff used to identify the inserted block).
+2. Snapshot doc post-insert; identify the new block's UUID by diffing pre-insert ids.
+3. Build `applyDropMode` input with sourceBlockId = newBlockId; baseline = pre-insert blocks + new block at end. Treat the new block as "the source being placed" via the existing per-block move algebra. This reuses the well-tested apply-drop-mode split-* host shrinking logic.
+4. Translate mutation snapshot → setNodeMarkup chain to write {col, row, colSpan, rowSpan} to live positions.
+5. Fire WCAG 4.1.3 `formatExternalDragCommit("Inserted X block at column N")` announcement.
+
+**Plan deviation note**: cf-24 PR.md D5 originally said "bypass commitDropAtMatch entirely; insertBlockKind + setNodeMarkup". Implementation REUSES `applyDropMode` (which natively supports `sourceBlockId === null + newBlock` palette-insert path per `apply-drop-mode.ts:65-70`), routing through it for split-* host shrinking correctness rather than duplicating the math. Documented at orchestrator hand-back.
+
+**Defense in depth (Q4 absorbtion)**: `readBlockKindFromDataTransfer` validates the MIME value against `BLOCK_KIND_OPTIONS` whitelist + returns null on missing / empty / unknown. Browser extensions or page injections cannot inject rogue values into the pipeline.
+
+#### Per-block path regression net (cf-24 D7 byte-for-byte preservation)
+
+The cf-24 implementation extracted the dragover/drop useEffect to `usePointerDragListeners` (size-check 500 LOC hard cap forced extraction; pre-cf-24 the useEffect was inline in `use-drag-drop-pipeline.ts`). The per-block branch inside `usePointerDragListeners.handleDrop` is IDENTICAL byte-for-byte to the pre-cf-24 inline code; only the external-source branch is new. Regression net:
+
+- `apps/site/playwright/sample-blocks-keyboard-a11y.spec.ts` (cf-22 R3): keyboard drag still works
+- `apps/site/playwright/sample-blocks-drag-handle.spec.ts` (cf-20c-2): pointer drag still works
+- `apps/site/playwright/sample-blocks-resize-handles.spec.ts` (cf-20d): resize unchanged
+- `apps/site/playwright/sample-blocks-kebab-menu.spec.ts` (cf-20e): kebab actions unchanged
+
+CI gates BOTH the new external-drop spec AND the existing per-block specs.
+
+#### Out of scope cf-24
+
+- **Keyboard-mode external drag**: cf-24 only ships pointer external drag. Keyboard insertion uses the cf-22 click-as-Enter parity path on focused palette items (`appendBlockKind` at end-of-doc per cf-24 R1 F5, no grid positioning). cf-25+ MAY add keyboard-mode external drag if user demand emerges.
+- **Touch / mobile drag**: rail hidden < 768px per cf-24 D8 + ADR-0018 v0.8 D10.d. Touch users use click-to-insert (cf-22 keyboard parity).
+
+#### Sister-doc updates (per ADR-0006 #6)
+
+- `packages/editor-shell/CONTRACT.md`: NEW Public surface entries — `PaletteSidebar` / `PaletteModal` (renamed from `Palette`) / `EXTERNAL_DROP_MIME` / `EXTERNAL_DROP_SENTINEL` / `writeBlockKindToDataTransfer` / `readBlockKindFromDataTransfer` / `isExternalDragSource` / `formatExternalDragMove` / `formatExternalDragCommit`.
+- `apps/site/CONTRACT.md`: NEW BaseLayout `palette?: boolean` opt-in (cf-23 D9 `wide` precedent).
+- `packages/design-tokens/CONTRACT.md`: NEW `--palette-w: 230px` layout token.
+- `apps/site/playwright/notes-route-width-parity.spec.ts`: amended for cf-24 D9 3-band model (palette-rail Band 2 width subtraction).
 
 ## Acceptance criteria (AC list)
 

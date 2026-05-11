@@ -2,7 +2,7 @@
 
 | 字段 | 值                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 状态 | accepted (v0.6 Wave 6 Stage B amendment 2026-05-07; v0.1.1 → v0.6 promotes ApiAdapter from forward-stub to first-class Wave 6 default + Astro hybrid output adjustment + 5-PR sequence locked)                                                                                                                                                                                                                                                              |
+| 状态 | accepted (v0.8 Wave 6 cf-24 amendment 2026-05-10; v0.7 cf-23 read-route page-shell unification → v0.8 cf-24 edit-route palette-rail visual contract per D10) |
 | 日期 | 2026-05-04                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | 作者 | orchestrator (Claude Opus 4.7 1M ctx)                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | 触发 | [Wave 5 plan v0.2 D1+D5+D10](../superpowers/plans/2026-05-04-phase-1-wave-5-integration.md) (Pre-A4 ADR-0018 v2 视觉 migration design lock + save-path 接口冻结 per Q4+Q8 absorbtion) + reframe v2 memory `project_wave4_reframe_v2.md` + granularity doc v0.3.4 § "v2 视觉契约要素 (认证源 = v2-styles.css, 所有 token 不变)" + § "v2 编辑器 UX 要素 (视觉细节)" body (NEW reframe v2 forward; granularity 原 Phase 2+ L1 visual scope)                    |
@@ -999,3 +999,71 @@ dispatch: `codex exec --yolo --profile plan-challenger ...` (Pre-A4 ADR-0018 des
 - granularity doc v0.3.4 (`/mnt/d/download/web/v2-design-granularity.md`) — gatekeeper-side scratch; § "v2 视觉契约要素 (认证源 = v2-styles.css)" + § "v2 编辑器 UX 要素" body 是此 ADR D1-D7 source intent (per Wave 5 plan v0.2 D5 ADR 编号映射表 NEW reframe v2 forward; granularity 原 Phase 2+ L1 visual scope)
 - v2-styles.css (`/mnt/d/download/web/v2-styles.css` 25 KB; 全文 token + prose customization + typography + shadow authority) — v2 视觉 token 认证源 + Stage C.3 实施 PR byte-equivalence baseline
 - [Wave 6 cf-23 PR.md](../plans/wave-6-main/wave-6-cf-23-read-mode-unification.md) — implements v0.7 D9 (BaseLayout `wide` opt-in + 4-viewport width-parity lock + D8 zero-affordance lock + typography-token verification)
+- [Wave 6 cf-24 PR.md](../plans/wave-6-main/wave-6-cf-24-component-library-sidebar.md) — implements v0.8 D10 (BaseLayout `palette` opt-in + PaletteSidebar React portal mount + 3-band width-parity amendment + ADR-0017 v0.4 D14 external-source drag protocol)
+
+## v0.8 Amendment (Wave 6 cf-24 — edit-route palette-rail visual contract)
+
+| 字段 | 值 |
+| ---- | --- |
+| 日期 | 2026-05-10 |
+| 触发 | cf-23 D9 §"范围边界" forward-pointer "v2-style left-rail palette + top-bar editor chrome：cf-24+ 范围" + user directive "把侧边 Component library sidebar 补全，全部按照 web 文件夹里的风格来" |
+| 关系 | 扩展 v0.7 D9 (BaseLayout `palette?` 参数 mirrors `wide?` opt-in pattern); cross-ref ADR-0017 v0.4 D14 (external-source drag protocol — per-block path UNCHANGED byte-for-byte) |
+
+### v0.8 D10 — Edit-route palette-rail visual contract (BaseLayout `palette` opt-in + PaletteSidebar React portal + 3-band width-parity)
+
+#### Decision summary
+
+cf-24 ships the v2-style persistent left-rail PaletteSidebar on the edit route only. Five sub-decisions ratified at PR PLAN lock + EXECUTE TDD-write phase:
+
+#### D10.a — `--palette-w: 230px` design token
+
+NEW token in `packages/design-tokens/src/tokens.css` `:root`. Mirrors v2-styles.css:42 `.palette { width: 230px }`. Light-only (Wave 5 layout-token exception per ADR-0018 D1 carve-out; no `tokens-dark.css` mirror needed).
+
+Consumed by `apps/site/src/styles/global.css` `.palette-rail { width: var(--palette-w) }` + Playwright width-parity spec band-2 numeric formula (`edit.main = read.main - 230`).
+
+#### D10.b — PaletteSidebar visual identity (consumes existing v0.5 D3 hue tokens)
+
+`.pal-item` per-kind hue assignment via `.k-${kind}` className modifiers consuming the existing `--accent-canvas` / `--accent-runnable` / `--accent-image` family (ADR-0018 v0.5 D3). NO new hue tokens — re-uses the v2 4-color hue palette already in design-tokens.
+
+Glyph + description per BLOCK_KIND_OPTIONS (cf-24 D4 8-item parity). The PR.md table is the authoritative glyph mapping; the implementation in `packages/editor-shell/src/palette-sidebar.tsx` PALETTE_SIDEBAR_ITEMS array exhaustive-switches over BlockAffordanceKind so a future kind addition surfaces a TypeScript error if not mapped.
+
+#### D10.c — cf-23 D9-D10 width-parity 3-band resolution (Option A flex-sibling layout)
+
+cf-23 D10 asserted `read.main.width === edit.main.width ±2px` at 4 viewports. cf-24 BREAKS strict parity at viewports where the rail is visible. Resolution per Option A flex-sibling layout (PR.md cf-24 D9):
+
+- **Band 1** (viewport ≥ 1410): rail (230) + 1180-cap both fit; main saturates at 1180; STRICT parity preserved at 1180.
+- **Band 2** (1024 ≤ viewport < 1410): rail visible; edit main shrinks to ~viewport - 230 - margins. Read keeps full doc-wrap (no rail). EMPIRICAL targets locked at TDD-write per cf-23 D10 precedent.
+- **Band 3** (viewport < 1024): rail HIDDEN via `@media (max-width: 768px)`; cf-23 strict parity restored.
+
+Conceptual reframe: parity is for DOC-CONTENT widths at viewports where rail fits. At narrower viewports (Band 2), edit gets less doc-wrap because the rail is a first-class affordance; read keeps the wider doc because there is no rail to consume viewport. This is intentional UX trade-off (editor user trades doc-wrap width for always-visible insert affordances).
+
+cf-24 amends `apps/site/playwright/notes-route-width-parity.spec.ts` with band-aware assertions (mode = 'strict' | 'band2-rail-shrunk') + `aside.palette-rail` display:none assertion at Band 3 viewports + an OPTIONAL Band 1 row at 1440 viewport demonstrating cap-saturation parity-restored behavior.
+
+#### D10.d — Mobile collapse @ 768px (display:none rail)
+
+`apps/site/src/styles/global.css` `@media (max-width: 768px) { .palette-rail { display: none; } }`. Consistent with cf-20b grid responsive 6→1 col flatten — at 768 the editor is single-column, so a 230px rail eats >60% horizontal real-estate for an unusable-at-1-col gesture. Mobile insertion UX falls back to the PaletteModal Cmd+K command bar (load-bearing per D10.e below). Future cf-25+ MAY add a hamburger drawer if user demand emerges.
+
+#### D10.e — PaletteSidebar + PaletteModal coexist PERMANENTLY (NOT a deprecation chain)
+
+cf-24 atomically renames the existing `Palette` component (Cmd+K modal overlay) to `PaletteModal`; both `PaletteSidebar` (NEW) and `PaletteModal` (renamed) are first-class permanent exports. NO deprecation alias — both surfaces are load-bearing:
+- `PaletteSidebar` = mouse-first discoverability + always-visible categorization. Hidden at < 768px viewports per D10.d.
+- `PaletteModal` = power-user keyboard-first (Cmd+K) at-cursor insertion. The ONLY palette surface at < 768px viewports.
+
+Pattern precedent: VSCode (Cmd+P command palette + activity bar), Notion (Cmd+/ block menu + sidebar block library). Two surfaces serve different user journeys — neither is a transitional state.
+
+#### Implementation overview
+
+- `packages/editor-shell/src/palette-sidebar.tsx` — NEW (340 LOC; React component rendering the rail). Drag protocol via `writeBlockKindToDataTransfer`; click-to-insert via `appendBlockKind` (cf-24 R1 F5 fix; lands at end-of-doc regardless of selection). Glyph mapping per D10.b table.
+- `packages/editor-shell/src/palette-modal.tsx` — RENAMED from `palette.tsx`. Symbol `Palette` → `PaletteModal` atomically.
+- `apps/site/src/layouts/BaseLayout.astro` — adds `palette?: boolean` opt-in + 2-column flex shell when truthy; renders empty `<aside id="palette-rail">` slot.
+- `apps/site/src/components/EditorShellMountInner.tsx` — portal-mounts `PaletteSidebar` into the slot via `createPortal`; graceful degradation per cf-24 D11 (slot absent → no-op; editor null → no-op).
+- `apps/site/src/styles/global.css` — `.layout-with-palette` flex shell + `.palette-rail` 230px width + 768px hide media query.
+- `apps/site/src/pages/notes/[...slug]/edit.astro` — passes `palette` to BaseLayout. Read route `notes/[...slug].astro` does NOT pass it (cf-23 D8 zero-affordance contract preserved).
+
+#### Sister-doc updates (per ADR-0006 #6)
+
+- `packages/editor-shell/CONTRACT.md`: NEW Public surface entries for `PaletteSidebar`, `PaletteModal` (rename), `EXTERNAL_DROP_*` constants, `writeBlockKindToDataTransfer`, `readBlockKindFromDataTransfer`, `isExternalDragSource`, `formatExternalDrag*` formatters.
+- `apps/site/CONTRACT.md`: Layout shell section adds `palette?: boolean` prop + cross-ref ADR-0018 v0.8 D10 + the 4-band rail-visibility table.
+- `packages/design-tokens/CONTRACT.md`: token catalog gains `--palette-w: 230px`.
+- `apps/site/playwright/notes-route-width-parity.spec.ts`: amended for cf-24 D9 3-band model.
+- ADR-0017 v0.4 D14: external-source drag protocol cross-reference (the DnD plumbing that backs the visual contract here).

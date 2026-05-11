@@ -53,6 +53,36 @@ export interface LiveAnnouncerProps {
  * Mount once at the editor root. Provides `useAnnounce` context to
  * descendants and renders a single sr-only region whose textContent
  * is announced by AT.
+ *
+ * # cf-24 R2 — LEADING-EDGE throttle (2026-05-10)
+ *
+ * Pre-cf-24-R2 used pure trailing-edge throttling: every announce()
+ * scheduled a setTimeout(100ms) that commits the LATEST message after
+ * the timer fires. That works for arrow-key spam during keyboard-drag
+ * (last-position-wins; correct UX). It FAILS for one-shot discrete
+ * actions (palette click → insert → announce; AT user expects the
+ * message immediately, not after 100ms of "silence detection"). cf-24
+ * AC3-7 surfaced this as Playwright textContent-poll flake (the test
+ * polls every 100ms; if the throttle setTimeout collides with the
+ * test's polling interval, the message's setMessage commit gets
+ * delayed enough to look like "no announce ever fired" within a
+ * 5-second test budget).
+ *
+ * Fix: LEADING-EDGE in a quiet period — first announce commits
+ * SYNCHRONOUSLY (no setTimeout). Subsequent announces within
+ * ANNOUNCE_THROTTLE_MS still throttle to last-wins via the trailing
+ * timer (preserves cf-22 keyboard-drag arrow-key spam UX). The two
+ * regimes match the WCAG 4.1.3 user-intent split:
+ *   - Discrete one-shot action: announce immediately
+ *   - High-frequency stream: announce LATEST after a quiet window
+ *
+ * Implementation invariant: the FIRST announce after `timerRef.current
+ * === null` (i.e. quiet period) commits synchronously via setMessage.
+ * Subsequent announces within the 100ms window populate pendingRef +
+ * the trailing timer eventually commits the latest pending message.
+ * The trailing timer is reset on each subsequent announce (so the
+ * 100ms silence window is measured from the LAST announce, not the
+ * first).
  */
 export function LiveAnnouncer(props: LiveAnnouncerProps): ReactElement {
   const { children } = props;
@@ -61,12 +91,31 @@ export function LiveAnnouncer(props: LiveAnnouncerProps): ReactElement {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const announce = useCallback((next: string) => {
-    pendingRef.current = next;
-    if (timerRef.current !== null) {
-      // Reset the throttle window — only the LATEST message after
-      // ANNOUNCE_THROTTLE_MS of silence wins.
-      clearTimeout(timerRef.current);
+    if (timerRef.current === null) {
+      // LEADING EDGE: first announce in a quiet period — commit
+      // synchronously so AT users (and Playwright's textContent
+      // polls) see the message immediately, not after 100ms of
+      // throttle silence detection. Open the quiet-window timer
+      // so subsequent announces within 100ms throttle to last-wins.
+      setMessage(next);
+      pendingRef.current = null;
+      timerRef.current = setTimeout(() => {
+        timerRef.current = null;
+        const final = pendingRef.current;
+        pendingRef.current = null;
+        // Only commit the trailing-edge pending if it differs from
+        // the leading-edge message (avoid redundant re-render that
+        // would re-trigger AT speech for the same content).
+        if (final !== null && final !== next) setMessage(final);
+      }, ANNOUNCE_THROTTLE_MS);
+      return;
     }
+    // TRAILING EDGE: an announce already fired in this quiet
+    // window. Buffer the latest into pendingRef + reset the
+    // window timer so 100ms of silence from this announce
+    // commits the latest pending message.
+    pendingRef.current = next;
+    clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => {
       timerRef.current = null;
       const final = pendingRef.current;

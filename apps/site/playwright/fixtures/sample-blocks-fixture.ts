@@ -1,3 +1,4 @@
+import { execSync } from 'node:child_process';
 import { existsSync, readFileSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
@@ -67,19 +68,78 @@ let originalStateBytes: string | null = null;
 let snapshotted = false;
 
 /**
- * Snapshot the current on-disk fixture state. Call from `test.beforeAll`
- * in each spec file. Idempotent within a process — if invoked twice,
- * the second call no-ops so concurrent specs don't overwrite each other's
- * snapshot. (Playwright workers are separate processes, so cross-worker
- * isolation is naturally per-process. The idempotency guard handles
- * `--workers=1` re-entry from a beforeAll-from-multiple-specs edge.)
+ * Snapshot the GIT-TRACKED canonical fixture bytes (NOT on-disk). Call
+ * from `test.beforeAll` in each spec file. Idempotent within a process.
+ *
+ * # cf-24 R2 hardening (2026-05-10) — git-baseline snapshot
+ *
+ * Pre-cf-24-R2 this read `readFileSync(SAMPLE_BLOCKS_MDX_PATH)` —
+ * which means a previous run's debounced-autosave leak that raced past
+ * `afterAll(restoreSampleBlocksFixture)` would corrupt the on-disk
+ * file BETWEEN test processes; the next process's `beforeAll` would
+ * snapshot the corrupted bytes as the "canonical" baseline + restore
+ * to corruption + tests fail with confusing
+ * `calloutCountBefore` mismatches.
+ *
+ * The cf-24 R2 fix root-causes this: the canonical fixture state is
+ * what's COMMITTED to the repo (`git show HEAD:<path>`), not what
+ * happens to be on disk at process-start. A leak from a previous
+ * process can no longer corrupt the snapshot.
+ *
+ * `state.json` is NOT git-tracked (in .gitignore). The canonical
+ * baseline is "no state.json"; we never include it in the snapshot
+ * regardless of disk state. Restore always deletes any existing
+ * state.json (post-fix `originalStateBytes` is permanently null).
+ *
+ * # cf-24 R3 F7 hardening (2026-05-10) — NO disk fallback
+ *
+ * If `git show HEAD:<path>` fails, the suite is non-deterministic —
+ * we have no trustworthy baseline. The pre-R3 fallback (silent
+ * `readFileSync` of polluted disk bytes + console.warn) was the
+ * EXACT failure mode R2 was supposed to eliminate; a transient git
+ * issue would silently revert to disk-read, the leak would return,
+ * and only a downstream confusing Playwright assertion mismatch
+ * would surface — long after the actual root cause.
+ *
+ * R3 contract: snapshot MUST come from git HEAD. If git is
+ * unavailable (shallow clone without history, missing .git, perm
+ * error, ENOMEM, etc.) the helper THROWS with explicit context so
+ * the operator investigates the environment before continuing. CI
+ * runs surface the failure immediately rather than masquerading as
+ * a fixture pollution flake.
  */
 export function snapshotSampleBlocksFixture(): void {
   if (snapshotted) return;
-  originalMdxBytes = readFileSync(SAMPLE_BLOCKS_MDX_PATH, 'utf8');
-  originalStateBytes = existsSync(SAMPLE_BLOCKS_STATE_PATH)
-    ? readFileSync(SAMPLE_BLOCKS_STATE_PATH, 'utf8')
-    : null;
+  const gitPath = 'content/notes/sample-blocks/index.mdx';
+  const repoRoot = resolve(process.cwd(), '../..');
+  try {
+    originalMdxBytes = execSync(`git show HEAD:${gitPath}`, {
+      cwd: repoRoot,
+      encoding: 'utf8',
+      maxBuffer: 1024 * 1024 * 4, // 4MB headroom
+    });
+  } catch (err) {
+    // cf-24 R3 F7: NO fallback. A failed git read means we cannot
+    // guarantee a pollution-free baseline; silently using on-disk
+    // bytes (the pre-R3 behavior) reintroduces the cross-process
+    // leak the R2 fix was designed to eliminate. Throw loudly so
+    // CI fails at the source instead of producing a downstream
+    // assertion mismatch the operator has to reverse-engineer.
+    throw new Error(
+      `[sample-blocks-fixture] cf-24 R3 F7: git show HEAD:${gitPath} failed ` +
+        `(${err instanceof Error ? err.message : 'unknown'}). ` +
+        `The suite REQUIRES a git-tracked baseline to defend against ` +
+        `cross-process autosave leaks; disk-read fallback was removed ` +
+        `because it silently reintroduced the R2 leak. Investigate the ` +
+        `environment: missing .git directory? shallow clone without ` +
+        `history? CI sandbox without git binary? Restore git access ` +
+        `or run the suite from a full clone.`,
+    );
+  }
+  // state.json is NEVER part of the canonical baseline (it's
+  // .gitignore'd; the read route serves directly from the MDX file
+  // when state.json is absent). Always restore to "no state.json".
+  originalStateBytes = null;
   snapshotted = true;
 }
 
@@ -163,6 +223,57 @@ export function restoreSampleBlocksFixture(): void {
  * this value. Spec files don't need to know the math.
  */
 export const AUTOSAVE_SETTLE_MS = 1500;
+
+/**
+ * cf-24 R2 hardening (2026-05-10) — DETERMINISTIC autosave wait
+ * (preferred over blind `page.waitForTimeout(AUTOSAVE_SETTLE_MS)`).
+ *
+ * Pattern:
+ *   const t0 = sampleBlocksMdxMtimeMs();
+ *   // ... do the editing action that triggers debounced save ...
+ *   await waitForAutosaveLanded(page, t0);
+ *
+ * Captures the BASELINE mtime BEFORE the mutating action, then
+ * polls AFTER the action until mtime advances past the baseline
+ * (proving the autosave POST landed on disk) OR a hard timeout.
+ * This eliminates two races the blind `waitForTimeout` did NOT
+ * cover:
+ *   (a) Slow CI runner: WSL2 dev-server may take 1.6-2.5 s to
+ *       flush; blind 1500 ms wait races past + leaves an in-flight
+ *       POST that lands AFTER cleanup → pollution leaks across
+ *       processes (root cause of cf-24 R2 finding).
+ *   (b) Hooked-restore vs in-flight-POST: per-test `afterEach
+ *       (restoreSampleBlocksFixture)` writes clean bytes, but if
+ *       the autosave POST is mid-flight when restore writes, the
+ *       POST overwrites clean bytes after.
+ *
+ * Polling is hard-capped at `timeoutMs` (default 5 s = 3.3× the
+ * pre-R2 blind 1500 ms wait — generous headroom for WSL2 slow CI).
+ * If the timeout elapses without mtime advance the helper THROWS,
+ * surfacing the latent bug ("autosave never landed") at the
+ * source instead of letting a downstream restore-leak masquerade
+ * as flake.
+ */
+export async function waitForAutosaveLanded(
+  page: import('@playwright/test').Page,
+  baselineMtimeMs: number,
+  timeoutMs = 5_000,
+): Promise<void> {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    if (sampleBlocksMdxMtimeMs() > baselineMtimeMs) return;
+    await page.waitForTimeout(100);
+  }
+  throw new Error(
+    `[sample-blocks-fixture] waitForAutosaveLanded timed out after ` +
+      `${timeoutMs} ms — MDX mtime did NOT advance from baseline ` +
+      `${baselineMtimeMs} (current ${sampleBlocksMdxMtimeMs()}). ` +
+      `The mutating test did not produce an on-disk write within the ` +
+      `budget; check that the editor onChange + ApiAdapter.save POST ` +
+      `actually fired. If the test legitimately doesn't mutate, use ` +
+      `page.waitForTimeout(AUTOSAVE_SETTLE_MS) instead.`,
+  );
+}
 
 /**
  * Returns the on-disk mtime of the MDX fixture, or 0 if the file is

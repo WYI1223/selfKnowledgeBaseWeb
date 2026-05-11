@@ -10,29 +10,29 @@
  * (handled inside useKeyboardDragMode). Full contract in ADR-0017
  * D13 + CONTRACT.md.
  */
-import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
+import { useCallback, useReducer, useRef, useState } from 'react';
 import type { Editor } from '@tiptap/core';
 import { computeEdgeRects, type BlockLayout, type EdgeRect } from './edge-rects';
-import { findMatches, tiebreak, type EdgeMatch } from './tiebreak';
+import type { EdgeMatch } from './tiebreak';
 import { layoutReducer, type LayoutState } from './layout-reducer';
 // Wave 6 cf-20c-2 R2 — extracted snapshot helpers (kept the main hook
 // file under the 500-line size-check hard limit).
 import {
-  liveBlockPositions,
   measureBlockRects,
   snapshotBlocks,
   type SerializedBlock,
 } from './pipeline-snapshot';
-// cf-22: extracted commit logic (shared by pointer + keyboard).
-import { commitDropAtMatch } from './commit-drop';
+// cf-24: extracted hooks for the cf-22-then-cf-24 growing surface,
+// each split out to keep this file under the 500 LOC hard cap.
+import { useExternalDragStart } from './use-external-drag-start';
+import { usePointerDragListeners } from './use-pointer-drag-listeners';
+import type { BlockAffordanceKind } from '../registry-wire';
 // cf-22 R1 F2: extracted keyboard-mode hook with GRID-coord
 // tracking (per ADR-0017 D13 keyboard-parity contract).
 import {
   useKeyboardDragMode,
   type KeyboardDragSnapshot,
 } from './keyboard-drag-mode';
-
-const VELOCITY_WINDOW_MS = 16;
 
 export interface PipelineDragState {
   /** True from drag-start until drag-end (success / cancel / mode-none). */
@@ -102,6 +102,20 @@ export interface UseDragDropPipelineOptions {
   readonly markEscDeactivationReason?: (
     reason: 'tab-commit' | 'tab-cancel',
   ) => void;
+  /** cf-24 — WCAG 4.1.3 external-source (PaletteSidebar) move
+   *  announcement; fires on grid dragover (per arrow-equivalent
+   *  pointer move). */
+  readonly onAnnounceExternalMove?: (
+    blockKind: string,
+    col: number,
+    totalCols: number,
+  ) => void;
+  /** cf-24 — WCAG 4.1.3 external-source commit announcement
+   *  (insert succeeded at landed col). */
+  readonly onAnnounceExternalCommit?: (
+    blockKind: string,
+    col: number,
+  ) => void;
 }
 
 export interface UseDragDropPipelineReturn {
@@ -119,6 +133,18 @@ export interface UseDragDropPipelineReturn {
    * center + flips `keyboardActive = true`. Per cf-22 D3.
    */
   readonly onDragStartKeyboard: (blockId: string) => void;
+  /**
+   * cf-24 — external-source (PaletteSidebar card) drag entry. Called
+   * from PaletteSidebar's onDragStart handler. Snapshots blocks (no
+   * source-lift since the new block isn't in the doc yet) + sets
+   * sourceBlockId = EXTERNAL_DROP_SENTINEL + flips active=true. The
+   * grid dragover/drop listener routes external-source drops through
+   * commitExternalDrop instead of commitDropAtMatch per cf-24 D7.
+   */
+  readonly onDragStartExternal: (
+    kind: BlockAffordanceKind,
+    origin: { x: number; y: number },
+  ) => void;
   /**
    * cf-20c-2 R1 F2 DropPulse cleanup; consumer wires
    * `<DropPulse onAnimationEnd={clearLastDropped} />` so the pulse
@@ -154,6 +180,8 @@ export function useDragDropPipeline(
     onAnnounceCommit,
     onAnnounceCancel,
     markEscDeactivationReason,
+    onAnnounceExternalMove,
+    onAnnounceExternalCommit,
   } = options;
 
   const [layoutState, dispatchLayout] = useReducer(layoutReducer, INITIAL_LAYOUT_STATE);
@@ -179,6 +207,9 @@ export function useDragDropPipeline(
   const blockRectsRef = useRef<Map<string, DOMRectReadOnly>>(new Map());
   const edgeRectsRef = useRef<readonly EdgeRect[]>([]);
   const lastCursorRef = useRef<{ x: number; y: number; t: number } | null>(null);
+  // cf-24 — external-source drag carries the selected kind through
+  // the dragover/drop lifecycle. Cleared on drag-end.
+  const externalDragKindRef = useRef<BlockAffordanceKind | null>(null);
 
   const onDragStart = useCallback(
     (blockId: string, origin: { x: number; y: number }) => {
@@ -229,8 +260,34 @@ export function useDragDropPipeline(
       setActiveMatch(null);
       setCursor(null);
       setSourceBlockId(null);
+      // cf-24 — clear external-drag kind on cancel; the next drag
+      // (per-block or external) starts with a fresh ref.
+      externalDragKindRef.current = null;
     }
   }, [active, keyboardActive, onAnnounceCancel]);
+
+  // cf-24 — external-source drag entry. Snapshots the doc + sets
+  // sourceBlockId to the EXTERNAL_DROP_SENTINEL so the dragover/drop
+  // listener routes to commitExternalDrop instead of commitDropAtMatch
+  // (per cf-24 D7 single-branch dispatch). Per-block source-lift
+  // does NOT apply (the new block isn't in the doc yet).
+  // cf-24 — external-source drag entry (PaletteSidebar). Extracted
+  // to useExternalDragStart to keep this file under the size-check
+  // 500 LOC hard cap. Snapshots blocks (no source-lift; new block
+  // isn't in the doc yet) + sets sourceBlockId = EXTERNAL_DROP_SENTINEL.
+  const onDragStartExternal = useExternalDragStart({
+    editor,
+    snapshotRef,
+    blockRectsRef,
+    edgeRectsRef,
+    lastCursorRef,
+    externalDragKindRef,
+    dispatchLayout,
+    setSourceBlockId,
+    setCursor,
+    setActive,
+    setActiveMatch,
+  });
 
   // cf-22 R1 F2 — keyboard-mode entry per ADR-0017 D13. Snapshots
   // grid coords {col, row, colSpan, rowSpan} (NOT pixel cursor;
@@ -293,130 +350,36 @@ export function useDragDropPipeline(
     [editor, active, keyboardActive],
   );
 
-  // Window-level dragover / drop listeners. Attached when active=true.
-  useEffect(() => {
-    if (!active) return;
-
-    const handleDragOver = (event: DragEvent): void => {
-      event.preventDefault(); // Required so drop fires on the same target.
-      const x = event.clientX;
-      const y = event.clientY;
-      const last = lastCursorRef.current;
-      const now = performance.now();
-      // cf-20c-2 R1 F3: velocity in px/frame at 60fps per ADR-0017 D3
-      // tiebreak contract. Multiply raw delta-px/delta-ms by
-      // VELOCITY_WINDOW_MS so units align with the 0.5 px/frame
-      // threshold. Full rationale in CONTRACT.md.
-      const velocity =
-        last && now - last.t < VELOCITY_WINDOW_MS * 4
-          ? {
-              vx: ((x - last.x) / Math.max(1, now - last.t)) * VELOCITY_WINDOW_MS,
-              vy: ((y - last.y) / Math.max(1, now - last.t)) * VELOCITY_WINDOW_MS,
-            }
-          : { vx: 0, vy: 0 };
-      lastCursorRef.current = { x, y, t: now };
-      setCursor({ x, y });
-      const matches = findMatches(x, y, [...edgeRectsRef.current], blockRectsRef.current);
-      const winner = tiebreak(matches, velocity);
-      setActiveMatch(winner);
-    };
-
-    const handleDrop = (event: DragEvent): void => {
-      event.preventDefault();
-      const winner = activeMatch;
-      if (!editor || !winner || !sourceBlockId) {
-        dispatchLayout({ type: 'drag-end-mode-none' });
-        setActive(false);
-        setActiveMatch(null);
-        setCursor(null);
-        setSourceBlockId(null);
-        return;
-      }
-
-      // Wave 6 cf-22 — commit logic extracted to commitDropAtMatch
-      // for reuse by the keyboard-Enter commit path. Returns null
-      // mutation on algebra failure (caller dispatches mode-none).
-      const result = commitDropAtMatch(
-        editor,
-        winner,
-        sourceBlockId,
-        snapshotRef.current,
-      );
-      if (result.mutation === null) {
-        dispatchLayout({ type: 'drag-end-mode-none' });
-        setActive(false);
-        setActiveMatch(null);
-        setCursor(null);
-        setSourceBlockId(null);
-        return;
-      }
-
-      const didMutate = result.didMutate;
-      const reducerSnapshot = {
-        blocks: result.mutation.blocks.map((b) => ({
-          col: b.col,
-          ...(b.row !== undefined && { row: b.row }),
-          colSpan: b.colSpan,
-          rowSpan: b.rowSpan,
-        })),
-      };
-      dispatchLayout({ type: 'drag-end-success', mutation: reducerSnapshot });
-      // R1 F1 — WCAG 4.1.3 commit announcement (pointer-drop path).
-      if (didMutate) {
-        const sourceMutation = result.mutation.blocks.find(
-          (b) => b.id === sourceBlockId,
-        );
-        const sourceSnapBlock = snapshotRef.current.find(
-          (b) => b.id === sourceBlockId,
-        );
-        if (sourceMutation && sourceSnapBlock) {
-          onAnnounceCommit?.(sourceSnapBlock.nodeName, sourceMutation.col);
-        }
-      }
-      // cf-20c-2 R3 F2: atomic clear-then-set of pulse state across
-      // the 2-rAF measurement window so rapid drops don't render
-      // stale rects. cf-20c-2 R2 F2: re-measure source AT landed
-      // position per ADR-0017 D11 line 344 (NOT snapshot rect).
-      // 2 rAFs = React commit + browser layout (single rAF is
-      // insufficient; verified empirically at cf-20c-2 R2).
-      setLastDroppedBlockId(null);
-      setLastDroppedRect(null);
-      if (didMutate) {
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            // Tiptap's setNodeMarkup may have shifted live positions
-            // (split-* modes can re-order siblings). Re-walk the doc
-            // post-commit to find the source's current pos.
-            const newLivePositions = liveBlockPositions(editor, snapshotRef.current);
-            const newSourceLive = newLivePositions.get(sourceBlockId);
-            if (!newSourceLive) return;
-            const dom = editor.view.nodeDOM(newSourceLive.pos);
-            if (dom instanceof HTMLElement) {
-              // R3 F2: set blockId + rect together; React batches
-              // these into a single render pass within the same
-              // synchronous block (React 18+ automatic batching).
-              setLastDroppedBlockId(sourceBlockId);
-              setLastDroppedRect(dom.getBoundingClientRect());
-              setDropEpoch((prev) => prev + 1);
-            }
-          });
-        });
-      }
-      setActive(false);
-      setActiveMatch(null);
-      setCursor(null);
-      setSourceBlockId(null);
-    };
-
-    const grid = document.querySelector(gridSelector);
-    if (!grid) return;
-    grid.addEventListener('dragover', handleDragOver as EventListener);
-    grid.addEventListener('drop', handleDrop as EventListener);
-    return () => {
-      grid.removeEventListener('dragover', handleDragOver as EventListener);
-      grid.removeEventListener('drop', handleDrop as EventListener);
-    };
-  }, [active, editor, gridSelector, activeMatch, sourceBlockId, onAnnounceCommit]);
+  // Window-level dragover / drop listeners. Extracted to
+  // usePointerDragListeners (cf-24) to keep this file under the
+  // size-check 500 LOC hard cap. The hook handles BOTH per-block +
+  // external-source pointer paths; per-block code path stays
+  // IDENTICAL byte-for-byte to cf-22 (regression net: cf-22 +
+  // cf-20c-2 + cf-20d + cf-20e Playwright specs).
+  usePointerDragListeners({
+    active,
+    editor,
+    gridSelector,
+    activeMatch,
+    sourceBlockId,
+    totalCols,
+    snapshotRef,
+    blockRectsRef,
+    edgeRectsRef,
+    lastCursorRef,
+    externalDragKindRef,
+    setActive,
+    setActiveMatch,
+    setCursor,
+    setSourceBlockId,
+    setLastDroppedBlockId,
+    setLastDroppedRect,
+    setDropEpoch,
+    dispatchLayout,
+    onAnnounceCommit,
+    onAnnounceExternalMove,
+    onAnnounceExternalCommit,
+  });
 
   // Wave 6 cf-22 R1 F2 — keyboard-mode lifecycle extracted to its
   // own hook. R1 rewrite uses GRID-COORDINATE state (snapshot +
@@ -489,6 +452,7 @@ export function useDragDropPipeline(
     onDragStart,
     onDragEnd,
     onDragStartKeyboard,
+    onDragStartExternal,
     clearLastDropped,
     setLastDroppedFromExternal,
   };
