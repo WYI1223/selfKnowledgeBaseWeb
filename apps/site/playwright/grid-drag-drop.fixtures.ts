@@ -10,8 +10,9 @@ import * as React from 'react';
  * `REMOVED-IN-WAVE-7-PHASE-2B` markers.
  *
  * Remaining helpers: pixel-level block measurement +
- * setContent-based render fixtures for synthetic Playwright harness
- * tests.
+ * setContent-based render fixtures (including the React-function-
+ * component evaluator used by AC#10 / TC2.x ColRuler + SizeTooltip
+ * tests).
  */
 
 export interface BlockBounds {
@@ -114,42 +115,43 @@ function cssName(prop: string): string {
 function styleToCss(style: Record<string, unknown>): string {
   return Object.entries(style)
     .map(([prop, value]) => {
-      const cssProp = cssName(prop);
-      const isUnitless = UNIT_LESS_STYLE_PROPS.has(prop);
       const cssValue =
-        typeof value === 'number' && !isUnitless ? `${value}px` : stringifyMarkupValue(value);
-      return `${cssProp}: ${cssValue}`;
+        typeof value === 'number' && !UNIT_LESS_STYLE_PROPS.has(prop) && !prop.startsWith('--')
+          ? `${value}px`
+          : stringifyMarkupValue(value);
+      return `${cssName(prop)}:${cssValue}`;
     })
-    .join('; ');
+    .join(';');
 }
 
-function attrsToString(props: Record<string, unknown>): string {
-  return Object.entries(props)
-    .filter(([key]) => key !== 'children' && key !== 'style')
-    .map(([key, value]) => {
-      const attrName = key === 'className' ? 'class' : key;
-      const attrValue = escapeHtml(stringifyMarkupValue(value));
-      return `${attrName}="${attrValue}"`;
-    })
-    .join(' ');
-}
-
-export function renderJsxMarkup(node: React.ReactNode): string {
-  if (node === null || node === undefined || typeof node === 'boolean') return '';
-  if (typeof node === 'string' || typeof node === 'number' || typeof node === 'bigint') {
-    return escapeHtml(stringifyMarkupValue(node));
+function renderAttr(name: string, value: unknown): string {
+  if (value === undefined || value === null || value === false) return '';
+  if (name === 'children' || name === 'key') return '';
+  if (name === 'className') return ` class="${escapeHtml(stringifyMarkupValue(value))}"`;
+  if (name === 'style' && isRecord(value)) {
+    return ` style="${escapeHtml(styleToCss(value))}"`;
   }
+  return ` ${name}="${escapeHtml(stringifyMarkupValue(value))}"`;
+}
+
+export function renderJsxMarkup(node: unknown): string {
+  if (node === null || node === undefined || typeof node === 'boolean') return '';
+  if (typeof node === 'string' || typeof node === 'number') return escapeHtml(String(node));
   if (Array.isArray(node)) return node.map(renderJsxMarkup).join('');
+
   const element = node as JsxLikeElement;
-  if (typeof element.type !== 'string') return '';
-  const props = isRecord(element.props) ? element.props : {};
-  const styleObj = isRecord(props['style']) ? props['style'] : null;
-  const attrParts: string[] = [];
-  const attrString = attrsToString(props);
-  if (attrString.length > 0) attrParts.push(attrString);
-  if (styleObj) attrParts.push(`style="${escapeHtml(styleToCss(styleObj))}"`);
-  const attrSection = attrParts.length > 0 ? ' ' + attrParts.join(' ') : '';
-  const children = props['children'];
-  const childMarkup = children === undefined ? '' : renderJsxMarkup(children as React.ReactNode);
-  return `<${element.type}${attrSection}>${childMarkup}</${element.type}>`;
+  if (typeof element.type === 'function') {
+    return renderJsxMarkup((element.type as (props: unknown) => unknown)(element.props ?? {}));
+  }
+  if (element.type === React.Fragment || String(element.type).includes('react.fragment')) {
+    return renderJsxMarkup(element.props?.['children']);
+  }
+  if (typeof element.type !== 'string') return renderJsxMarkup(element.props?.['children']);
+
+  const attrs = Object.entries(element.props ?? {}).map(([name, value]) =>
+    renderAttr(name, value),
+  );
+  return `<${element.type}${attrs.join('')}>${renderJsxMarkup(
+    element.props?.['children'],
+  )}</${element.type}>`;
 }
