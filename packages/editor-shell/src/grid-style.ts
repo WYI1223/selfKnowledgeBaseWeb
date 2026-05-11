@@ -15,20 +15,17 @@
  * Formula (per ADR-0016 D2 CSS application block):
  *   gridColumn = `${col} / span ${colSpan}`
  *   gridRow    = row !== undefined
- *                  ? `${row} / span ${rowSpan === 'auto' ? autoHint : rowSpan}`
- *                  : `span ${rowSpan === 'auto' ? autoHint : rowSpan}`
+ *                  ? `${row} / span ${rowSpan}`
+ *                  : `span ${rowSpan}`
  *
  * The `row` field is OPTIONAL per ADR-0016 D2: when omitted, callers let
  * `grid-auto-flow: row` decide the row index at layout time. The output
  * `gridRow` value reflects this (`span N` shorthand, no explicit row).
  *
- * `rowSpan='auto'` is the prose / markdown rendering-derived path
- * (ADR-0016 D3). At cf-20b the auto-row-span integer is provided by the
- * caller (defaults to 1 when undefined) since `useAutoRowSpan` wires
- * land in cf-20b later or under cf-20c. Until then the integer 1 is the
- * conservative-but-correct value (single-row prose); the read route's
- * `.skb-grid > *:not([style*="grid-column"])` fallback continues to
- * full-width any inner-prose element that doesn't reach this helper.
+ * Wave 7 Phase 2A (ADR-0020 D1): rowSpan is a discrete integer; the
+ * legacy `'auto'` literal has been removed. Markdown content that
+ * exceeds the integer rowSpan scrolls inside the block via grid.css
+ * `overflow-y: auto`.
  */
 
 import type { CSSProperties } from 'react';
@@ -40,13 +37,8 @@ export interface GridPlacementInput {
   readonly row?: number;
   /** Column span. Required. */
   readonly colSpan: number;
-  /** Row span: integer or 'auto' (prose rendering-derived). Required. */
-  readonly rowSpan: number | 'auto';
-}
-
-export interface GridPlacementOptions {
-  /** When rowSpan is 'auto', the integer to substitute. Defaults to 1. */
-  readonly autoRowSpan?: number;
+  /** Integer row span per ADR-0020 D1. Required. */
+  readonly rowSpan: number;
 }
 
 /**
@@ -55,17 +47,12 @@ export interface GridPlacementOptions {
  * onto the wrapper React element OR concatenable into an Astro inline
  * `style="..."` string via `gridStyleAttr` below.
  */
-export function gridPlacementStyle(
-  pos: GridPlacementInput,
-  options?: GridPlacementOptions,
-): CSSProperties {
-  const autoHint = options?.autoRowSpan ?? 1;
-  const effectiveRow = pos.rowSpan === 'auto' ? autoHint : pos.rowSpan;
+export function gridPlacementStyle(pos: GridPlacementInput): CSSProperties {
   const gridColumn = `${pos.col} / span ${pos.colSpan}`;
   const gridRow =
     pos.row !== undefined
-      ? `${pos.row} / span ${effectiveRow}`
-      : `span ${effectiveRow}`;
+      ? `${pos.row} / span ${pos.rowSpan}`
+      : `span ${pos.rowSpan}`;
   return { gridColumn, gridRow };
 }
 
@@ -77,11 +64,8 @@ export function gridPlacementStyle(
  *
  * Output shape: `grid-column: ${col} / span ${colSpan}; grid-row: ...`
  */
-export function gridPlacementStyleAttr(
-  pos: GridPlacementInput,
-  options?: GridPlacementOptions,
-): string {
-  const css = gridPlacementStyle(pos, options);
+export function gridPlacementStyleAttr(pos: GridPlacementInput): string {
+  const css = gridPlacementStyle(pos);
   return `grid-column: ${css.gridColumn}; grid-row: ${css.gridRow};`;
 }
 
@@ -92,9 +76,9 @@ export function gridPlacementStyleAttr(
  * `.skb-grid > *:not([style*="grid-column"])` fallback then takes over
  * for null-result blocks (full-width default).
  *
- * mdx-bridge per ADR-0016 D7 hard-throws on missing col/colSpan in
- * non-prose blocks, so the null path here only fires for genuinely
- * unwrapped consumer paths (e.g. tests that hand-build adapter props).
+ * Wave 7 Phase 2A (ADR-0020 D1): rowSpan is a discrete integer. Legacy
+ * `rowSpan='auto'` props from un-migrated read-route adapters are
+ * normalized to 1 (the new prose default).
  */
 export function extractGridPosition(
   attrs: Record<string, unknown> | undefined,
@@ -107,9 +91,9 @@ export function extractGridPosition(
 
   if (typeof col !== 'number' || !Number.isInteger(col) || col < 1) return null;
   if (typeof colSpan !== 'number' || !Number.isInteger(colSpan) || colSpan < 1) return null;
-  let rowSpan: number | 'auto';
+  let rowSpan: number;
   if (rowSpanRaw === 'auto') {
-    rowSpan = 'auto';
+    rowSpan = 1; // Legacy 'auto' literal — normalize to prose default.
   } else if (
     typeof rowSpanRaw === 'number' &&
     Number.isInteger(rowSpanRaw) &&

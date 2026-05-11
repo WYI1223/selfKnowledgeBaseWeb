@@ -18,7 +18,7 @@ const SRC_DIR = fileURLToPath(new URL('../', import.meta.url));
 const MISSING_COL_SPAN_ERROR =
   /mdx-bridge: required grid attrs col(?: \+ colSpan)? missing on block "callout".*ADR-0016 D7.*Wave 5 plan v1\.1 row C\.2-3\.5/i;
 const MISSING_ROWSPAN_ERROR =
-  /mdx-bridge: required grid attr rowSpan missing on block "callout".*ADR-0016 D7.*Wave 5 plan v1\.1 row C\.2-3\.5/i;
+  /mdx-bridge: required grid attr rowSpan missing on block "callout".*ADR-0016 D7/i;
 
 const markdownCore: BlockCoreDefinition = {
   name: 'markdown',
@@ -97,7 +97,19 @@ describe('grid attr hard-throw end-state', () => {
     expect(doc.content[0]?.attrs).toMatchObject({
       col: 1,
       colSpan: 12,
-      rowSpan: 'auto',
+      rowSpan: 1,
+    });
+  });
+
+  it("normalizes legacy rowSpan='auto' on Markdown to integer 1 (Wave 7 Phase 2A)", () => {
+    const doc = mdxToTiptap(
+      '<Markdown col={1} colSpan={12} rowSpan="auto">\n  Legacy.\n</Markdown>',
+      buildOptions(true),
+    );
+    expect(doc.content[0]?.attrs).toMatchObject({
+      col: 1,
+      colSpan: 12,
+      rowSpan: 1,
     });
   });
 

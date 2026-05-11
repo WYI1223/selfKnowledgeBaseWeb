@@ -70,10 +70,11 @@ const jsxDispatches = [
 ] as const;
 
 const gridAttrs = { col: 1, colSpan: 12, rowSpan: 1 };
-// Wave 6 cf-25 — markdown blocks default to rowSpan='auto' per
-// ADR-0016 D3 (isProse) + cf-25 D4. The 'auto' rowSpan tells
-// useAutoRowSpan to derive height from rendered content height.
-const proseGridAttrs = { col: 1, colSpan: 12, rowSpan: 'auto' as const };
+// Wave 7 Phase 2A (ADR-0020 D1): markdown defaults to integer
+// rowSpan=1; content overflow scrolls inside the block. Legacy
+// `rowSpan='auto'` attrs in existing .mdx files are normalized to 1
+// at parse time by `mdx-bridge/parseRowSpan`.
+const proseGridAttrs = { col: 1, colSpan: 12, rowSpan: 1 };
 
 const defaultBlockAttrs: Record<BlockAffordanceKind, Record<string, unknown>> = {
   callout: { ...gridAttrs, variant: 'note', title: 'New callout' },

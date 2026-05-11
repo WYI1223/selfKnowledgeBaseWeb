@@ -3,6 +3,10 @@
  *
  * Authority: ADR-0016 D2 defines the `{col, row?, colSpan, rowSpan}`
  * data model; D10 makes these primitives the block-foundation surface.
+ * ADR-0020 D1 (Wave 7 Phase 2A): rowSpan is a discrete integer. The
+ * legacy `'auto'` literal (cf-25 prose auto-height sentinel) has been
+ * removed; markdown blocks now default to integer rowSpan = 1 and
+ * overflow scrolls inside the block per design-doc §5.
  */
 export interface BlockGridPosition {
   /** 1-based starting column. */
@@ -11,8 +15,8 @@ export interface BlockGridPosition {
   readonly row?: number;
   /** Column span; must be one of COL_SNAPS per ADR-0016 D6. */
   readonly colSpan: number;
-  /** Integer row span, or prose auto-height per ADR-0016 D2/D3. */
-  readonly rowSpan: number | 'auto';
+  /** Integer row span per ADR-0020 D1. */
+  readonly rowSpan: number;
 }
 
 /**
@@ -32,21 +36,14 @@ export const COL_SNAPS = [2, 3, 4, 6, 8, 12] as const;
 export type BlockGridKind = 'prose' | 'component' | 'render' | 'viz';
 
 /**
- * ADR-0016 D10 row-span declaration.
- *
- * `auto` is rendering-derived prose height; `integer` is user-set and
- * persisted by non-prose blocks.
- */
-export type RowSpanSemantic = 'auto' | 'integer';
-
-/**
  * ADR-0016 D10 prose grid defaults, parallel to proseExtensions.
  *
- * Editor-shell and mdx-bridge consume this in C.2-3/C.2-4 so prose blocks
- * share grid semantics with component-backed blocks.
+ * Wave 7 Phase 2A: `rowSpanSemantic` removed (ADR-0020 D1 — rowSpan is
+ * always a discrete integer). Markdown default is 12 × 1 per
+ * design-doc §6; content overflow scrolls inside the block.
  */
 export const proseGridDefaults = {
-  rowSpanSemantic: 'auto',
   gridKind: 'prose',
   defaultColSpan: 12,
+  defaultRowSpan: 1,
 } as const;

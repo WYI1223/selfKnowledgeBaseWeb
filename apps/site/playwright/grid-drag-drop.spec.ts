@@ -16,7 +16,6 @@ import {
 } from '@skb/editor-shell/src/drag-drop/tiebreak.ts';
 import { OutlineOverlay } from '@skb/editor-shell/src/drag-drop/outline-overlay.tsx';
 import { ColRuler } from '@skb/editor-shell/src/resize/col-ruler.tsx';
-import { useAutoRowSpan } from '@skb/editor-shell/src/use-auto-row-span.ts';
 import {
   blockLayout,
   blockRectMap,
@@ -267,101 +266,11 @@ test.describe('AC#6, #8, #10 helper integration', () => {
     expect(perEventMs).toBeLessThanOrEqual(0.05);
   });
 
-  test('AC#8 — useAutoRowSpan re-measures without mutating persistent rowSpan', () => {
-    const win = new Window();
-    const globalScope = globalThis as Record<string, unknown>;
-    const previous = {
-      window: globalScope.window,
-      document: globalScope.document,
-      HTMLElement: globalScope.HTMLElement,
-      ResizeObserver: globalScope.ResizeObserver,
-      requestAnimationFrame: globalScope.requestAnimationFrame,
-      cancelAnimationFrame: globalScope.cancelAnimationFrame,
-      IS_REACT_ACT_ENVIRONMENT: globalScope.IS_REACT_ACT_ENVIRONMENT,
-    };
-
-    class MockResizeObserver {
-      static instances: MockResizeObserver[] = [];
-      private readonly callback: ResizeObserverCallback;
-      private target: Element | null = null;
-
-      constructor(callback: ResizeObserverCallback) {
-        this.callback = callback;
-        MockResizeObserver.instances.push(this);
-      }
-
-      observe(target: Element): void {
-        this.target = target;
-      }
-
-      disconnect(): void {
-        this.target = null;
-      }
-
-      fire(scrollHeight: number): void {
-        if (!this.target) throw new Error('ResizeObserver fired before observe()');
-        Object.defineProperty(this.target, 'scrollHeight', {
-          configurable: true,
-          value: scrollHeight,
-        });
-        this.callback([{ target: this.target } as ResizeObserverEntry], this as never);
-      }
-    }
-
-    function restoreGlobals(): void {
-      for (const [key, value] of Object.entries(previous)) {
-        if (value === undefined) delete globalScope[key];
-        else globalScope[key] = value;
-      }
-    }
-
-    function RowSpanHarness() {
-      const ref = React.useRef<HTMLDivElement>(null);
-      const measuredRowSpan = useAutoRowSpan(ref);
-
-      React.useEffect(() => {
-        if (ref.current) ref.current.dataset.measuredRowSpan = String(measuredRowSpan);
-      }, [measuredRowSpan]);
-
-      return React.createElement('div', {
-        ref,
-        'data-persistent-row-span': '2',
-        'data-measured-row-span': String(measuredRowSpan),
-      });
-    }
-
-    let root: Root | null = null;
-    try {
-      globalScope.window = win;
-      globalScope.document = win.document;
-      globalScope.HTMLElement = win.HTMLElement;
-      globalScope.ResizeObserver = MockResizeObserver;
-      globalScope.requestAnimationFrame = (callback: FrameRequestCallback) => {
-        return setTimeout(() => callback(performance.now()), 0) as unknown as number;
-      };
-      globalScope.cancelAnimationFrame = (id: number) => clearTimeout(id);
-      globalScope.IS_REACT_ACT_ENVIRONMENT = true;
-
-      const host = win.document.createElement('section');
-      win.document.body.append(host);
-      act(() => {
-        root = createRoot(host as unknown as Container);
-        root.render(React.createElement(RowSpanHarness));
-      });
-
-      const observer = MockResizeObserver.instances.at(-1);
-      expect(observer).toBeDefined();
-      act(() => observer?.fire(210));
-
-      const target = host.querySelector('[data-persistent-row-span]') as {
-        dataset: DOMStringMap;
-      } | null;
-      expect(target?.dataset.persistentRowSpan).toBe('2');
-      expect(target?.dataset.measuredRowSpan).toBe('4');
-    } finally {
-      act(() => root?.unmount());
-      restoreGlobals();
-    }
+  test('AC#8 — REMOVED in Wave 7 Phase 2A (useAutoRowSpan deleted; rowSpan is integer per ADR-0020 D1)', () => {
+    test.skip(
+      true,
+      'REMOVED-IN-WAVE-7-PHASE-2A: useAutoRowSpan + measure-based rowSpan auto-grow deleted; markdown content overflow now scrolls inside the block. New coverage will live in Phase 2B (drag-resize integration).',
+    );
   });
 
   test('AC#10 — col-ruler renders snap stops and highlights one active stop', async ({ page }) => {

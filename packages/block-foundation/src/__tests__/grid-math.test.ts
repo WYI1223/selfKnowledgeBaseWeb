@@ -4,8 +4,6 @@ import {
   effectiveCellHeight,
   effectiveColSnaps,
   effectiveColWidth,
-  effectiveRowSpan,
-  isAutoRowSpan,
   validateGridPosition,
 } from '../grid-math';
 import { COL_SNAPS, proseGridDefaults } from '../types';
@@ -27,21 +25,15 @@ describe('grid geometry helpers', () => {
     expect(effectiveColWidth(6, 1200)).toBe(593);
     expect(effectiveColWidth(2, 1200)).toBeCloseTo(2 * oneFr + 14);
   });
-
-  it('uses the auto rowSpan hint only for auto row spans', () => {
-    expect(effectiveRowSpan('auto', 4)).toBe(4);
-    expect(effectiveRowSpan(3, 99)).toBe(3);
-    expect(effectiveRowSpan(1, 0)).toBe(1);
-  });
 });
 
 describe('validateGridPosition', () => {
-  it('accepts valid grid positions', () => {
+  it('accepts valid grid positions (integer rowSpan only per ADR-0020 D1)', () => {
     expect(() =>
       validateGridPosition({ col: 1, colSpan: 12, rowSpan: 1 }),
     ).not.toThrow();
     expect(() =>
-      validateGridPosition({ col: 5, colSpan: 8, rowSpan: 'auto' }),
+      validateGridPosition({ col: 5, colSpan: 8, rowSpan: 3 }),
     ).not.toThrow();
   });
 
@@ -61,25 +53,6 @@ describe('validateGridPosition', () => {
     expect(() =>
       validateGridPosition({ col: 1, colSpan: 12, rowSpan: 0 }),
     ).toThrow(/rowSpan.*1|rowSpan < 1/i);
-    expect(() =>
-      validateGridPosition({
-        col: 1,
-        colSpan: 12,
-        rowSpan: 'auto',
-        gridKind: 'render',
-      }),
-    ).toThrow(/rowSpan.*auto.*prose|gridKind/i);
-  });
-});
-
-describe('isAutoRowSpan', () => {
-  it('treats prose semantics and prose grid kind as auto rowSpan', () => {
-    expect(isAutoRowSpan({ rowSpanSemantic: 'auto' })).toBe(true);
-    expect(isAutoRowSpan({ gridKind: 'prose' })).toBe(true);
-    expect(
-      isAutoRowSpan({ rowSpanSemantic: 'integer', gridKind: 'component' }),
-    ).toBe(false);
-    expect(isAutoRowSpan({})).toBe(false);
   });
 });
 
@@ -88,12 +61,12 @@ describe('grid exported constants', () => {
     expect(DEFAULT_GRID_GEOMETRY).toEqual({ rowH: 48, gap: 14, totalCols: 12 });
   });
 
-  it('keeps the grid type primitive literals stable', () => {
+  it('keeps the grid type primitive literals stable (Wave 7 Phase 2A integer rowSpan)', () => {
     expect(Array.from(COL_SNAPS)).toEqual([2, 3, 4, 6, 8, 12]);
     expect(proseGridDefaults).toEqual({
-      rowSpanSemantic: 'auto',
       gridKind: 'prose',
       defaultColSpan: 12,
+      defaultRowSpan: 1,
     });
   });
 });

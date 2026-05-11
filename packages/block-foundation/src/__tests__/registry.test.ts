@@ -114,14 +114,12 @@ describe('BlockRegistry — grid fields', () => {
     });
   });
 
-  it('round-trips rowSpanSemantic and gridKind through defineUI', () => {
+  it('round-trips gridKind through defineUI (Wave 7 Phase 2A: rowSpanSemantic removed per ADR-0020 D1)', () => {
     const withGridSemantics = defineUI({
       ...calloutUIDefault,
-      rowSpanSemantic: 'auto',
       gridKind: 'prose',
     });
 
-    expect(withGridSemantics.rowSpanSemantic).toBe('auto');
     expect(withGridSemantics.gridKind).toBe('prose');
   });
 });

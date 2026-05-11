@@ -31,10 +31,10 @@ type MdastJsxAttribute = Extract<
  * The synthetic Markdown element has empty `attributes`; downstream
  * `parseGridAttrs` (called by `mdastJsxFlowElementToTiptap`) hits the
  * isProse default branch (`isMarkdown=true` → col=1, colSpan=12,
- * rowSpan='auto'). The serializer's unwrap-on-default pass (cf-25 D5;
- * see `unwrapDefaultMarkdownWrappers` below) recognizes those defaults
- * and unwraps back to bare prose mdast on save, preserving
- * byte-equivalent round-trip for legacy MDX with no Markdown wrapper.
+ * rowSpan=1 per Wave 7 Phase 2A / ADR-0020 D1; was 'auto'). The
+ * serializer's unwrap-on-default pass (`unwrapDefaultMarkdownWrappers`
+ * below) recognizes those defaults and unwraps back to bare prose
+ * mdast on save, preserving byte-equivalent round-trip.
  *
  * Performance: O(n) over `blocks`. Each output element is either a
  * passthrough mdxJsxFlowElement OR a fresh synthetic mdxJsxFlowElement.
@@ -77,9 +77,10 @@ function makeMarkdownWrapper(proseChildren: RootContent[]): RootContent {
  * Walks the serialized mdast block list. For each
  * `mdxJsxFlowElement{name:'Markdown'}`, examines the grid attrs:
  * if all four attrs match the default shape (col=1, no row,
- * colSpan=12, rowSpan='auto' or unset), the wrapper is REPLACED
- * by its prose mdast children (flattened into the parent block list).
- * Non-default attrs preserve the wrapper.
+ * colSpan=12, rowSpan unset per Wave 7 Phase 2A — serialize omits
+ * rowSpan when it equals the prose default of 1), the wrapper is
+ * REPLACED by its prose mdast children (flattened into the parent
+ * block list). Non-default attrs preserve the wrapper.
  *
  * Why this matters (round-trip invariant):
  * - Pre-cf-25 MDX file with bare prose → chunking pass folds into
@@ -123,10 +124,10 @@ export function unwrapDefaultMarkdownWrappers<T extends { type: string }>(
 }
 
 function markdownAttrsAreDefault(node: MdastJsxElement): boolean {
-  // Default grid attrs for markdown wrapper per cf-25 D4:
-  // col=1, NO row, colSpan=12, rowSpan absent (omitted by isProse
-  // serializer per ADR-0016 D3). Any non-grid attr (e.g. user-set
-  // future attrs) also forces wrapper preservation.
+  // Default grid attrs for markdown wrapper per cf-25 D4 + Wave 7 Phase
+  // 2A: col=1, NO row, colSpan=12, rowSpan absent (serialize omits when
+  // rowSpan === 1, the prose default per ADR-0020 D1). Any non-grid
+  // attr (e.g. user-set future attrs) also forces wrapper preservation.
   for (const attr of node.attributes) {
     if (attr.type !== 'mdxJsxAttribute') return false;
     if (!GRID_ATTR_NAMES.has(attr.name)) return false;
@@ -134,7 +135,7 @@ function markdownAttrsAreDefault(node: MdastJsxElement): boolean {
     if (attr.name === 'col' && value !== 1) return false;
     if (attr.name === 'colSpan' && value !== 12) return false;
     if (attr.name === 'row') return false;
-    if (attr.name === 'rowSpan') return false; // isProse omits rowSpan; if present, non-default
+    if (attr.name === 'rowSpan') return false; // isProse omits rowSpan when default; if present, non-default
   }
   return true;
 }

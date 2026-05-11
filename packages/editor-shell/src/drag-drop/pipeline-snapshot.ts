@@ -26,6 +26,17 @@ export interface SerializedBlock extends IdentifiedBlock {
 }
 
 /**
+ * Normalize a node's `rowSpan` attr to an integer ≥ 1. Wave 7 Phase 2A
+ * (ADR-0020 D1): rowSpan is a discrete integer. Legacy `'auto'` from
+ * un-migrated state is normalized to 1.
+ */
+function normalizeRowSpan(raw: unknown): number {
+  if (raw === 'auto') return 1;
+  if (typeof raw === 'number' && Number.isInteger(raw) && raw >= 1) return raw;
+  return 1;
+}
+
+/**
  * Walk the editor doc and return one IdentifiedBlock per `.skb-block-nodeview`
  * NodeView. Block id = ProseMirror node `pos` as string. Used at
  * drag-start to populate the snapshot; never re-called during
@@ -47,7 +58,9 @@ export function snapshotBlocks(editor: Editor): SerializedBlock[] {
       col: colAttr,
       ...(typeof rowAttr === 'number' && { row: rowAttr }),
       colSpan: node.attrs['colSpan'] as number,
-      rowSpan: (node.attrs['rowSpan'] as number | 'auto') ?? 1,
+      // Wave 7 Phase 2A (ADR-0020 D1): rowSpan is integer. Legacy
+      // `'auto'` from un-migrated state is normalized to 1.
+      rowSpan: normalizeRowSpan(node.attrs['rowSpan']),
     });
     return false; // Don't descend into block nodes.
   });

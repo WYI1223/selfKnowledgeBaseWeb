@@ -59,16 +59,15 @@ interface GridAttrs {
   readonly col: number;
   readonly row?: number;
   readonly colSpan: number;
-  readonly rowSpan: number | 'auto';
+  readonly rowSpan: number;
 }
 
 // Grid attr shape `{col, row?, colSpan, rowSpan}` per ADR-0016 D2 (single
 // schema authority). COL_SNAPS imported from `@skb/block-foundation` (ADR-0006
-// class 4 single-authority schema; per Wave 5 plan v1.1 row C.2-3.5 reviewer
-// R1 finding — was duplicated locally pre-amendment). ADR-0016 D7 hard-throw
-// end-state per Wave 5 plan v1.1 row C.2-3.5 (R14 amendment 2026-05-05):
-// missing required attrs throw loudly; prose Markdown continues to derive
-// rowSpan='auto' per ADR-0016 D3.
+// class 4 single-authority schema). ADR-0016 D7 hard-throw end-state: missing
+// required attrs throw loudly. Wave 7 Phase 2A (ADR-0020 D1): rowSpan is a
+// discrete integer; prose Markdown defaults to rowSpan=1 (was 'auto'); legacy
+// `rowSpan='auto'` attrs in existing .mdx are normalized to 1.
 const GRID_ATTR_NAMES = new Set(['col', 'row', 'colSpan', 'rowSpan']);
 
 /**
@@ -387,22 +386,24 @@ function parseRowSpan(
   attr: MdastJsxAttribute | undefined,
   blockType: string,
   isProse: boolean,
-): number | 'auto' {
+): number {
   if (!attr) {
-    if (isProse) return 'auto';
+    if (isProse) return 1;
     throw new Error(
       `mdx-bridge: required grid attr rowSpan missing on block "${blockType}"; ` +
-        `per ADR-0016 D7 end-state invariant (Wave 5 plan v1.1 row C.2-3.5; ` +
-        `R14 amendment 2026-05-05).`,
+        `per ADR-0016 D7 end-state invariant.`,
     );
   }
 
   const value = attrValue(attr);
+  // Wave 7 Phase 2A: legacy `rowSpan='auto'` literal is normalized to 1
+  // (the new prose default per ADR-0020 D1). Non-prose blocks still
+  // reject the literal.
   if (value === 'auto') {
-    if (isProse) return 'auto';
+    if (isProse) return 1;
     throw new Error(
       `mdx-bridge: unsupported grid attr rowSpan='auto' on non-prose block ${blockType}; ` +
-        `rowSpan must be an integer per ADR-0016 D3.`,
+        `rowSpan must be an integer per ADR-0020 D1.`,
     );
   }
   return parseGridInteger('rowSpan', value, blockType);

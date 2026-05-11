@@ -224,23 +224,19 @@ describe('grid attr round-trip', () => {
     }
   }
 
-  it("omits rowSpan='auto' for Markdown while preserving parsed prose semantics", () => {
-    // Wave 6 cf-25 — the markdown wrapper-block now has cf-25-aware
-    // inner content recursion at both parse + serialize boundaries.
-    // Pre-cf-25 this test used mdast-shape inner children inside a
-    // hand-built doc to exercise the old stub-passthrough contract;
-    // the cf-25 contract requires the inner content to be Tiptap-shape
-    // (so the new isMarkdown branch in tiptapComponentToMdast can
-    // round-trip it through tiptapToMdastBlock). Updated to use a
-    // proper Tiptap paragraph + text leaf shape — same round-trip
-    // intent (rowSpan='auto' omitted on serialize, restored on parse).
+  it('omits default rowSpan=1 for Markdown while preserving parsed prose semantics', () => {
+    // Wave 7 Phase 2A (ADR-0020 D1): rowSpan is discrete integer. The
+    // serializer omits rowSpan when it equals the prose default of 1;
+    // parser fills in rowSpan=1 when the attr is absent. Legacy
+    // `rowSpan='auto'` attrs in attrs are normalized to 1 by the
+    // serializer (`rowSpanRaw === 'auto' ? 1 : ...`).
     const options = buildOptions(true);
     const doc: TiptapDoc = {
       type: 'doc',
       content: [
         {
           type: 'markdown',
-          attrs: { col: 1, colSpan: 6, rowSpan: 'auto' },
+          attrs: { col: 1, colSpan: 6, rowSpan: 1 },
           content: [
             {
               type: 'paragraph',
@@ -259,8 +255,64 @@ describe('grid attr round-trip', () => {
     expect(parsed.content[0]?.attrs).toMatchObject({
       col: 1,
       colSpan: 6,
-      rowSpan: 'auto',
+      rowSpan: 1,
     });
     expect(tiptapToMdx(stripMdast(parsed), options).trim()).toBe(source);
+  });
+
+  it('emits rowSpan for Markdown when non-default (≠ 1)', () => {
+    // Wave 7 Phase 2A: when the user resizes a markdown block to a
+    // non-default integer rowSpan, the serializer emits the attr so
+    // the unwrap-on-default pass preserves the wrapper.
+    const options = buildOptions(true);
+    const doc: TiptapDoc = {
+      type: 'doc',
+      content: [
+        {
+          type: 'markdown',
+          attrs: { col: 1, colSpan: 6, rowSpan: 3 },
+          content: [
+            {
+              type: 'paragraph',
+              content: [{ type: 'text', text: 'Taller markdown.' }],
+            },
+          ],
+        },
+      ],
+    };
+    const source = tiptapToMdx(doc, options).trim();
+    expect(source).toContain('rowSpan={3}');
+    const parsed = mdxToTiptap(source, options);
+    expect(parsed.content[0]?.attrs).toMatchObject({
+      col: 1,
+      colSpan: 6,
+      rowSpan: 3,
+    });
+  });
+
+  it("normalizes legacy rowSpan='auto' attr in attrs to integer 1 (one-time migration)", () => {
+    // Wave 7 Phase 2A: in-memory Tiptap state from a legacy un-migrated
+    // session may still carry `rowSpan: 'auto'`. The serializer
+    // normalizes it to 1 and (because 1 is the prose default) omits
+    // the attr — producing the same .mdx as a fresh integer-1 doc.
+    const options = buildOptions(true);
+    const doc: TiptapDoc = {
+      type: 'doc',
+      content: [
+        {
+          type: 'markdown',
+          attrs: { col: 1, colSpan: 12, rowSpan: 'auto' },
+          content: [
+            {
+              type: 'paragraph',
+              content: [{ type: 'text', text: 'Legacy auto markdown.' }],
+            },
+          ],
+        },
+      ],
+    };
+    const source = tiptapToMdx(doc, options).trim();
+    expect(source).not.toContain('rowSpan');
+    expect(source).not.toContain('<Markdown'); // all defaults → unwrap → bare prose
   });
 });

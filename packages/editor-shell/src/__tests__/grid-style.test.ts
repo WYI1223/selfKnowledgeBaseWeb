@@ -35,25 +35,19 @@ describe('gridPlacementStyle', () => {
     expect(style.gridRow).toBe('3 / span 4');
   });
 
-  it('substitutes autoRowSpan default (1) when rowSpan is auto', () => {
-    const style = gridPlacementStyle({ col: 1, colSpan: 6, rowSpan: 'auto' });
+  it('emits explicit integer rowSpan in the gridRow shorthand (Wave 7 Phase 2A: integer only)', () => {
+    const style = gridPlacementStyle({ col: 1, colSpan: 6, rowSpan: 1 });
     expect(style.gridColumn).toBe('1 / span 6');
     expect(style.gridRow).toBe('span 1');
   });
 
-  it('substitutes the caller-provided autoRowSpan integer when rowSpan is auto', () => {
-    const style = gridPlacementStyle(
-      { col: 1, colSpan: 6, rowSpan: 'auto' },
-      { autoRowSpan: 5 },
-    );
+  it('emits a multi-row rowSpan correctly', () => {
+    const style = gridPlacementStyle({ col: 1, colSpan: 6, rowSpan: 5 });
     expect(style.gridRow).toBe('span 5');
   });
 
-  it('handles explicit row + auto rowSpan via autoRowSpan substitution', () => {
-    const style = gridPlacementStyle(
-      { col: 1, row: 2, colSpan: 4, rowSpan: 'auto' },
-      { autoRowSpan: 3 },
-    );
+  it('handles explicit row + integer rowSpan', () => {
+    const style = gridPlacementStyle({ col: 1, row: 2, colSpan: 4, rowSpan: 3 });
     expect(style.gridRow).toBe('2 / span 3');
   });
 });
@@ -82,9 +76,9 @@ describe('extractGridPosition', () => {
     expect(pos?.row).toBeUndefined();
   });
 
-  it("preserves rowSpan='auto' (prose path)", () => {
+  it("normalizes legacy rowSpan='auto' to integer 1 (Wave 7 Phase 2A defensive read)", () => {
     const pos = extractGridPosition({ col: 1, colSpan: 6, rowSpan: 'auto' });
-    expect(pos).toEqual({ col: 1, colSpan: 6, rowSpan: 'auto' });
+    expect(pos).toEqual({ col: 1, colSpan: 6, rowSpan: 1 });
   });
 
   it('returns null when attrs is undefined', () => {
