@@ -84,9 +84,19 @@ function isUiTouch(files: ReadonlyArray<string>): boolean {
 
 function findPrMd(files: ReadonlyArray<string>): string | null {
   const candidates = files.filter((f) => PR_MD_PATTERN.test(f));
-  // Prefer `*-main/*.md` over `*-prep/*.md` if both present
-  const main = candidates.find((c) => c.includes('-main/'));
-  if (main !== undefined) return main;
+  // Prefer `*-main/*.md` over `*-prep/*.md` if both present.
+  // Among main candidates, prefer the highest wave number — this is the
+  // current PR's wave; earlier-wave files that appear in the diff are
+  // historical retro/cross-reference touches, not the current PR.md.
+  const waveNum = (p: string): number => {
+    const m = /wave-(\d+)(?:\.\d+)?-main\//.exec(p);
+    return m?.[1] !== undefined ? Number.parseInt(m[1], 10) : -1;
+  };
+  const mains = candidates.filter((c) => c.includes('-main/'));
+  if (mains.length > 0) {
+    mains.sort((a, b) => waveNum(b) - waveNum(a));
+    return mains[0] ?? null;
+  }
   return candidates[0] ?? null;
 }
 
