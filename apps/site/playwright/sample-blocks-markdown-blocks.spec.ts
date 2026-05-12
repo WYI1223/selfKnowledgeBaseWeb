@@ -208,58 +208,8 @@ test.describe('cf-25 markdown wrapper-block', () => {
     expect(editAffordances.resizeHandles).toBe(0);
   });
 
-  test('AC3-5 — side-by-side mixed-grid row: markdown(col=1 colSpan=6) + image(col=7 colSpan=6) at IDENTICAL top (viewport ≥ 1024)', async ({
-    page,
-  }) => {
-    // cf-25 R1 F1 — install the side-by-side demo if not already in
-    // the snapshotted MDX (orchestrator pre-commit dev cycles). No-op
-    // once F1 lands in HEAD.
-    installCf25Demo();
-    await page.setViewportSize({ width: 1280, height: 900 });
-    await page.goto(EDIT_URL);
-    await page.waitForSelector('.skb-block-nodeview[data-skb-block-kind="markdown"]');
-    await page.waitForTimeout(500);
-
-    const sideBySide = await page.evaluate(() => {
-      // Find the LAST markdown block + LAST image block (the cf-25
-      // side-by-side demo at the end of sample-blocks.mdx).
-      const markdowns = Array.from(
-        document.querySelectorAll(
-          '.skb-block-nodeview[data-skb-block-kind="markdown"]',
-        ),
-      );
-      const images = Array.from(
-        document.querySelectorAll(
-          '.skb-block-nodeview[data-skb-block-kind="image"]',
-        ),
-      );
-      const md = markdowns[markdowns.length - 1] as HTMLElement | undefined;
-      const img = images[images.length - 1] as HTMLElement | undefined;
-      if (!md || !img) return null;
-      // cf-25 R1 F2 — grid placement is projected to the OUTER
-      // `.react-renderer` wrapper via `useProjectGridStyleToOuter`,
-      // AND ALSO mirrored on the inner `.skb-block-nodeview`'s
-      // inline style for spec backward-compat. Reading the inner's
-      // computed gridColumn matches what the inner's grid-area
-      // shorthand resolves to (per cf-25 R1 F2 dual-write strategy).
-      const mdR = md.getBoundingClientRect();
-      const imgR = img.getBoundingClientRect();
-      return {
-        mdGridColumn: getComputedStyle(md).gridColumn,
-        imgGridColumn: getComputedStyle(img).gridColumn,
-        mdTop: Math.round(mdR.top),
-        imgTop: Math.round(imgR.top),
-        mdLeft: Math.round(mdR.left),
-        imgLeft: Math.round(imgR.left),
-      };
-    });
-    expect(sideBySide).not.toBeNull();
-    expect(sideBySide!.mdGridColumn).toBe('1 / span 6');
-    expect(sideBySide!.imgGridColumn).toBe('7 / span 6');
-    // SAME ROW — top values agree within ±2px tolerance (subpixel rounding).
-    expect(Math.abs(sideBySide!.mdTop - sideBySide!.imgTop)).toBeLessThanOrEqual(2);
-    // Markdown is to the LEFT of image (cols 1-6 vs 7-12).
-    expect(sideBySide!.mdLeft).toBeLessThan(sideBySide!.imgLeft);
+  test('AC3-5 — side-by-side mixed-grid row: markdown(col=1 colSpan=6) + image(col=7 colSpan=6) at IDENTICAL top (viewport ≥ 1024)', () => {
+    test.skip(true, 'REMOVED-IN-WAVE-7-PHASE-2E (ADR-0020 D7 absolute positioning)');
   });
 
   test('AC3-6 (cf-25 R1 F3) — kebab on a markdown block HIDES the Change-kind submenu (D10 lossy-conversion guard)', async ({

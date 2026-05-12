@@ -240,71 +240,8 @@ test('cf-20e — Duplicate action inserts a copy + fires success-pulse via cf-20
   restoreSampleBlocksFixture();
 });
 
-test('cf-20e — Change-kind action mutates first block from callout → componentCode while preserving grid attrs', async ({
-  page,
-}) => {
-  await page.goto('/notes/sample-blocks/edit');
-  const editor = page.locator('.ProseMirror').first();
-  await expect(editor).toBeVisible({ timeout: 15_000 });
-  await expect(editor.locator('.skb-block-nodeview').first()).toBeVisible({
-    timeout: 10_000,
-  });
-  await page.waitForTimeout(500);
-
-  // Wave 6 cf-25 — skip markdown wrapper-blocks (chunking pass adds them).
-  const firstWrapper = page.locator('.skb-block-nodeview:not([data-skb-block-kind="markdown"])').first();
-
-  // Pre-change: first block is a callout per sample-blocks fixture
-  // with `col=1, colSpan=12, rowSpan=1`.
-  expect(await firstWrapper.getAttribute('data-skb-block-kind')).toBe('callout');
-  const colBefore = await firstWrapper.evaluate(
-    (el) => (el as HTMLElement).style.gridColumn,
-  );
-  expect(colBefore.replace(/\s+/g, ' ').trim()).toBe('1 / span 12');
-
-  // Click first component-kebab → click "Change kind…" → click "Code" sub-item.
-  await page
-    .locator(
-      '.skb-block-nodeview:not([data-skb-block-kind="markdown"]) .skb-block-nodeview__kebab',
-    )
-    .first()
-    .click();
-  await expect(page.locator('.skb-kebab-menu')).toHaveCount(1);
-  await page
-    .locator(
-      '.skb-kebab-menu .skb-kebab-menu__item[data-skb-kebab-action="change-kind-toggle"]',
-    )
-    .click();
-  // Sub-menu now visible.
-  await expect(page.locator('.skb-kebab-menu__submenu')).toHaveCount(1);
-  await page
-    .locator(
-      '.skb-kebab-menu__submenu .skb-kebab-menu__item[data-skb-kebab-action="change-kind-componentCode"]',
-    )
-    .click();
-
-  await page.waitForTimeout(300);
-
-  // Post-change: first block kind mutated to componentCode (per the
-  // cf-15b internal-name rename); grid attrs preserved.
-  expect(
-    await firstWrapper.getAttribute('data-skb-block-kind'),
-    'cf-20e Change-kind: data-skb-block-kind MUST mutate to the picked kind (componentCode for the cf-15b internal-name rename of "code")',
-  ).toBe('componentCode');
-  const colAfter = await firstWrapper.evaluate(
-    (el) => (el as HTMLElement).style.gridColumn,
-  );
-  expect(
-    colAfter.replace(/\s+/g, ' ').trim(),
-    'cf-20e D3 drop-and-default: grid attrs (col/colSpan/rowSpan) MUST be preserved across change-kind; only kind-specific attrs are reset to target defaults',
-  ).toBe('1 / span 12');
-
-  // Menu auto-closed post-action.
-  await expect(page.locator('.skb-kebab-menu')).toHaveCount(0);
-
-  // cf-22 follow-up — settle autosave before restore (see helper).
-  await page.waitForTimeout(AUTOSAVE_SETTLE_MS);
-  restoreSampleBlocksFixture();
+test('cf-20e — Change-kind action mutates first block from callout → componentCode while preserving grid attrs', () => {
+  test.skip(true, 'REMOVED-IN-WAVE-7-PHASE-2E (ADR-0020 D7 absolute positioning)');
 });
 
 test('cf-20e — kebab hidden on mobile (≤768px) per ADR-0017 D9 view-only contract', async ({

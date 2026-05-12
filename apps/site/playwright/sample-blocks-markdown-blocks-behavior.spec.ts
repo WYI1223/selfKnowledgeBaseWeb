@@ -62,67 +62,8 @@ test.describe('cf-25 R2 F6 — markdown wrapper-block behavioral specs', () => {
     );
   });
 
-  test('AC3-2b — right-edge resize on a markdown block mutates colSpan + fires Resized', async ({
-    page,
-  }) => {
-    // cf-20d resize pipeline applies to markdown identically per
-    // ADR-0017 v0.5 D15. Default cf-25 markdown defaults colSpan=12;
-    // resize the FIRST markdown block's right edge inward and assert
-    // the colSpan attr snaps to a smaller COL_SNAP value per
-    // ADR-0016 D6.
-    await page.goto(EDIT_URL);
-    await page.waitForSelector('.skb-block-nodeview[data-skb-block-kind="markdown"]');
-    await page.waitForTimeout(500);
-
-    const firstMarkdown = page
-      .locator('.skb-block-nodeview[data-skb-block-kind="markdown"]')
-      .first();
-    const colBefore = await firstMarkdown.evaluate(
-      (el) => (el as HTMLElement).style.gridColumn,
-    );
-    expect(colBefore.replace(/\s+/g, ' ').trim()).toBe('1 / span 12');
-
-    const wrapperBox = await firstMarkdown.boundingBox();
-    if (!wrapperBox) throw new Error('first markdown has no box');
-    const rightHandle = firstMarkdown.locator('.gblock-handle.right').first();
-    const handleBox = await rightHandle.boundingBox();
-    if (!handleBox) throw new Error('right handle has no box');
-
-    const mtimeBefore = sampleBlocksMdxMtimeMs();
-
-    await dispatchResizeGesture(
-      page,
-      rightHandle,
-      handleBox.x + handleBox.width / 2,
-      handleBox.y + handleBox.height / 2,
-      wrapperBox.x + wrapperBox.width / 2,
-      handleBox.y + handleBox.height / 2,
-    );
-
-    await expect(
-      page.locator('[data-skb-drop-pulse-anchor]').first(),
-    ).toBeAttached({ timeout: 1_500 });
-
-    const colAfter = await firstMarkdown.evaluate(
-      (el) => (el as HTMLElement).style.gridColumn,
-    );
-    expect(colAfter).not.toBe(colBefore);
-    const colNormalized = colAfter.replace(/\s+/g, ' ').trim();
-    expect(colNormalized).toMatch(/^1 \/ span (2|3|4|6|8)$/);
-
-    // Announcer fires `formatResizeChange('right', ...)` which emits
-    // 'Resized to <fraction> width' (no kind name in the message —
-    // see packages/editor-shell/src/a11y/announce-format.ts). Assert
-    // the verb prefix; cf-25 markdown shares the cf-22 announce
-    // path identically per ADR-0017 v0.5 D15.
-    await expect
-      .poll(
-        () => page.locator('[data-skb-live-announcer]').textContent(),
-        { timeout: 5_000 },
-      )
-      .toContain('Resized');
-
-    await waitForAutosaveLanded(page, mtimeBefore, AUTOSAVE_SETTLE_MS);
+  test('AC3-2b — right-edge resize on a markdown block mutates colSpan + fires Resized', () => {
+    test.skip(true, 'REMOVED-IN-WAVE-7-PHASE-2E (ADR-0020 D7 absolute positioning)');
   });
 
   test('AC3-2c — kebab Duplicate on a markdown block inserts a copy with same kind + content', async ({
@@ -347,65 +288,10 @@ test.describe('cf-25 R2 F6 — markdown wrapper-block behavioral specs', () => {
     { viewport: { w: 1024, h: 900 }, expectSideBySide: true },
     { viewport: { w: 768, h: 900 }, expectSideBySide: false },
   ] as const) {
-    test(`AC3-5a — viewport ${viewport.w}px: mixed-grid placement + no horizontal overflow`, async ({
-      page,
-    }) => {
-      installCf25Demo();
-      await page.setViewportSize({ width: viewport.w, height: viewport.h });
-      await page.goto(EDIT_URL);
-      await page.waitForSelector(
-        '.skb-block-nodeview[data-skb-block-kind="markdown"]',
-      );
-      await page.waitForTimeout(500);
-
-      const measurements = await page.evaluate(() => {
-        const markdowns = Array.from(
-          document.querySelectorAll(
-            '.skb-block-nodeview[data-skb-block-kind="markdown"]',
-          ),
-        );
-        const images = Array.from(
-          document.querySelectorAll(
-            '.skb-block-nodeview[data-skb-block-kind="image"]',
-          ),
-        );
-        const md = markdowns[markdowns.length - 1] as HTMLElement | undefined;
-        const img = images[images.length - 1] as HTMLElement | undefined;
-        return {
-          mdRect: md
-            ? {
-                top: Math.round(md.getBoundingClientRect().top),
-                left: Math.round(md.getBoundingClientRect().left),
-                w: Math.round(md.getBoundingClientRect().width),
-              }
-            : null,
-          imgRect: img
-            ? {
-                top: Math.round(img.getBoundingClientRect().top),
-                left: Math.round(img.getBoundingClientRect().left),
-                w: Math.round(img.getBoundingClientRect().width),
-              }
-            : null,
-          docScrollWidth: document.documentElement.scrollWidth,
-          viewportWidth: window.innerWidth,
-        };
-      });
-
-      expect(measurements.docScrollWidth).toBe(measurements.viewportWidth);
-      expect(measurements.mdRect).not.toBeNull();
-      expect(measurements.imgRect).not.toBeNull();
-
-      if (expectSideBySide) {
-        expect(
-          Math.abs(measurements.mdRect!.top - measurements.imgRect!.top),
-        ).toBeLessThanOrEqual(2);
-        expect(measurements.mdRect!.left).toBeLessThan(measurements.imgRect!.left);
-      } else {
-        // 768: cf-20b 6→1 col flatten stacks vertically.
-        expect(measurements.imgRect!.top).toBeGreaterThan(
-          measurements.mdRect!.top + 10,
-        );
-      }
+    test(`AC3-5a — viewport ${viewport.w}px: mixed-grid placement + no horizontal overflow`, () => {
+      void viewport;
+      void expectSideBySide;
+      test.skip(true, 'REMOVED-IN-WAVE-7-PHASE-2E (ADR-0020 D7 absolute positioning)');
     });
   }
 });
