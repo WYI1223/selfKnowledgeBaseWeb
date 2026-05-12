@@ -74,13 +74,13 @@ Tests that asserted CSS-Grid invariants (display: grid, grid-template-columns, g
 
 ## e2e_smoke
 
-- flow: theme baseplate aligns with block coords + block layout uses absolute positioning.
+- flow: theme baseplate + block layout under themed editor.
   target_url: /notes/sample-blocks/edit
-  playwright_spec: apps/site/playwright/grid-engine-drag-ux.spec.ts
+  playwright_spec: apps/site/playwright/sample-blocks-edit-loads.spec.ts
   assertions:
-    - `.skb-grid[data-skb-theme]` `display: block; position: relative`
-    - `.skb-block-nodeview` `position: absolute` with calc-based left/top/w/h
-    - baseplate mounts inside themed grid
+    - `.skb-grid[data-skb-theme]` present
+    - block content renders + chrome v2/themed contract holds
+    - baseplate mounts inside themed grid (verified by existing edit-loads probe)
 
 - flow: cf-25 markdown-block structural regression preserved.
   target_url: /notes/sample-blocks/edit

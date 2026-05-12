@@ -57,9 +57,18 @@ export interface UsePointerDragListenersOptions {
 
 /**
  * Read grid container's pixel geometry from CSS custom props.
- * `.skb-grid` declares `--row-h` and `--gap` per ADR-0016 D5.
- * Returns the cursor → coord conversion params (`oneFrPx`, `rowPx`)
- * + the container's bounding rect, or null if grid not in DOM yet.
+ *
+ * Wave 7 Phase 2E (ADR-0020 D7): when the editor is themed
+ * (`[data-skb-theme]` attribute present), layout is absolute
+ * positioning with both block size and cursor-coord conversion
+ * derived from `--skb-slot-size`. Otherwise (non-themed read route,
+ * SSR pre-hydration), the legacy CSS Grid model uses
+ * `--row-h` + `--gap` per ADR-0016 D5.
+ *
+ * The dragover handler MUST use the same coordinate system the
+ * layout uses; otherwise cursor → grid-coord mismatches and the
+ * inferred drop intent lands at the wrong cell (every drop hits a
+ * non-empty region and gets rejected — the symptom user reported).
  */
 function readGridGeometry(
   gridEl: Element,
@@ -67,11 +76,14 @@ function readGridGeometry(
 ): { rect: DOMRect; oneFrPx: number; rowPx: number } | null {
   const rect = gridEl.getBoundingClientRect();
   const style = getComputedStyle(gridEl);
+  const themed = gridEl.hasAttribute('data-skb-theme');
+  if (themed) {
+    const slot = parseFloat(style.getPropertyValue('--skb-slot-size')) || 80;
+    return { rect, oneFrPx: slot, rowPx: slot };
+  }
   const rowH = parseFloat(style.getPropertyValue('--row-h')) || 48;
   const gap = parseFloat(style.getPropertyValue('--gap')) || 14;
   const rowPx = rowH + gap;
-  // 1 fr = (containerWidth - (totalCols - 1) * gap) / totalCols; one
-  // column's pixel pitch = 1fr + gap (i.e., total / totalCols ≈ rect.width / totalCols).
   const oneFrPx = (rect.width + gap) / totalCols;
   return { rect, oneFrPx, rowPx };
 }
