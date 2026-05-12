@@ -30,8 +30,10 @@ import {
   type EditorShellProps,
   type SaveIndicatorStatus,
   useAnnounce,
+  EditorLayoutContext,
   ThemeBaseplate,
   useDragDropPipeline,
+  useEditorLayout,
   useEscCancel,
   useResizePipeline,
   useResponsiveCols,
@@ -126,19 +128,13 @@ export function EditorShellMountInner({
     onAnnouncePaletteInsert,
   } = useEditorShellAnnounceCallbacks(announce);
 
-  // cf-24 — resolve the BaseLayout `#palette-rail` aside slot at
-  // hydration time. Slot only exists on routes that pass
-  // `palette={true}` (edit route only). useEffect ensures we wait
-  // until the DOM is ready (server-rendered slot is present
-  // pre-React-hydration; the lookup is synchronous).
+  // cf-24 palette-rail aside slot resolved at hydration.
   useEffect(() => {
     setPaletteSlot(document.getElementById('palette-rail'));
   }, []);
 
-  // cf-22 R2 F3 — reason-marker indirection for useEscCancel: the
-  // pipeline needs to mark deactivation-reason BEFORE we can take
-  // useEscCancel's return handle. Refs invert the dependency: stable
-  // markers route through `dragEscHandleRef` populated post-useEscCancel.
+  // cf-22 R2 F3 reason-marker indirection for useEscCancel (refs
+  // invert the pipeline-vs-handle dependency).
   const dragEscHandleRef = useRef<{
     markDeactivationReason: (
       reason: 'esc-cancel' | 'commit' | 'pointer-up' | 'tab-commit' | 'tab-cancel',
@@ -152,8 +148,9 @@ export function EditorShellMountInner({
   );
 
   const viewportCols = useResponsiveCols();
-  // Wave 7 Phase 2C — theme cssVars inject on .skb-grid; switcher below.
+  // Wave 7 Phase 2C/2E — theme cssVars + absolute-positioning snapshot.
   const { themeKey, theme, setTheme } = useTheme();
+  const layoutSnapshot = useEditorLayout(editor);
   const pipeline = useDragDropPipeline({
     editor,
     totalCols: viewportCols,
@@ -415,26 +412,27 @@ export function EditorShellMountInner({
       <DragDropProvider value={dragContextValue}>
         <ResizeProvider value={resizeContextValue}>
           <KebabProvider value={kebabContextValue}>
-            <GridContainer
-              viewportCols={viewportCols}
-              style={theme.cssVars}
-              data-skb-theme={themeKey}
-            >
-              {/* Wave 7 Phase 2D — theme baseplate (positioned absolute,
-                  z-index 0; behind block content). */}
-              <ThemeBaseplate
-                theme={theme}
-                dragInProgress={pipeline.state.active || pipeline.state.keyboardActive}
-              />
-              <Toolbar editor={editor} />
-              <EditorShell
-                extensions={wire.extensions}
-                onCreate={handleCreate}
-                onChange={handleChange}
-              />
-              <PaletteModal editor={editor} kinds={wire.blockKinds} />
-              <SlashMenu editor={editor} kinds={wire.blockKinds} />
-            </GridContainer>
+            <EditorLayoutContext.Provider value={layoutSnapshot}>
+              <GridContainer
+                viewportCols={viewportCols}
+                style={theme.cssVars}
+                data-skb-theme={themeKey}
+              >
+                <ThemeBaseplate
+                  theme={theme}
+                  dragInProgress={pipeline.state.active || pipeline.state.keyboardActive}
+                  totalRows={Math.max(layoutSnapshot.totalRows, 12)}
+                />
+                <Toolbar editor={editor} />
+                <EditorShell
+                  extensions={wire.extensions}
+                  onCreate={handleCreate}
+                  onChange={handleChange}
+                />
+                <PaletteModal editor={editor} kinds={wire.blockKinds} />
+                <SlashMenu editor={editor} kinds={wire.blockKinds} />
+              </GridContainer>
+            </EditorLayoutContext.Provider>
           </KebabProvider>
         </ResizeProvider>
       </DragDropProvider>

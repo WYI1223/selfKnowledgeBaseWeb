@@ -8,6 +8,28 @@ import { DragDropContext } from './drag-drop/drag-context';
 import { ResizeHandles } from './resize/resize-handles';
 import { ResizeContext } from './resize/resize-context';
 import { KebabButton } from './kebab/kebab-button';
+import { useEditorLayoutContext } from './use-editor-layout';
+
+/**
+ * Wave 7 Phase 2E (ADR-0020 D2/D7) — compute absolute-positioning
+ * style for a block using its packed engine coords + `--skb-slot-size`
+ * CSS var. Returns null when the context has no entry (non-themed
+ * paths fall back to the legacy CSS Grid placement style).
+ */
+function absolutePositioningStyle(
+  blockId: string,
+  layout: ReturnType<typeof useEditorLayoutContext>,
+): CSSProperties | null {
+  const engineBlock = layout.byId.get(blockId);
+  if (!engineBlock) return null;
+  return {
+    position: 'absolute',
+    left: `calc(${engineBlock.col} * var(--skb-slot-size, 80px))`,
+    top: `calc(${engineBlock.row} * var(--skb-slot-size, 80px))`,
+    width: `calc(${engineBlock.colSpan} * var(--skb-slot-size, 80px))`,
+    height: `calc(${engineBlock.rowSpan} * var(--skb-slot-size, 80px))`,
+  };
+}
 
 /**
  * Wave 6 carry-forward #18 (2026-05-08) — bridge from a Tiptap NodeView to
@@ -182,11 +204,20 @@ export function makeBlockNodeView({
     const ui = registry ? registry.getUI(nodeName) : undefined;
     const editorProps = (props.node.attrs ?? {}) as Record<string, unknown>;
     const gridPos = extractGridPosition(editorProps);
-    const wrapperStyle = gridPos ? gridPlacementStyle(gridPos) : undefined;
     const blockId = blockIdFromProps(props);
-    // Wave 6 cf-25 R1 F2 — project grid style onto outer .react-renderer.
+    // Wave 7 Phase 2E — when a theme provides a layout snapshot (via
+    // EditorLayoutContext), absolute-positioning replaces CSS Grid
+    // placement; otherwise legacy gridColumn/gridRow path is used.
+    const layout = useEditorLayoutContext();
+    const absoluteStyle = absolutePositioningStyle(blockId, layout);
+    const wrapperStyle =
+      absoluteStyle ?? (gridPos ? gridPlacementStyle(gridPos) : undefined);
     const innerRef = useRef<HTMLDivElement>(null);
-    useProjectGridStyleToOuter(innerRef, wrapperStyle);
+    // Skip the CSS-Grid `useProjectGridStyleToOuter` projection when
+    // absolute-positioning takes over — the inline style on the inner
+    // wrapper is sufficient when `.react-renderer { display: contents }`
+    // (set by grid.css under `.skb-grid[data-skb-theme]`).
+    useProjectGridStyleToOuter(innerRef, absoluteStyle ? undefined : wrapperStyle);
     // Wave 6 cf-20c-2 R1 F1 — read sourceBlockId from DragDropContext
     // (null when no drag pipeline is mounted OR when no drag is
     // active). When this NodeView's blockId matches, apply the

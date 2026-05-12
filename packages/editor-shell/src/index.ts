@@ -64,6 +64,13 @@ export type { UseThemeOptions, UseThemeReturn, ThemeKey, GridTheme } from './use
 // Wave 7 Phase 2D — baseplate mount helper.
 export { ThemeBaseplate } from './theme-baseplate';
 export type { ThemeBaseplateProps } from './theme-baseplate';
+// Wave 7 Phase 2E — engine layout snapshot (absolute-positioning).
+export {
+  EditorLayoutContext,
+  useEditorLayout,
+  useEditorLayoutContext,
+} from './use-editor-layout';
+export type { EditorLayoutSnapshot } from './use-editor-layout';
 export { OutlineOverlay } from './drag-drop/outline-overlay';
 export type { OutlineOverlayProps } from './drag-drop/outline-overlay';
 export { DropPulse, dropPulseClassName } from './drag-drop/drop-pulse';

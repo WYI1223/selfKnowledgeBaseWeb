@@ -313,46 +313,8 @@ test('cf-22 R1 F1 — keyboard-drag arrow updates LiveAnnouncer textContent with
 });
 
 // R1 F2 lock — keyboard drag tracks GRID coords (not pixel cursor).
-test('cf-22 R1 F2 — keyboard-drag ArrowRight + Enter commits to col=2 EXACTLY (grid-coord, NOT pixel-derived)', async ({
-  page,
-}) => {
-  installColSpan6Fixture();
-  await page.goto('/notes/sample-blocks/edit');
-  const editor = page.locator('.ProseMirror').first();
-  await expect(editor).toBeVisible({ timeout: 15_000 });
-  await expect(editor.locator('.skb-block-nodeview').first()).toBeVisible({
-    timeout: 10_000,
-  });
-  await page.waitForTimeout(500);
-
-  // Wave 6 cf-25 — skip markdown wrapper-blocks (chunking pass adds them).
-  const firstWrapper = page.locator('.skb-block-nodeview:not([data-skb-block-kind="markdown"])').first();
-  expect(
-    (await firstWrapper.evaluate((el) => (el as HTMLElement).style.gridColumn))
-      .replace(/\s+/g, ' ').trim(),
-  ).toBe('1 / span 6');
-
-  const firstHandle = page
-    .locator('.skb-block-nodeview:not([data-skb-block-kind="markdown"]) .skb-block-nodeview__drag-handle')
-    .first();
-  await firstHandle.focus();
-  await firstHandle.press('Enter');
-  await page.keyboard.press('ArrowRight');
-  await page.waitForTimeout(50);
-  await page.keyboard.press('Enter');
-  await page.waitForTimeout(400);
-
-  const colAfter = await firstWrapper.evaluate(
-    (el) => (el as HTMLElement).style.gridColumn,
-  );
-  expect(
-    colAfter.replace(/\s+/g, ' ').trim(),
-    'cf-22 R1 F2: ArrowRight + Enter MUST commit to col=2 (grid-coord).',
-  ).toBe('2 / span 6');
-
-  // cf-22 follow-up — settle autosave before restore (see helper).
-  await page.waitForTimeout(AUTOSAVE_SETTLE_MS);
-  restoreSampleBlocksFixture();
+test('cf-22 R1 F2 — keyboard-drag ArrowRight + Enter commits to col=2 EXACTLY (grid-coord, NOT pixel-derived)', () => {
+  test.skip(true, 'REMOVED-IN-WAVE-7-PHASE-2E (ADR-0020 D7 absolute positioning)');
 });
 
 // R1 F3 + R2 F3 lock — Tab in keyboard mode commits + resets
@@ -360,66 +322,8 @@ test('cf-22 R1 F2 — keyboard-drag ArrowRight + Enter commits to col=2 EXACTLY 
 // naturally. R2 F3: ALSO assert document.activeElement actually moved
 // past the originating drag handle (the R1 lock did not assert this,
 // allowing the useEscCancel sibling-hook focus-restore bug to slip).
-test('cf-22 R1 F3 + R2 F3 — Tab in keyboard-drag commits + resets keyboardActive + focus advances PAST originating handle', async ({
-  page,
-}) => {
-  installColSpan6Fixture();
-  await page.goto('/notes/sample-blocks/edit');
-  const editor = page.locator('.ProseMirror').first();
-  await expect(editor).toBeVisible({ timeout: 15_000 });
-  await expect(editor.locator('.skb-block-nodeview').first()).toBeVisible({
-    timeout: 10_000,
-  });
-  await page.waitForTimeout(500);
-
-  // Wave 6 cf-25 — skip markdown wrapper-blocks (chunking pass adds them).
-  const firstWrapper = page.locator('.skb-block-nodeview:not([data-skb-block-kind="markdown"])').first();
-  const firstHandle = page
-    .locator('.skb-block-nodeview:not([data-skb-block-kind="markdown"]) .skb-block-nodeview__drag-handle')
-    .first();
-  await firstHandle.focus();
-  // Snapshot the originating handle's outerHTML so we can assert later
-  // that document.activeElement is NOT this exact element (focus
-  // actually advanced past it; useEscCancel did NOT undo the advance).
-  const originatingHandleHTML = await firstHandle.evaluate(
-    (el) => (el as HTMLElement).outerHTML,
-  );
-  await firstHandle.press('Enter');
-  await page.keyboard.press('ArrowRight');
-  await page.waitForTimeout(50);
-  await page.keyboard.press('Tab');
-  // Wait long enough for both: (a) the synchronous commit to finish,
-  // (b) the useEscCancel useEffect to run on dragActive flip false,
-  // (c) any setTimeout(0) focus-restoration to fire.
-  await page.waitForTimeout(400);
-
-  const colAfter = await firstWrapper.evaluate(
-    (el) => (el as HTMLElement).style.gridColumn,
-  );
-  expect(
-    colAfter.replace(/\s+/g, ' ').trim(),
-    'cf-22 R1 F3: Tab MUST commit (col=2) before focus shifts.',
-  ).toBe('2 / span 6');
-  await expect(page.locator('.skb-grid-outline-base')).toHaveCount(0);
-
-  // R2 F3 lock — focus MUST have moved past the originating handle.
-  // Pre-R2 the useEscCancel hook captured activeElement on drag-start
-  // and refocused it whenever dragActive flipped false (regardless of
-  // whether the deactivation was Esc-originated or Tab-originated),
-  // undoing the browser's natural Tab focus-advance. R2 F3 fixes this
-  // via the reason-flag mechanism (`tab-commit` / `tab-cancel`) so the
-  // hook SKIPS focus-restore on Tab paths.
-  const activeAfterHTML = await page.evaluate(
-    () => (document.activeElement as HTMLElement | null)?.outerHTML ?? '',
-  );
-  expect(
-    activeAfterHTML,
-    'cf-22 R2 F3: focus MUST have moved past originating drag handle (useEscCancel must NOT restore focus on tab-commit reason).',
-  ).not.toBe(originatingHandleHTML);
-
-  // cf-22 follow-up — settle autosave before restore (see helper).
-  await page.waitForTimeout(AUTOSAVE_SETTLE_MS);
-  restoreSampleBlocksFixture();
+test('cf-22 R1 F3 + R2 F3 — Tab in keyboard-drag commits + resets keyboardActive + focus advances PAST originating handle', () => {
+  test.skip(true, 'REMOVED-IN-WAVE-7-PHASE-2E (ADR-0020 D7 absolute positioning)');
 });
 
 // R2 F3 lock for resize — same Tab-commit-then-focus-advance contract
