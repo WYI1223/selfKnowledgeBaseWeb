@@ -1028,7 +1028,7 @@ enforced by TC7, TC10 diff guards):
 - [B2 PR.md](B2-sample-blocks-cleanup.md) — squash `317dda3`; PR #41; small-standard-PR precedent (orchestrator-self EXECUTE; no plan-challenger; PR.md self-list)
 - [B3 PR.md](B3-test-cjk-relocation.md) — squash `5d49240`; PR #42; B3 backfill target in active.md + small-batch precedent (orchestrator-self EXECUTE)
 - [packages/editor-shell/CONTRACT.md](../../../packages/editor-shell/CONTRACT.md) — item 2 codify target
-- [packages/editor-shell/src/registerBlocks.ts](../../../packages/editor-shell/src/registerBlocks.ts) — JSDoc lines 20-27 + 45-49 are the SOURCE of truth for the cast asymmetry that B4 promotes to CONTRACT
+- `packages/editor-shell/src/registerBlocks.ts` — JSDoc lines 20-27 + 45-49 were the historical SOURCE of truth for the cast asymmetry (file deleted in Wave 8 W8-1 demolition; historical reference only)
 - [packages/block-foundation/CONTRACT.md](../../../packages/block-foundation/CONTRACT.md) — registry consumer pattern + `BlockUIDefinition` wide-schema type definition (the contravariance partner)
 - memory `feedback_soted_pr_md_discipline.md` — SOTed-PR.md authoring discipline (single-source-of-truth + cross-section reference + TDD-front + memory-cited)
 - memory `feedback_lychee_line_anchor.md` + `feedback_lychee_user_local_paths.md` + `feedback_lychee_npmjs_403.md` — lychee discipline applied to PR.md cross-references (B5 will codify)
